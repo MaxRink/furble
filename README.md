@@ -105,6 +105,41 @@ In most cases it should be:
 
 More details are on the wiki: [PlatformIO](https://github.com/gkoh/furble/wiki/Linux-Command-Line-(For-Developers))
 
+### Debug builds (developers)
+
+Every board has an optional `<board>-debug` environment, for example
+`m5stick-s3-debug`. These are built with `build_type = debug` and with
+`LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
+sources are compiled in. They share the release `sdkconfig` of the board they
+extend, so nothing but the compiler flags changes. CI and releases build the
+five release environments only, never the debug ones.
+
+Build, flash and watch the log:
+- `platformio run -e m5stick-s3-debug -t upload`
+- `platformio device monitor -e m5stick-s3-debug`
+
+The runtime log level still starts at `INFO` because `CONFIG_LOG_DEFAULT_LEVEL`
+is `3` in the committed `sdkconfig` files. Call
+`esp_log_level_set("*", ESP_LOG_VERBOSE)` to lift it. The ceiling
+`CONFIG_LOG_MAXIMUM_LEVEL` is already `5`, so no `sdkconfig` change is needed.
+
+The M5StickS3 is an ESP32-S3, which has a built-in USB-Serial/JTAG peripheral on
+GPIO19 and GPIO20. Its debug environment selects `debug_tool = esp-builtin`, so
+source level debugging over the USB-C port needs no extra hardware:
+- `platformio debug -e m5stick-s3-debug`
+
+Log output already reaches that port as the secondary console,
+`CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG` is set in `sdkconfig.m5stick-s3`,
+so the monitor works over the same cable.
+
+The debugger halts the CPU. An active camera connection will drop while you sit
+on a breakpoint, and the task watchdog will complain. It logs rather than
+reboots.
+
+The other boards are plain ESP32 and reach the host through a USB to UART
+bridge. They have no JTAG peripheral, so their debug environments give verbose
+logging and unoptimised code only. There are no breakpoints on a StickC.
+
 ## Usage
 
 The top level menu has the following entries:
