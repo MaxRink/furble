@@ -15,6 +15,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_POWER,          {TX_POWER, "TX Power", "tx_power", FURBLE_STR}                 },
     {GPS,               {GPS, "GPS", "gps", FURBLE_STR}                                },
     {GPS_BAUD,          {GPS_BAUD, "GPS Baud", "gps_baud", FURBLE_STR}                 },
+    {GPS_RATE,          {GPS_RATE, "GPS Rate", "gps_rate", FURBLE_STR}                 },
+    {GPS_NMEA,          {GPS_NMEA, "GPS Sentences", "gps_nmea", FURBLE_STR}            },
+    {GPS_CONSTEL,       {GPS_CONSTEL, "GPS Constellation", "gps_constel", FURBLE_STR}  },
     {INTERVAL,          {INTERVAL, "Interval", "interval", FURBLE_STR}                 },
     {MULTICONNECT,      {MULTICONNECT, "Multi-Connect", "multiconnect", FURBLE_STR}    },
     {RECONNECT,         {RECONNECT, "Infinite-ReConnect", "reconnect", FURBLE_STR}     },
@@ -227,6 +230,8 @@ void Settings::init(void) {
           break;
         case TX_POWER:
         case SCAN_MODE:
+        case GPS_RATE:
+        case GPS_CONSTEL:
           save<uint8_t>(setting.type, 0);
           break;
         case BATT_STYLE:
@@ -249,6 +254,7 @@ void Settings::init(void) {
           save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
           break;
         case GPS:
+        case GPS_NMEA:
         case MULTICONNECT:
         case RECONNECT:
         case FAUXNY:
