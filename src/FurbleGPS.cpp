@@ -35,7 +35,8 @@ GPS &GPS::getInstance() {
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 0,
 #if defined(FURBLE_M5STICKS3)
-        .source_clk = UART_SCLK_DEFAULT,
+        // XTAL keeps the baud stable while DFS scales the APB clock
+        .source_clk = UART_SCLK_XTAL,
 #else
         .source_clk = UART_SCLK_REF_TICK,
 #endif
