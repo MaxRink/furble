@@ -18,8 +18,10 @@
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleGPX.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
@@ -1206,6 +1208,9 @@ void GPS::disable(void) {
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
   m_RxBuffer.clear();
+  m_LastLoggedFix = 0;
+  GPX::getInstance().close();
+  SD::getInstance().unmount();
 
   {
     // serialise against a cycle pass still running on the GPS task
@@ -1291,6 +1296,15 @@ void GPS::update(void) {
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
 
+  const bool logging = Settings::load<Settings::SD_GPX>() && SD::getInstance().isSupported();
+  if (!logging) {
+    if (GPX::getInstance().isOpen()) {
+      GPX::getInstance().close();
+      SD::getInstance().unmount();
+    }
+    m_LastLoggedFix = 0;
+  }
+
   if (wiredFixIsFresh()) {
     source = SOURCE_UART;
     dgps = {
@@ -1342,6 +1356,27 @@ void GPS::update(void) {
       m_PushedSequence = fixSequence;
       if (dutyCycleEnabled()) {
         m_CycleRequest = true;
+      }
+    }
+
+    if (logging && (source == SOURCE_UART)) {
+      uint16_t period = Settings::load<Settings::GPX_PERIOD>();
+      if ((period < 1) || (period > 60)) {
+        period = 5;
+      }
+
+      const uint32_t now = Platform::getInstance().tick();
+      if ((m_LastLoggedFix == 0) || ((now - m_LastLoggedFix) >= (period * 1000UL))) {
+        GPX::point_t point = {
+            m_GPS.location.lat(),     m_GPS.location.lng(), m_GPS.altitude.meters(),
+            m_GPS.satellites.value(), m_GPS.date.year(),    m_GPS.date.month(),
+            m_GPS.date.day(),         m_GPS.time.hour(),    m_GPS.time.minute(),
+            m_GPS.time.second(),
+        };
+
+        if (GPX::getInstance().addPoint(point)) {
+          m_LastLoggedFix = now;
+        }
       }
     }
   }

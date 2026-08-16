@@ -8,8 +8,10 @@
 
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
+#include "FurbleGPX.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
@@ -246,6 +248,9 @@ bool Platform::hasTicklessIdle(void) {
 }
 
 bool Platform::powerOff(void) {
+  GPX::getInstance().close();
+  SD::getInstance().unmount();
+
 #if defined(FURBLE_M5STICKS3)
   const bool wasArmed = m_WatchdogEnabled;
   watchdogEnable(false);

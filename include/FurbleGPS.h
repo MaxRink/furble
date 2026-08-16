@@ -281,6 +281,7 @@ class GPS {
   uint64_t m_ExternalFixReceivedMs = 0;
   bool m_HasExternalFix = false;
   mutable std::mutex m_ExternalMutex;
+  uint32_t m_LastLoggedFix = 0;
   TinyGPSPlus m_GPS;
 
   uint8_t m_PowerPolicy = POWER_ALWAYS_ON;

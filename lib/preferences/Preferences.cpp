@@ -149,6 +149,24 @@ size_t Preferences::put(const char *key, uint32_t value) {
 }
 
 template <>
+size_t Preferences::put(const char *key, uint16_t value) {
+  if (!_started || !key || _readOnly) {
+    return 0;
+  }
+  esp_err_t err = nvs_set_u16(_handle, key, value);
+  if (err) {
+    ESP_LOGE(LOG_TAG, "nvs_set_u16 fail: %s %s", key, nvs_error(err));
+    return 0;
+  }
+  err = nvs_commit(_handle);
+  if (err) {
+    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
+    return 0;
+  }
+  return 2;
+}
+
+template <>
 size_t Preferences::put(const char *key, const bool value) {
   return put<uint8_t>(key, (uint8_t)(value ? 1 : 0));
 }
@@ -276,6 +294,21 @@ uint32_t Preferences::get(const char *key, const uint32_t defaultValue) {
   esp_err_t err = nvs_get_u32(_handle, key, &value);
   if (err) {
     ESP_LOGV(LOG_TAG, "nvs_get_u32 fail: %s %s", key, nvs_error(err));
+  }
+
+  return value;
+}
+
+template <>
+uint16_t Preferences::get(const char *key, const uint16_t defaultValue) {
+  uint16_t value = defaultValue;
+  if (!_started || !key) {
+    return value;
+  }
+
+  esp_err_t err = nvs_get_u16(_handle, key, &value);
+  if (err) {
+    ESP_LOGV(LOG_TAG, "nvs_get_u16 fail: %s %s", key, nvs_error(err));
   }
 
   return value;

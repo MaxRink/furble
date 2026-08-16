@@ -43,6 +43,7 @@ class UI {
     PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
     AUDIT,           /**< arg: unused */
     POWER_RELOAD,    /**< arg: unused */
+    SD_RELOAD,       /**< arg: unused */
   };
 
   /**
@@ -404,6 +405,10 @@ class UI {
   static constexpr const char *m_PowerStr = "Power";
   static constexpr const char *m_FeedbackStr = "Feedback";
   static constexpr const char *m_DiagnosticsStr = "Diagnostics";
+  static constexpr const char *m_StorageStr = "Storage";
+  static constexpr const char *m_ExportSettingsStr = "Export Settings";
+  static constexpr const char *m_ImportSettingsStr = "Import Settings";
+  static constexpr const char *m_CardInfoStr = "Card Info";
 
   // settings->power
   static constexpr const char *m_BatteryStr = "Battery";
@@ -512,6 +517,8 @@ class UI {
   lv_timer_t *m_CompanionPairingTimer = nullptr;
   lv_obj_t *m_CompanionPairingDialog = nullptr;
   lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
+  lv_obj_t *m_StorageMessageBox = nullptr;
+  bool m_StorageImport = false;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -809,6 +816,21 @@ class UI {
 
   /** Add the 'Diagnostics' menu entry. */
   void addDiagnosticsMenu(const menu_t &parent);
+
+  /** Add the SD card storage page when the board has a card slot. */
+  void addStorageMenu(const menu_t &parent);
+
+  /** Show the confirmation dialog for a storage action. */
+  void showStorageConfirm(bool import);
+
+  /** Run the confirmed storage action. */
+  void confirmStorageAction(void);
+
+  /** Close a storage action confirmation dialog. */
+  void cancelStorageAction(void);
+
+  /** Refresh the card information label. */
+  static void updateStorageInfo(lv_obj_t *label);
 
   /** Add the 'Device info' page. */
   void addDeviceInfoMenu(const menu_t &parent);

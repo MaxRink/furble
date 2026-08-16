@@ -370,3 +370,56 @@ All links fetched and checked.
   https://www.topografix.com/gpx_manual.asp
 - ESP-IDF v5.4.2 NVS, background for the settings export format decision:
   https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32/api-reference/storage/nvs_flash.html
+
+## Implementation status
+
+Rebase notes:
+
+- `SD_GPX` is assigned wire_id 39, continuing after `LOW_BATT` (38) from
+  PR 35. `GPX_PERIOD` is uint16, which has no companion wire type, so it gets
+  wire_id 0 and the companion rejects it with the other non-wire settings.
+  If the wire protocol grows a u16 type it can be assigned a fresh id then.
+- Master's GPS gained an external companion fix source. GPX logging now runs
+  only for `SOURCE_UART` fixes, because the log point is built from the wired
+  `m_GPS` object.
+- `src/FurbleGPX.cpp` was reflowed by clang-format 21 (whitespace only).
+- `UI::Request::SD_RELOAD` was referenced by the console and the UI task but
+  never declared in the Request enum, so the branch's console (debug) build
+  never compiled. The enum member is added.
+- The exhaustive serialize and import switches in `src/FurbleSD.cpp` cover
+  master's newer settings: DISPLAY_OFF and GPS_POWER (0-2), GPS_DUTY
+  (0/5/10/15), RECON_BACKOFF, COMPANION and WATCHDOG as bools. The INACTIVITY
+  import bound widens from 2 to 20 to match the post-PR-26 roller values.
+
+Implemented:
+
+- Added Core and Core2 SD capability detection and SDSPI mounting on the display
+  SPI host. Mounting uses 10 MHz, does not format cards, and reports card size
+  and free space.
+- Added GPX 1.1 logging from valid GPS fixes. Logging requires GPS to be enabled
+  and `SD_GPX` to be true. The setting defaults to false and the interval
+  defaults to 5 seconds.
+- Added the Storage menu with GPX Logging, GPX Interval, Export Settings, Import
+  Settings, and Card Info entries. The complete menu is omitted at runtime when
+  `SD::isSupported()` is false.
+- Added text settings export and import with range validation, length-prefixed
+  hexadecimal struct values, unknown-key skipping, and restart after a valid
+  import.
+- Added clean GPX close and SD unmount handling for GPS disable, logging disable,
+  and power off. Repeated SD failures disable GPX logging.
+
+The GPX writer keeps the closing tags on disk after every point and rewrites them
+before appending the next point. It calls `fsync()` after every point for an
+interval of 10 seconds or more, and after every fifth point below 10 seconds.
+
+Verification completed:
+
+- `m5stack-core`: passed with `FURBLE_VERSION=dev FURBLE_TEST=0`.
+- `m5stack-core2`: passed with `FURBLE_VERSION=dev FURBLE_TEST=0`.
+- `m5stick-s3`: passed with `FURBLE_VERSION=dev FURBLE_TEST=0`.
+- Clang-format 21.1.2 was run on the touched C++ files. No TinyGPSPlus socket
+  retry was needed because the dependency was available locally.
+
+No Core or Core2 hardware was attached during this work. Physical SD behavior,
+SPI sharing, power-loss file validity, and battery impact still need community
+verification before merge.

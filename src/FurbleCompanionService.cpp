@@ -209,6 +209,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::COMPANION:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::SD_GPX:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -243,6 +244,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
       return SETTING_BLOB;
     case Settings::BULB:
     case Settings::TOUCH_CALIBRATION:
+    case Settings::GPX_PERIOD:
       return SETTING_BLOB;
   }
   return SETTING_BLOB;
@@ -264,6 +266,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::COMPANION:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::SD_GPX:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -321,6 +324,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     }
     case Settings::BULB:
     case Settings::TOUCH_CALIBRATION:
+    case Settings::GPX_PERIOD:
       return false;
   }
   return false;

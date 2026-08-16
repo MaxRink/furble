@@ -1,0 +1,180 @@
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+
+#include <esp_log.h>
+
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "FurbleGPX.h"
+#include "FurbleSD.h"
+#include "FurbleSettings.h"
+#include "FurbleTypes.h"
+
+namespace Furble {
+namespace {
+
+constexpr const char *GPX_DIRECTORY = "/sd/furble";
+constexpr const char *GPX_HEADER =
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+    "<gpx version=\"1.1\" creator=\"furble\"\n"
+    "     xmlns=\"http://www.topografix.com/GPX/1/1\"\n"
+    "     xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n"
+    "     xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1\n"
+    "                         http://www.topografix.com/GPX/1/1/gpx.xsd\">\n"
+    "  <trk><trkseg>";
+constexpr const char *GPX_CLOSERS = "\n  </trkseg></trk>\n</gpx>\n";
+constexpr uint8_t MAX_FAILURES = 3;
+constexpr uint16_t DEFAULT_PERIOD_SECONDS = 5;
+constexpr uint16_t FSYNC_PERIOD_SECONDS = 10;
+constexpr uint32_t FSYNC_EVERY_POINTS = 5;
+
+}  // namespace
+
+GPX &GPX::getInstance(void) {
+  static GPX instance;
+  return instance;
+}
+
+bool GPX::isOpen(void) const {
+  return m_File != nullptr;
+}
+
+void GPX::closeFile(void) {
+  if (m_File != nullptr) {
+    fclose(static_cast<FILE *>(m_File));
+    m_File = nullptr;
+  }
+  m_CloserOffset = 0;
+  m_Points = 0;
+}
+
+bool GPX::flush(bool durable) {
+  auto *file = static_cast<FILE *>(m_File);
+  if ((file == nullptr) || (fflush(file) != 0)) {
+    return false;
+  }
+
+  return !durable || (fsync(fileno(file)) == 0);
+}
+
+bool GPX::writeClosers(void) {
+  auto *file = static_cast<FILE *>(m_File);
+  if ((file == nullptr) || (fputs(GPX_CLOSERS, file) == EOF) || (fflush(file) != 0)) {
+    return false;
+  }
+
+  const long end = ftell(file);
+  return (end >= 0) && (ftruncate(fileno(file), end) == 0);
+}
+
+void GPX::fail(const char *operation) {
+  ESP_LOGE(LOG_TAG, "GPX %s failed: %s", operation, strerror(errno));
+  closeFile();
+  SD::getInstance().unmount();
+
+  if (m_Failures < MAX_FAILURES) {
+    m_Failures++;
+  }
+  if (m_Failures >= MAX_FAILURES) {
+    Settings::save<Settings::SD_GPX>(false);
+    ESP_LOGE(LOG_TAG, "Disabling GPX logging after repeated SD failures.");
+  }
+}
+
+bool GPX::open(const point_t &point) {
+  auto &sd = SD::getInstance();
+  if (!sd.mount()) {
+    fail("mount");
+    return false;
+  }
+
+  if ((mkdir(GPX_DIRECTORY, 0777) != 0) && (errno != EEXIST)) {
+    fail("create directory");
+    return false;
+  }
+
+  char path[64];
+  snprintf(path, sizeof(path), "%s/%04u%02u%02u-%02u%02u%02u.gpx", GPX_DIRECTORY,
+           static_cast<unsigned>(point.year), static_cast<unsigned>(point.month),
+           static_cast<unsigned>(point.day), static_cast<unsigned>(point.hour),
+           static_cast<unsigned>(point.minute), static_cast<unsigned>(point.second));
+
+  auto *file = fopen(path, "w");
+  if (file == nullptr) {
+    fail("open file");
+    return false;
+  }
+
+  m_File = file;
+  m_Points = 0;
+  if ((fputs(GPX_HEADER, file) == EOF) || ((m_CloserOffset = ftell(file)) < 0) || !writeClosers()
+      || !flush(true)) {
+    fail("write header");
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "GPX logging to %s", path);
+  return true;
+}
+
+bool GPX::addPoint(const point_t &point) {
+  if (!isOpen() && !open(point)) {
+    return false;
+  }
+
+  auto *file = static_cast<FILE *>(m_File);
+  if (fseek(file, m_CloserOffset, SEEK_SET) != 0
+      || fprintf(file,
+                 "\n    <trkpt lat=\"%.6f\" lon=\"%.6f\">\n"
+                 "      <ele>%.1f</ele>\n"
+                 "      <time>%04u-%02u-%02uT%02u:%02u:%02uZ</time>\n"
+                 "      <sat>%lu</sat>\n"
+                 "    </trkpt>",
+                 point.latitude, point.longitude, point.altitude, static_cast<unsigned>(point.year),
+                 static_cast<unsigned>(point.month), static_cast<unsigned>(point.day),
+                 static_cast<unsigned>(point.hour), static_cast<unsigned>(point.minute),
+                 static_cast<unsigned>(point.second), static_cast<unsigned long>(point.satellites))
+             < 0) {
+    fail("write point");
+    return false;
+  }
+
+  const long closerOffset = ftell(file);
+  if ((closerOffset < 0) || !writeClosers()) {
+    fail("locate closers");
+    return false;
+  }
+  m_CloserOffset = closerOffset;
+
+  m_Points++;
+  const uint16_t configuredPeriod = Settings::load<Settings::GPX_PERIOD>();
+  const uint16_t period = ((configuredPeriod >= 1) && (configuredPeriod <= 60))
+                              ? configuredPeriod
+                              : DEFAULT_PERIOD_SECONDS;
+  const bool durable = (period >= FSYNC_PERIOD_SECONDS) || ((m_Points % FSYNC_EVERY_POINTS) == 0);
+  if (!flush(durable)) {
+    fail("flush point");
+    return false;
+  }
+
+  m_Failures = 0;
+  return true;
+}
+
+void GPX::close(void) {
+  if (!isOpen()) {
+    m_Failures = 0;
+    return;
+  }
+
+  if ((fseek(static_cast<FILE *>(m_File), m_CloserOffset, SEEK_SET) != 0) || !writeClosers()
+      || !flush(true)) {
+    ESP_LOGE(LOG_TAG, "GPX close failed: %s", strerror(errno));
+  }
+  closeFile();
+  m_Failures = 0;
+}
+
+}  // namespace Furble

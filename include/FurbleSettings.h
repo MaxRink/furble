@@ -54,6 +54,8 @@ class Settings {
     BUTTON_MODE,
     AUTO_OFF,
     LOW_BATT,
+    SD_GPX,
+    GPX_PERIOD,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -322,6 +324,14 @@ struct Settings::storage_type<Settings::AUTO_OFF> {
 template <>
 struct Settings::storage_type<Settings::LOW_BATT> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::SD_GPX> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::GPX_PERIOD> {
+  using type = uint16_t;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>
