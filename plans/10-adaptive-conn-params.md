@@ -217,6 +217,48 @@ Camera testing:
   gate the feature to Fujifilm in this PR or state in the PR body, in plain
   words, that the other vendors are untested and the setting is off by default.
 
+## Implementation status
+
+Implemented on `feat/10-adaptive-conn-params`:
+
+- Added the experimental `CONN_SAVER` setting with NVS key `conn_saver`, default
+  `false`, under `Settings > Bluetooth > Connection power save`.
+- Added fast and idle live profiles in `Camera`. Fast retains the existing 30 to
+  50 ms interval, latency 1 and 5120 ms supervision timeout. Idle requests 500
+  to 1000 ms, latency 1 and a 32000 ms supervision timeout after 10 seconds
+  without shutter or focus activity.
+- The target task requests fast before every shutter or focus press, tracks held
+  shutter state, and allows the idle request only after the quiet period. A
+  three second request guard avoids repeated renegotiation attempts.
+
+Rebase notes:
+
+- `CONN_SAVER` is assigned wire_id 29, continuing after `TX_ADAPTIVE` (28)
+  from PR 25.
+- `Control::connectAll()` was restructured on master to snapshot cameras under
+  the mutex and connect outside it. The setting is now loaded once before the
+  lock and applied to every camera inside the snapshot loop.
+- Console settingType, printValue and setValue cover `CONN_SAVER` as bool.
+  `appliesImmediately` stays false: only the UI toggle calls
+  `Control::setConnSaver()` live; a console or companion write reaches
+  cameras on the next connect.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `CONN_SAVER`
+  as SETTING_BOOL.
+- `onConnParamsUpdateRequest()` accepts peer values and marks the link as peer
+  controlled until a new shutter or focus activity cycle requests fast again.
+  The BLE diagnostics page reads the live `NimBLEConnInfo` values and RSSI.
+- Code-level Fujifilm GEOTAG review is complete. Existing Fujifilm basic and
+  secure connections continue subscribing to the GEOTAG notification, and
+  `Fujifilm::notify()` continues setting `m_GeoRequested` when it arrives. The
+  idle interval can delay delivery by up to 2 seconds with latency 1, but it does
+  not disable or drop the notification path. The existing GPS `MAX_AGE_MS` check
+  remains the freshness gate. Hardware verification is still pending.
+- Build verification passed with `FURBLE_VERSION=dev`, `FURBLE_TEST=0` and the
+  requested PATH export: `pio run -e m5stick-s3` and
+  `pio run -e m5stick-c-plus`.
+- Only Fujifilm hardware is available for follow-up testing. Sony, Nikon, Canon
+  and Ricoh remain untested, and the experimental setting remains off by default.
+
 ## References
 
 - [Nordic Bluetooth LE connection parameters](https://academy.nordicsemi.com/courses/bluetooth-low-energy-fundamentals/lessons/lesson-3-bluetooth-le-connections/topic/connection-parameters/)

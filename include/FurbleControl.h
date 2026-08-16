@@ -137,6 +137,9 @@ class Control {
   /** Set the maximum transmit power and reset the adaptive level. */
   void setPower(esp_power_level_t power);
 
+  /** Enable or disable adaptive connection parameters on active cameras. */
+  void setConnSaver(bool enabled);
+
  private:
   Control() {};
 

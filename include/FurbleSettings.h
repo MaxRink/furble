@@ -42,6 +42,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    CONN_SAVER,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -245,6 +246,10 @@ struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
 };
 template <>
 struct Settings::storage_type<Settings::COMPANION> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::CONN_SAVER> {
   using type = bool;
 };
 #if defined(FURBLE_M5STICKS3)

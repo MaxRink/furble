@@ -78,18 +78,24 @@ void Control::Target::task(void) {
     cmd_t cmd = this->getCommand();
     switch (cmd) {
       case CMD_SHUTTER_PRESS:
+        m_Camera->noteConnActivity(true);
+        m_Camera->setConnProfile(Camera::ConnProfile::FAST);
         ESP_LOGI(LOG_TAG, "shutterPress(%s)", name);
         m_Camera->shutterPress();
         break;
       case CMD_SHUTTER_RELEASE:
+        m_Camera->noteConnActivity(false);
         ESP_LOGI(LOG_TAG, "shutterRelease(%s)", name);
         m_Camera->shutterRelease();
         break;
       case CMD_FOCUS_PRESS:
+        m_Camera->noteConnActivity(true);
+        m_Camera->setConnProfile(Camera::ConnProfile::FAST);
         ESP_LOGI(LOG_TAG, "focusPress(%s)", name);
         m_Camera->focusPress();
         break;
       case CMD_FOCUS_RELEASE:
+        m_Camera->noteConnActivity(false);
         ESP_LOGI(LOG_TAG, "focusRelease(%s)", name);
         m_Camera->focusRelease();
         break;
@@ -101,7 +107,7 @@ void Control::Target::task(void) {
         m_Camera->setActive(false);
         goto task_exit;
       case CMD_ERROR:
-        // ignore continue
+        m_Camera->maybeSetIdle();
         break;
       default:
         ESP_LOGE(LOG_TAG, "Invalid control command %d.", cmd);
@@ -136,12 +142,15 @@ Control::state_t Control::connectAll(void) {
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
   std::vector<Camera *> cameras;
 
+  const bool connSaver = Settings::load<Settings::CONN_SAVER>();
+
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
 
     // Snapshot cameras so the mutex is not held during connection attempts.
     for (const auto &target : m_Targets) {
       Camera *camera = target->getCamera();
+      camera->setConnSaverEnabled(connSaver);
       if (!camera->isConnected()) {
         cameras.push_back(camera);
       }
@@ -594,6 +603,13 @@ void Control::setPower(esp_power_level_t power) {
 
   // Radio call, outside m_Mutex.
   applyPower(power);
+}
+
+void Control::setConnSaver(bool enabled) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  for (const auto &target : m_Targets) {
+    target->getCamera()->setConnSaverEnabled(enabled);
+  }
 }
 
 };  // namespace Furble

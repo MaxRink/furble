@@ -179,6 +179,7 @@ const char *settingType(Settings::type_t type) {
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -256,6 +257,7 @@ void printValue(const char *prefix, Settings::type_t type) {
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
     case Settings::GPS:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -342,6 +344,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       break;
 
     case Settings::GPS:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:

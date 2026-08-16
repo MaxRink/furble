@@ -5,6 +5,7 @@
 #include <atomic>
 #include <initializer_list>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 
 #include <lvgl.h>
@@ -135,6 +136,8 @@ class UI {
     lv_obj_t *deviceHeap;
     lv_obj_t *powerFrequency;
     lv_obj_t *powerSleep;
+    lv_obj_t *ble;
+    std::string bleText;
   } diagnostics_t;
 
   /**
@@ -308,6 +311,7 @@ class UI {
   // settings->diagnostics
   static constexpr const char *m_DeviceInfoStr = "Device info";
   static constexpr const char *m_PowerStateStr = "Power state";
+  static constexpr const char *m_BLEStr = "BLE";
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
@@ -617,6 +621,9 @@ class UI {
 
   /** Add the 'Power state' page. */
   void addPowerStateMenu(const menu_t &parent);
+
+  /** Add the live BLE diagnostics page. */
+  void addBLEMenu(const menu_t &parent);
 
   /** Add a read only text row to a page container. */
   static lv_obj_t *addInfoRow(lv_obj_t *cont);
