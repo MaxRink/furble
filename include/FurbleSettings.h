@@ -27,6 +27,7 @@ class Settings {
     TOUCH_CALIBRATION,
     AUTOCONNECT,
     CPU_FREQ,
+    BATT_STYLE,
   } type_t;
 
   typedef struct {
@@ -59,6 +60,13 @@ class Settings {
     const char *key;
     const char *nvs_namespace;
   } setting_t;
+
+  /** Battery status display styles. */
+  typedef enum {
+    BATT_STYLE_ICON = 0,
+    BATT_STYLE_PERCENT = 1,
+    BATT_STYLE_BOTH = 2,
+  } batt_style_t;
 
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
@@ -152,6 +160,10 @@ struct Settings::storage_type<Settings::AUTOCONNECT> {
 };
 template <>
 struct Settings::storage_type<Settings::CPU_FREQ> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::BATT_STYLE> {
   using type = uint8_t;
 };
 

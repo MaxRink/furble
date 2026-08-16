@@ -41,6 +41,8 @@ Platform &Platform::getInstance(void) {
     instance.m_M5PM1.setDownloadLock(true);        // disable BtnPWR long-press enter download mode
 #endif
 
+    instance.initBattery();
+
     instance.m_Init = true;
   }
 
@@ -115,6 +117,112 @@ void Platform::powerOff(void) {
 #else
   M5.Power.powerOff();
 #endif
+}
+
+void Platform::initBattery(void) {
+  // capabilities follow the PMIC, capacities are from the vendor product pages
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+      // AXP192
+      m_BatteryCaps = {true, true, true, true};
+      m_BatteryCapacity = 95;
+      break;
+
+    case m5::board_t::board_M5StickCPlus:
+      // AXP192
+      m_BatteryCaps = {true, true, true, true};
+      m_BatteryCapacity = 120;
+      break;
+
+    case m5::board_t::board_M5StackCore2:
+    case m5::board_t::board_M5Tough:
+      // AXP192
+      m_BatteryCaps = {true, true, true, true};
+      m_BatteryCapacity = 390;
+      break;
+
+    case m5::board_t::board_M5StickS3:
+      // M5PM1, which has no battery current backend in M5Unified and no
+      // documented battery current register
+      m_BatteryCaps = {true, true, false, true};
+      m_BatteryCapacity = 250;
+      break;
+
+    case m5::board_t::board_M5StickCPlus2:
+      // no PMIC, battery voltage is read from an ADC divider
+      m_BatteryCaps = {true, true, false, false};
+      m_BatteryCapacity = 200;
+      break;
+
+    case m5::board_t::board_M5Stack:
+      // IP5306, coarse level only
+      m_BatteryCaps = {true, false, false, false};
+      m_BatteryCapacity = 0;
+      break;
+
+    default:
+      m_BatteryCaps = {true, false, false, false};
+      m_BatteryCapacity = 0;
+  }
+
+  ESP_LOGI("platform", "Battery: level=%u voltage=%u current=%u charging=%u capacity=%umAh",
+           m_BatteryCaps.level, m_BatteryCaps.voltage, m_BatteryCaps.current,
+           m_BatteryCaps.charging, m_BatteryCapacity);
+}
+
+const Platform::battery_caps_t &Platform::getBatteryCaps(void) {
+  return m_BatteryCaps;
+}
+
+uint16_t Platform::getBatteryCapacity(void) {
+  return m_BatteryCapacity;
+}
+
+uint32_t Platform::getBatteryFailCount(void) {
+  return m_M5PM1FailCount;
+}
+
+Platform::battery_t Platform::readBattery(void) {
+  battery_t battery = {0, 0, 0, false};
+
+  if (m_BatteryCaps.level) {
+    int32_t level = M5.Power.getBatteryLevel();
+    battery.level = (level > 0) ? level : 0;
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  // the M5PM1 reports voltage and charge status, but no battery current
+  if (m_BatteryCaps.voltage) {
+    uint16_t mv = 0;
+    if (m5pm1Access([this, &mv]() { return m_M5PM1.readVbat(&mv); })) {
+      battery.voltage = mv;
+    }
+  }
+
+  if (m_BatteryCaps.charging) {
+    // charge status is on M5PM1 GPIO0, active low
+    uint8_t charging = 1;
+    if (m5pm1Access(
+            [this, &charging]() { return m_M5PM1.gpioGetInput(M5PM1_GPIO_NUM_0, &charging); })) {
+      battery.charging = (charging == 0);
+    }
+  }
+#else
+  if (m_BatteryCaps.voltage) {
+    int32_t mv = M5.Power.getBatteryVoltage();
+    battery.voltage = (mv > 0) ? mv : 0;
+  }
+
+  if (m_BatteryCaps.current) {
+    battery.current = M5.Power.getBatteryCurrent();
+  }
+
+  if (m_BatteryCaps.charging) {
+    battery.charging = (M5.Power.isCharging() == m5::Power_Class::is_charging_t::is_charging);
+  }
+#endif
+
+  return battery;
 }
 
 void Platform::update(void) {

@@ -70,6 +70,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
@@ -144,31 +145,33 @@ UI::UI(const interval_t &interval)
   m_Status.gps = &m_GPS;
   m_Status.reconnectIcon = addIcon(&icon_all_inclusive);
   m_Status.gpsIcon = addIcon(&icon_location_disabled);
-#if FURBLE_BATTERY_DEBUG == 1
-  m_Status.batteryIcon = lv_label_create(m_Header);
-#else
   m_Status.batteryIcon = addIcon(&icon_battery_android_frame_4);
-#endif
+  m_Status.batteryLabel = lv_label_create(m_Header);
+  m_Status.batteryLevel = nullptr;
+  m_Status.batteryVoltage = nullptr;
+  m_Status.batteryCurrent = nullptr;
+  m_Status.batteryCharging = nullptr;
+  m_Status.batteryRuntime = nullptr;
   m_Status.screenLocked = false;
 
+  // prime the battery cache before anything renders it
+  m_Status.battery = Platform::getInstance().readBattery();
+  m_Status.meanCurrent = m_Status.battery.current;
+  lv_label_set_text_fmt(m_Status.batteryLabel, "%u%%", m_Status.battery.level);
+  setBatteryStyle(Settings::load<Settings::BATT_STYLE>());
+
   m_GPS.setIcon(m_Status.gpsIcon);
+
+  // sample the battery every 5s, the PMIC is on I2C and the values move slowly
+  m_BatteryTimer = lv_timer_create(batteryUpdate, 5000, &m_Status);
 
   // refresh icons every 250ms
   m_IconTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         status_t *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
 
-#if FURBLE_BATTERY_DEBUG == 1
-        int32_t current = M5.Power.getBatteryCurrent();
-        static int32_t mean = current;
-
-        // exponentially weighted moving average with alpha = 0.33
-        mean = mean + (current - mean) / 3;
-
-        lv_label_set_text_fmt(status->batteryIcon, "%ld", mean);
-#else
         const lv_image_dsc_t *symbol = NULL;
-        int32_t level = M5.Power.getBatteryLevel();
+        uint8_t level = status->battery.level;
         if (level >= 95) {
           symbol = &icon_battery_android_frame_full;
         } else if (level >= 66) {
@@ -181,7 +184,13 @@ UI::UI(const interval_t &interval)
           symbol = &icon_battery_android_0;
         }
         lv_image_set_src(status->batteryIcon, symbol);
-#endif
+
+        // the label only changes when the sampled level changes
+        static uint8_t rendered = UINT8_MAX;
+        if (rendered != level) {
+          rendered = level;
+          lv_label_set_text_fmt(status->batteryLabel, "%u%%", level);
+        }
 
         if (status->gps->isEnabled()) {
           lv_obj_clear_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
@@ -949,6 +958,9 @@ void UI::addMainMenu(void) {
 
           m_ConnectContext.menuName = m_ScanStr;
         } else if (page == m_Menu.at(m_SettingsStr).page) {
+        } else if (page == m_Menu.at(m_BatteryStr).page) {
+          // refresh the battery page on entry rather than waiting for the timer
+          lv_timer_ready(ui->m_BatteryTimer);
         } else if (page == m_Menu.at(m_ConnectStr).page) {
           // ensure menu control
           // especially if arrived here from a disconnect/cancel
@@ -1950,10 +1962,124 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::setBatteryStyle(uint8_t style) {
+  if (style == Settings::BATT_STYLE_PERCENT) {
+    lv_obj_add_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_clear_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (style == Settings::BATT_STYLE_ICON) {
+    lv_obj_add_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_clear_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void UI::batteryUpdate(lv_timer_t *timer) {
+  auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+
+  status->battery = platform.readBattery();
+
+  if (caps.current) {
+    // exponentially weighted moving average with alpha = 1/12, at the 5s
+    // sample period that is a time constant of about a minute
+    status->meanCurrent += (status->battery.current - status->meanCurrent) / 12.0f;
+  }
+
+  if (status->batteryLevel != nullptr) {
+    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->battery.level);
+  }
+
+  if (status->batteryVoltage != nullptr) {
+    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %u.%03u", status->battery.voltage / 1000,
+                          status->battery.voltage % 1000);
+  }
+
+  if (status->batteryCurrent != nullptr) {
+    lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
+  }
+
+  if (status->batteryCharging != nullptr) {
+    lv_label_set_text(status->batteryCharging,
+                      status->battery.charging ? "Charging: yes" : "Charging: no");
+  }
+
+  if (status->batteryRuntime != nullptr) {
+    if (status->battery.charging) {
+      lv_label_set_text(status->batteryRuntime, "Runtime: charging");
+    } else if (status->meanCurrent < -1.0f) {
+      // remaining capacity in mAh divided by the average discharge current
+      float remaining = platform.getBatteryCapacity() * (status->battery.level / 100.0f);
+      uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
+      lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
+                            minutes % 60);
+    } else {
+      lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+    }
+  }
+
+#if FURBLE_BATTERY_DEBUG == 1
+  ESP_LOGI("battery", "uptime=%lu level=%u voltage=%u current=%ld mean=%.1f charging=%u fail=%lu",
+           platform.tick() / 1000, status->battery.level, status->battery.voltage,
+           status->battery.current, status->meanCurrent, status->battery.charging,
+           platform.getBatteryFailCount());
+#endif
+}
+
+void UI::addBatteryMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_BatteryStr, &icon_battery_android_frame_full, true, parent);
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  auto addRow = [cont]() {
+    lv_obj_t *label = lv_label_create(cont);
+    lv_label_set_text(label, "");
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    return label;
+  };
+
+  // only add the rows this board can actually measure
+  if (caps.level) {
+    m_Status.batteryLevel = addRow();
+  }
+
+  if (caps.voltage) {
+    m_Status.batteryVoltage = addRow();
+  }
+
+  if (caps.current) {
+    m_Status.batteryCurrent = addRow();
+  }
+
+  if (caps.charging) {
+    m_Status.batteryCharging = addRow();
+  }
+
+  if (caps.current && (platform.getBatteryCapacity() > 0)) {
+    m_Status.batteryRuntime = addRow();
+  }
+
+  // fill the page with the current values
+  lv_timer_ready(m_BatteryTimer);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addPowerMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_height(cont, LV_PCT(100));
+  lv_obj_set_width(cont, LV_PCT(100));
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
@@ -2001,6 +2127,33 @@ void UI::addPowerMenu(const menu_t &parent) {
         Settings::save<Settings::CPU_FREQ>(platform.getCPUMaxFreq());
       },
       LV_EVENT_VALUE_CHANGED, NULL);
+
+  // Add battery style control
+  label = lv_label_create(cont);
+  lv_label_set_text(label, Settings::get(Settings::BATT_STYLE).name);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, "Icon\nPercent\nBoth", LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  lv_roller_set_selected(roller, Settings::load<Settings::BATT_STYLE>(), LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        uint8_t style = lv_roller_get_selected(roller);
+
+        Settings::save<Settings::BATT_STYLE>(style);
+        ui->setBatteryStyle(style);
+      },
+      LV_EVENT_VALUE_CHANGED, this);
+
+  // Add the battery page entry below the controls
+  addBatteryMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
