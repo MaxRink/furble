@@ -2098,8 +2098,17 @@ void UI::addBatteryMenu(const menu_t &parent) {
 
 void UI::addPowerMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
+
+  // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
+  // the switch does nothing on the other boards. Leave it out there.
+  bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
+  if (sleepConn) {
+    addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
+  }
+
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
+  // share the page with the switch, otherwise keep the roller centred
+  lv_obj_set_height(cont, sleepConn ? LV_SIZE_CONTENT : LV_PCT(100));
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
