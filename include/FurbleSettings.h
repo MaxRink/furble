@@ -27,6 +27,7 @@ class Settings {
     TOUCH_CALIBRATION,
     AUTOCONNECT,
     CPU_FREQ,
+    SLEEP_CONN,
   } type_t;
 
   typedef struct {
@@ -153,6 +154,10 @@ struct Settings::storage_type<Settings::AUTOCONNECT> {
 template <>
 struct Settings::storage_type<Settings::CPU_FREQ> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::SLEEP_CONN> {
+  using type = bool;
 };
 
 }  // namespace Furble

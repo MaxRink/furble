@@ -22,6 +22,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, "Touch Calibration", "t_calib", FURBLE_STR}},
     {AUTOCONNECT,       {AUTOCONNECT, "Auto-Connect", "autoconnect", FURBLE_STR}       },
     {CPU_FREQ,          {CPU_FREQ, "CPU Speed", "cpu_freq", FURBLE_STR}                },
+    {SLEEP_CONN,        {SLEEP_CONN, "Sleep while connected", "sleep_conn", FURBLE_STR}},
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -212,6 +213,7 @@ void Settings::init(void) {
         case RECONNECT:
         case FAUXNY:
         case AUTOCONNECT:
+        case SLEEP_CONN:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:
