@@ -208,6 +208,25 @@ and the countdown will simply run out.
 
 When in `Shutter` remote control, holding focus (button B) then release (button A) will engage shutter lock, holding the shutter open until a button is pressed.
 
+### Bluetooth
+
+The Bluetooth options live under `Settings->Bluetooth`.
+`TX Power` has moved there from the top level of `Settings`.
+
+`Scan mode` sets how hard the radio listens while `Scan` is looking for
+cameras.
+`Full` is the default and spots a camera fastest.
+`Balanced` and `Low` listen less of the time, which is easier on the battery
+but can take longer to find a camera.
+
+`Scan timeout` ends a scan by itself after 30, 60 or 120 seconds.
+The default is `Never`, which keeps scanning until you leave the page.
+When a scan does end on its own, the `Scan` page shows a `Scan finished` notice
+with a `Rescan` button.
+
+Pairing with a saved camera always scans at full duty, so neither setting slows
+down `Connect`.
+
 ### Power
 
 The CPU speed can be selected under `Settings->Power->CPU speed`, with a choice

@@ -48,6 +48,8 @@ std::mutex UI::m_Mutex;
 
 UI::ConnectContext_t UI::m_ConnectContext;
 
+lv_obj_t *UI::m_ScanFinished;
+
 lv_timer_t *UI::m_ConnectTimer;
 
 lv_timer_t *UI::m_GPSDataTimer;
@@ -78,13 +80,14 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
     {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
@@ -994,27 +997,7 @@ void UI::addMainMenu(void) {
           }
         } else if (page == m_Menu.at(m_DeleteStr).page) {
         } else if (page == m_Menu.at(m_ScanStr).page) {
-          menu_t &menu = m_Menu.at(m_ScanStr);
-          lv_obj_clean(menu.page);
-          CameraList::clear();
-
-          if (Settings::load<Settings::FAUXNY>()) {
-            CameraList::addFauxNY();
-            updateItems(menu);
-          }
-
-          scan.clear();
-          scan.start(
-              [](void *param) {
-                auto *menu = static_cast<menu_t *>(param);
-                // Can be called asychronously from NimBLE scan thread,
-                m_Mutex.lock();
-                updateItems(*menu);
-                m_Mutex.unlock();
-              },
-              &menu);
-
-          m_ConnectContext.menuName = m_ScanStr;
+          startScan();
         } else if (page == m_Menu.at(m_SettingsStr).page) {
         } else if (page == m_Menu.at(m_BatteryStr).page) {
           // refresh the battery page on entry rather than waiting for the timer
@@ -1587,6 +1570,65 @@ void UI::addScanMenu(void) {
   menu_t &menu = addMenu(m_ScanStr, &icon_add_a_photo);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::startScan(void) {
+  menu_t &menu = m_Menu.at(m_ScanStr);
+  auto &scan = Scan::getInstance();
+
+  lv_obj_clean(menu.page);
+  CameraList::clear();
+
+  // hidden until the scan ends by itself, a finite scan that ends silently
+  // looks like a hang
+  m_ScanFinished = lv_menu_cont_create(menu.page);
+  lv_obj_set_flex_flow(m_ScanFinished, LV_FLEX_FLOW_COLUMN);
+  lv_obj_add_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *label = lv_label_create(m_ScanFinished);
+  lv_label_set_text(label, "Scan finished");
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  lv_obj_t *rescan = lv_button_create(m_ScanFinished);
+  lv_obj_t *rescanLabel = lv_label_create(rescan);
+  lv_label_set_text(rescanLabel, "Rescan");
+  lv_group_add_obj(menu.group, rescan);
+
+  lv_obj_add_event_cb(
+      rescan,
+      [](lv_event_t *) {
+        // deferred, the restart deletes the button we are called from
+        lv_async_call([](void *) { startScan(); }, NULL);
+      },
+      LV_EVENT_CLICKED, NULL);
+
+  if (Settings::load<Settings::FAUXNY>()) {
+    CameraList::addFauxNY();
+    updateItems(menu);
+  }
+
+  scan.setMode(static_cast<Scan::Mode>(Settings::load<Settings::SCAN_MODE>()));
+  scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
+
+  scan.clear();
+  scan.start(
+      [](void *param) {
+        auto *menu = static_cast<menu_t *>(param);
+        // Can be called asychronously from NimBLE scan thread,
+        m_Mutex.lock();
+        updateItems(*menu);
+        m_Mutex.unlock();
+      },
+      &menu,
+      [](void *) {
+        // Can be called asychronously from NimBLE scan thread,
+        m_Mutex.lock();
+        lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
+        m_Mutex.unlock();
+      });
+
+  m_ConnectContext.menuName = m_ScanStr;
 }
 
 void UI::refreshDelete(void) {
@@ -2538,6 +2580,74 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
   }
 }
 
+/**
+ * Add a labelled roller row to a menu page.
+ *
+ * The row is sized to its content so the page keeps flowing, a full height row
+ * pushes later rows off screen and stops the page scrolling. The roller is
+ * flagged to scroll itself into view, which is the only way the page scrolls
+ * under encoder navigation.
+ */
+static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options) {
+  lv_obj_t *cont = lv_menu_cont_create(page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+
+  lv_obj_t *label = lv_label_create(cont);
+  lv_label_set_text(label, text);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+
+  return roller;
+}
+
+void UI::addBluetoothMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_BluetoothStr, &icon_settings_remote, true, parent);
+
+  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+
+  addTransmitPowerMenu(menu);
+
+  // scan duty cycle preset
+  lv_obj_t *modeRoller = addRollerItem(menu.page, "Scan mode", "Full\nBalanced\nLow");
+  lv_roller_set_selected(modeRoller, Settings::load<Settings::SCAN_MODE>(), LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(
+      modeRoller,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        uint8_t mode = lv_roller_get_selected(roller);
+        Settings::save<Settings::SCAN_MODE>(mode);
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  // scan timeout
+  lv_obj_t *timeoutRoller =
+      addRollerItem(menu.page, "Scan timeout", "Never\n30 secs\n60 secs\n120 secs");
+
+  uint32_t timeout = Settings::load<Settings::SCAN_TIMEOUT>();
+  auto it = std::find(m_ScanTimeout.begin(), m_ScanTimeout.end(), timeout);
+  if (it != m_ScanTimeout.end()) {
+    lv_roller_set_selected(timeoutRoller, std::distance(m_ScanTimeout.begin(), it), LV_ANIM_OFF);
+  }
+
+  lv_obj_add_event_cb(
+      timeoutRoller,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        Settings::save<Settings::SCAN_TIMEOUT>(m_ScanTimeout[lv_roller_get_selected(roller)]);
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addAboutMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_AboutStr, &icon_info, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
@@ -2665,7 +2775,7 @@ void UI::addSettingsMenu(void) {
   addGPSMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);
-  addTransmitPowerMenu(menu);
+  addBluetoothMenu(menu);
   addAboutMenu(menu);
   addPowerMenu(menu);
   // after 'Power', the battery page it builds is linked from diagnostics

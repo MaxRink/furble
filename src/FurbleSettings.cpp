@@ -26,6 +26,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {SHOW_TITLE,        {SHOW_TITLE, "Show Title", "show_title", FURBLE_STR}           },
     {SLEEP_CONN,        {SLEEP_CONN, "Sleep while connected", "sleep_conn", FURBLE_STR}},
     {BULB,              {BULB, "Bulb", "bulb", FURBLE_STR}                             },
+    {SCAN_MODE,         {SCAN_MODE, "Scan Mode", "scan_mode", FURBLE_STR}              },
+    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, "Scan Timeout", "scan_timeout", FURBLE_STR}     },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -224,6 +226,7 @@ void Settings::init(void) {
           save<std::string>(setting.type, "Default");
           break;
         case TX_POWER:
+        case SCAN_MODE:
           save<uint8_t>(setting.type, 0);
           break;
         case BATT_STYLE:
@@ -255,6 +258,9 @@ void Settings::init(void) {
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);
+          break;
+        case SCAN_TIMEOUT:
+          save<uint32_t>(setting.type, 0);
           break;
         case CPU_FREQ:
           save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);
