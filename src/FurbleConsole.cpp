@@ -178,6 +178,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
+    case Settings::COMPANION:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
@@ -248,6 +249,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
+    case Settings::COMPANION:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
@@ -311,6 +313,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
+    case Settings::COMPANION:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:

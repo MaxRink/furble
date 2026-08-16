@@ -681,3 +681,52 @@ Hardware:
 
 - [M5Stack Unit GPS v1.1, AT6668, UART 115200](https://docs.m5stack.com/en/unit/Unit-GPS%20v1.1)
 - [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3)
+
+## Implementation state, firmware GATT service
+
+Implemented in PR #21 on the fork. Notes and deviations after the rebase onto
+the integrated master:
+
+- The service source lives in `src/FurbleCompanion.cpp`, not `lib/furble/`.
+  The service drives UI, Control, GPS and Settings, which are all app layer,
+  and `lib/furble` cannot see the app headers or the M5 board libraries.
+- The wire id table now covers every setting the integrated master has. The
+  ids assigned by this PR are frozen and must never be reused:
+
+  | wire id | setting | type |
+  |---|---|---|
+  | 1 | BRIGHTNESS | u8 |
+  | 2 | INACTIVITY | u8 |
+  | 3 | THEME | string |
+  | 4 | TX_POWER | u8 |
+  | 5 | GPS | bool |
+  | 6 | GPS_BAUD | u32 |
+  | 7 | INTERVAL | blob |
+  | 8 | MULTICONNECT | bool |
+  | 9 | RECONNECT | bool |
+  | 10 | FAUXNY | bool |
+  | 11 | AUTOCONNECT | bool |
+  | 12 | COMPANION | bool |
+  | 13 | GPS_RATE | u8 |
+  | 14 | GPS_NMEA | bool |
+  | 15 | GPS_CONSTEL | u8 |
+  | 16 | RECON_BACKOFF | bool |
+  | 17 | CPU_FREQ | u8 |
+  | 18 | BATT_STYLE | u8 |
+  | 19 | SHOW_TITLE | bool |
+  | 20 | SLEEP_CONN | bool |
+  | 21 | SCAN_MODE | u8 |
+  | 22 | SCAN_TIMEOUT | u32 |
+  | 23 | WATCHDOG | bool, StickS3 builds only |
+  | 0 | TOUCH_CALIBRATION, BULB | not on the wire |
+
+- Settings written over the wire are saved to NVS. Only GPS, TX_POWER and
+  COMPANION are hot applied, everything else takes effect where the firmware
+  reads it, which for some settings means the next boot.
+- The GPS status icon keeps the changed check from the integrated master and
+  adds a third state, `icon_location_searching`, for a companion sourced fix.
+- The standalone protocol document under `docs/` from section 8 does not exist
+  yet. This table and the structs in this plan remain the contract until it is
+  written.
+- Verified: m5stick-s3, m5stick-s3-debug and m5stick-c build. End to end BLE
+  testing against the Android app has not happened yet.

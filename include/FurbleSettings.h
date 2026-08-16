@@ -37,6 +37,7 @@ class Settings {
     BULB,
     SCAN_MODE,
     SCAN_TIMEOUT,
+    COMPANION,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -68,6 +69,7 @@ class Settings {
 
   typedef struct {
     type_t type;
+    uint8_t wire_id;
     const char *name;
     const char *key;
     const char *nvs_namespace;
@@ -91,6 +93,8 @@ class Settings {
   static void init(void);
 
   static const setting_t &get(type_t);
+  static const setting_t *getByWireId(uint8_t wire_id);
+  static const std::unordered_map<type_t, setting_t> &all(void);
 
   /** Retrieve every setting, keyed by type. */
   static const std::unordered_map<type_t, setting_t> &getAll(void) { return m_Setting; }
@@ -218,6 +222,10 @@ struct Settings::storage_type<Settings::SCAN_MODE> {
 template <>
 struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
   using type = uint32_t;
+};
+template <>
+struct Settings::storage_type<Settings::COMPANION> {
+  using type = bool;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>

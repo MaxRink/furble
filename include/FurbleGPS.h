@@ -12,13 +12,33 @@
 
 #include <lvgl.h>
 
+#include <Camera.h>
 #include <TinyGPS++.h>
+
+#include <atomic>
+#include <cstdint>
+#include <mutex>
 
 #include "FurblePower.h"
 
 namespace Furble {
 class GPS {
  public:
+  enum source_t {
+    SOURCE_NONE,
+    SOURCE_UART,
+    SOURCE_COMPANION,
+  };
+
+  typedef struct {
+    Camera::gps_t gps;
+    Camera::timesync_t timesync;
+    uint32_t age_ms;
+    bool position_valid;
+    bool time_valid;
+    bool altitude_valid;
+  } external_fix_t;
+
   static GPS &getInstance();
 
   GPS(GPS const &) = delete;
@@ -32,8 +52,12 @@ class GPS {
   bool isEnabled(void) const;
   void reloadSetting(void);
   void startService(void);
+  bool setExternalFix(const external_fix_t &fix);
+  void clearExternalFix(void);
 
   TinyGPSPlus &get(void);
+  source_t getSource(void) const;
+  uint8_t getSatellites(void) const;
 
   void reset(void);
   void task(void);
@@ -79,6 +103,7 @@ class GPS {
   void serviceSerial(void);
   void serviceConfig(void);
   void update(void);
+  bool wiredFixIsFresh(void);
 
   /** XOR checksum of every character between '$' and '*'. */
   static uint8_t checksum(const std::string &payload);
@@ -103,6 +128,12 @@ class GPS {
 
   bool m_Enabled = false;
   bool m_HasFix = false;
+  std::atomic<uint8_t> m_Source {SOURCE_NONE};
+  std::atomic<uint8_t> m_Satellites {0};
+  external_fix_t m_ExternalFix = {};
+  uint64_t m_ExternalFixReceivedMs = 0;
+  bool m_HasExternalFix = false;
+  mutable std::mutex m_ExternalMutex;
   TinyGPSPlus m_GPS;
 
 #if defined(FURBLE_M5STICKS3)

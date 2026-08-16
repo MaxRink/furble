@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <numeric>
 #include <tuple>
 
@@ -18,6 +19,7 @@
 #include "icons.h"
 
 #include "FurbleCalibrate.h"
+#include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
@@ -57,6 +59,8 @@ lv_timer_t *UI::m_GPSDataTimer;
 
 lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
+std::atomic<uint8_t> UI::m_IntervalometerState {0};
+std::atomic<uint16_t> UI::m_IntervalometerRemaining {0};
 
 lv_timer_t *UI::m_BulbTimer;
 lv_timer_t *UI::m_BulbPageRefresh;
@@ -267,7 +271,7 @@ UI::UI(const interval_t &interval)
           lv_label_set_text_fmt(status->batteryLabel, "%u%%", level);
         }
 
-        if (status->gps->isEnabled()) {
+        if (status->gps->isEnabled() || (status->gps->getSource() == GPS::SOURCE_COMPANION)) {
           lv_obj_clear_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
         } else {
           lv_obj_add_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
@@ -390,9 +394,78 @@ UI::UI(const interval_t &interval)
   m_IntervalTimer = lv_timer_create(intervalometer, 100, &m_Intervalometer);
   lv_timer_pause(m_IntervalTimer);
 
+  if (Settings::load<Settings::COMPANION>()) {
+    startCompanionPairingTimer();
+  }
+
   addMainMenu();
 
   m_GPS.startService();
+}
+
+void UI::startCompanionPairingTimer(void) {
+  if (m_CompanionPairingTimer == nullptr) {
+    m_CompanionPairingTimer = lv_timer_create(companionPairingTimer, 250, this);
+  }
+}
+
+void UI::stopCompanionPairingTimer(void) {
+  if (m_CompanionPairingDialog != nullptr) {
+    lv_msgbox_close_async(m_CompanionPairingDialog);
+    m_CompanionPairingDialog = nullptr;
+  }
+  if (m_CompanionPairingTimer != nullptr) {
+    lv_timer_del(m_CompanionPairingTimer);
+    m_CompanionPairingTimer = nullptr;
+  }
+}
+
+void UI::companionPairingTimer(lv_timer_t *timer) {
+  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+  auto &companion = Companion::getInstance();
+  if (!companion.isEnabled() || !companion.hasPendingPairing()) {
+    if (ui->m_CompanionPairingDialog != nullptr) {
+      lv_msgbox_close_async(ui->m_CompanionPairingDialog);
+      ui->m_CompanionPairingDialog = nullptr;
+    }
+    return;
+  }
+
+  if (ui->m_CompanionPairingDialog != nullptr) {
+    return;
+  }
+
+  char text[96];
+  std::snprintf(text, sizeof(text), "Confirm number:\n%06lu", companion.getPendingPairingPin());
+  ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
+  lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
+  lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
+
+  lv_obj_t *accept = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Accept");
+  lv_obj_add_event_cb(
+      accept,
+      [](lv_event_t *event) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+        Companion::getInstance().confirmPairing(true);
+        if (ui->m_CompanionPairingDialog != nullptr) {
+          lv_msgbox_close_async(ui->m_CompanionPairingDialog);
+          ui->m_CompanionPairingDialog = nullptr;
+        }
+      },
+      LV_EVENT_CLICKED, ui);
+
+  lv_obj_t *reject = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Reject");
+  lv_obj_add_event_cb(
+      reject,
+      [](lv_event_t *event) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+        Companion::getInstance().confirmPairing(false);
+        if (ui->m_CompanionPairingDialog != nullptr) {
+          lv_msgbox_close_async(ui->m_CompanionPairingDialog);
+          ui->m_CompanionPairingDialog = nullptr;
+        }
+      },
+      LV_EVENT_CLICKED, ui);
 }
 
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
@@ -868,6 +941,23 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
       lv_obj_add_state(sw, LV_STATE_DISABLED);
     }
   }
+
+  if (setting == Settings::COMPANION) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
+            Companion::getInstance().reloadSetting(true);
+            ui->startCompanionPairingTimer();
+          } else {
+            Companion::getInstance().reloadSetting(false);
+            ui->stopCompanionPairingTimer();
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+  }
 }
 
 lv_obj_t *UI::addCameraItem(Camera *camera, const menu_t &menu, const CameraListMode_t mode) {
@@ -1279,12 +1369,56 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   }
 }
 
+uint8_t UI::getIntervalometerState(void) {
+  // Keep the protocol values explicit even if the private enum changes later.
+  switch (m_IntervalometerState.load()) {
+    case 0:  // STATE_IDLE
+      return 0;
+    case 1:  // STATE_WAIT
+      return 1;
+    case 2:  // STATE_SHUTTER_OPEN
+      return 2;
+    case 3:  // STATE_DELAY
+      return 3;
+    case 4:  // STATE_FINISHED
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+uint16_t UI::getIntervalometerRemaining(void) {
+  return m_IntervalometerRemaining.load();
+}
+
+int32_t UI::getBatteryLevel(void) {
+  return M5.Power.getBatteryLevel();
+}
+
+int16_t UI::getBatteryVoltage(void) {
+  return M5.Power.getBatteryVoltage();
+}
+
+int32_t UI::getBatteryCurrent(void) {
+  return M5.Power.getBatteryCurrent();
+}
+
+int16_t UI::getBatteryVBUSVoltage(void) {
+  return M5.Power.getVBUSVoltage();
+}
+
+bool UI::isBatteryCharging(void) {
+  return static_cast<int>(M5.Power.isCharging()) == 1;
+}
+
 void UI::intervalometer(lv_timer_t *timer) {
   auto &control = Control::getInstance();
   auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
   uint32_t next = 0;
 
   static uint32_t count = 0;
+
+  m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
   if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
     lv_label_set_text_fmt(interval->m_CountLabel, "%09lu", count);
@@ -1336,6 +1470,14 @@ void UI::intervalometer(lv_timer_t *timer) {
   if (next > 0) {
     lv_timer_set_period(timer, next);
     m_IntervalNext = tick() + next;
+  }
+
+  m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
+  if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
+    m_IntervalometerRemaining.store(0xffff);
+  } else {
+    const uint32_t total = interval->m_Count.m_SpinValue.m_Value;
+    m_IntervalometerRemaining.store(static_cast<uint16_t>(count >= total ? 0 : total - count));
   }
 }
 
@@ -2046,6 +2188,7 @@ void UI::addFeaturesMenu(const menu_t &parent) {
   addSettingItem(menu.page, NULL, Settings::RECONNECT);
   addSettingItem(menu.page, NULL, Settings::RECON_BACKOFF);
   addSettingItem(menu.page, NULL, Settings::MULTICONNECT);
+  addSettingItem(menu.page, NULL, Settings::COMPANION);
 #if defined(FURBLE_M5STICKS3)
   addSettingItem(menu.page, NULL, Settings::WATCHDOG);
 #endif

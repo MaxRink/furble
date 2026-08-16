@@ -2,6 +2,7 @@
 #define FURBLE_UI_H
 
 #include <array>
+#include <atomic>
 #include <initializer_list>
 #include <mutex>
 #include <unordered_map>
@@ -73,6 +74,19 @@ class UI {
 
   /** Unlock shutter. */
   void shutterUnlock(Control &control);
+
+  /** Current intervalometer state for the companion status record. */
+  static uint8_t getIntervalometerState(void);
+
+  /** Number of intervalometer shots remaining for the companion status record. */
+  static uint16_t getIntervalometerRemaining(void);
+
+  /** Battery readings shared with the companion status record. */
+  static int32_t getBatteryLevel(void);
+  static int16_t getBatteryVoltage(void);
+  static int32_t getBatteryCurrent(void);
+  static int16_t getBatteryVBUSVoltage(void);
+  static bool isBatteryCharging(void);
 
  private:
   typedef struct {
@@ -341,6 +355,8 @@ class UI {
   static lv_timer_t *m_GPSDataTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
+  static std::atomic<uint8_t> m_IntervalometerState;
+  static std::atomic<uint16_t> m_IntervalometerRemaining;
 
   static lv_timer_t *m_BulbTimer;
   static lv_timer_t *m_BulbPageRefresh;
@@ -351,6 +367,8 @@ class UI {
   lv_timer_t *m_IconTimer;
   lv_timer_t *m_BatteryTimer;
   lv_timer_t *m_DiagnosticsTimer;
+  lv_timer_t *m_CompanionPairingTimer = nullptr;
+  lv_obj_t *m_CompanionPairingDialog = nullptr;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -587,6 +605,15 @@ class UI {
 
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);
+
+  /** Poll for a pending companion numeric-comparison request. */
+  static void companionPairingTimer(lv_timer_t *timer);
+
+  /** Start the companion pairing prompt timer. */
+  void startCompanionPairingTimer(void);
+
+  /** Stop the companion pairing prompt timer. */
+  void stopCompanionPairingTimer(void);
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);

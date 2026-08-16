@@ -3,6 +3,7 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
@@ -39,6 +40,7 @@ void app_main() {
 #endif
 
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
+  Furble::Companion::getInstance().init();
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);

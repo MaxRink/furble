@@ -9,36 +9,55 @@ namespace Furble {
 Preferences Settings::m_Prefs;
 
 const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Setting = {
-    {BRIGHTNESS,        {BRIGHTNESS, "Brightness", "brightness", "M5ez"}                 },
-    {INACTIVITY,        {INACTIVITY, "Inactivity", "inactivity", "M5ez"}                 },
-    {THEME,             {THEME, "Theme", "theme", "M5ez"}                                },
-    {TX_POWER,          {TX_POWER, "TX Power", "tx_power", FURBLE_STR}                   },
-    {GPS,               {GPS, "GPS", "gps", FURBLE_STR}                                  },
-    {GPS_BAUD,          {GPS_BAUD, "GPS Baud", "gps_baud", FURBLE_STR}                   },
-    {GPS_RATE,          {GPS_RATE, "GPS Rate", "gps_rate", FURBLE_STR}                   },
-    {GPS_NMEA,          {GPS_NMEA, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
-    {GPS_CONSTEL,       {GPS_CONSTEL, "GPS Constellation", "gps_constel", FURBLE_STR}    },
-    {INTERVAL,          {INTERVAL, "Interval", "interval", FURBLE_STR}                   },
-    {MULTICONNECT,      {MULTICONNECT, "Multi-Connect", "multiconnect", FURBLE_STR}      },
-    {RECONNECT,         {RECONNECT, "Infinite-ReConnect", "reconnect", FURBLE_STR}       },
-    {RECON_BACKOFF,     {RECON_BACKOFF, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
-    {FAUXNY,            {FAUXNY, "FauxNY", "fauxNY", FURBLE_STR}                         },
-    {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, "Touch Calibration", "t_calib", FURBLE_STR}  },
-    {AUTOCONNECT,       {AUTOCONNECT, "Auto-Connect", "autoconnect", FURBLE_STR}         },
-    {CPU_FREQ,          {CPU_FREQ, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
-    {BATT_STYLE,        {BATT_STYLE, "Battery Style", "batt_style", FURBLE_STR}          },
-    {SHOW_TITLE,        {SHOW_TITLE, "Show Title", "show_title", FURBLE_STR}             },
-    {SLEEP_CONN,        {SLEEP_CONN, "Sleep while connected", "sleep_conn", FURBLE_STR}  },
-    {BULB,              {BULB, "Bulb", "bulb", FURBLE_STR}                               },
-    {SCAN_MODE,         {SCAN_MODE, "Scan Mode", "scan_mode", FURBLE_STR}                },
-    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
+    {BRIGHTNESS,        {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
+    {INACTIVITY,        {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
+    {THEME,             {THEME, 3, "Theme", "theme", "M5ez"}                                 },
+    {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
+    {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
+    {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
+    {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
+    {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
+    {GPS_CONSTEL,       {GPS_CONSTEL, 15, "GPS Constellation", "gps_constel", FURBLE_STR}    },
+    {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
+    {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
+    {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
+    {RECON_BACKOFF,     {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
+    {FAUXNY,            {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
+    {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, 0, "Touch Calibration", "t_calib", FURBLE_STR}   },
+    {AUTOCONNECT,       {AUTOCONNECT, 11, "Auto-Connect", "autoconnect", FURBLE_STR}         },
+    {COMPANION,         {COMPANION, 12, "Companion", "companion", FURBLE_STR}                },
+    {CPU_FREQ,          {CPU_FREQ, 17, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
+    {BATT_STYLE,        {BATT_STYLE, 18, "Battery Style", "batt_style", FURBLE_STR}          },
+    {SHOW_TITLE,        {SHOW_TITLE, 19, "Show Title", "show_title", FURBLE_STR}             },
+    {SLEEP_CONN,        {SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", FURBLE_STR}  },
+    {BULB,              {BULB, 0, "Bulb", "bulb", FURBLE_STR}                                },
+    {SCAN_MODE,         {SCAN_MODE, 21, "Scan Mode", "scan_mode", FURBLE_STR}                },
+    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, 22, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
 #if defined(FURBLE_M5STICKS3)
-    {WATCHDOG,          {WATCHDOG, "Watchdog", "watchdog", FURBLE_STR}                   },
+    {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
   return m_Setting.at(type);
+}
+
+const Settings::setting_t *Settings::getByWireId(uint8_t wire_id) {
+  if (wire_id == 0) {
+    return nullptr;
+  }
+
+  for (const auto &it : m_Setting) {
+    if (it.second.wire_id == wire_id) {
+      return &it.second;
+    }
+  }
+
+  return nullptr;
+}
+
+const std::unordered_map<Settings::type_t, Settings::setting_t> &Settings::all(void) {
+  return m_Setting;
 }
 
 template <typename T>
@@ -270,6 +289,7 @@ void Settings::init(void) {
         case FAUXNY:
         case AUTOCONNECT:
         case SLEEP_CONN:
+        case COMPANION:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:

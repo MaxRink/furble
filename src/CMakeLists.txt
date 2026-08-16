@@ -1,5 +1,6 @@
 set(furble_sources
     FurbleCalibrate.cpp
+    FurbleCompanion.cpp
     FurbleConsole.cpp
     FurbleControl.cpp
     FurbleGPS.cpp

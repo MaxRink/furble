@@ -324,6 +324,22 @@ Control::state_t Control::getState(void) const {
   return m_State;
 }
 
+size_t Control::getTargetCount(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_Targets.size();
+}
+
+size_t Control::getConnectedTargetCount(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  size_t connected = 0;
+  for (const auto &target : m_Targets) {
+    if (target->getCamera()->isConnected()) {
+      connected++;
+    }
+  }
+  return connected;
+}
+
 void Control::setState(state_t state) {
   const std::lock_guard<std::mutex> lock(m_StateMutex);
 
