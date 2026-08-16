@@ -2831,24 +2831,42 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
   }
 }
 
+/**
+ * Add a labelled roller row to a menu page.
+ *
+ * The row is sized to its content so the page keeps flowing, a full height row
+ * pushes later rows off screen and stops the page scrolling. The roller is
+ * flagged to scroll itself into view, which is the only way the page scrolls
+ * under encoder navigation.
+ */
+static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options) {
+  lv_obj_t *cont = lv_menu_cont_create(page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+
+  lv_obj_t *label = lv_label_create(cont);
+  lv_label_set_text(label, text);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+
+  return roller;
+}
+
 void UI::addBluetoothMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_BluetoothStr, &icon_settings_remote, true, parent);
+
+  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
   addTransmitPowerMenu(menu);
 
   // scan duty cycle preset
-  lv_obj_t *modeCont = lv_menu_cont_create(menu.page);
-  lv_obj_set_flex_flow(modeCont, LV_FLEX_FLOW_COLUMN);
-
-  lv_obj_t *modeLabel = lv_label_create(modeCont);
-  lv_label_set_text(modeLabel, "Scan mode");
-  lv_label_set_long_mode(modeLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(modeLabel, LV_PCT(100));
-
-  lv_obj_t *modeRoller = lv_roller_create(modeCont);
-  lv_obj_set_width(modeRoller, LV_PCT(90));
-  lv_roller_set_options(modeRoller, "Full\nBalanced\nLow", LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(modeRoller, 2);
+  lv_obj_t *modeRoller = addRollerItem(menu.page, "Scan mode", "Full\nBalanced\nLow");
   lv_roller_set_selected(modeRoller, Settings::load<Settings::SCAN_MODE>(), LV_ANIM_OFF);
 
   lv_obj_add_event_cb(
@@ -2861,19 +2879,8 @@ void UI::addBluetoothMenu(const menu_t &parent) {
       LV_EVENT_VALUE_CHANGED, NULL);
 
   // scan timeout
-  lv_obj_t *timeoutCont = lv_menu_cont_create(menu.page);
-  lv_obj_set_flex_flow(timeoutCont, LV_FLEX_FLOW_COLUMN);
-
-  lv_obj_t *timeoutLabel = lv_label_create(timeoutCont);
-  lv_label_set_text(timeoutLabel, "Scan timeout");
-  lv_label_set_long_mode(timeoutLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(timeoutLabel, LV_PCT(100));
-
-  lv_obj_t *timeoutRoller = lv_roller_create(timeoutCont);
-  lv_obj_set_width(timeoutRoller, LV_PCT(90));
-  lv_roller_set_options(timeoutRoller, "Never\n30 secs\n60 secs\n120 secs",
-                        LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(timeoutRoller, 2);
+  lv_obj_t *timeoutRoller =
+      addRollerItem(menu.page, "Scan timeout", "Never\n30 secs\n60 secs\n120 secs");
 
   uint32_t timeout = Settings::load<Settings::SCAN_TIMEOUT>();
   auto it = std::find(m_ScanTimeout.begin(), m_ScanTimeout.end(), timeout);
