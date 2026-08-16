@@ -196,6 +196,28 @@ Battery impact, on-board instrumentation only, no external meter:
 3. Compare drain slopes. Expect a small difference. Record the numbers in the PR
    body.
 
+## Implementation status
+
+Implemented:
+- Added the `IMU` setting with key `imu`, default `false`, and `cfg.internal_imu` loading before `M5.begin()`.
+- Reordered startup so `Settings::init()` runs before `Platform::init()`. This is safe because Settings initialization only brings up NVS and the Preferences wrapper.
+- Added runtime M5Unified IMU reads for the Connected level and Diagnostics live pages, with EWMA filtering, runtime visibility, and board-selected axis-order setup.
+- Added Settings -> Sensors with the IMU switch, restart notice, and Restart action. Added Connected -> Level and Settings -> Diagnostics -> IMU live.
+- Paused the level timer outside the page and used the diagnostics timer dispatch for one-Hz IMU updates while the live page is open.
+
+Deviations:
+- No scope deviations. The runtime board cases currently select M5Unified's logical X+, Y+, Z+ order for the StickS3 and AXP192 Stick families. Final axis sign confirmation is deferred to hardware verification.
+
+Hardware verification is still pending: IMU detection and level readings on the StickS3 have not been checked on device.
+
+Rebase notes:
+- `IMU` is assigned wire_id 27, continuing after `GPS_DUTY` (26) from PR 27.
+- Console settingType, printValue and setValue treat `IMU` as a bool setting.
+  `appliesImmediately` stays false because the setting is read once before
+  `M5.begin()` and the UI offers an explicit restart.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `IMU` as
+  SETTING_BOOL.
+
 ## References
 
 All links checked.

@@ -192,7 +192,26 @@ class UI {
     lv_obj_t *ble;
     std::string bleText;
     std::array<lv_obj_t *, 3> powerLocks;
+    lv_obj_t *imuAccel;
+    lv_obj_t *imuGyro;
+    float imuAccelValues[3];
+    float imuGyroValues[3];
+    bool imuValuesValid;
   } diagnostics_t;
+
+  typedef struct {
+    lv_obj_t *surface;
+    lv_obj_t *bubble;
+    lv_obj_t *roll;
+    lv_obj_t *pitch;
+    float accel[3];
+    float displayRoll;
+    float displayPitch;
+    int32_t bubbleX;
+    int32_t bubbleY;
+    bool filterReady;
+    bool displayReady;
+  } level_t;
 
   /**
    * Owner of a spinner.
@@ -389,6 +408,7 @@ class UI {
   static constexpr const char *m_RemoteBulb = "Bulb";
   static constexpr const char *m_RemoteInterval = "Interval";
   static constexpr const char *m_RemoteDisconnect = "Disconnect";
+  static constexpr const char *m_LevelStr = "Level";
   // dodgy hack, add a space so map key is unique
   static constexpr const char *m_RemoteGPSData = "GPS Data ";
   static constexpr const char *m_IntervalometerRunStr = "Intervalometer ";
@@ -404,6 +424,7 @@ class UI {
   static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
   static constexpr const char *m_TextSizeStr = "Text size";
   static constexpr const char *m_FeaturesStr = "Features";
+  static constexpr const char *m_SensorsStr = "Sensors";
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
@@ -429,6 +450,7 @@ class UI {
   static constexpr const char *m_DeviceInfoStr = "Device info";
   static constexpr const char *m_PowerStateStr = "Power state";
   static constexpr const char *m_BLEStr = "BLE";
+  static constexpr const char *m_IMUDataStr = "IMU live";
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
@@ -506,6 +528,7 @@ class UI {
 
   static lv_timer_t *m_ConnectTimer;
   static lv_timer_t *m_GPSDataTimer;
+  static lv_timer_t *m_LevelTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
   static std::atomic<uint8_t> m_IntervalometerState;
@@ -582,6 +605,7 @@ class UI {
 
   status_t m_Status;
   diagnostics_t m_Diagnostics = {};
+  level_t m_Level = {};
   nmea_t m_NMEA;
   lv_timer_t *m_NMEATimer = nullptr;
   bool m_FocusPressed = false;
@@ -742,6 +766,9 @@ class UI {
   /** Add the 'Power saving' GPS page. */
   void addGPSPowerMenu(const menu_t &parent);
 
+  /** Add the 'Sensors' menu entry. */
+  void addSensorsMenu(const menu_t &parent);
+
   /** Add 'GPS Data' page. */
   void addGPSDataMenu(const menu_t &parent);
 
@@ -855,6 +882,9 @@ class UI {
    */
   void serviceStorage(void);
 
+  /** Add the 'IMU live' page. */
+  void addIMUDataMenu(const menu_t &parent);
+
   /** Add the 'Device info' page. */
   void addDeviceInfoMenu(const menu_t &parent);
 
@@ -870,6 +900,9 @@ class UI {
   /** Diagnostics refresh timer handler. */
   static void diagnosticsUpdate(lv_timer_t *timer);
 
+  /** Show or hide pages which need the IMU enabled. */
+  static void showIMUWidgets(bool show);
+
   /** Describe the last reset reason. */
   static const char *getResetReason(void);
 
@@ -879,6 +912,9 @@ class UI {
   /** Add 'Connected' menu. */
   menu_t &addConnectedMenu(void);
 
+  /** Add the spirit level page. */
+  void addLevelMenu(const menu_t &parent);
+
   /** Update entries in connect page. */
   static void updateItems(const menu_t &menu);
 
@@ -887,6 +923,15 @@ class UI {
 
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);
+
+  /** Start the spirit level timer. */
+  static void levelStart(lv_event_t *e);
+
+  /** Stop the spirit level timer. */
+  static void levelStop(lv_event_t *e);
+
+  /** Refresh the spirit level page. */
+  static void levelUpdate(lv_timer_t *timer);
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);

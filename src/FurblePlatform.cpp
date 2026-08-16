@@ -32,12 +32,26 @@ Platform &Platform::getInstance(void) {
 
     auto cfg = M5.config();
     cfg.clear_display = true;
-    cfg.internal_imu = false;
+    cfg.internal_imu = Settings::load<Settings::IMU>();
     cfg.internal_spk = Feedback::outputIncludesSound(
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
     M5.begin(cfg);
+
+    using Axis = m5::IMU_Class::axis_t;
+    switch (M5.getBoard()) {
+      case m5::board_t::board_M5StickS3:
+        M5.Imu.setAxisOrder(Axis::axis_x_pos, Axis::axis_y_pos, Axis::axis_z_pos);
+        break;
+      case m5::board_t::board_M5StickC:
+      case m5::board_t::board_M5StickCPlus:
+      case m5::board_t::board_M5StickCPlus2:
+        M5.Imu.setAxisOrder(Axis::axis_x_pos, Axis::axis_y_pos, Axis::axis_z_pos);
+        break;
+      default:
+        break;
+    }
 
     switch (M5.getBoard()) {
       case m5::board_t::board_M5StickC:
