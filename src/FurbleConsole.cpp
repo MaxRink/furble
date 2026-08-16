@@ -205,6 +205,14 @@ bool appliesImmediately(Settings::type_t type) {
     case Settings::RECONNECT:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
+    case Settings::CPU_FREQ:
+    case Settings::BATT_STYLE:
+    case Settings::SCAN_MODE:
+    case Settings::SCAN_TIMEOUT:
+    case Settings::GPS_RATE:
+    case Settings::GPS_NMEA:
+    case Settings::GPS_CONSTEL:
+    case Settings::SLEEP_CONN:
       return true;
     default:
       return false;
@@ -217,9 +225,15 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::TX_POWER:
+    case Settings::CPU_FREQ:
+    case Settings::BATT_STYLE:
+    case Settings::SCAN_MODE:
+    case Settings::GPS_RATE:
+    case Settings::GPS_CONSTEL:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPS_BAUD:
+    case Settings::SCAN_TIMEOUT:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
       break;
     case Settings::THEME:
@@ -230,6 +244,9 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::RECONNECT:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
+    case Settings::SHOW_TITLE:
+    case Settings::SLEEP_CONN:
+    case Settings::GPS_NMEA:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -243,6 +260,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::TX_POWER:
+    case Settings::CPU_FREQ:
+    case Settings::BATT_STYLE:
+    case Settings::SCAN_MODE:
+    case Settings::GPS_RATE:
+    case Settings::GPS_CONSTEL:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
@@ -250,6 +272,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
         return fail("expected 0-255");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::SCAN_TIMEOUT:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if (end == text) {
+        return fail("expected seconds");
+      }
+      Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
     } break;
 
     case Settings::GPS_BAUD:
@@ -271,6 +303,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::RECONNECT:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
+    case Settings::SHOW_TITLE:
+    case Settings::SLEEP_CONN:
+    case Settings::GPS_NMEA:
     {
       bool value = false;
       if (!parseBool(text, value)) {
