@@ -40,6 +40,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {CONN_SAVER,        {CONN_SAVER, 29, "Connection power save", "conn_saver", FURBLE_STR}  },
     {IR,                {IR, 31, "Infrared", "ir", FURBLE_STR}                               },
     {IR_PROTO,          {IR_PROTO, 32, "IR Protocol", "ir_proto", FURBLE_STR}                },
+    {FB_OUTPUT,         {FB_OUTPUT, 33, "Feedback", "fb_output", FURBLE_STR}                 },
+    {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
+    {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -314,6 +317,15 @@ void Settings::init(void) {
           break;
         case CPU_FREQ:
           save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);
+          break;
+        case FB_OUTPUT:
+          save<uint8_t>(setting.type, 0);
+          break;
+        case FB_EVENTS:
+          save<uint8_t>(setting.type, 0x0F);
+          break;
+        case FB_VOLUME:
+          save<uint8_t>(setting.type, 64);
           break;
         case TOUCH_CALIBRATION:
         {

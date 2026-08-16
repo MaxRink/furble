@@ -309,6 +309,65 @@ Battery impact, on board instrumentation only:
    amplifier is being left powered.
 3. Repeat on Core2 with Vibrate selected and idle.
 
+## Implementation status
+
+Implemented on `feat/23-feedback-outputs`.
+
+Rebase notes:
+
+- `FB_OUTPUT` is wire_id 33, `FB_EVENTS` 34 and `FB_VOLUME` 35, continuing
+  after `IR_PROTO` (32) from PR 29.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover all three as
+  SETTING_U8.
+- Master's intervalometer state atomics coexist with this branch's countdown
+  announcement fields; both variable sets are kept in `FurbleUI`.
+
+- Added cached feedback settings for output, event masks, and volume. Output
+  remains Off by default, so existing silent behavior is unchanged until a user
+  selects an output.
+- Added nonblocking sound, LED, and vibration drivers with board capability
+  filtering. Sound uses M5Unified `M5.Speaker`; StickS3 speaker power is active
+  only while a tone is playing, including the M5PM1 amplifier callback path.
+- Added the Settings > Feedback menu with an output roller, event switches, a
+  sound volume slider, and a restart action for output changes that affect the
+  M5Unified speaker configuration.
+- Added shutter, countdown, connection, and low battery event hooks. Countdown
+  feedback fires once at each of 3, 2, and 1 seconds remaining.
+- The low battery implementation uses a 10 percent threshold and six
+  consecutive battery samples, then latches until charging. This local policy
+  was needed because the planned battery warning dependency was not present in
+  this branch.
+
+### Event mapping
+
+Output Off produces `none` for every event on every board. The table shows the
+available event output after capability filtering. On boards with multiple
+outputs, the selected output controls which listed output is used.
+
+| Board | Shutter fired | Countdown | Connect | Disconnect | Low battery |
+| --- | --- | --- | --- | --- | --- |
+| M5StickC | LED blink | LED blink | LED blink | LED blink | LED blink |
+| M5StickC Plus | beep and/or LED blink | beep and/or LED blink | beep and/or LED blink | beep and/or LED blink | beep and/or LED blink |
+| M5StickC Plus2 | beep and/or LED blink | beep and/or LED blink | beep and/or LED blink | beep and/or LED blink | beep and/or LED blink |
+| M5StickS3 | beep | beep | beep | beep | beep |
+| M5Stack Core | beep | beep | beep | beep | beep |
+| M5Stack Core2 | beep or vibration | beep or none | beep or vibration | beep or vibration | beep or vibration |
+
+The StickC Plus and Plus2 expose Sound, Light, and Sound and Light. StickC
+exposes Light only. StickS3 and Core expose Sound only. Core2 exposes Sound and
+Vibrate. Countdown has no vibration pattern by design. Plus2 LED output uses
+G19, which remains subject to the documented IR receive conflict.
+
+### Build verification
+
+- `m5stick-s3`: PASS on the final-state rebuild.
+- `m5stick-c-plus`: PASS on the final-state rebuild. The earlier parallel build
+  hit a shared dependency materialization race and passed on its one retry.
+- `m5stack-core2`: PASS on the final-state rebuild.
+
+Hardware verification is still pending for beep and LED behavior on the
+StickS3.
+
 ## References
 
 All links fetched and checked.

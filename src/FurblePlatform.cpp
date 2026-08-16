@@ -3,8 +3,10 @@
 #include <M5PM1.h>
 #include <M5Unified.h>
 
+#include "FurbleFeedback.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
@@ -26,7 +28,8 @@ Platform &Platform::getInstance(void) {
     auto cfg = M5.config();
     cfg.clear_display = true;
     cfg.internal_imu = false;
-    cfg.internal_spk = false;
+    cfg.internal_spk = Feedback::outputIncludesSound(
+        static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
     M5.begin(cfg);

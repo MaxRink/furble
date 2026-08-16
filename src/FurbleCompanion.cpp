@@ -668,6 +668,9 @@ Companion::setting_type_t Companion::settingType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::IR_PROTO:
+    case Settings::FB_OUTPUT:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
@@ -719,6 +722,9 @@ bool Companion::settingValue(Settings::type_t type, std::vector<uint8_t> &value)
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::IR_PROTO:
+    case Settings::FB_OUTPUT:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
