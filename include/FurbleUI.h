@@ -95,6 +95,7 @@ class UI {
     lv_obj_t *batteryIcon;
     lv_obj_t *batteryLabel;
     lv_obj_t *reconnectIcon;
+    lv_obj_t *reconnectBackoff;
     // battery page rows, NULL where the board cannot measure them
     lv_obj_t *batteryLevel;
     lv_obj_t *batteryVoltage;

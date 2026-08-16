@@ -26,6 +26,7 @@ class Settings {
     INTERVAL,
     MULTICONNECT,
     RECONNECT,
+    RECON_BACKOFF,
     FAUXNY,
     TOUCH_CALIBRATION,
     AUTOCONNECT,
@@ -169,6 +170,10 @@ struct Settings::storage_type<Settings::MULTICONNECT> {
 };
 template <>
 struct Settings::storage_type<Settings::RECONNECT> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::RECON_BACKOFF> {
   using type = bool;
 };
 template <>

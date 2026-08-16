@@ -97,38 +97,75 @@ Control &Control::getInstance(void) {
 Control::state_t Control::connectAll(void) {
   static uint32_t failcount = 0;
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
-  const std::lock_guard<std::mutex> lock(m_Mutex);
+  std::vector<Camera *> cameras;
 
-  // Iterate over cameras and attempt connection.
-  Camera *camera = nullptr;
-  for (const auto &target : m_Targets) {
-    camera = target->getCamera();
-    if (!camera->isConnected()) {
-      m_ConnectCamera = camera;
-      if (!camera->connect(m_Power, timeout)) {
-        failcount++;
-        break;
-      } else {
-        m_ConnectCamera = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    // Snapshot cameras so the mutex is not held during connection attempts.
+    for (const auto &target : m_Targets) {
+      Camera *camera = target->getCamera();
+      if (!camera->isConnected()) {
+        cameras.push_back(camera);
       }
+    }
+    m_ConnectInProgress = true;
+  }
+
+  for (auto *camera : cameras) {
+    if (m_ConnectAbort) {
+      break;
+    }
+
+    m_ConnectCamera = camera;
+    if (!camera->connect(m_Power, timeout)) {
+      failcount++;
+      break;
+    } else {
+      m_ConnectCamera = nullptr;
     }
   }
 
-  if (allConnected()) {
-    failcount = 0;
-    return STATE_ACTIVE;
-  }
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ConnectInProgress = false;
 
-  if (m_State == STATE_DISCONNECTING) {
-    return STATE_DISCONNECTING;
+    if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
+      m_ConnectCamera = nullptr;
+      return m_State;
+    }
+
+    if (allConnected()) {
+      failcount = 0;
+      m_ReconnectAttempt = 0;
+      return STATE_ACTIVE;
+    }
   }
 
   if (m_InfiniteReconnect || (failcount < 2)) {
     if (m_InfiniteReconnect) {
-      // sleep to idle
-      vTaskDelay(pdMS_TO_TICKS(SLEEP_INFINITE_MS));
+      uint32_t delay = SLEEP_INFINITE_MS;
+      if (m_ReconnectBackoff) {
+        const uint32_t shift = m_ReconnectAttempt < 5 ? m_ReconnectAttempt : 5;
+        delay = SLEEP_INFINITE_MS << shift;
+        if (delay > BACKOFF_MAX_MS) {
+          delay = BACKOFF_MAX_MS;
+        }
+      }
+
+      ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.", m_ReconnectAttempt + 1, delay);
+      m_ReconnectAttempt++;
+
+      // Sleep in short slices so disconnect can interrupt the retry wait.
+      uint32_t remaining = delay;
+      while (remaining > 0 && !m_ConnectAbort && m_State != STATE_DISCONNECTING) {
+        const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
+        vTaskDelay(pdMS_TO_TICKS(slice));
+        remaining -= slice;
+      }
     }
-    return STATE_CONNECT;
+    return m_ConnectAbort ? m_State
+                          : (m_State == STATE_DISCONNECTING ? STATE_DISCONNECTING : STATE_CONNECT);
   }
 
   return STATE_CONNECT_FAILED;
@@ -217,21 +254,28 @@ const std::vector<std::unique_ptr<Control::Target>> &Control::getTargets(void) {
 
 void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect = infiniteReconnect;
+  m_ReconnectBackoff = Settings::load<Settings::RECON_BACKOFF>();
+  m_ReconnectAttempt = 0;
+  m_ConnectAbort = false;
 
   this->sendCommand(CMD_CONNECT);
 }
 
 void Control::disconnect(void) {
+  m_ConnectAbort = true;
   setState(STATE_DISCONNECTING);
+  m_ReconnectAttempt = 0;
 
   // Force cancel any active connection attempts
   ble_gap_conn_cancel();
 
-  const std::lock_guard<std::mutex> lock(m_Mutex);
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
 
-  // send disconnect
-  for (const auto &target : m_Targets) {
-    target->sendCommand(CMD_DISCONNECT);
+    // send disconnect
+    for (const auto &target : m_Targets) {
+      target->sendCommand(CMD_DISCONNECT);
+    }
   }
 
   // wait for tasks to finish
@@ -241,7 +285,15 @@ void Control::disconnect(void) {
     } while (!target.get()->m_Stopped);
   }
 
-  m_Targets.clear();
+  while (m_ConnectInProgress) {
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_Targets.clear();
+    m_ConnectCamera = nullptr;
+  }
   setState(STATE_IDLE);
 }
 

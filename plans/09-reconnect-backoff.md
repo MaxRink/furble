@@ -163,3 +163,23 @@ Camera testing:
   for why longer idle gaps let the CPU stay in a lower power state.
 - [Espressif nimble power_save example](https://github.com/espressif/esp-idf/blob/master/examples/bluetooth/nimble/power_save/README.md)
   for the current cost of an active radio compared with an idle one.
+
+## Implementation state
+
+Implemented in PR #19 on the fork. Deviations from the plan:
+
+- The fix goes further than a sliced delay. `connectAll()` now snapshots the
+  camera list under `m_Mutex` and releases the mutex before any connection
+  attempt or retry wait. A `m_ConnectAbort` flag plus a `m_ConnectInProgress`
+  flag let `disconnect()` interrupt both the attempts and the wait, then safely
+  clear the targets under the mutex.
+- The retry wait checks both `m_ConnectAbort` and `STATE_DISCONNECTING` every
+  100 ms slice, so cancel takes effect within about 100 ms.
+- After rebasing onto the integrated master, state transitions go through
+  `Control::setState()` so the sleep lock bookkeeping from PR07 stays correct.
+- The toggle lives in Settings > Features after Infinite-ReConnect and is
+  greyed out while Infinite-ReConnect is off, as planned.
+- Backoff schedule, reset points, setting name and default all match the plan.
+- Verified: builds for m5stick-s3. The deadlock was reproduced on the StickS3
+  before the fix. The fix walk, cancel during connecting with the camera off,
+  is still pending on hardware.
