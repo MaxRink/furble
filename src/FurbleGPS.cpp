@@ -6,6 +6,7 @@
 
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 

@@ -39,6 +39,9 @@ class Power {
     const char *const m_Owner;
   };
 
+  /** Minimum CPU frequency in MHz, the floor esp_pm scales down to. */
+  static constexpr const uint8_t CPU_MIN_FREQ_MHZ = 40;
+
   static Power &getInstance();
 
   Power(Power const &) = delete;
@@ -88,8 +91,6 @@ class Power {
     esp_pm_lock_handle_t handle;
     std::atomic<uint32_t> count;
   } lock_t;
-
-  static constexpr const uint8_t CPU_MIN_FREQ_MHZ = 40;
 
   const lock_t &getLock(LockType type) const;
   lock_t &getLock(LockType type);
