@@ -8,9 +8,62 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  changes:
+    name: Detect firmware changes
+    runs-on: ubuntu-latest
+    outputs:
+      firmware: ${{ steps.filter.outputs.firmware }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check changed paths
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base_sha="$PR_BASE_SHA"
+          else
+            base_sha="$PUSH_BEFORE_SHA"
+          fi
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+            base_sha="$(git rev-list --max-parents=0 "$CURRENT_SHA")"
+          fi
+
+          firmware_changed=false
+          changed_paths="$(git diff --name-only --no-renames "$base_sha" "$CURRENT_SHA")"
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            case "$path" in
+              companion/android/*|plans/*|web-installer/*|README.md|*.md)
+                ;;
+              *)
+                firmware_changed=true
+                break
+                ;;
+            esac
+          done <<< "$changed_paths"
+
+          echo "Firmware paths changed: $firmware_changed"
+          echo "firmware=$firmware_changed" >> "$GITHUB_OUTPUT"
+
   format:
     name: clang-format
+    needs: changes
+    if: ${{ needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -48,6 +101,8 @@ jobs:
 
   discover:
     name: Discover PlatformIO environments
+    needs: changes
+    if: ${{ needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.environments.outputs.matrix }}
@@ -91,7 +146,10 @@ jobs:
           PY
 
   build:
-    needs: discover
+    needs:
+      - changes
+      - discover
+    if: ${{ needs.changes.outputs.firmware == 'true' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
@@ -150,9 +208,48 @@ jobs:
           done
 
   success:
+    if: always()
     runs-on: ubuntu-latest
     needs:
+      - changes
       - format
+      - discover
       - build
     steps:
-      - run: echo "Success"!
+      - name: Check required job results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          FIRMWARE_CHANGED: ${{ needs.changes.outputs.firmware }}
+          FORMAT_RESULT: ${{ needs.format.result }}
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "The changed-path check did not succeed."
+            exit 1
+          fi
+
+          if [[ "$FIRMWARE_CHANGED" == "true" ]]; then
+            if [[ "$FORMAT_RESULT" != "success" || \
+              "$DISCOVER_RESULT" != "success" || \
+              "$BUILD_RESULT" != "success" ]]; then
+              echo "A firmware CI job failed or was cancelled."
+              exit 1
+            fi
+          else
+            if [[ "$FORMAT_RESULT" != "success" && "$FORMAT_RESULT" != "skipped" ]]; then
+              echo "The format job did not succeed or skip cleanly."
+              exit 1
+            fi
+            if [[ "$DISCOVER_RESULT" != "success" && "$DISCOVER_RESULT" != "skipped" ]]; then
+              echo "The environment discovery job did not succeed or skip cleanly."
+              exit 1
+            fi
+            if [[ "$BUILD_RESULT" != "success" && "$BUILD_RESULT" != "skipped" ]]; then
+              echo "The build job did not succeed or skip cleanly."
+              exit 1
+            fi
+          fi
+
+          echo "Required CI jobs passed or skipped as expected."
