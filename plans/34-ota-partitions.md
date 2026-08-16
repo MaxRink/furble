@@ -931,6 +931,31 @@ fetch over.
 
 ---
 
+# Implementation status
+
+## 34a-1 complete
+
+Stage 34a-1 is implemented on `feat/34-ota-partitions`.
+
+- All five release environments select the stock `partitions_two_ota_large.csv`
+  layout. The resolved table is `nvs` at `0x9000` with size `24K`, `otadata`
+  at `0xf000` with size `8K`, `phy_init` at `0x11000` with size `4K`, `ota_0`
+  at `0x20000` with size `1700K`, and `ota_1` at `0x1d0000` with size `1700K`.
+  This applies to the 4 MB `m5stick-c`, `m5stick-c-plus`, and `m5stack-core`
+  boards, the 16 MB `m5stack-core2`, and the 8 MB `m5stick-s3`.
+- The NVS offset and size remain `0x9000` and `24K`, preserving the existing
+  address range used for settings and BLE pairings during the migration.
+- PlatformIO generates `ota_data_initial.bin`. The release workflow and web
+  installer include the image at `0xf000` (`61440`), and the built image was
+  verified as an `8192` byte all-`0xff` image that selects `ota_0` on first
+  boot.
+- `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` is enabled in all five release
+  sdkconfigs as specified for 34a-1. `CONFIG_APP_ROLLBACK_ENABLE` remains
+  unset. No OTA delivery or health-check source code was added.
+- The five release firmware binaries were checked against the `1700K` app
+  slot and all fit. The required release builds and the `m5stick-s3-debug`
+  build pass. Hardware verification on the M5StickC Plus S3 remains pending.
+
 # References
 
 All fetched and verified.
