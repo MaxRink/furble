@@ -45,6 +45,8 @@ UI::ConnectContext_t UI::m_ConnectContext;
 
 lv_timer_t *UI::m_ConnectTimer;
 
+lv_timer_t *UI::m_GPSDataTimer;
+
 lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
 
@@ -71,7 +73,8 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
 };
 
@@ -956,6 +959,13 @@ void UI::addMainMenu(void) {
           // Ensure no active scans
           scan.stop();
 
+          // only offer GPS data when GPS is enabled
+          if (ui->m_GPS.isEnabled()) {
+            lv_obj_clear_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
+          }
+
           // hide and disable back button
           lv_obj_add_state(back, LV_STATE_DISABLED);
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
@@ -972,6 +982,9 @@ void UI::addMainMenu(void) {
           lv_obj_remove_state(back, LV_STATE_DISABLED);
         } else if (page == m_Menu.at(m_IntervalometerRunStr).page) {
           // disable 'Back' when intervalometer is running
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+        } else if (page == m_Menu.at(m_GPSDataStr).page) {
+          // 'GPS Data' is reachable from the connected page, always display 'Back'
           lv_obj_remove_state(back, LV_STATE_DISABLED);
         }
       },
@@ -1266,9 +1279,8 @@ UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
 #if defined(FURBLE_M5COREX)
-  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
-                                 LV_GRID_TEMPLATE_LAST};
-  static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
   lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
   lv_obj_center(menuConnected.page);
   lv_obj_set_layout(menuConnected.page, LV_LAYOUT_GRID);
@@ -1276,6 +1288,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
   menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
   menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
+  menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
   menu_t &disconnect = addMenu(m_RemoteDisconnect, &icon_no_photography, true, menuConnected);
 
   if (M5.Touch.isEnabled()) {
@@ -1411,6 +1424,11 @@ UI::menu_t &UI::addConnectedMenu(void) {
         ui->showShutterIntervalometer(true);
       },
       LV_EVENT_CLICKED, this);
+
+  // add GPS data control, the page is shared with the settings menu
+  menu_t &menuGPSDataPage = m_Menu.at(m_GPSDataStr);
+  lv_menu_set_load_page_event(menuGPSDataPage.main, menuGPSData.button, menuGPSDataPage.page);
+  lv_obj_add_event_cb(menuGPSData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
 
   // add disconnect control
   lv_obj_add_event_cb(
@@ -1552,7 +1570,7 @@ void UI::addGPSMenu(const menu_t &parent) {
     lv_obj_add_flag(m_Status.gpsData, LV_OBJ_FLAG_HIDDEN);
   }
 
-  static lv_timer_t *timer = lv_timer_create(
+  m_GPSDataTimer = lv_timer_create(
       [](lv_timer_t *t) {
         auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
         auto &gps = GPS::getInstance().get();
@@ -1587,20 +1605,19 @@ void UI::addGPSMenu(const menu_t &parent) {
 #endif
       },
       1000, &gpsData);
-  lv_timer_pause(timer);
+  lv_timer_pause(m_GPSDataTimer);
 
   // start the update timer on 'GPS Data' button press
-  lv_obj_add_event_cb(
-      gpsData.button,
-      [](lv_event_t *e) {
-        auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-        lv_timer_resume(timer);
-        menu_t *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
-        lv_obj_add_event_cb(menu->main, gpsDataStop, LV_EVENT_CLICKED, timer);
-      },
-      LV_EVENT_CLICKED, timer);
+  lv_obj_add_event_cb(gpsData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
 
   lv_menu_set_load_page_event(gpsData.main, gpsData.button, gpsData.page);
+}
+
+void UI::gpsDataStart(lv_event_t *e) {
+  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+  lv_timer_resume(timer);
+  menu_t *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
+  lv_obj_add_event_cb(menu->main, gpsDataStop, LV_EVENT_CLICKED, timer);
 }
 
 void UI::gpsDataStop(lv_event_t *e) {
