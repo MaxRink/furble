@@ -1,6 +1,17 @@
 # 50 - Companion App Design
 
-Status: design only. No upstream code in this document.
+Status: design only. CI is prepared on `feat/ci-android`; Android source is
+expected under `companion/android/` and lands separately on
+`feat/50-companion-android`.
+
+Implementation state: Added Android debug build, protocol unit test, artifact,
+and opt-in emulator smoke-test coverage. The firmware workflow now skips its
+expensive jobs for Android-only, plan, documentation, and web-installer
+changes while keeping the required success check active.
+
+Deviation: The original design described the phone app as a separate
+repository. The current implementation reserves an Android project path in
+this repository, with source delivery still handled by a separate branch.
 
 This document specifies the furble side of a phone companion app. The phone app
 itself lives in a separate repository and is not part of furble. What furble

@@ -1,0 +1,135 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - companion/android/**
+  pull_request:
+    branches:
+      - master
+    paths:
+      - companion/android/**
+  workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Android debug build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: companion/android
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Run protocol unit tests
+        run: ./gradlew test
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-android-debug-apk
+          path: companion/android/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  # The emulator job costs roughly 10 minutes on a runner. Keep it out of PRs.
+  smoke:
+    name: Android emulator smoke test
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    needs: build
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: companion/android
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Find debug APK and package name
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_path="$(find . -type f -path '*/build/outputs/apk/debug/*.apk' -print | sort | head -n 1)"
+          if [[ -z "$apk_path" ]]; then
+            echo "No debug APK was found."
+            exit 1
+          fi
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -print | sort -V | tail -n 1)"
+          aapt="$build_tools/aapt"
+          if [[ ! -x "$aapt" ]]; then
+            echo "No aapt executable was found."
+            exit 1
+          fi
+          package_name="$("$aapt" dump badging "$apk_path" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p")"
+          if [[ -z "$package_name" ]]; then
+            echo "The debug APK package name could not be read."
+            exit 1
+          fi
+          echo "apk_path=$PWD/${apk_path#./}" >> "$GITHUB_OUTPUT"
+          echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
+
+      - name: Launch app in emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_DEBUG_APK: ${{ steps.apk.outputs.apk_path }}
+          ANDROID_PACKAGE: ${{ steps.apk.outputs.package_name }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r "$ANDROID_DEBUG_APK"
+            adb logcat -c
+            adb shell monkey -p "$ANDROID_PACKAGE" 1
+            sleep 10
+            if adb logcat -d | grep -E 'FATAL EXCEPTION|AndroidRuntime'; then
+              echo "The app crashed during launch."
+              exit 1
+            fi
+            if ! adb shell pidof "$ANDROID_PACKAGE" >/dev/null; then
+              echo "The app process is not running after launch."
+              exit 1
+            fi
