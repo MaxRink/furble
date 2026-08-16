@@ -187,3 +187,4 @@ experiment, observed log lines, conclusion. PR07 and PR15 cite this file.
 
 Experiment B: pending. Requires the GPS unit attached to the Grove port and a
 temporary UART TX path.
+| 2026-08-16 | feat/27-usb-console debug build | StickS3 + GPS v1.1 | B part 2 | $PCAS12,10 sent via console: NMEA output stopped for about 10 s and resumed on its own. $PCAS03 pruning to GGA+RMC cut output from 710 to 91 chars per second. $PCAS02,500 without pruning raised output only 16 percent. Receiver reports $GPTXT ANTENNA OPEN continuously, likely benign for the built-in patch antenna. | $PCAS12 standby is supported on the AT6668. PR15 may default to standby duty cycling. Rate changes need pruning first. Part 1 (V_BCKP rail cut) still pending, needs a position fix first. |
