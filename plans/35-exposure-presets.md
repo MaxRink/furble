@@ -79,27 +79,38 @@ implementation time.
 - https://github.com/gkoh/furble/issues/244
 - https://github.com/gkoh/furble/pull/292
 
-## Hardware verification, pass 3, 2026-08-18
+## Implementation status
 
-Verdict: PARTIAL. Tested on the combined image (version `hwv3`, app
-`v3.9.1-159-g138dd80`) on the M5StickS3 over USB.
+Implemented the preset picker for the bulb Duration field and the
+intervalometer Shutter field.
 
-Console evidence:
+Rebase notes:
 
-- `settings set preset_picker true` then reboot then `settings get preset_picker`
-  returns `value: true`, name `Preset Picker`, `type: bool`,
-  `applies: on reboot`. The setting saves, persists across a power cycle, and is
-  wired at wire id 30.
-- `settings set preset_picker false` also round trips. Default is off, current
-  behaviour, as designed.
+- `PRESET_PICKER` is assigned wire_id 30, continuing after `CONN_SAVER` (29)
+  from PR 24.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover
+  `PRESET_PICKER` as SETTING_BOOL.
+- Console `appliesImmediately` stays false: the UI applies its own toggle
+  live, a console or companion write is picked up when the field editor is
+  next opened.
 
-Still on the user checklist, needs eyes and fingers on the device:
+- Added the 31-entry 1/3-stop series in milliseconds.
+- Added the `PRESET_PICKER` bool setting with the `preset_picker` NVS key and
+  a false default. The setting is available under Features and through the
+  debug settings console.
+- Digit rollers remain the default. When preset mode is enabled, entering
+  either supported field snaps its existing value to the nearest series entry.
+- Touch boards get plus and minus buttons. Stick boards use the outer keys for
+  minus and plus, and the middle key confirms. Pressed and long-press-repeat
+  events provide one-step and hold-to-repeat behavior.
+- Preset values use the existing packed NVS representation. Whole seconds use
+  the seconds unit. Fractional entries use milliseconds. No storage format
+  changed.
 
-- Open the bulb page and step the 1/3 stop preset roller. Confirm the value
-  displays, plus and minus step one series entry, the value never sticks at 0,
-  boundaries hold at 1 s and 1000 s, and Cancel leaves the picker without
-  changing the stored duration.
-- Confirm digit entry is unchanged when the toggle is off.
+The plan called for the full five-environment release build matrix. The
+implementation sandbox could not run PlatformIO, so the m5stick-s3 build was
+verified during integration with `FURBLE_VERSION=dev FURBLE_TEST=0`. It
+passes. The remaining environments build in CI.
 
-There is no console command to drive the picker, so the roller behaviour cannot
-be exercised over USB.
+Hardware verification is still pending, including X100VI bulb exposures at
+stepped values.

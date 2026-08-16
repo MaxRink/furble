@@ -5,7 +5,7 @@
 
 namespace Furble {
 
-UI::Bulb::Bulb(const SpinValue::nvs_t &duration) : m_Duration(this, duration) {}
+UI::Bulb::Bulb(const SpinValue::nvs_t &duration) : m_Duration(this, duration, false, true) {}
 
 void UI::Bulb::save(void) {
   Settings::save<Settings::BULB>(m_Duration.m_SpinValue.toNVS());

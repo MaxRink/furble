@@ -8,7 +8,7 @@ UI::Intervalometer::Intervalometer(const interval_t &interval)
     : m_State {STATE_IDLE},
       m_Count(this, interval.count, true),
       m_Delay(this, interval.delay),
-      m_Shutter(this, interval.shutter),
+      m_Shutter(this, interval.shutter, false, true),
       m_Wait(this, interval.wait) {}
 
 void UI::Intervalometer::save(void) {
@@ -51,6 +51,99 @@ void UI::Intervalometer::Spinner::update(void) {
   m_Owner->save();
 }
 
+size_t UI::Intervalometer::Spinner::nearestPreset(uint32_t milliseconds) {
+  size_t nearest = 0;
+  uint32_t distance = milliseconds > m_ExposurePresetMilliseconds[0]
+                          ? milliseconds - m_ExposurePresetMilliseconds[0]
+                          : m_ExposurePresetMilliseconds[0] - milliseconds;
+
+  for (size_t i = 1; i < m_ExposurePresetMilliseconds.size(); i++) {
+    uint32_t candidate = m_ExposurePresetMilliseconds[i];
+    uint32_t candidateDistance =
+        milliseconds > candidate ? milliseconds - candidate : candidate - milliseconds;
+    if (candidateDistance < distance) {
+      nearest = i;
+      distance = candidateDistance;
+    }
+  }
+
+  return nearest;
+}
+
+SpinValue::nvs_t UI::Intervalometer::Spinner::presetNVS(size_t index) {
+  uint32_t milliseconds = m_ExposurePresetMilliseconds[index];
+  if ((milliseconds % 1000) == 0) {
+    return SpinValue::nvs_t {static_cast<uint16_t>(milliseconds / 1000), SpinValue::UNIT_SEC};
+  }
+  return SpinValue::nvs_t {static_cast<uint16_t>(milliseconds), SpinValue::UNIT_MS};
+}
+
+void UI::Intervalometer::Spinner::snapToPreset(void) {
+  m_PresetIndex = nearestPreset(m_SpinValue.toMilliseconds());
+  SpinValue::nvs_t nvs = presetNVS(m_PresetIndex);
+  m_SpinValue.m_Value = nvs.value;
+  m_SpinValue.m_Unit = nvs.unit;
+}
+
+void UI::Intervalometer::Spinner::setPresetPicker(bool enabled) {
+  if (!m_PresetSupported || (m_PresetPicker == enabled)) {
+    return;
+  }
+
+  m_PresetPicker = enabled;
+  if (enabled) {
+    snapToPreset();
+    m_Owner->save();
+  }
+
+  updatePresetPickerVisibility();
+  updateLabels();
+}
+
+void UI::Intervalometer::Spinner::stepPreset(int direction) {
+  if (!m_PresetPicker || (direction == 0)) {
+    return;
+  }
+
+  int next = static_cast<int>(m_PresetIndex) + (direction > 0 ? 1 : -1);
+  if ((next < 0) || (next >= static_cast<int>(m_ExposurePresetMilliseconds.size()))) {
+    return;
+  }
+
+  m_PresetIndex = static_cast<size_t>(next);
+  SpinValue::nvs_t nvs = presetNVS(m_PresetIndex);
+  m_SpinValue.m_Value = nvs.value;
+  m_SpinValue.m_Unit = nvs.unit;
+  updateLabels();
+  m_Owner->save();
+}
+
+void UI::Intervalometer::Spinner::updatePresetPickerVisibility(void) {
+  if (!m_PresetSupported || (m_RowSpinners == nullptr) || (m_PresetRow == nullptr)) {
+    return;
+  }
+
+  if (m_PresetPicker) {
+    lv_obj_add_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(m_PresetRow, LV_OBJ_FLAG_HIDDEN);
+    for (auto &roller : m_Roller) {
+      lv_group_remove_obj(roller);
+    }
+    if (m_RollerUnit != nullptr) {
+      lv_group_remove_obj(m_RollerUnit);
+    }
+  } else {
+    lv_obj_clear_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(m_PresetRow, LV_OBJ_FLAG_HIDDEN);
+    for (auto &roller : m_Roller) {
+      lv_group_add_obj(lv_group_get_default(), roller);
+    }
+    if (m_RollerUnit != nullptr) {
+      lv_group_add_obj(lv_group_get_default(), m_RollerUnit);
+    }
+  }
+}
+
 void UI::Intervalometer::Spinner::updateLabels(void) {
   switch (m_SpinValue.m_Unit) {
     case SpinValue::UNIT_INF:
@@ -64,6 +157,21 @@ void UI::Intervalometer::Spinner::updateLabels(void) {
     default:
       lv_label_set_text_fmt(m_Value, "%u %s", m_SpinValue.m_Value, m_SpinValue.getUnitString());
       break;
+  }
+
+  if (m_PresetPicker) {
+    if (m_PresetValue != nullptr) {
+      uint32_t milliseconds = m_ExposurePresetMilliseconds[m_PresetIndex];
+      if ((milliseconds % 1000) == 0) {
+        lv_label_set_text_fmt(m_PresetValue, "%lu secs",
+                              static_cast<unsigned long>(milliseconds / 1000));
+      } else {
+        lv_label_set_text_fmt(m_PresetValue, "%lu.%lu secs",
+                              static_cast<unsigned long>(milliseconds / 1000),
+                              static_cast<unsigned long>((milliseconds % 1000) / 100));
+      }
+    }
+    return;
   }
 
   if (m_SpinValue.m_Unit != SpinValue::UNIT_INF) {

@@ -495,6 +495,8 @@ UI::UI(const interval_t &interval)
 
   addMainMenu();
 
+  setPresetPicker(Settings::load<Settings::PRESET_PICKER>());
+
   m_GPS.startService();
 }
 
@@ -1076,6 +1078,14 @@ void UI::handleShutter(lv_event_t *e) {
   auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
   auto &control = Control::getInstance();
   lv_event_code_t code = lv_event_get_code(e);
+
+  if (ui->m_ControlMode == ControlMode::PRESET) {
+    if (code == LV_EVENT_RELEASED) {
+      ui->presetConfirm();
+    }
+    return;
+  }
+
   switch (code) {
     case LV_EVENT_PRESSED:
       if (ui->m_FocusPressed) {
@@ -1103,6 +1113,14 @@ void UI::handleFocus(lv_event_t *e) {
   auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
   auto &control = Control::getInstance();
   lv_event_code_t code = lv_event_get_code(e);
+
+  if (ui->m_ControlMode == ControlMode::PRESET) {
+    if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
+      ui->presetStep(1);
+    }
+    return;
+  }
+
   switch (code) {
     case LV_EVENT_PRESSED:
       ui->m_FocusPressed = true;
@@ -1156,11 +1174,21 @@ void UI::prepareShutterControl(void) {
       m_Left,
       [](lv_event_t *e) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
-        lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
-        ui->configureControl(ControlMode::MENU);
+        lv_event_code_t code = lv_event_get_code(e);
+        if (ui->m_ControlMode == ControlMode::PRESET) {
+          if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
+            ui->presetStep(-1);
+          }
+          return;
+        }
+
+        if (code == LV_EVENT_CLICKED) {
+          lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+          lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+          ui->configureControl(ControlMode::MENU);
+        }
       },
-      LV_EVENT_CLICKED, this);
+      LV_EVENT_ALL, this);
 
   lv_obj_add_event_cb(m_OK, handleShutter, LV_EVENT_ALL, this);
 
@@ -1285,6 +1313,17 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         [](lv_event_t *e) {
           auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
           ui->updateIRMenuVisibility();
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+  }
+
+  if (setting == Settings::PRESET_PICKER) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          ui->setPresetPicker(lv_obj_has_state(sw, LV_STATE_CHECKED));
         },
         LV_EVENT_VALUE_CHANGED, this);
   }
@@ -1532,6 +1571,16 @@ void UI::addMainMenu(void) {
           lv_timer_pause(ui->m_DiagnosticsTimer);
         }
 
+        bool presetPage = ((page == m_Menu.at(m_IntervalShutterStr).page)
+                           && ui->m_Intervalometer.m_Shutter.usesPresetPicker())
+                          || ((page == m_Menu.at(m_BulbDurationStr).page)
+                              && ui->m_Bulb.m_Duration.usesPresetPicker());
+        if (presetPage) {
+          ui->configureControl(ControlMode::PRESET);
+        } else if (ui->m_ControlMode == ControlMode::PRESET) {
+          ui->configureControl(ControlMode::MENU);
+        }
+
         // a bulb exposure only runs on its own page, never strand a held shutter
         if (page != m_Menu.at(m_BulbRunStr).page) {
           ui->bulbStop();
@@ -1673,6 +1722,12 @@ void UI::configureControl(ControlMode mode, bool set) {
         m_ControlMode = ControlMode::SLIDER;
       }
       configSliderControl();
+      break;
+    case ControlMode::PRESET:
+      if (set) {
+        m_ControlMode = ControlMode::PRESET;
+      }
+      configPresetControl();
       break;
     case ControlMode::REVERT:
       configureControl(m_ControlMode);
@@ -2072,6 +2127,11 @@ std::string UI::simQueryState(const char *key) {
 }
 #endif
 
+void UI::setPresetPicker(bool enabled) {
+  m_Intervalometer.m_Shutter.setPresetPicker(enabled);
+  m_Bulb.m_Duration.setPresetPicker(enabled);
+}
+
 void UI::configShutterControl(void) {
   if (!M5.Touch.isEnabled()) {
     lv_obj_set_style_bg_image_src(m_Left, &icon_arrow_back_24, 0);
@@ -2125,6 +2185,34 @@ void UI::configSliderControl(void) {
     lv_obj_set_style_bg_image_src(m_Left, &icon_arrow_back_24, 0);
     lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
     lv_obj_set_style_bg_image_src(m_Right, &icon_arrow_forward_24, 0);
+  }
+}
+
+void UI::configPresetControl(void) {
+  if (!M5.Touch.isEnabled()) {
+    configShutterControl();
+    lv_obj_set_style_bg_image_src(m_Left, LV_SYMBOL_MINUS, 0);
+    lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
+    lv_obj_set_style_bg_image_src(m_Right, LV_SYMBOL_PLUS, 0);
+  }
+}
+
+void UI::presetStep(int direction) {
+  auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if (page == m_Menu.at(m_IntervalShutterStr).page) {
+    m_Intervalometer.m_Shutter.stepPreset(direction);
+  } else if (page == m_Menu.at(m_BulbDurationStr).page) {
+    m_Bulb.m_Duration.stepPreset(direction);
+  }
+}
+
+void UI::presetConfirm(void) {
+  auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if ((page == m_Menu.at(m_IntervalShutterStr).page)
+      || (page == m_Menu.at(m_BulbDurationStr).page)) {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+    configureControl(ControlMode::MENU);
   }
 }
 
@@ -3162,6 +3250,7 @@ void UI::gpsNMEAStop(lv_event_t *e) {
 void UI::addFeaturesMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_FeaturesStr, &icon_wand_stars, true, parent);
 
+  addSettingItem(menu.page, NULL, Settings::PRESET_PICKER);
   addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
   addSettingItem(menu.page, NULL, Settings::FAUXNY);
   addSettingItem(menu.page, NULL, Settings::RECONNECT);
@@ -3306,8 +3395,9 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
         LV_EVENT_VALUE_CHANGED, &spinner);
   }
 
-  if ((spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
-      && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF)) {
+  if (spinner.supportsPresetPicker()
+      || ((spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
+          && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF))) {
     spinner.m_RollerUnit = lv_roller_create(spinner.m_RowSpinners);
     lv_obj_add_flag(spinner.m_RollerUnit, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
     lv_roller_set_options(spinner.m_RollerUnit, Intervalometer::Spinner::m_SpinUnitsRoller,
@@ -3322,6 +3412,51 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
         LV_EVENT_VALUE_CHANGED, &spinner);
 
     addToInputGroup(m_Group, spinner.m_RollerUnit);
+  }
+
+  if (spinner.supportsPresetPicker()) {
+    spinner.m_PresetRow = lv_obj_create(menu.page);
+    lv_obj_set_size(spinner.m_PresetRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(spinner.m_PresetRow, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(spinner.m_PresetRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(spinner.m_PresetRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    spinner.m_PresetMinus = lv_button_create(spinner.m_PresetRow);
+    lv_obj_set_style_bg_image_src(spinner.m_PresetMinus, LV_SYMBOL_MINUS, 0);
+    lv_obj_set_size(spinner.m_PresetMinus, 40, 40);
+
+    spinner.m_PresetValue = lv_label_create(spinner.m_PresetRow);
+    lv_obj_set_flex_grow(spinner.m_PresetValue, 1);
+    lv_obj_set_style_text_align(spinner.m_PresetValue, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(spinner.m_PresetValue, &lv_font_montserrat_16, 0);
+
+    spinner.m_PresetPlus = lv_button_create(spinner.m_PresetRow);
+    lv_obj_set_style_bg_image_src(spinner.m_PresetPlus, LV_SYMBOL_PLUS, 0);
+    lv_obj_set_size(spinner.m_PresetPlus, 40, 40);
+
+    lv_obj_add_event_cb(
+        spinner.m_PresetMinus,
+        [](lv_event_t *e) {
+          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+          lv_event_code_t code = lv_event_get_code(e);
+          if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
+            spinner->stepPreset(-1);
+          }
+        },
+        LV_EVENT_ALL, &spinner);
+    lv_obj_add_event_cb(
+        spinner.m_PresetPlus,
+        [](lv_event_t *e) {
+          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+          lv_event_code_t code = lv_event_get_code(e);
+          if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
+            spinner->stepPreset(1);
+          }
+        },
+        LV_EVENT_ALL, &spinner);
+
+    lv_obj_add_flag(spinner.m_PresetRow, LV_OBJ_FLAG_HIDDEN);
   }
 
   // squeeze width for smaller displays
