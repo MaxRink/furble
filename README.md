@@ -234,6 +234,21 @@ Delay and shutter time can be figured with custom or preset values from 0 to 999
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.
 
+### Bulb
+
+`Bulb` on the connected menu holds the shutter open for a set time, which saves
+watching a stopwatch during a long exposure.
+
+Set the length under `Bulb->Duration`, then hit `Start`.
+The page counts down and the shutter is released at zero.
+The duration is remembered for next time and defaults to 30 seconds.
+
+`Stop` ends the exposure early, and leaving the page also releases the shutter,
+so an exposure never keeps running out of sight.
+
+The camera must be in bulb mode, otherwise it will end the exposure on its own
+and the countdown will simply run out.
+
 ### Shutter Lock
 
 When in `Shutter` remote control, holding focus (button B) then release (button A) will engage shutter lock, holding the shutter open until a button is pressed.
