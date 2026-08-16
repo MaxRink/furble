@@ -111,6 +111,35 @@ uint8_t Platform::getCPUMaxFreq(void) const {
   return m_CPUMaxFreqMHz;
 }
 
+Platform::pm_config_t Platform::getPMConfig(void) {
+  esp_pm_config_t pm_config = {};
+
+  esp_err_t err = esp_pm_get_configuration(&pm_config);
+  if (err != ESP_OK) {
+    // fall back to the last configuration we asked for
+    ESP_LOGW(LOG_TAG, "Unable to read power management configuration (%s).", esp_err_to_name(err));
+    return {m_CPUMaxFreqMHz, static_cast<uint8_t>(CPU_MIN_FREQ_MHZ), m_Sleep};
+  }
+
+  return {static_cast<uint8_t>(pm_config.max_freq_mhz),
+          static_cast<uint8_t>(pm_config.min_freq_mhz), pm_config.light_sleep_enable};
+}
+
+void Platform::dumpPMLocks(void) {
+  esp_err_t err = esp_pm_dump_locks(stdout);
+  if (err != ESP_OK) {
+    ESP_LOGW(LOG_TAG, "Unable to dump power management locks (%s).", esp_err_to_name(err));
+  }
+}
+
+bool Platform::hasTicklessIdle(void) {
+#if defined(CONFIG_FREERTOS_USE_TICKLESS_IDLE)
+  return true;
+#else
+  return false;
+#endif
+}
+
 void Platform::powerOff(void) {
 #if defined(FURBLE_M5STICKS3)
   m_M5PM1.shutdown();

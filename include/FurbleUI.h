@@ -85,6 +85,16 @@ class UI {
     float meanCurrent;
   } status_t;
 
+  typedef struct {
+    // labels refreshed while a diagnostics page is open
+    lv_obj_t *aboutUptime;
+    lv_obj_t *aboutHeap;
+    lv_obj_t *deviceUptime;
+    lv_obj_t *deviceHeap;
+    lv_obj_t *powerFrequency;
+    lv_obj_t *powerSleep;
+  } diagnostics_t;
+
   class Intervalometer {
    public:
     class Spinner {
@@ -192,9 +202,14 @@ class UI {
   static constexpr const char *m_TransmitPowerStr = "TX Power";
   static constexpr const char *m_AboutStr = "About";
   static constexpr const char *m_PowerStr = "Power";
+  static constexpr const char *m_DiagnosticsStr = "Diagnostics";
 
   // settings->power
   static constexpr const char *m_BatteryStr = "Battery";
+
+  // settings->diagnostics
+  static constexpr const char *m_DeviceInfoStr = "Device info";
+  static constexpr const char *m_PowerStateStr = "Power state";
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
@@ -229,11 +244,17 @@ class UI {
   lv_timer_t *m_InactivityTimer;
   lv_timer_t *m_IconTimer;
   lv_timer_t *m_BatteryTimer;
+  lv_timer_t *m_DiagnosticsTimer;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
   const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_TEMPLATE_LAST};
+
+  // the settings page holds more entries than the main menu, give it its own
+  // rows so the main menu keeps its layout
+  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
+                                                           LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -265,6 +286,7 @@ class UI {
   Intervalometer m_Intervalometer;
 
   status_t m_Status;
+  diagnostics_t m_Diagnostics = {};
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
   uint32_t m_InactivityTimeout;
@@ -369,6 +391,24 @@ class UI {
   void addTransmitPowerMenu(const menu_t &parent);
 
   void addAboutMenu(const menu_t &parent);
+
+  /** Add the 'Diagnostics' menu entry. */
+  void addDiagnosticsMenu(const menu_t &parent);
+
+  /** Add the 'Device info' page. */
+  void addDeviceInfoMenu(const menu_t &parent);
+
+  /** Add the 'Power state' page. */
+  void addPowerStateMenu(const menu_t &parent);
+
+  /** Add a read only text row to a page container. */
+  static lv_obj_t *addInfoRow(lv_obj_t *cont);
+
+  /** Diagnostics refresh timer handler. */
+  static void diagnosticsUpdate(lv_timer_t *timer);
+
+  /** Describe the last reset reason. */
+  static const char *getResetReason(void);
 
   /** Add the 'Settings' menu entry. */
   void addSettingsMenu(void);
