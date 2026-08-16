@@ -26,6 +26,7 @@ class Settings {
     FAUXNY,
     TOUCH_CALIBRATION,
     AUTOCONNECT,
+    BULB,
   } type_t;
 
   typedef struct {
@@ -61,6 +62,8 @@ class Settings {
 
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+
+  static constexpr SpinValue::nvs_t BULB_DEFAULT = {30, SpinValue::UNIT_SEC};
 
   static void init(void);
 
@@ -145,6 +148,10 @@ struct Settings::storage_type<Settings::TOUCH_CALIBRATION> {
 template <>
 struct Settings::storage_type<Settings::AUTOCONNECT> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::BULB> {
+  using type = SpinValue::nvs_t;
 };
 
 }  // namespace Furble
