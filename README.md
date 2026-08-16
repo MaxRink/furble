@@ -273,6 +273,16 @@ whether it is charging, and an estimate of the remaining runtime.
 Rows the controller cannot measure are simply not shown, so the page is shorter
 on some boards.
 
+`Settings->Power->Sleep while connected` lets the controller doze between
+Bluetooth events while a camera is connected.
+It is off by default, and it is only offered on the M5StickS3, the other
+controllers cannot sleep with a connection up.
+
+Turning it on is a worthwhile saving on a long shoot.
+The trade is that the first press after a quiet spell may take a moment longer
+to reach the camera.
+The setting is read when a connection is made, so switch it before connecting.
+
 ### Display
 
 The window title can be hidden with `Settings->Display->Show Title`.
