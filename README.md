@@ -142,6 +142,20 @@ The default baud rate for the GPS unit is 9600.
 The new v1.1 unit runs at a higher baud rate and must be configured under
 `Settings->GPS->GPS baud 115200` for correct operation.
 
+The GPS receiver itself can also be configured under `Settings->GPS`:
+- `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
+- `Sentences` (cut the receiver down to the sentences `furble` actually reads)
+- `Constellation` (which satellite systems the receiver listens to)
+
+Each of these defaults to `Default`, which leaves the receiver on its own
+settings and behaves exactly as before.
+A change is sent to the receiver when GPS is enabled, and the receiver goes
+back to its own defaults the next time it is powered off.
+
+`Settings->GPS->Raw NMEA` shows the sentences arriving from the receiver along
+with the fix state and error counts.
+It is the place to look to confirm the receiver accepted a change.
+
 ### Intervalometer/Timer
 
 The intervalometer can be configured via three settings in `Settings->Timer`:
