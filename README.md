@@ -158,6 +158,25 @@ Some camera protocols such as Ricoh GR trigger capture with a single operation r
 
 When in `Shutter` remote control, holding focus (button B) then release (button A) will engage shutter lock, holding the shutter open until a button is pressed.
 
+### Power
+
+The CPU speed can be selected under `Settings->Power->CPU speed`, with a choice
+of 80, 160 or 240 MHz.
+The default is 160 MHz, and a change takes effect immediately.
+
+A higher speed makes the interface feel snappier, but it costs battery life.
+80 MHz is the gentlest on the battery, 240 MHz is the most demanding.
+
+`Settings->Power->Sleep while connected` lets the controller doze between
+Bluetooth events while a camera is connected.
+It is off by default, and it is only offered on the M5StickS3, the other
+controllers cannot sleep with a connection up.
+
+Turning it on is a worthwhile saving on a long shoot.
+The trade is that the first press after a quiet spell may take a moment longer
+to reach the camera.
+The setting is read when a connection is made, so switch it before connecting.
+
 ### Themes
 
 A few basic themes are included, to change:
