@@ -135,6 +135,10 @@ UI::UI(const interval_t &interval)
   // set display brightness
   auto brightness = Settings::load<Settings::BRIGHTNESS>();
   M5.Display.setBrightness(brightness);
+  m_DisplayOffMode = Settings::load<Settings::DISPLAY_OFF>();
+  if (m_DisplayOffMode > 2) {
+    m_DisplayOffMode = 0;
+  }
   setInactivityTimeout(Settings::load<Settings::INACTIVITY>());
 
   // set minimum, ensure this is a multiple of m_BrightnessSteps so the slider steps work
@@ -469,18 +473,30 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
 }
 
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
-  data->key = *(static_cast<uint32_t *>(lv_indev_get_user_data(drv)));
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  bool pressed = M5.BtnPWR.isPressed();
+  if (ui->handleDisplayInput(drv, data, pressed, true)) {
+    return;
+  }
+
   if (M5.BtnPWR.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
-  } else if (M5.BtnPWR.isPressed()) {
+  } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
   }
 }
 
 // read power button for M5StickC and M5StickCPlus
 void UI::buttonPEKRead(lv_indev_t *drv, lv_indev_data_t *data) {
-  data->key = *(static_cast<uint32_t *>(lv_indev_get_user_data(drv)));
-  if (Platform::getInstance().getPWRClickCount() > 0) {
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  bool pressed = Platform::getInstance().getPWRClickCount() > 0;
+  if (ui->handleDisplayInput(drv, data, pressed, false)) {
+    return;
+  }
+
+  if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
   } else {
     data->state = LV_INDEV_STATE_RELEASED;
@@ -488,34 +504,57 @@ void UI::buttonPEKRead(lv_indev_t *drv, lv_indev_data_t *data) {
 }
 
 void UI::buttonARead(lv_indev_t *drv, lv_indev_data_t *data) {
-  data->key = *(static_cast<uint32_t *>(lv_indev_get_user_data(drv)));
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  bool pressed = M5.BtnA.isPressed();
+  if (ui->handleDisplayInput(drv, data, pressed, true)) {
+    return;
+  }
+
   if (M5.BtnA.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
-  } else if (M5.BtnA.isPressed()) {
+  } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
   }
 }
 
 void UI::buttonBRead(lv_indev_t *drv, lv_indev_data_t *data) {
-  data->key = *(static_cast<uint32_t *>(lv_indev_get_user_data(drv)));
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  bool pressed = M5.BtnB.isPressed();
+  if (ui->handleDisplayInput(drv, data, pressed, true)) {
+    return;
+  }
+
   if (M5.BtnB.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
-  } else if (M5.BtnB.isPressed()) {
+  } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
   }
 }
 
 void UI::buttonCRead(lv_indev_t *drv, lv_indev_data_t *data) {
-  data->key = *(static_cast<uint32_t *>(lv_indev_get_user_data(drv)));
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  bool pressed = M5.BtnC.isPressed();
+  if (ui->handleDisplayInput(drv, data, pressed, true)) {
+    return;
+  }
+
   if (M5.BtnC.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
-  } else if (M5.BtnC.isPressed()) {
+  } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
   }
 }
 
 void UI::touchRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto count = M5.Touch.getCount();
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  if (ui->handleDisplayInput(drv, data, count > 0, true)) {
+    return;
+  }
+
   if (count == 0) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else {
@@ -524,6 +563,96 @@ void UI::touchRead(lv_indev_t *drv, lv_indev_data_t *data) {
     data->point.x = touch.x;
     data->point.y = touch.y;
   }
+}
+
+uint32_t UI::inputKey(lv_indev_t *drv) const {
+  if (drv == m_ButtonL) {
+    return m_KeyLeft;
+  }
+  if (drv == m_ButtonO) {
+    return m_KeyEnter;
+  }
+  if (drv == m_ButtonR) {
+    return m_KeyRight;
+  }
+  return 0;
+}
+
+bool UI::handleDisplayInput(lv_indev_t *drv,
+                            lv_indev_data_t *data,
+                            bool pressed,
+                            bool releaseExpected) {
+  if (m_SwallowInput == drv) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    if (!pressed || !releaseExpected) {
+      m_SwallowInput = nullptr;
+    }
+    return true;
+  }
+
+  if (!m_DisplayOff || !pressed || isBlindRemoteInput(drv)) {
+    return false;
+  }
+
+  wakeDisplay();
+  data->state = LV_INDEV_STATE_RELEASED;
+  if (releaseExpected) {
+    m_SwallowInput = drv;
+  }
+  return true;
+}
+
+bool UI::isBlindRemoteInput(lv_indev_t *drv) const {
+  return isBlindRemoteActive() && ((drv == m_ButtonO) || (drv == m_ButtonR));
+}
+
+bool UI::isBlindRemoteActive(void) const {
+  return (m_DisplayOffMode == 2) && !M5.Touch.isEnabled()
+         && (m_ControlMode == ControlMode::SHUTTER);
+}
+
+void UI::sleepDisplay(void) {
+  if (m_DisplayOff) {
+    return;
+  }
+
+  M5.Display.sleep();
+  m_DisplayOff = true;
+  m_DisplayState = DisplayState::OFF;
+  lv_timer_pause(m_IconTimer);
+
+  // The backlight PWM no longer needs a fixed APB clock while the panel sleeps.
+  Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
+}
+
+void UI::wakeDisplay(void) {
+  if (!m_DisplayOff) {
+    return;
+  }
+
+  // Acquire before wakeup because M5GFX restores the backlight during wakeup.
+  Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
+  M5.Display.wakeup();
+  m_DisplayOff = false;
+  m_DisplayState = DisplayState::ACTIVE;
+  lv_timer_resume(m_IconTimer);
+  lv_display_trigger_activity(m_Display);
+}
+
+size_t UI::inactivityIndex(uint8_t value) {
+  size_t closest = 0;
+  uint8_t distance = UINT8_MAX;
+
+  for (size_t index = 0; index < m_InactivityValues.size(); index++) {
+    uint8_t candidate = m_InactivityValues[index];
+    uint8_t current = (value > candidate) ? (value - candidate) : (candidate - value);
+    if (current < distance) {
+      distance = current;
+      closest = index;
+    }
+  }
+
+  return closest;
 }
 
 void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
@@ -545,17 +674,17 @@ void UI::initInputDevices(void) {
 
   m_ButtonL = lv_indev_create();
   lv_indev_set_type(m_ButtonL, LV_INDEV_TYPE_ENCODER);
-  lv_indev_set_user_data(m_ButtonL, const_cast<void *>(static_cast<const void *>(&m_KeyLeft)));
+  lv_indev_set_user_data(m_ButtonL, this);
   lv_indev_set_group(m_ButtonL, m_Group);
 
   m_ButtonO = lv_indev_create();
   lv_indev_set_type(m_ButtonO, LV_INDEV_TYPE_ENCODER);
-  lv_indev_set_user_data(m_ButtonO, const_cast<void *>(static_cast<const void *>(&m_KeyEnter)));
+  lv_indev_set_user_data(m_ButtonO, this);
   lv_indev_set_group(m_ButtonO, m_Group);
 
   m_ButtonR = lv_indev_create();
   lv_indev_set_type(m_ButtonR, LV_INDEV_TYPE_ENCODER);
-  lv_indev_set_user_data(m_ButtonR, const_cast<void *>(static_cast<const void *>(&m_KeyRight)));
+  lv_indev_set_user_data(m_ButtonR, this);
   lv_indev_set_group(m_ButtonR, m_Group);
 
   switch (M5.getBoard()) {
@@ -577,6 +706,7 @@ void UI::initInputDevices(void) {
     case m5::board_t::board_M5StackCore2:
       m_Touch = lv_indev_create();
       lv_indev_set_type(m_Touch, LV_INDEV_TYPE_POINTER);
+      lv_indev_set_user_data(m_Touch, this);
       lv_indev_set_read_cb(m_Touch, touchRead);
       __attribute__((fallthrough));
 
@@ -2587,19 +2717,59 @@ void UI::addDisplayMenu(const menu_t &parent) {
 
   lv_obj_t *roller = lv_roller_create(cont);
   lv_obj_set_width(roller, LV_PCT(90));
-  lv_roller_set_options(roller, "Never\n30 secs\n60 secs", LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_options(roller, "Never\n30 secs\n60 secs\n2 mins\n5 mins\n10 mins",
+                        LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
   uint8_t inactivity = Settings::load<Settings::INACTIVITY>();
-  lv_roller_set_selected(roller, inactivity, LV_ANIM_ON);
+  lv_roller_set_selected(roller, inactivityIndex(inactivity), LV_ANIM_ON);
 
   lv_obj_add_event_cb(
       roller,
       [](lv_event_t *e) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        auto inactivity = lv_roller_get_selected(roller);
+        size_t index = lv_roller_get_selected(roller);
+        if (index >= m_InactivityValues.size()) {
+          index = m_InactivityValues.size() - 1;
+        }
+        uint8_t inactivity = m_InactivityValues[index];
         Settings::save<Settings::INACTIVITY>(inactivity);
         ui->setInactivityTimeout(inactivity);
+      },
+      LV_EVENT_VALUE_CHANGED, this);
+
+  // Add screen off control
+  label = lv_label_create(cont);
+  lv_label_set_text(label, "Screen off");
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller,
+                        M5.Touch.isEnabled() ? m_DisplayOffTouchOptions : m_DisplayOffOptions,
+                        LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  uint8_t displayOff = m_DisplayOffMode;
+  if (displayOff > 2) {
+    displayOff = 0;
+  }
+  if (M5.Touch.isEnabled() && displayOff == 2) {
+    displayOff = 1;
+  }
+  lv_roller_set_selected(roller, displayOff, LV_ANIM_ON);
+
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        uint8_t displayOff = lv_roller_get_selected(roller);
+        if (M5.Touch.isEnabled() && displayOff > 1) {
+          displayOff = 1;
+        }
+        Settings::save<Settings::DISPLAY_OFF>(displayOff);
+        ui->m_DisplayOffMode = displayOff;
       },
       LV_EVENT_VALUE_CHANGED, this);
 
@@ -3230,26 +3400,48 @@ void UI::updateItems(const menu_t &menu) {
 }
 
 void UI::setInactivityTimeout(uint8_t timeout) {
-  m_InactivityTimeout = timeout * 30000;
+  m_InactivityTimeout = m_InactivityTimeouts[inactivityIndex(timeout)];
 }
 
 void UI::processInactivity(void) {
-  static bool inactive = false;
+  bool timedOut =
+      (m_InactivityTimeout > 0) && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
 
-  if (m_InactivityTimeout > 0) {
-    if (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout) {
-      if (!inactive) {
-        M5.Display.setBrightness(m_MinimumBrightness);
-        inactive = true;
+  if (!timedOut) {
+    if (m_DisplayState == DisplayState::DIM) {
+      auto brightness = Settings::load<Settings::BRIGHTNESS>();
+      M5.Display.setBrightness(brightness);
+      m_DisplayState = DisplayState::ACTIVE;
+    } else if (m_DisplayState == DisplayState::OFF && !isBlindRemoteActive()) {
+      wakeDisplay();
+    }
+    return;
+  }
+
+  switch (m_DisplayOffMode) {
+    case 0:
+      if (m_DisplayState == DisplayState::OFF) {
+        wakeDisplay();
       }
-    } else {
-      if (inactive) {
-        // restore brightness
+      if (m_DisplayState == DisplayState::ACTIVE) {
+        M5.Display.setBrightness(m_MinimumBrightness);
+        m_DisplayState = DisplayState::DIM;
+      }
+      break;
+    case 1:
+    case 2:
+      if (m_DisplayState == DisplayState::DIM) {
         auto brightness = Settings::load<Settings::BRIGHTNESS>();
         M5.Display.setBrightness(brightness);
-        inactive = false;
+        m_DisplayState = DisplayState::ACTIVE;
       }
-    }
+      if (m_DisplayState == DisplayState::ACTIVE) {
+        sleepDisplay();
+      }
+      break;
+    default:
+      m_DisplayOffMode = 0;
+      break;
   }
 }
 

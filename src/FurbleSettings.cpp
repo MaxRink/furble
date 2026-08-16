@@ -11,6 +11,7 @@ Preferences Settings::m_Prefs;
 const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Setting = {
     {BRIGHTNESS,        {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
     {INACTIVITY,        {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
+    {DISPLAY_OFF,       {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
     {THEME,             {THEME, 3, "Theme", "theme", "M5ez"}                                 },
     {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
@@ -246,6 +247,7 @@ void Settings::init(void) {
           save<uint8_t>(setting.type, 128);
           break;
         case INACTIVITY:
+        case DISPLAY_OFF:
           save<uint8_t>(setting.type, 0);
           break;
         case THEME:

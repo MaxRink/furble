@@ -291,6 +291,8 @@ class UI {
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";
+  static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on";
+  static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
@@ -312,6 +314,13 @@ class UI {
 
   /** Scan timeout roller values, in seconds, zero is no timeout. */
   static constexpr std::array<uint32_t, 4> m_ScanTimeout = {0, 30, 60, 120};
+
+  /** Inactivity values stored in NVS, indexed by the display roller. */
+  static constexpr std::array<uint8_t, 6> m_InactivityValues = {0, 1, 2, 4, 10, 20};
+
+  /** Inactivity timeout values in milliseconds, indexed by the display roller. */
+  static constexpr std::array<uint32_t, 6> m_InactivityTimeouts = {0,      30000,  60000,
+                                                                   120000, 300000, 600000};
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
@@ -406,6 +415,8 @@ class UI {
   lv_obj_t *m_ShutterLockIcon;
   ControlMode m_ControlMode = ControlMode::MENU;
 
+  enum class DisplayState { ACTIVE, DIM, OFF };
+
   lv_obj_t *m_IntervalStart = nullptr;
   Intervalometer m_Intervalometer;
 
@@ -419,6 +430,10 @@ class UI {
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
   uint32_t m_InactivityTimeout;
+  uint8_t m_DisplayOffMode = 0;
+  DisplayState m_DisplayState = DisplayState::ACTIVE;
+  bool m_DisplayOff = false;
+  lv_indev_t *m_SwallowInput = nullptr;
   uint32_t m_MainCount = 0;
 
   static menu_t m_MainMenu;
@@ -435,6 +450,30 @@ class UI {
   static void buttonBRead(lv_indev_t *drv, lv_indev_data_t *data);
   static void buttonCRead(lv_indev_t *drv, lv_indev_data_t *data);
   static void touchRead(lv_indev_t *drv, lv_indev_data_t *data);
+
+  /** Get the navigation key assigned to an input device. */
+  uint32_t inputKey(lv_indev_t *drv) const;
+
+  /** Wake the display and swallow the input which caused the wake. */
+  bool handleDisplayInput(lv_indev_t *drv,
+                          lv_indev_data_t *data,
+                          bool pressed,
+                          bool releaseExpected);
+
+  /** Check whether blind remote mode is active. */
+  bool isBlindRemoteActive(void) const;
+
+  /** Check whether an input is a blind remote shutter or focus button. */
+  bool isBlindRemoteInput(lv_indev_t *drv) const;
+
+  /** Put the panel to sleep and release the display APB lock. */
+  void sleepDisplay(void);
+
+  /** Reacquire the display APB lock and wake the panel. */
+  void wakeDisplay(void);
+
+  /** Map a stored inactivity value to its roller index. */
+  static size_t inactivityIndex(uint8_t value);
 
   /** Flush display. */
   static void displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);

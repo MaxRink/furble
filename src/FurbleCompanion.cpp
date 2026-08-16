@@ -658,6 +658,7 @@ Companion::setting_type_t Companion::settingType(Settings::type_t type) {
       return SETTING_BOOL;
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
+    case Settings::DISPLAY_OFF:
     case Settings::TX_POWER:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
@@ -702,6 +703,7 @@ bool Companion::settingValue(Settings::type_t type, std::vector<uint8_t> &value)
     }
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
+    case Settings::DISPLAY_OFF:
     case Settings::TX_POWER:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
