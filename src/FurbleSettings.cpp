@@ -25,6 +25,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {BATT_STYLE,        {BATT_STYLE, "Battery Style", "batt_style", FURBLE_STR}        },
     {SHOW_TITLE,        {SHOW_TITLE, "Show Title", "show_title", FURBLE_STR}           },
     {SLEEP_CONN,        {SLEEP_CONN, "Sleep while connected", "sleep_conn", FURBLE_STR}},
+    {BULB,              {BULB, "Bulb", "bulb", FURBLE_STR}                             },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -89,6 +90,23 @@ interval_t Settings::load<interval_t>(type_t type) {
   m_Prefs.end();
 
   return interval;
+}
+
+template <>
+SpinValue::nvs_t Settings::load<SpinValue::nvs_t>(type_t type) {
+  const auto &setting = get(type);
+  SpinValue::nvs_t nvs;
+
+  m_Prefs.begin(setting.nvs_namespace, true);
+  size_t len = m_Prefs.get(setting.key, &nvs, sizeof(SpinValue::nvs_t));
+  if (len != sizeof(SpinValue::nvs_t)) {
+    // default value
+    nvs = BULB_DEFAULT;
+  }
+
+  m_Prefs.end();
+
+  return nvs;
 }
 
 template <>
@@ -158,6 +176,14 @@ void Settings::save<interval_t>(const type_t type, const interval_t &value) {
 }
 
 template <>
+void Settings::save<SpinValue::nvs_t>(const type_t type, const SpinValue::nvs_t &value) {
+  const auto &setting = get(type);
+  m_Prefs.begin(setting.nvs_namespace, false);
+  m_Prefs.put(setting.key, &value, sizeof(value));
+  m_Prefs.end();
+}
+
+template <>
 void Settings::save<std::string>(const type_t type, const std::string &value) {
   saveValue<std::string>(type, value);
 }
@@ -216,6 +242,9 @@ void Settings::init(void) {
           };
           save<interval_t>(setting.type, interval);
         } break;
+        case BULB:
+          save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
+          break;
         case GPS:
         case MULTICONNECT:
         case RECONNECT:

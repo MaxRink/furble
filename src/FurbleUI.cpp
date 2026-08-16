@@ -55,6 +55,10 @@ lv_timer_t *UI::m_GPSDataTimer;
 lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
 
+lv_timer_t *UI::m_BulbTimer;
+lv_timer_t *UI::m_BulbPageRefresh;
+uint32_t UI::m_BulbEnd;
+
 UI::menu_t UI::m_MainMenu;
 
 std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
@@ -82,15 +86,19 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BulbRunStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BulbDurationStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
 };
 
 UI::UI(const interval_t &interval)
     : m_GPS {GPS::getInstance()},
       m_Intervalometer(interval),
+      m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
   lv_init();
   lv_tick_set_cb(tick);
@@ -948,6 +956,11 @@ void UI::addMainMenu(void) {
           lv_timer_pause(ui->m_DiagnosticsTimer);
         }
 
+        // a bulb exposure only runs on its own page, never strand a held shutter
+        if (page != m_Menu.at(m_BulbRunStr).page) {
+          ui->bulbStop();
+        }
+
         if (page == m_MainMenu.page) {
           size_t saveCount = CameraList::getSaveCount();
           ui->m_MainCount++;
@@ -1032,6 +1045,11 @@ void UI::addMainMenu(void) {
             // hide the back button
             lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
           }
+        } else if ((page == m_Menu.at(m_RemoteBulb).page)
+                   || (page == m_Menu.at(m_BulbRunStr).page)) {
+          // bulb is reachable from the connected page, always display 'Back'
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
         } else if (page == m_Menu.at(m_IntervalometerStr).page) {
           // always display 'Back' in intervalometer
           lv_obj_remove_state(back, LV_STATE_DISABLED);
@@ -1318,6 +1336,10 @@ void UI::doConnect(lv_event_t *e) {
 
 void UI::doDisconnect(void) {
   lv_timer_pause(m_ConnectTimer);
+
+  // release a held bulb exposure before the connection goes away
+  m_ConnectContext.ui->bulbStop();
+
   Scan::getInstance().stop();
   Control::getInstance().disconnect();
 
@@ -1334,7 +1356,9 @@ UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
 #if defined(FURBLE_M5COREX)
-  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  // three by two suits the landscape screens, the gap falls in the bottom middle
+  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
+                                 LV_GRID_TEMPLATE_LAST};
   static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
   lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
   lv_obj_center(menuConnected.page);
@@ -1342,6 +1366,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
 #endif
 
   menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
+  addBulbMenu(menuConnected);
   menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
   menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
   menu_t &disconnect = addMenu(m_RemoteDisconnect, &icon_no_photography, true, menuConnected);
@@ -1916,6 +1941,102 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   lv_timer_pause(m_IntervalPageRefresh);
 
   lv_menu_set_load_page_event(menuIntervalRun.main, m_IntervalStart, menuIntervalRun.page);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::bulbRefresh(void) {
+  uint32_t now = tick();
+  uint32_t remaining = m_BulbEnd > now ? m_BulbEnd - now : 0;
+  SpinValue::hms_t hms = SpinValue::toHMS(remaining);
+  lv_label_set_text_fmt(m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", hms.hours, hms.minutes,
+                        hms.seconds);
+}
+
+void UI::bulbStop(void) {
+  lv_timer_pause(m_BulbTimer);
+  lv_timer_pause(m_BulbPageRefresh);
+
+  // no-op if the shutter is not held
+  shutterUnlock(Control::getInstance());
+
+  m_BulbEnd = tick();
+  bulbRefresh();
+}
+
+void UI::addBulbMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_RemoteBulb, &icon_camera, true, parent);
+  menu_t &menuBulbRun = addMenu(m_BulbRunStr, NULL, false, menu);
+
+  addSpinnerPage(menu, m_BulbDurationStr, m_Bulb.m_Duration);
+
+  m_BulbStart = lv_button_create(menu.page);
+  lv_obj_t *startLabel = lv_label_create(m_BulbStart);
+  lv_label_set_text(startLabel, "Start");
+  lv_obj_center(startLabel);
+
+  lv_obj_add_event_cb(
+      m_BulbStart,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        uint32_t duration = ui->m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
+
+        // hold the shutter with the same lock the remote page uses
+        ui->shutterLock(Control::getInstance());
+
+        m_BulbEnd = tick() + duration;
+        lv_timer_set_period(m_BulbTimer, duration);
+        lv_timer_reset(m_BulbTimer);
+        lv_timer_resume(m_BulbTimer);
+
+        ui->bulbRefresh();
+        lv_timer_resume(m_BulbPageRefresh);
+      },
+      LV_EVENT_CLICKED, this);
+
+  lv_obj_t *cont = lv_menu_cont_create(menuBulbRun.page);
+  lv_obj_set_height(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  m_Bulb.m_RemainingLabel = lv_label_create(cont);
+
+  lv_obj_t *stop = lv_button_create(cont);
+  lv_obj_t *stopLabel = lv_label_create(stop);
+  lv_label_set_text(stopLabel, "Stop");
+  lv_obj_add_event_cb(
+      stop,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+
+        // release the shutter and exit
+        ui->bulbStop();
+        lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+        lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+      },
+      LV_EVENT_CLICKED, this);
+
+  // one shot exposure timer, the period is the exposure duration
+  m_BulbTimer = lv_timer_create(
+      [](lv_timer_t *timer) {
+        auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+        ui->bulbStop();
+      },
+      1000, this);
+  lv_timer_pause(m_BulbTimer);
+
+  m_BulbPageRefresh = lv_timer_create(
+      [](lv_timer_t *timer) {
+        auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+        ui->bulbRefresh();
+      },
+      333, this);
+  lv_timer_pause(m_BulbPageRefresh);
+
+  bulbRefresh();
+
+  lv_menu_set_load_page_event(menuBulbRun.main, m_BulbStart, menuBulbRun.page);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
