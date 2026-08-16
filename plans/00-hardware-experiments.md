@@ -178,3 +178,12 @@ experiment, observed log lines, conclusion. PR07 and PR15 cite this file.
   https://www.espruino.com/Bangle.js2+Technical
 - PlatformIO device monitor:
   https://docs.platformio.org/en/latest/core/userguide/device/cmd_monitor.html
+
+## Results
+
+| Date | Firmware | Board | Experiment | Observation | Conclusion |
+|---|---|---|---|---|---|
+| 2026-08-16 | master 2b79ce8 + CONFIG_BT_CTRL_MODEM_SLEEP=y, MODEM_SLEEP_MODE_1=y, LPCLK_SEL_EXT_32K_XTAL=y, LOG_DEFAULT_LEVEL_DEBUG | StickS3 SER 70:04:1D:DC:5B:24 | A | Boot log: "I (2611) BLE_INIT: Bluetooth will use main XTAL as Bluetooth sleep clock." despite EXT_32K_XTAL selection. RTC_SLOW_CLK calibration present, no 32 kHz XTAL detected. | No external 32.768 kHz crystal on M5StickS3. PR07 uses LPCLK_SEL_MAIN_XTAL plus MAIN_XTAL_PU_DURING_LIGHT_SLEEP. The 230 uA stretch mode is not possible. The 3.3 mA connected idle floor is final for this board. |
+
+Experiment B: pending. Requires the GPS unit attached to the Grove port and a
+temporary UART TX path.
