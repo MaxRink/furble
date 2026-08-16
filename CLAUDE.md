@@ -27,7 +27,6 @@ CLAUDE.md whose directory it touches.
   comments, commits, PRs, docs.
 - 2-space indent. Match existing naming. clang-format 21 is CI-enforced
   (see `.clang-format`).
-- Commit trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
 
 ## Testing
 
