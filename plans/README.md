@@ -69,6 +69,14 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [23-feedback-outputs.md](23-feedback-outputs.md) | Beep, LED, vibration feedback |
 | [24-sd-gpx-logging.md](24-sd-gpx-logging.md) | SD card GPX logging and settings backup |
 
+## Phase 6: usability and robustness
+
+| Doc | Content |
+|---|---|
+| [25-multiconnect-ui.md](25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
+| [26-pm1-watchdog.md](26-pm1-watchdog.md) | M5PM1 hardware watchdog, StickS3 lockup recovery |
+| [27-usb-console.md](27-usb-console.md) | USB serial command console for testing |
+
 ## Framework work
 
 | Doc | Content |
@@ -95,4 +103,6 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 03, 04, 08, 09, 11, 14, 22, 23, 24: independent
 30 (framework) feeds 02, 12, 17, 20
 Experiment A feeds 07. Experiment B feeds 15.
+25 conflicts with 03 (Connected page grid). 26 conflicts with 19 (deep sleep).
+27 needs 00b.
 ```
