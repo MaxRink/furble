@@ -15,9 +15,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -38,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,10 +53,10 @@ import com.furble.companion.ble.ConnectionState
 import com.furble.companion.permissions.PermissionSnapshot
 import com.furble.companion.protocol.FurbleProtocol
 
-private enum class CompanionScreen(val label: String) {
-    STATUS("Status"),
-    SETTINGS("Settings"),
-    TRIGGER("Trigger"),
+private enum class CompanionScreen(val label: String, val icon: ImageVector) {
+    STATUS("Status", Icons.Filled.Info),
+    SETTINGS("Settings", Icons.Filled.Settings),
+    TRIGGER("Trigger", Icons.Filled.PlayArrow),
 }
 
 @Composable
@@ -133,7 +139,7 @@ private fun CompanionShell(
                     NavigationBarItem(
                         selected = selectedScreen == screen,
                         onClick = { selectedScreen = screen },
-                        icon = { Text(screen.label.take(1)) },
+                        icon = { Icon(screen.icon, contentDescription = screen.label) },
                         label = { Text(screen.label) },
                     )
                 }

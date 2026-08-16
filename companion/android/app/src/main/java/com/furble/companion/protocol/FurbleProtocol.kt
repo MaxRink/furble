@@ -7,15 +7,20 @@ import java.util.UUID
 /** Wire contract copied from plans/50-companion-app-design.md. */
 object FurbleProtocol {
     const val PROTOCOL_VERSION = 1
+
+    // Wire sizes are fixed by the firmware structs in include/FurbleCompanion.h:
+    // the location packet is 42 bytes and the status packet is 20 bytes.
     const val LOCATION_PACKET_SIZE = 42
     const val STATUS_PACKET_SIZE = 20
     const val TRIGGER_PACKET_SIZE = 4
 
-    val SERVICE_UUID: UUID = UUID.fromString("00000001-6675-7262-6c65-e0d1c2b3a495")
-    val LOCATION_UUID: UUID = UUID.fromString("00000002-6675-7262-6c65-e0d1c2b3a495")
-    val STATUS_UUID: UUID = UUID.fromString("00000003-6675-7262-6c65-e0d1c2b3a495")
-    val SETTINGS_UUID: UUID = UUID.fromString("00000004-6675-7262-6c65-e0d1c2b3a495")
-    val TRIGGER_UUID: UUID = UUID.fromString("00000005-6675-7262-6c65-e0d1c2b3a495")
+    // The frozen firmware UUID base from include/FurbleCompanion.h. Only the
+    // first 32-bit field changes per characteristic.
+    val SERVICE_UUID: UUID = UUID.fromString("b57f4f5e-087b-4740-b71d-8262cf26ebbc")
+    val LOCATION_UUID: UUID = UUID.fromString("b57f4f5f-087b-4740-b71d-8262cf26ebbc")
+    val STATUS_UUID: UUID = UUID.fromString("b57f4f60-087b-4740-b71d-8262cf26ebbc")
+    val SETTINGS_UUID: UUID = UUID.fromString("b57f4f61-087b-4740-b71d-8262cf26ebbc")
+    val TRIGGER_UUID: UUID = UUID.fromString("b57f4f62-087b-4740-b71d-8262cf26ebbc")
 
     const val LOCATION_VALID: Int = 1 shl 0
     const val TIME_VALID: Int = 1 shl 1
