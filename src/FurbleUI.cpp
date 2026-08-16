@@ -69,6 +69,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
@@ -1949,6 +1950,61 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addPowerMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_height(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  // Add CPU maximum frequency control
+  lv_obj_t *label = lv_label_create(cont);
+  lv_label_set_text(label, "CPU speed");
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  const auto &frequencies = Platform::CPU_MAX_FREQ_MHZ;
+  std::string options;
+  for (const auto mhz : frequencies) {
+    if (!options.empty()) {
+      options += "\n";
+    }
+    options += std::to_string(mhz) + " MHz";
+  }
+
+  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+
+  // The roller index is not the frequency, map it explicitly
+  // getCPUMaxFreq() only ever returns a listed frequency, so the find succeeds
+  auto &platform = Platform::getInstance();
+  uint32_t index =
+      std::distance(frequencies.begin(),
+                    std::find(frequencies.begin(), frequencies.end(), platform.getCPUMaxFreq()));
+  lv_roller_set_selected(roller, index, LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        auto index = lv_roller_get_selected(roller);
+        if (index >= Platform::CPU_MAX_FREQ_MHZ.size()) {
+          return;
+        }
+
+        // Takes effect immediately, save what was actually applied
+        auto &platform = Platform::getInstance();
+        platform.setCPUMaxFreq(Platform::CPU_MAX_FREQ_MHZ[index]);
+        Settings::save<Settings::CPU_FREQ>(platform.getCPUMaxFreq());
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addThemeMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_ThemeStr, &icon_palette, true, parent);
 
@@ -2077,6 +2133,7 @@ void UI::addSettingsMenu(void) {
   addThemeMenu(menu);
   addTransmitPowerMenu(menu);
   addAboutMenu(menu);
+  addPowerMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }

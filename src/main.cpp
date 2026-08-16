@@ -26,6 +26,11 @@ void app_main() {
 
   Furble::Platform::init();
   Furble::Settings::init();
+
+  // Platform::init() runs before NVS exists, apply the stored frequency now
+  Furble::Platform::getInstance().setCPUMaxFreq(
+      Furble::Settings::load<Furble::Settings::CPU_FREQ>());
+
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
 
   auto &control = Furble::Control::getInstance();

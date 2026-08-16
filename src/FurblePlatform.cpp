@@ -1,9 +1,12 @@
+#include <algorithm>
+
 #include <esp_pm.h>
 
 #include <M5PM1.h>
 #include <M5Unified.h>
 
 #include "FurblePlatform.h"
+#include "FurbleTypes.h"
 
 namespace Furble {
 
@@ -62,13 +65,48 @@ uint8_t Platform::getPWRClickCount(void) {
   return count;
 }
 
-void Platform::setSleep(bool enable) {
+esp_err_t Platform::configurePM(uint8_t max_freq_mhz, bool sleep) {
   esp_pm_config_t pm_config = {
-      .max_freq_mhz = CPU_MAX_FREQ_MHZ,
+      .max_freq_mhz = max_freq_mhz,
       .min_freq_mhz = CPU_MIN_FREQ_MHZ,
-      .light_sleep_enable = enable,
+      .light_sleep_enable = sleep,
   };
-  ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+  return esp_pm_configure(&pm_config);
+}
+
+bool Platform::isCPUMaxFreqValid(uint8_t mhz) {
+  return std::find(CPU_MAX_FREQ_MHZ.begin(), CPU_MAX_FREQ_MHZ.end(), mhz) != CPU_MAX_FREQ_MHZ.end();
+}
+
+void Platform::setSleep(bool enable) {
+  m_Sleep = enable;
+  ESP_ERROR_CHECK(configurePM(m_CPUMaxFreqMHz, enable));
+}
+
+void Platform::setCPUMaxFreq(uint8_t mhz) {
+  uint8_t freq = mhz;
+
+  // NVS may hold anything, never hand an unvetted value to esp_pm_configure()
+  if (!isCPUMaxFreqValid(freq)) {
+    ESP_LOGW(LOG_TAG, "Unsupported CPU maximum frequency %dMHz, using %dMHz.", freq,
+             CPU_MAX_FREQ_DEFAULT_MHZ);
+    freq = CPU_MAX_FREQ_DEFAULT_MHZ;
+  }
+
+  // The board may still refuse the frequency, fall back rather than abort
+  esp_err_t err = configurePM(freq, m_Sleep);
+  if (err != ESP_OK) {
+    ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s), using %dMHz.", freq,
+             esp_err_to_name(err), CPU_MAX_FREQ_DEFAULT_MHZ);
+    freq = CPU_MAX_FREQ_DEFAULT_MHZ;
+    ESP_ERROR_CHECK(configurePM(freq, m_Sleep));
+  }
+
+  m_CPUMaxFreqMHz = freq;
+}
+
+uint8_t Platform::getCPUMaxFreq(void) const {
+  return m_CPUMaxFreqMHz;
 }
 
 void Platform::powerOff(void) {
