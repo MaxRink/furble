@@ -3,7 +3,6 @@ package com.furble.companion.ble
 import android.companion.AssociationInfo
 import android.companion.CompanionDeviceService
 import android.companion.DevicePresenceEvent
-import android.os.Build
 import androidx.annotation.RequiresApi
 import com.furble.companion.FurbleApplication
 
@@ -35,7 +34,7 @@ class CompanionPresenceService : CompanionDeviceService() {
         repository.onDeviceDisappeared(associationInfo.deviceMacAddress?.toString())
     }
 
-    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    @RequiresApi(36)
     override fun onDevicePresenceEvent(event: DevicePresenceEvent) {
         when (event.event) {
             DevicePresenceEvent.EVENT_BLE_APPEARED,
@@ -44,7 +43,7 @@ class CompanionPresenceService : CompanionDeviceService() {
 
             DevicePresenceEvent.EVENT_BLE_DISAPPEARED,
             DevicePresenceEvent.EVENT_BT_DISCONNECTED,
-            DevicePresenceEvent.EVENT_ASSOCIATION_REMOVED,
+            6, // EVENT_ASSOCIATION_REMOVED is added in Android 16.1.
             -> repository.onDeviceDisappeared(null)
         }
     }
