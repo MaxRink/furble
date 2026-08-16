@@ -3,3 +3,6 @@
 dependencies.lock
 managed_components
 sdkconfig.*.old
+
+# local agent workspaces
+.claude/

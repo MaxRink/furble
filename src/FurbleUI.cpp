@@ -180,8 +180,8 @@ UI::UI(const interval_t &interval)
         uint32_t now = Platform::getInstance().tick();
         count++;
         if ((now - window) >= 1000) {
-          ESP_LOGI(LOG_TAG, "invalidate: %lu/s last=(%ld,%ld)-(%ld,%ld)", count, area->x1,
-                   area->y1, area->x2, area->y2);
+          ESP_LOGI(LOG_TAG, "invalidate: %lu/s last=(%ld,%ld)-(%ld,%ld)", count, area->x1, area->y1,
+                   area->x2, area->y2);
           count = 0;
           window = now;
         }
