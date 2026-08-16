@@ -3,6 +3,7 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
@@ -34,6 +35,9 @@ void app_main() {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");
     abort();
   }
+
+  // Developer only, compiled out unless FURBLE_CONSOLE is defined
+  Furble::Console::init();
 
   // Run UI in host task (here)
   vUITask(NULL);

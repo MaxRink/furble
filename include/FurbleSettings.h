@@ -66,6 +66,9 @@ class Settings {
 
   static const setting_t &get(type_t);
 
+  /** Retrieve every setting, keyed by type. */
+  static const std::unordered_map<type_t, setting_t> &getAll(void) { return m_Setting; }
+
   /** Bind each setting to its storage type for type-safe load/save. */
   template <type_t S>
   struct storage_type;

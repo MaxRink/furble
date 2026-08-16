@@ -23,6 +23,28 @@ class UI {
    */
   enum class ControlMode { MENU, SHUTTER, SLIDER, REVERT };
 
+#if defined(FURBLE_CONSOLE)
+  /** Operations the console asks the UI task to carry out on its behalf. */
+  enum class Request {
+    CONNECT,    /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT, /**< arg: unused */
+    SCAN,       /**< arg: non-zero to start, zero to stop */
+    CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD, /**< arg: unused */
+    GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
+  };
+
+  /**
+   * Queue a request for the UI task.
+   *
+   * LVGL is not thread safe, so anything touching it has to run on the UI task.
+   * Safe to call from any task.
+   *
+   * @return true if the request was queued.
+   */
+  static bool sendRequest(Request request, int32_t arg);
+#endif
+
   UI(const interval_t &interval);
 
   void task(void);
@@ -137,6 +159,20 @@ class UI {
   } ConnectContext_t;
 
   static std::mutex m_Mutex;
+
+#if defined(FURBLE_CONSOLE)
+  typedef struct {
+    Request request;
+    int32_t arg;
+  } request_t;
+
+  static constexpr UBaseType_t m_RequestQueueLength = 8;
+
+  static QueueHandle_t m_RequestQueue;
+
+  /** Drain the console request queue, called with m_Mutex held. */
+  static void serviceRequests(void);
+#endif
 
   static ConnectContext_t m_ConnectContext;
 
