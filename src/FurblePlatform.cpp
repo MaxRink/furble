@@ -1,11 +1,10 @@
 #include <algorithm>
 
-#include <esp_pm.h>
-
 #include <M5PM1.h>
 #include <M5Unified.h>
 
 #include "FurblePlatform.h"
+#include "FurblePower.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
@@ -14,7 +13,8 @@ Platform &Platform::getInstance(void) {
   static Platform instance;
 
   if (!instance.m_Init) {
-    instance.setSleep(true);
+    Power::init();
+    instance.setCPUMaxFreq(CPU_MAX_FREQ_DEFAULT_MHZ);
 
     auto cfg = M5.config();
     cfg.clear_display = true;
@@ -65,22 +65,8 @@ uint8_t Platform::getPWRClickCount(void) {
   return count;
 }
 
-esp_err_t Platform::configurePM(uint8_t max_freq_mhz, bool sleep) {
-  esp_pm_config_t pm_config = {
-      .max_freq_mhz = max_freq_mhz,
-      .min_freq_mhz = CPU_MIN_FREQ_MHZ,
-      .light_sleep_enable = sleep,
-  };
-  return esp_pm_configure(&pm_config);
-}
-
 bool Platform::isCPUMaxFreqValid(uint8_t mhz) {
   return std::find(CPU_MAX_FREQ_MHZ.begin(), CPU_MAX_FREQ_MHZ.end(), mhz) != CPU_MAX_FREQ_MHZ.end();
-}
-
-void Platform::setSleep(bool enable) {
-  m_Sleep = enable;
-  ESP_ERROR_CHECK(configurePM(m_CPUMaxFreqMHz, enable));
 }
 
 void Platform::setCPUMaxFreq(uint8_t mhz) {
@@ -94,12 +80,13 @@ void Platform::setCPUMaxFreq(uint8_t mhz) {
   }
 
   // The board may still refuse the frequency, fall back rather than abort
-  esp_err_t err = configurePM(freq, m_Sleep);
+  auto &power = Power::getInstance();
+  esp_err_t err = power.configure(freq);
   if (err != ESP_OK) {
     ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s), using %dMHz.", freq,
              esp_err_to_name(err), CPU_MAX_FREQ_DEFAULT_MHZ);
     freq = CPU_MAX_FREQ_DEFAULT_MHZ;
-    ESP_ERROR_CHECK(configurePM(freq, m_Sleep));
+    ESP_ERROR_CHECK(power.configure(freq));
   }
 
   m_CPUMaxFreqMHz = freq;

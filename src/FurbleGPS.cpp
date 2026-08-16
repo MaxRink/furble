@@ -6,7 +6,7 @@
 
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
-#include "FurblePlatform.h"
+#include "FurblePower.h"
 #include "FurbleSettings.h"
 
 void gps_task(void *param) {
@@ -119,7 +119,9 @@ void GPS::enable(void) {
 
 #if defined(FURBLE_M5STICKS3)
   // ESP32S3 UART does not function with light sleep
-  Platform::getInstance().setSleep(false);
+  if (!m_PowerLock.has_value()) {
+    m_PowerLock.emplace(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
+  }
 #endif
 }
 
@@ -128,7 +130,7 @@ void GPS::disable(void) {
   M5.Power.setExtOutput(false, m5::ext_PA);
 
 #if defined(FURBLE_M5STICKS3)
-  Platform::getInstance().setSleep(true);
+  m_PowerLock.reset();
 #endif
 }
 
