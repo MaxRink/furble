@@ -57,10 +57,20 @@ class Settings {
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
+#if !defined(FURBLE_NO_DISPLAY)
+    DISPLAY_MODE,
+#endif
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
   } type_t;
+
+#if !defined(FURBLE_NO_DISPLAY)
+  typedef enum {
+    GUI = 0,
+    CONSOLE = 1,
+  } display_mode_t;
+#endif
 
   typedef struct {
     union {
@@ -354,6 +364,12 @@ template <>
 struct Settings::storage_type<Settings::BOOT_SPLASH> {
   using type = bool;
 };
+#if !defined(FURBLE_NO_DISPLAY)
+template <>
+struct Settings::storage_type<Settings::DISPLAY_MODE> {
+  using type = uint8_t;
+};
+#endif
 #if defined(FURBLE_M5STICKS3)
 template <>
 struct Settings::storage_type<Settings::WATCHDOG> {

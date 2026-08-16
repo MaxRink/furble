@@ -52,6 +52,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
     {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
     {BOOT_SPLASH,       {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
+#if !defined(FURBLE_NO_DISPLAY)
+    {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
+#endif
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -476,6 +479,11 @@ void Settings::init(void) {
         case FB_VOLUME:
           save<uint8_t>(setting.type, 64);
           break;
+#if !defined(FURBLE_NO_DISPLAY)
+        case DISPLAY_MODE:
+          save<uint8_t>(setting.type, static_cast<uint8_t>(GUI));
+          break;
+#endif
         case TOUCH_CALIBRATION:
         {
           calibration_t calibration = {
