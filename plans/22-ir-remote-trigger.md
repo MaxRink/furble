@@ -25,6 +25,47 @@ Out of scope:
   can be added later without touching the driver.
 - Chaining IR into the intervalometer. Doable later once the trigger is proven.
 
+## Implementation status
+
+Implemented:
+
+- Added the `FurbleIR` RMT transmit module with lazy channel allocation, a
+  queued worker task, carrier control, and runtime board pin selection for the
+  documented M5Stick boards.
+- Added Nikon ML-L3, Sony 20 bit SIRC, and Canon RC-1/Canon RC-6 handset
+  encoders using the timings in this plan.
+- Added persisted `IR` and `IR_PROTO` settings, with infrared disabled by
+  default.
+
+Rebase notes:
+
+- `IR` is assigned wire_id 31 and `IR_PROTO` wire_id 32, continuing after
+  `PRESET_PICKER` (30) from PR 33.
+- Console settingType, printValue and setValue cover `IR` as bool and
+  `IR_PROTO` as generic uint8 (`IR::fire()` clamps out-of-range protocol
+  values). Both are marked appliesImmediately because `IR::fire()` loads
+  both settings on every trigger.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `IR` as
+  SETTING_BOOL and `IR_PROTO` as SETTING_U8.
+- Added the standalone main-menu IR Fire page, the Connected-menu IR entry,
+  and the Settings->Infrared submenu. Entries are hidden at runtime when IR is
+  disabled or when the detected board has no emitter pin.
+
+Deferred:
+
+- IR receive, decoding, and learning mode remain out of scope.
+- Pentax, Olympus, and Panasonic protocols remain unimplemented.
+- Intervalometer integration and camera-specific feedback remain deferred.
+
+Open questions:
+
+- Hardware verification is pending. Waveform correctness needs checking via a
+  phone camera against the IR LED output.
+- The author only has a Fujifilm camera body with no IR receiver, so end-to-end
+  protocol validation against real camera hardware needs community help.
+- The M5StickC Plus SE emitter pin is still unverified and needs an on-device
+  probe before it can be treated as supported.
+
 ## Hardware support matrix
 
 Verified against the M5Stack product pages listed in References.

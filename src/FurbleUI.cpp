@@ -22,6 +22,7 @@
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
@@ -83,6 +84,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_DeleteStr,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_SettingsStr,          {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -100,6 +102,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IntervalShutterStr,   {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IRSettingsStr,        {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
@@ -1075,6 +1078,16 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
       },
       LV_EVENT_VALUE_CHANGED, const_cast<Settings::setting_t *>(&s));
 
+  if (setting == Settings::IR) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->updateIRMenuVisibility();
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+  }
+
   if (setting == Settings::GPS) {
     lv_obj_add_event_cb(
         sw,
@@ -1249,6 +1262,7 @@ void UI::addMainMenu(void) {
   addConnectMenu();
   addScanMenu();
   addDeleteMenu();
+  addIRMenu();
   addSettingsMenu();
   addConnectedMenu();
 
@@ -1819,6 +1833,9 @@ UI::menu_t &UI::addConnectedMenu(void) {
 #endif
 
   menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
+  menu_t &menuIR = m_Menu.at(m_IRStr);
+  m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 1, 1);
+  lv_menu_set_load_page_event(menuIR.main, m_IRConnectedButton, menuIR.page);
   addBulbMenu(menuConnected);
   menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
   menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
@@ -1974,6 +1991,8 @@ UI::menu_t &UI::addConnectedMenu(void) {
       LV_EVENT_CLICKED, this);
 
   lv_menu_set_load_page_event(menuShutter.main, menuShutter.button, menuShutter.page);
+
+  updateIRMenuVisibility();
 
   return menuConnected;
 }
@@ -2442,6 +2461,31 @@ void UI::addFeaturesMenu(const menu_t &parent) {
 #endif
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addIRMenu(void) {
+  menu_t &menu = addMenu(m_IRStr, &icon_remote_gen);
+  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(menu.page, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *fire = lv_button_create(menu.page);
+  lv_obj_set_width(fire, LV_PCT(80));
+  lv_obj_t *label = lv_label_create(fire);
+  lv_label_set_text(label, "Fire");
+  lv_obj_center(label);
+  lv_group_add_obj(menu.group, fire);
+
+  lv_obj_add_event_cb(
+      fire,
+      [](lv_event_t *e) {
+        (void)e;
+        IR::getInstance().fire();
+      },
+      LV_EVENT_CLICKED, NULL);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  updateIRMenuVisibility();
 }
 
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
@@ -3378,6 +3422,61 @@ static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *opt
   return roller;
 }
 
+void UI::addIRSettingsMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_IRSettingsStr, &icon_settings_remote, true, parent);
+
+  addSettingItem(menu.page, NULL, Settings::IR);
+
+  lv_obj_t *protocol = addRollerItem(menu.page, m_IRProtoStr, m_IRProtoOptions);
+  uint8_t selected = Settings::load<Settings::IR_PROTO>();
+  if (selected > static_cast<uint8_t>(IR::protocol_t::CANON_DELAYED)) {
+    selected = static_cast<uint8_t>(IR::protocol_t::NIKON);
+  }
+  lv_roller_set_selected(protocol, selected, LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(
+      protocol,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        Settings::save<Settings::IR_PROTO>(lv_roller_get_selected(roller));
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  updateIRMenuVisibility();
+}
+
+void UI::updateIRMenuVisibility(void) {
+  const bool supported = IR::getInstance().isSupported();
+  const bool enabled = supported && Settings::load<Settings::IR>();
+
+  auto &ir = m_Menu.at(m_IRStr);
+  if (ir.button != nullptr) {
+    if (enabled) {
+      lv_obj_clear_flag(ir.button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(ir.button, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  if (m_IRConnectedButton != nullptr) {
+    if (enabled) {
+      lv_obj_clear_flag(m_IRConnectedButton, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(m_IRConnectedButton, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  auto &settings = m_Menu.at(m_IRSettingsStr);
+  if (settings.button != nullptr) {
+    if (supported) {
+      lv_obj_clear_flag(settings.button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(settings.button, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
 void UI::addBluetoothMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_BluetoothStr, &icon_settings_remote, true, parent);
 
@@ -3558,6 +3657,7 @@ void UI::addSettingsMenu(void) {
 
   addDisplayMenu(menu);
   addFeaturesMenu(menu);
+  addIRSettingsMenu(menu);
   addGPSMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);

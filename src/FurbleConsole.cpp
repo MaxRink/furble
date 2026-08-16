@@ -171,6 +171,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
       return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -180,6 +181,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
     case Settings::CONN_SAVER:
+    case Settings::IR:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -210,6 +212,7 @@ const char *settingType(Settings::type_t type) {
 const char *appliesWhen(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
+    case Settings::IR:
     case Settings::GPS_BAUD:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
@@ -225,6 +228,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
       return "immediately";
@@ -251,6 +255,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPS_BAUD:
@@ -262,6 +267,7 @@ void printValue(const char *prefix, Settings::type_t type) {
       break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
+    case Settings::IR:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -295,6 +301,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
+    case Settings::IR_PROTO:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
@@ -349,6 +356,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::GPS:
     case Settings::CONN_SAVER:
+    case Settings::IR:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:

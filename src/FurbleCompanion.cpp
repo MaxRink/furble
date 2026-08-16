@@ -643,6 +643,7 @@ void Companion::handleLocation(const NimBLEAttValue &value) {
 Companion::setting_type_t Companion::settingType(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
+    case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
@@ -666,6 +667,7 @@ Companion::setting_type_t Companion::settingType(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
@@ -687,6 +689,7 @@ Companion::setting_type_t Companion::settingType(Settings::type_t type) {
 bool Companion::settingValue(Settings::type_t type, std::vector<uint8_t> &value) {
   switch (type) {
     case Settings::GPS:
+    case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
@@ -715,6 +718,7 @@ bool Companion::settingValue(Settings::type_t type, std::vector<uint8_t> &value)
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:

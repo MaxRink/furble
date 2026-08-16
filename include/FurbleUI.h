@@ -275,6 +275,7 @@ class UI {
   static constexpr const char *m_ConnectStr = "Connect";
   static constexpr const char *m_ScanStr = "Scan";
   static constexpr const char *m_DeleteStr = "Delete";
+  static constexpr const char *m_IRStr = "IR";
   static constexpr const char *m_SettingsStr = "Settings";
   static constexpr const char *m_PowerOffStr = "Off";
 
@@ -300,6 +301,7 @@ class UI {
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
+  static constexpr const char *m_IRSettingsStr = "Infrared";
   static constexpr const char *m_BluetoothStr = "Bluetooth";
   static constexpr const char *m_AboutStr = "About";
   static constexpr const char *m_PowerStr = "Power";
@@ -315,6 +317,10 @@ class UI {
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
+
+  // settings->infrared
+  static constexpr const char *m_IRProtoStr = "IR Protocol";
+  static constexpr const char *m_IRProtoOptions = "Nikon\nSony\nCanon\nCanon 2s";
 
   /** Scan timeout roller values, in seconds, zero is no timeout. */
   static constexpr std::array<uint32_t, 4> m_ScanTimeout = {0, 30, 60, 120};
@@ -420,6 +426,7 @@ class UI {
   lv_obj_t *m_OK;
   lv_obj_t *m_Right;
   lv_obj_t *m_ShutterLockIcon;
+  lv_obj_t *m_IRConnectedButton = nullptr;
   ControlMode m_ControlMode = ControlMode::MENU;
 
   enum class DisplayState { ACTIVE, DIM, OFF };
@@ -544,6 +551,9 @@ class UI {
   /** Add the 'Delete' menu entry. */
   void addDeleteMenu(void);
 
+  /** Add the standalone infrared trigger page. */
+  void addIRMenu(void);
+
   /** Add the 'GPS' menu entry. */
   void addGPSMenu(const menu_t &parent);
 
@@ -610,6 +620,12 @@ class UI {
 
   /** Add the 'Bluetooth' menu entry. */
   void addBluetoothMenu(const menu_t &parent);
+
+  /** Add the infrared settings page. */
+  void addIRSettingsMenu(const menu_t &parent);
+
+  /** Update the visibility of infrared menu entries after a setting change. */
+  void updateIRMenuVisibility(void);
 
   void addAboutMenu(const menu_t &parent);
 
