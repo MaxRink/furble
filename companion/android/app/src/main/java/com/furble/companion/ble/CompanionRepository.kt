@@ -4,7 +4,7 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
-import android.bluetooth.le.BluetoothLeDeviceFilter
+import android.companion.BluetoothLeDeviceFilter
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.companion.AssociationInfo
@@ -158,7 +158,7 @@ class CompanionRepository(context: Context) {
                 )
                 .build()
             val nameFilter = BluetoothLeDeviceFilter.Builder()
-                .setDeviceNamePattern(Pattern.compile("^furble-", Pattern.CASE_INSENSITIVE))
+                .setNamePattern(Pattern.compile("^furble-", Pattern.CASE_INSENSITIVE))
                 .build()
             val request = AssociationRequest.Builder()
                 .addDeviceFilter(serviceFilter)

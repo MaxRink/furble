@@ -221,7 +221,7 @@ object FurbleProtocol {
             intervalometerState = buffer.get().u8(),
             intervalometerRemaining = buffer.short.toInt() and 0xFFFF,
             uptimeSeconds = buffer.int.toLong() and UINT32_MAX,
-        }
+        )
         // The named packed status fields sum to 19 bytes while the design
         // declares companion_status_t as 20 bytes.
         if (buffer.hasRemaining()) buffer.get()
