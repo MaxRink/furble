@@ -95,6 +95,7 @@ class GPS {
   uart_port_t m_UART = UART_NUM_2;
 
   lv_obj_t *m_Icon = NULL;
+  const lv_image_dsc_t *m_IconSymbol = NULL;
   lv_timer_t *m_Timer = NULL;
 
   TaskHandle_t m_Task = NULL;
