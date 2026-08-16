@@ -92,6 +92,8 @@ void Platform::setCPUMaxFreq(uint8_t mhz) {
   }
 
   m_CPUMaxFreqMHz = freq;
+
+  ESP_LOGI(LOG_TAG, "CPU maximum frequency %dMHz.", m_CPUMaxFreqMHz);
 }
 
 uint8_t Platform::getCPUMaxFreq(void) const {
