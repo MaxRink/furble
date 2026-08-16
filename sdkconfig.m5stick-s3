@@ -2441,6 +2441,12 @@ CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # end of Wi-Fi Provisioning Manager
 
 #
+# Furble
+#
+# CONFIG_FURBLE_NO_DISPLAY is not set
+# end of Furble
+
+#
 # ESP-NimBLE-CPP configuration
 #
 # CONFIG_NIMBLE_CPP_LOG_LEVEL_NONE is not set

@@ -12,7 +12,12 @@
 
 #include <driver/uart.h>
 
+#if defined(FURBLE_NO_DISPLAY)
+struct _lv_obj_t;
+using lv_obj_t = _lv_obj_t;
+#else
 #include <lvgl.h>
+#endif
 
 #include <Camera.h>
 #include <TinyGPS++.h>
@@ -269,9 +274,11 @@ class GPS {
 
   uart_port_t m_UART = UART_NUM_2;
 
+#if !defined(FURBLE_NO_DISPLAY)
   lv_obj_t *m_Icon = NULL;
   const lv_image_dsc_t *m_IconSymbol = NULL;
   lv_timer_t *m_Timer = NULL;
+#endif
 
   TaskHandle_t m_Task = NULL;
   QueueHandle_t m_Queue = NULL;
