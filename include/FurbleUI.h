@@ -67,6 +67,7 @@ class UI {
 
   typedef struct {
     GPS *gps;
+    lv_obj_t *title;
     lv_obj_t *gpsIcon;
     lv_obj_t *batteryIcon;
     lv_obj_t *batteryLabel;
@@ -80,9 +81,12 @@ class UI {
     lv_obj_t *batteryCharging;
     lv_obj_t *batteryRuntime;
     bool screenLocked;
-    // last battery sample and its smoothed current
+    // last battery sample, its smoothed values and the displayed percent
     Platform::battery_t battery;
+    float meanLevel;
+    float meanVoltage;
     float meanCurrent;
+    uint8_t displayLevel;
   } status_t;
 
   class Intervalometer {
@@ -360,6 +364,9 @@ class UI {
 
   /** Show the header battery icon and/or percent according to the setting. */
   void setBatteryStyle(uint8_t style);
+
+  /** Show or hide the window title. */
+  void setShowTitle(bool show);
 
   /** Battery sample timer handler. */
   static void batteryUpdate(lv_timer_t *timer);

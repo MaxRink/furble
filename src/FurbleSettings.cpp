@@ -23,6 +23,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {AUTOCONNECT,       {AUTOCONNECT, "Auto-Connect", "autoconnect", FURBLE_STR}       },
     {CPU_FREQ,          {CPU_FREQ, "CPU Speed", "cpu_freq", FURBLE_STR}                },
     {BATT_STYLE,        {BATT_STYLE, "Battery Style", "batt_style", FURBLE_STR}        },
+    {SHOW_TITLE,        {SHOW_TITLE, "Show Title", "show_title", FURBLE_STR}           },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -200,6 +201,9 @@ void Settings::init(void) {
           break;
         case BATT_STYLE:
           save<uint8_t>(setting.type, BATT_STYLE_ICON);
+          break;
+        case SHOW_TITLE:
+          save<bool>(setting.type, true);
           break;
         case INTERVAL:
         {

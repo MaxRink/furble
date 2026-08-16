@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <tuple>
 
@@ -138,7 +139,7 @@ UI::UI(const interval_t &interval)
   m_Root = lv_win_create(m_Screen);
   lv_obj_update_layout(m_Root);
 
-  lv_win_add_title(m_Root, m_Title);
+  m_Status.title = lv_win_add_title(m_Root, m_Title);
   m_Header = lv_win_get_header(m_Root);
 
   m_GPS.init();
@@ -156,9 +157,13 @@ UI::UI(const interval_t &interval)
 
   // prime the battery cache before anything renders it
   m_Status.battery = Platform::getInstance().readBattery();
+  m_Status.meanLevel = m_Status.battery.level;
+  m_Status.meanVoltage = m_Status.battery.voltage;
   m_Status.meanCurrent = m_Status.battery.current;
-  lv_label_set_text_fmt(m_Status.batteryLabel, "%u%%", m_Status.battery.level);
+  m_Status.displayLevel = m_Status.battery.level;
+  lv_label_set_text_fmt(m_Status.batteryLabel, "%u%%", m_Status.displayLevel);
   setBatteryStyle(Settings::load<Settings::BATT_STYLE>());
+  setShowTitle(Settings::load<Settings::SHOW_TITLE>());
 
   m_GPS.setIcon(m_Status.gpsIcon);
 
@@ -171,7 +176,7 @@ UI::UI(const interval_t &interval)
         status_t *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
 
         const lv_image_dsc_t *symbol = NULL;
-        uint8_t level = status->battery.level;
+        uint8_t level = status->displayLevel;
         if (level >= 95) {
           symbol = &icon_battery_android_frame_full;
         } else if (level >= 66) {
@@ -755,6 +760,17 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
           }
         },
         LV_EVENT_VALUE_CHANGED, &m_Status);
+  }
+
+  if (setting == Settings::SHOW_TITLE) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          ui->setShowTitle(lv_obj_has_state(sw, LV_STATE_CHECKED));
+        },
+        LV_EVENT_VALUE_CHANGED, this);
   }
 
   if (setting == Settings::RECONNECT) {
@@ -1959,6 +1975,9 @@ void UI::addDisplayMenu(const menu_t &parent) {
         LV_EVENT_CLICKED, &m_CalibrationUI);
   }
 
+  // Add title visibility control
+  addSettingItem(cont, NULL, Settings::SHOW_TITLE);
+
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
@@ -1976,6 +1995,15 @@ void UI::setBatteryStyle(uint8_t style) {
   }
 }
 
+void UI::setShowTitle(bool show) {
+  if (show) {
+    lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    // the sticks have little header width, the icons take the space instead
+    lv_obj_add_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 void UI::batteryUpdate(lv_timer_t *timer) {
   auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
   auto &platform = Platform::getInstance();
@@ -1983,19 +2011,28 @@ void UI::batteryUpdate(lv_timer_t *timer) {
 
   status->battery = platform.readBattery();
 
+  // the raw readings jitter by a few percent, smooth everything that is
+  // displayed with an exponentially weighted moving average
+  status->meanLevel += (status->battery.level - status->meanLevel) / 4.0f;
+  status->displayLevel = lroundf(status->meanLevel);
+
+  if (caps.voltage) {
+    status->meanVoltage += (status->battery.voltage - status->meanVoltage) / 4.0f;
+  }
+
   if (caps.current) {
-    // exponentially weighted moving average with alpha = 1/12, at the 5s
-    // sample period that is a time constant of about a minute
+    // a slower average, a runtime estimate from a twitchy current is useless,
+    // at the 5s sample period this is a time constant of about a minute
     status->meanCurrent += (status->battery.current - status->meanCurrent) / 12.0f;
   }
 
   if (status->batteryLevel != nullptr) {
-    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->battery.level);
+    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
   }
 
   if (status->batteryVoltage != nullptr) {
-    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %u.%03u", status->battery.voltage / 1000,
-                          status->battery.voltage % 1000);
+    uint32_t mv = lroundf(status->meanVoltage);
+    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
   }
 
   if (status->batteryCurrent != nullptr) {
@@ -2012,7 +2049,7 @@ void UI::batteryUpdate(lv_timer_t *timer) {
       lv_label_set_text(status->batteryRuntime, "Runtime: charging");
     } else if (status->meanCurrent < -1.0f) {
       // remaining capacity in mAh divided by the average discharge current
-      float remaining = platform.getBatteryCapacity() * (status->battery.level / 100.0f);
+      float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
       uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
       lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
                             minutes % 60);
