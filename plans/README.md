@@ -76,12 +76,21 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [25-multiconnect-ui.md](25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
 | [26-pm1-watchdog.md](26-pm1-watchdog.md) | M5PM1 hardware watchdog, StickS3 lockup recovery |
 | [27-usb-console.md](27-usb-console.md) | USB serial command console for testing |
+| [28-emulator.md](28-emulator.md) | Host SDL simulator for the furble UI |
+| [29-virtual-test-rig.md](29-virtual-test-rig.md) | Sim to Android app test rig over TCP, no radio |
+| [31-s3-psram.md](31-s3-psram.md) | Enable PSRAM on the M5StickS3 |
+| [32-gps-advanced.md](32-gps-advanced.md) | Advanced GPS support for the GPS/BDS Unit v1.1 |
+| [33-wifi-hub.md](33-wifi-hub.md) | WiFi hub: displayless build, provisioning, MQTT |
+| [34-ota-partitions.md](34-ota-partitions.md) | OTA updates and the partition scheme change |
+| [35-exposure-presets.md](35-exposure-presets.md) | Exposure time presets in 1/3 stops |
 
 ## Framework work
 
 | Doc | Content |
 |---|---|
 | [30-m5stack-framework.md](30-m5stack-framework.md) | Upstream M5Stack library gaps, fork and PR strategy |
+| [40-thinknode-port.md](40-thinknode-port.md) | ThinkNode port feasibility |
+| [41-alternative-hardware.md](41-alternative-hardware.md) | Alternative sidecar hardware |
 
 ## Design documents
 
