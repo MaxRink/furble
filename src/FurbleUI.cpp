@@ -107,6 +107,14 @@ UI::UI(const interval_t &interval)
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
+#if defined(FURBLE_CONSOLE)
+  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
+  if (m_RequestQueue == NULL) {
+    ESP_LOGE(LOG_TAG, "Failed to create console request queue.");
+    abort();
+  }
+#endif
+
   lv_init();
   lv_tick_set_cb(tick);
 
@@ -1286,6 +1294,100 @@ void UI::intervalometer(lv_timer_t *timer) {
     m_IntervalNext = tick() + next;
   }
 }
+
+#if defined(FURBLE_CONSOLE)
+QueueHandle_t UI::m_RequestQueue = NULL;
+
+bool UI::sendRequest(Request request, int32_t arg) {
+  if (m_RequestQueue == NULL) {
+    return false;
+  }
+
+  const request_t item = {request, arg};
+
+  return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
+}
+
+void UI::serviceRequests(void) {
+  request_t item;
+
+  while (xQueueReceive(m_RequestQueue, &item, 0) == pdTRUE) {
+    switch (item.request) {
+      case Request::CONNECT:
+        CameraList::load();
+        if (item.arg >= 0) {
+          // An index replaces whatever the multi-connect selection holds.
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            CameraList::get(n)->setActive(false);
+          }
+          if (static_cast<size_t>(item.arg) >= CameraList::size()) {
+            ESP_LOGE(LOG_TAG, "console: no camera at index %ld", item.arg);
+            break;
+          }
+          CameraList::get(item.arg)->setActive(true);
+        }
+        doConnect(NULL);
+        break;
+
+      case Request::DISCONNECT:
+        doDisconnect();
+        break;
+
+      case Request::SCAN:
+        if (item.arg) {
+          menu_t &menu = m_Menu.at(m_ScanStr);
+          auto &scan = Scan::getInstance();
+
+          lv_obj_clean(menu.page);
+          CameraList::clear();
+
+          if (Settings::load<Settings::FAUXNY>()) {
+            CameraList::addFauxNY();
+            updateItems(menu);
+          }
+
+          scan.clear();
+          scan.start(
+              [](void *param) {
+                auto *menu = static_cast<menu_t *>(param);
+                // Called asynchronously from the NimBLE scan thread.
+                m_Mutex.lock();
+                updateItems(*menu);
+                m_Mutex.unlock();
+              },
+              &menu);
+        } else {
+          Scan::getInstance().stop();
+        }
+        break;
+
+      case Request::CAMERAS:
+        // CameraList is only ever touched from this task, so the console reads
+        // it from here rather than racing the menus that rebuild it.
+        if (item.arg) {
+          CameraList::load();
+        }
+        printf("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
+        printf("count: %u\n", static_cast<unsigned>(CameraList::size()));
+        for (size_t n = 0; n < CameraList::size(); n++) {
+          const auto *camera = CameraList::get(n);
+          printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
+          printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
+                 static_cast<unsigned long>(camera->getType()));
+        }
+        break;
+
+      case Request::GPS_RELOAD:
+        GPS::getInstance().reloadSetting();
+        break;
+
+      case Request::GPS_POWER:
+        M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
+        break;
+    }
+  }
+}
+#endif
 
 void UI::doConnect(lv_event_t *e) {
   auto &control = Control::getInstance();
@@ -2966,6 +3068,9 @@ void UI::task(void) {
     handleLockScreen();
 
     m_Mutex.lock();
+#if defined(FURBLE_CONSOLE)
+    serviceRequests();
+#endif
     lv_task_handler();
     m_Mutex.unlock();
 
