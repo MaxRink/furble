@@ -186,8 +186,12 @@ void GPS::update(void) {
     Control::getInstance().updateGPS(dgps, timesync);
   }
 
-  if (m_Icon != NULL) {
-    lv_image_set_src(m_Icon, m_HasFix ? &icon_my_location : &icon_location_disabled);
+  // setting the source invalidates the image and forces a decode, only do it
+  // when the icon actually changes
+  const lv_image_dsc_t *symbol = m_HasFix ? &icon_my_location : &icon_location_disabled;
+  if ((m_Icon != NULL) && (m_IconSymbol != symbol)) {
+    m_IconSymbol = symbol;
+    lv_image_set_src(m_Icon, symbol);
   }
 }
 
