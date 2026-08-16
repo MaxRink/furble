@@ -26,6 +26,7 @@ class Settings {
     FAUXNY,
     TOUCH_CALIBRATION,
     AUTOCONNECT,
+    CPU_FREQ,
   } type_t;
 
   typedef struct {
@@ -61,6 +62,9 @@ class Settings {
 
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+
+  /** Default maximum CPU frequency in MHz, matches Platform. */
+  static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
 
   static void init(void);
 
@@ -145,6 +149,10 @@ struct Settings::storage_type<Settings::TOUCH_CALIBRATION> {
 template <>
 struct Settings::storage_type<Settings::AUTOCONNECT> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::CPU_FREQ> {
+  using type = uint8_t;
 };
 
 }  // namespace Furble

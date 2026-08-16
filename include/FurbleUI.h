@@ -180,6 +180,7 @@ class UI {
   static constexpr const char *m_ThemeStr = "Theme";
   static constexpr const char *m_TransmitPowerStr = "TX Power";
   static constexpr const char *m_AboutStr = "About";
+  static constexpr const char *m_PowerStr = "Power";
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
@@ -335,6 +336,9 @@ class UI {
   void addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::Spinner &spinner);
 
   void addDisplayMenu(const menu_t &parent);
+
+  /** Add the 'Power' menu entry. */
+  void addPowerMenu(const menu_t &parent);
 
   void addThemeMenu(const menu_t &parent);
 

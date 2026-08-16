@@ -1,11 +1,21 @@
 #ifndef FURBLE_PLATFORM_H
 #define FURBLE_PLATFORM_H
 
+#include <array>
+
+#include <esp_err.h>
+
 #include <M5PM1.h>
 
 namespace Furble {
 class Platform {
  public:
+  /** Selectable maximum CPU frequencies in MHz. */
+  static constexpr std::array<uint8_t, 3> CPU_MAX_FREQ_MHZ = {80, 160, 240};
+
+  /** Default maximum CPU frequency in MHz. */
+  static constexpr uint8_t CPU_MAX_FREQ_DEFAULT_MHZ = 160;
+
   static Platform &getInstance();
 
   Platform(Platform const &) = delete;
@@ -40,10 +50,32 @@ class Platform {
    */
   void setSleep(bool enable);
 
+  /**
+   * Set the maximum CPU frequency in MHz.
+   *
+   * Unsupported values fall back to the default. Use getCPUMaxFreq() to read
+   * back what was actually applied.
+   */
+  void setCPUMaxFreq(uint8_t mhz);
+
+  /**
+   * Get the maximum CPU frequency in MHz.
+   */
+  uint8_t getCPUMaxFreq(void) const;
+
  private:
   Platform() {};
 
-  const int CPU_MAX_FREQ_MHZ = 160;
+  /**
+   * Apply the power management configuration.
+   */
+  esp_err_t configurePM(uint8_t max_freq_mhz, bool sleep);
+
+  /**
+   * Is the frequency one we are prepared to ask for?
+   */
+  static bool isCPUMaxFreqValid(uint8_t mhz);
+
   const int CPU_MIN_FREQ_MHZ = 40;
 
   // Power button click streak threshold
@@ -53,6 +85,8 @@ class Platform {
 
   bool m_Init = false;
   bool m_PMICHack = false;
+  bool m_Sleep = true;
+  uint8_t m_CPUMaxFreqMHz = CPU_MAX_FREQ_DEFAULT_MHZ;
   uint8_t m_PMICClickCount = 0;
   uint32_t m_PMICClickTime = 0;
 };

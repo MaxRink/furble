@@ -21,6 +21,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FAUXNY,            {FAUXNY, "FauxNY", "fauxNY", FURBLE_STR}                       },
     {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, "Touch Calibration", "t_calib", FURBLE_STR}},
     {AUTOCONNECT,       {AUTOCONNECT, "Auto-Connect", "autoconnect", FURBLE_STR}       },
+    {CPU_FREQ,          {CPU_FREQ, "CPU Speed", "cpu_freq", FURBLE_STR}                },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -215,6 +216,9 @@ void Settings::init(void) {
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);
+          break;
+        case CPU_FREQ:
+          save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);
           break;
         case TOUCH_CALIBRATION:
         {
