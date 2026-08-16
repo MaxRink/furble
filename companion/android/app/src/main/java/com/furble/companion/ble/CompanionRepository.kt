@@ -117,7 +117,8 @@ class CompanionRepository(context: Context) {
             appContext,
             bondReceiver,
             IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
+            // Bluetooth broadcasts originate in the system Bluetooth process.
+            ContextCompat.RECEIVER_EXPORTED,
         )
         locationProvider = FusedLocationProvider(
             context = appContext,
@@ -184,7 +185,14 @@ class CompanionRepository(context: Context) {
                 setError("Pairing was canceled")
                 return@post
             }
-            val device = data?.extractBluetoothDevice()
+            val associationInfo = data?.extractAssociationInfo()
+            associationId = associationInfo?.id ?: associationId
+            val modernDevice = if (Build.VERSION.SDK_INT >= 34) {
+                associationInfo?.associatedDevice?.bleDevice?.device
+            } else {
+                null
+            }
+            val device = data?.extractBluetoothDevice() ?: modernDevice
             if (device != null) associationAddress = device.address
             refreshAssociation(preferredAddress = device?.address)
         }
@@ -525,6 +533,11 @@ class CompanionRepository(context: Context) {
             }
         }
         return null
+    }
+
+    private fun Intent.extractAssociationInfo(): AssociationInfo? {
+        if (Build.VERSION.SDK_INT < 33) return null
+        return getParcelableExtra(CompanionDeviceManager.EXTRA_ASSOCIATION, AssociationInfo::class.java)
     }
 
     @Suppress("DEPRECATION")

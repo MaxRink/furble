@@ -204,7 +204,7 @@ object FurbleProtocol {
     fun decodeStatus(bytes: ByteArray): StatusSnapshot? {
         if (bytes.size < STATUS_PACKET_SIZE) return null
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        return StatusSnapshot(
+        val snapshot = StatusSnapshot(
             version = buffer.get().u8(),
             batteryPercent = buffer.get().u8(),
             batteryMv = buffer.short.toInt() and 0xFFFF,
@@ -218,11 +218,11 @@ object FurbleProtocol {
             intervalometerState = buffer.get().u8(),
             intervalometerRemaining = buffer.short.toInt() and 0xFFFF,
             uptimeSeconds = buffer.int.toLong() and UINT32_MAX,
-        ).also {
-            // The named packed status fields sum to 19 bytes while the design
-            // declares companion_status_t as 20 bytes.
-            buffer.get()
         }
+        // The named packed status fields sum to 19 bytes while the design
+        // declares companion_status_t as 20 bytes.
+        buffer.get()
+        return snapshot
     }
 
     fun encodeTrigger(operation: Int, holdMs: Int = 0): ByteArray {
