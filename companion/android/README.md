@@ -32,8 +32,8 @@ month 30, day 31, hour 32, minute 33, second 34, centisecond 35, reserved 36,
 `age_ms` 37 through 40, and the compatibility byte at 41.
 
 The same arithmetic issue exists in the declared 20-byte status record. The
-named fields occupy 19 bytes, so the decoder consumes one trailing byte after
-`uptime_s`. The app does not expose that byte as a field.
+named fields occupy 19 bytes, so the decoder consumes one optional trailing
+byte after `uptime_s`. The app does not expose that byte as a field.
 
 The settings request is the exact `op`, `id`, `len`, `value` TLV from the design.
 Responses use `status`, `id`, `type`, `len`, `value`. The design says list

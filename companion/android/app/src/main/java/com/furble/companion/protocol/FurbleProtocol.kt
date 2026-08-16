@@ -202,7 +202,10 @@ object FurbleProtocol {
     }
 
     fun decodeStatus(bytes: ByteArray): StatusSnapshot? {
-        if (bytes.size < STATUS_PACKET_SIZE) return null
+        // The named fields occupy 19 bytes. Accept that prefix as well as the
+        // declared 20-byte record so a firmware build that omits the
+        // unspecified trailing byte still degrades to a useful status view.
+        if (bytes.size < STATUS_PACKET_SIZE - 1) return null
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val snapshot = StatusSnapshot(
             version = buffer.get().u8(),
@@ -221,7 +224,7 @@ object FurbleProtocol {
         }
         // The named packed status fields sum to 19 bytes while the design
         // declares companion_status_t as 20 bytes.
-        buffer.get()
+        if (buffer.hasRemaining()) buffer.get()
         return snapshot
     }
 
