@@ -26,6 +26,8 @@ class Settings {
     FAUXNY,
     TOUCH_CALIBRATION,
     AUTOCONNECT,
+    SCAN_MODE,
+    SCAN_TIMEOUT,
   } type_t;
 
   typedef struct {
@@ -145,6 +147,14 @@ struct Settings::storage_type<Settings::TOUCH_CALIBRATION> {
 template <>
 struct Settings::storage_type<Settings::AUTOCONNECT> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::SCAN_MODE> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
+  using type = uint32_t;
 };
 
 }  // namespace Furble

@@ -21,6 +21,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FAUXNY,            {FAUXNY, "FauxNY", "fauxNY", FURBLE_STR}                       },
     {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, "Touch Calibration", "t_calib", FURBLE_STR}},
     {AUTOCONNECT,       {AUTOCONNECT, "Auto-Connect", "autoconnect", FURBLE_STR}       },
+    {SCAN_MODE,         {SCAN_MODE, "Scan Mode", "scan_mode", FURBLE_STR}              },
+    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, "Scan Timeout", "scan_timeout", FURBLE_STR}     },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -194,6 +196,7 @@ void Settings::init(void) {
           save<std::string>(setting.type, "Default");
           break;
         case TX_POWER:
+        case SCAN_MODE:
           save<uint8_t>(setting.type, 0);
           break;
         case INTERVAL:
@@ -215,6 +218,9 @@ void Settings::init(void) {
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);
+          break;
+        case SCAN_TIMEOUT:
+          save<uint32_t>(setting.type, 0);
           break;
         case TOUCH_CALIBRATION:
         {
