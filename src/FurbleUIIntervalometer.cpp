@@ -48,7 +48,7 @@ void UI::Intervalometer::Spinner::update(void) {
   }
   updateLabels();
 
-  m_Intervalometer->save();
+  m_Owner->save();
 }
 
 void UI::Intervalometer::Spinner::updateLabels(void) {

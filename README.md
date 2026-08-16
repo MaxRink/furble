@@ -130,6 +130,86 @@ In most cases it should be:
 
 More details are on the wiki: [PlatformIO](https://github.com/gkoh/furble/wiki/Linux-Command-Line-(For-Developers))
 
+### Debug builds (developers)
+
+Every board has an optional `<board>-debug` environment, for example
+`m5stick-s3-debug`. These are built with `build_type = debug` and with
+`LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
+sources are compiled in. They share the release `sdkconfig` of the board they
+extend, so nothing but the compiler flags changes. CI and releases build the
+five release environments only, never the debug ones.
+
+Build, flash and watch the log:
+- `platformio run -e m5stick-s3-debug -t upload`
+- `platformio device monitor -e m5stick-s3-debug`
+
+The runtime log level still starts at `INFO` because `CONFIG_LOG_DEFAULT_LEVEL`
+is `3` in the committed `sdkconfig` files. Call
+`esp_log_level_set("*", ESP_LOG_VERBOSE)` to lift it. The ceiling
+`CONFIG_LOG_MAXIMUM_LEVEL` is already `5`, so no `sdkconfig` change is needed.
+
+The M5StickS3 is an ESP32-S3, which has a built-in USB-Serial/JTAG peripheral on
+GPIO19 and GPIO20. Its debug environment selects `debug_tool = esp-builtin`, so
+source level debugging over the USB-C port needs no extra hardware:
+- `platformio debug -e m5stick-s3-debug`
+
+Log output already reaches that port as the secondary console,
+`CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG` is set in `sdkconfig.m5stick-s3`,
+so the monitor works over the same cable.
+
+The debugger halts the CPU. An active camera connection will drop while you sit
+on a breakpoint, and the task watchdog will complain. It logs rather than
+reboots.
+
+The other boards are plain ESP32 and reach the host through a USB to UART
+bridge. They have no JTAG peripheral, so their debug environments give verbose
+logging and unoptimised code only. There are no breakpoints on a StickC.
+
+### Serial console (developers)
+
+The debug environments also set `-DFURBLE_CONSOLE=1`, which builds a text
+console onto the same USB port that carries the log. It exists so a developer or
+a host script can drive furble without walking the menu tree by hand. No release
+environment contains it, so there is nothing to enable and nothing to switch
+off.
+
+Open it with `platformio device monitor -e m5stick-s3-debug` and type `help`.
+Log output shares the port, so `log * warn` is usually the first thing worth
+typing. Every command prints one fact per line as `key: value`, so a host script
+can parse it with a split on the first colon.
+
+```
+version                             firmware and IDF version
+status                              state, targets, uptime, heap, battery
+gps                                 enabled, fix, satellites, lat, lon, alt, age
+gps on | off                        drive the GPS setting and reload the receiver
+gps raw on | off                    mirror incoming NMEA to the console
+gps send <body>                     send a raw sentence, eg. gps send PCAS12,10
+gps power on | off                  external 5V rail, for rail cut experiments
+settings list                       every setting and its current value
+settings get <name>                 name, type, value, and when it applies
+settings set <name> <value>         save a setting
+cameras list | status               saved cameras, or the active targets
+connect [index]                     no index uses the multi-connect selection
+disconnect
+shutter press | release | hold <ms>
+focus press | release
+scan start | stop | list
+log <tag> <level>
+reboot
+```
+
+Saving a setting is not the same as applying it. Settings read on every use take
+effect at once, settings the UI caches when it starts do not. `settings get` and
+`settings set` say which of the two a setting is.
+
+Two things about the console distort measurements, so do not take power numbers
+from a build that contains it. On the ESP32 boards the console holds an APB
+frequency lock for its lifetime, because UART receive drops characters while
+automatic light sleep gates the APB clock. On the M5StickS3 no lock is needed,
+`CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION` already keeps the chip out of light sleep
+while USB is connected.
+
 ## Usage
 
 The top level menu has the following entries:
@@ -167,6 +247,20 @@ The default baud rate for the GPS unit is 9600.
 The new v1.1 unit runs at a higher baud rate and must be configured under
 `Settings->GPS->GPS baud 115200` for correct operation.
 
+The GPS receiver itself can also be configured under `Settings->GPS`:
+- `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
+- `Sentences` (cut the receiver down to the sentences `furble` actually reads)
+- `Constellation` (which satellite systems the receiver listens to)
+
+Each of these defaults to `Default`, which leaves the receiver on its own
+settings and behaves exactly as before.
+A change is sent to the receiver when GPS is enabled, and the receiver goes
+back to its own defaults the next time it is powered off.
+
+`Settings->GPS->Raw NMEA` shows the sentences arriving from the receiver along
+with the fix state and error counts.
+It is the place to look to confirm the receiver accepted a change.
+
 ### Intervalometer/Timer
 
 The intervalometer can be configured via three settings in `Settings->Timer`:
@@ -179,9 +273,80 @@ Delay and shutter time can be figured with custom or preset values from 0 to 999
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.
 
+### Bulb
+
+`Bulb` on the connected menu holds the shutter open for a set time, which saves
+watching a stopwatch during a long exposure.
+
+Set the length under `Bulb->Duration`, then hit `Start`.
+The page counts down and the shutter is released at zero.
+The duration is remembered for next time and defaults to 30 seconds.
+
+`Stop` ends the exposure early, and leaving the page also releases the shutter,
+so an exposure never keeps running out of sight.
+
+The camera must be in bulb mode, otherwise it will end the exposure on its own
+and the countdown will simply run out.
+
 ### Shutter Lock
 
 When in `Shutter` remote control, holding focus (button B) then release (button A) will engage shutter lock, holding the shutter open until a button is pressed.
+
+### Bluetooth
+
+The Bluetooth options live under `Settings->Bluetooth`.
+`TX Power` has moved there from the top level of `Settings`.
+
+`Scan mode` sets how hard the radio listens while `Scan` is looking for
+cameras.
+`Full` is the default and spots a camera fastest.
+`Balanced` and `Low` listen less of the time, which is easier on the battery
+but can take longer to find a camera.
+
+`Scan timeout` ends a scan by itself after 30, 60 or 120 seconds.
+The default is `Never`, which keeps scanning until you leave the page.
+When a scan does end on its own, the `Scan` page shows a `Scan finished` notice
+with a `Rescan` button.
+
+Pairing with a saved camera always scans at full duty, so neither setting slows
+down `Connect`.
+
+### Power
+
+The CPU speed can be selected under `Settings->Power->CPU speed`, with a choice
+of 80, 160 or 240 MHz.
+The default is 160 MHz, and a change takes effect immediately.
+
+A higher speed makes the interface feel snappier, but it costs battery life.
+80 MHz is the gentlest on the battery, 240 MHz is the most demanding.
+
+`Settings->Power->Battery Style` controls what the battery indicator in the
+header shows.
+`Icon` is the default, `Percent` replaces the icon with the charge level, and
+`Both` shows the icon and the level together.
+
+`Settings->Power->Battery` is a page of battery detail, showing the charge
+level, the voltage, the current draw where the controller can measure it,
+whether it is charging, and an estimate of the remaining runtime.
+Rows the controller cannot measure are simply not shown, so the page is shorter
+on some boards.
+
+`Settings->Power->Sleep while connected` lets the controller doze between
+Bluetooth events while a camera is connected.
+It is off by default, and it is only offered on the M5StickS3, the other
+controllers cannot sleep with a connection up.
+
+Turning it on is a worthwhile saving on a long shoot.
+The trade is that the first press after a quiet spell may take a moment longer
+to reach the camera.
+The setting is read when a connection is made, so switch it before connecting.
+
+### Display
+
+The window title can be hidden with `Settings->Display->Show Title`.
+It is on by default.
+Hiding it frees up space in the header for the status icons, which is welcome
+on the narrow stick displays.
 
 ### Themes
 

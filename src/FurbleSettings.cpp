@@ -15,12 +15,22 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_POWER,          {TX_POWER, "TX Power", "tx_power", FURBLE_STR}                 },
     {GPS,               {GPS, "GPS", "gps", FURBLE_STR}                                },
     {GPS_BAUD,          {GPS_BAUD, "GPS Baud", "gps_baud", FURBLE_STR}                 },
+    {GPS_RATE,          {GPS_RATE, "GPS Rate", "gps_rate", FURBLE_STR}                 },
+    {GPS_NMEA,          {GPS_NMEA, "GPS Sentences", "gps_nmea", FURBLE_STR}            },
+    {GPS_CONSTEL,       {GPS_CONSTEL, "GPS Constellation", "gps_constel", FURBLE_STR}  },
     {INTERVAL,          {INTERVAL, "Interval", "interval", FURBLE_STR}                 },
     {MULTICONNECT,      {MULTICONNECT, "Multi-Connect", "multiconnect", FURBLE_STR}    },
     {RECONNECT,         {RECONNECT, "Infinite-ReConnect", "reconnect", FURBLE_STR}     },
     {FAUXNY,            {FAUXNY, "FauxNY", "fauxNY", FURBLE_STR}                       },
     {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, "Touch Calibration", "t_calib", FURBLE_STR}},
     {AUTOCONNECT,       {AUTOCONNECT, "Auto-Connect", "autoconnect", FURBLE_STR}       },
+    {CPU_FREQ,          {CPU_FREQ, "CPU Speed", "cpu_freq", FURBLE_STR}                },
+    {BATT_STYLE,        {BATT_STYLE, "Battery Style", "batt_style", FURBLE_STR}        },
+    {SHOW_TITLE,        {SHOW_TITLE, "Show Title", "show_title", FURBLE_STR}           },
+    {SLEEP_CONN,        {SLEEP_CONN, "Sleep while connected", "sleep_conn", FURBLE_STR}},
+    {BULB,              {BULB, "Bulb", "bulb", FURBLE_STR}                             },
+    {SCAN_MODE,         {SCAN_MODE, "Scan Mode", "scan_mode", FURBLE_STR}              },
+    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, "Scan Timeout", "scan_timeout", FURBLE_STR}     },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -85,6 +95,23 @@ interval_t Settings::load<interval_t>(type_t type) {
   m_Prefs.end();
 
   return interval;
+}
+
+template <>
+SpinValue::nvs_t Settings::load<SpinValue::nvs_t>(type_t type) {
+  const auto &setting = get(type);
+  SpinValue::nvs_t nvs;
+
+  m_Prefs.begin(setting.nvs_namespace, true);
+  size_t len = m_Prefs.get(setting.key, &nvs, sizeof(SpinValue::nvs_t));
+  if (len != sizeof(SpinValue::nvs_t)) {
+    // default value
+    nvs = BULB_DEFAULT;
+  }
+
+  m_Prefs.end();
+
+  return nvs;
 }
 
 template <>
@@ -154,6 +181,14 @@ void Settings::save<interval_t>(const type_t type, const interval_t &value) {
 }
 
 template <>
+void Settings::save<SpinValue::nvs_t>(const type_t type, const SpinValue::nvs_t &value) {
+  const auto &setting = get(type);
+  m_Prefs.begin(setting.nvs_namespace, false);
+  m_Prefs.put(setting.key, &value, sizeof(value));
+  m_Prefs.end();
+}
+
+template <>
 void Settings::save<std::string>(const type_t type, const std::string &value) {
   saveValue<std::string>(type, value);
 }
@@ -194,7 +229,16 @@ void Settings::init(void) {
           save<std::string>(setting.type, "Default");
           break;
         case TX_POWER:
+        case SCAN_MODE:
+        case GPS_RATE:
+        case GPS_CONSTEL:
           save<uint8_t>(setting.type, 0);
+          break;
+        case BATT_STYLE:
+          save<uint8_t>(setting.type, BATT_STYLE_ICON);
+          break;
+        case SHOW_TITLE:
+          save<bool>(setting.type, true);
           break;
         case INTERVAL:
         {
@@ -206,15 +250,26 @@ void Settings::init(void) {
           };
           save<interval_t>(setting.type, interval);
         } break;
+        case BULB:
+          save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
+          break;
         case GPS:
+        case GPS_NMEA:
         case MULTICONNECT:
         case RECONNECT:
         case FAUXNY:
         case AUTOCONNECT:
+        case SLEEP_CONN:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);
+          break;
+        case SCAN_TIMEOUT:
+          save<uint32_t>(setting.type, 0);
+          break;
+        case CPU_FREQ:
+          save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);
           break;
         case TOUCH_CALIBRATION:
         {

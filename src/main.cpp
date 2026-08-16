@@ -3,6 +3,7 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
@@ -26,6 +27,11 @@ void app_main() {
 
   Furble::Platform::init();
   Furble::Settings::init();
+
+  // Platform::init() runs before NVS exists, apply the stored frequency now
+  Furble::Platform::getInstance().setCPUMaxFreq(
+      Furble::Settings::load<Furble::Settings::CPU_FREQ>());
+
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
 
   auto &control = Furble::Control::getInstance();
@@ -34,6 +40,9 @@ void app_main() {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");
     abort();
   }
+
+  // Developer only, compiled out unless FURBLE_CONSOLE is defined
+  Furble::Console::init();
 
   // Run UI in host task (here)
   vUITask(NULL);

@@ -1,4 +1,6 @@
 #include "FurbleControl.h"
+#include "FurblePower.h"
+#include "FurbleSettings.h"
 
 namespace Furble {
 Control::Target::Target(Camera *camera) {
@@ -141,15 +143,15 @@ void Control::task(void) {
       case STATE_IDLE:
         if (ret == pdTRUE) {
           if (cmd == CMD_CONNECT) {
-            m_State = STATE_CONNECT;
+            setState(STATE_CONNECT);
             continue;
           }
         }
         break;
 
       case STATE_CONNECT:
-        m_State = STATE_CONNECTING;
-        m_State = connectAll();
+        setState(STATE_CONNECTING);
+        setState(connectAll());
         break;
 
       case STATE_CONNECTING:
@@ -158,7 +160,7 @@ void Control::task(void) {
 
       case STATE_ACTIVE:
         if (!allConnected()) {
-          m_State = STATE_CONNECT;
+          setState(STATE_CONNECT);
           continue;
         }
 
@@ -220,7 +222,7 @@ void Control::connectAll(bool infiniteReconnect) {
 }
 
 void Control::disconnect(void) {
-  m_State = STATE_DISCONNECTING;
+  setState(STATE_DISCONNECTING);
 
   // Force cancel any active connection attempts
   ble_gap_conn_cancel();
@@ -240,7 +242,7 @@ void Control::disconnect(void) {
   }
 
   m_Targets.clear();
-  m_State = STATE_IDLE;
+  setState(STATE_IDLE);
 }
 
 void Control::addActive(Camera *camera) {
@@ -268,6 +270,33 @@ Camera *Control::getConnectingCamera(void) const {
 
 Control::state_t Control::getState(void) const {
   return m_State;
+}
+
+void Control::setState(state_t state) {
+  const std::lock_guard<std::mutex> lock(m_StateMutex);
+
+  if (state == m_State) {
+    return;
+  }
+
+  m_State = state;
+
+  // The setting is read once per connect, on the transition into STATE_ACTIVE.
+  // Holding the lock keeps the device awake for the whole connection, which is
+  // what furble did before the controller could modem sleep.
+  bool hold = (state == STATE_ACTIVE) && !Settings::load<Settings::SLEEP_CONN>();
+  if (hold == m_SleepLockHeld) {
+    return;
+  }
+
+  auto &power = Power::getInstance();
+  if (hold) {
+    power.acquire(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
+  } else {
+    power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
+  }
+
+  m_SleepLockHeld = hold;
 }
 
 void Control::setPower(esp_power_level_t power) {

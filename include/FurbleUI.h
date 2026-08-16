@@ -1,6 +1,7 @@
 #ifndef FURBLE_UI_H
 #define FURBLE_UI_H
 
+#include <array>
 #include <initializer_list>
 #include <mutex>
 #include <unordered_map>
@@ -10,6 +11,7 @@
 #include "FurbleCalibrate.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "interval.h"
 
@@ -22,6 +24,28 @@ class UI {
    * Modifies button/navigation operation.
    */
   enum class ControlMode { MENU, SHUTTER, SLIDER, REVERT };
+
+#if defined(FURBLE_CONSOLE)
+  /** Operations the console asks the UI task to carry out on its behalf. */
+  enum class Request {
+    CONNECT,    /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT, /**< arg: unused */
+    SCAN,       /**< arg: non-zero to start, zero to stop */
+    CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD, /**< arg: unused */
+    GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
+  };
+
+  /**
+   * Queue a request for the UI task.
+   *
+   * LVGL is not thread safe, so anything touching it has to run on the UI task.
+   * Safe to call from any task.
+   *
+   * @return true if the request was queued.
+   */
+  static bool sendRequest(Request request, int32_t arg);
+#endif
 
   UI(const interval_t &interval);
 
@@ -66,20 +90,64 @@ class UI {
 
   typedef struct {
     GPS *gps;
+    lv_obj_t *title;
     lv_obj_t *gpsIcon;
     lv_obj_t *batteryIcon;
+    lv_obj_t *batteryLabel;
     lv_obj_t *reconnectIcon;
-    lv_obj_t *gpsBaud;
-    lv_obj_t *gpsData;
+    // battery page rows, NULL where the board cannot measure them
+    lv_obj_t *batteryLevel;
+    lv_obj_t *batteryVoltage;
+    lv_obj_t *batteryCurrent;
+    lv_obj_t *batteryCharging;
+    lv_obj_t *batteryRuntime;
+    /** Widgets which are only useful while GPS is enabled. */
+    std::vector<lv_obj_t *> gpsWidgets;
     bool screenLocked;
+    // last battery sample, its smoothed values and the displayed percent
+    Platform::battery_t battery;
+    float meanLevel;
+    float meanVoltage;
+    float meanCurrent;
+    uint8_t displayLevel;
   } status_t;
 
-  class Intervalometer {
+  typedef struct {
+    // labels refreshed while a diagnostics page is open
+    lv_obj_t *aboutUptime;
+    lv_obj_t *aboutHeap;
+    lv_obj_t *deviceUptime;
+    lv_obj_t *deviceHeap;
+    lv_obj_t *powerFrequency;
+    lv_obj_t *powerSleep;
+  } diagnostics_t;
+
+  /**
+   * Owner of a spinner.
+   *
+   * A spinner edit saves through its owner, so each owner writes only its own
+   * setting.
+   */
+  class SpinnerOwner {
+   public:
+    virtual ~SpinnerOwner() = default;
+
+    virtual void save(void) = 0;
+  };
+
+  /** Labels on the raw NMEA page. */
+  typedef struct {
+    lv_obj_t *fix;
+    lv_obj_t *counters;
+    lv_obj_t *sentences;
+  } nmea_t;
+
+  class Intervalometer: public SpinnerOwner {
    public:
     class Spinner {
      public:
-      Spinner(Intervalometer *intervalometer, SpinValue::nvs_t nvs, bool infinite = false)
-          : m_Intervalometer {intervalometer}, m_SpinValue {nvs}, m_Infinite {infinite} {};
+      Spinner(SpinnerOwner *owner, SpinValue::nvs_t nvs, bool infinite = false)
+          : m_Owner {owner}, m_SpinValue {nvs}, m_Infinite {infinite} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
@@ -87,7 +155,7 @@ class UI {
       void update(void);
       void updateLabels(void);
 
-      Intervalometer *m_Intervalometer;
+      SpinnerOwner *m_Owner;
       SpinValue m_SpinValue;
       lv_obj_t *m_Button;
       lv_obj_t *m_Label;
@@ -112,7 +180,7 @@ class UI {
 
     Intervalometer(const interval_t &interval);
 
-    void save(void);
+    void save(void) override;
 
     state_t m_State;
     Spinner m_Count;
@@ -123,6 +191,20 @@ class UI {
     lv_obj_t *m_StateLabel;
     lv_obj_t *m_CountLabel;
     lv_obj_t *m_RemainingLabel;
+  };
+
+  /**
+   * Bulb exposure, holds the shutter open for a set duration.
+   */
+  class Bulb: public SpinnerOwner {
+   public:
+    Bulb(const SpinValue::nvs_t &duration);
+
+    void save(void) override;
+
+    Intervalometer::Spinner m_Duration;
+
+    lv_obj_t *m_RemainingLabel = nullptr;
   };
 
   typedef enum { MODE_SCAN, MODE_DELETE, MODE_CONNECT, MODE_MULTICONNECT } CameraListMode_t;
@@ -137,6 +219,20 @@ class UI {
   } ConnectContext_t;
 
   static std::mutex m_Mutex;
+
+#if defined(FURBLE_CONSOLE)
+  typedef struct {
+    Request request;
+    int32_t arg;
+  } request_t;
+
+  static constexpr UBaseType_t m_RequestQueueLength = 8;
+
+  static QueueHandle_t m_RequestQueue;
+
+  /** Drain the console request queue, called with m_Mutex held. */
+  static void serviceRequests(void);
+#endif
 
   static ConnectContext_t m_ConnectContext;
 
@@ -167,10 +263,16 @@ class UI {
   // connected
   static constexpr const char *m_ConnectedStr = "Connected";
   static constexpr const char *m_RemoteShutter = "Remote";
+  static constexpr const char *m_RemoteBulb = "Bulb";
   static constexpr const char *m_RemoteInterval = "Interval";
   static constexpr const char *m_RemoteDisconnect = "Disconnect";
   // dodgy hack, add a space so map key is unique
+  static constexpr const char *m_RemoteGPSData = "GPS Data ";
   static constexpr const char *m_IntervalometerRunStr = "Intervalometer ";
+  static constexpr const char *m_BulbRunStr = "Bulb ";
+
+  // connected->bulb
+  static constexpr const char *m_BulbDurationStr = "Duration";
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";
@@ -178,11 +280,36 @@ class UI {
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
-  static constexpr const char *m_TransmitPowerStr = "TX Power";
+  static constexpr const char *m_BluetoothStr = "Bluetooth";
   static constexpr const char *m_AboutStr = "About";
+  static constexpr const char *m_PowerStr = "Power";
+  static constexpr const char *m_DiagnosticsStr = "Diagnostics";
+
+  // settings->power
+  static constexpr const char *m_BatteryStr = "Battery";
+
+  // settings->diagnostics
+  static constexpr const char *m_DeviceInfoStr = "Device info";
+  static constexpr const char *m_PowerStateStr = "Power state";
+
+  // settings->bluetooth
+  static constexpr const char *m_TransmitPowerStr = "TX Power";
+
+  /** Scan timeout roller values, in seconds, zero is no timeout. */
+  static constexpr std::array<uint32_t, 4> m_ScanTimeout = {0, 30, 60, 120};
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
+  static constexpr const char *m_GPSRateStr = "Update rate";
+  static constexpr const char *m_GPSSentencesStr = "Sentences";
+  static constexpr const char *m_GPSConstellationStr = "Constellation";
+  static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
+
+  // settings->gps rollers
+  static constexpr const char *m_GPSRateOptions = "Default\n1000 ms\n500 ms\n200 ms\n100 ms";
+  static constexpr const char *m_GPSSentencesOptions = "Default\nRMC+GGA";
+  static constexpr const char *m_GPSConstellationOptions =
+      "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";
@@ -206,18 +333,33 @@ class UI {
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
 
+  /** 'Scan finished' notice on the Scan page, hidden while scanning. */
+  static lv_obj_t *m_ScanFinished;
+
   static lv_timer_t *m_ConnectTimer;
+  static lv_timer_t *m_GPSDataTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
+
+  static lv_timer_t *m_BulbTimer;
+  static lv_timer_t *m_BulbPageRefresh;
+  static uint32_t m_BulbEnd;
 
   lv_timer_t *m_IntervalTimer;
   lv_timer_t *m_InactivityTimer;
   lv_timer_t *m_IconTimer;
+  lv_timer_t *m_BatteryTimer;
+  lv_timer_t *m_DiagnosticsTimer;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
   const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_TEMPLATE_LAST};
+
+  // the settings page holds more entries than the main menu, give it its own
+  // rows so the main menu keeps its layout
+  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
+                                                           LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -248,7 +390,13 @@ class UI {
   lv_obj_t *m_IntervalStart = nullptr;
   Intervalometer m_Intervalometer;
 
+  lv_obj_t *m_BulbStart = nullptr;
+  Bulb m_Bulb;
+
   status_t m_Status;
+  diagnostics_t m_Diagnostics = {};
+  nmea_t m_NMEA;
+  lv_timer_t *m_NMEATimer = nullptr;
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
   uint32_t m_InactivityTimeout;
@@ -316,17 +464,45 @@ class UI {
   /** Add the 'Scan' menu entry. */
   void addScanMenu(void);
 
+  /** Clear the 'Scan' page and start a discovery scan. */
+  static void startScan(void);
+
   /** Add the 'Delete' menu entry. */
   void addDeleteMenu(void);
 
-  /** Add 'GPS Data' page. */
+  /** Add the 'GPS' menu entry. */
   void addGPSMenu(const menu_t &parent);
+
+  /** Add 'GPS Data' page. */
+  void addGPSDataMenu(const menu_t &parent);
+
+  /** Add a GPS option page holding a single roller. */
+  void addGPSOptionMenu(const menu_t &parent,
+                        const char *name,
+                        const char *options,
+                        uint32_t selected,
+                        lv_event_cb_t handler);
+
+  /** Add the raw NMEA and satellite debug page. */
+  void addGPSNMEAMenu(const menu_t &parent);
+
+  /** Show or hide the widgets which need GPS enabled. */
+  static void showGPSWidgets(status_t *status, bool show);
 
   /** Add the 'Features' menu entry. */
   void addFeaturesMenu(const menu_t &parent);
 
   /** Add the 'Intervalometer' menu entry. */
   void addIntervalometerMenu(const menu_t &parent);
+
+  /** Add the 'Bulb' menu entry. */
+  void addBulbMenu(const menu_t &parent);
+
+  /** Refresh the bulb exposure countdown. */
+  void bulbRefresh(void);
+
+  /** Stop any bulb exposure and release the shutter. */
+  void bulbStop(void);
 
   /** Add spinner menu item entry. */
   lv_obj_t *addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner);
@@ -336,11 +512,47 @@ class UI {
 
   void addDisplayMenu(const menu_t &parent);
 
+  /** Add the 'Power' menu entry. */
+  void addPowerMenu(const menu_t &parent);
+
+  /** Add the 'Battery' page. */
+  void addBatteryMenu(const menu_t &parent);
+
+  /** Show the header battery icon and/or percent according to the setting. */
+  void setBatteryStyle(uint8_t style);
+
+  /** Show or hide the window title. */
+  void setShowTitle(bool show);
+
+  /** Battery sample timer handler. */
+  static void batteryUpdate(lv_timer_t *timer);
+
   void addThemeMenu(const menu_t &parent);
 
   void addTransmitPowerMenu(const menu_t &parent);
 
+  /** Add the 'Bluetooth' menu entry. */
+  void addBluetoothMenu(const menu_t &parent);
+
   void addAboutMenu(const menu_t &parent);
+
+  /** Add the 'Diagnostics' menu entry. */
+  void addDiagnosticsMenu(const menu_t &parent);
+
+  /** Add the 'Device info' page. */
+  void addDeviceInfoMenu(const menu_t &parent);
+
+  /** Add the 'Power state' page. */
+  void addPowerStateMenu(const menu_t &parent);
+
+  /** Add a read only text row to a page container. */
+  static lv_obj_t *addInfoRow(lv_obj_t *cont);
+
+  /** Diagnostics refresh timer handler. */
+  static void diagnosticsUpdate(lv_timer_t *timer);
+
+  /** Describe the last reset reason. */
+  static const char *getResetReason(void);
 
   /** Add the 'Settings' menu entry. */
   void addSettingsMenu(void);
@@ -351,8 +563,14 @@ class UI {
   /** Update entries in connect page. */
   static void updateItems(const menu_t &menu);
 
+  /** Start GPS Data timer. */
+  static void gpsDataStart(lv_event_t *e);
+
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);
+
+  /** Stop the raw NMEA timer and capture. */
+  static void gpsNMEAStop(lv_event_t *e);
 
   /** Handle connection request. */
   static void doConnect(lv_event_t *e);

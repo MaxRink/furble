@@ -1,9 +1,11 @@
-#include <esp_pm.h>
+#include <algorithm>
 
 #include <M5PM1.h>
 #include <M5Unified.h>
 
 #include "FurblePlatform.h"
+#include "FurblePower.h"
+#include "FurbleTypes.h"
 
 namespace Furble {
 
@@ -11,7 +13,8 @@ Platform &Platform::getInstance(void) {
   static Platform instance;
 
   if (!instance.m_Init) {
-    instance.setSleep(true);
+    Power::init();
+    instance.setCPUMaxFreq(CPU_MAX_FREQ_DEFAULT_MHZ);
 
     auto cfg = M5.config();
     cfg.clear_display = true;
@@ -38,6 +41,8 @@ Platform &Platform::getInstance(void) {
     instance.m_M5PM1.setDownloadLock(true);        // disable BtnPWR long-press enter download mode
 #endif
 
+    instance.initBattery();
+
     instance.m_Init = true;
   }
 
@@ -62,13 +67,66 @@ uint8_t Platform::getPWRClickCount(void) {
   return count;
 }
 
-void Platform::setSleep(bool enable) {
-  esp_pm_config_t pm_config = {
-      .max_freq_mhz = CPU_MAX_FREQ_MHZ,
-      .min_freq_mhz = CPU_MIN_FREQ_MHZ,
-      .light_sleep_enable = enable,
-  };
-  ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+bool Platform::isCPUMaxFreqValid(uint8_t mhz) {
+  return std::find(CPU_MAX_FREQ_MHZ.begin(), CPU_MAX_FREQ_MHZ.end(), mhz) != CPU_MAX_FREQ_MHZ.end();
+}
+
+void Platform::setCPUMaxFreq(uint8_t mhz) {
+  uint8_t freq = mhz;
+
+  // NVS may hold anything, never hand an unvetted value to esp_pm_configure()
+  if (!isCPUMaxFreqValid(freq)) {
+    ESP_LOGW(LOG_TAG, "Unsupported CPU maximum frequency %dMHz, using %dMHz.", freq,
+             CPU_MAX_FREQ_DEFAULT_MHZ);
+    freq = CPU_MAX_FREQ_DEFAULT_MHZ;
+  }
+
+  // The board may still refuse the frequency, fall back rather than abort
+  auto &power = Power::getInstance();
+  esp_err_t err = power.configure(freq);
+  if (err != ESP_OK) {
+    ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s), using %dMHz.", freq,
+             esp_err_to_name(err), CPU_MAX_FREQ_DEFAULT_MHZ);
+    freq = CPU_MAX_FREQ_DEFAULT_MHZ;
+    ESP_ERROR_CHECK(power.configure(freq));
+  }
+
+  m_CPUMaxFreqMHz = freq;
+
+  ESP_LOGI(LOG_TAG, "CPU maximum frequency %dMHz.", m_CPUMaxFreqMHz);
+}
+
+uint8_t Platform::getCPUMaxFreq(void) const {
+  return m_CPUMaxFreqMHz;
+}
+
+Platform::pm_config_t Platform::getPMConfig(void) {
+  esp_pm_config_t pm_config = {};
+
+  esp_err_t err = esp_pm_get_configuration(&pm_config);
+  if (err != ESP_OK) {
+    // fall back to the last configuration Power was asked for
+    ESP_LOGW(LOG_TAG, "Unable to read power management configuration (%s).", esp_err_to_name(err));
+    return {m_CPUMaxFreqMHz, Power::CPU_MIN_FREQ_MHZ, true};
+  }
+
+  return {static_cast<uint8_t>(pm_config.max_freq_mhz),
+          static_cast<uint8_t>(pm_config.min_freq_mhz), pm_config.light_sleep_enable};
+}
+
+void Platform::dumpPMLocks(void) {
+  esp_err_t err = esp_pm_dump_locks(stdout);
+  if (err != ESP_OK) {
+    ESP_LOGW(LOG_TAG, "Unable to dump power management locks (%s).", esp_err_to_name(err));
+  }
+}
+
+bool Platform::hasTicklessIdle(void) {
+#if defined(CONFIG_FREERTOS_USE_TICKLESS_IDLE)
+  return true;
+#else
+  return false;
+#endif
 }
 
 void Platform::powerOff(void) {
@@ -77,6 +135,112 @@ void Platform::powerOff(void) {
 #else
   M5.Power.powerOff();
 #endif
+}
+
+void Platform::initBattery(void) {
+  // capabilities follow the PMIC, capacities are from the vendor product pages
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+      // AXP192
+      m_BatteryCaps = {true, true, true, true};
+      m_BatteryCapacity = 95;
+      break;
+
+    case m5::board_t::board_M5StickCPlus:
+      // AXP192
+      m_BatteryCaps = {true, true, true, true};
+      m_BatteryCapacity = 120;
+      break;
+
+    case m5::board_t::board_M5StackCore2:
+    case m5::board_t::board_M5Tough:
+      // AXP192
+      m_BatteryCaps = {true, true, true, true};
+      m_BatteryCapacity = 390;
+      break;
+
+    case m5::board_t::board_M5StickS3:
+      // M5PM1, which has no battery current backend in M5Unified and no
+      // documented battery current register
+      m_BatteryCaps = {true, true, false, true};
+      m_BatteryCapacity = 250;
+      break;
+
+    case m5::board_t::board_M5StickCPlus2:
+      // no PMIC, battery voltage is read from an ADC divider
+      m_BatteryCaps = {true, true, false, false};
+      m_BatteryCapacity = 200;
+      break;
+
+    case m5::board_t::board_M5Stack:
+      // IP5306, coarse level only
+      m_BatteryCaps = {true, false, false, false};
+      m_BatteryCapacity = 0;
+      break;
+
+    default:
+      m_BatteryCaps = {true, false, false, false};
+      m_BatteryCapacity = 0;
+  }
+
+  ESP_LOGI("platform", "Battery: level=%u voltage=%u current=%u charging=%u capacity=%umAh",
+           m_BatteryCaps.level, m_BatteryCaps.voltage, m_BatteryCaps.current,
+           m_BatteryCaps.charging, m_BatteryCapacity);
+}
+
+const Platform::battery_caps_t &Platform::getBatteryCaps(void) {
+  return m_BatteryCaps;
+}
+
+uint16_t Platform::getBatteryCapacity(void) {
+  return m_BatteryCapacity;
+}
+
+uint32_t Platform::getBatteryFailCount(void) {
+  return m_M5PM1FailCount;
+}
+
+Platform::battery_t Platform::readBattery(void) {
+  battery_t battery = {0, 0, 0, false};
+
+  if (m_BatteryCaps.level) {
+    int32_t level = M5.Power.getBatteryLevel();
+    battery.level = (level > 0) ? level : 0;
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  // the M5PM1 reports voltage and charge status, but no battery current
+  if (m_BatteryCaps.voltage) {
+    uint16_t mv = 0;
+    if (m5pm1Access([this, &mv]() { return m_M5PM1.readVbat(&mv); })) {
+      battery.voltage = mv;
+    }
+  }
+
+  if (m_BatteryCaps.charging) {
+    // charge status is on M5PM1 GPIO0, active low
+    uint8_t charging = 1;
+    if (m5pm1Access(
+            [this, &charging]() { return m_M5PM1.gpioGetInput(M5PM1_GPIO_NUM_0, &charging); })) {
+      battery.charging = (charging == 0);
+    }
+  }
+#else
+  if (m_BatteryCaps.voltage) {
+    int32_t mv = M5.Power.getBatteryVoltage();
+    battery.voltage = (mv > 0) ? mv : 0;
+  }
+
+  if (m_BatteryCaps.current) {
+    battery.current = M5.Power.getBatteryCurrent();
+  }
+
+  if (m_BatteryCaps.charging) {
+    battery.charging = (M5.Power.isCharging() == m5::Power_Class::is_charging_t::is_charging);
+  }
+#endif
+
+  return battery;
 }
 
 void Platform::update(void) {
