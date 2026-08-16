@@ -105,9 +105,9 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 
   esp_err_t err = esp_pm_get_configuration(&pm_config);
   if (err != ESP_OK) {
-    // fall back to the last configuration we asked for
+    // fall back to the last configuration Power was asked for
     ESP_LOGW(LOG_TAG, "Unable to read power management configuration (%s).", esp_err_to_name(err));
-    return {m_CPUMaxFreqMHz, static_cast<uint8_t>(CPU_MIN_FREQ_MHZ), m_Sleep};
+    return {m_CPUMaxFreqMHz, Power::CPU_MIN_FREQ_MHZ, true};
   }
 
   return {static_cast<uint8_t>(pm_config.max_freq_mhz),
