@@ -195,6 +195,7 @@ class UI {
   static constexpr const char *m_RemoteInterval = "Interval";
   static constexpr const char *m_RemoteDisconnect = "Disconnect";
   // dodgy hack, add a space so map key is unique
+  static constexpr const char *m_RemoteGPSData = "GPS Data ";
   static constexpr const char *m_IntervalometerRunStr = "Intervalometer ";
 
   // settings
@@ -241,6 +242,7 @@ class UI {
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
 
   static lv_timer_t *m_ConnectTimer;
+  static lv_timer_t *m_GPSDataTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
 
@@ -425,6 +427,9 @@ class UI {
 
   /** Update entries in connect page. */
   static void updateItems(const menu_t &menu);
+
+  /** Start GPS Data timer. */
+  static void gpsDataStart(lv_event_t *e);
 
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);
