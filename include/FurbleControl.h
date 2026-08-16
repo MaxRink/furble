@@ -132,7 +132,15 @@ class Control {
   /** Iterate over cameras and attempt connection. */
   state_t connectAll(void);
 
+  /**
+   * Move to a new state and update the light sleep lock to match.
+   *
+   * Every state change goes through here, that is what keeps the lock balanced.
+   */
+  void setState(state_t state);
+
   static constexpr UBaseType_t m_QueueLength = 32;
+  static constexpr const char *POWER_LOCK_OWNER = "control";
 
   QueueHandle_t m_Queue = NULL;
   std::mutex m_Mutex;
@@ -140,6 +148,10 @@ class Control {
 
   bool m_InfiniteReconnect = false;
   state_t m_State = STATE_IDLE;
+
+  // setState() runs from the control task and from the UI task
+  std::mutex m_StateMutex;
+  bool m_SleepLockHeld = false;
 
   // Camera connects are serialised, the following tracks the last attempt
   Camera *m_ConnectCamera = nullptr;

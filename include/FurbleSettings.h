@@ -29,6 +29,7 @@ class Settings {
     CPU_FREQ,
     BATT_STYLE,
     SHOW_TITLE,
+    SLEEP_CONN,
   } type_t;
 
   typedef struct {
@@ -169,6 +170,10 @@ struct Settings::storage_type<Settings::BATT_STYLE> {
 };
 template <>
 struct Settings::storage_type<Settings::SHOW_TITLE> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::SLEEP_CONN> {
   using type = bool;
 };
 
