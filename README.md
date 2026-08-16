@@ -202,6 +202,24 @@ The default is 160 MHz, and a change takes effect immediately.
 A higher speed makes the interface feel snappier, but it costs battery life.
 80 MHz is the gentlest on the battery, 240 MHz is the most demanding.
 
+`Settings->Power->Battery Style` controls what the battery indicator in the
+header shows.
+`Icon` is the default, `Percent` replaces the icon with the charge level, and
+`Both` shows the icon and the level together.
+
+`Settings->Power->Battery` is a page of battery detail, showing the charge
+level, the voltage, the current draw where the controller can measure it,
+whether it is charging, and an estimate of the remaining runtime.
+Rows the controller cannot measure are simply not shown, so the page is shorter
+on some boards.
+
+### Display
+
+The window title can be hidden with `Settings->Display->Show Title`.
+It is on by default.
+Hiding it frees up space in the header for the status icons, which is welcome
+on the narrow stick displays.
+
 ### Themes
 
 A few basic themes are included, to change:

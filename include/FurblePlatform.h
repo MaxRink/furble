@@ -4,6 +4,7 @@
 #include <array>
 
 #include <esp_err.h>
+#include <esp_log.h>
 
 #include <M5PM1.h>
 
@@ -15,6 +16,28 @@ class Platform {
 
   /** Default maximum CPU frequency in MHz. */
   static constexpr uint8_t CPU_MAX_FREQ_DEFAULT_MHZ = 160;
+
+  /**
+   * Battery measurements available on this board.
+   */
+  typedef struct {
+    bool level;
+    bool voltage;
+    bool current;
+    bool charging;
+  } battery_caps_t;
+
+  /**
+   * Battery measurement sample.
+   *
+   * Only fields flagged in battery_caps_t are meaningful.
+   */
+  typedef struct {
+    uint8_t level;     // percent
+    uint16_t voltage;  // millivolts
+    int32_t current;   // milliamps, positive when charging
+    bool charging;
+  } battery_t;
 
   static Platform &getInstance();
 
@@ -63,6 +86,26 @@ class Platform {
    */
   uint8_t getCPUMaxFreq(void) const;
 
+  /**
+   * Get the battery measurements supported by this board.
+   */
+  const battery_caps_t &getBatteryCaps(void);
+
+  /**
+   * Read the battery, unsupported measurements are returned as zero.
+   */
+  battery_t readBattery(void);
+
+  /**
+   * Get the battery capacity in mAh, zero if unknown.
+   */
+  uint16_t getBatteryCapacity(void);
+
+  /**
+   * Get the count of PMIC accesses which failed after a retry.
+   */
+  uint32_t getBatteryFailCount(void);
+
  private:
   Platform() {};
 
@@ -81,6 +124,36 @@ class Platform {
   // Power button click streak threshold
   const uint8_t PWR_CLICK_THRESHOLD_MS = 20;
 
+  /**
+   * Perform an M5PM1 access, retrying once on failure.
+   *
+   * The M5PM1 sleeps after an I2C idle period, the vendor documents that the
+   * first access after that only wakes the device and fails.
+   */
+  template <typename T>
+  bool m5pm1Access(T &&access) {
+    if (access() == M5PM1_OK) {
+      return true;
+    }
+
+    m_M5PM1RetryCount++;
+    ESP_LOGD("platform", "M5PM1 access failed, retrying (%lu)", m_M5PM1RetryCount);
+
+    if (access() == M5PM1_OK) {
+      return true;
+    }
+
+    m_M5PM1FailCount++;
+    ESP_LOGW("platform", "M5PM1 access failed after retry (%lu)", m_M5PM1FailCount);
+
+    return false;
+  }
+
+  /**
+   * Record which battery measurements this board supports.
+   */
+  void initBattery(void);
+
   M5PM1 m_M5PM1;
 
   bool m_Init = false;
@@ -89,6 +162,11 @@ class Platform {
   uint8_t m_CPUMaxFreqMHz = CPU_MAX_FREQ_DEFAULT_MHZ;
   uint8_t m_PMICClickCount = 0;
   uint32_t m_PMICClickTime = 0;
+
+  battery_caps_t m_BatteryCaps = {false, false, false, false};
+  uint16_t m_BatteryCapacity = 0;
+  uint32_t m_M5PM1RetryCount = 0;
+  uint32_t m_M5PM1FailCount = 0;
 };
 }  // namespace Furble
 

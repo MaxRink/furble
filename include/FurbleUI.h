@@ -10,6 +10,7 @@
 #include "FurbleCalibrate.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "interval.h"
 
@@ -66,12 +67,26 @@ class UI {
 
   typedef struct {
     GPS *gps;
+    lv_obj_t *title;
     lv_obj_t *gpsIcon;
     lv_obj_t *batteryIcon;
+    lv_obj_t *batteryLabel;
     lv_obj_t *reconnectIcon;
     lv_obj_t *gpsBaud;
     lv_obj_t *gpsData;
+    // battery page rows, NULL where the board cannot measure them
+    lv_obj_t *batteryLevel;
+    lv_obj_t *batteryVoltage;
+    lv_obj_t *batteryCurrent;
+    lv_obj_t *batteryCharging;
+    lv_obj_t *batteryRuntime;
     bool screenLocked;
+    // last battery sample, its smoothed values and the displayed percent
+    Platform::battery_t battery;
+    float meanLevel;
+    float meanVoltage;
+    float meanCurrent;
+    uint8_t displayLevel;
   } status_t;
 
   class Intervalometer {
@@ -182,6 +197,9 @@ class UI {
   static constexpr const char *m_AboutStr = "About";
   static constexpr const char *m_PowerStr = "Power";
 
+  // settings->power
+  static constexpr const char *m_BatteryStr = "Battery";
+
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
 
@@ -214,6 +232,7 @@ class UI {
   lv_timer_t *m_IntervalTimer;
   lv_timer_t *m_InactivityTimer;
   lv_timer_t *m_IconTimer;
+  lv_timer_t *m_BatteryTimer;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -339,6 +358,18 @@ class UI {
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);
+
+  /** Add the 'Battery' page. */
+  void addBatteryMenu(const menu_t &parent);
+
+  /** Show the header battery icon and/or percent according to the setting. */
+  void setBatteryStyle(uint8_t style);
+
+  /** Show or hide the window title. */
+  void setShowTitle(bool show);
+
+  /** Battery sample timer handler. */
+  static void batteryUpdate(lv_timer_t *timer);
 
   void addThemeMenu(const menu_t &parent);
 
