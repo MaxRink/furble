@@ -1,0 +1,9 @@
+menu "Furble"
+
+config FURBLE_NO_DISPLAY
+    bool "Build without display support"
+    default n
+    help
+        Omit display, LVGL, and input-device support from the firmware.
+
+endmenu

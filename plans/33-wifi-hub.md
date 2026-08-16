@@ -289,6 +289,56 @@ Camera coverage: Fujifilm on hardware, FauxNY for the rest. No vendor specific
 code is touched, since the console sends the same `Control::cmd_t` values the UI
 sends.
 
+## Implementation status
+
+### PR33a, stage 33a
+
+Rebase notes:
+
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
+  from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `DISPLAY_MODE`
+  as SETTING_U8 under the same guard.
+- `src/FurbleGPS.cpp` was rewritten on master by PR 27 (burst-windowed
+  locking). The displayless guards were re-applied on top: the esp_timer
+  include and the three-state icon source logic from master are kept, wrapped
+  in `FURBLE_NO_DISPLAY` where they touch LVGL.
+- `src/CMakeLists.txt` keeps master's `FurbleCompanion.cpp` in the common
+  source list; `FurbleCalibrate.cpp` moves to the display-only list per this
+  branch.
+- `UI::serviceRequests()` became an instance method. It was declared static
+  while calling the non-static `setDisplayMode()`, which fails to compile in
+  console (debug) builds. Its only caller is `UI::task()`.
+
+Implemented in `feat/33-wifi-hub`:
+
+- Added the GUI-only `DISPLAY_MODE` console setting, defaulting to `GUI`.
+  `CONSOLE` sleeps the panel and skips LVGL handling, while `GUI` wakes it
+  and restores the saved brightness.
+- Added `esp32-s3-headless` with `FURBLE_NO_DISPLAY`, a headless 5 ms loop,
+  and USB console request handling. The profile compiles out the UI sources
+  and excludes the `icons` component.
+- The intervalometer remains unavailable in the displayless profile because its
+  state machine still lives in the UI. The planned refactor is required before
+  33c.
+- Hardware verification on the StickS3 via the console is pending.
+
+Deviations:
+
+- The conditional LVGL dependency rules in the `idf_component.yml` files were
+  reverted during integration. The `CONFIG_FURBLE_NO_DISPLAY` rule made the
+  component manager drop LVGL for the five release envs, because the symbol is
+  undefined at dependency resolution time, which broke every GUI build. LVGL
+  now resolves unconditionally again. Source gating and `EXCLUDE_COMPONENTS`
+  keep the UI and icons out of the headless image. Full LVGL dependency
+  exclusion for the headless profile is follow-up work.
+- The new `Furble` Kconfig menu appends a derived
+  `# CONFIG_FURBLE_NO_DISPLAY is not set` block on regeneration. It was added
+  consistently to all five committed sdkconfig files.
+
+The `m5stick-s3` build passes with `FURBLE_VERSION=dev FURBLE_TEST=0` after
+the revert.
+
 ---
 
 # PR33b: WiFi station provisioning over the console, and NTP
