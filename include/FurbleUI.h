@@ -68,6 +68,7 @@ class UI {
 
   typedef struct {
     GPS *gps;
+    lv_obj_t *title;
     lv_obj_t *gpsIcon;
     lv_obj_t *batteryIcon;
     lv_obj_t *batteryLabel;
@@ -81,9 +82,12 @@ class UI {
     /** Widgets which are only useful while GPS is enabled. */
     std::vector<lv_obj_t *> gpsWidgets;
     bool screenLocked;
-    // last battery sample and its smoothed current
+    // last battery sample, its smoothed values and the displayed percent
     Platform::battery_t battery;
+    float meanLevel;
+    float meanVoltage;
     float meanCurrent;
+    uint8_t displayLevel;
   } status_t;
 
   typedef struct {
@@ -480,6 +484,9 @@ class UI {
 
   /** Show the header battery icon and/or percent according to the setting. */
   void setBatteryStyle(uint8_t style);
+
+  /** Show or hide the window title. */
+  void setShowTitle(bool show);
 
   /** Battery sample timer handler. */
   static void batteryUpdate(lv_timer_t *timer);

@@ -31,6 +31,7 @@ class Settings {
     AUTOCONNECT,
     CPU_FREQ,
     BATT_STYLE,
+    SHOW_TITLE,
     SLEEP_CONN,
     BULB,
     SCAN_MODE,
@@ -186,6 +187,10 @@ struct Settings::storage_type<Settings::CPU_FREQ> {
 template <>
 struct Settings::storage_type<Settings::BATT_STYLE> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::SHOW_TITLE> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::SLEEP_CONN> {
