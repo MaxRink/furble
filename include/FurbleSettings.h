@@ -23,6 +23,7 @@ class Settings {
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
+    IMU,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -248,6 +249,10 @@ struct Settings::storage_type<Settings::TX_ADAPTIVE> {
 };
 template <>
 struct Settings::storage_type<Settings::GPS> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::IMU> {
   using type = bool;
 };
 template <>

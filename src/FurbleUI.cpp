@@ -218,6 +218,7 @@ lv_timer_t *UI::m_ConnectTimer;
 lv_timer_t *UI::m_GPSDataTimer;
 
 lv_timer_t *UI::m_CamerasTimer;
+lv_timer_t *UI::m_LevelTimer;
 
 lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
@@ -241,6 +242,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -270,11 +272,13 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IMUDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -1915,7 +1919,8 @@ void UI::addMainMenu(void) {
 
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
-            || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)) {
+            || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)
+            || (page == m_Menu.at(m_IMUDataStr).page)) {
           lv_timer_resume(ui->m_DiagnosticsTimer);
           lv_timer_ready(ui->m_DiagnosticsTimer);
         } else {
@@ -1990,10 +1995,13 @@ void UI::addMainMenu(void) {
           } else {
             lv_obj_add_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
           }
+          showIMUWidgets(M5.Imu.isEnabled());
 
           // hide and disable back button
           lv_obj_add_state(back, LV_STATE_DISABLED);
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
+        } else if (page == m_Menu.at(m_DiagnosticsStr).page) {
+          showIMUWidgets(M5.Imu.isEnabled());
         } else if (page == m_Menu.at(m_RemoteShutter).page) {
           if (M5.Touch.isEnabled()) {
             // if touch screen, enable back
@@ -2017,6 +2025,10 @@ void UI::addMainMenu(void) {
         } else if ((page == m_Menu.at(m_GPSDataStr).page)
                    || (page == m_Menu.at(m_CamerasStr).page)) {
           // These pages are reachable from the connected page, always display 'Back'
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
+        } else if (page == m_Menu.at(m_LevelStr).page) {
+          // 'Level' is reachable from the connected page, always display 'Back'
           lv_obj_remove_state(back, LV_STATE_DISABLED);
           lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
         }
@@ -4286,6 +4298,129 @@ void UI::addCamerasMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addLevelMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_LevelStr, NULL, true, parent);
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  int32_t diameter = std::min(m_Width - 16, m_Height - 80);
+  diameter = std::max<int32_t>(40, diameter);
+  m_Level.surface = lv_obj_create(cont);
+  lv_obj_set_size(m_Level.surface, diameter, diameter);
+  lv_obj_clear_flag(m_Level.surface, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(m_Level.surface, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(m_Level.surface, LV_OPA_10, LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.surface, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(m_Level.surface, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
+
+  m_Level.bubble = lv_obj_create(m_Level.surface);
+  lv_obj_set_size(m_Level.bubble, 16, 16);
+  lv_obj_set_style_radius(m_Level.bubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(m_Level.bubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.bubble, 0, LV_PART_MAIN);
+  lv_obj_center(m_Level.bubble);
+
+  lv_obj_t *values = lv_obj_create(cont);
+  lv_obj_set_width(values, LV_PCT(100));
+  lv_obj_set_height(values, LV_SIZE_CONTENT);
+  lv_obj_set_layout(values, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
+
+  m_Level.roll = lv_label_create(values);
+  lv_label_set_text(m_Level.roll, "Roll: --");
+  m_Level.pitch = lv_label_create(values);
+  lv_label_set_text(m_Level.pitch, "Pitch: --");
+
+  m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
+  lv_timer_pause(m_LevelTimer);
+  lv_obj_add_event_cb(menu.button, levelStart, LV_EVENT_CLICKED, m_LevelTimer);
+
+  if (!M5.Imu.isEnabled()) {
+    lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::levelStart(lv_event_t *e) {
+  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+  auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
+  level->filterReady = false;
+  level->displayReady = false;
+  lv_timer_resume(timer);
+
+  auto &menu = m_Menu.at(m_LevelStr);
+  lv_obj_add_event_cb(menu.main, levelStop, LV_EVENT_CLICKED, timer);
+}
+
+void UI::levelStop(lv_event_t *e) {
+  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+  lv_timer_pause(timer);
+  lv_obj_remove_event_cb(static_cast<lv_obj_t *>(lv_event_get_target(e)), levelStop);
+}
+
+void UI::levelUpdate(lv_timer_t *timer) {
+  auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
+  if (!M5.Imu.isEnabled()) {
+    return;
+  }
+
+  M5.Imu.update();
+  float accel[3];
+  if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
+    return;
+  }
+
+  constexpr float alpha = 0.2f;
+  if (!level->filterReady) {
+    std::copy(std::begin(accel), std::end(accel), std::begin(level->accel));
+    level->filterReady = true;
+  } else {
+    for (size_t index = 0; index < 3; index++) {
+      level->accel[index] = (alpha * accel[index]) + ((1.0f - alpha) * level->accel[index]);
+    }
+  }
+
+  constexpr float radiansToDegrees = 57.2957795f;
+  float roll = std::atan2(level->accel[1], level->accel[2]) * radiansToDegrees;
+  float pitch = std::atan2(-level->accel[0], std::sqrt((level->accel[1] * level->accel[1])
+                                                       + (level->accel[2] * level->accel[2])))
+                * radiansToDegrees;
+
+  int32_t diameter = lv_obj_get_width(level->surface);
+  int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
+  int32_t maxOffset = std::max<int32_t>(0, ((diameter - bubbleDiameter) / 2) - 4);
+  constexpr float maximumDisplayedTilt = 45.0f;
+  float rollOffset = std::clamp(roll / maximumDisplayedTilt, -1.0f, 1.0f);
+  float pitchOffset = std::clamp(pitch / maximumDisplayedTilt, -1.0f, 1.0f);
+  int32_t center = (diameter - bubbleDiameter) / 2;
+  int32_t bubbleX = center + static_cast<int32_t>(std::round(rollOffset * maxOffset));
+  int32_t bubbleY = center + static_cast<int32_t>(std::round(pitchOffset * maxOffset));
+
+  if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
+    level->bubbleX = bubbleX;
+    level->bubbleY = bubbleY;
+    lv_obj_set_pos(level->bubble, bubbleX, bubbleY);
+  }
+
+  if (!level->displayReady || std::fabs(level->displayRoll - roll) >= 0.1f) {
+    level->displayRoll = roll;
+    lv_label_set_text_fmt(level->roll, "Roll: %.1f deg", roll);
+  }
+  if (!level->displayReady || std::fabs(level->displayPitch - pitch) >= 0.1f) {
+    level->displayPitch = pitch;
+    lv_label_set_text_fmt(level->pitch, "Pitch: %.1f deg", pitch);
+  }
+  level->displayReady = true;
+}
+
 UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
@@ -4306,6 +4441,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
   addCamerasMenu(menuConnected);
   addBulbMenu(menuConnected);
   menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
+  addLevelMenu(menuConnected);
   menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
   menu_t &disconnect = addMenu(m_RemoteDisconnect, &icon_no_photography, true, menuConnected);
 
@@ -4510,6 +4646,10 @@ UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuGPSDataPage = m_Menu.at(m_GPSDataStr);
   lv_menu_set_load_page_event(menuGPSDataPage.main, menuGPSData.button, menuGPSDataPage.page);
   lv_obj_add_event_cb(menuGPSData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
+
+  // add spirit level control
+  menu_t &menuLevel = m_Menu.at(m_LevelStr);
+  lv_menu_set_load_page_event(menuLevel.main, menuLevel.button, menuLevel.page);
 
   // add disconnect control
   lv_obj_add_event_cb(
@@ -4738,6 +4878,17 @@ void UI::showGPSWidgets(status_t *status, bool show) {
   }
 }
 
+void UI::showIMUWidgets(bool show) {
+  for (const auto *name : {m_LevelStr, m_IMUDataStr}) {
+    auto &menu = m_Menu.at(name);
+    if (show) {
+      lv_obj_clear_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
 void UI::addGPSMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_GPSStr, &icon_location_searching, true, parent);
 
@@ -4876,6 +5027,30 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
                     "Use 5 to 15 s to keep fixes fresh. Rail cycling is experimental. GPS unit "
                     "v1.1 has no backup supply, a rail cut costs a ~108 s cold refix, so the "
                     "cycle never completes and the receiver stays always on.");
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addSensorsMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
+
+  addSettingItem(menu.page, NULL, Settings::IMU);
+
+  lv_obj_t *notice = lv_menu_cont_create(menu.page);
+  lv_obj_t *noticeLabel = lv_label_create(notice);
+  lv_label_set_text(noticeLabel, "Restart to apply");
+
+  lv_obj_t *restart = lv_button_create(menu.page);
+  lv_obj_t *label = lv_label_create(restart);
+  lv_label_set_text(label, "Restart");
+  lv_obj_center(label);
+  lv_obj_add_event_cb(
+      restart,
+      [](lv_event_t *) {
+        Settings::save<Settings::IMU>(Settings::load<Settings::IMU>());
+        esp_restart();
+      },
+      LV_EVENT_CLICKED, NULL);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -6618,6 +6793,44 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
       diagnostics->bleText = text;
     }
   }
+
+  if ((diagnostics->imuAccel != nullptr) || (diagnostics->imuGyro != nullptr)) {
+    if (M5.Imu.isEnabled()) {
+      M5.Imu.update();
+      float accel[3];
+      float gyro[3];
+      bool accelRead = M5.Imu.getAccel(&accel[0], &accel[1], &accel[2]);
+      bool gyroRead = M5.Imu.getGyro(&gyro[0], &gyro[1], &gyro[2]);
+
+      if (accelRead && diagnostics->imuAccel != nullptr) {
+        bool changed = !diagnostics->imuValuesValid;
+        for (size_t index = 0; index < 3; index++) {
+          changed =
+              changed || (std::fabs(diagnostics->imuAccelValues[index] - accel[index]) >= 0.001f);
+          diagnostics->imuAccelValues[index] = accel[index];
+        }
+        if (changed) {
+          lv_label_set_text_fmt(diagnostics->imuAccel, "Accel (G):\nX %.3f  Y %.3f  Z %.3f",
+                                accel[0], accel[1], accel[2]);
+        }
+      }
+
+      if (gyroRead && diagnostics->imuGyro != nullptr) {
+        bool changed = !diagnostics->imuValuesValid;
+        for (size_t index = 0; index < 3; index++) {
+          changed =
+              changed || (std::fabs(diagnostics->imuGyroValues[index] - gyro[index]) >= 0.001f);
+          diagnostics->imuGyroValues[index] = gyro[index];
+        }
+        if (changed) {
+          lv_label_set_text_fmt(diagnostics->imuGyro, "Gyro (deg/s):\nX %.2f  Y %.2f  Z %.2f",
+                                gyro[0], gyro[1], gyro[2]);
+        }
+      }
+
+      diagnostics->imuValuesValid = accelRead && gyroRead;
+    }
+  }
 }
 
 /**
@@ -6856,6 +7069,25 @@ void UI::addBLEMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addIMUDataMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_IMUDataStr, NULL, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  m_Diagnostics.imuAccel = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
+  m_Diagnostics.imuGyro = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
+
+  if (!M5.Imu.isEnabled()) {
+    lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addDiagnosticsMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DiagnosticsStr, &icon_troubleshoot, true, parent);
 
@@ -6868,6 +7100,7 @@ void UI::addDiagnosticsMenu(const menu_t &parent) {
 
   addPowerStateMenu(menu);
   addBLEMenu(menu);
+  addIMUDataMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -7077,6 +7310,7 @@ void UI::addSettingsMenu(void) {
   addDisplayMenu(menu);
   addFeaturesMenu(menu);
   addIRSettingsMenu(menu);
+  addSensorsMenu(menu);
   addGPSMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);
