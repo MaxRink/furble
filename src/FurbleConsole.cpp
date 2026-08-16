@@ -163,8 +163,14 @@ const char *settingType(Settings::type_t type) {
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::TX_POWER:
+    case Settings::CPU_FREQ:
+    case Settings::BATT_STYLE:
+    case Settings::SCAN_MODE:
+    case Settings::GPS_RATE:
+    case Settings::GPS_CONSTEL:
       return "uint8";
     case Settings::GPS_BAUD:
+    case Settings::SCAN_TIMEOUT:
       return "uint32";
     case Settings::THEME:
       return "string";
@@ -173,9 +179,13 @@ const char *settingType(Settings::type_t type) {
     case Settings::RECONNECT:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
+    case Settings::SHOW_TITLE:
+    case Settings::SLEEP_CONN:
+    case Settings::GPS_NMEA:
       return "bool";
     case Settings::INTERVAL:
     case Settings::TOUCH_CALIBRATION:
+    case Settings::BULB:
       return "struct";
   }
   return "unknown";
