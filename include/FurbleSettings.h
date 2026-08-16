@@ -26,6 +26,8 @@ class Settings {
     FAUXNY,
     TOUCH_CALIBRATION,
     AUTOCONNECT,
+    CPU_FREQ,
+    BATT_STYLE,
   } type_t;
 
   typedef struct {
@@ -59,8 +61,18 @@ class Settings {
     const char *nvs_namespace;
   } setting_t;
 
+  /** Battery status display styles. */
+  typedef enum {
+    BATT_STYLE_ICON = 0,
+    BATT_STYLE_PERCENT = 1,
+    BATT_STYLE_BOTH = 2,
+  } batt_style_t;
+
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+
+  /** Default maximum CPU frequency in MHz, matches Platform. */
+  static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
 
   static void init(void);
 
@@ -145,6 +157,14 @@ struct Settings::storage_type<Settings::TOUCH_CALIBRATION> {
 template <>
 struct Settings::storage_type<Settings::AUTOCONNECT> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::CPU_FREQ> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::BATT_STYLE> {
+  using type = uint8_t;
 };
 
 }  // namespace Furble

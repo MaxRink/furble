@@ -3,7 +3,11 @@
 #include <tuple>
 
 #include <M5Unified.h>
+#include <esp_chip_info.h>
+#include <esp_flash.h>
+#include <esp_idf_version.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 #include <lvgl.h>
 #include <src/themes/lv_theme_private.h>
 
@@ -69,6 +73,11 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
+    {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
@@ -143,31 +152,37 @@ UI::UI(const interval_t &interval)
   m_Status.gps = &m_GPS;
   m_Status.reconnectIcon = addIcon(&icon_all_inclusive);
   m_Status.gpsIcon = addIcon(&icon_location_disabled);
-#if FURBLE_BATTERY_DEBUG == 1
-  m_Status.batteryIcon = lv_label_create(m_Header);
-#else
   m_Status.batteryIcon = addIcon(&icon_battery_android_frame_4);
-#endif
+  m_Status.batteryLabel = lv_label_create(m_Header);
+  m_Status.batteryLevel = nullptr;
+  m_Status.batteryVoltage = nullptr;
+  m_Status.batteryCurrent = nullptr;
+  m_Status.batteryCharging = nullptr;
+  m_Status.batteryRuntime = nullptr;
   m_Status.screenLocked = false;
 
+  // prime the battery cache before anything renders it
+  m_Status.battery = Platform::getInstance().readBattery();
+  m_Status.meanCurrent = m_Status.battery.current;
+  lv_label_set_text_fmt(m_Status.batteryLabel, "%u%%", m_Status.battery.level);
+  setBatteryStyle(Settings::load<Settings::BATT_STYLE>());
+
   m_GPS.setIcon(m_Status.gpsIcon);
+
+  // sample the battery every 5s, the PMIC is on I2C and the values move slowly
+  m_BatteryTimer = lv_timer_create(batteryUpdate, 5000, &m_Status);
+
+  // refresh the diagnostics pages every second, but only while one is open
+  m_DiagnosticsTimer = lv_timer_create(diagnosticsUpdate, 1000, &m_Diagnostics);
+  lv_timer_pause(m_DiagnosticsTimer);
 
   // refresh icons every 250ms
   m_IconTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         status_t *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
 
-#if FURBLE_BATTERY_DEBUG == 1
-        int32_t current = M5.Power.getBatteryCurrent();
-        static int32_t mean = current;
-
-        // exponentially weighted moving average with alpha = 0.33
-        mean = mean + (current - mean) / 3;
-
-        lv_label_set_text_fmt(status->batteryIcon, "%ld", mean);
-#else
         const lv_image_dsc_t *symbol = NULL;
-        int32_t level = M5.Power.getBatteryLevel();
+        uint8_t level = status->battery.level;
         if (level >= 95) {
           symbol = &icon_battery_android_frame_full;
         } else if (level >= 66) {
@@ -180,7 +195,13 @@ UI::UI(const interval_t &interval)
           symbol = &icon_battery_android_0;
         }
         lv_image_set_src(status->batteryIcon, symbol);
-#endif
+
+        // the label only changes when the sampled level changes
+        static uint8_t rendered = UINT8_MAX;
+        if (rendered != level) {
+          rendered = level;
+          lv_label_set_text_fmt(status->batteryLabel, "%u%%", level);
+        }
 
         if (status->gps->isEnabled()) {
           lv_obj_clear_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
@@ -893,6 +914,15 @@ void UI::addMainMenu(void) {
         auto *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
         auto &scan = Scan::getInstance();
 
+        // the diagnostics values only refresh while one of their pages is open
+        if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
+            || (page == m_Menu.at(m_PowerStateStr).page)) {
+          lv_timer_resume(ui->m_DiagnosticsTimer);
+          lv_timer_ready(ui->m_DiagnosticsTimer);
+        } else {
+          lv_timer_pause(ui->m_DiagnosticsTimer);
+        }
+
         if (page == m_MainMenu.page) {
           size_t saveCount = CameraList::getSaveCount();
           ui->m_MainCount++;
@@ -948,6 +978,9 @@ void UI::addMainMenu(void) {
 
           m_ConnectContext.menuName = m_ScanStr;
         } else if (page == m_Menu.at(m_SettingsStr).page) {
+        } else if (page == m_Menu.at(m_BatteryStr).page) {
+          // refresh the battery page on entry rather than waiting for the timer
+          lv_timer_ready(ui->m_BatteryTimer);
         } else if (page == m_Menu.at(m_ConnectStr).page) {
           // ensure menu control
           // especially if arrived here from a disconnect/cancel
@@ -1949,6 +1982,202 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::setBatteryStyle(uint8_t style) {
+  if (style == Settings::BATT_STYLE_PERCENT) {
+    lv_obj_add_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_clear_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (style == Settings::BATT_STYLE_ICON) {
+    lv_obj_add_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_clear_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void UI::batteryUpdate(lv_timer_t *timer) {
+  auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+
+  status->battery = platform.readBattery();
+
+  if (caps.current) {
+    // exponentially weighted moving average with alpha = 1/12, at the 5s
+    // sample period that is a time constant of about a minute
+    status->meanCurrent += (status->battery.current - status->meanCurrent) / 12.0f;
+  }
+
+  if (status->batteryLevel != nullptr) {
+    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->battery.level);
+  }
+
+  if (status->batteryVoltage != nullptr) {
+    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %u.%03u", status->battery.voltage / 1000,
+                          status->battery.voltage % 1000);
+  }
+
+  if (status->batteryCurrent != nullptr) {
+    lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
+  }
+
+  if (status->batteryCharging != nullptr) {
+    lv_label_set_text(status->batteryCharging,
+                      status->battery.charging ? "Charging: yes" : "Charging: no");
+  }
+
+  if (status->batteryRuntime != nullptr) {
+    if (status->battery.charging) {
+      lv_label_set_text(status->batteryRuntime, "Runtime: charging");
+    } else if (status->meanCurrent < -1.0f) {
+      // remaining capacity in mAh divided by the average discharge current
+      float remaining = platform.getBatteryCapacity() * (status->battery.level / 100.0f);
+      uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
+      lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
+                            minutes % 60);
+    } else {
+      lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+    }
+  }
+
+#if FURBLE_BATTERY_DEBUG == 1
+  ESP_LOGI("battery", "uptime=%lu level=%u voltage=%u current=%ld mean=%.1f charging=%u fail=%lu",
+           platform.tick() / 1000, status->battery.level, status->battery.voltage,
+           status->battery.current, status->meanCurrent, status->battery.charging,
+           platform.getBatteryFailCount());
+#endif
+}
+
+void UI::addBatteryMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_BatteryStr, &icon_battery_android_frame_full, true, parent);
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  auto addRow = [cont]() {
+    lv_obj_t *label = lv_label_create(cont);
+    lv_label_set_text(label, "");
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    return label;
+  };
+
+  // only add the rows this board can actually measure
+  if (caps.level) {
+    m_Status.batteryLevel = addRow();
+  }
+
+  if (caps.voltage) {
+    m_Status.batteryVoltage = addRow();
+  }
+
+  if (caps.current) {
+    m_Status.batteryCurrent = addRow();
+  }
+
+  if (caps.charging) {
+    m_Status.batteryCharging = addRow();
+  }
+
+  if (caps.current && (platform.getBatteryCapacity() > 0)) {
+    m_Status.batteryRuntime = addRow();
+  }
+
+  // fill the page with the current values
+  lv_timer_ready(m_BatteryTimer);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addPowerMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  // Add CPU maximum frequency control
+  lv_obj_t *label = lv_label_create(cont);
+  lv_label_set_text(label, "CPU speed");
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  const auto &frequencies = Platform::CPU_MAX_FREQ_MHZ;
+  std::string options;
+  for (const auto mhz : frequencies) {
+    if (!options.empty()) {
+      options += "\n";
+    }
+    options += std::to_string(mhz) + " MHz";
+  }
+
+  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+
+  // The roller index is not the frequency, map it explicitly
+  // getCPUMaxFreq() only ever returns a listed frequency, so the find succeeds
+  auto &platform = Platform::getInstance();
+  uint32_t index =
+      std::distance(frequencies.begin(),
+                    std::find(frequencies.begin(), frequencies.end(), platform.getCPUMaxFreq()));
+  lv_roller_set_selected(roller, index, LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        auto index = lv_roller_get_selected(roller);
+        if (index >= Platform::CPU_MAX_FREQ_MHZ.size()) {
+          return;
+        }
+
+        // Takes effect immediately, save what was actually applied
+        auto &platform = Platform::getInstance();
+        platform.setCPUMaxFreq(Platform::CPU_MAX_FREQ_MHZ[index]);
+        Settings::save<Settings::CPU_FREQ>(platform.getCPUMaxFreq());
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  // Add battery style control
+  label = lv_label_create(cont);
+  lv_label_set_text(label, Settings::get(Settings::BATT_STYLE).name);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, "Icon\nPercent\nBoth", LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  lv_roller_set_selected(roller, Settings::load<Settings::BATT_STYLE>(), LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        uint8_t style = lv_roller_get_selected(roller);
+
+        Settings::save<Settings::BATT_STYLE>(style);
+        ui->setBatteryStyle(style);
+      },
+      LV_EVENT_VALUE_CHANGED, this);
+
+  // Add the battery page entry below the controls
+  addBatteryMenu(menu);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addThemeMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_ThemeStr, &icon_palette, true, parent);
 
@@ -2039,22 +2268,192 @@ void UI::addTransmitPowerMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+lv_obj_t *UI::addInfoRow(lv_obj_t *cont) {
+  lv_obj_t *label = lv_label_create(cont);
+  lv_obj_set_width(label, LV_PCT(100));
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(label, "");
+
+  // rows are read only, but must be focusable so the button boards can scroll
+  lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(label, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_group_add_obj(lv_group_get_default(), label);
+
+  return label;
+}
+
+const char *UI::getResetReason(void) {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:
+      return "Power on";
+    case ESP_RST_EXT:
+      return "External";
+    case ESP_RST_SW:
+      return "Software";
+    case ESP_RST_PANIC:
+      return "Panic";
+    case ESP_RST_INT_WDT:
+      return "Interrupt watchdog";
+    case ESP_RST_TASK_WDT:
+      return "Task watchdog";
+    case ESP_RST_WDT:
+      return "Watchdog";
+    case ESP_RST_DEEPSLEEP:
+      return "Deep sleep";
+    case ESP_RST_BROWNOUT:
+      return "Brownout";
+    default:
+      return "Unknown";
+  }
+}
+
+void UI::diagnosticsUpdate(lv_timer_t *timer) {
+  auto *diagnostics = static_cast<diagnostics_t *>(lv_timer_get_user_data(timer));
+  auto &platform = Platform::getInstance();
+
+  SpinValue::hms_t hms = SpinValue::toHMS(platform.tick());
+  uint32_t heap = esp_get_free_heap_size();
+  uint32_t minimum = esp_get_minimum_free_heap_size();
+
+  if (diagnostics->aboutUptime != nullptr) {
+    lv_label_set_text_fmt(diagnostics->aboutUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
+                          hms.minutes, hms.seconds);
+  }
+
+  if (diagnostics->aboutHeap != nullptr) {
+    lv_label_set_text_fmt(diagnostics->aboutHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
+  }
+
+  if (diagnostics->deviceUptime != nullptr) {
+    lv_label_set_text_fmt(diagnostics->deviceUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
+                          hms.minutes, hms.seconds);
+  }
+
+  if (diagnostics->deviceHeap != nullptr) {
+    lv_label_set_text_fmt(diagnostics->deviceHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
+  }
+
+  if ((diagnostics->powerFrequency != nullptr) || (diagnostics->powerSleep != nullptr)) {
+    auto pm = platform.getPMConfig();
+
+    if (diagnostics->powerFrequency != nullptr) {
+      lv_label_set_text_fmt(diagnostics->powerFrequency, "CPU:\n%u to %u MHz", pm.min_freq_mhz,
+                            pm.max_freq_mhz);
+    }
+
+    if (diagnostics->powerSleep != nullptr) {
+      lv_label_set_text_fmt(diagnostics->powerSleep, "Light sleep:\n%s",
+                            pm.light_sleep_enable ? "on" : "off");
+    }
+  }
+}
+
 void UI::addAboutMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_AboutStr, &icon_info, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_width(cont, LV_PCT(100));
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  lv_obj_t *version = lv_label_create(cont);
-  lv_obj_set_width(version, LV_PCT(100));
-  lv_label_set_long_mode(version, LV_LABEL_LONG_WRAP);
+  lv_obj_t *version = addInfoRow(cont);
   lv_label_set_text_fmt(version, "Version:\n%s", FURBLE_VERSION);
 
-  lv_obj_t *id = lv_label_create(cont);
-  lv_obj_set_width(id, LV_PCT(100));
-  lv_label_set_long_mode(id, LV_LABEL_LONG_WRAP);
+  lv_obj_t *id = addInfoRow(cont);
   lv_label_set_text_fmt(id, "ID:\n%s", Device::getStringID().c_str());
+
+  lv_obj_t *build = addInfoRow(cont);
+  lv_label_set_text_fmt(build, "Build:\n%s %s", __DATE__, __TIME__);
+
+  lv_obj_t *idf = addInfoRow(cont);
+  lv_label_set_text_fmt(idf, "IDF:\n%s", IDF_VER);
+
+  // filled in by the diagnostics timer whenever the page is open
+  m_Diagnostics.aboutUptime = addInfoRow(cont);
+  m_Diagnostics.aboutHeap = addInfoRow(cont);
+
+  lv_obj_t *reset = addInfoRow(cont);
+  lv_label_set_text_fmt(reset, "Reset:\n%s", getResetReason());
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addDeviceInfoMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_DeviceInfoStr, NULL, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  esp_chip_info_t info;
+  esp_chip_info(&info);
+
+  uint32_t flash = 0;
+  esp_err_t err = esp_flash_get_size(NULL, &flash);
+  if (err != ESP_OK) {
+    ESP_LOGW("ui", "Unable to read flash size (%s).", esp_err_to_name(err));
+    flash = 0;
+  }
+
+  lv_obj_t *chip = addInfoRow(cont);
+  lv_label_set_text_fmt(chip, "Chip:\n%s rev %u.%u", CONFIG_IDF_TARGET, info.revision / 100,
+                        info.revision % 100);
+
+  lv_obj_t *cores = addInfoRow(cont);
+  lv_label_set_text_fmt(cores, "Cores: %u", info.cores);
+
+  lv_obj_t *size = addInfoRow(cont);
+  lv_label_set_text_fmt(size, "Flash: %lu MB", flash / (1024 * 1024));
+
+  // filled in by the diagnostics timer whenever the page is open
+  m_Diagnostics.deviceHeap = addInfoRow(cont);
+  m_Diagnostics.deviceUptime = addInfoRow(cont);
+
+  lv_obj_t *reset = addInfoRow(cont);
+  lv_label_set_text_fmt(reset, "Reset:\n%s", getResetReason());
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addPowerStateMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_PowerStateStr, NULL, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  // filled in by the diagnostics timer whenever the page is open
+  m_Diagnostics.powerFrequency = addInfoRow(cont);
+  m_Diagnostics.powerSleep = addInfoRow(cont);
+
+  lv_obj_t *tickless = addInfoRow(cont);
+  lv_label_set_text_fmt(tickless, "Tickless idle:\n%s", Platform::hasTicklessIdle() ? "yes" : "no");
+
+  lv_obj_t *configured = addInfoRow(cont);
+  lv_label_set_text(configured, "Frequencies are configured, not measured.");
+
+  lv_obj_t *dump = lv_button_create(cont);
+  lv_obj_t *label = lv_label_create(dump);
+  lv_label_set_text(label, "Dump locks");
+  lv_obj_add_event_cb(
+      dump, [](lv_event_t *e) { Platform::getInstance().dumpPMLocks(); }, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *console = addInfoRow(cont);
+  lv_label_set_text(console, "Locks go to the serial console, without hold times.");
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addDiagnosticsMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_DiagnosticsStr, &icon_info, true, parent);
+
+  addDeviceInfoMenu(menu);
+
+  // link the battery page rather than building a second one
+  auto &battery = m_Menu.at(m_BatteryStr);
+  lv_obj_t *button = addMenuItem(menu, &icon_battery_android_frame_full, m_BatteryStr);
+  lv_menu_set_load_page_event(menu.main, button, battery.page);
+
+  addPowerStateMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -2063,7 +2462,8 @@ void UI::addSettingsMenu(void) {
   menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
 
 #if defined(FURBLE_M5COREX)
-  lv_obj_set_grid_dsc_array(menu.page, m_GridLayoutColDsc.data(), m_GridLayoutRowDsc.data());
+  lv_obj_set_grid_dsc_array(menu.page, m_GridLayoutColDsc.data(),
+                            m_SettingsGridLayoutRowDsc.data());
   lv_obj_set_layout(menu.page, LV_LAYOUT_GRID);
 #else
 #endif
@@ -2077,6 +2477,9 @@ void UI::addSettingsMenu(void) {
   addThemeMenu(menu);
   addTransmitPowerMenu(menu);
   addAboutMenu(menu);
+  addPowerMenu(menu);
+  // after 'Power', the battery page it builds is linked from diagnostics
+  addDiagnosticsMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
