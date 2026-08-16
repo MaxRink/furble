@@ -76,6 +76,16 @@ class Platform {
   void update(void);
 
   /**
+   * Enable or disable the M5PM1 hardware watchdog.
+   */
+  void watchdogEnable(bool enable);
+
+  /**
+   * Feed the M5PM1 hardware watchdog.
+   */
+  void watchdogFeed(void);
+
+  /**
    * Power off the device.
    */
   void powerOff(void);
@@ -184,6 +194,10 @@ class Platform {
   uint16_t m_BatteryCapacity = 0;
   uint32_t m_M5PM1RetryCount = 0;
   uint32_t m_M5PM1FailCount = 0;
+#if defined(FURBLE_M5STICKS3)
+  bool m_WatchdogEnabled = false;
+  uint32_t m_WatchdogLastFeed = 0;
+#endif
 };
 }  // namespace Furble
 

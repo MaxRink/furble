@@ -9,6 +9,13 @@
 
 namespace Furble {
 
+#if defined(FURBLE_M5STICKS3)
+namespace {
+constexpr uint8_t WDT_TIMEOUT_S = 10;  // Keep the feed period below one third of this timeout.
+constexpr uint32_t WDT_FEED_PERIOD_MS = 1000;
+}  // namespace
+#endif
+
 Platform &Platform::getInstance(void) {
   static Platform instance;
 
@@ -52,6 +59,42 @@ Platform &Platform::getInstance(void) {
 void Platform::init(void) {
   (void)getInstance();
 }
+
+#if defined(FURBLE_M5STICKS3)
+void Platform::watchdogEnable(bool enable) {
+  m_WatchdogEnabled = false;
+  m_WatchdogLastFeed = tick();
+
+  const uint8_t timeout = enable ? WDT_TIMEOUT_S : 0;
+  if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
+    ESP_LOGE(LOG_TAG, "Failed to set M5PM1 watchdog to %u seconds", static_cast<unsigned>(timeout));
+    return;
+  }
+
+  if (enable) {
+    m_WatchdogEnabled = true;
+    ESP_LOGI(LOG_TAG, "M5PM1 watchdog armed for %u seconds", static_cast<unsigned>(WDT_TIMEOUT_S));
+  } else {
+    ESP_LOGI(LOG_TAG, "M5PM1 watchdog disabled");
+  }
+}
+
+void Platform::watchdogFeed(void) {
+  if (!m_WatchdogEnabled) {
+    return;
+  }
+
+  const uint32_t now = tick();
+  if (now - m_WatchdogLastFeed < WDT_FEED_PERIOD_MS) {
+    return;
+  }
+  m_WatchdogLastFeed = now;
+
+  if (!m5pm1Access([this]() { return m_M5PM1.wdtFeed(); })) {
+    ESP_LOGW(LOG_TAG, "Failed to feed M5PM1 watchdog");
+  }
+}
+#endif
 
 uint32_t Platform::tick(void) {
   return (esp_timer_get_time() / 1000LL);
@@ -131,6 +174,7 @@ bool Platform::hasTicklessIdle(void) {
 
 void Platform::powerOff(void) {
 #if defined(FURBLE_M5STICKS3)
+  watchdogEnable(false);
   m_M5PM1.shutdown();
 #else
   M5.Power.powerOff();
@@ -183,7 +227,7 @@ void Platform::initBattery(void) {
       m_BatteryCapacity = 0;
   }
 
-  ESP_LOGI("platform", "Battery: level=%u voltage=%u current=%u charging=%u capacity=%umAh",
+  ESP_LOGI(LOG_TAG, "Battery: level=%u voltage=%u current=%u charging=%u capacity=%umAh",
            m_BatteryCaps.level, m_BatteryCaps.voltage, m_BatteryCaps.current,
            m_BatteryCaps.charging, m_BatteryCapacity);
 }
@@ -250,6 +294,7 @@ void Platform::update(void) {
   if (m_M5PM1.btnGetState(&b) == M5PM1_OK) {
     M5.BtnPWR.setRawState(tick(), b);
   }
+  watchdogFeed();
 #else
   if (m_PMICHack && M5.BtnPWR.wasClicked()) {
     // fake PMIC button as actual button, record the click streak

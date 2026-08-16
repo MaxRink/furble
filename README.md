@@ -210,6 +210,21 @@ automatic light sleep gates the APB clock. On the M5StickS3 no lock is needed,
 `CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION` already keeps the chip out of light sleep
 while USB is connected.
 
+### Recovering a locked-up M5StickS3
+
+The Watchdog setting is enabled by default. Turn it off in `Settings->Features->Watchdog`
+and reboot before attaching a JTAG debugger, because halting the CPU stops the watchdog feed.
+
+If the M5StickS3 is powered off and will not turn on, single click the side button.
+
+If the device is wedged, the screen is dark, and USB is not enumerating:
+
+1. Unplug the USB cable.
+2. Press and hold the side button for about two seconds.
+3. When the green LED inside the device flashes, release the button.
+4. Plug the USB cable back in. The port should enumerate.
+5. Reflash with `pio run -e m5stick-s3 -t upload`.
+
 ## Usage
 
 The top level menu has the following entries:

@@ -2046,6 +2046,9 @@ void UI::addFeaturesMenu(const menu_t &parent) {
   addSettingItem(menu.page, NULL, Settings::RECONNECT);
   addSettingItem(menu.page, NULL, Settings::RECON_BACKOFF);
   addSettingItem(menu.page, NULL, Settings::MULTICONNECT);
+#if defined(FURBLE_M5STICKS3)
+  addSettingItem(menu.page, NULL, Settings::WATCHDOG);
+#endif
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -2738,6 +2741,9 @@ void UI::addThemeMenu(const menu_t &parent) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         auto index = lv_roller_get_selected(roller);
         Settings::save<Settings::THEME>(themes[index]);
+#if defined(FURBLE_M5STICKS3)
+        Platform::getInstance().watchdogEnable(false);
+#endif
         esp_restart();
       },
       LV_EVENT_CLICKED, roller);

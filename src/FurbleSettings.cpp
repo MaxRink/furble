@@ -32,6 +32,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {BULB,              {BULB, "Bulb", "bulb", FURBLE_STR}                               },
     {SCAN_MODE,         {SCAN_MODE, "Scan Mode", "scan_mode", FURBLE_STR}                },
     {SCAN_TIMEOUT,      {SCAN_TIMEOUT, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
+#if defined(FURBLE_M5STICKS3)
+    {WATCHDOG,          {WATCHDOG, "Watchdog", "watchdog", FURBLE_STR}                   },
+#endif
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -254,6 +257,11 @@ void Settings::init(void) {
         case BULB:
           save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
           break;
+#if defined(FURBLE_M5STICKS3)
+        case WATCHDOG:
+          save<bool>(setting.type, true);
+          break;
+#endif
         case GPS:
         case GPS_NMEA:
         case MULTICONNECT:

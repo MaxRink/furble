@@ -183,6 +183,9 @@ const char *settingType(Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+#if defined(FURBLE_M5STICKS3)
+    case Settings::WATCHDOG:
+#endif
       return "bool";
     case Settings::INTERVAL:
     case Settings::TOUCH_CALIBRATION:
@@ -250,6 +253,9 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+#if defined(FURBLE_M5STICKS3)
+    case Settings::WATCHDOG:
+#endif
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -310,6 +316,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+#if defined(FURBLE_M5STICKS3)
+    case Settings::WATCHDOG:
+#endif
     {
       bool value = false;
       if (!parseBool(text, value)) {
