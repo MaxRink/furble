@@ -37,6 +37,9 @@ class Settings {
     BULB,
     SCAN_MODE,
     SCAN_TIMEOUT,
+#if defined(FURBLE_M5STICKS3)
+    WATCHDOG,
+#endif
   } type_t;
 
   typedef struct {
@@ -216,6 +219,12 @@ template <>
 struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
   using type = uint32_t;
 };
+#if defined(FURBLE_M5STICKS3)
+template <>
+struct Settings::storage_type<Settings::WATCHDOG> {
+  using type = bool;
+};
+#endif
 
 }  // namespace Furble
 

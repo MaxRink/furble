@@ -32,6 +32,12 @@ void app_main() {
   Furble::Platform::getInstance().setCPUMaxFreq(
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
 
+#if defined(FURBLE_M5STICKS3)
+  // Same ordering constraint, the watchdog enable lives in NVS
+  Furble::Platform::getInstance().watchdogEnable(
+      Furble::Settings::load<Furble::Settings::WATCHDOG>());
+#endif
+
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
 
   auto &control = Furble::Control::getInstance();

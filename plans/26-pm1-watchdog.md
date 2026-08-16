@@ -459,3 +459,23 @@ connection is used only as a realistic load in step 4.
   https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/api-reference/system/power_management.html
 - PlatformIO, device monitor, for the boot log during watchdog testing:
   https://docs.platformio.org/en/latest/core/userguide/device/cmd_monitor.html
+
+## Implementation state
+
+Implemented in PR #20 on the fork. Deviations from the plan after the rebase
+onto the integrated master:
+
+- Arming moved out of `Platform::getInstance()`. Master keeps
+  `Platform::init()` ahead of `Settings::init()` because NVS is not ready yet,
+  so `main.cpp` arms the watchdog right after `Settings::init()`, next to the
+  stored CPU frequency, instead of swapping the init order as first written.
+- `wdtSet` and `wdtFeed` go through the `m5pm1Access()` retry helper, because
+  the first I2C transaction after the PM1 idle sleep fails and only wakes it.
+- Watchdog log lines use `LOG_TAG` like the rest of the platform file.
+- The debug console gained `WATCHDOG` cases in its settings switches, guarded
+  by `FURBLE_M5STICKS3`.
+- Setting, default on, menu item, feed in `Platform::update()`, disable before
+  `powerOff()` and before the theme change restart, and the README recovery
+  section all match the plan.
+- Verified: m5stick-s3 and m5stick-s3-debug build. Hardware watchdog reset
+  behavior is not yet exercised on the attached StickS3.
