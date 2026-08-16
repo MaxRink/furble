@@ -60,6 +60,10 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalDelayStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -736,13 +740,7 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         [](lv_event_t *e) {
           auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
           status->gps->reloadSetting();
-          if (status->gps->isEnabled()) {
-            lv_obj_clear_flag(status->gpsBaud, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(status->gpsData, LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_add_flag(status->gpsBaud, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(status->gpsData, LV_OBJ_FLAG_HIDDEN);
-          }
+          showGPSWidgets(status, status->gps->isEnabled());
         },
         LV_EVENT_VALUE_CHANGED, &m_Status);
   }
@@ -1511,6 +1509,16 @@ void UI::addDeleteMenu(void) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::showGPSWidgets(status_t *status, bool show) {
+  for (auto *widget : status->gpsWidgets) {
+    if (show) {
+      lv_obj_clear_flag(widget, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(widget, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
 void UI::addGPSMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_GPSStr, &icon_location_searching, true, parent);
 
@@ -1518,14 +1526,15 @@ void UI::addGPSMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 
   // add GPS baud control
-  m_Status.gpsBaud = lv_menu_cont_create(menu.page);
-  lv_obj_set_flex_flow(m_Status.gpsBaud, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_t *label = lv_label_create(m_Status.gpsBaud);
+  lv_obj_t *gpsBaud = lv_menu_cont_create(menu.page);
+  lv_obj_set_flex_flow(gpsBaud, LV_FLEX_FLOW_ROW_WRAP);
+  m_Status.gpsWidgets.push_back(gpsBaud);
+  lv_obj_t *label = lv_label_create(gpsBaud);
   lv_label_set_text(label, "GPS baud 115200");
   lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_flex_grow(label, 1);
 
-  lv_obj_t *baud_sw = lv_switch_create(m_Status.gpsBaud);
+  lv_obj_t *baud_sw = lv_switch_create(gpsBaud);
   uint32_t baud = Settings::load<Settings::GPS_BAUD>();
   lv_obj_add_state(baud_sw, baud == Settings::BAUD_115200 ? LV_STATE_CHECKED : LV_STATE_DEFAULT);
   lv_obj_add_event_cb(
@@ -1545,12 +1554,73 @@ void UI::addGPSMenu(const menu_t &parent) {
       },
       LV_EVENT_VALUE_CHANGED, &m_Status);
 
-  menu_t &gpsData = addMenu(m_GPSDataStr, NULL, true, menu);
-  m_Status.gpsData = gpsData.button;
-  if (!m_Status.gps->isEnabled()) {
-    lv_obj_add_flag(m_Status.gpsBaud, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(m_Status.gpsData, LV_OBJ_FLAG_HIDDEN);
-  }
+  // add the receiver configuration pages
+  addGPSOptionMenu(
+      menu, m_GPSRateStr, m_GPSRateOptions, Settings::load<Settings::GPS_RATE>(),
+      [](lv_event_t *e) {
+        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+        Settings::save<Settings::GPS_RATE>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+        status->gps->reloadSetting();
+      });
+
+  addGPSOptionMenu(menu, m_GPSSentencesStr, m_GPSSentencesOptions,
+                   Settings::load<Settings::GPS_NMEA>() ? 1 : 0, [](lv_event_t *e) {
+                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+                     Settings::save<Settings::GPS_NMEA>(lv_roller_get_selected(roller) > 0);
+                     status->gps->reloadSetting();
+                   });
+
+  addGPSOptionMenu(
+      menu, m_GPSConstellationStr, m_GPSConstellationOptions,
+      Settings::load<Settings::GPS_CONSTEL>(), [](lv_event_t *e) {
+        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+        Settings::save<Settings::GPS_CONSTEL>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+        status->gps->reloadSetting();
+      });
+
+  addGPSDataMenu(menu);
+  addGPSNMEAMenu(menu);
+
+  showGPSWidgets(&m_Status, m_Status.gps->isEnabled());
+}
+
+void UI::addGPSOptionMenu(const menu_t &parent,
+                          const char *name,
+                          const char *options,
+                          uint32_t selected,
+                          lv_event_cb_t handler) {
+  menu_t &menu = addMenu(name, NULL, true, parent);
+  m_Status.gpsWidgets.push_back(menu.button);
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *roller = lv_roller_create(cont);
+#if !defined(FURBLE_M5COREX)
+  lv_obj_set_width(roller, LV_PCT(90));
+#endif
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
+  lv_roller_set_visible_row_count(roller, 2);
+  lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
+
+  lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, &m_Status);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addGPSDataMenu(const menu_t &parent) {
+  menu_t &gpsData = addMenu(m_GPSDataStr, NULL, true, parent);
+  m_Status.gpsWidgets.push_back(gpsData.button);
 
   static lv_timer_t *timer = lv_timer_create(
       [](lv_timer_t *t) {
@@ -1608,6 +1678,85 @@ void UI::gpsDataStop(lv_event_t *e) {
   auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
   lv_timer_pause(timer);
   lv_obj_remove_event_cb(target, gpsDataStop);
+}
+
+/**
+ * Raw NMEA and satellite debug page.
+ *
+ * Sentence capture only runs while the page is open, it is the only way to
+ * observe whether a $PCAS command was accepted.
+ */
+void UI::addGPSNMEAMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_GPSNMEAStr, NULL, true, parent);
+  m_Status.gpsWidgets.push_back(menu.button);
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+
+  m_NMEA.fix = lv_label_create(cont);
+  lv_obj_set_width(m_NMEA.fix, LV_PCT(100));
+  lv_label_set_long_mode(m_NMEA.fix, LV_LABEL_LONG_WRAP);
+
+  m_NMEA.counters = lv_label_create(cont);
+  lv_obj_set_width(m_NMEA.counters, LV_PCT(100));
+  lv_label_set_long_mode(m_NMEA.counters, LV_LABEL_LONG_WRAP);
+
+  m_NMEA.sentences = lv_label_create(cont);
+  lv_obj_set_width(m_NMEA.sentences, LV_PCT(100));
+  lv_label_set_long_mode(m_NMEA.sentences, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_font(m_NMEA.sentences, &lv_font_montserrat_12, 0);
+
+  lv_obj_t *restart = lv_button_create(cont);
+  lv_obj_t *label = lv_label_create(restart);
+  lv_label_set_text(label, "Hot restart");
+  lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_obj_add_event_cb(
+      restart, [](lv_event_t *e) { GPS::getInstance().restart(0); }, LV_EVENT_CLICKED, NULL);
+
+  m_NMEATimer = lv_timer_create(
+      [](lv_timer_t *t) {
+        auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
+        auto &gps = GPS::getInstance();
+        auto &tinygps = gps.get();
+
+        lv_label_set_text_fmt(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago",
+                              (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
+                              (unsigned long)(tinygps.location.age() / 1000));
+        lv_label_set_text_fmt(
+            ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)tinygps.charsProcessed(),
+            (unsigned long)tinygps.passedChecksum(), (unsigned long)tinygps.failedChecksum());
+
+        std::string text;
+        for (const auto &sentence : gps.getSentences()) {
+          text += sentence + "\n";
+        }
+        lv_label_set_text(ui->m_NMEA.sentences, text.c_str());
+      },
+      1000, this);
+  lv_timer_pause(m_NMEATimer);
+
+  // only capture sentences while the page is open
+  lv_obj_add_event_cb(
+      menu.button,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        GPS::getInstance().setCapture(true);
+        lv_timer_resume(ui->m_NMEATimer);
+        lv_obj_add_event_cb(m_MainMenu.main, gpsNMEAStop, LV_EVENT_CLICKED, ui);
+      },
+      LV_EVENT_CLICKED, this);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::gpsNMEAStop(lv_event_t *e) {
+  auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+  lv_timer_pause(ui->m_NMEATimer);
+  GPS::getInstance().setCapture(false);
+  lv_obj_remove_event_cb(target, gpsNMEAStop);
 }
 
 void UI::addFeaturesMenu(const menu_t &parent) {
