@@ -207,6 +207,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
+    case Settings::IMU:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -300,6 +301,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
+    case Settings::IMU:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -406,6 +408,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
+    case Settings::IMU:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
