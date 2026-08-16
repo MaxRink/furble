@@ -204,6 +204,7 @@ UI::UI(const interval_t &interval)
   m_GPS.init();
   m_Status.gps = &m_GPS;
   m_Status.reconnectIcon = addIcon(&icon_all_inclusive);
+  m_Status.reconnectBackoff = nullptr;
   m_Status.gpsIcon = addIcon(&icon_location_disabled);
   m_Status.batteryIcon = addIcon(&icon_battery_android_frame_4);
   m_Status.batteryLabel = lv_label_create(m_Header);
@@ -848,11 +849,24 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
           auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
           if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
             lv_obj_clear_flag(status->reconnectIcon, LV_OBJ_FLAG_HIDDEN);
+            if (status->reconnectBackoff != nullptr) {
+              lv_obj_remove_state(status->reconnectBackoff, LV_STATE_DISABLED);
+            }
           } else {
             lv_obj_add_flag(status->reconnectIcon, LV_OBJ_FLAG_HIDDEN);
+            if (status->reconnectBackoff != nullptr) {
+              lv_obj_add_state(status->reconnectBackoff, LV_STATE_DISABLED);
+            }
           }
         },
         LV_EVENT_VALUE_CHANGED, &m_Status);
+  }
+
+  if (setting == Settings::RECON_BACKOFF) {
+    m_Status.reconnectBackoff = sw;
+    if (!Settings::load<Settings::RECONNECT>()) {
+      lv_obj_add_state(sw, LV_STATE_DISABLED);
+    }
   }
 }
 
@@ -1215,8 +1229,6 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
 
   switch (state) {
     case Control::STATE_CONNECT:
-      break;
-
     case Control::STATE_CONNECTING:
       camera = control.getConnectingCamera();
 
@@ -2032,6 +2044,7 @@ void UI::addFeaturesMenu(const menu_t &parent) {
   addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
   addSettingItem(menu.page, NULL, Settings::FAUXNY);
   addSettingItem(menu.page, NULL, Settings::RECONNECT);
+  addSettingItem(menu.page, NULL, Settings::RECON_BACKOFF);
   addSettingItem(menu.page, NULL, Settings::MULTICONNECT);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);

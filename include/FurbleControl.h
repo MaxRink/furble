@@ -72,6 +72,8 @@ class Control {
   const uint32_t TIMEOUT_DEFAULT_MS = (30 * 1000);
   const uint32_t TIMEOUT_INFINITE_MS = (5 * 1000);
   const uint32_t SLEEP_INFINITE_MS = (5 * 1000);
+  const uint32_t BACKOFF_MAX_MS = (120 * 1000);
+  const uint32_t BACKOFF_SLICE_MS = 100;
 
   /**
    * FreeRTOS control task function.
@@ -147,6 +149,10 @@ class Control {
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
 
   bool m_InfiniteReconnect = false;
+  bool m_ReconnectBackoff = false;
+  uint32_t m_ReconnectAttempt = 0;
+  volatile bool m_ConnectAbort = false;
+  volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;
 
   // setState() runs from the control task and from the UI task

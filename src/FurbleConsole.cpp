@@ -177,6 +177,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
+    case Settings::RECON_BACKOFF:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
@@ -203,6 +204,7 @@ bool appliesImmediately(Settings::type_t type) {
     case Settings::GPS_BAUD:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
+    case Settings::RECON_BACKOFF:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::CPU_FREQ:
@@ -242,6 +244,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
+    case Settings::RECON_BACKOFF:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
@@ -301,6 +304,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
+    case Settings::RECON_BACKOFF:
     case Settings::FAUXNY:
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
