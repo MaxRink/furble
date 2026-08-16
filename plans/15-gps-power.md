@@ -27,11 +27,11 @@ Out of scope:
 
 | File | Anchor | Change |
 |---|---|---|
-| `src/FurbleGPS.cpp` | `:28-41` `uart_config_t`, source clock at `:35-39` | `UART_SCLK_XTAL` on S3, keep `UART_SCLK_REF_TICK` elsewhere |
+| `src/FurbleGPS.cpp` | `:28-41` `uart_config_t`, source clock at `:35-39` | Preserve the master clock fix: `UART_SCLK_XTAL` on S3 and `UART_SCLK_REF_TICK` elsewhere |
 | `src/FurbleGPS.cpp` | `:42-48` driver install, pattern detect on `'\n'` at `:46` | Timestamp bursts, feed the window tracker |
 | `src/FurbleGPS.cpp` | `:73-109` `task` | Acquire before the window, release after the burst |
-| `src/FurbleGPS.cpp` | `:111-124` `enable`, `:120-123` S3 `setSleep(false)` | Remove the blanket disable |
-| `src/FurbleGPS.cpp` | `:126-133` `disable`, `:130-132` S3 `setSleep(true)` | Remove the blanket enable, release the lock |
+| `src/FurbleGPS.cpp` | `:111-124` `enable`, `:120-123` S3 lock | Keep the named lock during acquisition, then window it |
+| `src/FurbleGPS.cpp` | `:126-133` `disable`, `:130-132` S3 lock | Release the named lock on disable |
 | `src/FurbleGPS.cpp` | `:118` and `:128` `M5.Power.setExtOutput(..., m5::ext_PA)` | Rail cycling policy |
 | `src/FurbleGPS.cpp` | `:195-206` `serviceSerial` | Burst end detection and checksum feedback |
 | `include/FurbleGPS.h` | `:35-38` constants, `:40-43` private methods | Window state, policy state |
@@ -61,22 +61,17 @@ when GPS is disabled, following the existing hide logic at
 
 ### Light sleep and the UART
 
-- Today `enable()` calls `Platform::getInstance().setSleep(false)` on the S3
-  (`src/FurbleGPS.cpp:120-123`) and `disable()` restores it
-  (`src/FurbleGPS.cpp:130-132`). PR06 replaces `setSleep` with named, counted
-  `esp_pm` locks. This PR converts the GPS user to a `ESP_PM_NO_LIGHT_SLEEP`
-  lock and then shrinks how long it is held.
+- Master already gives GPS a named, counted `ESP_PM_NO_LIGHT_SLEEP` lock while
+  it is enabled. This PR keeps that lock through acquisition and each receive
+  burst, then releases it during the predicted gap.
 - UART RX does not work during automatic light sleep. UART wakeup exists but is
   useless here: the ESP-IDF docs state that the character which triggers wakeup,
   and any characters before it, are not received after wakeup. An NMEA sentence
   cannot survive that, so furble must be awake before the burst starts, not woken
   by it.
-- Clock source. On the S3 the current config uses `UART_SCLK_DEFAULT`
-  (`src/FurbleGPS.cpp:35-39`), which derives from APB and therefore moves with
-  dynamic frequency scaling. Change it to `UART_SCLK_XTAL`. The ESP-IDF UART
-  guide is explicit: a source clock with a fixed frequency that stays active
-  during sleep is required for a correct baud rate. Leave the non S3 path on
-  `UART_SCLK_REF_TICK`, which already has that property.
+- Clock source. Master already uses `UART_SCLK_XTAL` on the S3 and
+  `UART_SCLK_REF_TICK` elsewhere. This PR does not change the UART clock
+  configuration.
 
 ### Burst window
 
@@ -108,17 +103,15 @@ when GPS is disabled, following the existing hide logic at
 - Always on, the default. The module draws 31.64 mA at 5 V per the M5Stack
   specification. That is the dominant GPS cost once light sleep works.
 - `$PCAS12,<seconds>` puts the receiver into standby for a number of seconds.
-  Some AT6668 firmware ignores it. It is not listed in the L76K protocol
-  contents, so treat it as unverified until Experiment B confirms it.
+  Experiment B confirmed that the AT6668 stops NMEA output and resumes on its
+  own after the configured delay.
 - 5 V rail cycling uses the existing `M5.Power.setExtOutput` calls at
   `src/FurbleGPS.cpp:118` and `:128`. This removes the module draw completely but
   loses the ephemeris if the unit has no backup supply.
-- Experiment B decides the recommended policy. The M5Stack Unit GPS v1.1 page
-  lists no backup battery and no V_BCKP pin. If Experiment B confirms that, every
-  rail cut forces a cold or warm start, the re-fix costs more energy than the
-  saved idle draw, and standby is strictly better. In that case ship rail cycling
-  as an expert option with a warning, and make standby the recommended non
-  default.
+- The M5Stack Unit GPS v1.1 has no backup supply. Experiment B measured a
+  107.7 s cold refix after a 60 s rail cut. Rail cycling is therefore retained
+  only as an explicitly discouraged expert option. Always on remains the
+  default, even though timed standby is available and verified.
 - Both duty cycled policies must respect `MAX_AGE_MS`, 30 seconds
   (`include/FurbleGPS.h:38`). `GPS_DUTY` above roughly 20 seconds will make the
   fix stale between windows and geotagging will silently stop. Clamp the roller
@@ -133,12 +126,55 @@ when GPS is disabled, following the existing hide logic at
   because the library validates each sentence. That is what makes the adaptive
   window safe.
 
+## Implementation status
+
+Implemented on `feat/15-gps-power`.
+
+Rebase notes:
+
+- `GPS_POWER` is wire_id 25 and `GPS_DUTY` is wire_id 26, continuing after
+  `DISPLAY_OFF` (24) from PR 26.
+- `src/FurbleCompanion.cpp` settingType and settingValue treat both as uint8
+  settings. The companion write path does not trigger a GPS reload; that
+  matches the existing `GPS` and `GPS_BAUD` behaviour on master.
+
+- Added `GPS_POWER` with `0` as always on, `1` as timed `$PCAS12` standby, and
+  `2` as an explicitly discouraged 5 V rail cycling option. Added `GPS_DUTY`
+  with a default of `0` and menu values of 5, 10, and 15 seconds. Untouched
+  settings therefore keep the receiver rail on and preserve the existing
+  always-on receiver behavior.
+- Reused the existing `GPS::sendCommand()` PCAS framing and checksum path for
+  `$PCAS12,<GPS_DUTY>`. The command is queued only after a fresh valid fix has
+  been pushed to the application.
+- The GPS task now uses these states: `ACQUIRING` holds the lock while the first
+  burst is found, `MEASURING` learns an unknown interval for five seconds,
+  `BURST` holds the lock while NMEA data is received, `WAITING` releases the
+  lock until the next burst window, `STANDBY` releases it during timed
+  `$PCAS12` sleep, `RAIL_OFF` releases it while the optional rail is cut,
+  `RESYNC` holds it for one full interval after timing drift or repeated
+  checksum failures, and `PERMANENT_LOCK` is the safe fallback for unstable or
+  missing timing.
+- The receive lock starts 50 ms before the predicted burst, releases after a
+  75 ms UART idle gap, widens by 25 ms on a checksum-failed burst up to half the
+  interval, and shrinks by 10 ms after ten clean bursts down to 20 ms. A burst
+  start that drifts beyond the current window, or three failed bursts in a row,
+  enters `RESYNC` and re-anchors the next prediction to observed timing.
+- The experiment-driven default is always on. Experiment B in
+  `plans/00-hardware-experiments.md` verified that `$PCAS12` standby works, but
+  also found that a 60 s VCC cut caused a 107.7 s cold refix because the GPS
+  unit has no backup supply. Rail cycling is therefore not the default and is
+  marked NOT recommended in the menu.
+- Hardware verification still pending: standby-cycle current draw and fix
+  freshness on the M5StickC Plus S3 with GPS unit v1.1, to be confirmed via the
+  USB console.
+
 ## Dependencies
 
 - PR06 for the named pm lock API. Hard dependency.
 - PR14 for a known fix interval and for the `$PCAS` send path used by `$PCAS12`.
   Hard dependency.
-- Experiment B for the recommended power policy default.
+- Experiment B results in `plans/00-hardware-experiments.md` for the power
+  policy decision.
 - PR01 and PR07 interact with the same `esp_pm` configuration but do not block
   this work.
 
@@ -151,9 +187,9 @@ when GPS is disabled, following the existing hide logic at
 - Frequency scaling corrupting the baud rate if the clock source change is
   missed on any board. Only the S3 path changes; the others already use a fixed
   clock.
-- `$PCAS12` may be ignored by the module firmware. The device would then behave
-  as always on, wasting power but working correctly. Detect it during Experiment
-  B by checking for NMEA silence after the command.
+- `$PCAS12` support is verified on the tested AT6668 unit. If a different module
+  ignores it, the missing burst timing must fall back to the permanent lock so
+  the device keeps working safely.
 - Rail cycling on a module with no backup supply can make fixes take tens of
   seconds. Not the default.
 - The S3 light sleep floor depends on PR07. If PR07 has not landed, this PR still
@@ -181,8 +217,9 @@ On device, M5StickS3 with GPS Unit v1.1 on Port A, over USB:
    without dropping sentences.
 5. Enable `$PCAS12` standby with 10 second duty. Confirm NMEA silence during
    standby and a fix within the 30 second age budget after each wake.
-6. Enable rail cycling with 10 second duty. Record the re-fix time. This is the
-   Experiment B measurement.
+6. Leave rail cycling disabled for normal use. The recorded Experiment B result
+   is a 107.7 s cold refix after a 60 s rail cut, so the menu labels this mode
+   NOT recommended.
 7. Cover the antenna to force fix loss. Confirm the icon changes, geodata stops
    and nothing crashes or spins.
 8. Connect a Fujifilm camera with GEOTAG. Confirm the on request geodata path is
@@ -222,8 +259,8 @@ are untouched. State that in the PR body.
 - M5Unified `Power_Class::setExtOutput`, used for 5 V rail cycling:
   https://raw.githubusercontent.com/m5stack/M5Unified/master/src/utility/Power_Class.hpp
 - CASIC protocol specification, source for `$PCAS12`. The link resolves but its
-  text layer could not be extracted for automated verification, so `$PCAS12` is
-  treated as unverified until Experiment B:
+  text layer could not be extracted for automated verification. Experiment B
+  provides the hardware verification for the tested AT6668 unit:
   http://www.espruino.com/files/CASIC_en.pdf
 - Quectel L76K GNSS protocol specification v1.1, AT6558 based, documents PCAS02,
   PCAS03, PCAS04 and PCAS10 but not PCAS12:

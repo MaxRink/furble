@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -68,6 +69,14 @@ class GPS {
   /** Highest valid constellation setting. */
   static constexpr const uint8_t CONSTELLATION_MAX = 7;
 
+  /** Receiver power policies. */
+  static constexpr const uint8_t POWER_ALWAYS_ON = 0;
+  static constexpr const uint8_t POWER_STANDBY = 1;
+  static constexpr const uint8_t POWER_RAIL_CYCLE = 2;
+
+  /** Supported standby intervals, in seconds. */
+  static constexpr const std::array<uint8_t, 4> DUTY_SECONDS = {0, 5, 10, 15};
+
   /** Restart the receiver, 0 hot, 1 warm, 2 cold. */
   void restart(uint8_t mode);
 
@@ -98,12 +107,43 @@ class GPS {
   /** Longest raw NMEA sentence kept for the debug page. */
   static constexpr const size_t SENTENCE_LEN = 96;
 
+  /** GPS power and lock state. */
+  enum class cycle_state_t : uint8_t {
+    DISABLED,
+    ACQUIRING,
+    MEASURING,
+    BURST,
+    WAITING,
+    STANDBY,
+    RAIL_OFF,
+    RESYNC,
+    PERMANENT_LOCK,
+  };
+
   void enable(void);
   void disable(void);
   void serviceSerial(void);
   void serviceConfig(void);
+  void serviceCycle(void);
   void update(void);
   bool wiredFixIsFresh(void);
+
+  void acquirePowerLock(void);
+  void releasePowerLock(void);
+  void beginBurst(uint32_t now);
+  void finishBurst(uint32_t now);
+  void beginWindow(uint32_t now);
+  void enterStandby(uint32_t now);
+  void enterRailOff(uint32_t now);
+  void beginResync(uint32_t now);
+  void finishMeasurement(void);
+  void enterPermanentLock(void);
+  TickType_t cycleWait(uint32_t now) const;
+
+  uint8_t powerPolicy(void) const;
+  uint8_t dutySeconds(void) const;
+  uint32_t gpsRateInterval(void) const;
+  bool dutyCycleEnabled(void) const;
 
   /** XOR checksum of every character between '$' and '*'. */
   static uint8_t checksum(const std::string &payload);
@@ -126,7 +166,7 @@ class GPS {
   TaskHandle_t m_Task = NULL;
   QueueHandle_t m_Queue = NULL;
 
-  bool m_Enabled = false;
+  std::atomic<bool> m_Enabled = false;
   bool m_HasFix = false;
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
   std::atomic<uint8_t> m_Satellites {0};
@@ -136,8 +176,35 @@ class GPS {
   mutable std::mutex m_ExternalMutex;
   TinyGPSPlus m_GPS;
 
+  uint8_t m_PowerPolicy = POWER_ALWAYS_ON;
+  uint8_t m_DutySeconds = 0;
+  cycle_state_t m_CycleState = cycle_state_t::DISABLED;
+  bool m_BurstActive = false;
+  bool m_DutyWake = false;
+  bool m_HavePrediction = false;
+  uint32_t m_BurstStart = 0;
+  uint32_t m_LastSentence = 0;
+  uint32_t m_NextBurst = 0;
+  uint32_t m_WakeDeadline = 0;
+  uint32_t m_ExpectedInterval = 0;
+  uint32_t m_Window = 50;
+  uint32_t m_BurstFailed = 0;
+  uint32_t m_MeasureDeadline = 0;
+  uint32_t m_ResyncDeadline = 0;
+  uint32_t m_LastBurstStart = 0;
+  std::array<uint32_t, 5> m_PeriodSamples = {};
+  size_t m_PeriodCount = 0;
+  uint8_t m_ConsecutiveBadBursts = 0;
+  uint8_t m_CleanBursts = 0;
+  uint32_t m_LastLocationAge = std::numeric_limits<uint32_t>::max();
+  std::atomic<uint32_t> m_BurstSequence = 0;
+  std::atomic<uint32_t> m_FixSequence = 0;
+  std::atomic<uint32_t> m_PushedSequence = 0;
+  std::atomic<bool> m_CycleRequest = false;
+
 #if defined(FURBLE_M5STICKS3)
-  // held while the receiver is powered, the ESP32S3 UART needs it
+  // held only during a receive burst or the burst acquisition window
+  std::mutex m_PowerLockMutex;
   std::optional<Power::Lock> m_PowerLock;
 #endif
 

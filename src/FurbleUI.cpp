@@ -47,6 +47,17 @@
 
 namespace Furble {
 
+namespace {
+uint32_t gpsDutyIndex(uint8_t seconds) {
+  for (size_t i = 0; i < GPS::DUTY_SECONDS.size(); i++) {
+    if (GPS::DUTY_SECONDS[i] == seconds) {
+      return i;
+    }
+  }
+  return 0;
+}
+}  // namespace
+
 std::mutex UI::m_Mutex;
 
 UI::ConnectContext_t UI::m_ConnectContext;
@@ -81,6 +92,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -2006,10 +2018,67 @@ void UI::addGPSMenu(const menu_t &parent) {
         status->gps->reloadSetting();
       });
 
+  addGPSPowerMenu(menu);
   addGPSDataMenu(menu);
   addGPSNMEAMenu(menu);
 
   showGPSWidgets(&m_Status, m_Status.gps->isEnabled());
+}
+
+void UI::addGPSPowerMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_GPSPowerStr, NULL, true, parent);
+  m_Status.gpsWidgets.push_back(menu.button);
+
+  auto addRoller = [&](const char *name, const char *options, uint32_t selected,
+                       lv_event_cb_t handler) {
+    lv_obj_t *row = lv_menu_cont_create(menu.page);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_width(row, LV_PCT(100));
+
+    lv_obj_t *label = lv_label_create(row);
+    lv_label_set_text(label, name);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+
+    lv_obj_t *roller = lv_roller_create(row);
+#if !defined(FURBLE_M5COREX)
+    lv_obj_set_width(roller, LV_PCT(90));
+#endif
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_visible_row_count(roller, 2);
+    lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
+    lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, &m_Status);
+  };
+
+  const uint8_t policy = Settings::load<Settings::GPS_POWER>();
+  const uint8_t selectedPolicy = policy <= GPS::POWER_RAIL_CYCLE ? policy : GPS::POWER_ALWAYS_ON;
+  addRoller("Receiver", m_GPSPowerOptions, selectedPolicy, [](lv_event_t *e) {
+    auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+    auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+    Settings::save<Settings::GPS_POWER>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+    status->gps->reloadSetting();
+  });
+
+  const uint8_t duty = Settings::load<Settings::GPS_DUTY>();
+  addRoller("Sleep between fixes", m_GPSDutyOptions, gpsDutyIndex(duty), [](lv_event_t *e) {
+    auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+    auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    const uint32_t selected = lv_roller_get_selected(roller);
+
+    Settings::save<Settings::GPS_DUTY>(
+        GPS::DUTY_SECONDS[std::min<size_t>(selected, GPS::DUTY_SECONDS.size() - 1)]);
+    status->gps->reloadSetting();
+  });
+
+  lv_obj_t *help = lv_label_create(menu.page);
+  lv_obj_set_width(help, LV_PCT(100));
+  lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(help,
+                    "Use 5 to 15 s to keep fixes fresh. Rail cycling is NOT recommended. A 60 s "
+                    "rail cut caused a 107.7 s cold refix.");
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
 void UI::addGPSOptionMenu(const menu_t &parent,

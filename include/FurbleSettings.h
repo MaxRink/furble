@@ -23,6 +23,8 @@ class Settings {
     GPS_RATE,
     GPS_NMEA,
     GPS_CONSTEL,
+    GPS_POWER,
+    GPS_DUTY,
     INTERVAL,
     MULTICONNECT,
     RECONNECT,
@@ -165,6 +167,14 @@ struct Settings::storage_type<Settings::GPS_NMEA> {
 };
 template <>
 struct Settings::storage_type<Settings::GPS_CONSTEL> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_POWER> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_DUTY> {
   using type = uint8_t;
 };
 template <>
