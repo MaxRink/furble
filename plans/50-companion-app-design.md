@@ -730,3 +730,18 @@ the integrated master:
   written.
 - Verified: m5stick-s3, m5stick-s3-debug and m5stick-c build. End to end BLE
   testing against the Android app has not happened yet.
+
+## Implementation state, Android app
+
+Implemented in PR #18 on the fork, under `companion/android`. Notes:
+
+- Kotlin Compose, CompanionDeviceManager association, no persistent scan and
+  no wake locks. Status, Settings and Trigger screens behind a permission
+  rationale gate.
+- `FurbleProtocol.kt` carries the frozen `b57f4f5e` UUID base and the 42 and
+  20 byte packet sizes from `include/FurbleCompanion.h`. The first app draft
+  used the design placeholder UUIDs, fixed before merge.
+- Emulator verified on a Pixel 7 profile, API 35: every screen renders, no
+  crashes, pairing without BLE degrades to a dismissable error card.
+  Screenshots live in `companion/android/docs/screenshots/`.
+- End to end BLE against the firmware service is still pending.
