@@ -218,7 +218,11 @@ object FurbleProtocol {
             intervalometerState = buffer.get().u8(),
             intervalometerRemaining = buffer.short.toInt() and 0xFFFF,
             uptimeSeconds = buffer.int.toLong() and UINT32_MAX,
-        )
+        ).also {
+            // The named packed status fields sum to 19 bytes while the design
+            // declares companion_status_t as 20 bytes.
+            buffer.get()
+        }
     }
 
     fun encodeTrigger(operation: Int, holdMs: Int = 0): ByteArray {
@@ -268,10 +272,10 @@ object FurbleProtocol {
             .array()
     }
 
-    private fun ByteArray.toHexString(): String =
-        joinToString(separator = "") { "%02x".format(it.toInt() and 0xFF) }
-
     private fun Byte.u8(): Int = toInt() and 0xFF
 
     private const val UINT32_MAX = 0xFFFF_FFFFL
 }
+
+private fun ByteArray.toHexString(): String =
+    joinToString(separator = "") { "%02x".format(it.toInt() and 0xFF) }
