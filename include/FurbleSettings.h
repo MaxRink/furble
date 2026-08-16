@@ -29,6 +29,7 @@ class Settings {
     CPU_FREQ,
     BATT_STYLE,
     SLEEP_CONN,
+    BULB,
   } type_t;
 
   typedef struct {
@@ -74,6 +75,8 @@ class Settings {
 
   /** Default maximum CPU frequency in MHz, matches Platform. */
   static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
+
+  static constexpr SpinValue::nvs_t BULB_DEFAULT = {30, SpinValue::UNIT_SEC};
 
   static void init(void);
 
@@ -170,6 +173,10 @@ struct Settings::storage_type<Settings::BATT_STYLE> {
 template <>
 struct Settings::storage_type<Settings::SLEEP_CONN> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::BULB> {
+  using type = SpinValue::nvs_t;
 };
 
 }  // namespace Furble

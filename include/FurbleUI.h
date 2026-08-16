@@ -95,12 +95,25 @@ class UI {
     lv_obj_t *powerSleep;
   } diagnostics_t;
 
-  class Intervalometer {
+  /**
+   * Owner of a spinner.
+   *
+   * A spinner edit saves through its owner, so each owner writes only its own
+   * setting.
+   */
+  class SpinnerOwner {
+   public:
+    virtual ~SpinnerOwner() = default;
+
+    virtual void save(void) = 0;
+  };
+
+  class Intervalometer: public SpinnerOwner {
    public:
     class Spinner {
      public:
-      Spinner(Intervalometer *intervalometer, SpinValue::nvs_t nvs, bool infinite = false)
-          : m_Intervalometer {intervalometer}, m_SpinValue {nvs}, m_Infinite {infinite} {};
+      Spinner(SpinnerOwner *owner, SpinValue::nvs_t nvs, bool infinite = false)
+          : m_Owner {owner}, m_SpinValue {nvs}, m_Infinite {infinite} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
@@ -108,7 +121,7 @@ class UI {
       void update(void);
       void updateLabels(void);
 
-      Intervalometer *m_Intervalometer;
+      SpinnerOwner *m_Owner;
       SpinValue m_SpinValue;
       lv_obj_t *m_Button;
       lv_obj_t *m_Label;
@@ -133,7 +146,7 @@ class UI {
 
     Intervalometer(const interval_t &interval);
 
-    void save(void);
+    void save(void) override;
 
     state_t m_State;
     Spinner m_Count;
@@ -144,6 +157,20 @@ class UI {
     lv_obj_t *m_StateLabel;
     lv_obj_t *m_CountLabel;
     lv_obj_t *m_RemainingLabel;
+  };
+
+  /**
+   * Bulb exposure, holds the shutter open for a set duration.
+   */
+  class Bulb: public SpinnerOwner {
+   public:
+    Bulb(const SpinValue::nvs_t &duration);
+
+    void save(void) override;
+
+    Intervalometer::Spinner m_Duration;
+
+    lv_obj_t *m_RemainingLabel = nullptr;
   };
 
   typedef enum { MODE_SCAN, MODE_DELETE, MODE_CONNECT, MODE_MULTICONNECT } CameraListMode_t;
@@ -188,10 +215,16 @@ class UI {
   // connected
   static constexpr const char *m_ConnectedStr = "Connected";
   static constexpr const char *m_RemoteShutter = "Remote";
+  static constexpr const char *m_RemoteBulb = "Bulb";
   static constexpr const char *m_RemoteInterval = "Interval";
   static constexpr const char *m_RemoteDisconnect = "Disconnect";
   // dodgy hack, add a space so map key is unique
+  static constexpr const char *m_RemoteGPSData = "GPS Data ";
   static constexpr const char *m_IntervalometerRunStr = "Intervalometer ";
+  static constexpr const char *m_BulbRunStr = "Bulb ";
+
+  // connected->bulb
+  static constexpr const char *m_BulbDurationStr = "Duration";
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";
@@ -237,8 +270,13 @@ class UI {
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
 
   static lv_timer_t *m_ConnectTimer;
+  static lv_timer_t *m_GPSDataTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
+
+  static lv_timer_t *m_BulbTimer;
+  static lv_timer_t *m_BulbPageRefresh;
+  static uint32_t m_BulbEnd;
 
   lv_timer_t *m_IntervalTimer;
   lv_timer_t *m_InactivityTimer;
@@ -284,6 +322,9 @@ class UI {
 
   lv_obj_t *m_IntervalStart = nullptr;
   Intervalometer m_Intervalometer;
+
+  lv_obj_t *m_BulbStart = nullptr;
+  Bulb m_Bulb;
 
   status_t m_Status;
   diagnostics_t m_Diagnostics = {};
@@ -366,6 +407,15 @@ class UI {
   /** Add the 'Intervalometer' menu entry. */
   void addIntervalometerMenu(const menu_t &parent);
 
+  /** Add the 'Bulb' menu entry. */
+  void addBulbMenu(const menu_t &parent);
+
+  /** Refresh the bulb exposure countdown. */
+  void bulbRefresh(void);
+
+  /** Stop any bulb exposure and release the shutter. */
+  void bulbStop(void);
+
   /** Add spinner menu item entry. */
   lv_obj_t *addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner);
 
@@ -418,6 +468,9 @@ class UI {
 
   /** Update entries in connect page. */
   static void updateItems(const menu_t &menu);
+
+  /** Start GPS Data timer. */
+  static void gpsDataStart(lv_event_t *e);
 
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);

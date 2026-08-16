@@ -7,6 +7,7 @@ set(furble_sources
     FurbleSettings.cpp
     FurbleSpinValue.cpp
     FurbleUI.cpp
+    FurbleUIBulb.cpp
     FurbleUIIntervalometer.cpp
     main.cpp)
 
