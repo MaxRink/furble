@@ -8,32 +8,15 @@
 namespace Furble {
 class UI {
  public:
-  // Device status for the companion service. The display build serves these
-  // from the UI task, the headless build reads M5.Power directly and has no
-  // intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
-  // companion service needs them whether or not the console is built in.
-  static int32_t getBatteryLevel(void);
-  static int16_t getBatteryVoltage(void);
-  static int32_t getBatteryCurrent(void);
-  static int16_t getBatteryVBUSVoltage(void);
-  static bool isBatteryCharging(void);
-  static uint8_t getIntervalometerState(void);
-  static uint16_t getIntervalometerRemaining(void);
-
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the headless loop to carry out. */
   enum class Request {
-    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
-    DISCONNECT,      /**< arg: unused */
-    SCAN,            /**< arg: non-zero to start, zero to stop */
-    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
-    GPS_RELOAD,      /**< arg: unused */
-    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
-    IR_RELOAD,       /**< arg: unused */
-    FEEDBACK_RELOAD, /**< arg: unused */
-    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
-    PERF,            /**< unavailable in the headless build */
-    AUDIT,           /**< unavailable in the headless build */
+    CONNECT,    /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT, /**< arg: unused */
+    SCAN,       /**< arg: non-zero to start, zero to stop */
+    CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD, /**< arg: unused */
+    GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
   };
 
   /** Create the request queue used by the headless main loop. */
@@ -91,8 +74,6 @@ class UI {
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
     PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
     AUDIT,           /**< arg: unused */
-    POWER_RELOAD,    /**< arg: unused */
-    SD_RELOAD,       /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
@@ -673,22 +654,6 @@ class UI {
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
   uint32_t m_MainCount = 0;
   bool m_DisplayConsole = false;
-
-  // cached policy settings, refreshed by the rollers and the console
-  uint8_t m_AutoOffSetting = 0;
-  uint8_t m_LowBattSetting = 0;
-
-  uint32_t m_LowBatterySampleSeen = 0;
-  uint8_t m_LowBatteryWarnCount = 0;
-  uint8_t m_LowBatteryOffCount = 0;
-  bool m_LowBatteryWarned = false;
-  bool m_LowBatteryPowerOffPending = false;
-  uint32_t m_LowBatteryPowerOffSince = 0;
-  lv_obj_t *m_LowBatteryMessageBox = nullptr;
-  lv_obj_t *m_LowBatteryMessage = nullptr;
-  /** Focused object before the warning stole the focus, restored on close. */
-  lv_obj_t *m_LowBatteryPrevFocus = nullptr;
-  bool m_PoweringOff = false;
 
   static menu_t m_MainMenu;
 

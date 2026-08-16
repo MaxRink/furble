@@ -57,24 +57,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
     {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
     {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
-    {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
-    {AUTO_OFF,          {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
-    {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
-    {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
-    {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
-    {BOOT_SPLASH,       {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-    {MQTT,              {MQTT, 56, "MQTT", "mqtt", FURBLE_STR}                               },
-    {MQTT_URI,          {MQTT_URI, 57, "MQTT URI", "mqtt_uri", FURBLE_STR}                   },
-    {MQTT_USER,         {MQTT_USER, 58, "MQTT User", "mqtt_user", FURBLE_STR}                },
-    {MQTT_PASS,         {MQTT_PASS, 59, "MQTT Password", "mqtt_pass", FURBLE_STR}            },
-    {MQTT_BASE,         {MQTT_BASE, 60, "MQTT Base", "mqtt_base", FURBLE_STR}                },
-    {MQTT_HA,           {MQTT_HA, 61, "MQTT Home Assistant", "mqtt_ha", FURBLE_STR}          },
-#endif
 #if !defined(FURBLE_NO_DISPLAY)
     {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
-    {BATTERY_SAVER,     {BATTERY_SAVER, 0, "Battery Saver", "batt_saver", FURBLE_STR}        },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -549,36 +534,11 @@ void Settings::init(void) {
         case FB_VOLUME:
           save<uint8_t>(setting.type, 64);
           break;
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-        case MQTT:
-        case MQTT_HA:
-          save<bool>(setting.type, false);
-          break;
-        case MQTT_URI:
-        case MQTT_USER:
-        case MQTT_PASS:
-          save<std::string>(setting.type, "");
-          break;
-        case MQTT_BASE:
-          save<std::string>(setting.type, "furble");
-          break;
-#endif
 #if !defined(FURBLE_NO_DISPLAY)
         case DISPLAY_MODE:
           save<uint8_t>(setting.type, static_cast<uint8_t>(GUI));
           break;
 #endif
-        case WIFI:
-        case NTP:
-          save<bool>(setting.type, false);
-          break;
-        case WIFI_SSID:
-        case WIFI_PSK:
-          save<std::string>(setting.type, "");
-          break;
-        case NTP_SERVER:
-          save<std::string>(setting.type, "pool.ntp.org");
-          break;
         case TOUCH_CALIBRATION:
         {
           calibration_t calibration = {

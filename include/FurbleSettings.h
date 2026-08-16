@@ -52,24 +52,9 @@ class Settings {
     FB_EVENTS,
     FB_VOLUME,
     PRESET_PICKER,
-    BUTTON_MODE,
-    AUTO_OFF,
-    LOW_BATT,
-    SD_GPX,
-    GPX_PERIOD,
-    BOOT_SPLASH,
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-    MQTT,
-    MQTT_URI,
-    MQTT_USER,
-    MQTT_PASS,
-    MQTT_BASE,
-    MQTT_HA,
-#endif
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
-    BATTERY_SAVER,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -370,66 +355,12 @@ template <>
 struct Settings::storage_type<Settings::PRESET_PICKER> {
   using type = bool;
 };
-template <>
-struct Settings::storage_type<Settings::BUTTON_MODE> {
-  using type = std::string;
-};
-template <>
-struct Settings::storage_type<Settings::AUTO_OFF> {
-  using type = uint8_t;
-};
-template <>
-struct Settings::storage_type<Settings::LOW_BATT> {
-  using type = uint8_t;
-};
-template <>
-struct Settings::storage_type<Settings::SD_GPX> {
-  using type = bool;
-};
-template <>
-struct Settings::storage_type<Settings::GPX_PERIOD> {
-  using type = uint16_t;
-};
-template <>
-struct Settings::storage_type<Settings::BOOT_SPLASH> {
-  using type = bool;
-};
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-template <>
-struct Settings::storage_type<Settings::MQTT> {
-  using type = bool;
-};
-template <>
-struct Settings::storage_type<Settings::MQTT_URI> {
-  using type = std::string;
-};
-template <>
-struct Settings::storage_type<Settings::MQTT_USER> {
-  using type = std::string;
-};
-template <>
-struct Settings::storage_type<Settings::MQTT_PASS> {
-  using type = std::string;
-};
-template <>
-struct Settings::storage_type<Settings::MQTT_BASE> {
-  using type = std::string;
-};
-template <>
-struct Settings::storage_type<Settings::MQTT_HA> {
-  using type = bool;
-};
-#endif
 #if !defined(FURBLE_NO_DISPLAY)
 template <>
 struct Settings::storage_type<Settings::DISPLAY_MODE> {
   using type = uint8_t;
 };
 #endif
-template <>
-struct Settings::storage_type<Settings::BATTERY_SAVER> {
-  using type = bool;
-};
 #if defined(FURBLE_M5STICKS3)
 template <>
 struct Settings::storage_type<Settings::WATCHDOG> {

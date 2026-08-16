@@ -5,21 +5,17 @@
 #include <TinyGPS++.h>
 #include <esp_timer.h>
 
-#include <sys/time.h>
+#include "icons.h"
+#endif
+
 #include <algorithm>
 #include <cmath>
-#include <cstring>
-#include <ctime>
-#include <utility>
 
 #if !defined(FURBLE_NO_DISPLAY)
 #include <lvgl.h>
 
 #include "icons.h"
 #endif
-
-#include <algorithm>
-#include <cmath>
 
 #include "FurbleConsole.h"
 #include "FurbleControl.h"

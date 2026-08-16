@@ -211,8 +211,6 @@ const char *settingType(Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
       return "uint8";
-    case Settings::GPX_PERIOD:
-      return "uint16";
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
       return "enum";
@@ -298,22 +296,6 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::TX_ADAPTIVE:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
-    case Settings::BUTTON_MODE:
-    case Settings::AUTO_OFF:
-    case Settings::LOW_BATT:
-    case Settings::SD_GPX:
-    case Settings::GPX_PERIOD:
-    case Settings::WIFI:
-    case Settings::NTP:
-    case Settings::NTP_SERVER:
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-    case Settings::MQTT:
-    case Settings::MQTT_URI:
-    case Settings::MQTT_USER:
-    case Settings::MQTT_PASS:
-    case Settings::MQTT_BASE:
-    case Settings::MQTT_HA:
-#endif
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -350,9 +332,6 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
-      break;
-    case Settings::GPX_PERIOD:
-      printf("%s%u\n", prefix, Settings::load<uint16_t>(type));
       break;
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
@@ -485,15 +464,6 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
 
-    case Settings::GPX_PERIOD:
-    {
-      char *end = nullptr;
-      unsigned long value = strtoul(text, &end, 0);
-      if ((end == text) || (value < 1) || (value > 60)) {
-        return fail("expected 1-60 seconds");
-      }
-      Settings::save<uint16_t>(setting.type, static_cast<uint16_t>(value));
-    } break;
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
     {

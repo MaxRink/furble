@@ -13,7 +13,6 @@ set(furble_sources
     FurblePower.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
-    FurbleWiFi.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake
@@ -29,27 +28,14 @@ if(NOT FURBLE_NO_DISPLAY)
        FurbleUIIntervalometer.cpp)
 endif()
 
-# FURBLE_MQTT defaults on. When it is set to 0 the MQTT source and its component
-# dependencies (esp-mqtt pulls esp_tls and the mbedtls certificate bundle, plus
-# json for cJSON) drop out entirely, so a no-MQTT image carries none of that
-# code. esp_tls and mbedtls are declared by esp-mqtt in its own idf_component.yml
-# and resolve transitively, so they must not be listed here.
-set(furble_priv_requires
-    console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm
-    fatfs sdmmc esp_wifi esp_netif esp_event nvs_flash lwip)
-if(NOT DEFINED FURBLE_MQTT OR FURBLE_MQTT)
-  list(APPEND furble_sources FurbleMQTT.cpp)
-  list(APPEND furble_priv_requires mqtt json)
-endif()
-
 # console and esp_driver_usb_serial_jtag are only referenced by the developer
 # console. Nothing references them without FURBLE_CONSOLE, so the linker leaves
 # them out and the release binaries are unchanged.
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES ${furble_priv_requires})
+                         PRIV_REQUIRES console esp_driver_rmt esp_driver_usb_serial_jtag esp_pm)
 else()
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES ${furble_priv_requires}
+                         PRIV_REQUIRES console esp_driver_rmt esp_driver_usb_serial_jtag esp_pm
                          REQUIRES icons)
 endif()
