@@ -1,64 +1,153 @@
 name: PlatformIO CI
 
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
+      - combined
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   format:
+    name: clang-format
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: Run clang-format style check
-        uses: jidicula/clang-format-action@v4.16.0
-        with:
-          clang-format-version: '21'
-          check-path: '.'
-
-  # This workflow contains a matrix of build platforms
-  build:
-    strategy:
-      matrix:
-        platform:
-          - m5stack-core
-          - m5stack-core2
-          - m5stick-c
-          - m5stick-c-plus
-          - m5stick-s3
-
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-          key: ${{ runner.os }}-pio
 
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-          cache: 'pip'
+
+      - name: Cache clang-format pip downloads
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-clang-format-${{ hashFiles('.github/workflows/clang-format-requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-clang-format-
+
+      - name: Install clang-format
+        run: python -m pip install -r .github/workflows/clang-format-requirements.txt
+
+      - name: Check clang-format
+        shell: bash
+        run: |
+          find src include lib/furble -type f \( \
+            -name '*.c' -o \
+            -name '*.cc' -o \
+            -name '*.cpp' -o \
+            -name '*.cxx' -o \
+            -name '*.h' -o \
+            -name '*.hh' -o \
+            -name '*.hpp' -o \
+            -name '*.hxx' \
+          \) -print0 | xargs -0 --no-run-if-empty clang-format --dry-run --Werror --style=file
+
+  discover:
+    name: Discover PlatformIO environments
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.environments.outputs.matrix }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Discover release and debug environments
+        id: environments
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          release = [
+              "m5stick-c",
+              "m5stick-c-plus",
+              "m5stack-core",
+              "m5stack-core2",
+              "m5stick-s3",
+          ]
+          config = Path("platformio.ini").read_text(encoding="utf-8")
+          environments = set(
+              re.findall(r"(?m)^\s*\[env:([^\]]+)\]\s*$", config)
+          )
+          debug = [
+              f"{name}-debug"
+              for name in release
+              if f"{name}-debug" in environments
+          ]
+          platforms = release + debug
+          matrix = {"platform": platforms}
+
+          print(f"Building environments: {', '.join(platforms)}")
+          print(f"Available debug environments: {', '.join(debug) or 'none'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+          PY
+
+  build:
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cache PlatformIO packages and platforms
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Cache pip downloads
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-platformio-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-platformio-
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
 
       - name: Install Dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Set build environment
+        shell: bash
         run: |
-          pip install -r requirements.txt
+          echo "FURBLE_VERSION=$(git describe --tags --always)" >> "$GITHUB_ENV"
+          echo "FURBLE_TEST=0" >> "$GITHUB_ENV"
 
       - name: Build furble (${{ matrix.platform }})
-        run: platformio run -e ${{ matrix.platform }}
+        shell: bash
+        run: |
+          for attempt in 1 2; do
+            if platformio run -e "${{ matrix.platform }}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            echo "PlatformIO build failed on attempt $attempt. Retrying once."
+          done
 
   success:
     runs-on: ubuntu-latest

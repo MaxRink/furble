@@ -2,6 +2,31 @@
 
 ![PlatformIO CI](https://github.com/gkoh/furble/workflows/PlatformIO%20CI/badge.svg)
 
+## About this fork
+
+This is a friendly fork of [gkoh/furble](https://github.com/gkoh/furble),
+which does the hard work this fork builds on. Every change here is offered
+upstream as a pull request. The fork exists because development moves faster
+than review, and because some changes need soak time before they are ready
+for everyone.
+
+What this fork adds over upstream right now:
+- Power work for the M5StickS3: BLE modem sleep, light sleep while connected,
+  a CPU speed setting, and PSRAM support that also fixes out of memory crashes
+- Battery percent, voltage, current and a runtime estimate
+- GPS data reachable while connected, receiver configuration (update rate,
+  sentences, constellations), and a raw NMEA page
+- A bulb timer for long exposures
+- Diagnostics pages: device info, power state, reset reason, heap
+- BLE scan duty cycle and scan timeout settings
+- A USB serial console for developers and test automation
+- Plan documents for every change under `plans/`, and CI on every pull request
+
+Use this fork if you want battery life on a StickS3, the newest features, or
+the developer tooling, and you accept that changes land here first with less
+soak time. Use upstream if you want the most settled firmware and the
+official web installer.
+
 A Bluetooth wireless remote shutter release originally targeted at Fujifilm mirrorless
 cameras. furble now supports:
 - Fujifilm
