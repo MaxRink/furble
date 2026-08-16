@@ -188,7 +188,13 @@ UI::UI(const interval_t &interval)
         } else {
           symbol = &icon_battery_android_0;
         }
-        lv_image_set_src(status->batteryIcon, symbol);
+        // setting the source invalidates the image and forces a decode, only
+        // do it when the icon actually changes
+        static const lv_image_dsc_t *renderedSymbol = NULL;
+        if (renderedSymbol != symbol) {
+          renderedSymbol = symbol;
+          lv_image_set_src(status->batteryIcon, symbol);
+        }
 
         // the label only changes when the sampled level changes
         static uint8_t rendered = UINT8_MAX;
