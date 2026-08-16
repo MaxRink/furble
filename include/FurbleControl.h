@@ -61,6 +61,8 @@ class Control {
     Furble::Camera *m_Camera = NULL;
     Camera::gps_t m_GPS;
     Camera::timesync_t m_Timesync;
+    float m_RssiAverage = 0.0f;
+    bool m_HasRssi = false;
   };
 
   static Control &getInstance();
@@ -132,7 +134,7 @@ class Control {
   /** Retrieve the number of connected camera targets. */
   size_t getConnectedTargetCount(void) const;
 
-  /** Set transmit power. */
+  /** Set the maximum transmit power and reset the adaptive level. */
   void setPower(esp_power_level_t power);
 
  private:
@@ -147,6 +149,15 @@ class Control {
    * Every state change goes through here, that is what keeps the lock balanced.
    */
   void setState(state_t state);
+
+  /** Sample connection RSSI and adjust the shared transmit power. */
+  void sampleAdaptivePower(void);
+
+  /** Reset RSSI state and restore the user transmit power cap. */
+  void resetAdaptivePower(void);
+
+  /** Apply one runtime transmit power level to all targets. */
+  void applyPower(esp_power_level_t power);
 
   static constexpr UBaseType_t m_QueueLength = 32;
   static constexpr const char *POWER_LOCK_OWNER = "control";
@@ -169,6 +180,11 @@ class Control {
   // Camera connects are serialised, the following tracks the last attempt
   Camera *m_ConnectCamera = nullptr;
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
+
+  uint32_t m_LastRssiSample = 0;
+  uint8_t m_RssiStrongSamples = 0;
+  uint8_t m_RssiWeakSamples = 0;
+  bool m_AdaptiveActive = false;
 };
 
 };  // namespace Furble

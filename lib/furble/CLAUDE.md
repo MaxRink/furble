@@ -15,6 +15,9 @@ protocol core.
   but its value stays reserved).
 - `CameraList` handles persistence of paired cameras, `Scan` handles
   advertisement matching and discovery.
+- `Camera` exposes connection RSSI and keeps the configured power cap separate
+  from the runtime connection level. NimBLE transmit power calls take dBm, so
+  map the supported P3, P6 and P9 enum levels explicitly.
 - Vendor protocol files are per-camera. Any change here needs the
   hardware-tested-vendors statement in the PR: only Fujifilm is testable on
   real hardware, all other vendors must be declared untested.

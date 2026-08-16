@@ -1,8 +1,37 @@
+#include <array>
+
 #include "FurbleControl.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 
 namespace Furble {
+
+namespace {
+
+constexpr uint32_t RSSI_SAMPLE_INTERVAL_MS = 5000;
+constexpr float RSSI_FILTER_ALPHA = 0.25f;
+constexpr int8_t RSSI_STEP_DOWN_DBM = -60;
+constexpr int8_t RSSI_STEP_UP_DBM = -80;
+constexpr uint8_t RSSI_STEP_DOWN_SAMPLES = 3;
+constexpr uint8_t RSSI_STEP_UP_SAMPLES = 2;
+
+constexpr std::array<esp_power_level_t, 3> POWER_LEVELS = {
+    ESP_PWR_LVL_P3,
+    ESP_PWR_LVL_P6,
+    ESP_PWR_LVL_P9,
+};
+
+int powerIndex(esp_power_level_t power) {
+  for (size_t i = 0; i < POWER_LEVELS.size(); i++) {
+    if (POWER_LEVELS[i] == power) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
+}  // namespace
+
 Control::Target::Target(Camera *camera) {
   m_Camera = camera;
   m_Queue = xQueueCreate(m_QueueLength, sizeof(cmd_t));
@@ -197,9 +226,13 @@ void Control::task(void) {
 
       case STATE_ACTIVE:
         if (!allConnected()) {
+          const std::lock_guard<std::mutex> lock(m_Mutex);
+          resetAdaptivePower();
           setState(STATE_CONNECT);
           continue;
         }
+
+        sampleAdaptivePower();
 
         if (ret == pdTRUE) {
           for (const auto &target : m_Targets) {
@@ -271,6 +304,8 @@ void Control::disconnect(void) {
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    resetAdaptivePower();
 
     // send disconnect
     for (const auto &target : m_Targets) {
@@ -367,8 +402,138 @@ void Control::setState(state_t state) {
   m_SleepLockHeld = hold;
 }
 
+void Control::sampleAdaptivePower(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  const uint32_t now = xTaskGetTickCount();
+  if ((now - m_LastRssiSample) < pdMS_TO_TICKS(RSSI_SAMPLE_INTERVAL_MS)) {
+    return;
+  }
+  m_LastRssiSample = now;
+
+  if (!Settings::load<Settings::TX_ADAPTIVE>()) {
+    if (m_AdaptiveActive) {
+      resetAdaptivePower();
+    }
+    return;
+  }
+  m_AdaptiveActive = true;
+
+  bool haveRssi = false;
+  float weakestRssi = 0.0f;
+  for (const auto &target : m_Targets) {
+    auto *camera = target->getCamera();
+    int8_t rssi = camera->getRssi();
+    if (rssi == 0) {
+      continue;
+    }
+
+    if (target->m_HasRssi) {
+      target->m_RssiAverage += RSSI_FILTER_ALPHA * (rssi - target->m_RssiAverage);
+    } else {
+      target->m_RssiAverage = rssi;
+      target->m_HasRssi = true;
+    }
+
+    if (!haveRssi || (target->m_RssiAverage < weakestRssi)) {
+      weakestRssi = target->m_RssiAverage;
+      haveRssi = true;
+    }
+  }
+
+  if (!haveRssi) {
+    ESP_LOGD(LOG_TAG, "Adaptive transmit power skipped, no RSSI sample");
+    return;
+  }
+
+  ESP_LOGD(LOG_TAG, "Adaptive RSSI %.1f dBm", weakestRssi);
+
+  if (weakestRssi > RSSI_STEP_DOWN_DBM) {
+    m_RssiWeakSamples = 0;
+    if (m_RssiStrongSamples < UINT8_MAX) {
+      m_RssiStrongSamples++;
+    }
+    if (m_RssiStrongSamples < RSSI_STEP_DOWN_SAMPLES) {
+      return;
+    }
+
+    m_RssiStrongSamples = 0;
+    int current = -1;
+    for (const auto &target : m_Targets) {
+      current = powerIndex(target->getCamera()->getCurrentPower());
+      if (current >= 0) {
+        break;
+      }
+    }
+    int cap = powerIndex(m_Power);
+    if (cap < 0) {
+      cap = 0;
+    }
+    if ((current < 0) || (current > cap)) {
+      current = cap;
+    }
+    if (current > 0) {
+      const auto next = POWER_LEVELS[current - 1];
+      applyPower(next);
+      ESP_LOGI(LOG_TAG, "Adaptive transmit power stepped down to level %d", current - 1);
+    }
+  } else if (weakestRssi < RSSI_STEP_UP_DBM) {
+    m_RssiStrongSamples = 0;
+    if (m_RssiWeakSamples < UINT8_MAX) {
+      m_RssiWeakSamples++;
+    }
+    if (m_RssiWeakSamples < RSSI_STEP_UP_SAMPLES) {
+      return;
+    }
+
+    m_RssiWeakSamples = 0;
+    int current = -1;
+    for (const auto &target : m_Targets) {
+      current = powerIndex(target->getCamera()->getCurrentPower());
+      if (current >= 0) {
+        break;
+      }
+    }
+    int cap = powerIndex(m_Power);
+    if (cap < 0) {
+      cap = 0;
+    }
+    if ((current < 0) || (current > cap)) {
+      current = cap;
+    }
+    if (current < cap) {
+      const auto next = POWER_LEVELS[current + 1];
+      applyPower(next);
+      ESP_LOGI(LOG_TAG, "Adaptive transmit power stepped up to level %d", current + 1);
+    }
+  } else {
+    m_RssiStrongSamples = 0;
+    m_RssiWeakSamples = 0;
+  }
+}
+
+void Control::resetAdaptivePower(void) {
+  m_LastRssiSample = xTaskGetTickCount();
+  m_RssiStrongSamples = 0;
+  m_RssiWeakSamples = 0;
+  m_AdaptiveActive = false;
+
+  for (const auto &target : m_Targets) {
+    target->m_RssiAverage = 0.0f;
+    target->m_HasRssi = false;
+  }
+  applyPower(m_Power);
+}
+
+void Control::applyPower(esp_power_level_t power) {
+  for (const auto &target : m_Targets) {
+    target->getCamera()->setCurrentPower(power);
+  }
+}
+
 void Control::setPower(esp_power_level_t power) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   m_Power = power;
+  resetAdaptivePower();
 }
 
 };  // namespace Furble

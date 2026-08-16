@@ -8,3 +8,5 @@ Public headers for the app layer in src/, one header per module
 - These headers may include lib/furble headers; the reverse is forbidden
   (see lib/furble/CLAUDE.md).
 - Doxygen-style comments on public members, matching the existing files.
+- `FurbleControl::setPower` is the user-selected maximum for Bluetooth transmit
+  power. Adaptive runtime changes must stay at or below that cap.

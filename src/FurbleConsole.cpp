@@ -177,6 +177,7 @@ const char *settingType(Settings::type_t type) {
       return "uint32";
     case Settings::THEME:
       return "string";
+    case Settings::TX_ADAPTIVE:
     case Settings::GPS:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
@@ -224,6 +225,7 @@ bool appliesImmediately(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::SLEEP_CONN:
+    case Settings::TX_ADAPTIVE:
       return true;
     default:
       return false;
@@ -263,6 +265,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+    case Settings::TX_ADAPTIVE:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -348,6 +351,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+    case Settings::TX_ADAPTIVE:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

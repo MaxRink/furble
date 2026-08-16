@@ -61,12 +61,9 @@ Key is 11 characters, under the 15 character NVS limit. Default `false` leaves
 
 ## Menu placement
 
-`Settings > TX Power > Adaptive`, added to the existing page at
-`src/FurbleUI.cpp:1997-2040` as a switch above the slider. This keeps the PR
-independent of PR08.
-
-Once PR08 has landed, the TX Power page lives under `Settings > Bluetooth`, and
-the toggle moves with it. No extra work.
+`Settings > Bluetooth > TX Power > Adaptive`, added to the existing page as a
+switch above the slider. The existing page already lives under Bluetooth on
+master, so no additional menu branch was needed.
 
 Show the live level and RSSI on the PR05 Diagnostics BLE page if PR10 has already
 added it.
@@ -176,6 +173,39 @@ Camera testing:
 - [Espressif nimble power_save example](https://github.com/espressif/esp-idf/blob/master/examples/bluetooth/nimble/power_save/README.md)
   for the scale of radio current, which sets expectations for how much transmit
   power stepping can save.
+
+## Implementation status
+
+Implemented on `feat/11-adaptive-tx-power`.
+
+- Added the `TX_ADAPTIVE` boolean setting with NVS key `tx_adaptive`, defaulting
+  to `false`, and added its switch to `Settings > Bluetooth > TX Power`.
+- The control task samples each connected camera every 5 seconds. Samples use a
+  0.25 EWMA, and the weakest connected camera drives the shared BLE connection
+  power level.
+- The selected `TX_POWER` level remains the maximum. Runtime power steps through
+  P3, P6 and P9, resets to the cap on connect, disconnect and cap changes, and
+  skips cameras that report no RSSI.
+- Hysteresis uses a step down above -60 dBm for three consecutive samples and a
+  step up below -80 dBm for two consecutive samples. The 20 dB dead band and
+  asymmetric sample counts reduce oscillation while restoring link margin faster
+  when the signal weakens.
+- NimBLE power calls now map P3, P6 and P9 to 3, 6 and 9 dBm explicitly. The
+  applied power is read back and logged after each change.
+- Master has generic Diagnostics pages but no BLE debug page. The requested RSSI
+  debug-page display was therefore skipped.
+- Hardware verification remains pending, including the walk-away test with the
+  Fujifilm X100VI. Only Fujifilm hardware is available for real camera testing.
+
+Rebase notes:
+
+- `TX_ADAPTIVE` is assigned wire_id 28, continuing after `IMU` (27) from PR 28.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `TX_ADAPTIVE` as
+  SETTING_BOOL. No companion apply hook is needed because the control task
+  loads the setting on every sample.
+- `resetAdaptivePower()` in `Control::disconnect()` moved inside the target
+  mutex block that master introduced. It touches `m_Targets`, takes no lock
+  itself and does not delay, so holding the lock is correct.
 
 ## Hardware verification, 2026-08-17
 

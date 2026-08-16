@@ -7,6 +7,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   task. Init order matters: Platform, Settings, Device before Control.
 - `FurbleControl`: camera connection state machine. It owns the mutex from the
   root traps section. Keep critical sections short and delay-free.
+- Adaptive Bluetooth power sampling stays in the control task and uses the
+  weakest connected camera because NimBLE connection power is global.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
