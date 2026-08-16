@@ -39,6 +39,18 @@ class Platform {
     bool charging;
   } battery_t;
 
+  /**
+   * Power management configuration.
+   *
+   * The frequencies are the configured ceiling and floor, not a measurement of
+   * what the CPU is running at right now.
+   */
+  typedef struct {
+    uint8_t max_freq_mhz;
+    uint8_t min_freq_mhz;
+    bool light_sleep_enable;
+  } pm_config_t;
+
   static Platform &getInstance();
 
   Platform(Platform const &) = delete;
@@ -85,6 +97,24 @@ class Platform {
    * Get the maximum CPU frequency in MHz.
    */
   uint8_t getCPUMaxFreq(void) const;
+
+  /**
+   * Read back the live power management configuration.
+   */
+  pm_config_t getPMConfig(void);
+
+  /**
+   * Dump the power management locks to the console.
+   *
+   * The output goes to the serial console, not the display. Hold times are only
+   * reported with CONFIG_PM_PROFILING, which is off in the shipping build.
+   */
+  void dumpPMLocks(void);
+
+  /**
+   * Is tickless idle compiled in?
+   */
+  static bool hasTicklessIdle(void);
 
   /**
    * Get the battery measurements supported by this board.
