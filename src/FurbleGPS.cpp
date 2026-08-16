@@ -4,6 +4,7 @@
 
 #include "icons.h"
 
+#include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
@@ -297,6 +298,7 @@ void GPS::serviceSerial(void) {
 
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
+    Console::gpsRaw(reinterpret_cast<const char *>(buffer.data()), bytes);
     m_GPS.encode(reinterpret_cast<char *>(buffer.data()), bytes);
     captureSentences(reinterpret_cast<char *>(buffer.data()), bytes);
   }

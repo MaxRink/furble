@@ -140,6 +140,51 @@ The other boards are plain ESP32 and reach the host through a USB to UART
 bridge. They have no JTAG peripheral, so their debug environments give verbose
 logging and unoptimised code only. There are no breakpoints on a StickC.
 
+### Serial console (developers)
+
+The debug environments also set `-DFURBLE_CONSOLE=1`, which builds a text
+console onto the same USB port that carries the log. It exists so a developer or
+a host script can drive furble without walking the menu tree by hand. No release
+environment contains it, so there is nothing to enable and nothing to switch
+off.
+
+Open it with `platformio device monitor -e m5stick-s3-debug` and type `help`.
+Log output shares the port, so `log * warn` is usually the first thing worth
+typing. Every command prints one fact per line as `key: value`, so a host script
+can parse it with a split on the first colon.
+
+```
+version                             firmware and IDF version
+status                              state, targets, uptime, heap, battery
+gps                                 enabled, fix, satellites, lat, lon, alt, age
+gps on | off                        drive the GPS setting and reload the receiver
+gps raw on | off                    mirror incoming NMEA to the console
+gps send <body>                     send a raw sentence, eg. gps send PCAS12,10
+gps power on | off                  external 5V rail, for rail cut experiments
+settings list                       every setting and its current value
+settings get <name>                 name, type, value, and when it applies
+settings set <name> <value>         save a setting
+cameras list | status               saved cameras, or the active targets
+connect [index]                     no index uses the multi-connect selection
+disconnect
+shutter press | release | hold <ms>
+focus press | release
+scan start | stop | list
+log <tag> <level>
+reboot
+```
+
+Saving a setting is not the same as applying it. Settings read on every use take
+effect at once, settings the UI caches when it starts do not. `settings get` and
+`settings set` say which of the two a setting is.
+
+Two things about the console distort measurements, so do not take power numbers
+from a build that contains it. On the ESP32 boards the console holds an APB
+frequency lock for its lifetime, because UART receive drops characters while
+automatic light sleep gates the APB clock. On the M5StickS3 no lock is needed,
+`CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION` already keeps the chip out of light sleep
+while USB is connected.
+
 ## Usage
 
 The top level menu has the following entries:
