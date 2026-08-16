@@ -81,11 +81,6 @@ class Platform {
   void powerOff(void);
 
   /**
-   * Enable or disable automatic and light sleep.
-   */
-  void setSleep(bool enable);
-
-  /**
    * Set the maximum CPU frequency in MHz.
    *
    * Unsupported values fall back to the default. Use getCPUMaxFreq() to read
@@ -140,16 +135,9 @@ class Platform {
   Platform() {};
 
   /**
-   * Apply the power management configuration.
-   */
-  esp_err_t configurePM(uint8_t max_freq_mhz, bool sleep);
-
-  /**
    * Is the frequency one we are prepared to ask for?
    */
   static bool isCPUMaxFreqValid(uint8_t mhz);
-
-  const int CPU_MIN_FREQ_MHZ = 40;
 
   // Power button click streak threshold
   const uint8_t PWR_CLICK_THRESHOLD_MS = 20;
@@ -188,7 +176,6 @@ class Platform {
 
   bool m_Init = false;
   bool m_PMICHack = false;
-  bool m_Sleep = true;
   uint8_t m_CPUMaxFreqMHz = CPU_MAX_FREQ_DEFAULT_MHZ;
   uint8_t m_PMICClickCount = 0;
   uint32_t m_PMICClickTime = 0;

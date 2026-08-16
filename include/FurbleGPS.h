@@ -1,11 +1,15 @@
 #ifndef FURBLE_GPS_H
 #define FURBLE_GPS_H
 
+#include <optional>
+
 #include <driver/uart.h>
 
 #include <lvgl.h>
 
 #include <TinyGPS++.h>
+
+#include "FurblePower.h"
 
 namespace Furble {
 class GPS {
@@ -36,6 +40,7 @@ class GPS {
   static constexpr const int QUEUE_SIZE = 32;
   static constexpr const uint16_t SERVICE_MS = 1000;
   static constexpr const uint32_t MAX_AGE_MS = 30 * 1000;
+  static constexpr const char *POWER_LOCK_OWNER = "gps";
 
   void enable(void);
   void disable(void);
@@ -54,6 +59,11 @@ class GPS {
   bool m_Enabled = false;
   bool m_HasFix = false;
   TinyGPSPlus m_GPS;
+
+#if defined(FURBLE_M5STICKS3)
+  // held while the receiver is powered, the ESP32S3 UART needs it
+  std::optional<Power::Lock> m_PowerLock;
+#endif
 };
 }  // namespace Furble
 
