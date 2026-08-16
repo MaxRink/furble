@@ -30,6 +30,8 @@ class Settings {
     BATT_STYLE,
     SLEEP_CONN,
     BULB,
+    SCAN_MODE,
+    SCAN_TIMEOUT,
   } type_t;
 
   typedef struct {
@@ -177,6 +179,14 @@ struct Settings::storage_type<Settings::SLEEP_CONN> {
 template <>
 struct Settings::storage_type<Settings::BULB> {
   using type = SpinValue::nvs_t;
+};
+template <>
+struct Settings::storage_type<Settings::SCAN_MODE> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
+  using type = uint32_t;
 };
 
 }  // namespace Furble

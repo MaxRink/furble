@@ -1,6 +1,7 @@
 #ifndef FURBLE_UI_H
 #define FURBLE_UI_H
 
+#include <array>
 #include <initializer_list>
 #include <mutex>
 #include <unordered_map>
@@ -232,7 +233,7 @@ class UI {
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
-  static constexpr const char *m_TransmitPowerStr = "TX Power";
+  static constexpr const char *m_BluetoothStr = "Bluetooth";
   static constexpr const char *m_AboutStr = "About";
   static constexpr const char *m_PowerStr = "Power";
   static constexpr const char *m_DiagnosticsStr = "Diagnostics";
@@ -243,6 +244,12 @@ class UI {
   // settings->diagnostics
   static constexpr const char *m_DeviceInfoStr = "Device info";
   static constexpr const char *m_PowerStateStr = "Power state";
+
+  // settings->bluetooth
+  static constexpr const char *m_TransmitPowerStr = "TX Power";
+
+  /** Scan timeout roller values, in seconds, zero is no timeout. */
+  static constexpr std::array<uint32_t, 4> m_ScanTimeout = {0, 30, 60, 120};
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
@@ -268,6 +275,9 @@ class UI {
 
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
+
+  /** 'Scan finished' notice on the Scan page, hidden while scanning. */
+  static lv_obj_t *m_ScanFinished;
 
   static lv_timer_t *m_ConnectTimer;
   static lv_timer_t *m_GPSDataTimer;
@@ -395,6 +405,9 @@ class UI {
   /** Add the 'Scan' menu entry. */
   void addScanMenu(void);
 
+  /** Clear the 'Scan' page and start a discovery scan. */
+  static void startScan(void);
+
   /** Add the 'Delete' menu entry. */
   void addDeleteMenu(void);
 
@@ -439,6 +452,9 @@ class UI {
   void addThemeMenu(const menu_t &parent);
 
   void addTransmitPowerMenu(const menu_t &parent);
+
+  /** Add the 'Bluetooth' menu entry. */
+  void addBluetoothMenu(const menu_t &parent);
 
   void addAboutMenu(const menu_t &parent);
 
