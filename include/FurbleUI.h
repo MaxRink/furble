@@ -72,14 +72,14 @@ class UI {
     lv_obj_t *batteryIcon;
     lv_obj_t *batteryLabel;
     lv_obj_t *reconnectIcon;
-    lv_obj_t *gpsBaud;
-    lv_obj_t *gpsData;
     // battery page rows, NULL where the board cannot measure them
     lv_obj_t *batteryLevel;
     lv_obj_t *batteryVoltage;
     lv_obj_t *batteryCurrent;
     lv_obj_t *batteryCharging;
     lv_obj_t *batteryRuntime;
+    /** Widgets which are only useful while GPS is enabled. */
+    std::vector<lv_obj_t *> gpsWidgets;
     bool screenLocked;
     // last battery sample and its smoothed current
     Platform::battery_t battery;
@@ -108,6 +108,13 @@ class UI {
 
     virtual void save(void) = 0;
   };
+
+  /** Labels on the raw NMEA page. */
+  typedef struct {
+    lv_obj_t *fix;
+    lv_obj_t *counters;
+    lv_obj_t *sentences;
+  } nmea_t;
 
   class Intervalometer: public SpinnerOwner {
    public:
@@ -253,6 +260,16 @@ class UI {
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
+  static constexpr const char *m_GPSRateStr = "Update rate";
+  static constexpr const char *m_GPSSentencesStr = "Sentences";
+  static constexpr const char *m_GPSConstellationStr = "Constellation";
+  static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
+
+  // settings->gps rollers
+  static constexpr const char *m_GPSRateOptions = "Default\n1000 ms\n500 ms\n200 ms\n100 ms";
+  static constexpr const char *m_GPSSentencesOptions = "Default\nRMC+GGA";
+  static constexpr const char *m_GPSConstellationOptions =
+      "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";
@@ -338,6 +355,8 @@ class UI {
 
   status_t m_Status;
   diagnostics_t m_Diagnostics = {};
+  nmea_t m_NMEA;
+  lv_timer_t *m_NMEATimer = nullptr;
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
   uint32_t m_InactivityTimeout;
@@ -411,8 +430,24 @@ class UI {
   /** Add the 'Delete' menu entry. */
   void addDeleteMenu(void);
 
-  /** Add 'GPS Data' page. */
+  /** Add the 'GPS' menu entry. */
   void addGPSMenu(const menu_t &parent);
+
+  /** Add 'GPS Data' page. */
+  void addGPSDataMenu(const menu_t &parent);
+
+  /** Add a GPS option page holding a single roller. */
+  void addGPSOptionMenu(const menu_t &parent,
+                        const char *name,
+                        const char *options,
+                        uint32_t selected,
+                        lv_event_cb_t handler);
+
+  /** Add the raw NMEA and satellite debug page. */
+  void addGPSNMEAMenu(const menu_t &parent);
+
+  /** Show or hide the widgets which need GPS enabled. */
+  static void showGPSWidgets(status_t *status, bool show);
 
   /** Add the 'Features' menu entry. */
   void addFeaturesMenu(const menu_t &parent);
@@ -490,6 +525,9 @@ class UI {
 
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);
+
+  /** Stop the raw NMEA timer and capture. */
+  static void gpsNMEAStop(lv_event_t *e);
 
   /** Handle connection request. */
   static void doConnect(lv_event_t *e);
