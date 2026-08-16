@@ -21,6 +21,7 @@
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
+#include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "interval.h"
@@ -115,6 +116,11 @@ UI::UI(const interval_t &interval)
   }
 #endif
 
+  // The backlight PWM is clocked from the APB bus. DFS scaling the APB
+  // frequency modulates the PWM and the whole screen flickers, so pin the
+  // APB clock while the display is on. Display off can release this later.
+  Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
+
   lv_init();
   lv_tick_set_cb(tick);
 
@@ -162,6 +168,26 @@ UI::UI(const interval_t &interval)
   m_Buffer2 = heap_caps_aligned_alloc(64, BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
   lv_display_set_buffers(m_Display, m_Buffer1, m_Buffer2, BUFFER_SIZE,
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+#if defined(FURBLE_CONSOLE)
+  // diagnostic: log what invalidates, rate limited to avoid flooding
+  lv_display_add_event_cb(
+      m_Display,
+      [](lv_event_t *e) {
+        auto *area = static_cast<lv_area_t *>(lv_event_get_param(e));
+        static uint32_t count = 0;
+        static uint32_t window = 0;
+        uint32_t now = Platform::getInstance().tick();
+        count++;
+        if ((now - window) >= 1000) {
+          ESP_LOGI(LOG_TAG, "invalidate: %lu/s last=(%ld,%ld)-(%ld,%ld)", count, area->x1,
+                   area->y1, area->x2, area->y2);
+          count = 0;
+          window = now;
+        }
+      },
+      LV_EVENT_INVALIDATE_AREA, NULL);
+#endif
 
   initInputDevices();
 
