@@ -1,6 +1,10 @@
 #include <M5Unified.h>
 #include <TinyGPS++.h>
+#include <esp_timer.h>
 #include <lvgl.h>
+
+#include <algorithm>
+#include <cmath>
 
 #include "icons.h"
 
@@ -243,6 +247,10 @@ bool GPS::isEnabled(void) const {
 
 /** Start timer event to service/update GPS. */
 void GPS::startService(void) {
+  if (m_Timer != NULL) {
+    return;
+  }
+
   m_Timer = lv_timer_create(
       [](lv_timer_t *timer) {
         auto *gps = static_cast<GPS *>(lv_timer_get_user_data(timer));
@@ -251,42 +259,117 @@ void GPS::startService(void) {
       SERVICE_MS, this);
 }
 
+bool GPS::setExternalFix(const external_fix_t &fix) {
+  if (fix.position_valid
+      && ((!std::isfinite(fix.gps.latitude)) || (!std::isfinite(fix.gps.longitude))
+          || (fix.gps.latitude < -90.0) || (fix.gps.latitude > 90.0) || (fix.gps.longitude < -180.0)
+          || (fix.gps.longitude > 180.0))) {
+    return false;
+  }
+
+  if (fix.time_valid
+      && ((fix.timesync.month < 1) || (fix.timesync.month > 12) || (fix.timesync.day < 1)
+          || (fix.timesync.day > 31) || (fix.timesync.hour > 23) || (fix.timesync.minute > 59)
+          || (fix.timesync.second > 60) || (fix.timesync.centisecond > 99))) {
+    return false;
+  }
+
+  const uint64_t now_ms = esp_timer_get_time() / 1000;
+  const std::lock_guard<std::mutex> lock(m_ExternalMutex);
+  m_ExternalFix = fix;
+  m_ExternalFixReceivedMs = now_ms;
+  m_HasExternalFix = true;
+  return true;
+}
+
+void GPS::clearExternalFix(void) {
+  const std::lock_guard<std::mutex> lock(m_ExternalMutex);
+  m_ExternalFix = {};
+  m_ExternalFixReceivedMs = 0;
+  m_HasExternalFix = false;
+}
+
 /** Send GPS data updates to the control task. */
 void GPS::update(void) {
-  if (!m_Enabled) {
-    return;
-  }
+  const uint64_t now_ms = esp_timer_get_time() / 1000;
+  Camera::gps_t dgps = {};
+  Camera::timesync_t timesync = {};
+  source_t source = SOURCE_NONE;
+  uint8_t satellites = 0;
 
-  if ((m_GPS.location.age() < MAX_AGE_MS) && m_GPS.location.isValid()
-      && (m_GPS.date.age() < MAX_AGE_MS) && m_GPS.date.isValid() && (m_GPS.time.age() < MAX_AGE_MS)
-      && m_GPS.time.isValid()) {
-    m_HasFix = (m_GPS.location.FixQuality() != TinyGPSLocation::Quality::Invalid);
-  } else {
-    m_HasFix = false;
-  }
-
-  if (m_HasFix) {
-    Camera::gps_t dgps = {
+  if (wiredFixIsFresh()) {
+    source = SOURCE_UART;
+    dgps = {
         m_GPS.location.lat(),
         m_GPS.location.lng(),
         m_GPS.altitude.meters(),
         m_GPS.satellites.value(),
     };
-    Camera::timesync_t timesync = {
+    timesync = {
         m_GPS.date.year(),   m_GPS.date.month(),  m_GPS.date.day(),         m_GPS.time.hour(),
         m_GPS.time.minute(), m_GPS.time.second(), m_GPS.time.centisecond(),
     };
+    satellites = static_cast<uint8_t>(
+        std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
+  } else {
+    external_fix_t external = {};
+    uint64_t received_ms = 0;
+    bool has_external = false;
+    {
+      const std::lock_guard<std::mutex> lock(m_ExternalMutex);
+      external = m_ExternalFix;
+      received_ms = m_ExternalFixReceivedMs;
+      has_external = m_HasExternalFix;
+    }
 
+    const uint64_t elapsed_ms = now_ms - received_ms;
+    if (has_external && external.position_valid && external.time_valid && (elapsed_ms < MAX_AGE_MS)
+        && ((static_cast<uint64_t>(external.age_ms) + elapsed_ms) < MAX_AGE_MS)) {
+      source = SOURCE_COMPANION;
+      dgps = external.gps;
+      if (!external.altitude_valid) {
+        dgps.altitude = 0.0;
+      }
+      timesync = external.timesync;
+      satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
+    }
+  }
+
+  m_Source.store(static_cast<uint8_t>(source));
+  m_Satellites.store(satellites);
+  m_HasFix = (source != SOURCE_NONE);
+
+  if (m_HasFix) {
     Control::getInstance().updateGPS(dgps, timesync);
   }
 
   // setting the source invalidates the image and forces a decode, only do it
   // when the icon actually changes
-  const lv_image_dsc_t *symbol = m_HasFix ? &icon_my_location : &icon_location_disabled;
+  const lv_image_dsc_t *symbol = &icon_location_disabled;
+  if (source == SOURCE_UART) {
+    symbol = &icon_my_location;
+  } else if (source == SOURCE_COMPANION) {
+    symbol = &icon_location_searching;
+  }
   if ((m_Icon != NULL) && (m_IconSymbol != symbol)) {
     m_IconSymbol = symbol;
     lv_image_set_src(m_Icon, symbol);
   }
+}
+
+bool GPS::wiredFixIsFresh(void) {
+  return m_Enabled && (m_GPS.location.age() < MAX_AGE_MS) && m_GPS.location.isValid()
+         && (m_GPS.date.age() < MAX_AGE_MS) && m_GPS.date.isValid()
+         && (m_GPS.time.age() < MAX_AGE_MS) && m_GPS.time.isValid()
+         && (m_GPS.location.FixQuality() != TinyGPSLocation::Quality::Invalid);
+}
+
+GPS::source_t GPS::getSource(void) const {
+  return static_cast<source_t>(m_Source.load());
+}
+
+uint8_t GPS::getSatellites(void) const {
+  return m_Satellites.load();
 }
 
 /** Read and decode the GPS data from serial port. */

@@ -1,6 +1,7 @@
 #ifndef FURBLE_CONTROL_H
 #define FURBLE_CONTROL_H
 
+#include <cstddef>
 #include <memory>
 #include <mutex>
 
@@ -125,6 +126,12 @@ class Control {
   /** Retrieve current control state. */
   state_t getState(void) const;
 
+  /** Retrieve the number of active camera targets. */
+  size_t getTargetCount(void) const;
+
+  /** Retrieve the number of connected camera targets. */
+  size_t getConnectedTargetCount(void) const;
+
   /** Set transmit power. */
   void setPower(esp_power_level_t power);
 
@@ -145,7 +152,7 @@ class Control {
   static constexpr const char *POWER_LOCK_OWNER = "control";
 
   QueueHandle_t m_Queue = NULL;
-  std::mutex m_Mutex;
+  mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
 
   bool m_InfiniteReconnect = false;
