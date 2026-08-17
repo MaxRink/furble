@@ -26,6 +26,12 @@ class Camera {
     SAVED = 2,
   };
 
+  enum class ConnProfile : uint8_t {
+    FAST,
+    IDLE,
+    PEER,
+  };
+
   typedef struct _gps_t {
     double latitude;
     double longitude;
@@ -61,6 +67,33 @@ class Camera {
   void focusPress(void);
   void focusRelease(void);
   void updateGeoData(const gps_t &gps, const timesync_t &timesync);
+
+  // The connection statistics are a fixed snapshot so scripted captures of
+  // the multiconnect page stay deterministic.
+  bool getConnParams(uint16_t &interval, uint16_t &latency, uint16_t &timeout, int &rssi) const {
+    if (!m_Connected) {
+      return false;
+    }
+    interval = 12;
+    latency = 0;
+    timeout = 400;
+    rssi = -60;
+    return true;
+  }
+
+  ConnProfile getConnProfile(void) const { return ConnProfile::FAST; }
+
+  static const char *connProfileName(ConnProfile profile) {
+    switch (profile) {
+      case ConnProfile::FAST:
+        return "fast";
+      case ConnProfile::IDLE:
+        return "idle";
+      case ConnProfile::PEER:
+        return "peer";
+    }
+    return "peer";
+  }
 
  private:
   Type m_Type = Type::FAUXNY;

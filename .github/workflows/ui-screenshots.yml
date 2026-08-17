@@ -33,34 +33,49 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # No restore-keys on purpose: the fetch step below skips a dependency
+      # when its directory exists, so a stale prefix match could pin an old
+      # version. An exact key miss just re-clones, which takes seconds.
       - uses: actions/cache@v5
         with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-            sim/.pio
-          key: ${{ runner.os }}-ui-screenshots-${{ hashFiles('sim/platformio.ini', 'requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-ui-screenshots-
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-          cache: pip
+          path: sim/.pio
+          key: ${{ runner.os }}-ui-screenshots-${{ hashFiles('sim/platformio.ini', '.github/workflows/ui-screenshots.yml') }}
 
       - name: Install SDL2, Clang, and Xvfb
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y clang libsdl2-dev xvfb
 
-      - name: Install simulator dependencies
+      # Runs 32061201722 and 32033121941 failed because `platformio pkg
+      # install -e sim` silently skipped the owner-less M5GFX and M5Unified
+      # lib_deps specs (only lvgl and TinyGPSPlus installed) and exited zero,
+      # so build.sh found an empty libdeps tree. build.sh never invokes
+      # PlatformIO; it only needs the four source trees. Pinned shallow git
+      # clones are faster (no PlatformIO pip install, no native platform or
+      # scons download) and fail loudly when a pin is wrong. Keep these pins
+      # in sync with sim/platformio.ini and src/idf_component.yml.
+      - name: Fetch simulator dependencies
+        env:
+          DEPS: ${{ github.workspace }}/sim/.pio/libdeps/sim
         run: |
-          python -m pip install -r requirements.txt
-          platformio pkg install --project-dir sim --environment sim
+          clone_tag() {
+            test -d "$DEPS/$3" || \
+              git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
+          }
+          mkdir -p "$DEPS"
+          clone_tag m5stack/M5GFX 0.2.19 M5GFX
+          clone_tag m5stack/M5Unified 0.2.13 M5Unified
+          clone_tag lvgl/lvgl v9.4.0 lvgl
+          if [ ! -d "$DEPS/TinyGPSPlus" ]; then
+            git init "$DEPS/TinyGPSPlus"
+            git -C "$DEPS/TinyGPSPlus" fetch --depth 1 \
+              https://github.com/gkoh/TinyGPSPlus \
+              92ac8c21b8179201c2c8c534e46af3320b76d3e7
+            git -C "$DEPS/TinyGPSPlus" checkout --detach FETCH_HEAD
+          fi
 
       - name: Generate LVGL configuration
-        run: python tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+        run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
 
       - name: Build simulator
         env:

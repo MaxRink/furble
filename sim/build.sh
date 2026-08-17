@@ -77,7 +77,10 @@ DEFINES="\
 CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $INCLUDES $DEFINES"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"
-CFLAGS="-std=c11 -O0 -g -Wall -Wextra $INCLUDES $DEFINES"
+# glibc hides strnlen and other POSIX names under strict -std=c11, which
+# breaks the LVGL clib build on Linux. _DEFAULT_SOURCE restores them and is
+# inert on macOS.
+CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $INCLUDES $DEFINES"
 
 OBJECTS=
 
