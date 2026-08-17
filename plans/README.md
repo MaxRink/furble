@@ -147,7 +147,9 @@ plans continue the sequence in their own implementation notes. Current allocatio
 29 CONN_SAVER (plus provisional 29/30 IMU_WAKE/IMU_TRIG on the stacked
 gestures branch, renumber at rebase), 30 PRESET_PICKER, 31/32 IR/IR_PROTO,
 33/34/35 FB_OUTPUT/FB_EVENTS/FB_VOLUME, 36 DISPLAY_MODE, 37/38
-AUTO_OFF/LOW_BATT, 39 TEXT_SIZE. Next free id: 40. Stacked branches with
+AUTO_OFF/LOW_BATT, 39 SD_GPX, 40 TEXT_SIZE. Off-wire id 0: BULB,
+TOUCH_CALIBRATION, MULTISELECT, GPX_PERIOD (uint16 has no wire type yet;
+a u16 type is a settings-v2 item). Next free id: 41. Stacked branches with
 provisional ids (dead-reckoning 36, hw-motion 34, gps-hold 35 and friends)
  renumber at their rebase; ids only freeze when a PR merges.
 
