@@ -256,6 +256,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
   switch (type) {
     case Settings::GPS:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
@@ -299,6 +300,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::IMU_WAKE:
       return SETTING_U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -321,6 +323,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
   switch (type) {
     case Settings::GPS:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
@@ -369,6 +372,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::IMU_WAKE:
     {
       const uint8_t v = Settings::load<uint8_t>(type);
       value.assign(1, v);
@@ -416,7 +420,7 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       Settings::save<bool>(type, value[0] != 0);
       return true;
     case SETTING_U8:
-      if (length != 1) {
+      if ((length != 1) || ((type == Settings::IMU_WAKE) && (value[0] > 3))) {
         return false;
       }
       if ((type == Settings::GPS_ASSIST) && (value[0] > 2)) {
@@ -590,6 +594,11 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       if (m_SettingReloadCallback) {
         m_SettingReloadCallback(false);
       }
+      break;
+    case Settings::IMU:
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
+      UI::notifyGestureSettingsChanged();
       break;
     default:
       break;
