@@ -193,6 +193,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_HOLD:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -217,6 +218,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
@@ -255,6 +257,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_HOLD:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -312,6 +315,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
@@ -357,6 +361,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > Feedback::OUTPUT_SOUND_LIGHT)) {
+        return fail("expected 0-4");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::GPS_HOLD:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > GPS::HOLD_MAX)) {
         return fail("expected 0-4");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -419,6 +433,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
@@ -437,7 +452,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
   // The GPS receiver has to be told about its own settings.
   if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
-      || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)) {
+      || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
+      || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
 

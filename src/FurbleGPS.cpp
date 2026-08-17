@@ -6,8 +6,8 @@
 #include <esp_timer.h>
 #include <lvgl.h>
 
-#include <algorithm>
 #include <cmath>
+#include <ctime>
 
 #include "icons.h"
 
@@ -71,6 +71,54 @@ uint32_t tickDistance(uint32_t first, uint32_t second) {
   const int32_t delta = static_cast<int32_t>(first - second);
   return delta < 0 ? static_cast<uint32_t>(-delta) : static_cast<uint32_t>(delta);
 }
+
+constexpr std::array<uint32_t, GPS::HOLD_MAX + 1> HOLD_LIMIT_MS = {
+    0, 30 * 1000, 2 * 60 * 1000, 10 * 60 * 1000, 60 * 60 * 1000,
+};
+constexpr uint32_t EXTRAPOLATION_MAX_MS = 30 * 1000;
+constexpr double EARTH_RADIUS_M = 6371000.0;
+constexpr double DEGREES_PER_RADIAN = 180.0 / 3.14159265358979323846;
+constexpr double RADIANS_PER_DEGREE = 3.14159265358979323846 / 180.0;
+
+bool advanceTimesync(const Camera::timesync_t &input,
+                     uint32_t elapsed_ms,
+                     Camera::timesync_t &output) {
+  if ((input.year < 1970) || (input.month < 1) || (input.month > 12) || (input.day < 1)
+      || (input.day > 31) || (input.hour > 23) || (input.minute > 59) || (input.second > 60)) {
+    return false;
+  }
+
+  // newlib has no timegm, so convert UTC calendar time with days-from-civil
+  int year = static_cast<int>(input.year);
+  const int month = static_cast<int>(input.month);
+  const int day = static_cast<int>(input.day);
+  year -= month <= 2;
+  const int era = (year >= 0 ? year : year - 399) / 400;
+  const unsigned yoe = static_cast<unsigned>(year - era * 400);
+  const unsigned doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  const int64_t days = static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468;
+  const time_t epoch =
+      static_cast<time_t>(days * 86400 + input.hour * 3600 + input.minute * 60 + input.second);
+
+  const time_t advanced = epoch + static_cast<time_t>(elapsed_ms / 1000);
+  struct tm updated = {};
+  if (gmtime_r(&advanced, &updated) == nullptr) {
+    return false;
+  }
+
+  output = {
+      static_cast<unsigned int>(updated.tm_year + 1900),
+      static_cast<unsigned int>(updated.tm_mon + 1),
+      static_cast<unsigned int>(updated.tm_mday),
+      static_cast<unsigned int>(updated.tm_hour),
+      static_cast<unsigned int>(updated.tm_min),
+      static_cast<unsigned int>(updated.tm_sec),
+      input.centisecond,
+  };
+  return true;
+}
+
 }  // namespace
 
 GPS &GPS::getInstance() {
@@ -700,11 +748,23 @@ void GPS::disable(void) {
   setRailPower(false);
 
   releasePowerLock();
+
+  m_FixCache = {};
+  m_HoldActive = false;
+  m_HoldRemainingMs.store(0);
+  m_Fix.store(static_cast<uint8_t>(Fix::NONE));
+  m_Source.store(SOURCE_NONE);
+  m_Satellites.store(0);
 }
 
 /** Refresh the setting from NVS. */
 void GPS::reloadSetting(void) {
-  if (Settings::load<Settings::GPS>()) {
+  const uint8_t hold = Settings::load<Settings::GPS_HOLD>();
+  m_HoldLimitMs.store(hold <= HOLD_MAX ? HOLD_LIMIT_MS[hold] : 0);
+  m_Extrapolate.store(Settings::load<Settings::GPS_EXTRAP>());
+
+  m_Enabled = Settings::load<Settings::GPS>();
+  if (m_Enabled) {
     enable();
   } else {
     disable();
@@ -764,10 +824,15 @@ void GPS::clearExternalFix(void) {
 /** Send GPS data updates to the control task. */
 void GPS::update(void) {
   const uint64_t now_ms = esp_timer_get_time() / 1000;
+  const uint32_t now_tick = Platform::getInstance().tick();
   Camera::gps_t dgps = {};
   Camera::timesync_t timesync = {};
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
+  double course_deg = 0.0;
+  double speed_mps = 0.0;
+  bool course_valid = false;
+  bool speed_valid = false;
 
   if (wiredFixIsFresh()) {
     source = SOURCE_UART;
@@ -783,6 +848,14 @@ void GPS::update(void) {
     };
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
+    course_valid = m_GPS.course.isValid() && (m_GPS.course.age() < MAX_AGE_MS);
+    speed_valid = m_GPS.speed.isValid() && (m_GPS.speed.age() < MAX_AGE_MS);
+    if (course_valid) {
+      course_deg = m_GPS.course.deg();
+    }
+    if (speed_valid) {
+      speed_mps = m_GPS.speed.mps();
+    }
   } else {
     external_fix_t external = {};
     uint64_t received_ms = 0;
@@ -807,11 +880,92 @@ void GPS::update(void) {
     }
   }
 
+  Fix fix = Fix::NONE;
+  if (source != SOURCE_NONE) {
+    m_FixCache = {
+        dgps,
+        timesync,
+        now_tick,
+        course_deg,
+        speed_mps,
+        source,
+        course_valid && std::isfinite(course_deg),
+        speed_valid && std::isfinite(speed_mps),
+        true,
+    };
+    m_HoldActive = false;
+    m_HoldRemainingMs.store(0);
+    fix = Fix::LIVE;
+  } else {
+    const uint32_t hold_limit_ms = m_HoldLimitMs.load();
+    if ((hold_limit_ms > 0) && m_FixCache.valid) {
+      if (!m_HoldActive) {
+        m_HoldStartTick = now_tick;
+        m_HoldActive = true;
+      }
+
+      const uint32_t hold_elapsed_ms = now_tick - m_HoldStartTick;
+      if (hold_elapsed_ms <= hold_limit_ms) {
+        Camera::timesync_t held_timesync = {};
+        if (advanceTimesync(m_FixCache.timesync, now_tick - m_FixCache.tick, held_timesync)) {
+          dgps = m_FixCache.gps;
+          timesync = held_timesync;
+          source = m_FixCache.source;
+          satellites = static_cast<uint8_t>(
+              std::min<uint32_t>(static_cast<uint32_t>(dgps.satellites), 255u));
+
+          // No motion source exists on this base. A stationary result is
+          // therefore never assumed, and extrapolation is never used for a
+          // stationary claim that the firmware cannot make.
+          const bool stationary = false;
+          if (m_Extrapolate.load() && !stationary && m_FixCache.course_valid
+              && m_FixCache.speed_valid && (m_FixCache.speed_mps >= 2.0)
+              && (hold_elapsed_ms < EXTRAPOLATION_MAX_MS)) {
+            const double latitude_radians = dgps.latitude * RADIANS_PER_DEGREE;
+            const double longitude_radians = dgps.longitude * RADIANS_PER_DEGREE;
+            const double distance_m = m_FixCache.speed_mps * (hold_elapsed_ms / 1000.0);
+            const double course_radians = m_FixCache.course_deg * RADIANS_PER_DEGREE;
+            const double cos_latitude = std::cos(latitude_radians);
+
+            if (std::fabs(cos_latitude) > 1.0e-6) {
+              const double new_latitude =
+                  latitude_radians + (distance_m * std::cos(course_radians) / EARTH_RADIUS_M);
+              const double new_longitude =
+                  longitude_radians
+                  + (distance_m * std::sin(course_radians) / (EARTH_RADIUS_M * cos_latitude));
+              const double latitude_deg = new_latitude * DEGREES_PER_RADIAN;
+              double longitude_deg = new_longitude * DEGREES_PER_RADIAN;
+              while (longitude_deg > 180.0) {
+                longitude_deg -= 360.0;
+              }
+              while (longitude_deg < -180.0) {
+                longitude_deg += 360.0;
+              }
+
+              if (std::isfinite(latitude_deg) && std::isfinite(longitude_deg)
+                  && (latitude_deg >= -90.0) && (latitude_deg <= 90.0)) {
+                dgps.latitude = latitude_deg;
+                dgps.longitude = longitude_deg;
+              }
+            }
+          }
+
+          m_HoldRemainingMs.store(hold_limit_ms - hold_elapsed_ms);
+          fix = Fix::HELD;
+        }
+      }
+    }
+  }
+
+  if (fix != Fix::HELD) {
+    m_HoldRemainingMs.store(0);
+  }
+
   m_Source.store(static_cast<uint8_t>(source));
   m_Satellites.store(satellites);
-  m_HasFix = (source != SOURCE_NONE);
+  m_Fix.store(static_cast<uint8_t>(fix));
 
-  if (m_HasFix) {
+  if (fix != Fix::NONE) {
     Control::getInstance().updateGPS(dgps, timesync);
 
     const uint32_t fixSequence = m_FixSequence.load();
@@ -826,10 +980,10 @@ void GPS::update(void) {
   // setting the source invalidates the image and forces a decode, only do it
   // when the icon actually changes
   const lv_image_dsc_t *symbol = &icon_location_disabled;
-  if (source == SOURCE_UART) {
-    symbol = &icon_my_location;
-  } else if (source == SOURCE_COMPANION) {
+  if (fix == Fix::HELD || (fix == Fix::LIVE && source == SOURCE_COMPANION)) {
     symbol = &icon_location_searching;
+  } else if (fix == Fix::LIVE) {
+    symbol = &icon_my_location;
   }
   if ((m_Icon != NULL) && (m_IconSymbol != symbol)) {
     m_IconSymbol = symbol;
@@ -850,6 +1004,14 @@ GPS::source_t GPS::getSource(void) const {
 
 uint8_t GPS::getSatellites(void) const {
   return m_Satellites.load();
+}
+
+GPS::Fix GPS::getFix(void) const {
+  return static_cast<Fix>(m_Fix.load());
+}
+
+uint32_t GPS::getHoldRemainingMs(void) const {
+  return m_HoldRemainingMs.load();
 }
 
 /** Read and decode the GPS data from serial port. */
