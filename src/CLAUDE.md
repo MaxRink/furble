@@ -15,6 +15,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
 - `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap.
+- `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
+  IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
+  `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
+  plain ESP32. Transmission runs on the dedicated ir task, never under the
+  Control mutex.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,

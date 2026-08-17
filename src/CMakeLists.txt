@@ -4,6 +4,7 @@ set(furble_sources
     FurbleConsole.cpp
     FurbleControl.cpp
     FurbleGPS.cpp
+    FurbleIR.cpp
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleSettings.cpp
@@ -17,5 +18,5 @@ set(furble_sources
 # console. Nothing references them without FURBLE_CONSOLE, so the linker leaves
 # them out and the release binaries are unchanged.
 idf_component_register(SRCS ${furble_sources}
-                       PRIV_REQUIRES console esp_driver_usb_serial_jtag esp_pm
+                       PRIV_REQUIRES console esp_driver_rmt esp_driver_usb_serial_jtag esp_pm
                        REQUIRES icons)

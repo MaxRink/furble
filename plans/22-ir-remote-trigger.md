@@ -25,6 +25,58 @@ Out of scope:
   can be added later without touching the driver.
 - Chaining IR into the intervalometer. Doable later once the trigger is proven.
 
+## Implementation status
+
+Implemented:
+
+- Added the `FurbleIR` RMT transmit module with lazy channel allocation, a
+  queued worker task, carrier control, and runtime board pin selection for the
+  documented M5Stick boards.
+- Added Nikon ML-L3, Sony 20 bit SIRC, and Canon RC-1/Canon RC-6 handset
+  encoders using the timings in this plan.
+- Added persisted `IR` and `IR_PROTO` settings, with infrared disabled by
+  default.
+
+Rebase notes:
+
+- `IR` is assigned wire_id 31 and `IR_PROTO` wire_id 32, continuing after
+  `PRESET_PICKER` (30) from PR 33.
+- Console settingType, printValue and setValue cover `IR` as bool and
+  `IR_PROTO` as generic uint8 (`IR::fire()` clamps out-of-range protocol
+  values). Both are marked appliesImmediately because `IR::fire()` loads
+  both settings on every trigger.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `IR` as
+  SETTING_BOOL and `IR_PROTO` as SETTING_U8.
+- Added the standalone main-menu IR Fire page, the Connected-menu IR entry,
+  and the Settings->Infrared submenu. Entries are hidden at runtime when IR is
+  disabled or when the detected board has no emitter pin.
+- Deviation from the Firing section as originally written: the Connected-menu
+  IR entry navigates to the shared IR page instead of firing IR alongside BLE.
+  A link is simpler and avoids surprise double-triggering, so `IR::fire()` has
+  exactly two call sites: the Fire button and the console `ir fire` command.
+- Added a debug console `ir fire [protocol]` command as the scripted hardware
+  verification path. The protocol argument is optional and defaults to the
+  `IR_PROTO` setting.
+- Corrected the Nikon ML-L3 marks and spaces to the published reference values
+  (390/1580, 410/3580, 400 stop) after review caught rounded stand-ins.
+- Console `settings set ir on|off` queues a `UI::Request::IR_RELOAD` so the IR
+  menu entries appear or disappear without a reboot, mirroring `GPS_RELOAD`.
+
+Deferred:
+
+- IR receive, decoding, and learning mode remain out of scope.
+- Pentax, Olympus, and Panasonic protocols remain unimplemented.
+- Intervalometer integration and camera-specific feedback remain deferred.
+
+Open questions:
+
+- Hardware verification is pending. Waveform correctness needs checking via a
+  phone camera against the IR LED output.
+- The author only has a Fujifilm camera body with no IR receiver, so end-to-end
+  protocol validation against real camera hardware needs community help.
+- The M5StickC Plus SE emitter pin is still unverified and needs an on-device
+  probe before it can be treated as supported.
+
 ## Hardware support matrix
 
 Verified against the M5Stack product pages listed in References.
@@ -112,7 +164,7 @@ rmt_tx_channel_config_t tx = {
   .gpio_num = <board pin>,
   .clk_src = RMT_CLK_SRC_DEFAULT,
   .resolution_hz = 1000000,   // 1 tick = 1 us
-  .mem_block_symbols = 64,
+  .mem_block_symbols = SOC_RMT_MEM_WORDS_PER_CHANNEL,  // 64 on ESP32, 48 on S3
   .trans_queue_depth = 4,
 };
 rmt_new_tx_channel(&tx, &chan);
@@ -132,13 +184,16 @@ transmit rather than once at init.
 **Nikon ML-L3.** 38 kHz carrier. One frame is:
 
 ```
-mark 2000, space 27830, mark 500, space 1500,
-mark 500, space 3500, mark 500
+mark 2000, space 27830, mark 390, space 1580,
+mark 410, space 3580, mark 400
 ```
 
-Then a 63 ms gap and the same frame again. The real remote sends the frame three
-times. Timing tolerance is loose. Both reverse engineering write-ups report that
-a few percent of drift causes no problems.
+Then a 63 ms gap and the same frame again. The sources disagree on whether the
+published 63.2 ms is the gap between frames or the frame repeat period, so the
+implementation treats it as the gap and waveform verification on hardware will
+settle it. The real remote sends the frame three times. Timing tolerance is
+loose. Both reverse engineering write-ups report that a few percent of drift
+causes no problems.
 
 **Sony.** 40 kHz carrier, 20 bit SIRC. Header is a 2400 us mark and a 600 us
 space. A zero bit is a 600 us mark and a 600 us space. A one bit is a 1200 us
@@ -187,8 +242,12 @@ queue of one so a double press cannot overlap frames.
 entry checks it and stays hidden when false. No `#ifdef` is used, matching the
 runtime board switch style at `src/FurbleUI.cpp:95-109`.
 
-BLE is untouched. When a camera is connected, the Connected menu IR entry fires
-IR in addition to whatever BLE does. The two paths do not interact.
+BLE is untouched. The Connected menu IR entry is a navigation link to the
+shared IR page, not a trigger. Firing IR is always an explicit press of the
+Fire button, which is the only UI call site of `IR::fire()`. The original idea
+of an entry that fires IR in addition to BLE was dropped: a link is simpler and
+a connected shutter press can never double-trigger by surprise. The two paths
+do not interact.
 
 ## Dependencies
 

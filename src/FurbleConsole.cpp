@@ -26,6 +26,7 @@
 
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleIR.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -171,6 +172,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
       return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -180,6 +182,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
     case Settings::CONN_SAVER:
+    case Settings::IR:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -210,6 +213,7 @@ const char *settingType(Settings::type_t type) {
 const char *appliesWhen(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
+    case Settings::IR:
     case Settings::GPS_BAUD:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
@@ -225,6 +229,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
       return "immediately";
@@ -251,6 +256,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::IR_PROTO:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPS_BAUD:
@@ -262,6 +268,7 @@ void printValue(const char *prefix, Settings::type_t type) {
       break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
+    case Settings::IR:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -295,6 +302,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
+    case Settings::IR_PROTO:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
@@ -349,6 +357,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::GPS:
     case Settings::CONN_SAVER:
+    case Settings::IR:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -378,6 +387,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
       || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
+  }
+
+  // The UI caches the IR menu visibility, so it has to be told as well.
+  if (setting.type == Settings::IR) {
+    UI::sendRequest(UI::Request::IR_RELOAD, 0);
   }
 
   printf("saved: %s\n", setting.key);
@@ -635,6 +649,34 @@ int cmdShutter(int argc, char **argv) {
   return fail("expected press, release or hold");
 }
 
+int cmdIR(int argc, char **argv) {
+  if ((argc < 2) || strcmp(argv[1], "fire")) {
+    return fail("usage: ir fire [protocol]");
+  }
+
+  auto &ir = IR::getInstance();
+  if (!ir.isSupported()) {
+    return fail("no ir emitter on this board");
+  }
+  if (!Settings::load<Settings::IR>()) {
+    return fail("ir is disabled, try 'settings set ir on'");
+  }
+
+  if (argc >= 3) {
+    char *end = nullptr;
+    unsigned long value = strtoul(argv[2], &end, 0);
+    if ((end == argv[2]) || (value > static_cast<uint8_t>(IR::protocol_t::CANON_DELAYED))) {
+      return fail("expected a protocol from 0-3");
+    }
+    ir.fire(static_cast<IR::protocol_t>(value));
+  } else {
+    ir.fire();
+  }
+
+  printf("queued: ir fire\n");
+  return 0;
+}
+
 int cmdFocus(int argc, char **argv) {
   if (argc < 2) {
     return fail("usage: focus press | release");
@@ -742,6 +784,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
+    command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
     command("scan", "scan start | stop | list", cmdScan),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
