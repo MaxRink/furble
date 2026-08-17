@@ -57,11 +57,17 @@ class Feedback {
   /** Map a board-filtered output roller index to its persisted value. */
   output_t outputForOption(uint8_t index) const;
 
-  /** Reload feedback settings after a menu or console change. */
+  /** Reload the live feedback settings (event mask and volume) after a menu
+   * or console change. The output selection is frozen at boot and applies on
+   * restart only. */
   void reload(void);
 
-  /** Signal an enabled feedback event without blocking the caller. */
-  void signal(event_t event);
+  /** Set the cached volume without persisting it, for live slider preview. */
+  void setVolume(uint8_t volume);
+
+  /** Signal an enabled feedback event without blocking the caller.
+   * With force set the event mask is bypassed, for console testing. */
+  void signal(event_t event, bool force = false);
 
   /** Feed the existing battery sampler into the low-battery event policy. */
   void updateBattery(uint8_t level, bool charging);
@@ -92,11 +98,12 @@ class Feedback {
   void initialize(void);
   void update(void);
   void ensureTimer(void);
+  bool beginSpeaker(void);
   void startTone(void);
   void stopSpeaker(void);
   void startLight(uint16_t on, uint16_t off, uint8_t count);
   void stopLight(void);
-  void startVibration(uint16_t on, uint16_t off, uint8_t count);
+  void startVibration(uint16_t on, uint8_t count);
   void stopVibration(void);
   void setLight(bool on);
   static void timerHandler(lv_timer_t *timer);
@@ -123,6 +130,7 @@ class Feedback {
   bool m_VibrationOn = false;
   uint32_t m_VibrationDeadline = 0;
 
+  bool m_LightReady = false;
   uint8_t m_LightCount = 0;
   uint8_t m_LightIndex = 0;
   bool m_LightOn = false;

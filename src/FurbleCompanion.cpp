@@ -10,6 +10,7 @@
 
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
+#include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -910,6 +911,14 @@ void Companion::handleSettings(const NimBLEAttValue &value, NimBLEConnInfo &conn
   switch (setting->type) {
     case Settings::GPS:
       GPS::getInstance().reloadSetting();
+      break;
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
+      // Direct call like the GPS case above: the UI request queue exists only
+      // with FURBLE_CONSOLE and the companion also runs in release builds.
+      // reload() is task-safe, with the output frozen at boot it is two byte
+      // stores into the cache. FB_OUTPUT stays restart-only.
+      Feedback::getInstance().reload();
       break;
     case Settings::TX_POWER:
       Control::getInstance().setPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));

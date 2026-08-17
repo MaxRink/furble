@@ -31,13 +31,15 @@ class UI {
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the UI task to carry out on its behalf. */
   enum class Request {
-    CONNECT,    /**< arg: saved camera index, negative for the multi-connect selection */
-    DISCONNECT, /**< arg: unused */
-    SCAN,       /**< arg: non-zero to start, zero to stop */
-    CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
-    GPS_RELOAD, /**< arg: unused */
-    GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
-    IR_RELOAD,  /**< arg: unused */
+    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT,      /**< arg: unused */
+    SCAN,            /**< arg: non-zero to start, zero to stop */
+    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD,      /**< arg: unused */
+    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,       /**< arg: unused */
+    FEEDBACK_RELOAD, /**< arg: unused */
+    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
   };
 
   /**

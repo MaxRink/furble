@@ -332,7 +332,11 @@ Rebase notes:
   sound volume slider, and a restart action for output changes that affect the
   M5Unified speaker configuration.
 - Added shutter, countdown, connection, and low battery event hooks. Countdown
-  feedback fires once at each of 3, 2, and 1 seconds remaining.
+  feedback fires once at each of 3, 2, and 1 seconds remaining before every
+  frame: the initial wait and every inter-frame delay both arm the countdown,
+  matching the verification expectation of three beeps per frame. The
+  announced-second latch resets on every intervalometer state entry so each
+  frame's 3-2-1 fires exactly once.
 - The low battery implementation uses a 10 percent threshold and six
   consecutive battery samples, then latches until charging. This local policy
   was needed because the planned battery warning dependency was not present in
@@ -358,15 +362,63 @@ exposes Light only. StickS3 and Core expose Sound only. Core2 exposes Sound and
 Vibrate. Countdown has no vibration pattern by design. Plus2 LED output uses
 G19, which remains subject to the documented IR receive conflict.
 
+### Review fixes and deviations (fork PR 30)
+
+- Restart contract: the output selection is frozen inside `Feedback` at boot
+  and `reload()` refreshes only the event mask and volume. Re-reading
+  FB_OUTPUT on any event switch toggle used to half-apply a pending output
+  change (selected Sound with a silent speaker). The output roller still
+  saves immediately and the Restart button applies it; that button now also
+  disables the S3 watchdog first, matching the theme restart precedent.
+- Tone sequencing: the speaker session stays open across a whole pattern and
+  ends only after the final tone. Ending it between tones power-cycled the
+  amplifier mid-pattern, popping audibly and missing the 20 ms gap deadlines.
+- StickS3 first-beep reliability: the amplifier enable runs through the M5PM1
+  and `M5.Speaker.begin()` does not surface the I2C status, so `Feedback`
+  pre-wakes the PMIC with a harmless retried read (`Platform::wakeM5PM1()`)
+  and retries `begin()` once. A failed begin logs a warning and drops the
+  pattern.
+- LED boot safety: the LED GPIO is configured only when the boot output
+  actually includes Light, and `setLight()` refuses to drive an unconfigured
+  pin. Risk note: on the Plus2 G19 is shared with the IR emitter and the LED
+  polarity is unverified, so an unconditional `setLight(false)` at boot could
+  have keyed the IR diode with the feature off.
+- Disconnect feedback: signaled on any drop out of `STATE_ACTIVE`, not only on
+  `STATE_IDLE`. With infinite reconnect the control re-enters connecting
+  without passing through idle, so a real link drop never signaled and the
+  stale connected flag suppressed the reconnect chirp. The flag guard keeps
+  manual disconnects from double-signaling.
+- Console and companion reload: `settings set fb_events|fb_volume` dispatches
+  `UI::Request::FEEDBACK_RELOAD` to the UI task. Deviation: the companion
+  calls `Feedback::reload()` directly (like its GPS case) instead of using
+  the request queue, because the queue is compiled only with FURBLE_CONSOLE
+  and the companion also runs in release builds. With the output frozen,
+  `reload()` is two byte stores and task-safe.
+- Volume slider: live preview via `Feedback::setVolume()` on value change,
+  NVS persist on release only, following the brightness slider precedent.
+- Low battery triggers on the smoothed mean level instead of the raw sample,
+  which jitters across the 10 percent threshold.
+- `feedback test <event>` console command bypasses the event mask (but honors
+  the output selection) so the owed hardware verification is scriptable.
+- `fb_output` console values are validated against the enum range 0-4.
+- M5Tough is an explicit no-output entry in the capability table and the
+  Feedback menu is not built when Off is the only available output.
+- Measure later on hardware: per-beep I2S RAM churn. Each pattern still runs
+  one `M5.Speaker.begin()`/`end()` cycle, which allocates and frees the i2s
+  channel.
+
 ### Build verification
 
 - `m5stick-s3`: PASS on the final-state rebuild.
 - `m5stick-c-plus`: PASS on the final-state rebuild. The earlier parallel build
   hit a shared dependency materialization race and passed on its one retry.
 - `m5stack-core2`: PASS on the final-state rebuild.
+- Review-fix state: `m5stick-s3`, `m5stick-s3-debug`, `m5stick-c` (no-sound
+  path) and `m5stack-core` (DAC speaker path) all PASS.
 
-Hardware verification is still pending for beep and LED behavior on the
-StickS3.
+Hardware verification is still owed for the StickS3: beep patterns per event,
+first-beep-after-idle reliability, countdown cadence per frame, volume slider
+live preview, and the restart-to-apply flow.
 
 ## References
 

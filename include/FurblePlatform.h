@@ -86,6 +86,15 @@ class Platform {
   void watchdogFeed(void);
 
   /**
+   * Wake the M5PM1 with a harmless retried read.
+   *
+   * The first I2C transaction after its idle sleep fails and only wakes it.
+   * Call this before an M5PM1 access whose I2C status is not surfaced, such
+   * as the M5Unified speaker amplifier enable.
+   */
+  void wakeM5PM1(void);
+
+  /**
    * Power off the device.
    */
   void powerOff(void);

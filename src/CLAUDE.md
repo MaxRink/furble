@@ -4,7 +4,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 
 - `main.cpp` starts two contexts: a FreeRTOS control task
   (`Furble::Control::getInstance()`, priority 4) and the UI loop in the main
-  task. Init order matters: Platform, Settings, Device before Control.
+  task. Init order matters: Settings, Platform, Feedback, Device before
+  Control. Settings must precede Platform because Platform reads FB_OUTPUT to
+  set `cfg.internal_spk` before `M5.begin()`.
 - `FurbleControl`: camera connection state machine. It owns the mutex from the
   root traps section. Keep critical sections short and delay-free.
 - Adaptive Bluetooth power sampling stays in the control task and uses the
@@ -20,6 +22,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
   plain ESP32. Transmission runs on the dedicated ir task, never under the
   Control mutex.
+- `FurbleFeedback`: optional sound, LED and vibration event outputs. DFS-safe
+  by construction: all sound paths go through I2S and the IDF i2s driver holds
+  `ESP_PM_APB_FREQ_MAX` while the channel is enabled, so no extra pm lock is
+  needed. The LED is plain GPIO, DFS-immune, and `PM_SLP_DISABLE_GPIO` is
+  unset so pads hold through light sleep. Vibration is I2C, whose divider is
+  recomputed per transaction. The output selection is frozen at boot (it
+  decides `cfg.internal_spk`), only the event mask and volume reload live.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,

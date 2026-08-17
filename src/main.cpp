@@ -28,17 +28,19 @@ void app_main() {
 
   ESP_LOGI(LOG_TAG, "furble version: '%s'", FURBLE_VERSION);
 
+  // Settings must come up before Platform: Platform reads FB_OUTPUT to
+  // decide cfg.internal_spk ahead of M5.begin()
   Furble::Settings::init();
   Furble::Platform::init();
   Furble::IR::init();
   Furble::Feedback::init();
 
-  // Platform::init() runs before NVS exists, apply the stored frequency now
+  // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
 
 #if defined(FURBLE_M5STICKS3)
-  // Same ordering constraint, the watchdog enable lives in NVS
+  // The watchdog enable lives in NVS and needs the platform up
   Furble::Platform::getInstance().watchdogEnable(
       Furble::Settings::load<Furble::Settings::WATCHDOG>());
 #endif

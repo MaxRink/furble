@@ -8,6 +8,18 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
+/*
+ * DFS interaction (see the clock family trap in the root CLAUDE.md):
+ *
+ * - Sound: every sound path goes through I2S via M5Unified, and the IDF i2s
+ *   driver holds ESP_PM_APB_FREQ_MAX while the channel is enabled. Tones are
+ *   therefore DFS-safe without any extra pm lock here.
+ * - LED: plain GPIO, DFS-immune. PM_SLP_DISABLE_GPIO is unset, so the pads
+ *   hold their level through light sleep.
+ * - Vibration: an I2C write to the PMIC, and the I2C driver recomputes its
+ *   clock divider per transaction.
+ */
+
 namespace Furble {
 
 namespace {
@@ -96,6 +108,11 @@ void Feedback::initialize(void) {
     return;
   }
 
+  // The output selection is frozen here for the whole boot. It decides the
+  // M5Unified speaker configuration in Platform::getInstance(), so a change
+  // applies on restart only. The menu offers a restart button for it.
+  m_Output = static_cast<output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT));
+
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
       m_Capabilities = {false, true, false, GPIO_NUM_10, true};
@@ -123,13 +140,22 @@ void Feedback::initialize(void) {
       m_Capabilities = {true, false, true, -1, true};
       break;
 
+    case m5::board_t::board_M5Tough:
+      // No speaker, LED or vibration motor.
+      m_Capabilities = {false, false, false, -1, true};
+      break;
+
     default:
       m_Capabilities = {false, false, false, -1, true};
       break;
   }
 
-  if (m_Capabilities.light) {
+  // Leave the LED pin untouched unless the boot output actually blinks it.
+  // On the Plus2 G19 doubles as the IR emitter and the polarity is not
+  // verified, so driving it with the feature off could key the IR diode.
+  if (m_Capabilities.light && outputIncludesLight(m_Output)) {
     (void)gpio_set_direction(static_cast<gpio_num_t>(m_Capabilities.led_pin), GPIO_MODE_OUTPUT);
+    m_LightReady = true;
     setLight(false);
   }
 
@@ -148,30 +174,19 @@ void Feedback::initialize(void) {
 }
 
 void Feedback::reload(void) {
-  m_Output = static_cast<output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT));
+  // FB_OUTPUT is deliberately not re-read. The output selection configures
+  // the M5Unified speaker at boot, so re-reading it here would half-apply a
+  // pending change (selected Sound, silent speaker). Only the event mask and
+  // volume are live. That also keeps this safe to call from any task: it is
+  // two byte stores into the cache.
   m_Events = Settings::load<uint8_t>(Settings::FB_EVENTS);
   m_Volume = Settings::load<uint8_t>(Settings::FB_VOLUME);
+}
 
-  if (!m_Initialized) {
-    return;
-  }
-
-  if (!supports(m_Output)) {
-    stopSpeaker();
-    m_ToneCount = 0;
-    stopLight();
-    stopVibration();
-  } else {
-    if (!outputIncludesSound(m_Output)) {
-      stopSpeaker();
-      m_ToneCount = 0;
-    }
-    if (!outputIncludesLight(m_Output)) {
-      stopLight();
-    }
-    if (!outputIncludesVibration(m_Output)) {
-      stopVibration();
-    }
+void Feedback::setVolume(uint8_t volume) {
+  m_Volume = volume;
+  if (m_SpeakerActive) {
+    M5.Speaker.setVolume(volume);
   }
 }
 
@@ -203,9 +218,9 @@ bool Feedback::isDue(uint32_t now, uint32_t deadline) {
   return static_cast<int32_t>(now - deadline) >= 0;
 }
 
-void Feedback::signal(event_t event) {
+void Feedback::signal(event_t event, bool force) {
   if (!m_Initialized || (m_Output == OUTPUT_OFF) || !supports(m_Output)
-      || ((m_Events & eventMask(event)) == 0)) {
+      || (!force && ((m_Events & eventMask(event)) == 0))) {
     return;
   }
 
@@ -213,7 +228,13 @@ void Feedback::signal(event_t event) {
   const bool light = outputIncludesLight(m_Output);
   const bool vibration = outputIncludesVibration(m_Output);
 
-  stopSpeaker();
+  // A new pattern silences the current tone but keeps the speaker session
+  // open. Ending it here would power-cycle the amplifier for nothing.
+  if (m_SpeakerActive) {
+    M5.Speaker.stop();
+  }
+  m_TonePlaying = false;
+  m_ToneGap = false;
   m_ToneCount = 0;
   m_LightCount = 0;
   m_VibrationCount = 0;
@@ -295,25 +316,49 @@ void Feedback::signal(event_t event) {
   }
 
   if (vibration) {
-    startVibration(m_Vibrations[0].duration, m_Vibrations[0].gap, m_VibrationCount);
+    startVibration(m_Vibrations[0].duration, m_VibrationCount);
   }
 
   ensureTimer();
 }
 
+bool Feedback::beginSpeaker(void) {
+#if defined(FURBLE_M5STICKS3)
+  // The M5PM1 powers the amplifier and the first I2C transaction after its
+  // idle sleep only wakes it and fails (root CLAUDE.md trap). The speaker is
+  // closed between patterns, so the enable path can hit exactly that first
+  // transaction, and M5.Speaker.begin() does not surface the I2C status.
+  // Pre-wake the PMIC with a harmless retried read.
+  Platform::getInstance().wakeM5PM1();
+#endif
+
+  bool ok = M5.Speaker.begin();
+  if (!ok) {
+    // One retry, the begin path may touch a PMIC on other boards too.
+    ok = M5.Speaker.begin();
+  }
+  if (!ok) {
+    ESP_LOGW(TAG, "Speaker begin failed, dropping tone pattern");
+    return false;
+  }
+
+  m_SpeakerActive = true;
+  return true;
+}
+
 void Feedback::startTone(void) {
   if (m_ToneIndex >= m_ToneCount) {
     m_ToneCount = 0;
+    stopSpeaker();
     return;
   }
 
-  if (!M5.Speaker.begin()) {
+  if (!m_SpeakerActive && !beginSpeaker()) {
     m_ToneCount = 0;
     return;
   }
   M5.Speaker.setVolume(m_Volume);
   M5.Speaker.tone(m_Tones[m_ToneIndex].frequency, m_Tones[m_ToneIndex].duration);
-  m_SpeakerActive = true;
   m_TonePlaying = true;
   m_ToneDeadline = Platform::getInstance().tick() + m_Tones[m_ToneIndex].duration;
 }
@@ -329,7 +374,9 @@ void Feedback::stopSpeaker(void) {
 }
 
 void Feedback::setLight(bool on) {
-  if (!m_Capabilities.light) {
+  // Only drive the pin when initialize() configured it, see the Plus2 IR
+  // emitter note there.
+  if (!m_LightReady) {
     return;
   }
 
@@ -359,7 +406,7 @@ void Feedback::stopLight(void) {
   setLight(false);
 }
 
-void Feedback::startVibration(uint16_t on, uint16_t off, uint8_t count) {
+void Feedback::startVibration(uint16_t on, uint8_t count) {
   if (!m_Capabilities.vibration || count == 0) {
     return;
   }
@@ -370,7 +417,6 @@ void Feedback::startVibration(uint16_t on, uint16_t off, uint8_t count) {
   m_VibrationOn = true;
   M5.Power.setVibration(m_Vibrations[0].level);
   m_VibrationDeadline = Platform::getInstance().tick() + on;
-  (void)off;
 }
 
 void Feedback::stopVibration(void) {
@@ -391,8 +437,11 @@ void Feedback::update(void) {
         // Keep the amplifier powered until the speaker backend reports that
         // the tone has ended.
       } else {
-        stopSpeaker();
+        m_TonePlaying = false;
         if (m_ToneIndex + 1 < m_ToneCount) {
+          // Keep the speaker session open across the whole pattern. Ending
+          // it between tones power-cycles the amplifier mid-pattern, which
+          // pops audibly and can miss the short gap deadlines.
           m_ToneGap = m_Tones[m_ToneIndex].gap > 0;
           if (m_ToneGap) {
             m_ToneDeadline = now + m_Tones[m_ToneIndex].gap;
@@ -401,7 +450,9 @@ void Feedback::update(void) {
             startTone();
           }
         } else {
+          // Final tone of the pattern, now the session may end.
           m_ToneCount = 0;
+          stopSpeaker();
         }
       }
     } else if (m_ToneGap && isDue(now, m_ToneDeadline)) {

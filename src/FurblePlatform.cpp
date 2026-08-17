@@ -97,6 +97,13 @@ void Platform::watchdogFeed(void) {
     ESP_LOGW(LOG_TAG, "Failed to feed M5PM1 watchdog");
   }
 }
+
+void Platform::wakeM5PM1(void) {
+  uint16_t mv = 0;
+  // The read result is discarded, m5pm1Access retries once so the PMIC is
+  // awake when this returns.
+  (void)m5pm1Access([this, &mv]() { return m_M5PM1.readVbat(&mv); });
+}
 #endif
 
 uint32_t Platform::tick(void) {
