@@ -33,9 +33,11 @@ Evaluation model:
   scan short.
 - Low battery hysteresis counts consecutive qualifying battery samples, six
   samples at the 5 s refresh is 30 s. Any non-qualifying or dropped sample
-  resets the count. The comparison uses the smoothed `displayLevel`, and a
-  raw level of zero with the pack voltage above 3300 mV is treated as an
-  M5PM1 failed-read clamp and dropped.
+  resets the count. The comparison uses the smoothed `displayLevel`. A raw
+  level of zero is only trusted when a plausible low pack voltage confirms
+  it: no voltage capability, zero millivolts (a total M5PM1 failure returns
+  no reading, not 0 mV), or a voltage above 3300 mV all mark the sample as a
+  failed-read clamp and drop it.
 - Power off (policy 2) is gated on `caps.charging`. Boards without a charging
   measurement (StickC Plus2, fallback boards) cannot distinguish USB power
   from discharge, so they warn but never power off.
@@ -46,12 +48,16 @@ Warning surface:
   treatment was rejected because the battery style setting can hide the
   header label, and a dismissible box is the cheapest honest surface.
 - The box wakes the panel through the display state machine (`wakeDisplay`
-  plus the DIM brightness restore), never through raw M5GFX calls, and
-  `processInactivity` holds the panel awake while the box is visible. The
-  LVGL idle clock is not touched, so a warning does not postpone auto off and
-  does not stall the power-off countdown.
+  plus the DIM brightness restore), never through raw M5GFX calls.
+  `processInactivity` holds the panel awake only while a power-off countdown
+  is pending. The warn-only box rides the normal dim/sleep path, otherwise a
+  battery stuck at 10 percent would pin the backlight until flat and invert
+  the feature. The LVGL idle clock is not touched, so a warning does not
+  postpone auto off and does not stall the power-off countdown.
 - Dismissing closes the box and cancels a pending power off, the press proves
   a user is present. The policy re-arms after another qualifying 30 seconds.
+  The box captures the focused object before focusing its OK button and
+  restores it on close, the flat input group has no other modal restore.
 - On recovery (charging seen, or the level rising back over a threshold) the
   box downgrades from the countdown text to the warn text, or closes.
 
@@ -75,7 +81,12 @@ Verification completed:
 - `git diff --check` passes.
 - `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
   `-e m5stick-s3-debug` pass.
-- Hardware testing is pending. No boards have been tested.
+- Hardware testing is pending. No boards have been tested. The hardware run
+  must also confirm:
+  - dismissing the warning returns focus to the page the user was on, not an
+    arbitrary object in the flat group.
+  - the warn-only box lets the screen dim and sleep normally, only the
+    power-off countdown holds the panel awake.
 
 Deviations:
 

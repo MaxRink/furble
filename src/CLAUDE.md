@@ -43,9 +43,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
   and a wake press is swallowed until every input source reports released.
-  A visible low battery message box holds the panel awake through that state
-  machine without touching the LVGL idle clock. `wakeDisplay` does not count
+  Only a pending low battery power-off countdown holds the panel awake
+  through that state machine, the plain warning rides the normal dim/sleep
+  path, and the LVGL idle clock is never touched. `wakeDisplay` does not count
   as activity, only a real input press triggers `lv_display_trigger_activity`.
+  Modal boxes that steal focus must capture and restore the previous focus,
+  the group is flat.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
   independent of `Camera`, NVS, and `CameraList`; pairing input is console
   passthrough and passive third-party sniffing is not supported by NimBLE.

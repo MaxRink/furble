@@ -5286,10 +5286,12 @@ void UI::setInactivityTimeout(uint8_t timeout) {
 }
 
 void UI::processInactivity(void) {
-  // A visible low battery warning holds the panel awake through this state
-  // machine. The idle clock keeps running so auto off is not postponed.
-  const bool warningVisible = (m_LowBatteryMessageBox != nullptr);
-  bool timedOut = !warningVisible && (m_InactivityTimeout > 0)
+  // Only a pending power-off countdown holds the panel awake through this
+  // state machine. The plain warning rides the normal dim and sleep path, a
+  // battery at 10 percent must not pin the backlight until it is flat. The
+  // idle clock keeps running either way, so auto off is not postponed.
+  const bool holdAwake = m_LowBatteryPowerOffPending;
+  bool timedOut = !holdAwake && (m_InactivityTimeout > 0)
                   && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
 
   if (!timedOut) {
@@ -5372,7 +5374,8 @@ void UI::processAutoOff(void) {
 void UI::showLowBatteryWarning(bool powerOff) {
   // Wake through the display state machine so the SLPIN/SLPOUT dwell, the APB
   // lock and the icon timer stay consistent. processInactivity holds the panel
-  // awake while the box is visible, without touching the idle clock.
+  // awake only while a power-off countdown is pending, the plain warning lets
+  // the display dim and sleep again. The idle clock is never touched.
   wakeDisplay();
   if (m_DisplayState == DisplayState::DIM) {
     M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
@@ -5405,6 +5408,9 @@ void UI::showLowBatteryWarning(bool powerOff) {
           ui->closeLowBatteryWarning();
         },
         LV_EVENT_CLICKED, this);
+
+    // remember where the user was so dismissing puts them back there
+    m_LowBatteryPrevFocus = lv_group_get_focused(m_Group);
     lv_group_focus_obj(dismiss);
   }
 
@@ -5416,6 +5422,14 @@ void UI::closeLowBatteryWarning(void) {
     lv_msgbox_close_async(m_LowBatteryMessageBox);
     m_LowBatteryMessageBox = nullptr;
     m_LowBatteryMessage = nullptr;
+
+    // Put the focus back where it was before the box stole it. The object
+    // may have been deleted while the box was open, lv_obj_is_valid walks
+    // the tree comparing pointers and never dereferences a stale one.
+    if ((m_LowBatteryPrevFocus != nullptr) && lv_obj_is_valid(m_LowBatteryPrevFocus)) {
+      lv_group_focus_obj(m_LowBatteryPrevFocus);
+    }
+    m_LowBatteryPrevFocus = nullptr;
   }
 }
 
@@ -5462,10 +5476,12 @@ void UI::processLowBattery(void) {
   if (m_Status.sampleCount != m_LowBatterySampleSeen) {
     m_LowBatterySampleSeen = m_Status.sampleCount;
 
-    // A failed M5PM1 read clamps the level to zero. When the pack voltage
-    // says the battery cannot be empty, drop the sample and restart the count.
-    const bool badRead = (m_Status.battery.level == 0) && caps.voltage
-                         && (m_Status.battery.voltage >= LOW_BATT_VALID_READ_MV);
+    // A failed M5PM1 read clamps the level to zero, and a total failure also
+    // reports zero millivolts, which is no reading rather than an empty pack.
+    // Only trust a zero level when a plausible low pack voltage confirms it.
+    const bool badRead = (m_Status.battery.level == 0)
+                         && (!caps.voltage || (m_Status.battery.voltage == 0)
+                             || (m_Status.battery.voltage >= LOW_BATT_VALID_READ_MV));
     if (badRead) {
       m_LowBatteryWarnCount = 0;
       m_LowBatteryOffCount = 0;

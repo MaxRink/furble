@@ -603,6 +603,8 @@ class UI {
   uint32_t m_LowBatteryPowerOffSince = 0;
   lv_obj_t *m_LowBatteryMessageBox = nullptr;
   lv_obj_t *m_LowBatteryMessage = nullptr;
+  /** Focused object before the warning stole the focus, restored on close. */
+  lv_obj_t *m_LowBatteryPrevFocus = nullptr;
   bool m_PoweringOff = false;
 
   static menu_t m_MainMenu;
