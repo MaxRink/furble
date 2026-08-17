@@ -18,8 +18,16 @@ the active screen and follows the LVGL object tree. It visits every visible
 object and every visible label. For each label it calls `lv_obj_get_coords` on
 the label and on each visible sibling widget. It reports bounding-box
 intersections. It also measures the label text with the label's resolved font,
-letter spacing, and line spacing. It reports labels whose unwrapped rendered
-text width is greater than the label object's width.
+letter spacing, and line spacing, and compares against the label's content
+box (`lv_obj_get_content_width`), so style padding is not counted as
+clipping.
+
+Long modes decide the clipped check. Labels with long mode scroll, scroll
+circular, or dots overflow by design and are skipped. Wrap labels are
+measured as multi-line: the text is wrapped at the content width and the
+report compares heights (`label_height` and `text_height`). All other labels
+are measured unwrapped and the report compares widths (`label_width` and
+`text_width`).
 
 The first automatable step is shared firmware code in
 `src/FurbleUIAudit.cpp`. It is compiled only for `FURBLE_SIM` or
@@ -43,8 +51,10 @@ intersect. The final line is an `end` record with counts. Text is JSON escaped.
 An empty screen report has only `begin` and `end` records. A missing root emits
 an `error` record.
 
-The schema is `furble-ui-audit/v1`. A report with both issue types looks like
-this:
+The schema is `furble-ui-audit/v1`. The records below are illustrative, they
+were written by hand rather than captured from a run (the simulator from
+plans/28 is not part of this branch). A report with both issue types looks
+like this:
 
 ```text
 {"type":"begin","schema":"furble-ui-audit/v1","screen":"active"}
@@ -81,5 +91,5 @@ Rebase notes:
   Text size page is added below it.
 - The three Montserrat font sizes (10, 14, 28) are enabled consistently in
   all five release sdkconfig files.
-- This branch has no numbered plans document; this section serves as its
-  implementation state record.
+- The numbered plans document for this branch is `plans/70-text-scaling.md`,
+  which holds the implementation state record.

@@ -119,23 +119,52 @@ void auditLabel(lv_obj_t *label,
   if (font == nullptr) {
     font = LV_FONT_DEFAULT;
   }
-  lv_point_t textSize = {0, 0};
-  lv_text_get_size(&textSize, text, font, lv_obj_get_style_text_letter_space(label, LV_PART_MAIN),
-                   lv_obj_get_style_text_line_space(label, LV_PART_MAIN), LV_COORD_MAX,
-                   LV_TEXT_FLAG_EXPAND);
 
-  if ((text != nullptr) && (text[0] != '\0')
-      && (textSize.x > static_cast<lv_coord_t>(lv_obj_get_width(label)))) {
-    stats.issues++;
-    stats.clipped++;
-    printf("{\"type\":\"clipped\",\"label_path\":");
-    printJsonString(labelPath.c_str());
-    printf(",\"label_rect\":");
-    printRect(labelArea);
-    printf(",\"label_width\":%ld,\"text_width\":%ld,\"text\":",
-           static_cast<long>(lv_obj_get_width(label)), static_cast<long>(textSize.x));
-    printJsonString(text);
-    printf("}\n");
+  const int32_t letterSpace = lv_obj_get_style_text_letter_space(label, LV_PART_MAIN);
+  const int32_t lineSpace = lv_obj_get_style_text_line_space(label, LV_PART_MAIN);
+  const lv_label_long_mode_t longMode = lv_label_get_long_mode(label);
+
+  // Scrolling and dot labels overflow by design, they are not clipping issues.
+  const bool intentionalOverflow = (longMode == LV_LABEL_LONG_MODE_SCROLL)
+                                   || (longMode == LV_LABEL_LONG_MODE_SCROLL_CIRCULAR)
+                                   || (longMode == LV_LABEL_LONG_MODE_DOTS);
+
+  if ((text[0] != '\0') && !intentionalOverflow) {
+    const int32_t contentWidth = lv_obj_get_content_width(label);
+    lv_point_t textSize = {0, 0};
+    if (longMode == LV_LABEL_LONG_MODE_WRAP) {
+      // Wrapped labels are multi-line, clipping shows up as excess height.
+      lv_text_get_size(&textSize, text, font, letterSpace, lineSpace, contentWidth,
+                       LV_TEXT_FLAG_NONE);
+      const int32_t contentHeight = lv_obj_get_content_height(label);
+      if (textSize.y > contentHeight) {
+        stats.issues++;
+        stats.clipped++;
+        printf("{\"type\":\"clipped\",\"label_path\":");
+        printJsonString(labelPath.c_str());
+        printf(",\"label_rect\":");
+        printRect(labelArea);
+        printf(",\"label_height\":%ld,\"text_height\":%ld,\"text\":",
+               static_cast<long>(contentHeight), static_cast<long>(textSize.y));
+        printJsonString(text);
+        printf("}\n");
+      }
+    } else {
+      lv_text_get_size(&textSize, text, font, letterSpace, lineSpace, LV_COORD_MAX,
+                       LV_TEXT_FLAG_EXPAND);
+      if (textSize.x > contentWidth) {
+        stats.issues++;
+        stats.clipped++;
+        printf("{\"type\":\"clipped\",\"label_path\":");
+        printJsonString(labelPath.c_str());
+        printf(",\"label_rect\":");
+        printRect(labelArea);
+        printf(",\"label_width\":%ld,\"text_width\":%ld,\"text\":", static_cast<long>(contentWidth),
+               static_cast<long>(textSize.x));
+        printJsonString(text);
+        printf("}\n");
+      }
+    }
   }
 
   if (parent == nullptr) {

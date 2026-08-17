@@ -145,10 +145,15 @@ const lv_font_t *fontForTextSize(uint8_t textSize) {
 }
 
 const lv_font_t *fontForIconMenu(uint8_t textSize) {
+  // Large may only grow the icon menu font, never shrink it below the default.
+  const lv_font_t *base = &lv_font_montserrat_16;
   if (textSize == Settings::TEXT_SIZE_LARGE) {
-    return fontForTextSize(textSize);
+    const lv_font_t *large = fontForTextSize(textSize);
+    if (lv_font_get_line_height(large) > lv_font_get_line_height(base)) {
+      return large;
+    }
   }
-  return &lv_font_montserrat_16;
+  return base;
 }
 
 }  // namespace
@@ -4041,7 +4046,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
 }
 
 void UI::addTextSizeMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_TextSizeStr, nullptr, true, parent);
+  menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
   lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
@@ -4049,13 +4054,10 @@ void UI::addTextSizeMenu(const menu_t &parent) {
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
 
-  lv_obj_t *label = lv_label_create(cont);
-  lv_label_set_text(label, m_TextSizeStr);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
   lv_obj_t *roller = lv_roller_create(cont);
+#if !defined(FURBLE_M5COREX)
   lv_obj_set_width(roller, LV_PCT(90));
+#endif
   lv_roller_set_options(roller, "Small\nNormal\nLarge", LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
   uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
@@ -4072,6 +4074,9 @@ void UI::addTextSizeMenu(const menu_t &parent) {
       [](lv_event_t *e) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
+#if defined(FURBLE_M5STICKS3)
+        Platform::getInstance().watchdogEnable(false);
+#endif
         esp_restart();
       },
       LV_EVENT_CLICKED, roller);

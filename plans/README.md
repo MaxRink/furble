@@ -133,6 +133,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [65-bt-coexistence.md](65-bt-coexistence.md) | Classic BT feasibility, WiFi+BLE coexistence for hub mode |
 | [64-debug-tooling.md](64-debug-tooling.md) | Expanded debug tooling: power stats, performance monitoring, BT debug console |
 | [67-bulb-ux.md](67-bulb-ux.md) | Bulb completion state, restart action, and camera mode hint |
+| [70-text-scaling.md](70-text-scaling.md) | UI text size setting per board, layout audit walker |
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |
 
@@ -150,6 +151,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 Experiment A feeds 07. Experiment B feeds 15.
 25 conflicts with 03 (Connected page grid). 26 conflicts with 19 (deep sleep).
 27 needs 00b.
-Fork PR #44 (screenshot CI) builds on 28 (simulator). The gps.png capture is
-not byte-reproducible and must not be baselined as-is (see 28-emulator.md).
+Fork PR #44 (screenshot CI) builds on 28 (simulator) and the 70 audit and
+navigation work. The gps.png capture is not byte-reproducible and must not be
+baselined as-is (see 28-emulator.md).
 ```
