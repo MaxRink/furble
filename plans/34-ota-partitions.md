@@ -472,8 +472,9 @@ firmware from a signed HTTPS URL over WiFi.
 
 Split into two PRs if review prefers, and it probably should be:
 
-**34a-1, the layout.** Partition table, rollback config, health check, release
-workflow, web installer manifest. No OTA code at all. This is independently
+**34a-1, the layout.** Partition table, rollback config, release workflow, web
+installer manifest. No OTA code and no health-check code at all; the health
+check ships with the delivery code in 34a-2. This is independently
 valuable because it unblocks both delivery mechanisms and it is the piece that
 costs users a reflash. Landing it alone means the reflash happens once, early,
 before the delivery mechanism is even chosen.
@@ -930,6 +931,36 @@ sequence is 34a-1, then 33a, 33b, 33c, then 34a-2 once there is a network to
 fetch over.
 
 ---
+
+# Implementation status
+
+## 34a-1 complete
+
+Stage 34a-1 is implemented on `feat/34-ota-partitions`.
+
+- All five release environments select the stock `partitions_two_ota_large.csv`
+  layout. The resolved table is `nvs` at `0x9000` with size `24K`, `otadata`
+  at `0xf000` with size `8K`, `phy_init` at `0x11000` with size `4K`, `ota_0`
+  at `0x20000` with size `1700K`, and `ota_1` at `0x1d0000` with size `1700K`.
+  This applies to the 4 MB `m5stick-c`, `m5stick-c-plus`, and `m5stack-core`
+  boards, the 16 MB `m5stack-core2`, and the 8 MB `m5stick-s3`.
+- The NVS offset and size remain `0x9000` and `24K`, preserving the existing
+  address range used for settings and BLE pairings during the migration.
+- PlatformIO generates `ota_data_initial.bin`. The release workflow and web
+  installer include the image at `0xf000` (`61440`), and the built image was
+  verified as an `8192` byte all-`0xff` image that selects `ota_0` on first
+  boot.
+- `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` is enabled in all five release
+  sdkconfigs as specified for 34a-1. `CONFIG_APP_ROLLBACK_ENABLE=y` also
+  appears in all five regenerated files: it is an auto-generated deprecated
+  mirror of `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`, not an independent
+  setting. No OTA delivery or health-check source code was added.
+- The raw app image offset moved from `0x10000` to `0x20000`. Anyone flashing
+  with a scripted `esptool` invocation must update the app offset, and the
+  release notes should carry a line saying so.
+- The five release firmware binaries were checked against the `1700K` app
+  slot and all fit. The required release builds and the `m5stick-s3-debug`
+  build pass. Hardware verification on the M5StickC Plus S3 remains pending.
 
 # References
 
