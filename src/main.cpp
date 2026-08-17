@@ -207,11 +207,54 @@ void UI::serviceRequests(void) {
 }  // namespace Furble
 #endif
 
+#if defined(FURBLE_NO_DISPLAY)
+namespace Furble {
+
+/*
+ * The companion status record reads battery and intervalometer data through
+ * UI accessors. The battery numbers come straight from M5.Power like the GUI
+ * implementations. The intervalometer state machine still lives in the GUI,
+ * so this build reports idle with zero shots remaining.
+ */
+
+uint8_t UI::getIntervalometerState(void) {
+  return 0;  // STATE_IDLE on the wire
+}
+
+uint16_t UI::getIntervalometerRemaining(void) {
+  return 0;
+}
+
+int32_t UI::getBatteryLevel(void) {
+  return M5.Power.getBatteryLevel();
+}
+
+int16_t UI::getBatteryVoltage(void) {
+  return M5.Power.getBatteryVoltage();
+}
+
+int32_t UI::getBatteryCurrent(void) {
+  return M5.Power.getBatteryCurrent();
+}
+
+int16_t UI::getBatteryVBUSVoltage(void) {
+  return M5.Power.getVBUSVoltage();
+}
+
+bool UI::isBatteryCharging(void) {
+  return static_cast<int>(M5.Power.isCharging()) == 1;
+}
+}  // namespace Furble
+#endif
+
 #if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
 namespace Furble {
 namespace {
 
 constexpr UBaseType_t HEADLESS_REQUEST_QUEUE_LENGTH = 8;
+
+/** 250 ms at the 5 ms loop period, matching the GUI pairing dialog timer. */
+constexpr uint32_t PAIRING_POLL_TICKS = 50;
 
 typedef struct {
   UI::Request request;
@@ -235,6 +278,9 @@ void printCameras(bool reload) {
   }
 }
 
+// TODO: connectCamera() and scanCameras() duplicate the connect and scan logic
+// in FurbleUI.cpp (doConnect(), startScan()). Extract a shared helper below the
+// UI, for example in FurbleControl, once the headless profile settles.
 void connectCamera(int32_t index) {
   CameraList::load();
   if (index >= 0) {
@@ -273,6 +319,29 @@ void scanCameras(void) {
   scan.start(
       [](void *) { printf("scan camera count: %u\n", static_cast<unsigned>(CameraList::size())); },
       NULL, [](void *) { printf("scan finished\n"); });
+}
+
+/**
+ * Announce a companion pairing request on the console.
+ *
+ * The GUI polls the same state from a dialog timer. Without a display the
+ * console is the only confirm path, so print the PIN once per request and
+ * point at the pair command.
+ */
+void pollCompanionPairing(void) {
+  static bool announced = false;
+
+  auto &companion = Companion::getInstance();
+  if (companion.isEnabled() && companion.hasPendingPairing()) {
+    if (!announced) {
+      printf("companion pairing pin: %06lu\n",
+             static_cast<unsigned long>(companion.getPendingPairingPin()));
+      printf("confirm with 'pair yes' or 'pair no'\n");
+      announced = true;
+    }
+  } else {
+    announced = false;
+  }
 }
 
 }  // namespace
@@ -352,11 +421,22 @@ static void vUITask(void *param) {
   (void)param;
   using namespace Furble;
 #if defined(FURBLE_NO_DISPLAY)
+  // The GUI constructor does both of these for the display build. startService
+  // keeps the 1 s GPS::update() tick alive so camera geotag pushes still happen.
+  GPS::init();
+  GPS::getInstance().startService();
+
+#if defined(FURBLE_CONSOLE)
+  uint32_t count = 0;
+#endif
   while (true) {
     Platform::getInstance().update();
 #if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
+    if ((count++ % PAIRING_POLL_TICKS) == 0) {
+      pollCompanionPairing();
+    }
 #endif
     vTaskDelay(pdMS_TO_TICKS(5));
   }

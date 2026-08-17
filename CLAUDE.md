@@ -11,10 +11,15 @@ CLAUDE.md whose directory it touches.
 - Five board envs: m5stick-c, m5stick-c-plus, m5stick-s3, m5stack-core,
   m5stack-core2. Each has a `-debug` variant for development. CI and releases
   build only the five release envs.
+- `esp32-s3-headless` is a sixth env: StickS3 hardware without the display
+  (`FURBLE_M5STICKS3` plus `FURBLE_NO_DISPLAY`, console always on). It is not
+  in the release set and CI does not build it. Build it manually for every
+  change that touches shared code.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
   share the release sdkconfig via `board_build.esp-idf.sdkconfig_path`.
   Regenerating builds may append derived symbols to sdkconfig files. Commit
-  those changes consistently across all five files, never for just one env.
+  those changes consistently across all committed sdkconfig files, never for
+  just one env.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`
 - Quirk: the global git fsmonitor breaks the first TinyGPSPlus install in each
