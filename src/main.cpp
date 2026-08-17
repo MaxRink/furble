@@ -18,6 +18,7 @@
 #include "FurbleGPS.h"
 #endif
 #include "FurbleIR.h"
+#include "FurbleMQTT.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -299,6 +300,7 @@ void app_main() {
   Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
   Furble::BootScreen::step("Companion");
+  Furble::MQTT::init();
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);

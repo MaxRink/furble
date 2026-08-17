@@ -38,6 +38,7 @@
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
+#include "FurbleMQTT.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSD.h"
@@ -51,6 +52,7 @@ namespace {
 
 constexpr const char *PROMPT = "furble> ";
 constexpr size_t MAX_LINE = 128;
+constexpr size_t MAX_SETTING_STRING = MAX_LINE - 1;
 constexpr uint32_t TASK_STACK = 8192;
 
 // Below the control task (4) and the per camera target tasks (3).
@@ -216,6 +218,10 @@ const char *settingType(Settings::type_t type) {
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -229,6 +235,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
@@ -281,6 +289,12 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::LOW_BATT:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
+    case Settings::MQTT:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    case Settings::MQTT_HA:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -332,7 +346,13 @@ void printValue(const char *prefix, Settings::type_t type) {
       break;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_BASE:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
+      break;
+    case Settings::MQTT_PASS:
+      printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
       break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
@@ -353,6 +373,8 @@ void printValue(const char *prefix, Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -478,6 +500,13 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::THEME:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      if (strlen(text) > MAX_SETTING_STRING) {
+        return fail("string is too long");
+      }
       Settings::save<std::string>(setting.type, std::string(text));
       break;
 
@@ -511,6 +540,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
     {
       if ((setting.type == Settings::SD_GPX) && !SD::getInstance().isSupported()) {
         return fail("no SD card slot on this board");
@@ -562,6 +593,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
 #endif
+  if ((setting.type == Settings::MQTT) || (setting.type == Settings::MQTT_URI)
+      || (setting.type == Settings::MQTT_USER) || (setting.type == Settings::MQTT_PASS)
+      || (setting.type == Settings::MQTT_BASE) || (setting.type == Settings::MQTT_HA)) {
+    MQTT::getInstance().reloadSetting();
+  }
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -966,6 +1002,10 @@ int cmdPower(int argc, char **argv) {
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
 
 int cmdPerfTasks(void) {
+#if !defined(CONFIG_FREERTOS_USE_TRACE_FACILITY) \
+    || !defined(CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS)
+  return fail("FreeRTOS task statistics are not enabled in this build");
+#else
   TaskStatus_t before[MAX_TASK_SNAPSHOT] = {};
   TaskStatus_t after[MAX_TASK_SNAPSHOT] = {};
   uint32_t beforeTotal = 0;
@@ -1015,6 +1055,7 @@ int cmdPerfTasks(void) {
   }
 
   return 0;
+#endif
 }
 
 void printHeapCapability(const char *name, uint32_t capabilities) {
@@ -1197,6 +1238,42 @@ int cmdDisconnect(int argc, char **argv) {
   (void)argv;
 
   return sendRequest(UI::Request::DISCONNECT, 0, "disconnect");
+}
+
+int cmdMQTT(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: mqtt status | connect | disconnect | discovery clear");
+  }
+
+  auto &mqtt = MQTT::getInstance();
+  if (!strcmp(argv[1], "status")) {
+    printf("configured: %s\n", boolStr(mqtt.isConfigured()));
+    printf("connected: %s\n", boolStr(mqtt.isConnected()));
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "connect")) {
+    if (!mqtt.isConfigured()) {
+      return fail("set mqtt on first");
+    }
+    mqtt.reloadSetting();
+    printf("queued: mqtt connect\n");
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "disconnect")) {
+    mqtt.disconnect();
+    printf("queued: mqtt disconnect\n");
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "discovery") && (argc >= 3) && !strcmp(argv[2], "clear")) {
+    mqtt.clearDiscovery();
+    printf("queued: mqtt discovery clear\n");
+    return 0;
+  }
+
+  return fail("expected status, connect, disconnect or discovery clear");
 }
 
 int cmdShutter(int argc, char **argv) {
@@ -1839,6 +1916,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+    command("mqtt", "mqtt status | connect | disconnect | discovery clear", cmdMQTT),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),

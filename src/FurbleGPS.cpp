@@ -18,6 +18,9 @@
 #include "icons.h"
 #endif
 
+#include <algorithm>
+#include <cmath>
+
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -1307,6 +1310,10 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
     return false;
   }
 
+  if (fix.accuracy_valid && (!std::isfinite(fix.accuracy_m) || (fix.accuracy_m < 0.0f))) {
+    return false;
+  }
+
   if (fix.time_valid
       && ((fix.timesync.year < 2000) || (fix.timesync.month < 1) || (fix.timesync.month > 12)
           || (fix.timesync.day < 1) || (fix.timesync.day > 31) || (fix.timesync.hour > 23)
@@ -1335,6 +1342,7 @@ void GPS::update(void) {
   const uint64_t now_ms = esp_timer_get_time() / 1000;
   Camera::gps_t dgps = {};
   Camera::timesync_t timesync = {};
+  external_fix_t current = {};
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
   bool altitudeValid = false;
@@ -1355,6 +1363,12 @@ void GPS::update(void) {
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
     altitudeValid = m_GPS.altitude.isValid();
+    current.gps = dgps;
+    current.timesync = timesync;
+    current.age_ms = static_cast<uint32_t>(m_GPS.location.age());
+    current.position_valid = true;
+    current.time_valid = true;
+    current.altitude_valid = m_GPS.altitude.isValid();
   } else {
     external_fix_t external = {};
     uint64_t received_ms = 0;
@@ -1377,14 +1391,20 @@ void GPS::update(void) {
       timesync = external.timesync;
       satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
       altitudeValid = external.altitude_valid;
+      current = external;
+      current.age_ms = static_cast<uint32_t>(external.age_ms + elapsed_ms);
     }
   }
 
   m_Source.store(static_cast<uint8_t>(source));
   m_Satellites.store(satellites);
-  m_HasFix = (source != SOURCE_NONE);
+  {
+    const std::lock_guard<std::mutex> lock(m_FixMutex);
+    m_CurrentFix = current;
+    m_HasFix.store(source != SOURCE_NONE);
+  }
 
-  if (m_HasFix) {
+  if (m_HasFix.load()) {
     Control::getInstance().updateGPS(dgps, timesync);
 
     const uint32_t fixSequence = m_FixSequence.load();
@@ -1612,6 +1632,16 @@ void GPS::processSerial(const uint8_t *data, size_t length) {
     serviceBinary(m_RxBuffer.data(), frameLength);
     m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + frameLength);
   }
+}
+
+bool GPS::getCurrentFix(external_fix_t &fix) const {
+  const std::lock_guard<std::mutex> lock(m_FixMutex);
+  if (!m_HasFix.load()) {
+    return false;
+  }
+
+  fix = m_CurrentFix;
+  return true;
 }
 
 /** Read and decode the GPS data from serial port. */
