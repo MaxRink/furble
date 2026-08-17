@@ -202,6 +202,10 @@ class GPS {
   std::atomic<uint32_t> m_PushedSequence = 0;
   std::atomic<bool> m_CycleRequest = false;
 
+  // serialises the cycle state between the GPS task and enable() or disable(),
+  // never held across PMIC, UART or other blocking hardware setup
+  std::mutex m_CycleMutex;
+
 #if defined(FURBLE_M5STICKS3)
   // held only during a receive burst or the burst acquisition window
   std::mutex m_PowerLockMutex;

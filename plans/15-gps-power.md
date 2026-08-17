@@ -168,6 +168,36 @@ Rebase notes:
   freshness on the M5StickC Plus S3 with GPS unit v1.1, to be confirmed via the
   USB console.
 
+Review fixes:
+
+- The burst idle check is hoisted out of the state switch in `serviceCycle()`
+  and runs in every state. The per state early returns in `finishBurst()`
+  decide what happens next. This makes `MEASURING` and `RESYNC` exit again:
+  before the fix both were terminal once `beginBurst()` set `m_BurstActive`,
+  which parked the state machine, kept the NO_LIGHT_SLEEP lock forever in
+  `RESYNC`, and let a stale `m_MeasureDeadline` turn `cycleWait()` into a zero
+  wait busy spin that starved the UI, console and idle tasks. `cycleWait()` now
+  mirrors the hoist with a burst gap term valid in every state and clamps the
+  result to a 10 ms floor so a stale deadline can never spin the task loop.
+- `enable()` now parks the GPS task first by clearing `m_Enabled`, does the
+  UART and PMIC work with no mutex held, resets all cycle state under the new
+  `m_CycleMutex`, and only then sets `m_Enabled` and acquires the power lock.
+  `serviceCycle()` and `serviceSerial()` take `m_CycleMutex` with a try lock
+  and skip the pass while a reset is in flight. The `ACQUIRING` case re-asserts
+  the power lock each pass, so a release raced by `enable()` can no longer
+  leave the receiver deaf under light sleep.
+- Rail cycling PMIC calls go through `setRailPower()`, which reads the rail
+  state back and retries once, matching the documented M5PM1 behaviour where
+  the first access after idle sleep only wakes the chip and fails. Rail
+  cycling remains experimental: GPS unit v1.1 has no
+  backup supply, a rail cut costs a ~108 s cold refix which the 5 s wake budget
+  can never cover, so the mode degrades to a permanent lock (always on). The
+  menu help text says so.
+- `finishMeasurement()` sizes its scratch array with
+  `decltype(m_PeriodSamples)`, the console rejects `GPS_DUTY` values outside
+  0, 5, 10 and 15, and the `cycleWait()` base wait stays at 100 ms, so the GPS
+  task still wakes 10 times per second during `STANDBY`.
+
 ## Dependencies
 
 - PR06 for the named pm lock API. Hard dependency.

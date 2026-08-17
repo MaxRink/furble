@@ -2075,8 +2075,9 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
   lv_obj_set_width(help, LV_PCT(100));
   lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
   lv_label_set_text(help,
-                    "Use 5 to 15 s to keep fixes fresh. Rail cycling is NOT recommended. A 60 s "
-                    "rail cut caused a 107.7 s cold refix.");
+                    "Use 5 to 15 s to keep fixes fresh. Rail cycling is experimental. GPS unit "
+                    "v1.1 has no backup supply, a rail cut costs a ~108 s cold refix, so the "
+                    "cycle never completes and the receiver stays always on.");
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }

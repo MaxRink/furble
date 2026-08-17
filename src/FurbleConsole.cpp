@@ -283,12 +283,30 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
-    case Settings::GPS_DUTY:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > UINT8_MAX)) {
         return fail("expected 0-255");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::GPS_DUTY:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      bool supported = false;
+      if (end != text) {
+        for (const uint8_t seconds : GPS::DUTY_SECONDS) {
+          if (seconds == value) {
+            supported = true;
+            break;
+          }
+        }
+      }
+      if (!supported) {
+        return fail("expected 0, 5, 10 or 15");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
