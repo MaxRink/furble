@@ -156,12 +156,18 @@ bool NikonSmart::preSubscribe(NimBLERemoteService *pSvc) {
 }
 
 bool NikonSmart::connectFinalise(void) {
+  // Nikon smart device pairing swaps to Bluetooth Classic to establish the
+  // secure bond and our Bluetooth stack is LE only, so this cannot complete.
+  // Report the reason first, the remaining steps only gather diagnostics.
+  ESP_LOGI(LOG_TAG, "Nikon smart device pairing needs Bluetooth Classic, cannot complete");
+
   bool success = false;
-  // wait for final OK
-  BaseType_t timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(10000));
-  if (timeout == pdFALSE) {
+  // Wait for the final OK. Nikon Z series bodies do not send one, so the
+  // timeout here is expected rather than an error.
+  BaseType_t received = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(FINAL_OK_WAIT_MS));
+  if (received == pdFALSE) {
     success = false;
-    ESP_LOGI(LOG_TAG, "Timeout waiting for final OK.");
+    ESP_LOGI(LOG_TAG, "No final OK after stage 4.");
   }
 
   if (!success) {
@@ -173,11 +179,6 @@ bool NikonSmart::connectFinalise(void) {
   if (!m_Client->setValue(SERVICE_UUID, ID_CHR_UUID, name, true)) {
     return false;
   }
-
-  // Unable to continue at this time
-  // For some reason Nikon smart device pairing swaps to Bluetooth Classic to
-  // establish secure bond and our Bluetooth stack is LE only.
-  ESP_LOGI(LOG_TAG, "Nikon smart device pairing not fully functional");
 
   return false;
 }
