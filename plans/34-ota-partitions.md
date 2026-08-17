@@ -1026,3 +1026,13 @@ All fetched and verified.
   `furble-web-installer.pages.dev` Google Trust Services WE1, `github.com`
   Sectigo Public Server Authentication CA DV E36,
   `release-assets.githubusercontent.com` Let's Encrypt.
+
+## Hardware verification, 2026-08-17
+
+Migration verified on the attached M5StickS3. Baseline captured on the running
+pre-OTA image over the USB console: 19 settings and 2 saved Fujifilm cameras
+(X-E5 and X100VI). Flashed the new partition table (app at 0x20000, NVS
+unchanged at 0x9000, 6 entries). After boot every baseline setting read back
+identical, both camera bonds loaded and reconnected, and the new settings
+appeared with their defaults. Verdict: PASS. The bootloader log confirmed
+`Loaded app from partition at offset 0x20000`.

@@ -479,3 +479,14 @@ onto the integrated master:
   section all match the plan.
 - Verified: m5stick-s3 and m5stick-s3-debug build. Hardware watchdog reset
   behavior is not yet exercised on the attached StickS3.
+
+## Hardware verification, 2026-08-17
+
+Watchdog verified on master: boot logs `M5PM1 watchdog armed for 10 seconds`
+and a 10 minute connected-idle soak with the watchdog on showed no spurious
+reset, stable heap and constant 0.2 s console latency. Separate finding: the
+companion pairing confirm dialog froze all UI input after Accept while on the
+About page (encoder group is never restored after `lv_msgbox_close_async`,
+see `UI::companionPairingTimer`). The console kept logging but the console
+task also stopped answering. Rescue was an RTS-pulse reset over USB, no
+button rescue was needed.

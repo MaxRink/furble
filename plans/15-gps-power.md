@@ -295,3 +295,12 @@ are untouched. State that in the PR body.
 - Quectel L76K GNSS protocol specification v1.1, AT6558 based, documents PCAS02,
   PCAS03, PCAS04 and PCAS10 but not PCAS12:
   https://www.waveshare.net/w/upload/d/dd/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf
+
+## Hardware verification, 2026-08-17
+
+Verified on master with the GPS unit attached and a live fix (8 satellites).
+Setting `gps_power 1` and `gps_duty 5` applied immediately and sent `PCAS12,5`
+to the receiver. The gps power lock then cycled on a clean 5 to 6 second
+period matching the duty setting. The console stayed responsive through the
+whole cycle, four command rounds with no stalls, so the busy-spin review
+finding is cleared. Restored to always-on afterwards.

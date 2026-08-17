@@ -209,3 +209,11 @@ unaffected by construction. State that in the PR body.
 - ESP-IDF power management, for the CPU and light sleep interaction this PR must
   not disturb:
   https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/power_management.html
+
+## Hardware verification, 2026-08-17
+
+Verified via console on master. `display_off` saves and reads back 0, 1 and 2.
+The mode applies on reboot because the UI caches it at construction, the
+console reports `applies: on reboot`. With mode 1 and 1 minute inactivity the
+backlight released the `apb_freq_max` power lock at t+102 s and re-acquired it
+on wake at t+120 s. Both transitions logged, no flicker regressions observed.

@@ -176,3 +176,12 @@ Camera testing:
 - [Espressif nimble power_save example](https://github.com/espressif/esp-idf/blob/master/examples/bluetooth/nimble/power_save/README.md)
   for the scale of radio current, which sets expectations for how much transmit
   power stepping can save.
+
+## Hardware verification, 2026-08-17
+
+Verified on the combined image. With `tx_adaptive` on and `tx_power 0` (P3),
+connecting to the X100VI logged
+`Connected, transmit power requested 3 dBm (level 9), set ok`. Level 9 is
+ESP_PWR_LVL_P3 in the IDF 5.4 enum, so the boot transmit power now matches the
+stored setting. The old code passed the enum value as dBm which pinned P3
+incorrectly, the fix holds on hardware.

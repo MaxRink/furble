@@ -213,3 +213,12 @@ All links checked.
   https://github.com/boschsensortec/BMI270_SensorAPI
 - StickS3 low power guide, shows the BMI270 at I2C 0x68 alongside the M5PM1:
   https://docs.m5stack.com/en/arduino/m5sticks3/m5pm1
+
+## Hardware verification, 2026-08-17
+
+Partial verification on the combined image. The `imu` setting saves, reads
+back and reports `applies: on reboot`. After reboot the boot log shows no
+BMI270 line because M5Unified detects the IMU silently, and this branch has no
+`imu` console command. On-device checks remain: the Diagnostics menu should
+show the `IMU live` page (gated on `M5.Imu.isEnabled()`) and the spirit level
+page needs a visual pass. Both are on the user checklist.

@@ -344,3 +344,13 @@ All links fetched and checked.
   LDO3: https://github.com/m5stack/M5Unified/blob/master/src/utility/Power_Class.cpp
 - M5Unified Power class API reference:
   https://docs.m5stack.com/en/arduino/m5unified/power_class
+
+## Hardware verification, 2026-08-17
+
+Verified on the combined image. Boot logged
+`feedback: capabilities: sound=1 light=0 vibration=0` with `fb_output 1`. All
+five events (`shutter`, `countdown`, `connect`, `disconnect`, `battery`)
+queued via `feedback test` and the user confirmed they are audible. User
+preference: the sounds are annoying, so `fb_events 0` and `fb_output 0` are
+now set. `fb_events` and `fb_volume` apply immediately, `fb_output` on reboot,
+as designed.
