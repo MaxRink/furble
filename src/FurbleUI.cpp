@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -200,6 +201,8 @@ lv_timer_t *UI::m_ConnectTimer;
 
 lv_timer_t *UI::m_GPSDataTimer;
 
+lv_timer_t *UI::m_CamerasTimer;
+
 lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
 std::atomic<uint8_t> UI::m_IntervalometerState {0};
@@ -253,6 +256,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
@@ -1616,8 +1620,57 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   }
 }
 
+void UI::updateMultiConnectButton(lv_obj_t *button) {
+  if (button == nullptr) {
+    return;
+  }
+
+  size_t selected = 0;
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    if (CameraList::get(n)->isActive()) {
+      selected++;
+    }
+  }
+
+  lv_obj_t *label = lv_obj_get_child(button, 0);
+  if (label != nullptr) {
+    char text[24];
+    snprintf(text, sizeof(text), "Connect %u", static_cast<unsigned>(selected));
+    if (strcmp(lv_label_get_text(label), text) != 0) {
+      lv_label_set_text(label, text);
+    }
+  }
+
+  if (selected == 0) {
+    lv_obj_add_state(button, LV_STATE_DISABLED);
+  } else {
+    lv_obj_remove_state(button, LV_STATE_DISABLED);
+  }
+}
+
+void UI::saveMultiConnectSelection(void) {
+  Settings::multiselect_t selection = {};
+
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    auto camera = CameraList::get(n);
+    if (!camera->isActive() || (selection.count >= Settings::MULTISELECT_MAX)) {
+      continue;
+    }
+
+    snprintf(selection.name[selection.count], Settings::MULTISELECT_NAME_MAX, "%s",
+             camera->getName().c_str());
+    selection.count++;
+  }
+
+  Settings::save<Settings::MULTISELECT>(selection);
+}
+
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
   bool checkbox = (mode == MODE_MULTICONNECT);
+
+  if (index >= CameraList::size()) {
+    return nullptr;
+  }
 
   auto camera = CameraList::get(index);
   lv_obj_t *item = addMenuItem(menu, NULL, camera->getName().c_str(), checkbox);
@@ -1672,6 +1725,11 @@ lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMo
             auto *check = static_cast<lv_obj_t *>(lv_event_get_target(e));
 
             CameraList::get(index)->setActive(lv_obj_has_state(check, LV_STATE_CHECKED));
+
+            lv_obj_t *container = lv_obj_get_parent(check);
+            lv_obj_t *page = container == nullptr ? nullptr : lv_obj_get_parent(container);
+            lv_obj_t *button = page == nullptr ? nullptr : lv_obj_get_child(page, 0);
+            updateMultiConnectButton(button);
           },
           LV_EVENT_VALUE_CHANGED, ctx);
       break;
@@ -1874,9 +1932,11 @@ void UI::addMainMenu(void) {
           // disable 'Back' while the intervalometer is running so the run cannot
           // be orphaned by navigating away; 'Stop' is the only way out
           lv_obj_add_state(back, LV_STATE_DISABLED);
-        } else if (page == m_Menu.at(m_GPSDataStr).page) {
-          // 'GPS Data' is reachable from the connected page, always display 'Back'
+        } else if ((page == m_Menu.at(m_GPSDataStr).page)
+                   || (page == m_Menu.at(m_CamerasStr).page)) {
+          // These pages are reachable from the connected page, always display 'Back'
           lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
         }
       },
       LV_EVENT_VALUE_CHANGED, this);
@@ -3230,6 +3290,7 @@ void UI::doConnect(lv_event_t *e) {
       control.addActive(camera);
     }
   }
+  saveMultiConnectSelection();
 
   control.connectAll(Settings::load<Settings::RECONNECT>());
   lv_timer_ready(m_ConnectTimer);
@@ -3244,6 +3305,9 @@ void UI::doDisconnect(void) {
   g_simDisconnectCalls++;
 #endif
   lv_timer_pause(m_ConnectTimer);
+  if (m_CamerasTimer != nullptr) {
+    lv_timer_pause(m_CamerasTimer);
+  }
 
   // The session is being torn down: forget it and drop the reconnecting
   // indicator so it never lingers on the next connect.
@@ -3273,6 +3337,110 @@ void UI::doDisconnect(void) {
   lv_group_focus_obj(connect.button);
 }
 
+void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state) {
+  const bool connected = camera->isConnected();
+  char status[32];
+
+  switch (state) {
+    case Control::STATE_CONNECTING:
+      if (connected) {
+        snprintf(status, sizeof(status), "connected");
+      } else {
+        snprintf(status, sizeof(status), "reconnecting %u%%",
+                 static_cast<unsigned>(camera->getConnectProgress()));
+      }
+      break;
+    case Control::STATE_CONNECT:
+      snprintf(status, sizeof(status), connected ? "connected" : "reconnecting");
+      break;
+    case Control::STATE_CONNECT_FAILED:
+      snprintf(status, sizeof(status), connected ? "connected" : "lost");
+      break;
+    case Control::STATE_ACTIVE:
+      snprintf(status, sizeof(status), connected ? "connected" : "reconnecting");
+      break;
+    case Control::STATE_DISCONNECTING:
+      snprintf(status, sizeof(status), "disconnecting");
+      break;
+    case Control::STATE_IDLE:
+      snprintf(status, sizeof(status), "idle");
+      break;
+  }
+
+  char text[128];
+  int8_t rssi = connected ? camera->getRSSI() : INT8_MIN;
+  if (connected && (rssi != INT8_MIN)) {
+    snprintf(text, sizeof(text), "%s   %s   %d dBm", camera->getName().c_str(), status,
+             static_cast<int>(rssi));
+  } else {
+    snprintf(text, sizeof(text), "%s   %s   --", camera->getName().c_str(), status);
+  }
+
+  if (strcmp(lv_label_get_text(label), text) != 0) {
+    lv_label_set_text(label, text);
+  }
+}
+
+void UI::rebuildCamerasPage(menu_t &menu) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  lv_obj_clean(menu.page);
+
+  auto &control = Control::getInstance();
+  const auto &targets = control.getTargets();
+  const auto state = control.getState();
+  for (const auto &target : targets) {
+    lv_obj_t *label = lv_label_create(menu.page);
+    lv_obj_set_width(label, LV_PCT(100));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    updateCameraRow(label, target->getCamera().get(), state);
+  }
+}
+
+void UI::camerasUpdate(lv_timer_t *timer) {
+  auto *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
+  auto &control = Control::getInstance();
+  const auto &targets = control.getTargets();
+
+  if (lv_obj_get_child_count(menu->page) != targets.size()) {
+    rebuildCamerasPage(*menu);
+    return;
+  }
+
+  const auto state = control.getState();
+  size_t n = 0;
+  for (const auto &target : targets) {
+    lv_obj_t *label = lv_obj_get_child(menu->page, n);
+    updateCameraRow(label, target->getCamera().get(), state);
+    n++;
+  }
+}
+
+void UI::camerasStart(lv_event_t *e) {
+  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+  auto *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
+  rebuildCamerasPage(*menu);
+  lv_timer_resume(timer);
+  lv_obj_add_event_cb(menu->main, camerasStop, LV_EVENT_CLICKED, timer);
+}
+
+void UI::camerasStop(lv_event_t *e) {
+  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+  lv_timer_pause(timer);
+  lv_obj_remove_event_cb(target, camerasStop);
+}
+
+void UI::addCamerasMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_CamerasStr, &icon_linked_camera, true, parent);
+
+  m_CamerasTimer = lv_timer_create(camerasUpdate, 1000, &menu);
+  lv_timer_pause(m_CamerasTimer);
+
+  lv_obj_add_event_cb(menu.button, camerasStart, LV_EVENT_CLICKED, m_CamerasTimer);
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
@@ -3290,6 +3458,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuIR = m_Menu.at(m_IRStr);
   m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 1, 1);
   lv_menu_set_load_page_event(menuIR.main, m_IRConnectedButton, menuIR.page);
+  addCamerasMenu(menuConnected);
   addBulbMenu(menuConnected);
   menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
   menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
@@ -3472,18 +3641,47 @@ void UI::addConnectMenu(void) {
         lv_obj_clean(menu.page);
 
         CameraList::load();
+        lv_obj_t *multibutton = nullptr;
+        Settings::multiselect_t selection = {};
+
+        if (multiconnect) {
+          multibutton = lv_button_create(menu.page);
+          lv_obj_t *label = lv_label_create(multibutton);
+          lv_label_set_text(label, "Connect 0");
+          lv_obj_center(label);
+          lv_obj_set_width(multibutton, LV_PCT(100));
+          lv_obj_add_flag(multibutton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+          lv_group_add_obj(menu.group, multibutton);
+          selection = Settings::load<Settings::MULTISELECT>();
+        }
+
         for (size_t n = 0; n < CameraList::size(); n++) {
-          addCameraItem(n, menu, multiconnect ? MODE_MULTICONNECT : MODE_CONNECT);
+          auto camera = CameraList::get(n);
+          if (multiconnect) {
+            bool selected = false;
+            const size_t count = std::min<size_t>(selection.count, Settings::MULTISELECT_MAX);
+            for (size_t i = 0; i < count; i++) {
+              if (strncmp(selection.name[i], camera->getName().c_str(),
+                          Settings::MULTISELECT_NAME_MAX - 1)
+                  == 0) {
+                selected = true;
+                break;
+              }
+            }
+
+            camera->setActive(selected);
+            lv_obj_t *item = addCameraItem(n, menu, MODE_MULTICONNECT);
+            if (selected && item != nullptr) {
+              lv_obj_add_state(item, LV_STATE_CHECKED);
+            }
+          } else {
+            addCameraItem(n, menu, MODE_CONNECT);
+          }
         }
 
         if (multiconnect) {
-          lv_obj_t *multibutton = lv_button_create(menu.page);
-          lv_obj_t *label = lv_label_create(multibutton);
-          lv_label_set_text(label, "Multi-Connect");
-          lv_obj_center(label);
-          lv_obj_add_flag(multibutton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-          addToInputGroup(menu.group, multibutton);
-          lv_obj_add_event_cb(multibutton, doConnect, LV_EVENT_CLICKED, e);
+          updateMultiConnectButton(multibutton);
+          lv_obj_add_event_cb(multibutton, doConnect, LV_EVENT_CLICKED, nullptr);
         }
 
         m_ConnectContext.menuName = NULL;

@@ -240,6 +240,9 @@ class Camera: public NimBLEClientCallbacks {
   static void gattJournalClear(void);
 #endif
 
+  /** Get connection RSSI in dBm, or INT8_MIN if unknown. */
+  virtual int8_t getRSSI(void) const;
+
  protected:
   Camera(Type type, PairType pairType);
   std::atomic<uint8_t> m_Progress;

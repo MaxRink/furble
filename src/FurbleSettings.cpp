@@ -37,6 +37,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {GPS_ASSIST,        {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
     {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
     {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
+    {MULTISELECT,       {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
     {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
     {RECON_BACKOFF,     {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
     {FAUXNY,            {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
@@ -137,6 +138,7 @@ bool Settings::appliesImmediately(type_t type) {
     case TEXT_SIZE:
     case INTERVAL:
     case TOUCH_CALIBRATION:
+    case MULTISELECT:
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
@@ -189,6 +191,7 @@ bool Settings::isDangerous(type_t type) {
     case RECON_BACKOFF:
     case FAUXNY:
     case TOUCH_CALIBRATION:
+    case MULTISELECT:
     case AUTOCONNECT:
     case BATT_STYLE:
     case SHOW_TITLE:
@@ -372,6 +375,21 @@ void Settings::save<interval_t>(const type_t type, const interval_t &value) {
 }
 
 template <>
+Settings::multiselect_t Settings::load<Settings::multiselect_t>(type_t type) {
+  const auto &setting = get(type);
+  multiselect_t selection = {};
+
+  m_Prefs.begin(setting.nvs_namespace, true);
+  size_t len = m_Prefs.get(setting.key, &selection, sizeof(selection));
+  if (len != sizeof(selection)) {
+    selection = {};
+  }
+  m_Prefs.end();
+
+  return selection;
+}
+
+template <>
 void Settings::save<SpinValue::nvs_t>(const type_t type, const SpinValue::nvs_t &value) {
   const auto &setting = get(type);
   m_Prefs.begin(setting.nvs_namespace, false);
@@ -386,6 +404,14 @@ void Settings::save<std::string>(const type_t type, const std::string &value) {
 
 template <>
 void Settings::save<Settings::calibration_t>(const type_t type, const calibration_t &value) {
+  const auto &setting = get(type);
+  m_Prefs.begin(setting.nvs_namespace, false);
+  m_Prefs.put(setting.key, &value, sizeof(value));
+  m_Prefs.end();
+}
+
+template <>
+void Settings::save<Settings::multiselect_t>(const type_t type, const multiselect_t &value) {
   const auto &setting = get(type);
   m_Prefs.begin(setting.nvs_namespace, false);
   m_Prefs.put(setting.key, &value, sizeof(value));
@@ -471,6 +497,11 @@ void Settings::init(void) {
           save<bool>(setting.type, true);
           break;
 #endif
+        case MULTISELECT:
+        {
+          multiselect_t selection = {};
+          save<multiselect_t>(setting.type, selection);
+        } break;
         case GPS:
         case GPS_NMEA:
         case MULTICONNECT:

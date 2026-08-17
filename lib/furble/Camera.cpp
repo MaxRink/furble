@@ -12,6 +12,8 @@
 #include <freertos/portmacro.h>
 #endif
 
+#include <climits>
+
 #include "Camera.h"
 #include "Device.h"
 
@@ -901,6 +903,15 @@ bool Camera::isConnected(void) const {
   // depends on m_Connected being cleared on every teardown path, which
   // onDisconnect, the connect failure branch, and resetConnectionState() do.
   return m_Connected.load();
+}
+
+int8_t Camera::getRSSI(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  if ((m_Type == Type::FAUXNY) || (m_Client == nullptr) || !m_Client->isConnected()) {
+    return INT8_MIN;
+  }
+
+  return static_cast<int8_t>(m_Client->getRssi());
 }
 
 }  // namespace Furble

@@ -32,6 +32,7 @@ class Settings {
     GPS_ASSIST,
     INTERVAL,
     MULTICONNECT,
+    MULTISELECT,
     RECONNECT,
     RECON_BACKOFF,
     FAUXNY,
@@ -97,6 +98,14 @@ class Settings {
     };
     bool calibrated;
   } calibration_t;
+
+  static constexpr size_t MULTISELECT_MAX = 8;
+  static constexpr size_t MULTISELECT_NAME_MAX = 16;
+
+  typedef struct {
+    char name[MULTISELECT_MAX][MULTISELECT_NAME_MAX];
+    uint8_t count;
+  } multiselect_t;
 
   typedef struct {
     type_t type;
@@ -276,6 +285,10 @@ struct Settings::storage_type<Settings::INTERVAL> {
 template <>
 struct Settings::storage_type<Settings::MULTICONNECT> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::MULTISELECT> {
+  using type = Settings::multiselect_t;
 };
 template <>
 struct Settings::storage_type<Settings::RECONNECT> {

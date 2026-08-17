@@ -441,6 +441,7 @@ class UI {
   // connected
   static constexpr const char *m_ConnectedStr = "Connected";
   static constexpr const char *m_RemoteShutter = "Remote";
+  static constexpr const char *m_CamerasStr = "Cameras";
   static constexpr const char *m_RemoteBulb = "Bulb";
   static constexpr const char *m_RemoteInterval = "Interval";
   static constexpr const char *m_RemoteDisconnect = "Disconnect";
@@ -561,6 +562,7 @@ class UI {
 
   static lv_timer_t *m_ConnectTimer;
   static lv_timer_t *m_GPSDataTimer;
+  static lv_timer_t *m_CamerasTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
   static std::atomic<uint8_t> m_IntervalometerState;
@@ -946,8 +948,32 @@ class UI {
   /** Add 'Connected' menu. */
   menu_t &addConnectedMenu(void);
 
+  /** Add the connected Cameras status page. */
+  void addCamerasMenu(const menu_t &parent);
+
   /** Update entries in connect page. */
   static void updateItems(const menu_t &menu);
+
+  /** Update the Multi-Connect button label and state. */
+  static void updateMultiConnectButton(lv_obj_t *button);
+
+  /** Save the current active camera selection. */
+  static void saveMultiConnectSelection(void);
+
+  /** Rebuild the connected Cameras status rows. */
+  static void rebuildCamerasPage(menu_t &menu);
+
+  /** Refresh connected Cameras status rows. */
+  static void camerasUpdate(lv_timer_t *timer);
+
+  /** Start the connected Cameras status timer. */
+  static void camerasStart(lv_event_t *e);
+
+  /** Stop the connected Cameras status timer. */
+  static void camerasStop(lv_event_t *e);
+
+  /** Update one connected Cameras status row. */
+  static void updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state);
 
   /** Start GPS Data timer. */
   static void gpsDataStart(lv_event_t *e);
