@@ -1,0 +1,558 @@
+# furble per-board current model
+#
+# Machine readable input for the plan 63 sim energy model.
+# All values are milliamps (value_ma, min, max). Seconds or other units are
+# named explicitly in the key. Every entry carries the source URL that was
+# fetched and verified to contain the number, plus a confidence tag:
+#   datasheet             number read from the primary component datasheet
+#   published-measurement vendor spec or methodical third party measurement
+#   estimated             derived or interpolated, reasoning in the note
+#   measured-local        measured on this project's hardware, see
+#                         plans/00-hardware-experiments.md
+# Where a datasheet gives a range, min and max hold the range ends and
+# value_ma is the midpoint unless the note says otherwise.
+# The _shared block holds YAML anchors. Consumers should read only the five
+# board keys; aliases expand to full values in any YAML 1.1/1.2 loader.
+
+meta:
+  generated: "2026-08-16"
+  purpose: "Input tables for the plan 63 simulation energy model"
+  units: "mA unless the key name says otherwise"
+  ground_truth: "plans/00-hardware-experiments.md overrides on conflict"
+
+_shared:
+  esp32_mcu: &esp32_mcu
+    # ESP32 datasheet Table 4-2 labels the CPU-running RF-off state
+    # "Modem-sleep". Min is all peripheral clocks disabled, max is all
+    # enabled. Dual core figures (PICO-D4 and D0WD are dual core).
+    active_cpu_80mhz:
+      value_ma: 25.5
+      min: 20
+      max: 31
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+    active_cpu_160mhz:
+      value_ma: 35.5
+      min: 27
+      max: 44
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+    active_cpu_240mhz:
+      value_ma: 49.0
+      min: 30
+      max: 68
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+    light_sleep:
+      value_ma: 0.8
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+    deep_sleep_rtc_timer_rtc_mem:
+      value_ma: 0.010
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+    hibernation_rtc_timer_only:
+      value_ma: 0.005
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+
+  esp32_radio: &esp32_radio
+    # Datasheet Table 5-4, 3.3 V, 25 C, BLE TX measured at 50 percent duty.
+    ble_tx_0dbm:
+      value_ma: 130
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+      note: "typ, 50 percent TX duty cycle"
+    ble_tx_3dbm:
+      value_ma: 136
+      min: null
+      max: null
+      source: "interpolated, see README"
+      confidence: estimated
+      note: "datasheet lists only 0 dBm; slope approx 1.9 mA per dB taken from the ESP32-S3 0 to 9 dBm delta"
+    ble_tx_6dbm:
+      value_ma: 142
+      min: null
+      max: null
+      source: "interpolated, see README"
+      confidence: estimated
+      note: "same interpolation as ble_tx_3dbm"
+    ble_tx_9dbm:
+      value_ma: 148
+      min: null
+      max: null
+      source: "interpolated, see README"
+      confidence: estimated
+      note: "same interpolation as ble_tx_3dbm"
+    ble_rx:
+      value_ma: 97.5
+      min: 95
+      max: 100
+      source: https://documentation.espressif.com/esp32_datasheet_en.pdf
+      confidence: datasheet
+    ble_connected_modem_sleep_avg:
+      value_ma: 14.1
+      min: null
+      max: null
+      source: https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/nimble/power_save
+      confidence: published-measurement
+      note: "NimBLE power_save README, connection maintained, interval not stated"
+    ble_connected_light_sleep_32k_avg:
+      value_ma: 1.9
+      min: null
+      max: null
+      source: https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/nimble/power_save
+      confidence: published-measurement
+      note: "requires an external 32.768 kHz crystal, not fitted on any furble board"
+
+  esp32s3_mcu: &esp32s3_mcu
+    # ESP32-S3 datasheet Tables 5-9/5-10, 3.3 V, 25 C. Min is Typ1 (all
+    # peripheral clocks disabled), max is Typ2 (all enabled). active rows are
+    # dual core running 32 bit access, idle rows are WAITI. FN8 has no PSRAM.
+    active_cpu_80mhz:
+      value_ma: 40.2
+      min: 33.1
+      max: 47.3
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+    active_cpu_160mhz:
+      value_ma: 56.9
+      min: 49.6
+      max: 64.1
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+    active_cpu_240mhz:
+      value_ma: 73.8
+      min: 66.2
+      max: 81.3
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+    idle_waiti_80mhz:
+      value_ma: 29.1
+      min: 22.0
+      max: 36.1
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+    idle_waiti_240mhz:
+      value_ma: 40.3
+      min: 32.9
+      max: 47.6
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+    light_sleep:
+      value_ma: 0.240
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+    deep_sleep_rtc_mem:
+      value_ma: 0.007
+      min: null
+      max: 0.008
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+      note: "7 uA RTC memory only, 8 uA with RTC peripherals"
+
+  esp32s3_radio: &esp32s3_radio
+    # Datasheet Table 5-8: whole chip peak at 100 percent TX duty. Not
+    # directly comparable with the classic ESP32 50 percent duty typ figures.
+    ble_tx_0dbm:
+      value_ma: 176
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+      note: "peak, 100 percent TX duty"
+    ble_tx_3dbm:
+      value_ma: 182
+      min: null
+      max: null
+      source: "interpolated, see README"
+      confidence: estimated
+      note: "linear between datasheet 0 dBm (176) and 9 dBm (193) rows"
+    ble_tx_6dbm:
+      value_ma: 187
+      min: null
+      max: null
+      source: "interpolated, see README"
+      confidence: estimated
+      note: "linear between datasheet 0 dBm (176) and 9 dBm (193) rows"
+    ble_tx_9dbm:
+      value_ma: 193
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+      note: "peak, 100 percent TX duty"
+    ble_rx:
+      value_ma: 93
+      min: null
+      max: null
+      source: https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+      confidence: datasheet
+      note: "peak"
+    ble_connected_modem_sleep_avg:
+      value_ma: 17.9
+      min: null
+      max: null
+      source: https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/nimble/power_save
+      confidence: published-measurement
+    ble_connected_idle_floor:
+      value_ma: 3.3
+      min: null
+      max: null
+      source: plans/00-hardware-experiments.md
+      confidence: measured-local
+      note: "light sleep from main XTAL; matches the power_save README S3 figure; the 0.23 mA 32 kHz mode is impossible, no external crystal on the StickS3 (measured-local)"
+
+  st7789_display: &st7789_display
+    panel_on:
+      value_ma: 6.0
+      min: null
+      max: 7.5
+      source: https://newhavendisplay.com/content/datasheets/ST7789V.pdf
+      confidence: datasheet
+      note: "IDD normal mode, black image, 60 Hz"
+    panel_sleep_in:
+      value_ma: 0.015
+      min: null
+      max: 0.030
+      source: https://newhavendisplay.com/content/datasheets/ST7789V.pdf
+      confidence: datasheet
+
+  gps_unit_v11: &gps_unit_v11
+    # M5Stack Unit GPS v1.1, ATGM336H module, CASIC AT6668. Measured local
+    # facts: $PCAS12 timed standby works; no backup supply, a 5 V rail cut
+    # costs a full cold start.
+    unit_active_5v:
+      value_ma: 31.64
+      min: null
+      max: null
+      source: "https://docs.m5stack.com/en/unit/Unit-GPS%20v1.1"
+      confidence: published-measurement
+      note: "M5Stack spec at the 5 V Grove input, includes the onboard regulator; no mode stated"
+    module_acquisition_3v3:
+      value_ma: 25
+      min: null
+      max: 25
+      source: https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf
+      confidence: datasheet
+      note: "ATGM336H manual gives one continuous figure, GPS+BDS typical below 25 mA at 3.3 V, no acquisition vs tracking split; peak 100 mA max excluding antenna"
+    module_tracking_3v3:
+      value_ma: 23
+      min: null
+      max: 25
+      source: https://dratek.cz/docs/produkty/1/1045/at6558.pdf
+      confidence: estimated
+      note: "AT6558 datasheet typ (23 mA BD+GPS) as proxy for the AT6668; capped by the module manual 25 mA"
+    standby_pcas12_module:
+      value_ma: 0.5
+      min: 0.010
+      max: 2.0
+      source: https://dratek.cz/docs/produkty/1/1045/at6558.pdf
+      confidence: estimated
+      note: "chip standby is below 10 uA per the AT6558 sheet; module rails (TCXO, flash, regulator) stay up, so the in-circuit figure is estimated at hundreds of uA to low mA; not yet measured locally"
+    vbat_backup:
+      value_ma: 0.010
+      min: null
+      max: 0.040
+      source: https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf
+      confidence: datasheet
+      note: "module VBAT input; NOT wired on Unit GPS v1.1, no backup supply exists (measured-local)"
+    antenna_lna_vcc_rf:
+      value_ma: 3.0
+      min: 2.4
+      max: 3.6
+      source: https://dratek.cz/docs/produkty/1/1045/at6558.pdf
+      confidence: datasheet
+      note: "internal LNA feed for the built-in patch antenna, already included in the module figures"
+    cold_start_refix_s:
+      value_ma: null
+      min: null
+      max: null
+      seconds: 107.7
+      source: plans/00-hardware-experiments.md
+      confidence: measured-local
+      note: "re-fix time after a 60 s 5 V rail cut, full cold start"
+
+  axp192_pmic: &axp192_pmic
+    quiescent_operating:
+      value_ma: 0.2
+      min: 0.15
+      max: 0.3
+      source: http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf
+      confidence: estimated
+      note: "the datasheet gives no whole-chip operating figure; sum of enabled blocks (DCDC1 26 uA + DCDC3 20 uA + LDO2 100 uA + LDO3 100 uA no-load PFM) bounds the floor"
+    off_mode:
+      value_ma: 0.027
+      min: null
+      max: null
+      source: http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf
+      confidence: datasheet
+      note: "I_BATOFF at BAT 3.8 V"
+
+boards:
+  m5stick-c:
+    mcu: *esp32_mcu
+    radio: *esp32_radio
+    display:
+      panel_on:
+        value_ma: 0.9
+        min: null
+        max: 2.0
+        source: https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf
+        confidence: datasheet
+        note: "ST7735S IDD normal mode, 60 Hz"
+      panel_sleep_in:
+        value_ma: 0.015
+        min: null
+        max: 0.030
+        source: https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf
+        confidence: datasheet
+      backlight_full:
+        value_ma: 30
+        min: 28
+        max: 33
+        source: https://lang-ship.com/blog/work/m5stickc-current-1/
+        confidence: published-measurement
+        note: "AXP192 LDO2 rail; lang-ship measured 28.2 mA lowest to full delta, M5Stack forum discharge table shows 33 mA (https://community.m5stack.com/topic/1162/getting-longer-battery-run-time)"
+    gps: *gps_unit_v11
+    pmic: *axp192_pmic
+    peripherals:
+      ir_led_pulse:
+        value_ma: 20
+        min: 5
+        max: 40
+        source: "arithmetic, see README"
+        confidence: estimated
+        note: "IR_LED on GPIO9 per schematic pinmap; (3.3 - 1.3) V / 100 ohm assumed series R; min is burst average at 38 kHz modulation duty, max is the GPIO absolute limit"
+
+  m5stick-c-plus:
+    mcu: *esp32_mcu
+    radio: *esp32_radio
+    display:
+      <<: *st7789_display
+      backlight_full:
+        value_ma: 35
+        min: 30
+        max: 40
+        source: "scaled from m5stick-c measurement, see README"
+        confidence: estimated
+        note: "identical AXP192 LDO2 drive scheme, panel grows from 0.96 to 1.14 inch"
+    gps: *gps_unit_v11
+    pmic: *axp192_pmic
+    peripherals:
+      ir_led_pulse:
+        value_ma: 20
+        min: 5
+        max: 40
+        source: "arithmetic, see README"
+        confidence: estimated
+      buzzer:
+        value_ma: 10
+        min: 5
+        max: 30
+        source: "typical passive piezo buzzer figure, see README"
+        confidence: estimated
+
+  m5stick-s3:
+    mcu: *esp32s3_mcu
+    radio: *esp32s3_radio
+    display:
+      <<: *st7789_display
+      backlight_full:
+        value_ma: 35
+        min: 30
+        max: 40
+        source: "scaled from m5stick-c measurement, see README"
+        confidence: estimated
+        note: "LEDC PWM on GPIO38, same 1.14 inch 135x240 panel class as the C Plus; scales roughly linearly with duty"
+    gps: *gps_unit_v11
+    pmic:
+      power_off:
+        value_ma: 0.01402
+        min: null
+        max: null
+        source: https://docs.m5stack.com/en/core/StickS3
+        confidence: published-measurement
+        note: "M5Stack table, 4.2 V; matches the locally measured 14 uA M5PM1 timed-off figure"
+      state_l1:
+        value_ma: 0.05247
+        min: null
+        max: null
+        source: https://docs.m5stack.com/en/core/StickS3
+        confidence: published-measurement
+        note: "L state semantics are not defined on the page"
+      state_l2:
+        value_ma: 0.1024
+        min: null
+        max: null
+        source: https://docs.m5stack.com/en/core/StickS3
+        confidence: published-measurement
+      state_l3a_whole_device:
+        value_ma: 36.69
+        min: null
+        max: null
+        source: https://docs.m5stack.com/en/core/StickS3
+        confidence: published-measurement
+        note: "whole device state, not PMIC quiescent"
+    peripherals:
+      bmi270_normal:
+        value_ma: 0.685
+        min: null
+        max: null
+        source: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
+        confidence: datasheet
+        note: "accel plus gyro, performance mode, max ODR"
+      bmi270_accel_low_power:
+        value_ma: 0.010
+        min: 0.004
+        max: 0.010
+        source: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
+        confidence: datasheet
+        note: "accel only low power, 25 Hz ODR; down to 4 uA depending on ACC_CONF"
+      bmi270_suspend:
+        value_ma: 0.0035
+        min: null
+        max: null
+        source: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
+        confidence: datasheet
+      ir_led_pulse:
+        value_ma: 20
+        min: 5
+        max: 40
+        source: "arithmetic, see README"
+        confidence: estimated
+
+  m5stack-core:
+    mcu: *esp32_mcu
+    radio: *esp32_radio
+    display:
+      panel_on:
+        value_ma: 7.0
+        min: 6.0
+        max: 8.0
+        source: "ST7789V analogy, see README"
+        confidence: estimated
+        note: "the ILI9342C datasheet (https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf) tabulates no operating current at all; same generation and pixel class as ST7789V which specs 6.0/7.5 mA"
+      panel_sleep_in:
+        value_ma: 0.050
+        min: 0.015
+        max: 0.100
+        source: https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf
+        confidence: estimated
+        note: "ILI9341 proxy, standby max 100 uA; ST7789V sleep-in 15 uA typ as the low bound"
+      backlight_full:
+        value_ma: 50
+        min: 40
+        max: 60
+        source: "LED stack arithmetic, see README"
+        confidence: estimated
+        note: "2 inch 320x240 panel at 853 nit class, typically 3 to 4 white LEDs at about 15 mA each from 3.3 V via the PWM transistor; whole-device measurements (https://community.m5stack.com/topic/163/power-consumption) are consistent"
+    gps: *gps_unit_v11
+    pmic:
+      standby:
+        value_ma: 0.050
+        min: null
+        max: null
+        source: https://www.laskakit.cz/user/related_files/ip5306.pdf
+        confidence: datasheet
+        note: "IP5306 I_STB, VIN 0 V, VBAT 3.7 V, sleep state"
+      input_quiescent:
+        value_ma: 0.100
+        min: null
+        max: null
+        source: https://www.laskakit.cz/user/related_files/ip5306.pdf
+        confidence: datasheet
+      auto_off_threshold:
+        value_ma: 45
+        min: null
+        max: null
+        source: https://www.laskakit.cz/user/related_files/ip5306.pdf
+        confidence: datasheet
+        note: "boost shuts off after 32 s of continuous load below 45 mA; sub-45 mA sleep states on the Core get hard powered off by the PMIC"
+    peripherals:
+      speaker_moderate:
+        value_ma: 60
+        min: 40
+        max: 80
+        source: "class D efficiency arithmetic, see README"
+        confidence: estimated
+        note: "1 W speaker at moderate volume, 150 to 300 mW electrical at about 80 percent efficiency plus amp quiescent"
+
+  m5stack-core2:
+    mcu: *esp32_mcu
+    radio: *esp32_radio
+    display:
+      panel_on:
+        value_ma: 7.0
+        min: 6.0
+        max: 8.0
+        source: "ST7789V analogy, see README"
+        confidence: estimated
+        note: "same ILI9342C reasoning as m5stack-core"
+      panel_sleep_in:
+        value_ma: 0.050
+        min: 0.015
+        max: 0.100
+        source: https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf
+        confidence: estimated
+      backlight_full:
+        value_ma: 50
+        min: 40
+        max: 60
+        source: "LED stack arithmetic, see README"
+        confidence: estimated
+        note: "AXP192 DCDC3 voltage-dimmed rail, 2.4 to 3.3 V maps to brightness 0 to 100 (https://github.com/m5stack/M5Core2/blob/master/src/AXP192.cpp); figure is at 3.3 V, the 2.8 V default draws noticeably less"
+    gps: *gps_unit_v11
+    pmic: *axp192_pmic
+    peripherals:
+      mpu6886_6axis:
+        value_ma: 2.79
+        min: null
+        max: 3.0
+        source: "https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/MPU-6886-000193%2Bv1.1_GHIC_en.pdf"
+        confidence: datasheet
+        note: "gyro plus accel low noise mode"
+      mpu6886_accel_low_power:
+        value_ma: 0.040
+        min: null
+        max: 0.045
+        source: "https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/MPU-6886-000193%2Bv1.1_GHIC_en.pdf"
+        confidence: datasheet
+        note: "gyro off, 100 Hz ODR, 1x averaging"
+      mpu6886_sleep:
+        value_ma: 0.006
+        min: null
+        max: 0.010
+        source: "https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/MPU-6886-000193%2Bv1.1_GHIC_en.pdf"
+        confidence: datasheet
+      vibration_motor:
+        value_ma: 64
+        min: 60
+        max: 90
+        source: https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f
+        confidence: estimated
+        note: "M5Stack confirms the AXP LDO3 rail but names no part; representative 10x3 mm 3 V coin motor, 64 mA typical, 85 mA rated max, more at start/stall"
+      speaker_moderate:
+        value_ma: 60
+        min: 40
+        max: 80
+        source: "class D efficiency arithmetic, see README"
+        confidence: estimated
+        note: "NS4168 amp plus 1 W speaker; moderate volume from the 5 V rail; full 2.5 W output would be about 625 mA"
+      ns4168_amp_quiescent:
+        value_ma: 13
+        min: null
+        max: null
+        source: https://www.chipsourcetek.com/Uploads/file/NS4168.pdf
+        confidence: datasheet
+        note: "VDD 5 V, no load; shutdown leakage 1 uA"
