@@ -179,6 +179,7 @@ const char *settingType(Settings::type_t type) {
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -201,12 +202,12 @@ const char *settingType(Settings::type_t type) {
 }
 
 /**
- * Does a setting take effect as soon as it is saved?
+ * When does a setting actually take effect after a save?
  *
  * Some settings are read on every use, others are cached by the UI when it is
  * constructed. Saving is not applying, so say which is which.
  */
-bool appliesImmediately(Settings::type_t type) {
+const char *appliesWhen(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
     case Settings::GPS_BAUD:
@@ -226,9 +227,13 @@ bool appliesImmediately(Settings::type_t type) {
     case Settings::GPS_DUTY:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
-      return true;
+      return "immediately";
+    case Settings::CONN_SAVER:
+      // Only the UI toggle applies this live. A console or companion write is
+      // picked up when the next connection attempt starts.
+      return "on next connect";
     default:
-      return false;
+      return "on reboot";
   }
 }
 
@@ -256,6 +261,7 @@ void printValue(const char *prefix, Settings::type_t type) {
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
     case Settings::GPS:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -342,6 +348,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       break;
 
     case Settings::GPS:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -374,7 +381,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   }
 
   printf("saved: %s\n", setting.key);
-  printf("applies: %s\n", appliesImmediately(setting.type) ? "immediately" : "on reboot");
+  printf("applies: %s\n", appliesWhen(setting.type));
   return 0;
 }
 
@@ -404,7 +411,7 @@ int cmdSettings(int argc, char **argv) {
     printf("key: %s\n", setting->key);
     printf("name: %s\n", setting->name);
     printf("type: %s\n", settingType(setting->type));
-    printf("applies: %s\n", appliesImmediately(setting->type) ? "immediately" : "on reboot");
+    printf("applies: %s\n", appliesWhen(setting->type));
     printValue("value: ", setting->type);
     return 0;
   }

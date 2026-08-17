@@ -7,6 +7,7 @@
 
 #include <NimBLEAddress.h>
 #include <NimBLEClient.h>
+#include <NimBLEConnInfo.h>
 #include <NimBLEDevice.h>
 
 #include "FurbleTypes.h"
@@ -43,6 +44,12 @@ class Camera: public NimBLEClientCallbacks {
   enum class SecurityMode : uint8_t {
     SECURE_DISPLAY_YESNO = BLE_HS_IO_DISPLAY_YESNO,
     SECURE_KEYBOARD_DISPLAY = BLE_HS_IO_KEYBOARD_DISPLAY,
+  };
+
+  enum class ConnProfile : uint8_t {
+    FAST,
+    IDLE,
+    PEER,
   };
 
   /**
@@ -145,6 +152,35 @@ class Camera: public NimBLEClientCallbacks {
   /** Get connection progress percentage (0-100). */
   uint8_t getConnectProgress(void) const;
 
+  /** Enable or disable adaptive connection parameters. */
+  void setConnSaverEnabled(bool enabled);
+
+  /** Record shutter or focus activity and whether the control is held. */
+  void noteConnActivity(bool held);
+
+  /** Request the idle profile after the inactivity threshold has elapsed. */
+  void maybeSetIdle(void);
+
+  /** Request a connection profile on the live connection. */
+  bool setConnProfile(ConnProfile profile);
+
+  /**
+   * Refresh the cached connection parameter and RSSI snapshot.
+   *
+   * Blocks on the HCI transport, so call it from a control-plane task, never
+   * from the UI task. Rate limited internally.
+   */
+  void updateConnStats(void);
+
+  /** Read the cached connection parameters and RSSI snapshot. */
+  bool getConnParams(uint16_t &interval, uint16_t &latency, uint16_t &timeout, int &rssi) const;
+
+  /** Classify the cached connection parameters. */
+  ConnProfile getConnProfile(void) const;
+
+  /** Format a connection profile for diagnostics. */
+  static const char *connProfileName(ConnProfile profile);
+
  protected:
   Camera(Type type, PairType pairType);
   std::atomic<uint8_t> m_Progress;
@@ -185,12 +221,36 @@ class Camera: public NimBLEClientCallbacks {
   /** Called on disconnect. */
   void onDisconnect(NimBLEClient *pDevice, int reason) override final;
 
-  const uint16_t m_MinInterval = BLE_GAP_INITIAL_CONN_ITVL_MIN;
-  const uint16_t m_MaxInterval = BLE_GAP_INITIAL_CONN_ITVL_MAX;
+  /** Accept connection parameter changes requested by the peer. */
+  bool onConnParamsUpdateRequest(NimBLEClient *pClient,
+                                 const ble_gap_upd_params *params) override final;
+
+  static constexpr uint16_t m_FastMinInterval = BLE_GAP_INITIAL_CONN_ITVL_MIN;
+  static constexpr uint16_t m_FastMaxInterval = BLE_GAP_INITIAL_CONN_ITVL_MAX;
+  static constexpr uint16_t m_FastLatency = 1;
+  static constexpr uint16_t m_FastTimeout = (2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT);
+  // Idle profile: 250 to 300 ms interval. A central-initiated switch to fast
+  // applies several connection events after the request, so the first shutter
+  // press after a quiet period goes out at the idle interval. Fujifilm shutter
+  // is two write with response operations, so that first press costs up to
+  // about 1.25 s worst case. Keeping the interval moderate bounds it there
+  // while still cutting radio duty by roughly 8x against the fast profile.
+  static constexpr uint16_t m_IdleMinInterval = 200;
+  static constexpr uint16_t m_IdleMaxInterval = 240;
+  // furble is the central, so latency saves nothing on our side. A non-zero
+  // value lets the camera skip events and doubles worst-case write latency.
+  static constexpr uint16_t m_IdleLatency = 0;
+  // 16 s, the middle of the plan's 16 to 32 s range, so a dead link is
+  // detected in half the time of the BLE maximum.
+  static constexpr uint16_t m_IdleTimeout = 1600;
+
+  // These are the pre-connect values. Live updates use the profile constants above.
+  const uint16_t m_MinInterval = m_FastMinInterval;
+  const uint16_t m_MaxInterval = m_FastMaxInterval;
   // allow a packet to skip
-  const uint16_t m_Latency = 1;
+  const uint16_t m_Latency = m_FastLatency;
   // double the disconnect timeout
-  const uint16_t m_Timeout = (2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT);
+  const uint16_t m_Timeout = m_FastTimeout;
   const Type m_Type;
 
   static constexpr SecurityMode m_SecurityModeDefault = SecurityMode::SECURE_DISPLAY_YESNO;
@@ -200,6 +260,30 @@ class Camera: public NimBLEClientCallbacks {
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
   bool m_FromScan = false;
   bool m_Active = false;
+
+  static constexpr uint32_t m_ConnSaverIdleMs = 10 * 1000;
+  static constexpr uint32_t m_ConnParamsUpdateGuardMs = 3 * 1000;
+  static constexpr uint32_t m_ConnStatsIntervalMs = 1000;
+
+  mutable std::mutex m_ConnParamsMutex;
+  bool m_ConnSaverEnabled = false;
+  bool m_ShutterHeld = false;
+  bool m_ConnectInProgress = false;
+  uint32_t m_LastConnActivityMs = 0;
+  ConnProfile m_LastRequestedProfile = ConnProfile::FAST;
+  uint32_t m_LastRequestMs = 0;
+  bool m_LastRequestValid = false;
+  bool m_LastRequestSucceeded = false;
+  bool m_PeerOverride = false;
+
+  // Cached connection statistics, refreshed by updateConnStats() so UI reads
+  // never block on the HCI transport or touch a self-deleted client.
+  bool m_StatsValid = false;
+  uint16_t m_StatsInterval = 0;
+  uint16_t m_StatsLatency = 0;
+  uint16_t m_StatsTimeout = 0;
+  int m_StatsRssi = 0;
+  uint32_t m_LastStatsMs = 0;
 };
 }  // namespace Furble
 

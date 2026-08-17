@@ -37,6 +37,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {BULB,              {BULB, 0, "Bulb", "bulb", FURBLE_STR}                                },
     {SCAN_MODE,         {SCAN_MODE, 21, "Scan Mode", "scan_mode", FURBLE_STR}                },
     {SCAN_TIMEOUT,      {SCAN_TIMEOUT, 22, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
+    {CONN_SAVER,        {CONN_SAVER, 29, "Connection power save", "conn_saver", FURBLE_STR}  },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -293,6 +294,7 @@ void Settings::init(void) {
         case MULTICONNECT:
         case RECONNECT:
         case TX_ADAPTIVE:
+        case CONN_SAVER:
         case RECON_BACKOFF:
         case FAUXNY:
         case AUTOCONNECT:

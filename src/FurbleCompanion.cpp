@@ -644,6 +644,7 @@ Companion::setting_type_t Companion::settingType(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
     case Settings::GPS_NMEA:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::TX_ADAPTIVE:
     case Settings::RECONNECT:
@@ -687,6 +688,7 @@ bool Companion::settingValue(Settings::type_t type, std::vector<uint8_t> &value)
   switch (type) {
     case Settings::GPS:
     case Settings::GPS_NMEA:
+    case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::TX_ADAPTIVE:
     case Settings::RECONNECT:

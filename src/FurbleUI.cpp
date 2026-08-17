@@ -108,6 +108,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
@@ -1068,6 +1069,9 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         const auto *setting = static_cast<Settings::setting_t *>(lv_event_get_user_data(e));
         lv_obj_t *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
         Settings::save<bool>(setting->type, lv_obj_has_state(sw, LV_STATE_CHECKED));
+        if (setting->type == Settings::CONN_SAVER) {
+          Control::getInstance().setConnSaver(lv_obj_has_state(sw, LV_STATE_CHECKED));
+        }
       },
       LV_EVENT_VALUE_CHANGED, const_cast<Settings::setting_t *>(&s));
 
@@ -1271,7 +1275,7 @@ void UI::addMainMenu(void) {
 
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
-            || (page == m_Menu.at(m_PowerStateStr).page)) {
+            || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)) {
           lv_timer_resume(ui->m_DiagnosticsTimer);
           lv_timer_ready(ui->m_DiagnosticsTimer);
         } else {
@@ -3303,6 +3307,48 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
                             pm.light_sleep_enable ? "on" : "off");
     }
   }
+
+  if (diagnostics->ble != nullptr) {
+    std::string text;
+    for (const auto &target : Control::getInstance().getTargets()) {
+      auto *camera = target->getCamera();
+      if (!camera->isConnected()) {
+        continue;
+      }
+
+      uint16_t interval;
+      uint16_t latency;
+      uint16_t timeout;
+      int rssi;
+      if (!camera->getConnParams(interval, latency, timeout, rssi)) {
+        continue;
+      }
+
+      if (!text.empty()) {
+        text += "\n\n";
+      }
+      text += camera->getName();
+      text += "\nProfile: ";
+      text += Camera::connProfileName(camera->getConnProfile());
+      text += "\nInterval: ";
+      text += std::to_string(interval);
+      text += " x 1.25 ms\nLatency: ";
+      text += std::to_string(latency);
+      text += " events\nSupervision: ";
+      text += std::to_string(timeout);
+      text += " x 10 ms\nRSSI: ";
+      text += std::to_string(rssi);
+      text += " dBm";
+    }
+
+    if (text.empty()) {
+      text = "No connected cameras";
+    }
+    if (diagnostics->bleText != text) {
+      lv_label_set_text(diagnostics->ble, text.c_str());
+      diagnostics->bleText = text;
+    }
+  }
 }
 
 /**
@@ -3338,6 +3384,7 @@ void UI::addBluetoothMenu(const menu_t &parent) {
   lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
   addTransmitPowerMenu(menu);
+  addSettingItem(menu.page, NULL, Settings::CONN_SAVER);
 
   // scan duty cycle preset
   lv_obj_t *modeRoller = addRollerItem(menu.page, "Scan mode", "Full\nBalanced\nLow");
@@ -3468,6 +3515,19 @@ void UI::addPowerStateMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addBLEMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_BLEStr, NULL, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  // Filled in by the diagnostics timer whenever the page is open.
+  m_Diagnostics.ble = addInfoRow(cont);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addDiagnosticsMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DiagnosticsStr, &icon_info, true, parent);
 
@@ -3479,6 +3539,7 @@ void UI::addDiagnosticsMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, button, battery.page);
 
   addPowerStateMenu(menu);
+  addBLEMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }

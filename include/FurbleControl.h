@@ -99,9 +99,12 @@ class Control {
   bool allConnected(void);
 
   /**
-   * Get list of connected targets.
+   * Get a snapshot of the active targets.
+   *
+   * Copied under the mutex so callers never iterate the live vector while
+   * disconnect() clears it. The pointers stay owned by Control.
    */
-  const std::vector<std::unique_ptr<Control::Target>> &getTargets(void);
+  std::vector<Control::Target *> getTargets(void);
 
   /**
    * Connect to all active cameras.
@@ -136,6 +139,9 @@ class Control {
 
   /** Set the maximum transmit power and reset the adaptive level. */
   void setPower(esp_power_level_t power);
+
+  /** Enable or disable adaptive connection parameters on active cameras. */
+  void setConnSaver(bool enabled);
 
  private:
   Control() {};

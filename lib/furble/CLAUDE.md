@@ -19,6 +19,17 @@ protocol core.
   connect. The runtime adaptive level lives in the app layer Control. NimBLE
   transmit power calls take dBm, so map the supported P3, P6 and P9 enum
   levels through `Device::powerLevelToDbm`.
+- Connection profiles: with the experimental conn saver on, `Camera` switches
+  the live link between a fast profile (30-50 ms) and an idle profile
+  (250-300 ms, latency 0) via `setConnProfile()`. `maybeSetIdle()` and
+  `updateConnStats()` are driven from the per-target task tick; the UI only
+  reads the cached snapshot through `getConnParams()`. Never request the idle
+  profile while a connect is in progress: discovery and subscription round
+  trips at the idle interval stretch a two second connect into minutes. The
+  `m_ConnectInProgress` gate in `Camera::connect()` enforces this, keep it.
+  `setConnProfile()` also mirrors the profile into the NimBLE client so peer
+  renegotiation counter-proposals carry the current values, not the
+  pre-connect ones.
 - Vendor protocol files are per-camera. Any change here needs the
   hardware-tested-vendors statement in the PR: only Fujifilm is testable on
   real hardware, all other vendors must be declared untested.
