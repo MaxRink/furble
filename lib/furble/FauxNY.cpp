@@ -1,7 +1,5 @@
 #include <esp_random.h>
 
-#include <climits>
-
 #include "FauxNY.h"
 
 namespace Furble {
@@ -61,10 +59,6 @@ void FauxNY::focusRelease(void) {
 void FauxNY::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   ESP_LOGI(m_FauxNYStr, "updateGeoData()");
 };
-
-int8_t FauxNY::getRSSI(void) const {
-  return INT8_MIN;
-}
 
 void FauxNY::_disconnect(void) {
   ESP_LOGI(m_FauxNYStr, "Disconnecting");

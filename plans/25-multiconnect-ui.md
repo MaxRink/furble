@@ -255,6 +255,11 @@ identical names, and both get pre-ticked. That is a pre-existing property of the
 saved list, which is also keyed by name, so it is not made worse here. Say so in
 the PR body.
 
+The match is also only a 15-character prefix comparison, because the stored
+slots are 16-byte C strings. Two cameras whose names share the same first 15
+characters both get pre-ticked even when the full names differ. Accepted and
+documented, not fixed here.
+
 ### The Cameras page
 
 Copy the GPS Data page exactly (`src/FurbleUI.cpp:1548-1611`). One difference:
@@ -356,9 +361,10 @@ Print `INT8_MIN` as `--`, not as a number.
 None hard.
 
 Integrates with the PR03 Connected page grid, see Menu placement.
-Independent of everything else. PR05, the diagnostics scaffold, may want to
-reuse `Camera::getRSSI()`, and PR11, adaptive TX power, definitely will. Adding
-the accessor here is why this PR is worth doing early.
+Independent of everything else. The `Camera::getRSSI()` accessor originally
+planned here was dropped during review, see the fork PR #24 reconciliation
+section. RSSI consumers (diagnostics, adaptive TX power) build on the cached
+snapshot from that PR instead.
 
 ## Risks
 
@@ -451,17 +457,25 @@ Rebase notes:
   other SETTING_BLOB rejects.
 
 - The Multi-Connect button is first, reads `Connect N`, joins the input group,
-  and is disabled when `N` is zero.
+  and is disabled when `N` is zero. The checkbox rows update it through a
+  second `LV_EVENT_VALUE_CHANGED` callback whose user data is the button
+  pointer, not by walking the widget parent chain.
 - The last active selection is stored in the `MULTISELECT` NVS blob. Display
   names use eight fixed 16-byte slots. Matching uses the same 15-character
   normalized form used when saving.
+- Only the Multi-Connect button click saves the selection, right before it
+  calls `doConnect`. Single connect, boot autoconnect and console connect
+  never touch the blob, and an unchanged selection skips the NVS write.
 - The Connected menu has a read-only Cameras page. It creates one row per
-  active target and refreshes state, progress and RSSI once per second while
-  visible. Row text is compared before any LVGL label update.
-- The Cameras timer pauses on page leave and before disconnect. The target list
-  is re-fetched on every tick and the page is rebuilt when its size changes.
-- `Camera::getRSSI()` returns `INT8_MIN` when the RSSI is unavailable. FauxNY
-  overrides it without touching a BLE client.
+  active target and refreshes name plus connection state once per second while
+  visible. Row text is compared before any LVGL label update and rows clip
+  with `LV_LABEL_LONG_DOT` rather than scrolling.
+- The Cameras timer starts and stops in the `LV_EVENT_VALUE_CHANGED`
+  page-change dispatch, following the diagnostics timer. It also pauses while
+  the reconnect message box is visible and resumes when the box hides with the
+  page still active. `doDisconnect` pauses it as well.
+- The target list is re-fetched on every tick and the page is rebuilt when its
+  size changes.
 
 ### Deviations from the original plan
 
@@ -477,12 +491,39 @@ Rebase notes:
 - The existing Connected flow hides the menu back button. The page-change
   handler now restores it for Cameras and the shared GPS Data page so both
   read-only pages can be left while connected.
+- Live RSSI is dropped, taking the fallback the RSSI section already named.
+  `NimBLEClient::getRssi()` is a blocking HCI round trip serialized against
+  all host operations, up to two seconds worst case, and the rows render on
+  the LVGL task. The rows show name and connection state only and the
+  `Camera::getRSSI()` accessor is removed again, so this PR no longer touches
+  lib/furble. See the fork PR #24 reconciliation section.
+- The GPS-Data-style `camerasStart`/`camerasStop` click handlers from the
+  original plan are gone. The click-based stop leaked a re-registration on
+  every page entry, and the page-change dispatch is the established pattern
+  for timers tied to page visibility.
+- `Control::getTargets()` stays a raw reference. That is safe today because
+  every mutation of `m_Targets` (`addActive`, the clear in `disconnect`) runs
+  on the LVGL task, the same task that renders the rows. Fork PR #24 replaces
+  this with a snapshot form, which supersedes the raw reference when it lands.
+
+### Fork PR #24 reconciliation
+
+Fork PR #24 (adaptive BLE connection parameters, plan 10) maintains a cached
+per-target connection statistics snapshot via `updateConnStats`, refreshed off
+the render path. That cache is the one sanctioned RSSI source:
+
+- Whichever of the two PRs lands second wires the Cameras rows to the cached
+  snapshot. There must never be a second, live RSSI path.
+- The row format keeps room for a trailing RSSI column, so re-adding it is a
+  formatting change in `updateCameraRow` only.
+- Until then the Cameras page shows name and connection state, which already
+  covers the drop-visibility motivation.
 
 ### Verification state
 
 - clang-format 21.1.2 ran on all touched C++ files.
-- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` passes from a clean
-  build directory.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
+  `-e m5stick-s3-debug` pass after the review fixes.
 - Hardware tested: none. StickS3 pending.
 
 ## References

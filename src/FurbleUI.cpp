@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -1662,7 +1661,11 @@ void UI::saveMultiConnectSelection(void) {
     selection.count++;
   }
 
-  Settings::save<Settings::MULTISELECT>(selection);
+  // skip the NVS write when the remembered set is unchanged
+  const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
+  if (memcmp(&stored, &selection, sizeof(selection)) != 0) {
+    Settings::save<Settings::MULTISELECT>(selection);
+  }
 }
 
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
@@ -1854,6 +1857,14 @@ void UI::addMainMenu(void) {
           ui->configureControl(ControlMode::PRESET);
         } else if (ui->m_ControlMode == ControlMode::PRESET) {
           ui->configureControl(ControlMode::MENU);
+        }
+
+        // the Cameras rows only refresh while their page is open
+        if (page == m_Menu.at(m_CamerasStr).page) {
+          rebuildCamerasPage(m_Menu.at(m_CamerasStr));
+          lv_timer_resume(m_CamerasTimer);
+        } else {
+          lv_timer_pause(m_CamerasTimer);
         }
 
         // a bulb exposure only runs on its own page, never strand a held shutter
@@ -2915,6 +2926,10 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
           ctx->ui->displayNavigationBar(false);
           ctx->ui->configureControl(ControlMode::MENU, false);
 
+          // Camera::connect() can hold Camera::m_Mutex for the whole attempt,
+          // so stop the Cameras page polling isConnected() until this box hides
+          lv_timer_pause(m_CamerasTimer);
+
           lv_group_focus_obj(ctx->cancel);
         }
 
@@ -2962,6 +2977,12 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         ctx->ui->displayNavigationBar(true);
         ctx->ui->configureControl(ControlMode::REVERT);
         lv_group_focus_next(lv_group_get_default());
+
+        // resume the Cameras page refresh if it is the visible page
+        if (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_CamerasStr).page) {
+          rebuildCamerasPage(m_Menu.at(m_CamerasStr));
+          lv_timer_resume(m_CamerasTimer);
+        }
       }
       // The link is live: remember the session so a later drop shows the
       // non-blocking indicator instead of taking over the screen, and clear
@@ -3290,7 +3311,6 @@ void UI::doConnect(lv_event_t *e) {
       control.addActive(camera);
     }
   }
-  saveMultiConnectSelection();
 
   control.connectAll(Settings::load<Settings::RECONNECT>());
   lv_timer_ready(m_ConnectTimer);
@@ -3367,14 +3387,11 @@ void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state
       break;
   }
 
+  // No live RSSI here. NimBLEClient::getRssi() is a blocking HCI round trip
+  // and must not run on the render task. RSSI returns via the cached
+  // connection statistics snapshot from PR #24 once that merges.
   char text[128];
-  int8_t rssi = connected ? camera->getRSSI() : INT8_MIN;
-  if (connected && (rssi != INT8_MIN)) {
-    snprintf(text, sizeof(text), "%s   %s   %d dBm", camera->getName().c_str(), status,
-             static_cast<int>(rssi));
-  } else {
-    snprintf(text, sizeof(text), "%s   %s   --", camera->getName().c_str(), status);
-  }
+  snprintf(text, sizeof(text), "%s   %s", camera->getName().c_str(), status);
 
   if (strcmp(lv_label_get_text(label), text) != 0) {
     lv_label_set_text(label, text);
@@ -3382,8 +3399,10 @@ void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state
 }
 
 void UI::rebuildCamerasPage(menu_t &menu) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-
+  // Deliberately unlocked. Every caller (the page-change dispatch and the
+  // camerasUpdate timer) already runs inside lv_task_handler() with m_Mutex
+  // held by UI::task, and std::mutex is not recursive. updateItems differs
+  // because the NimBLE scan thread calls it and must lock first.
   lv_obj_clean(menu.page);
 
   auto &control = Control::getInstance();
@@ -3392,7 +3411,9 @@ void UI::rebuildCamerasPage(menu_t &menu) {
   for (const auto &target : targets) {
     lv_obj_t *label = lv_label_create(menu.page);
     lv_obj_set_width(label, LV_PCT(100));
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    // The text is near static, so clip with dots instead of a circular
+    // scroll that would invalidate the row on every tick.
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     updateCameraRow(label, target->getCamera().get(), state);
   }
 }
@@ -3416,28 +3437,14 @@ void UI::camerasUpdate(lv_timer_t *timer) {
   }
 }
 
-void UI::camerasStart(lv_event_t *e) {
-  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-  auto *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
-  rebuildCamerasPage(*menu);
-  lv_timer_resume(timer);
-  lv_obj_add_event_cb(menu->main, camerasStop, LV_EVENT_CLICKED, timer);
-}
-
-void UI::camerasStop(lv_event_t *e) {
-  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
-  lv_timer_pause(timer);
-  lv_obj_remove_event_cb(target, camerasStop);
-}
-
 void UI::addCamerasMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_CamerasStr, &icon_linked_camera, true, parent);
 
+  // The timer only runs while the page is visible. The page-change dispatch
+  // in addMainMenu resumes and pauses it, following m_DiagnosticsTimer.
   m_CamerasTimer = lv_timer_create(camerasUpdate, 1000, &menu);
   lv_timer_pause(m_CamerasTimer);
 
-  lv_obj_add_event_cb(menu.button, camerasStart, LV_EVENT_CLICKED, m_CamerasTimer);
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
@@ -3445,7 +3452,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
 #if defined(FURBLE_M5COREX)
-  // three by two suits the landscape screens, the gap falls in the bottom middle
+  // three by two suits the landscape screens, Cameras fills the last open cell
   static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                  LV_GRID_TEMPLATE_LAST};
   static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
@@ -3674,6 +3681,7 @@ void UI::addConnectMenu(void) {
             if (selected && item != nullptr) {
               lv_obj_add_state(item, LV_STATE_CHECKED);
             }
+
           } else {
             addCameraItem(n, menu, MODE_CONNECT);
           }
@@ -3681,7 +3689,15 @@ void UI::addConnectMenu(void) {
 
         if (multiconnect) {
           updateMultiConnectButton(multibutton);
-          lv_obj_add_event_cb(multibutton, doConnect, LV_EVENT_CLICKED, nullptr);
+          // only the multi-select flow persists the remembered set: single
+          // connect, boot autoconnect and console connect must not clobber it
+          lv_obj_add_event_cb(
+              multibutton,
+              [](lv_event_t *e) {
+                saveMultiConnectSelection();
+                doConnect(e);
+              },
+              LV_EVENT_CLICKED, nullptr);
         }
 
         m_ConnectContext.menuName = NULL;

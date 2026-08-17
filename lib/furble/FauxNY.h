@@ -22,7 +22,6 @@ class FauxNY: public Camera {
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override;
   size_t getSerialisedBytes(void) const override;
   bool serialise(void *buffer, size_t bytes) const override;
-  int8_t getRSSI(void) const override;
 
  protected:
   bool _connect(void) override;

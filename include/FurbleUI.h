@@ -960,17 +960,11 @@ class UI {
   /** Save the current active camera selection. */
   static void saveMultiConnectSelection(void);
 
-  /** Rebuild the connected Cameras status rows. */
+  /** Rebuild the connected Cameras status rows, LVGL task only. */
   static void rebuildCamerasPage(menu_t &menu);
 
   /** Refresh connected Cameras status rows. */
   static void camerasUpdate(lv_timer_t *timer);
-
-  /** Start the connected Cameras status timer. */
-  static void camerasStart(lv_event_t *e);
-
-  /** Stop the connected Cameras status timer. */
-  static void camerasStop(lv_event_t *e);
 
   /** Update one connected Cameras status row. */
   static void updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state);
