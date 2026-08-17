@@ -45,6 +45,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
     {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
     {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
+    {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -266,6 +267,9 @@ void Settings::init(void) {
           break;
         case TEXT_SIZE:
           save<uint8_t>(setting.type, TEXT_SIZE_NORMAL);
+          break;
+        case BUTTON_MODE:
+          save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);
           break;
         case TX_POWER:
         case SCAN_MODE:

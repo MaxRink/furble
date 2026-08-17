@@ -202,6 +202,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SCAN_TIMEOUT:
       return "uint32";
     case Settings::THEME:
+    case Settings::BUTTON_MODE:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -259,6 +260,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::TX_ADAPTIVE:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
+    case Settings::BUTTON_MODE:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -295,6 +297,7 @@ void printValue(const char *prefix, Settings::type_t type) {
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
       break;
     case Settings::THEME:
+    case Settings::BUTTON_MODE:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
     case Settings::GPS:
@@ -401,6 +404,17 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::THEME:
       Settings::save<std::string>(setting.type, std::string(text));
+      break;
+
+    case Settings::BUTTON_MODE:
+      if (strcasecmp(text, Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
+          && strcasecmp(text, Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
+        return fail("expected two-button or one-button");
+      }
+      Settings::save<std::string>(setting.type,
+                                  strcasecmp(text, Settings::BUTTON_MODE_ONE_BUTTON_VALUE)
+                                      ? Settings::BUTTON_MODE_TWO_BUTTON_VALUE
+                                      : Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
       break;
 
     case Settings::GPS:

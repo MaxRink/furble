@@ -156,7 +156,12 @@ const lv_font_t *fontForIconMenu(uint8_t textSize) {
   return base;
 }
 
+// LVGL 9.4 has no public long press time getter. This is its default.
+constexpr uint32_t BUTTON_MODE_CLICK_WINDOW_MS = 400;
+
 }  // namespace
+
+static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options);
 
 std::mutex UI::m_Mutex;
 
@@ -1165,6 +1170,82 @@ void UI::handleShutter(lv_event_t *e) {
   }
 }
 
+void UI::handleButtonMode(lv_event_t *e) {
+  auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+  if (Settings::load<Settings::BUTTON_MODE>() != Settings::BUTTON_MODE_ONE_BUTTON_VALUE) {
+    handleShutter(e);
+    return;
+  }
+
+  auto &control = Control::getInstance();
+  const lv_event_code_t code = lv_event_get_code(e);
+  auto *indev = lv_indev_active();
+  const uint8_t streak = indev == nullptr ? 0 : lv_indev_get_short_click_streak(indev);
+
+  switch (code) {
+    case LV_EVENT_PRESSED:
+      if (ui->m_ShutterLock || ui->m_ButtonModeFocusPressed || ui->m_ButtonModeShutterPressed) {
+        break;
+      }
+      ui->m_ButtonModeLongPressed = false;
+      ui->m_ButtonModeDoubleClick = (streak == 1) && (ui->m_ButtonModeClickStreak == 1)
+                                    && (lv_tick_diff(lv_tick_get(), ui->m_ButtonModeLastClick)
+                                        <= BUTTON_MODE_CLICK_WINDOW_MS);
+      if (ui->m_ButtonModeDoubleClick) {
+        control.sendCommand(Control::CMD_SHUTTER_PRESS);
+        ui->m_ButtonModeShutterPressed = true;
+      } else {
+        control.sendCommand(Control::CMD_FOCUS_PRESS);
+        ui->m_ButtonModeFocusPressed = true;
+      }
+      break;
+    case LV_EVENT_LONG_PRESSED:
+      // LVGL can send the initial long press twice. Require release first.
+      if (ui->m_ButtonModeLongPressed) {
+        break;
+      }
+      ui->m_ButtonModeLongPressed = true;
+      if (ui->m_ButtonModeFocusPressed && (ui->m_ButtonModeClickStreak == 1)
+          && (lv_tick_diff(lv_tick_get(), ui->m_ButtonModeLastClick)
+              <= BUTTON_MODE_CLICK_WINDOW_MS)) {
+        control.sendCommand(Control::CMD_FOCUS_RELEASE);
+        ui->m_ButtonModeFocusPressed = false;
+        control.sendCommand(Control::CMD_SHUTTER_PRESS);
+        ui->m_ButtonModeShutterPressed = true;
+        ui->m_ButtonModeDoubleClick = true;
+      }
+      break;
+    case LV_EVENT_RELEASED:
+      if (ui->m_ButtonModeShutterPressed) {
+        control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+        ui->m_ButtonModeShutterPressed = false;
+      }
+      if (ui->m_ButtonModeFocusPressed) {
+        control.sendCommand(Control::CMD_FOCUS_RELEASE);
+        ui->m_ButtonModeFocusPressed = false;
+      }
+      ui->m_ButtonModeLongPressed = false;
+      break;
+    case LV_EVENT_SHORT_CLICKED:
+    {
+      const uint32_t now = lv_tick_get();
+      const bool doubleClick =
+          (streak >= 2) && (ui->m_ButtonModeClickStreak == 1)
+          && (lv_tick_diff(now, ui->m_ButtonModeLastClick) <= BUTTON_MODE_CLICK_WINDOW_MS);
+      ui->m_ButtonModeClickStreak = streak;
+      ui->m_ButtonModeLastClick = now;
+      if (doubleClick && !ui->m_ButtonModeDoubleClick) {
+        control.sendCommand(Control::CMD_SHUTTER_PRESS);
+        control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+      }
+      ui->m_ButtonModeDoubleClick = false;
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 void UI::handleFocus(lv_event_t *e) {
   auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
   auto &control = Control::getInstance();
@@ -1246,7 +1327,7 @@ void UI::prepareShutterControl(void) {
       },
       LV_EVENT_ALL, this);
 
-  lv_obj_add_event_cb(m_OK, handleShutter, LV_EVENT_ALL, this);
+  lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
 
   lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
 }
@@ -2814,7 +2895,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
     m_Right = std::get<1>(buttons[1]);
     m_ShutterLockIcon = std::get<1>(buttons[2]);
 
-    lv_obj_add_event_cb(m_OK, handleShutter, LV_EVENT_ALL, this);
+    lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
     lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
     lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
   } else {
@@ -3390,6 +3471,28 @@ void UI::gpsNMEAStop(lv_event_t *e) {
 
 void UI::addFeaturesMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_FeaturesStr, &icon_wand_stars, true, parent);
+
+  lv_obj_t *buttonMode =
+      addRollerItem(menu.page, Settings::get(Settings::BUTTON_MODE).name, "Two-button\nOne-button");
+  const std::string mode = Settings::load<Settings::BUTTON_MODE>();
+  const uint32_t selected = mode == Settings::BUTTON_MODE_ONE_BUTTON_VALUE
+                                ? Settings::BUTTON_MODE_ONE_BUTTON
+                                : Settings::BUTTON_MODE_TWO_BUTTON;
+  lv_roller_set_selected(buttonMode, selected, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      buttonMode,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        const uint32_t selected = lv_roller_get_selected(roller);
+        if (selected > Settings::BUTTON_MODE_ONE_BUTTON) {
+          return;
+        }
+        const char *mode = selected == Settings::BUTTON_MODE_ONE_BUTTON
+                               ? Settings::BUTTON_MODE_ONE_BUTTON_VALUE
+                               : Settings::BUTTON_MODE_TWO_BUTTON_VALUE;
+        Settings::save<std::string>(Settings::BUTTON_MODE, mode);
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
 
   addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
   addSettingItem(menu.page, NULL, Settings::FAUXNY);

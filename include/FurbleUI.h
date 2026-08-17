@@ -535,6 +535,12 @@ class UI {
   lv_timer_t *m_NMEATimer = nullptr;
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
+  bool m_ButtonModeFocusPressed = false;
+  bool m_ButtonModeShutterPressed = false;
+  bool m_ButtonModeLongPressed = false;
+  bool m_ButtonModeDoubleClick = false;
+  uint8_t m_ButtonModeClickStreak = 0;
+  uint32_t m_ButtonModeLastClick = 0;
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
   DisplayState m_DisplayState = DisplayState::ACTIVE;
@@ -817,6 +823,9 @@ class UI {
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);
+
+  /** Handle the configurable main button event. */
+  static void handleButtonMode(lv_event_t *e);
 
   /** Handle focus event. */
   static void handleFocus(lv_event_t *e);
