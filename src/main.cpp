@@ -1,5 +1,7 @@
 #include <freertos/FreeRTOS.h>
 
+#include <M5Unified.h>
+
 #include "Device.h"
 #include "Scan.h"
 

@@ -3354,8 +3354,36 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
 
 void UI::addSensorsMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
+  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
   addSettingItem(menu.page, NULL, Settings::IMU);
+
+  lv_obj_t *motionRow = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(motionRow, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(motionRow, LV_FLEX_FLOW_COLUMN);
+
+  lv_obj_t *motionLabel = lv_label_create(motionRow);
+  lv_label_set_text(motionLabel, Settings::get(Settings::HW_MOTION).name);
+  lv_label_set_long_mode(motionLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(motionLabel, LV_PCT(100));
+
+  lv_obj_t *motionRoller = lv_roller_create(motionRow);
+  lv_obj_set_width(motionRoller, LV_PCT(90));
+  lv_roller_set_options(motionRoller, m_MotionEngineOptions, LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(motionRoller, 2);
+  lv_obj_add_flag(motionRoller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  uint8_t motionMode = Settings::load<Settings::HW_MOTION>();
+  if (motionMode > Settings::HW_MOTION_HARDWARE) {
+    motionMode = Settings::HW_MOTION_AUTO;
+  }
+  lv_roller_set_selected(motionRoller, motionMode, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      motionRoller,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        Settings::save<Settings::HW_MOTION>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
 
   lv_obj_t *notice = lv_menu_cont_create(menu.page);
   lv_obj_t *noticeLabel = lv_label_create(notice);
@@ -4822,6 +4850,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("diagnostics_timer");
   auto *diagnostics = static_cast<diagnostics_t *>(lv_timer_get_user_data(timer));
   auto &platform = Platform::getInstance();
+  auto &motion = IMU::MotionSource::getInstance();
 
   SpinValue::hms_t hms = SpinValue::toHMS(platform.tick());
   uint32_t heap = esp_get_free_heap_size();
@@ -4936,6 +4965,41 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 
       diagnostics->imuValuesValid = accelRead && gyroRead;
     }
+  }
+
+  if ((diagnostics->imuBackend != nullptr) || (diagnostics->imuMotion != nullptr)
+      || (diagnostics->imuInterrupts != nullptr)) {
+    const auto backend = motion.backend();
+    const auto state = motion.state();
+    const uint32_t interrupts = motion.interruptCount();
+
+    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuBackendValue != backend)) {
+      if (diagnostics->imuBackend != nullptr) {
+        lv_label_set_text_fmt(diagnostics->imuBackend, "Backend:\n%s%s", motion.backendName(),
+                              motion.usesInterrupt() ? " (interrupt)" : " (polling)");
+      }
+      diagnostics->imuBackendValue = backend;
+    }
+
+    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuMotionValue != state)) {
+      if (diagnostics->imuMotion != nullptr) {
+        const char *stateName =
+            !motion.isArmed() ? "inactive"
+                              : (state == IMU::MotionState::STATIONARY ? "stationary" : "moving");
+        lv_label_set_text_fmt(diagnostics->imuMotion, "Motion:\n%s", stateName);
+      }
+      diagnostics->imuMotionValue = state;
+    }
+
+    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuInterruptCount != interrupts)) {
+      if (diagnostics->imuInterrupts != nullptr) {
+        lv_label_set_text_fmt(diagnostics->imuInterrupts, "Interrupts:\n%lu",
+                              static_cast<unsigned long>(interrupts));
+      }
+      diagnostics->imuInterruptCount = interrupts;
+    }
+
+    diagnostics->imuMotionValuesValid = true;
   }
 }
 
@@ -5186,6 +5250,12 @@ void UI::addIMUDataMenu(const menu_t &parent) {
   lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
   m_Diagnostics.imuGyro = addInfoRow(cont);
   lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
+  m_Diagnostics.imuBackend = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuBackend, "Backend:\nnone");
+  m_Diagnostics.imuMotion = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuMotion, "Motion:\ninactive");
+  m_Diagnostics.imuInterrupts = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuInterrupts, "Interrupts:\n0");
 
   if (!M5.Imu.isEnabled()) {
     lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
