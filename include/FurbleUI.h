@@ -399,7 +399,7 @@ class UI {
   lv_indev_t *m_ButtonL;
   lv_indev_t *m_ButtonO;
   lv_indev_t *m_ButtonR;
-  lv_indev_t *m_Touch;
+  lv_indev_t *m_Touch = nullptr;
   lv_group_t *m_Group;
 
   lv_display_t *m_Display = nullptr;
@@ -433,7 +433,13 @@ class UI {
   uint8_t m_DisplayOffMode = 0;
   DisplayState m_DisplayState = DisplayState::ACTIVE;
   bool m_DisplayOff = false;
-  lv_indev_t *m_SwallowInput = nullptr;
+  bool m_SwallowInput = false;
+  uint8_t m_SwallowPending = 0;
+  uint32_t m_SleepTick = 0;
+  uint32_t m_WakeTick = 0;
+
+  /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
+  static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
   uint32_t m_MainCount = 0;
 
   static menu_t m_MainMenu;
@@ -453,6 +459,9 @@ class UI {
 
   /** Get the navigation key assigned to an input device. */
   uint32_t inputKey(lv_indev_t *drv) const;
+
+  /** Get the swallow tracking bit assigned to an input device. */
+  uint8_t inputBit(lv_indev_t *drv) const;
 
   /** Wake the display and swallow the input which caused the wake. */
   bool handleDisplayInput(lv_indev_t *drv,

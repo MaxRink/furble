@@ -582,10 +582,18 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
                             lv_indev_data_t *data,
                             bool pressed,
                             bool releaseExpected) {
-  if (m_SwallowInput == drv) {
+  if (m_SwallowInput) {
+    // Swallow every source until all of them report released. On touch
+    // boards one tap drives the touch indev and a synthesized button indev,
+    // so swallowing only the waking source would let the other one through.
     data->state = LV_INDEV_STATE_RELEASED;
-    if (!pressed || !releaseExpected) {
-      m_SwallowInput = nullptr;
+    if (pressed && releaseExpected) {
+      m_SwallowPending |= inputBit(drv);
+    } else {
+      m_SwallowPending &= ~inputBit(drv);
+    }
+    if (m_SwallowPending == 0) {
+      m_SwallowInput = false;
     }
     return true;
   }
@@ -597,9 +605,26 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
   wakeDisplay();
   data->state = LV_INDEV_STATE_RELEASED;
   if (releaseExpected) {
-    m_SwallowInput = drv;
+    m_SwallowInput = true;
+    m_SwallowPending = inputBit(drv);
   }
   return true;
+}
+
+uint8_t UI::inputBit(lv_indev_t *drv) const {
+  if (drv == m_ButtonL) {
+    return 0x01;
+  }
+  if (drv == m_ButtonO) {
+    return 0x02;
+  }
+  if (drv == m_ButtonR) {
+    return 0x04;
+  }
+  if (drv == m_Touch) {
+    return 0x08;
+  }
+  return 0;
 }
 
 bool UI::isBlindRemoteInput(lv_indev_t *drv) const {
@@ -616,7 +641,14 @@ void UI::sleepDisplay(void) {
     return;
   }
 
+  // The panel datasheets require 120 ms between Sleep Out and Sleep In.
+  // Refuse to sleep too soon after a wake, the inactivity timer retries.
+  if ((tick() - m_WakeTick) < DISPLAY_SLEEP_DWELL_MS) {
+    return;
+  }
+
   M5.Display.sleep();
+  m_SleepTick = tick();
   m_DisplayOff = true;
   m_DisplayState = DisplayState::OFF;
   lv_timer_pause(m_IconTimer);
@@ -630,9 +662,18 @@ void UI::wakeDisplay(void) {
     return;
   }
 
+  // The panel datasheets require 120 ms between Sleep In and Sleep Out.
+  // M5GFX setSleep issues the bare commands, so enforce the dwell here.
+  // This runs on the UI task without the Control mutex, a short delay is safe.
+  uint32_t elapsed = tick() - m_SleepTick;
+  if (elapsed < DISPLAY_SLEEP_DWELL_MS) {
+    vTaskDelay(pdMS_TO_TICKS(DISPLAY_SLEEP_DWELL_MS - elapsed));
+  }
+
   // Acquire before wakeup because M5GFX restores the backlight during wakeup.
   Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
   M5.Display.wakeup();
+  m_WakeTick = tick();
   m_DisplayOff = false;
   m_DisplayState = DisplayState::ACTIVE;
   lv_timer_resume(m_IconTimer);
@@ -1735,6 +1776,9 @@ void UI::doDisconnect(void) {
 
   Scan::getInstance().stop();
   Control::getInstance().disconnect();
+
+  // The shutter page is gone, drop blind remote so buttons wake the screen.
+  m_ConnectContext.ui->m_ControlMode = ControlMode::MENU;
 
   lv_obj_add_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);

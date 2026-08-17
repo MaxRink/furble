@@ -24,6 +24,11 @@ Deviations:
 - PlatformIO could not complete in the original environment. After the rebase
   onto current master, `m5stick-s3` and `m5stick-s3-debug` build clean.
   Hardware verification remains pending on the M5StickS3.
+- Console-visible change: `setInactivityTimeout` snaps the stored value to the
+  nearest ladder entry, so an off-ladder `inactivity` value set from the
+  console takes effect as the closest roller value.
+- Owed hardware test: blank the screen, press a button within 100 ms, confirm
+  the display wakes (exercises the 120 ms SLPIN to SLPOUT dwell).
 
 Rebase notes:
 

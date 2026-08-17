@@ -12,5 +12,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   enum entry, a `storage_type` specialization, and a default.
 - `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  The display off state machine lives here: `processInactivity` dims or sleeps
+  the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
+  and a wake press is swallowed until every input source reports released.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.
