@@ -122,4 +122,6 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 Experiment A feeds 07. Experiment B feeds 15.
 25 conflicts with 03 (Connected page grid). 26 conflicts with 19 (deep sleep).
 27 needs 00b.
+Fork PR #44 (screenshot CI) builds on 28 (simulator). The gps.png capture is
+not byte-reproducible and must not be baselined as-is (see 28-emulator.md).
 ```

@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include <driver/uart.h>
 
@@ -7,6 +9,7 @@ namespace {
 
 QueueHandle_t gpsQueue = nullptr;
 size_t gpsOffset = 0;
+std::vector<std::string> uartWrites;
 
 constexpr char gpsData[] =
     "$GPRMC,123519.00,A,4807.038,N,01131.000,E,0.0,0.0,230394,,,A*5E\r\n"
@@ -70,9 +73,20 @@ int uart_read_bytes(uart_port_t, uint8_t *buffer, uint32_t length, TickType_t) {
   return static_cast<int>(count);
 }
 
-int uart_write_bytes(uart_port_t, const void *, size_t length) {
-  // Commands to the fake receiver are accepted and ignored.
+int uart_write_bytes(uart_port_t, const void *buffer, size_t length) {
+  // Commands to the fake receiver are accepted and recorded for inspection.
+  if (buffer != nullptr && length > 0) {
+    uartWrites.emplace_back(static_cast<const char *>(buffer), length);
+  }
   return static_cast<int>(length);
+}
+
+const std::vector<std::string> &furble_sim_uart_writes(void) {
+  return uartWrites;
+}
+
+void furble_sim_uart_clear_writes(void) {
+  uartWrites.clear();
 }
 
 esp_err_t uart_wait_tx_done(uart_port_t, TickType_t) {

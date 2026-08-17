@@ -37,6 +37,7 @@ class Scan {
   bool m_Active = false;
   bool m_ResultPending = false;
   std::function<void(void *)> m_ScanResultCallback;
+  std::function<void(void *)> m_ScanEndCallback;
   void *m_ScanResultPrivateData = nullptr;
 };
 

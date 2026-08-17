@@ -16,10 +16,11 @@ void Scan::setTimeout(uint32_t) {}
 
 void Scan::start(std::function<void(void *)> scan_callback,
                  void *scan_result_private_data,
-                 std::function<void(void *)>) {
+                 std::function<void(void *)> scan_end_callback) {
   m_Active = true;
   m_ResultPending = true;
   m_ScanResultCallback = std::move(scan_callback);
+  m_ScanEndCallback = std::move(scan_end_callback);
   m_ScanResultPrivateData = scan_result_private_data;
 }
 
@@ -27,6 +28,7 @@ void Scan::stop(void) {
   m_Active = false;
   m_ResultPending = false;
   m_ScanResultCallback = nullptr;
+  m_ScanEndCallback = nullptr;
   m_ScanResultPrivateData = nullptr;
 }
 
@@ -43,12 +45,20 @@ void Scan::update(void) {
 
   m_ResultPending = false;
   // The UI seeds the FauxNY test camera when FAUXNY is enabled. Do not add a
-  // second row when the fake scan completes.
+  // second row, but always deliver the scripted scan result so the UI
+  // exercises updateItems.
   if (CameraList::size() == 0) {
     CameraList::addFauxNY();
-    if (m_ScanResultCallback) {
-      m_ScanResultCallback(m_ScanResultPrivateData);
-    }
+  }
+  if (m_ScanResultCallback) {
+    m_ScanResultCallback(m_ScanResultPrivateData);
+  }
+
+  // The fake scan is complete, end it so the UI leaves the scanning state.
+  // The real scan passes the result private data to the end callback too.
+  m_Active = false;
+  if (m_ScanEndCallback) {
+    m_ScanEndCallback(m_ScanResultPrivateData);
   }
 }
 

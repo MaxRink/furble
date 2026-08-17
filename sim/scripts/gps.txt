@@ -18,4 +18,6 @@ wait 200
 key left
 wait 1200
 capture gps
+# Print the $PCAS commands the firmware sent to the fake receiver.
+uart-dump
 exit

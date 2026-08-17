@@ -490,6 +490,12 @@ table. Do not build a UI story on it.
 
 ## Relationship to other plans
 
+- Fork PR #44 (screenshot CI) depends on this PR. It builds the simulator in
+  CI and compares the scripted captures against reviewed baselines. Note for
+  that work: `gps.png` is not byte-reproducible, because TinyGPSPlus ages the
+  fix with the real host clock, so the rendered fix age varies between runs.
+  PR #44 must exclude it from the baseline set or mask the age field before
+  comparing.
 - PR27 (USB console) is a prerequisite for phase E only. Phases A to D do not
   need it.
 - PR00b (dev USB debug) is a prerequisite for PR27 and therefore for phase E.
@@ -645,8 +651,8 @@ The host implementation is under `sim/`.
   preferences implementations.
 - `sim/fake_uart.cpp` supplies the UART driver used by the unmodified GPS
   source.
-- `sim/driver.cpp` reads `wait`, `advance`, `key`, `press`, `capture`, and
-  `exit` commands.
+- `sim/driver.cpp` reads `wait`, `advance`, `key`, `press`, `capture`,
+  `uart-dump`, and `exit` commands.
 - `sim/capture.cpp` reads the M5GFX SDL panel and writes RGB PNG files without
   adding an image library dependency.
 - `.gitignore` excludes the local native build output and the temporary
@@ -716,8 +722,33 @@ machine. Linux CI may need an Xvfb-style display if a future SDL or M5GFX
 version requires a display-backed surface. That is a Linux CI concern and is
 not needed for the verified macOS build.
 
+## Review fixes
+
+Applied on the PR branch after review:
+
+- `sim/CMakeLists.txt` now compiles `src/FurblePower.cpp` and
+  `src/FurbleUIBulb.cpp`, matching `sim/build.sh`. The two lists carry a
+  keep-in-sync note; a generated shared list was considered and rejected as
+  more machinery than two entries justify.
+- Both build paths preflight TinyGPSPlus and default `DEP_ROOT` to the
+  repo-local `.pio/libdeps/m5stick-s3`. The hardcoded sibling worktree LVGL
+  fallbacks are gone; only `managed_components/lvgl__lvgl` is probed, which
+  tracks the LVGL version pinned by `src/idf_component.yml`.
+- The fake `Scan` stores and invokes the scan end callback, so the UI leaves
+  the scanning state, and it always delivers the scripted scan result even
+  when FauxNY is already seeded. Deviation from hardware: the result and the
+  end callback fire in the same `update()` tick, where real scans end on the
+  scan timeout.
+- The fake UART records every `uart_write_bytes` payload. The script driver
+  gained a `uart-dump` verb that prints each captured command as a
+  `uart-tx` line and clears the capture, so $PCAS sends are assertable.
+- Unmodelled error branches in the fake UART: every `uart_*` call returns
+  `ESP_OK`, and the event queue only ever carries `UART_PATTERN_DET`. The
+  `UART_FIFO_OVF`, `UART_BUFFER_FULL`, break and parity paths in
+  `src/FurbleGPS.cpp` are never exercised by the simulator.
+
 ## Remaining work
 
-Phase C can add a CI job and golden image comparison. Phase D can add scripted
-failure, battery, stale-fix, and reconnect states. Other M5 board geometries
-and a hardware screenshot comparison remain future work.
+Phase C can add a CI job and golden image comparison (fork PR #44). Phase D
+can add scripted failure, battery, stale-fix, and reconnect states. Other M5
+board geometries and a hardware screenshot comparison remain future work.

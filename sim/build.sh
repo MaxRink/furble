@@ -1,10 +1,14 @@
 #!/bin/sh
 
 set -eu
+# pipefail is not POSIX, enable it where the shell supports it
+if (set -o pipefail) 2> /dev/null; then
+  set -o pipefail
+fi
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD_DIR=${FURBLE_SIM_BUILD_DIR:-"$ROOT/sim/build"}
-DEP_ROOT=${FURBLE_DEP_ROOT:-"$ROOT/../../../.pio/libdeps/m5stick-s3"}
+DEP_ROOT=${FURBLE_DEP_ROOT:-"$ROOT/.pio/libdeps/m5stick-s3"}
 LVGL_DIR=${FURBLE_LVGL_DIR:-}
 
 if [ ! -f "$DEP_ROOT/M5GFX/src/M5GFX.cpp" ]; then
@@ -17,17 +21,17 @@ if [ ! -f "$DEP_ROOT/M5Unified/src/M5Unified.cpp" ]; then
   exit 1
 fi
 
+if [ ! -f "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp" ]; then
+  echo "TinyGPSPlus was not found at $DEP_ROOT" >&2
+  exit 1
+fi
+
+# The managed component tracks the LVGL version pinned by src/idf_component.yml.
 if [ -z "$LVGL_DIR" ]; then
-  for candidate in \
-    "$ROOT/managed_components/lvgl__lvgl" \
-    "$ROOT/.pio/build/m5stick-s3/managed_components/lvgl__lvgl" \
-    "$ROOT/../codex-34-ota-partitions/managed_components/lvgl__lvgl" \
-    "$ROOT/../"*/managed_components/lvgl__lvgl; do
-    if [ -f "$candidate/CMakeLists.txt" ]; then
-      LVGL_DIR=$candidate
-      break
-    fi
-  done
+  candidate="$ROOT/managed_components/lvgl__lvgl"
+  if [ -f "$candidate/CMakeLists.txt" ]; then
+    LVGL_DIR=$candidate
+  fi
 fi
 
 if [ -z "$LVGL_DIR" ] || [ ! -f "$LVGL_DIR/CMakeLists.txt" ]; then

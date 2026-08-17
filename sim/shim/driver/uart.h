@@ -69,4 +69,14 @@ int uart_read_bytes(uart_port_t uart_num,
 int uart_write_bytes(uart_port_t uart_num, const void *buffer, size_t length);
 esp_err_t uart_wait_tx_done(uart_port_t uart_num, TickType_t ticks_to_wait);
 
+#ifdef __cplusplus
+#include <string>
+#include <vector>
+
+// Simulator test hooks, not part of the ESP-IDF API. The fake UART captures
+// every uart_write_bytes payload so scripts can assert on $PCAS sends.
+const std::vector<std::string> &furble_sim_uart_writes(void);
+void furble_sim_uart_clear_writes(void);
+#endif
+
 #endif

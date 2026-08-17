@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(FURBLE_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
 set(FURBLE_DEP_ROOT
-    "${FURBLE_ROOT}/../../../.pio/libdeps/m5stick-s3"
+    "${FURBLE_ROOT}/.pio/libdeps/m5stick-s3"
     CACHE PATH "PlatformIO library cache used by the simulator")
 set(FURBLE_LVGL_DIR "" CACHE PATH "LVGL 9 source directory")
 
@@ -23,21 +23,17 @@ if(NOT EXISTS "${M5UNIFIED_DIR}/src/M5Unified.cpp")
   message(FATAL_ERROR "M5Unified was not found at ${M5UNIFIED_DIR}")
 endif()
 
-if(NOT FURBLE_LVGL_DIR)
-  set(_lvgl_candidates
-      "${FURBLE_ROOT}/managed_components/lvgl__lvgl"
-      "${FURBLE_ROOT}/.pio/build/m5stick-s3/managed_components/lvgl__lvgl"
-      "${FURBLE_ROOT}/../codex-34-ota-partitions/managed_components/lvgl__lvgl")
-  file(GLOB _lvgl_siblings LIST_DIRECTORIES true
-       "${CMAKE_CURRENT_LIST_DIR}/../../*/managed_components/lvgl__lvgl")
-  list(APPEND _lvgl_candidates ${_lvgl_siblings})
+if(NOT EXISTS "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp")
+  message(FATAL_ERROR
+          "TinyGPSPlus was not found at ${FURBLE_DEP_ROOT}/TinyGPSPlus")
+endif()
 
-  foreach(_candidate IN LISTS _lvgl_candidates)
-    if(EXISTS "${_candidate}/CMakeLists.txt")
-      set(FURBLE_LVGL_DIR "${_candidate}")
-      break()
-    endif()
-  endforeach()
+# The managed component tracks the LVGL version pinned by src/idf_component.yml.
+if(NOT FURBLE_LVGL_DIR)
+  set(_lvgl_candidate "${FURBLE_ROOT}/managed_components/lvgl__lvgl")
+  if(EXISTS "${_lvgl_candidate}/CMakeLists.txt")
+    set(FURBLE_LVGL_DIR "${_lvgl_candidate}")
+  endif()
 endif()
 
 if(NOT FURBLE_LVGL_DIR OR NOT EXISTS "${FURBLE_LVGL_DIR}/CMakeLists.txt")
@@ -72,13 +68,16 @@ target_include_directories(lvgl PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
 file(GLOB SIM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*.cpp")
 file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 
+# Keep this firmware source list in sync with sim/build.sh.
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
+    "${FURBLE_ROOT}/src/FurblePower.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
     "${FURBLE_ROOT}/src/FurbleSpinValue.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
+    "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
     ${ICON_SOURCES})

@@ -69,6 +69,8 @@ CLAUDE.md whose directory it touches.
 - `lib/furble/`: BLE camera protocol library, one class per vendor mode.
 - `lib/blowfish/`, `lib/preferences/`: support libs used by lib/furble.
 - `components/icons/`: generated LVGL image arrays.
+- `sim/`: host SDL simulator for the UI (shims, fakes, script driver). It
+  never modifies firmware sources.
 - `web-installer/`: ESP Web Tools manifest generation.
 - `plans/`: numbered improvement plans, one per PR (on the plans branch until
   integration lands).

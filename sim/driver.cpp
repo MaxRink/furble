@@ -7,6 +7,8 @@
 
 #include <SDL2/SDL.h>
 
+#include <driver/uart.h>
+
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
@@ -18,6 +20,7 @@ enum class StepType {
   WAIT,
   KEY,
   CAPTURE,
+  UART_DUMP,
   EXIT,
 };
 
@@ -104,6 +107,10 @@ void readScript(const std::string &path) {
       step.type = StepType::CAPTURE;
       input >> step.name;
       steps.push_back(step);
+    } else if (command == "uart-dump") {
+      Step step;
+      step.type = StepType::UART_DUMP;
+      steps.push_back(step);
     } else if (command == "exit") {
       Step step;
       step.type = StepType::EXIT;
@@ -187,6 +194,19 @@ void driverTick(void) {
         std::exit(1);
       }
       std::cout << "Captured " << capturePath(step.name) << '\n';
+      ++stepIndex;
+      break;
+
+    case StepType::UART_DUMP:
+      // Print every captured GPS UART command, assertable by the caller.
+      for (const auto &payload : furble_sim_uart_writes()) {
+        std::string line = payload;
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+          line.pop_back();
+        }
+        std::cout << "uart-tx " << line << '\n';
+      }
+      furble_sim_uart_clear_writes();
       ++stepIndex;
       break;
 
