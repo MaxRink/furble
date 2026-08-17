@@ -669,6 +669,19 @@ this board class. The workflow is interim: plan 63 later consolidates it into
 one combined sim-report job. `gps.png` is not byte-reproducible across runs,
 so no baseline comparison may include it.
 
+The first two live runs of the workflow failed before building anything.
+`platformio pkg install -e sim` skipped the owner-less `M5GFX@0.2.19` and
+`M5Unified@0.2.13` specs without an error, so `sim/.pio/libdeps/sim` held only
+lvgl and TinyGPSPlus and `sim/build.sh` aborted on its M5GFX check. The
+workflow now fetches all four dependencies as pinned shallow git clones and no
+longer installs PlatformIO at all, since `sim/build.sh` only needs the source
+trees. `sim/platformio.ini` now owner-qualifies the two M5Stack specs so the
+PlatformIO route also resolves them. Fixing the dependencies exposed a second
+break: plan 10 changed `Control::getTargets` to return a snapshot vector of
+raw pointers, and the rebased sim shim still returned a reference to the
+owning vector. `sim/FurbleControlSim.cpp` now mirrors the firmware
+implementation.
+
 ## Deviations
 
 The selected approach was tried first.

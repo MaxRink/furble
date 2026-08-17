@@ -93,8 +93,20 @@ bool Control::allConnected(void) {
   return true;
 }
 
-const std::vector<std::unique_ptr<Control::Target>> &Control::getTargets(void) {
-  return m_Targets;
+std::vector<Control::Target *> Control::getTargets(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  std::vector<Target *> targets;
+  targets.reserve(m_Targets.size());
+  for (const auto &target : m_Targets) {
+    targets.push_back(target.get());
+  }
+  return targets;
+}
+
+void Control::setConnSaver(bool enabled) {
+  // The simulated camera has no live BLE connection to retune.
+  (void)enabled;
 }
 
 void Control::connectAll(bool infiniteReconnect) {
