@@ -49,6 +49,9 @@ std::unordered_map<int, lv_obj_t *> g_simSettingSwitches;
 #else
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #endif
+#if defined(FURBLE_CONSOLE)
+#include "FurbleUIAudit.h"
+#endif
 
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
@@ -115,6 +118,39 @@ void setLabelIfChangedFmt(lv_obj_t *label, const char *format, Args... args) {
   std::snprintf(text, sizeof(text), format, args...);
   setLabelIfChanged(label, text);
 }
+const lv_font_t *fontForTextSize(uint8_t textSize) {
+  switch (textSize) {
+    case Settings::TEXT_SIZE_SMALL:
+#if defined(FURBLE_M5STICKC)
+      return &lv_font_montserrat_10;
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+      return &lv_font_montserrat_12;
+#else
+      return &lv_font_montserrat_16;
+#endif
+
+    case Settings::TEXT_SIZE_LARGE:
+#if defined(FURBLE_M5STICKC)
+      return &lv_font_montserrat_14;
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+      return &lv_font_montserrat_22;
+#else
+      return &lv_font_montserrat_28;
+#endif
+
+    case Settings::TEXT_SIZE_NORMAL:
+    default:
+      return LV_FONT_DEFAULT;
+  }
+}
+
+const lv_font_t *fontForIconMenu(uint8_t textSize) {
+  if (textSize == Settings::TEXT_SIZE_LARGE) {
+    return fontForTextSize(textSize);
+  }
+  return &lv_font_montserrat_16;
+}
+
 }  // namespace
 
 std::mutex UI::m_Mutex;
@@ -163,6 +199,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IRSettingsStr,        {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_TextSizeStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
@@ -302,7 +339,7 @@ UI::UI(const interval_t &interval)
 
   initInputDevices();
 
-  setTheme(Settings::load<Settings::THEME>());
+  setTheme(Settings::load<Settings::THEME>(), Settings::load<Settings::TEXT_SIZE>());
 
   m_Screen = lv_screen_active();
 
@@ -974,7 +1011,7 @@ void UI::initInputDevices(void) {
   }
 }
 
-void UI::setTheme(std::string name) {
+void UI::setTheme(std::string name, uint8_t textSize) {
   lv_display_t *display = lv_display_get_default();
   lv_color_t primary = lv_palette_main(LV_PALETTE_BLUE);
   lv_color_t secondary = lv_color_black();
@@ -1033,7 +1070,7 @@ void UI::setTheme(std::string name) {
   }
 
   lv_theme_t *theme_default =
-      lv_theme_default_init(display, primary, secondary, dark, LV_FONT_DEFAULT);
+      lv_theme_default_init(display, primary, secondary, dark, fontForTextSize(textSize));
   theme = *theme_default;
   lv_theme_set_parent(&theme, theme_default);
   lv_theme_set_apply_cb(&theme, [](lv_theme_t *th, lv_obj_t *obj) {
@@ -1270,7 +1307,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_label_set_text(label, text);
     if (icon) {
 #if defined(FURBLE_M5COREX)
-      lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
 #endif
     } else {
       lv_obj_set_width(label, LV_PCT(100));
@@ -2612,6 +2649,9 @@ void UI::serviceRequests(void) {
         printf("error: LVGL performance monitor is not enabled\n");
         break;
 #endif
+      case Request::AUDIT:
+        UIAudit::dump(lv_screen_active());
+        break;
     }
   }
 }
@@ -2732,7 +2772,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
       lv_obj_t *label = lv_label_create(buttonCont);
       lv_label_set_text(label, std::get<2>(i));
-      lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
       lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     }
 
@@ -3976,6 +4016,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
       },
       LV_EVENT_VALUE_CHANGED, this);
 
+  addTextSizeMenu(menu);
+
   if (M5.Touch.isEnabled()) {
     lv_obj_t *calibrate_button = lv_button_create(cont);
     lv_obj_t *calibrate_label = lv_label_create(calibrate_button);
@@ -3994,6 +4036,45 @@ void UI::addDisplayMenu(const menu_t &parent) {
 
   // Add title visibility control
   addSettingItem(cont, NULL, Settings::SHOW_TITLE);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addTextSizeMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_TextSizeStr, nullptr, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *label = lv_label_create(cont);
+  lv_label_set_text(label, m_TextSizeStr);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(label, LV_PCT(100));
+
+  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_roller_set_options(roller, "Small\nNormal\nLarge", LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
+  if (textSize > Settings::TEXT_SIZE_LARGE) {
+    textSize = Settings::TEXT_SIZE_NORMAL;
+  }
+  lv_roller_set_selected(roller, textSize, LV_ANIM_OFF);
+
+  lv_obj_t *restart = lv_button_create(cont);
+  lv_obj_t *restartLabel = lv_label_create(restart);
+  lv_label_set_text(restartLabel, "Restart");
+  lv_obj_add_event_cb(
+      restart,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+        Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
+        esp_restart();
+      },
+      LV_EVENT_CLICKED, roller);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
