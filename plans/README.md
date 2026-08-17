@@ -100,6 +100,8 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [50-companion-app-design.md](50-companion-app-design.md) | Smartphone companion app and GATT service |
 | [51-app-feature-parity.md](51-app-feature-parity.md) | Companion app parity: settings editors, camera management |
 | [60-issue-257.md](60-issue-257.md) | Nikon Z50II smart device analysis, upstream issue 257 |
+| [61-camera-compatibility.md](61-camera-compatibility.md) | BLE protocol survey across camera vendors, ranked additions |
+| [62-issue-140.md](62-issue-140.md) | Configurable button behavior, upstream issue 140 |
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |
 
