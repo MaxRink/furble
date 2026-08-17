@@ -1,15 +1,48 @@
+#include <ctime>
+
+#include <Preferences.h>
 #include <lvgl.h>
 
+#include "FurbleTypes.h"
 #include "FurbleUI.h"
 
 namespace Furble {
 
+namespace {
+constexpr int64_t MIN_VALID_EPOCH = 1577836800;
+constexpr int64_t MAX_VALID_EPOCH = 4102444800;
+
+SpinValue::nvs_t sleepThresholdNvs(void) {
+  uint32_t seconds = Settings::load<uint32_t>(Settings::IVL_SLEEP_THR);
+  if (seconds > 999) {
+    seconds = 999;
+  }
+  return {static_cast<uint16_t>(seconds), SpinValue::UNIT_SEC};
+}
+
+bool validInterval(const interval_t &interval) {
+  const auto validUnit = [](SpinValue::unit_t unit) {
+    return unit >= SpinValue::UNIT_NIL && unit <= SpinValue::UNIT_MIN;
+  };
+
+  return validUnit(interval.count.unit) && validUnit(interval.delay.unit)
+         && validUnit(interval.shutter.unit) && validUnit(interval.wait.unit)
+         && ((interval.count.unit == SpinValue::UNIT_NIL)
+             || (interval.count.unit == SpinValue::UNIT_INF));
+}
+}  // namespace
+
 UI::Intervalometer::Intervalometer(const interval_t &interval)
     : m_State {STATE_IDLE},
+      m_SleepThresholdOwner {Settings::IVL_SLEEP_THR},
       m_Count(this, interval.count, true),
       m_Delay(this, interval.delay),
       m_Shutter(this, interval.shutter),
-      m_Wait(this, interval.wait) {}
+      m_Wait(this, interval.wait),
+      m_SleepThreshold(&m_SleepThresholdOwner, sleepThresholdNvs(), false, false, true) {
+  m_SleepThresholdOwner.setSpinner(&m_SleepThreshold);
+  loadResume();
+}
 
 void UI::Intervalometer::save(void) {
   interval_t interval = {m_Count.m_SpinValue.toNVS(), m_Delay.m_SpinValue.toNVS(),
@@ -17,12 +50,144 @@ void UI::Intervalometer::save(void) {
   Settings::save<Settings::INTERVAL>(interval);
 }
 
+void UI::Intervalometer::SettingSpinnerOwner::save(void) {
+  if (m_Spinner == nullptr) {
+    return;
+  }
+
+  uint32_t seconds = m_Spinner->m_SpinValue.toMilliseconds() / 1000;
+  if (seconds > 999) {
+    seconds = 999;
+  }
+  Settings::save<uint32_t>(m_Setting, seconds);
+}
+
+void UI::Intervalometer::loadResume(void) {
+  Preferences prefs;
+  resume_state_t state = {};
+  prefs.begin(FURBLE_STR, true);
+  const size_t length = prefs.get(RESUME_NVS_KEY, &state, sizeof(state));
+  prefs.end();
+
+  if ((length != sizeof(state)) || (state.magic != RESUME_MAGIC)
+      || (state.version != RESUME_VERSION) || (state.length != sizeof(state))
+      || !validInterval(state.interval)) {
+    return;
+  }
+
+  if (!Settings::load<Settings::IVL_SLEEP>() || !Platform::getInstance().canTimedWake()) {
+    clearResume();
+    return;
+  }
+
+  const bool timedWake = Platform::getInstance().consumeTimedWake();
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const bool clockValid = (now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH);
+  const bool wakeTimeValid =
+      (state.wake_time >= MIN_VALID_EPOCH) && (state.wake_time <= MAX_VALID_EPOCH);
+
+  if (!timedWake) {
+    ESP_LOGW(LOG_TAG, "Ignoring intervalometer resume without a timed wake");
+    clearResume();
+    return;
+  }
+
+  if (clockValid && wakeTimeValid) {
+    const int64_t delta = now - state.wake_time;
+    if ((delta < -30) || (delta > 3600)) {
+      ESP_LOGW(LOG_TAG, "Ignoring stale intervalometer resume state");
+      clearResume();
+      return;
+    }
+  }
+
+  m_Resume = state;
+  m_ResumePending = true;
+  ESP_LOGI(LOG_TAG, "Intervalometer resume is pending at shot %lu",
+           static_cast<unsigned long>(m_Resume.count + 1));
+}
+
+void UI::Intervalometer::clearResume(void) {
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  if (prefs.isKey(RESUME_NVS_KEY)) {
+    prefs.remove(RESUME_NVS_KEY);
+  }
+  prefs.end();
+  m_Resume = {};
+  m_ResumePending = false;
+}
+
+bool UI::Intervalometer::hasResume(void) const {
+  return m_ResumePending;
+}
+
+uint16_t UI::Intervalometer::resumeCameraIndex(void) const {
+  return m_Resume.camera_index;
+}
+
+void UI::Intervalometer::startNewRun(void) {
+  clearResume();
+  m_CountShots = 0;
+}
+
+bool UI::Intervalometer::startResume(void) {
+  if (!m_ResumePending) {
+    return false;
+  }
+
+  resume_state_t state = m_Resume;
+  m_Count.m_SpinValue = SpinValue(state.interval.count);
+  m_Delay.m_SpinValue = SpinValue(state.interval.delay);
+  m_Shutter.m_SpinValue = SpinValue(state.interval.shutter);
+  m_Wait.m_SpinValue = SpinValue(state.interval.wait);
+  m_CountShots = state.count;
+  clearResume();
+
+  m_Count.updateLabels();
+  m_Delay.updateLabels();
+  m_Shutter.updateLabels();
+  m_Wait.updateLabels();
+  m_State = STATE_SHUTTER_OPEN;
+  return true;
+}
+
+bool UI::Intervalometer::saveResume(uint32_t next_ms, uint16_t camera_index) {
+  resume_state_t state = {};
+  state.magic = RESUME_MAGIC;
+  state.version = RESUME_VERSION;
+  state.length = sizeof(state);
+  state.count = m_CountShots;
+  state.target = m_Count.m_SpinValue.m_Value;
+  state.camera_index = camera_index;
+  state.interval = {m_Count.m_SpinValue.toNVS(), m_Delay.m_SpinValue.toNVS(),
+                    m_Shutter.m_SpinValue.toNVS(), m_Wait.m_SpinValue.toNVS()};
+
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
+    state.wake_time = now + (next_ms / 1000);
+  }
+
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  const size_t written = prefs.put(RESUME_NVS_KEY, &state, sizeof(state));
+  prefs.end();
+  if (written != sizeof(state)) {
+    ESP_LOGE(LOG_TAG, "Failed to save intervalometer resume state");
+    return false;
+  }
+
+  m_Resume = state;
+  m_ResumePending = true;
+  return true;
+}
+
 void UI::Intervalometer::Spinner::update(void) {
-  if (lv_obj_has_state(m_SwitchInfinite, LV_STATE_CHECKED)) {
+  if (m_Infinite && lv_obj_has_state(m_SwitchInfinite, LV_STATE_CHECKED)) {
     m_SpinValue.m_Unit = SpinValue::UNIT_INF;
     lv_obj_add_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
   } else {
-    m_SpinValue.m_Unit = SpinValue::UNIT_NIL;
+    m_SpinValue.m_Unit = m_FixedUnit ? SpinValue::UNIT_SEC : SpinValue::UNIT_NIL;
     lv_obj_clear_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
 
     uint32_t h = lv_roller_get_selected(m_Roller[0]);
@@ -231,7 +396,9 @@ void UI::Intervalometer::Spinner::updateLabels(void) {
           break;
       }
 
-      lv_roller_set_selected(m_RollerUnit, i, LV_ANIM_ON);
+      if (m_RollerUnit != nullptr) {
+        lv_roller_set_selected(m_RollerUnit, i, LV_ANIM_ON);
+      }
     }
   }
 }

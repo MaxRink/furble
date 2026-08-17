@@ -60,6 +60,8 @@ class Settings {
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
+    IVL_SLEEP,
+    IVL_SLEEP_THR,
   } type_t;
 
   typedef struct {
@@ -116,6 +118,7 @@ class Settings {
 
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+  static constexpr uint32_t IVL_SLEEP_THR_DEFAULT = 60;
 
   /** Default maximum CPU frequency in MHz, matches Platform. */
   static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
@@ -353,6 +356,14 @@ struct Settings::storage_type<Settings::GPX_PERIOD> {
 template <>
 struct Settings::storage_type<Settings::BOOT_SPLASH> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::IVL_SLEEP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::IVL_SLEEP_THR> {
+  using type = uint32_t;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>

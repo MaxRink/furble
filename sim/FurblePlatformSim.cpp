@@ -92,11 +92,27 @@ bool Platform::powerOff(void) {
   return true;
 }
 
-void Platform::watchdogEnable(bool) {}
+bool Platform::watchdogEnable(bool) {
+  return true;
+}
 
 void Platform::watchdogFeed(void) {}
 
 void Platform::setDisplayOff(bool) {}
+
+bool Platform::canTimedWake(void) {
+  // The host simulator has no RTC alarm rail, so timed wake is unavailable.
+  return false;
+}
+
+void Platform::powerOffUntil(uint32_t seconds) {
+  (void)seconds;
+  powerOff();
+}
+
+bool Platform::consumeTimedWake(void) {
+  return false;
+}
 
 void Platform::setCPUMaxFreq(uint8_t mhz) {
   m_CPUMaxFreqMHz = isCPUMaxFreqValid(mhz) ? mhz : CPU_MAX_FREQ_DEFAULT_MHZ;

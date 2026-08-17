@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <initializer_list>
 #include <mutex>
 #include <string>
@@ -223,10 +224,12 @@ class UI {
       Spinner(SpinnerOwner *owner,
               SpinValue::nvs_t nvs,
               bool infinite = false,
-              bool presetSupported = false)
+              bool presetSupported = false,
+              bool fixedUnit = false)
           : m_Owner {owner},
             m_SpinValue {nvs},
             m_Infinite {infinite},
+            m_FixedUnit {fixedUnit},
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
@@ -246,12 +249,13 @@ class UI {
 
       SpinnerOwner *m_Owner;
       SpinValue m_SpinValue;
-      lv_obj_t *m_Button;
-      lv_obj_t *m_Label;
-      lv_obj_t *m_Value;
+      lv_obj_t *m_Button = nullptr;
+      lv_obj_t *m_Label = nullptr;
+      lv_obj_t *m_Value = nullptr;
       const bool m_Infinite;  // Can support infinite?
-      lv_obj_t *m_RowInfinite;
-      lv_obj_t *m_SwitchInfinite;
+      const bool m_FixedUnit;
+      lv_obj_t *m_RowInfinite = nullptr;
+      lv_obj_t *m_SwitchInfinite = nullptr;
 
       lv_obj_t *m_RowSpinners = nullptr;
       // array of rollers, 0 = hundred, 1 = ten, 2 = one
@@ -274,6 +278,35 @@ class UI {
       size_t m_PresetIndex = 0;
     };
 
+    class SettingSpinnerOwner: public SpinnerOwner {
+     public:
+      explicit SettingSpinnerOwner(Settings::type_t setting) : m_Setting {setting} {}
+
+      void setSpinner(Spinner *spinner) { m_Spinner = spinner; }
+      void save(void) override;
+
+     private:
+      Settings::type_t m_Setting;
+      Spinner *m_Spinner = nullptr;
+    };
+
+    typedef struct __attribute__((packed)) {
+      uint32_t magic;
+      uint16_t version;
+      uint16_t length;
+      uint32_t count;
+      uint32_t target;
+      uint16_t camera_index;
+      uint16_t reserved;
+      int64_t wake_time;
+      interval_t interval;
+    } resume_state_t;
+
+    static constexpr uint32_t RESUME_MAGIC = 0x49564c31;
+    static constexpr uint16_t RESUME_VERSION = 1;
+    static constexpr const char *RESUME_NVS_KEY = "ivl_resume";
+    static constexpr uint32_t RESUME_WAKE_MARGIN_S = 15;
+
     typedef enum {
       STATE_IDLE,
       STATE_WAIT,
@@ -285,16 +318,32 @@ class UI {
     Intervalometer(const interval_t &interval);
 
     void save(void) override;
+    void startNewRun(void);
+    void clearResume(void);
+    bool hasResume(void) const;
+    uint16_t resumeCameraIndex(void) const;
+    bool startResume(void);
+    bool saveResume(uint32_t next_ms, uint16_t camera_index);
 
     state_t m_State;
+    SettingSpinnerOwner m_SleepThresholdOwner;
     Spinner m_Count;
     Spinner m_Delay;
     Spinner m_Shutter;
     Spinner m_Wait;
+    Spinner m_SleepThreshold;
+
+    uint32_t m_CountShots = 0;
 
     lv_obj_t *m_StateLabel;
     lv_obj_t *m_CountLabel;
     lv_obj_t *m_RemainingLabel;
+
+   private:
+    resume_state_t m_Resume = {};
+    bool m_ResumePending = false;
+
+    void loadResume(void);
   };
 
   /**
@@ -484,6 +533,7 @@ class UI {
   static constexpr const char *m_IntervalDelayStr = "Delay";
   static constexpr const char *m_IntervalShutterStr = "Shutter";
   static constexpr const char *m_IntervalWaitStr = "Wait";
+  static constexpr const char *m_IntervalSleepThresholdStr = "Sleep Threshold";
 
   static constexpr uint8_t BYTES_PER_PIXEL = (LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565));
   static constexpr int32_t MAX_WIDTH = 320;
@@ -707,7 +757,7 @@ class UI {
                                const int32_t row_pos = 0);
 
   /** Add a menu switch item. */
-  void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
+  lv_obj_t *addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
 
   /** Add camera menu item. */
   static lv_obj_t *addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode);
@@ -911,6 +961,12 @@ class UI {
 
   /** Connection timer handler. */
   static void connectTimerHandler(lv_timer_t *timer);
+
+  /** Start a restored intervalometer run after reconnect. */
+  void startIntervalometerResume(void);
+
+  /** Show a bounded reconnect failure for a restored intervalometer run. */
+  void showIntervalometerResumeError(void);
 
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);
