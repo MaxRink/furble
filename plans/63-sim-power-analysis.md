@@ -225,6 +225,14 @@ The firmware size report in `.github/workflows/main.yml` is the first instance
 of the sticky analysis-comment pattern, keeping one marker-backed PR comment
 updated with machine-generated review data.
 
+Deviation, found in production: the baseline lookup originally required an
+exact cache key match on the PR base sha. Two real cases broke it. Docs-only
+master pushes skip the firmware build, so their merge commits never write a
+size cache. And a PR run racing the master push run reads before the cache
+save lands. The lookup now falls back to the newest master size cache via a
+restore-keys prefix, and the comment names the commit the baseline actually
+came from when it is not the exact PR base.
+
 ### Out of scope, stated honestly
 
 - RF physics: interference, retransmissions, coded PHY range behavior. The
