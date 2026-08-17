@@ -73,6 +73,12 @@ class UI {
   /** Check and/or handle inactivity. */
   void processInactivity(void);
 
+  /** Check the disconnected idle auto-off policy. */
+  void processAutoOff(void);
+
+  /** Check the low battery policy. */
+  void processLowBattery(void);
+
   /**
    * Display/hide navigation bar.
    */
@@ -420,6 +426,14 @@ class UI {
   static constexpr std::array<uint32_t, 6> m_InactivityTimeouts = {0,      30000,  60000,
                                                                    120000, 300000, 600000};
 
+  /** Auto-off roller values, in minutes, zero is no timeout. */
+  static constexpr std::array<uint8_t, 5> m_AutoOffMinutes = {0, 5, 10, 30, 60};
+
+  static constexpr uint8_t LOW_BATT_WARN_LEVEL = 10;
+  static constexpr uint8_t LOW_BATT_OFF_LEVEL = 5;
+  static constexpr uint32_t LOW_BATT_HYSTERESIS_MS = 30000;
+  static constexpr uint32_t LOW_BATT_POWER_OFF_DELAY_MS = 30000;
+
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
   static constexpr const char *m_GPSRateStr = "Update rate";
@@ -564,6 +578,17 @@ class UI {
   /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
   uint32_t m_MainCount = 0;
+
+  bool m_LowBatteryWarnTiming = false;
+  uint32_t m_LowBatteryWarnSince = 0;
+  bool m_LowBatteryOffTiming = false;
+  uint32_t m_LowBatteryOffSince = 0;
+  bool m_LowBatteryWarned = false;
+  bool m_LowBatteryPowerOffPending = false;
+  uint32_t m_LowBatteryPowerOffSince = 0;
+  lv_obj_t *m_LowBatteryMessageBox = nullptr;
+  lv_obj_t *m_LowBatteryMessage = nullptr;
+  bool m_PoweringOff = false;
 
   static menu_t m_MainMenu;
 
@@ -805,6 +830,15 @@ class UI {
 
   /** Handle disconnection. */
   static void doDisconnect(void);
+
+  /** Show the low battery warning. */
+  void showLowBatteryWarning(bool powerOff);
+
+  /** Close the low battery warning. */
+  void closeLowBatteryWarning(void);
+
+  /** Release the shutter and power off through the platform layer. */
+  void doPowerOff(void);
 
   /** Refresh deletion items. */
   static void refreshDelete(void);

@@ -1673,12 +1673,10 @@ void UI::addMainMenu(void) {
   lv_obj_add_event_cb(
       off.button,
       [](lv_event_t *e) {
-#if defined(FURBLE_M5STACK_CORE)
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-#endif
-        Platform::getInstance().powerOff();
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        ui->doPowerOff();
       },
-      LV_EVENT_CLICKED, NULL);
+      LV_EVENT_CLICKED, this);
 
   lv_obj_add_event_cb(
       m_MainMenu.main,
@@ -4436,11 +4434,25 @@ void UI::addPowerMenu(const menu_t &parent) {
   }
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  // share the page with the switch, otherwise keep the roller centred
-  lv_obj_set_height(cont, sleepConn ? LV_SIZE_CONTENT : LV_PCT(100));
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
+
+  auto addPowerRoller = [cont](const char *text, const char *options) {
+    lv_obj_t *label = lv_label_create(cont);
+    lv_label_set_text(label, text);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    lv_obj_t *roller = lv_roller_create(cont);
+    lv_obj_set_width(roller, LV_PCT(90));
+    lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    return roller;
+  };
 
   // Add CPU maximum frequency control
   lv_obj_t *label = lv_label_create(cont);
@@ -4513,6 +4525,52 @@ void UI::addPowerMenu(const menu_t &parent) {
         ui->setBatteryStyle(style);
       },
       LV_EVENT_VALUE_CHANGED, this);
+
+  // IP5306 boards do not have a reliable software power-off path.
+  if (M5.getBoard() != m5::board_t::board_M5Stack) {
+    lv_obj_t *autoOff = addPowerRoller("Auto off", "Never\n5 mins\n10 mins\n30 mins\n60 mins");
+    uint8_t minutes = Settings::load<Settings::AUTO_OFF>();
+    auto autoOffIt = std::find(m_AutoOffMinutes.begin(), m_AutoOffMinutes.end(), minutes);
+    uint32_t autoOffIndex =
+        (autoOffIt == m_AutoOffMinutes.end())
+            ? 0
+            : static_cast<uint32_t>(std::distance(m_AutoOffMinutes.begin(), autoOffIt));
+    lv_roller_set_selected(autoOff, autoOffIndex, LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        autoOff,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint32_t index = lv_roller_get_selected(roller);
+          if (index < UI::m_AutoOffMinutes.size()) {
+            Settings::save<Settings::AUTO_OFF>(UI::m_AutoOffMinutes[index]);
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *lowBattery = addPowerRoller("Low battery", "None\nWarn\nWarn then off");
+    uint8_t policy = Settings::load<Settings::LOW_BATT>();
+    lv_roller_set_selected(lowBattery, (policy <= 2) ? policy : 0, LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        lowBattery,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint32_t index = lv_roller_get_selected(roller);
+          if (index <= 2) {
+            Settings::save<Settings::LOW_BATT>(static_cast<uint8_t>(index));
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *help = lv_label_create(cont);
+    lv_label_set_text(
+        help,
+        "Auto off needs no camera connection. Infinite Re-Connect keeps reconnecting.\n"
+        "Power off is final. Press the power button to wake.");
+    lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(help, LV_PCT(100));
+  }
 
   // Add the battery page entry below the controls
   addBatteryMenu(menu);
@@ -5253,6 +5311,158 @@ void UI::processInactivity(void) {
       m_DisplayOffMode = 0;
       break;
   }
+
+  processAutoOff();
+  processLowBattery();
+}
+
+void UI::processAutoOff(void) {
+  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+    return;
+  }
+
+  uint8_t minutes = Settings::load<Settings::AUTO_OFF>();
+  if ((minutes == 0) || (Control::getInstance().getState() != Control::STATE_IDLE)) {
+    return;
+  }
+
+  uint32_t timeout = static_cast<uint32_t>(minutes) * 60000;
+  if (lv_disp_get_inactive_time(m_Display) >= timeout) {
+    ESP_LOGI("ui", "Auto power off after %u minutes idle.", minutes);
+    doPowerOff();
+  }
+}
+
+void UI::showLowBatteryWarning(bool powerOff) {
+  // M5GFX wakeup is safe when the display is already awake. PR12 may put it
+  // to sleep, so restore the user brightness before showing the warning.
+  M5.Display.wakeup();
+  M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+  lv_display_trigger_activity(m_Display);
+
+  if (m_LowBatteryMessageBox == nullptr) {
+    m_LowBatteryMessageBox = lv_msgbox_create(m_Screen);
+    lv_msgbox_add_title(m_LowBatteryMessageBox, "Low battery");
+    lv_obj_set_width(m_LowBatteryMessageBox, LV_PCT(100));
+
+    lv_obj_t *content = lv_msgbox_get_content(m_LowBatteryMessageBox);
+    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    m_LowBatteryMessage = lv_label_create(content);
+    lv_label_set_long_mode(m_LowBatteryMessage, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(m_LowBatteryMessage, LV_PCT(80));
+  }
+
+  if (powerOff) {
+    lv_label_set_text(m_LowBatteryMessage, "Battery critical.\nPowering off in 30 seconds.");
+  } else {
+    lv_label_set_text(m_LowBatteryMessage, "Battery low.\nPlease charge soon.");
+  }
+}
+
+void UI::closeLowBatteryWarning(void) {
+  if (m_LowBatteryMessageBox != nullptr) {
+    lv_msgbox_close_async(m_LowBatteryMessageBox);
+    m_LowBatteryMessageBox = nullptr;
+    m_LowBatteryMessage = nullptr;
+  }
+}
+
+void UI::processLowBattery(void) {
+  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+    return;
+  }
+
+  uint8_t policy = Settings::load<Settings::LOW_BATT>();
+  if ((policy == 0) || (policy > 2)) {
+    m_LowBatteryWarnTiming = false;
+    m_LowBatteryOffTiming = false;
+    m_LowBatteryPowerOffPending = false;
+    closeLowBatteryWarning();
+    return;
+  }
+
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  if (!caps.level) {
+    return;
+  }
+
+  // The battery sample already includes the PMIC charging read. Do not wake
+  // the PMIC again from this one-second policy check.
+  if (m_Status.battery.charging) {
+    m_LowBatteryWarnTiming = false;
+    m_LowBatteryOffTiming = false;
+    m_LowBatteryWarned = false;
+    m_LowBatteryPowerOffPending = false;
+    closeLowBatteryWarning();
+    return;
+  }
+
+  uint32_t now = Platform::getInstance().tick();
+  uint8_t level = m_Status.battery.level;
+
+  if (level < LOW_BATT_WARN_LEVEL) {
+    if (!m_LowBatteryWarnTiming) {
+      m_LowBatteryWarnTiming = true;
+      m_LowBatteryWarnSince = now;
+    }
+
+    if (!m_LowBatteryWarned && ((now - m_LowBatteryWarnSince) >= LOW_BATT_HYSTERESIS_MS)) {
+      m_LowBatteryWarned = true;
+      showLowBatteryWarning(false);
+    }
+  } else {
+    m_LowBatteryWarnTiming = false;
+  }
+
+  if (policy != 2) {
+    m_LowBatteryOffTiming = false;
+    m_LowBatteryPowerOffPending = false;
+    return;
+  }
+
+  if (level < LOW_BATT_OFF_LEVEL) {
+    if (!m_LowBatteryOffTiming) {
+      m_LowBatteryOffTiming = true;
+      m_LowBatteryOffSince = now;
+    }
+
+    if (!m_LowBatteryPowerOffPending && ((now - m_LowBatteryOffSince) >= LOW_BATT_HYSTERESIS_MS)) {
+      m_LowBatteryPowerOffPending = true;
+      m_LowBatteryPowerOffSince = now;
+      m_LowBatteryWarned = true;
+      showLowBatteryWarning(true);
+    }
+  } else {
+    m_LowBatteryOffTiming = false;
+    m_LowBatteryPowerOffPending = false;
+  }
+
+  if (m_LowBatteryPowerOffPending
+      && ((now - m_LowBatteryPowerOffSince) >= LOW_BATT_POWER_OFF_DELAY_MS)) {
+    doPowerOff();
+  }
+}
+
+void UI::doPowerOff(void) {
+  if (m_PoweringOff) {
+    return;
+  }
+
+  m_PoweringOff = true;
+  closeLowBatteryWarning();
+
+  if (m_ShutterLock) {
+    shutterUnlock(Control::getInstance());
+  }
+
+  doDisconnect();
+
+#if defined(FURBLE_M5STACK_CORE)
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+#endif
+  Platform::getInstance().powerOff();
 }
 
 void UI::handleLockScreen(void) {

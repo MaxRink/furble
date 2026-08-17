@@ -197,6 +197,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
       return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -261,6 +263,8 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
     case Settings::BUTTON_MODE:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -290,6 +294,8 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPS_BAUD:
@@ -341,6 +347,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::IR_PROTO:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);

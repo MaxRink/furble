@@ -1,5 +1,41 @@
 # PR13 - Auto power off and low battery policy
 
+## Implementation status
+
+State: Implemented on `feat/13-auto-off-low-batt`.
+
+Rebase notes:
+
+- `AUTO_OFF` is assigned wire_id 37 and `LOW_BATT` wire_id 38, continuing
+  after `DISPLAY_MODE` (36) from PR 31.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover both as
+  SETTING_U8.
+- The branch's console coverage (uint8 in all four switches, both apply
+  immediately) merged onto master's GPS_POWER/GPS_DUTY lists as unions.
+
+AUTO_OFF and LOW_BATT use the planned settings and NVS paths. The Power page
+has both rollers on boards with a reliable software power-off path. The M5Stack
+Core hides both policy rollers because its IP5306 cannot provide true software
+power off. Auto off checks the LVGL inactive time and `STATE_IDLE`. Low battery
+checks the cached battery sample, charging state, thresholds, hysteresis,
+warning latch, and graceful shutdown delay. Manual Off and both automatic paths
+share `UI::doPowerOff()`.
+
+Verification completed:
+
+- clang-format 21 passes for all changed C++ and header files.
+- `git diff --check` passes.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` passes.
+- Hardware testing is pending. No boards have been tested.
+
+Deviations:
+
+- This branch already has PR02 battery instrumentation with a 5-second cached
+  sample. The low battery policy uses `m_Status.battery` instead of adding a
+  second I2C reader.
+- PR12 display-off code is not in fork master. The warning calls the safe
+  M5GFX wakeup API directly and restores the configured brightness.
+
 ## Goal
 
 Stop the device draining a flat battery when it is left on by accident. Add an
