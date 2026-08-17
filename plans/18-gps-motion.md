@@ -52,7 +52,7 @@ Camera side, read only, no changes:
 
 | Enum | NVS key | Namespace | Type | Default | Notes |
 |---|---|---|---|---|---|
-| `GPS_MOTION` | `gps_motion` (10) | `FURBLE_STR` | `bool` | `false` | False keeps the PR15 policy running unchanged. |
+| `GPS_MOTION` | `gps_motion` (10) | `FURBLE_STR` | `bool` | `false` | False leaves current GPS behavior unchanged. Future PR15 policy integration remains unchanged. |
 
 Name string: `"Motion Adaptive"`.
 
@@ -210,6 +210,48 @@ Battery impact, on-board instrumentation only, no external meter:
 3. Run B: same 60 minutes with motion adaptive on.
 4. Report both drain slopes and the difference. If run B is not clearly better,
    the feature does not justify its complexity. Say so.
+
+## Implementation state
+
+Implemented:
+
+- Added `GPS_MOTION` with NVS key `gps_motion`, wire ID 48, and a false
+  default. The ID follows the current settings ledger after rebasing onto the
+  IMU spirit-level base branch.
+- Added a software motion detector to `GPS`. It samples the enabled IMU at 10
+  Hz, keeps a five second magnitude variance window, enters stationary after 60
+  seconds below the threshold, and exits on the first motion sample.
+- Added `GPS::isStationary()` as the future GPS power policy hook. The detector
+  logs stationary and moving transitions.
+- Added the Motion Adaptive switch under Settings -> GPS. It is hidden when GPS
+  is off and disabled when the IMU is off.
+- Added console and companion setting support. No sdkconfig files changed.
+
+Deviations:
+
+- This worktree predates the PR15 GPS power policy. It does not add receiver
+  standby, rail cycling, low rate changes, cached fix forwarding, or a wake on
+  camera request. GPS remains always on and its existing `MAX_AGE_MS` behavior
+  is unchanged.
+- The future merge point is the state transition in `GPS::updateMotion()`. PR15
+  should consume `GPS::isStationary()` there when it adds the receiver policy.
+  The cached fix lifetime and camera request wake path belong to that same
+  policy integration.
+
+Hardware verification is pending. No device, camera, or battery measurements
+were run for this implementation.
+
+Validation:
+
+- Host protocol conformance passed after generating the GPS_MOTION wire-ID 48
+  fixtures.
+- The host camera harness passed all seven tests.
+- The SDL simulator passed all eleven end-to-end scenarios and the narrow-panel
+  overflow sweep at 135x240 and 80x160.
+- PlatformIO firmware builds were attempted for the documented release and
+  debug environments. The local macOS toolchain could not complete component
+  setup and then failed with an incomplete LVGL SDK configuration, so hardware
+  firmware build validation remains pending.
 
 ## References
 

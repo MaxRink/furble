@@ -1646,6 +1646,22 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         LV_EVENT_VALUE_CHANGED, this);
   }
 
+  if (setting == Settings::GPS_MOTION) {
+    m_Status.gpsWidgets.push_back(obj);
+    if (!Settings::load<Settings::IMU>() || !M5.Imu.isEnabled()) {
+      lv_obj_add_state(obj, LV_STATE_DISABLED);
+      lv_obj_add_state(sw, LV_STATE_DISABLED);
+    }
+
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+          status->gps->reloadSetting();
+        },
+        LV_EVENT_VALUE_CHANGED, &m_Status);
+  }
+
   if (setting == Settings::SHOW_TITLE) {
     lv_obj_add_event_cb(
         sw,
@@ -5633,6 +5649,7 @@ void UI::addGPSMenu(const menu_t &parent) {
         Settings::save<Settings::GPS_ASSIST>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
         status->gps->reloadSetting();
       });
+  addSettingItem(menu.page, NULL, Settings::GPS_MOTION);
 
   addGPSDataMenu(menu);
   addGPSNMEAMenu(menu);
