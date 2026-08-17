@@ -66,6 +66,9 @@ namespace {
 
 constexpr UBaseType_t HEADLESS_REQUEST_QUEUE_LENGTH = 8;
 
+/** 250 ms at the 5 ms loop period, matching the GUI pairing dialog timer. */
+constexpr uint32_t PAIRING_POLL_TICKS = 50;
+
 typedef struct {
   UI::Request request;
   int32_t arg;
@@ -88,6 +91,9 @@ void printCameras(bool reload) {
   }
 }
 
+// TODO: connectCamera() and scanCameras() duplicate the connect and scan logic
+// in FurbleUI.cpp (doConnect(), startScan()). Extract a shared helper below the
+// UI, for example in FurbleControl, once the headless profile settles.
 void connectCamera(int32_t index) {
   CameraList::load();
   if (index >= 0) {
@@ -126,6 +132,29 @@ void scanCameras(void) {
   scan.start(
       [](void *) { printf("scan camera count: %u\n", static_cast<unsigned>(CameraList::size())); },
       NULL, [](void *) { printf("scan finished\n"); });
+}
+
+/**
+ * Announce a companion pairing request on the console.
+ *
+ * The GUI polls the same state from a dialog timer. Without a display the
+ * console is the only confirm path, so print the PIN once per request and
+ * point at the pair command.
+ */
+void pollCompanionPairing(void) {
+  static bool announced = false;
+
+  auto &companion = Companion::getInstance();
+  if (companion.isEnabled() && companion.hasPendingPairing()) {
+    if (!announced) {
+      printf("companion pairing pin: %06lu\n",
+             static_cast<unsigned long>(companion.getPendingPairingPin()));
+      printf("confirm with 'pair yes' or 'pair no'\n");
+      announced = true;
+    }
+  } else {
+    announced = false;
+  }
 }
 
 }  // namespace
@@ -215,6 +244,9 @@ static void vUITask(void *param) {
 #if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
+    if ((count++ % PAIRING_POLL_TICKS) == 0) {
+      pollCompanionPairing();
+    }
 #endif
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
