@@ -62,11 +62,21 @@ The host implementation is under `sim/`.
 - `sim/fake_uart.cpp` supplies the UART driver used by the unmodified GPS
   source.
 - `sim/driver.cpp` reads `wait`, `advance`, `key`, `press`, `capture`, and
-  `exit` commands.
+  `home`, `back`, and `exit` commands.
 - `sim/capture.cpp` reads the M5GFX SDL panel and writes RGB PNG files without
   adding an image library dependency.
 - `.gitignore` excludes the local native build output and the temporary
   PlatformIO core directory.
+
+## Screenshot CI
+
+Screenshot CI is implemented on `feat/ui-screenshot-ci`. The deterministic
+script captures the modeled M5StickS3 135 by 240 UI pages, and
+`.github/workflows/ui-screenshots.yml` builds the simulator, runs the capture
+under Xvfb, uploads `ui-screenshots`, and updates one marker-based PR comment.
+The current simulator models only this board class. Once PR #39,
+`feat/28-emulator`, merges, this implementation must be re-pointed at the
+master paths.
 
 ## Deviations
 

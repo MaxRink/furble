@@ -34,6 +34,7 @@ int runSimulator(bool *) {
 
   const auto interval = Settings::load<Settings::INTERVAL>();
   UI ui(interval);
+  Sim::setBackTarget(&ui);
   ui.task();
   return 0;
 }

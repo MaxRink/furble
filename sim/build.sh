@@ -6,6 +6,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD_DIR=${FURBLE_SIM_BUILD_DIR:-"$ROOT/sim/build"}
 DEP_ROOT=${FURBLE_DEP_ROOT:-"$ROOT/../../../.pio/libdeps/m5stick-s3"}
 LVGL_DIR=${FURBLE_LVGL_DIR:-}
+CXX=${CXX:-clang++}
+CC=${CC:-clang}
 
 if [ ! -f "$DEP_ROOT/M5GFX/src/M5GFX.cpp" ]; then
   echo "M5GFX was not found at $DEP_ROOT" >&2
@@ -91,7 +93,7 @@ compile_cpp() {
     return
   fi
   echo "[CXX] ${source#$ROOT/}"
-  clang++ $CXXFLAGS -c "$source" -o "$object"
+  "$CXX" $CXXFLAGS -c "$source" -o "$object"
   OBJECTS="$OBJECTS $object"
 }
 
@@ -111,7 +113,7 @@ compile_c() {
     return
   fi
   echo "[C]   ${source#$ROOT/}"
-  clang $CFLAGS -c "$source" -o "$object"
+  "$CC" $CFLAGS -c "$source" -o "$object"
   OBJECTS="$OBJECTS $object"
 }
 
@@ -161,7 +163,11 @@ $(find "$DEP_ROOT/M5Unified/src" -type f -name '*.cpp' -print)
 EOF
 
 echo "[LD]  sim/build/furble-sim"
-clang++ $CXXFLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" \
-  -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -framework Cocoa -lpthread
+LINK_FLAGS="-L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread"
+if [ "$(uname -s)" = "Darwin" ]; then
+  LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
+fi
+
+"$CXX" $CXXFLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" $LINK_FLAGS
 
 echo "Built $BUILD_DIR/furble-sim"

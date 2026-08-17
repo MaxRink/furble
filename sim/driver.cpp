@@ -7,6 +7,7 @@
 
 #include <SDL2/SDL.h>
 
+#include "FurbleUI.h"
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
@@ -18,6 +19,8 @@ enum class StepType {
   WAIT,
   KEY,
   CAPTURE,
+  HOME,
+  BACK,
   EXIT,
 };
 
@@ -35,6 +38,7 @@ uint32_t waitUntil = 0;
 uint32_t releaseAt = 0;
 SDL_Keycode pressedKey = SDLK_UNKNOWN;
 bool configured = false;
+Furble::UI *backTarget = nullptr;
 
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
@@ -104,6 +108,14 @@ void readScript(const std::string &path) {
       step.type = StepType::CAPTURE;
       input >> step.name;
       steps.push_back(step);
+    } else if (command == "home") {
+      Step step;
+      step.type = StepType::HOME;
+      steps.push_back(step);
+    } else if (command == "back") {
+      Step step;
+      step.type = StepType::BACK;
+      steps.push_back(step);
     } else if (command == "exit") {
       Step step;
       step.type = StepType::EXIT;
@@ -135,10 +147,10 @@ void configure(int argc, char **argv) {
     const std::string argument = argv[i];
     if (argument == "--script" && i + 1 < argc) {
       script = argv[++i];
-    } else if (argument == "--capture-dir" && i + 1 < argc) {
+    } else if ((argument == "--capture-dir" || argument == "--out") && i + 1 < argc) {
       captureDirectory = argv[++i];
     } else if (argument == "--help") {
-      std::cout << "furble-sim [--script FILE] [--capture-dir DIR]\n";
+      std::cout << "furble-sim [--script FILE] [--out DIR]\n";
       std::exit(0);
     }
   }
@@ -146,6 +158,10 @@ void configure(int argc, char **argv) {
   if (!script.empty()) {
     readScript(script);
   }
+}
+
+void setBackTarget(Furble::UI *ui) {
+  backTarget = ui;
 }
 
 void driverTick(void) {
@@ -187,6 +203,22 @@ void driverTick(void) {
         std::exit(1);
       }
       std::cout << "Captured " << capturePath(step.name) << '\n';
+      ++stepIndex;
+      break;
+
+    case StepType::HOME:
+      if (backTarget == nullptr || !backTarget->simulatorHome()) {
+        std::cerr << "Could not navigate home in simulator\n";
+        std::exit(1);
+      }
+      ++stepIndex;
+      break;
+
+    case StepType::BACK:
+      if (backTarget == nullptr || !backTarget->simulatorBack()) {
+        std::cerr << "Could not navigate back in simulator\n";
+        std::exit(1);
+      }
       ++stepIndex;
       break;
 
