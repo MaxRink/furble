@@ -216,6 +216,12 @@ should be one walker that audits layout, captures screenshots and profiles
 power on the same pass, not three copies of the navigation logic. Whichever
 of the three lands last consolidates.
 
+### Sticky analysis comments
+
+The firmware size report in `.github/workflows/main.yml` is the first instance
+of the sticky analysis-comment pattern, keeping one marker-backed PR comment
+updated with machine-generated review data.
+
 ### Out of scope, stated honestly
 
 - RF physics: interference, retransmissions, coded PHY range behavior. The
