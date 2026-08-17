@@ -74,6 +74,20 @@ std::unordered_map<int, lv_obj_t *> g_simSettingSwitches;
 namespace Furble {
 
 namespace {
+void setLabelTextIfChanged(lv_obj_t *label, const char *text) {
+  const char *current = lv_label_get_text(label);
+  if ((current == nullptr) || (std::strcmp(current, text) != 0)) {
+    lv_label_set_text(label, text);
+  }
+}
+
+template <typename... Args>
+void setLabelTextFmtIfChanged(lv_obj_t *label, const char *format, Args... args) {
+  char text[96];
+  std::snprintf(text, sizeof(text), format, args...);
+  setLabelTextIfChanged(label, text);
+}
+
 uint32_t gpsDutyIndex(uint8_t seconds) {
   for (size_t i = 0; i < GPS::DUTY_SECONDS.size(); i++) {
     if (GPS::DUTY_SECONDS[i] == seconds) {
@@ -3027,32 +3041,43 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         auto &gps = GPS::getInstance().get();
 
         static lv_obj_t *age = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(age, "%lus ago", gps.location.age() / 1000);
+        setLabelTextFmtIfChanged(age, "%lus ago", gps.location.age() / 1000);
 
         static lv_obj_t *satellites = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(satellites, "%lu satellites", gps.satellites.value());
+        setLabelTextFmtIfChanged(satellites, "%lu satellites", gps.satellites.value());
 
-        static lv_obj_t *lat = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(lat, "%.2f°", gps.location.lat());
+        static lv_obj_t *speed = lv_label_create(gpsData->page);
+        setLabelTextFmtIfChanged(speed, "%.1f km/h", gps.speed.kmph());
 
-        static lv_obj_t *lon = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(lon, "%.2f°", gps.location.lng());
+        static lv_obj_t *lat = nullptr;
+        if (lat == nullptr) {
+          lat = lv_label_create(gpsData->page);
+          lv_obj_set_style_text_font(lat, &lv_font_montserrat_12, 0);
+        }
+        setLabelTextFmtIfChanged(lat, "%.5f°", gps.location.lat());
+
+        static lv_obj_t *lon = nullptr;
+        if (lon == nullptr) {
+          lon = lv_label_create(gpsData->page);
+          lv_obj_set_style_text_font(lon, &lv_font_montserrat_12, 0);
+        }
+        setLabelTextFmtIfChanged(lon, "%.5f°", gps.location.lng());
 
         static lv_obj_t *alt = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(alt, "%.2f m", gps.altitude.meters());
+        setLabelTextFmtIfChanged(alt, "%.2f m", gps.altitude.meters());
 
 #if defined(FURBLE_M5COREX)
         static lv_obj_t *datetime = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(datetime, "%4u-%02u-%02u %02u:%02u:%02u", gps.date.year(),
-                              gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(),
-                              gps.time.second());
+        setLabelTextFmtIfChanged(datetime, "%4u-%02u-%02u %02u:%02u:%02u", gps.date.year(),
+                                 gps.date.month(), gps.date.day(), gps.time.hour(),
+                                 gps.time.minute(), gps.time.second());
 #else
         static lv_obj_t *date = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(date, "%4u-%02u-%02u", gps.date.year(), gps.date.month(),
-                              gps.date.day());
+        setLabelTextFmtIfChanged(date, "%4u-%02u-%02u", gps.date.year(), gps.date.month(),
+                                 gps.date.day());
         static lv_obj_t *time = lv_label_create(gpsData->page);
-        lv_label_set_text_fmt(time, "%02u:%02u:%02u", gps.time.hour(), gps.time.minute(),
-                              gps.time.second());
+        setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", gps.time.hour(), gps.time.minute(),
+                                 gps.time.second());
 #endif
       },
       1000, &gpsData);
@@ -3121,10 +3146,11 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         auto &gps = GPS::getInstance();
         auto &tinygps = gps.get();
 
-        lv_label_set_text_fmt(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago",
-                              (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
-                              (unsigned long)(tinygps.location.age() / 1000));
-        lv_label_set_text_fmt(
+        setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
+                                 (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
+                                 (unsigned long)(tinygps.location.age() / 1000),
+                                 tinygps.speed.kmph());
+        setLabelTextFmtIfChanged(
             ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)tinygps.charsProcessed(),
             (unsigned long)tinygps.passedChecksum(), (unsigned long)tinygps.failedChecksum());
 
@@ -3132,7 +3158,7 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         for (const auto &sentence : gps.getSentences()) {
           text += sentence + "\n";
         }
-        lv_label_set_text(ui->m_NMEA.sentences, text.c_str());
+        setLabelTextIfChanged(ui->m_NMEA.sentences, text.c_str());
       },
       1000, this);
   lv_timer_pause(m_NMEATimer);
