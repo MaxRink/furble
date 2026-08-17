@@ -71,6 +71,10 @@ class NikonSmart: public NikonBase {
   const NimBLEUUID UNK6_CHR_UUID {0x00002084, 0x3dd4, 0x4255, 0x8d626dc7b9bd5561};
   const NimBLEUUID UNK7_CHR_UUID {0x00002001, 0x3dd4, 0x4255, 0x8d626dc7b9bd5561};
 
+  // Wait for the post handshake final OK. Kept short because no known body
+  // sends one and the smart device path fails regardless.
+  static constexpr uint32_t FINAL_OK_WAIT_MS = 1000;
+
   // Notification responses.
   static constexpr std::array<uint8_t, 2> SUCCESS = {0x01, 0x00};
   // Carried forward (currently unused).
