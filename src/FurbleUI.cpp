@@ -3647,4 +3647,23 @@ void UI::task(void) {
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
+
+#if defined(FURBLE_SIM)
+bool UI::simulatorHome(void) {
+  lv_menu_clear_history(m_MainMenu.main);
+  lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+  lv_group_focus_obj(m_Menu.at(m_ScanStr).button);
+  return true;
+}
+
+bool UI::simulatorBack(void) {
+  lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+  if (back == nullptr || lv_menu_get_cur_main_page(m_MainMenu.main) == m_MainMenu.page) {
+    return false;
+  }
+
+  lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+  return true;
+}
+#endif
 }  // namespace Furble

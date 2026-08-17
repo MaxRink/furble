@@ -3,7 +3,10 @@
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
 It never changes firmware behavior: no shipping source under src/, include/,
 or lib/ may be modified for the simulator. All adaptation happens through the
-shim headers and the fake implementations here.
+shim headers and the fake implementations here. One narrow exception exists:
+`UI::simulatorHome` and `UI::simulatorBack` in `src/FurbleUI.cpp` give scripts
+deterministic menu navigation. They are guarded by `#if defined(FURBLE_SIM)`,
+which only the sim build defines, so firmware builds compile identical code.
 
 ## Build entry points
 
@@ -35,3 +38,9 @@ shim headers and the fake implementations here.
 - The fake scan delivers its result and the scan end callback in the same
   `update()` tick. The fake UART never emits error events and captures all
   writes; dump them with the `uart-dump` script verb.
+- Script verbs: `wait`/`advance`, `key`/`press`, `capture`, `uart-dump`,
+  `home`, `back`, `exit`. `home` resets to the root menu and focuses Scan.
+  `back` clicks the LVGL header back button and fails on the root page.
+- `sim/scripts/ui-screenshots.txt` captures every modeled page for the
+  screenshot CI workflow. Menu routes are position-sensitive: adding or
+  removing a settings entry changes the `key down` counts in the scripts.

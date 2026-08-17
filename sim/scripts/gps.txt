@@ -11,6 +11,17 @@ key down
 wait 200
 key left
 wait 250
+# GPS starts enabled, so the page shows the full receiver configuration list.
+# Six focus steps skip baud, Update rate, Sentences, Constellation, and Power
+# to reach GPS Data.
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
 key down
 wait 200
 key down
