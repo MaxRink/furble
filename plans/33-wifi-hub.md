@@ -296,7 +296,6 @@ sends.
 
 Rebase notes:
 
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
 - `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
   from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
   `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
