@@ -328,13 +328,15 @@ jobs:
         with:
           path: base-sizes
           key: furble-firmware-size-v1-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            furble-firmware-size-v1-
 
       - name: Render firmware size report
         id: render
         env:
           CURRENT_SIZES: current-sizes
           BASE_SIZES: base-sizes
-          BASE_CACHE_HIT: ${{ steps.base_cache.outputs['cache-hit'] }}
+          BASE_MATCHED_KEY: ${{ steps.base_cache.outputs.cache-matched-key }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
@@ -362,7 +364,16 @@ jobs:
           if not current:
               raise SystemExit("No current firmware size artifacts were found")
 
-          base_cache_hit = os.environ["BASE_CACHE_HIT"] == "true"
+          # The restore step tries the exact base sha first and then falls
+          # back to the newest master size cache via the restore-keys
+          # prefix. cache-matched-key names whichever key actually hit, so
+          # the report can state which commit the baseline came from.
+          key_prefix = "furble-firmware-size-v1-"
+          matched_key = os.environ.get("BASE_MATCHED_KEY", "")
+          baseline_sha = ""
+          if matched_key.startswith(key_prefix):
+              baseline_sha = matched_key[len(key_prefix):]
+          base_cache_hit = bool(baseline_sha)
           base = load_sizes(os.environ["BASE_SIZES"]) if base_cache_hit else {}
 
           def signed_bytes(value):
@@ -421,21 +432,35 @@ jobs:
           ]
 
           base_sha = os.environ["BASE_SHA"]
+          base_ref = os.environ["BASE_REF"]
           short_sha = base_sha[:12]
+          short_baseline = baseline_sha[:12]
           if not base_cache_hit:
               body.extend(
                   [
                       "",
-                      f"> Base size cache for `{os.environ['BASE_REF']}` commit `"
-                      f"{short_sha}` was not found. Deltas are omitted. A successful "
+                      f"> No size cache was found for `{base_ref}`, not even via "
+                      "the prefix fallback. Deltas are omitted. A successful "
                       "firmware build on a master push creates this cache.",
+                  ]
+              )
+          elif baseline_sha == base_sha:
+              body.extend(
+                  [
+                      "",
+                      f"Base comparison: `{base_ref}` commit `{short_sha}`.",
+                      "Flash growth over 1% and any positive RAM delta are marked with ⚠️.",
                   ]
               )
           else:
               body.extend(
                   [
                       "",
-                      f"Base comparison: `{os.environ['BASE_REF']}` commit `{short_sha}`.",
+                      f"Base comparison: `{base_ref}` commit `{short_baseline}` "
+                      "(nearest cached baseline, not the exact PR base).",
+                      f"The PR base commit `{short_sha}` had no size cache. That "
+                      "happens when that master push skipped firmware builds or "
+                      "its cache save had not finished yet.",
                       "Flash growth over 1% and any positive RAM delta are marked with ⚠️.",
                   ]
               )
