@@ -1771,6 +1771,10 @@ void UI::serviceRequests(void) {
       case Request::GPS_POWER:
         M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
         break;
+
+      case Request::IR_RELOAD:
+        updateIRMenuVisibility();
+        break;
     }
   }
 }
@@ -3428,10 +3432,8 @@ void UI::addIRSettingsMenu(const menu_t &parent) {
   addSettingItem(menu.page, NULL, Settings::IR);
 
   lv_obj_t *protocol = addRollerItem(menu.page, m_IRProtoStr, m_IRProtoOptions);
-  uint8_t selected = Settings::load<Settings::IR_PROTO>();
-  if (selected > static_cast<uint8_t>(IR::protocol_t::CANON_DELAYED)) {
-    selected = static_cast<uint8_t>(IR::protocol_t::NIKON);
-  }
+  const uint8_t selected =
+      static_cast<uint8_t>(IR::clampProtocol(Settings::load<Settings::IR_PROTO>()));
   lv_roller_set_selected(protocol, selected, LV_ANIM_OFF);
 
   lv_obj_add_event_cb(

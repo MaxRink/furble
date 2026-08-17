@@ -26,6 +26,7 @@
 
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleIR.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -388,6 +389,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
 
+  // The UI caches the IR menu visibility, so it has to be told as well.
+  if (setting.type == Settings::IR) {
+    UI::sendRequest(UI::Request::IR_RELOAD, 0);
+  }
+
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
   return 0;
@@ -643,6 +649,34 @@ int cmdShutter(int argc, char **argv) {
   return fail("expected press, release or hold");
 }
 
+int cmdIR(int argc, char **argv) {
+  if ((argc < 2) || strcmp(argv[1], "fire")) {
+    return fail("usage: ir fire [protocol]");
+  }
+
+  auto &ir = IR::getInstance();
+  if (!ir.isSupported()) {
+    return fail("no ir emitter on this board");
+  }
+  if (!Settings::load<Settings::IR>()) {
+    return fail("ir is disabled, try 'settings set ir on'");
+  }
+
+  if (argc >= 3) {
+    char *end = nullptr;
+    unsigned long value = strtoul(argv[2], &end, 0);
+    if ((end == argv[2]) || (value > static_cast<uint8_t>(IR::protocol_t::CANON_DELAYED))) {
+      return fail("expected a protocol from 0-3");
+    }
+    ir.fire(static_cast<IR::protocol_t>(value));
+  } else {
+    ir.fire();
+  }
+
+  printf("queued: ir fire\n");
+  return 0;
+}
+
 int cmdFocus(int argc, char **argv) {
   if (argc < 2) {
     return fail("usage: focus press | release");
@@ -750,6 +784,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
+    command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
     command("scan", "scan start | stop | list", cmdScan),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),

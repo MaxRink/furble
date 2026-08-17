@@ -36,6 +36,7 @@ class UI {
     CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
     GPS_RELOAD, /**< arg: unused */
     GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,  /**< arg: unused */
   };
 
   /**
@@ -248,8 +249,8 @@ class UI {
 
   static QueueHandle_t m_RequestQueue;
 
-  /** Drain the console request queue, called with m_Mutex held. */
-  static void serviceRequests(void);
+  /** Drain the console request queue, called on the UI task with m_Mutex held. */
+  void serviceRequests(void);
 #endif
 
   static ConnectContext_t m_ConnectContext;

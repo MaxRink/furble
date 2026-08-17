@@ -2,6 +2,7 @@
 
 #include <M5Unified.h>
 #include <esp_log.h>
+#include <soc/soc_caps.h>
 
 #include "FurbleIR.h"
 #include "FurbleSettings.h"
@@ -12,9 +13,22 @@ namespace {
 
 constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 
+/** Give up on a stalled transmission instead of holding the APB lock forever. */
+constexpr int RMT_TX_TIMEOUT_MS = 1000;
+
 // Nikon ML-L3 timing source: SB-Projects and Gough Lui, both listed in
 // plans/22-ir-remote-trigger.md.
 constexpr uint32_t NIKON_CARRIER_HZ = 38000;
+constexpr uint32_t NIKON_HEADER_MARK_US = 2000;
+constexpr uint32_t NIKON_HEADER_SPACE_US = 27830;
+constexpr uint32_t NIKON_PULSE1_MARK_US = 390;
+constexpr uint32_t NIKON_PULSE1_SPACE_US = 1580;
+constexpr uint32_t NIKON_PULSE2_MARK_US = 410;
+constexpr uint32_t NIKON_PULSE2_SPACE_US = 3580;
+constexpr uint32_t NIKON_STOP_MARK_US = 400;
+// The sources disagree on whether 63.2 ms is the gap between frames or the
+// frame repeat period. Treat it as the gap for now, waveform verification on
+// hardware will settle it.
 constexpr uint32_t NIKON_FRAME_GAP_US = 63000;
 constexpr uint32_t NIKON_GAP_PART_US = NIKON_FRAME_GAP_US / 2;
 
@@ -45,19 +59,19 @@ rmt_symbol_word_t symbol(uint32_t duration0, uint32_t level0, uint32_t duration1
 std::array<rmt_symbol_word_t, 13> encodeNikon(void) {
   // The 63 ms spaces are split because one RMT duration is limited to 32767 us.
   return {
-      symbol(2000, 1, 27830, 0),
-      symbol(500, 1, 1500, 0),
-      symbol(500, 1, 3500, 0),
-      symbol(500, 1, NIKON_GAP_PART_US, 0),
-      symbol(NIKON_GAP_PART_US, 0, 2000, 1),
-      symbol(27830, 0, 500, 1),
-      symbol(1500, 0, 500, 1),
-      symbol(3500, 0, 500, 1),
+      symbol(NIKON_HEADER_MARK_US, 1, NIKON_HEADER_SPACE_US, 0),
+      symbol(NIKON_PULSE1_MARK_US, 1, NIKON_PULSE1_SPACE_US, 0),
+      symbol(NIKON_PULSE2_MARK_US, 1, NIKON_PULSE2_SPACE_US, 0),
+      symbol(NIKON_STOP_MARK_US, 1, NIKON_GAP_PART_US, 0),
+      symbol(NIKON_GAP_PART_US, 0, NIKON_HEADER_MARK_US, 1),
+      symbol(NIKON_HEADER_SPACE_US, 0, NIKON_PULSE1_MARK_US, 1),
+      symbol(NIKON_PULSE1_SPACE_US, 0, NIKON_PULSE2_MARK_US, 1),
+      symbol(NIKON_PULSE2_SPACE_US, 0, NIKON_STOP_MARK_US, 1),
       symbol(NIKON_GAP_PART_US, 0, NIKON_GAP_PART_US, 0),
-      symbol(2000, 1, 27830, 0),
-      symbol(500, 1, 1500, 0),
-      symbol(500, 1, 3500, 0),
-      symbol(500, 1, 1, 0),
+      symbol(NIKON_HEADER_MARK_US, 1, NIKON_HEADER_SPACE_US, 0),
+      symbol(NIKON_PULSE1_MARK_US, 1, NIKON_PULSE1_SPACE_US, 0),
+      symbol(NIKON_PULSE2_MARK_US, 1, NIKON_PULSE2_SPACE_US, 0),
+      symbol(NIKON_STOP_MARK_US, 1, 1, 0),
   };
 }
 
@@ -107,6 +121,8 @@ gpio_num_t pinForBoard(m5::board_t board) {
   switch (board) {
     case m5::board_t::board_M5StickC:
     case m5::board_t::board_M5StickCPlus:
+      // G9 is only free because these boards run the flash in DIO mode.
+      // QIO would claim GPIO 9/10 as SD2/SD3.
       return static_cast<gpio_num_t>(9);
     case m5::board_t::board_M5StickCPlus2:
       return static_cast<gpio_num_t>(19);
@@ -124,6 +140,13 @@ gpio_num_t pinForBoard(m5::board_t board) {
 IR &IR::getInstance(void) {
   static IR instance;
   return instance;
+}
+
+IR::protocol_t IR::clampProtocol(uint8_t value) {
+  if (value > static_cast<uint8_t>(protocol_t::CANON_DELAYED)) {
+    return protocol_t::NIKON;
+  }
+  return static_cast<protocol_t>(value);
 }
 
 void IR::init(void) {
@@ -158,15 +181,13 @@ bool IR::isSupported(void) const {
 }
 
 void IR::fire(void) {
+  fire(clampProtocol(Settings::load<Settings::IR_PROTO>()));
+}
+
+void IR::fire(protocol_t protocol) {
   if (!isSupported() || !Settings::load<Settings::IR>() || m_Queue == nullptr) {
     return;
   }
-
-  uint8_t value = Settings::load<Settings::IR_PROTO>();
-  if (value > static_cast<uint8_t>(protocol_t::CANON_DELAYED)) {
-    value = static_cast<uint8_t>(protocol_t::NIKON);
-  }
-  const protocol_t protocol = static_cast<protocol_t>(value);
 
   if (xQueueSend(m_Queue, &protocol, 0) != pdTRUE) {
     ESP_LOGW(LOG_TAG, "IR trigger already pending.");
@@ -195,7 +216,10 @@ bool IR::createChannel(void) {
   tx.gpio_num = m_Pin;
   tx.clk_src = RMT_CLK_SRC_DEFAULT;
   tx.resolution_hz = RMT_RESOLUTION_HZ;
-  tx.mem_block_symbols = 64;
+  // One hardware memory block, 64 symbols on the ESP32 and 48 on the S3. The
+  // driver rejects anything smaller. Longer trains (the 63 symbol Sony frame)
+  // ping-pong through the block via the threshold interrupt.
+  tx.mem_block_symbols = SOC_RMT_MEM_WORDS_PER_CHANNEL;
   tx.trans_queue_depth = 4;
 
   esp_err_t err = rmt_new_tx_channel(&tx, &m_Channel);
@@ -245,7 +269,9 @@ void IR::transmitSymbols(uint32_t carrier_hz,
   err = rmt_transmit(m_Channel, m_Encoder, symbols, symbol_count * sizeof(rmt_symbol_word_t),
                      &transmit_config);
   if (err == ESP_OK) {
-    err = rmt_tx_wait_all_done(m_Channel, -1);
+    // A bounded wait, then disable regardless. The driver holds its APB lock
+    // between enable and disable, so a hardware stall must not pin it forever.
+    err = rmt_tx_wait_all_done(m_Channel, RMT_TX_TIMEOUT_MS);
   }
 
   esp_err_t disable_err = rmt_disable(m_Channel);

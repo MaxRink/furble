@@ -21,6 +21,9 @@ class IR {
 
   static IR &getInstance(void);
 
+  /** Map a stored protocol value to a valid protocol, out of range means Nikon. */
+  static protocol_t clampProtocol(uint8_t value);
+
   IR(IR const &) = delete;
   IR(IR &&) = delete;
   IR &operator=(IR const &) = delete;
@@ -32,6 +35,9 @@ class IR {
 
   /** Queue one IR shutter trigger without blocking the UI task. */
   void fire(void);
+
+  /** Queue one IR shutter trigger with an explicit protocol. */
+  void fire(protocol_t protocol);
 
  private:
   IR() = default;
