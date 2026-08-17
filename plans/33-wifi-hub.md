@@ -825,6 +825,175 @@ headroom.
 
 ---
 
+# Home Assistant integration design
+
+Added after the displayless build (PR33a) merged on fork master. This section
+extends PR33c. It changes no decision made above. It answers one question:
+what is the right way to make furble a first-class Home Assistant citizen, and
+what exactly does Home Assistant see.
+
+## Three candidate paths
+
+### MQTT with HA discovery, extending PR33c
+
+The path already designed above. furble stays furble, esp-mqtt publishes
+state and discovery payloads, Home Assistant's stock MQTT integration creates
+the entities with zero custom code on the HA side.
+
+Cost accounting: esp-mqtt and cJSON are tens of kilobytes of flash on top of
+the WiFi stack that PR33b already pays for. The discovery layer itself is only
+JSON strings, low single-digit kilobytes. Against the plan 34 slot budget of
+1700K with 686 KB of measured headroom before WiFi, this is the smallest
+possible HA footprint. BLE coexistence is governed by the publish-on-change
+cadence rules already written, and nothing new listens on a socket.
+
+### ESPHome external component
+
+Package furble's camera control as an ESPHome external component, and let
+ESPHome provide WiFi, the native HA API, OTA and configuration.
+
+Rejected. ESPHome is not a library, it is a competing firmware framework with
+its own build system, its own main loop, its own OTA and its own BLE stack
+usage. furble as an external component means porting the vendor protocol
+library, the reconnect state machine and the pairing flows into ESPHome's
+runtime, then maintaining that port beside the real firmware forever. The five
+release environments, the LVGL UI, the companion GATT service and the plan 34
+OTA scheme all live outside ESPHome and would remain, so the project would
+ship two firmwares. ESPHome's native API also holds a persistent TCP
+connection from Home Assistant with its own keepalive, which is a standing
+radio cost the MQTT cadence rules exist to avoid. The one thing ESPHome would
+buy, effortless HA entities, is exactly what MQTT discovery already provides
+for a few kilobytes of JSON.
+
+### Native REST plus a custom HA integration
+
+Rejected for the reasons PR33d already states: no authentication story on the
+device, flash spent on an HTTP server, and a custom Home Assistant integration
+to write and maintain, which is the work #248 explicitly hoped MQTT would
+avoid. Nothing in the HA layer changes that judgment. No REST endpoints are
+part of this design.
+
+**Recommendation: MQTT with HA discovery, as PR33c, with the entity model
+below.** The displayless build merged first, so the mains-powered wall device
+that #249 asked for exists; MQTT discovery is the shortest path from that
+device to a dashboard button.
+
+## Entity model: hub device plus camera devices
+
+PR33c's discovery table treats furble as one flat device. Home Assistant can
+do better: each saved camera should be its own HA device, linked to the hub,
+so automations and dashboards target "the A7 III" rather than "furble camera
+slot 2". MQTT discovery supports this directly through `via_device` in the
+`device` block.
+
+Camera identity uses the stable per-camera `camera_id` designed in
+[51-app-feature-parity.md](51-app-feature-parity.md) section 2.1. The ids are
+allocated once, never reused, and survive reordering, which is exactly what an
+HA `unique_id` needs. Without them, deleting one camera would silently rebind
+every dashboard reference to a different body.
+
+### The hub device
+
+`furble_<ID>`, where `ID` is the existing `furble-xxxx` identifier. Entities:
+
+| Component | Entity | Topic |
+|---|---|---|
+| `button` | shutter, all connected cameras | `BASE/ID/cmd/shutter`, payload `hold 200` |
+| `button` | focus | `BASE/ID/cmd/focus` |
+| `switch` | intervalometer | `BASE/ID/cmd/interval`, state `BASE/ID/state/interval` |
+| `sensor` | battery percent, `device_class: battery` | `BASE/ID/state/battery` |
+| `sensor` | battery voltage, diagnostic category | `BASE/ID/state/battery` |
+| `device_tracker` | GPS position, `source_type: gps` | see below |
+
+The `device_tracker` question from the PR33c table gets a firm yes, with
+constraints. The tracker uses `json_attributes_topic` pointing at
+`BASE/ID/state/gps` for latitude, longitude and gps_accuracy. Publish only
+while a fix is held and never retained, per the PR33c cadence rules; a
+retained position for a powered-off device is a lie on a map. When no fix is
+held the tracker simply goes stale, which HA renders honestly.
+
+### One device per camera
+
+Discovery topic `homeassistant/device/furble_<ID>_cam<camera_id>/config`,
+retained, published beside the hub payload. Each carries
+`via_device: furble_<ID>`. Entities per camera:
+
+| Component | Entity | Topic |
+|---|---|---|
+| `binary_sensor` | connected, `device_class: connectivity` | `BASE/ID/camera/<camera_id>/state` |
+| `sensor` | link RSSI, dBm, diagnostic category | same state topic, value template |
+| `button` | connect | `BASE/ID/cmd/connect`, payload `<camera_id>` |
+
+New state topic, retained, published on the same change-driven cadence as
+`state/cameras`:
+
+```
+BASE/ID/camera/<camera_id>/state
+  JSON: name, type, connected, state, progress, rssi
+```
+
+The flat `BASE/ID/state/cameras` array from PR33c stays for compatibility and
+for dashboards that want one blob. The per-camera topics are additive.
+
+Per-camera shutter buttons are deliberately absent from version 1.
+`Control::sendCommand` fans out to all active targets
+(`src/FurbleControl.cpp:183-185`); there is no per-target trigger in the
+control layer yet. Plan 51 reserves per-camera addressing on its wire, and
+when `Control` grows it, the camera device gains a shutter button in the same
+release. Declaring the button before the firmware can honor it would fire
+every camera and surprise exactly the multi-camera users it targets.
+
+Availability: every camera entity lists two availability topics with
+`availability_mode: all`, the hub LWT `BASE/ID/status` and its own connected
+state. A camera that is saved but disconnected shows unavailable rather than
+off, which matches what the on-device Cameras page shows as `lost`.
+
+### Location push, the reverse direction
+
+Home Assistant already knows where things are. A new command topic closes the
+#248 QOL request for devices lacking GPS without any OSM lookup on the
+device:
+
+```
+BASE/ID/cmd/location
+  JSON: latitude, longitude, altitude, accuracy, timestamp
+```
+
+The payload feeds `GPS::setExternalFix`, the same entry point the companion
+BLE location write uses, and the same 30 s staleness arbitration applies. An
+HA automation can forward a person entity or zone coordinates to a studio
+furble on mains power. This is strictly optional, off unless something
+publishes to it, and costs one subscription.
+
+## Mapping to upstream issue #248
+
+| #248 item | Where it lands |
+|---|---|
+| MQTT control, HA without a custom integration | PR33c plus this entity model |
+| WebUI | deferred, PR33d, unchanged |
+| REST API | deferred, PR33d, unchanged |
+| NTP sync | PR33b |
+| Location parser for devices lacking GPS | `cmd/location` topic above, HA side pushes, no OSM client on device |
+| OTA updates | `plans/34-ota-partitions.md` |
+
+The maintainer named MQTT as the first target in
+[#248 comment 3843927598](https://github.com/gkoh/furble/issues/248#issuecomment-3843927598).
+This section stays inside that choice and only deepens the Home Assistant
+half of it.
+
+## Delivery
+
+The hub-level entity model ships inside PR33c as already scoped. The
+per-camera device layer and the location command topic are a small follow-up
+PR after PR33c, because they depend on the stable camera ids from plan 51 and
+should not hold the first MQTT release hostage to that migration. Verification
+extends the PR33c list: confirm one HA device per saved camera with working
+availability, confirm deleting a camera removes its device via an empty
+retained discovery payload, and confirm a pushed location reaches a connected
+camera's geotag within one update cycle.
+
+---
+
 # Critical risk: BLE and WiFi coexistence
 
 This is the section that decides whether this whole document is a good idea.
