@@ -360,6 +360,48 @@ void testSettings(void) {
                 "a uint32 setting saves");
   checkContains(runDirect("settings get scan_timeout").out, "value: 45", "the uint32 reads back");
 
+  // Fix hold and extrapolation. The hold is the only uint8 with its own range
+  // parser, and both of them have to reach the GPS reload, because a hold the
+  // user set from the console that only took effect after a reboot would look
+  // like the feature simply not working.
+  checkContains(runDirect("settings get gps_hold").out, "type: uint8",
+                "the fix hold setting is a uint8");
+  checkContains(runDirect("settings get gps_hold").out, "applies: immediately",
+                "the fix hold setting applies at once");
+  // It renders its number rather than declining to. printValue is a separate
+  // switch from settingType, so a setting can be typed and still unprintable.
+  checkContains(runDirect("settings get gps_hold").out, "value: 0",
+                "fix hold defaults to off and prints it");
+  checkContains(runDirect("settings set gps_hold 4").out, "saved: gps_hold",
+                "the fix hold setting saves");
+  checkContains(runDirect("settings get gps_hold").out, "value: 4",
+                "the saved fix hold reads back");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_HOLD) == 4,
+        "the fix hold value reached the real Settings store");
+
+  const Result badHold = runDirect("settings set gps_hold 5");
+  check(badHold.rc != 0, "a fix hold value past the last option fails");
+  checkContains(badHold.out, "expected 0-4", "the fix hold range error names the range");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_HOLD) == 4,
+        "a rejected fix hold value does not overwrite the saved one");
+
+  checkContains(runDirect("settings get gps_extrap").out, "type: bool",
+                "the extrapolate setting is a bool");
+  checkContains(runDirect("settings get gps_extrap").out, "applies: immediately",
+                "the extrapolate setting applies at once");
+  checkContains(runDirect("settings get gps_extrap").out, "value: false",
+                "extrapolation defaults to off");
+  checkContains(runDirect("settings set gps_extrap on").out, "saved: gps_extrap",
+                "the extrapolate setting saves");
+  checkContains(runDirect("settings get gps_extrap").out, "value: true",
+                "the saved extrapolate setting reads back");
+
+  const size_t beforeHoldReload = ConsoleHost::ui().requests.size();
+  runDirect("settings set gps_hold 1");
+  runDirect("settings set gps_extrap off");
+  check(ConsoleHost::ui().requests.size() >= beforeHoldReload + 2,
+        "both fix hold settings queue a GPS reload");
+
   checkContains(runDirect("settings set button_mode one-button").out, "saved: button_mode",
                 "the button mode saves");
   checkContains(runDirect("settings set display_mode console").out, "saved: display_mode",
@@ -466,6 +508,7 @@ void testGPS(void) {
   // The degraded flag and retry count live here too, in one snapshot, so the
   // console cannot report a fresh cycle state beside a stale retry count.
   gps.source = Furble::GPS::SOURCE_UART;
+  gps.fix = Furble::GPS::Fix::LIVE;
   gps.receiver = {"degraded", Furble::GPS::POWER_STANDBY, 10, 1000, 42000, true, 1, true, true, 3};
 
   const Result status = runDirect("gps");
@@ -488,6 +531,26 @@ void testGPS(void) {
   checkContains(status.out, "assist: 1", "gps status reports the assisted start mode");
   checkContains(status.out, "assist_cache: true", "gps status reports the assist cache state");
   checkContains(status.out, "raw: false", "gps status reports the NMEA mirror");
+  // The fix hold state. "fix: true" above is the receiver's own fix flag, which
+  // says nothing about whether the position being sent to the camera is live or
+  // held, and the GPS Data page is not reachable from a bench script.
+  checkContains(status.out, "fix_state: live", "gps status reports a live fix");
+  checkContains(status.out, "hold: 0", "gps status reports the fix hold bound");
+  checkContains(status.out, "hold_remaining: 0", "gps status reports no held time");
+
+  gps.fix = Furble::GPS::Fix::HELD;
+  gps.holdLimitMs = 30000;
+  gps.holdRemainingMs = 12000;
+  const Result held = runDirect("gps");
+  checkContains(held.out, "fix_state: held", "gps status reports a held fix");
+  checkContains(held.out, "hold: 30000", "gps status reports the configured bound");
+  checkContains(held.out, "hold_remaining: 12000", "gps status reports the time left");
+
+  gps.fix = Furble::GPS::Fix::NONE;
+  gps.holdRemainingMs = 0;
+  checkContains(runDirect("gps").out, "fix_state: none",
+                "gps status reports a lost fix once the hold expires");
+  gps.holdLimitMs = 0;
 
   // A receiver that has said nothing has no age, and "none" must not read as a
   // zero second age.

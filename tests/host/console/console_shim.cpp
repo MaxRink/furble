@@ -726,6 +726,18 @@ GPS::source_t GPS::getSource(void) const {
   return ConsoleHost::gps().source;
 }
 
+Furble::GPS::Fix Furble::GPS::getFix(void) const {
+  return ConsoleHost::gps().fix;
+}
+
+uint32_t Furble::GPS::getHoldLimitMs(void) const {
+  return ConsoleHost::gps().holdLimitMs;
+}
+
+uint32_t Furble::GPS::getHoldRemainingMs(void) const {
+  return ConsoleHost::gps().holdRemainingMs;
+}
+
 const char *GPS::sourceName(source_t source) {
   switch (source) {
     case SOURCE_NONE:

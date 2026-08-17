@@ -60,6 +60,12 @@ class GPS {
     SOURCE_COMPANION,
   };
 
+  enum class Fix : uint8_t {
+    NONE,
+    HELD,
+    LIVE,
+  };
+
   struct receiver_status_t {
     const char *cycle_state;
     uint8_t power_policy;
@@ -81,6 +87,9 @@ class GPS {
   /** Supported standby intervals, in seconds. */
   static constexpr const std::array<uint8_t, 4> DUTY_SECONDS = {0, 5, 10, 15};
 
+  /** Highest valid fix hold setting. */
+  static constexpr const uint8_t HOLD_MAX = 4;
+
   static GPS &getInstance(void);
 
   bool isEnabled(void) const;
@@ -91,6 +100,9 @@ class GPS {
   cycle_status_t getCycleStatusSnapshot(void) const;
   receiver_status_t getReceiverStatus(void) const;
   source_t getSource(void) const;
+  Fix getFix(void) const;
+  uint32_t getHoldLimitMs(void) const;
+  uint32_t getHoldRemainingMs(void) const;
 
   bool sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
   bool sendAidIni(void);

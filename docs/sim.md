@@ -256,8 +256,8 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
-`gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
-`auto_off`, `low_batt`, and `fb_output`.
+`gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
+`text_size`, `auto_off`, `low_batt`, and `fb_output`.
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -270,7 +270,7 @@ Battery seeds select the initial deterministic platform sample:
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `recon_backoff`,
 `sleep_conn`, and
-`boot_splash`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
+`boot_splash`, `gps_extrap`, `sd_gpx`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
 `imu_sensor` controls modeled IMU presence. The M5StickS3 model also accepts
 `watchdog`; other board models reject that seed because they cannot apply it.
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
@@ -335,6 +335,12 @@ false` opts a scenario out of the continuous liveness invariant enforcement
 (detection still counts violations), and `liveness_grace_ms` overrides the
 3000 ms divergence grace period. The interval settings are `interval_count`, `interval_delay`,
 `interval_shutter`, and `interval_wait`; `bulb_duration` seeds the bulb timer.
+`gps_stationary` selects the stationary canned NMEA track instead of the
+moving one. Both report the same position, but the stationary track reports
+0.412 knots rather than 22.678, which is below the speed floor fix hold
+extrapolation needs. It is the seed a scenario uses to prove that a parked user
+is never dead reckoned.
+
 `gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`,
 `write-error`, or `pause` before the GPS task starts.
 
@@ -403,8 +409,9 @@ action imu.pitch DEGREES
 
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
-`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
-`gps_data`, `nmea`, `timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
+`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
+`gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`, `bluetooth`,
+`tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -414,8 +421,9 @@ action imu.pitch DEGREES
 `connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
-`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
-`gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`, `about`,
+`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
+`gps`, `gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`,
+`about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, and `interval_wait`.
@@ -510,6 +518,9 @@ The complete `ui.*` query set is:
 | `ui.gps_lon` | Rendered longitude value. |
 | `ui.gps_satellites` | Rendered satellite count. |
 | `ui.gps_fix` | `yes` when the GPS source is active, otherwise `no`. |
+| `ui.gps_fix_state` | Rendered fix hold row: `hidden` while fix hold is off, otherwise `live`, `held`, or `searching`. |
+| `ui.gps_hold_remaining` | Rendered seconds left on a held fix, `none` in any other state. |
+| `ui.gps_extrap_enabled` | `yes` or `no` for the Extrapolate switch, which is greyed out until fix hold is set. `none` off the GPS settings page. |
 | `ui.gps_source` | Rendered fix source, `uart`, `comp`, `none`, or `none` when the row is absent. |
 | `ui.gps_link_age` | Rendered sentence age exactly as drawn, such as `3s`, `17m`, `99m+`, or `n/a`. |
 | `ui.gps_cycle` | Rendered power cycle state, such as `waiting` or `degraded`. |
@@ -571,6 +582,17 @@ The other namespaces are:
 - `control.connecting_camera`: name of the camera currently being connected.
 - `camera.count`: numeric camera-list row count, useful for scan de-duplication
   assertions.
+- `gpx.points`: track points the firmware has queued for the SD writer. A held
+  GPS fix reaches the camera but must never reach the track log, so a scenario
+  proves that split by holding this still while `camera.geo_count` climbs.
+  Needs `sd_gpx` seeded and the `sd` capability.
+- `camera.geo_count`, `camera.geo_lat_e5`, `camera.geo_lon_e5`, and
+  `camera.geo_utc_s`: the geotag that last reached the simulated camera through
+  the production GPS to camera path. Coordinates are in units of 1e-5 degrees
+  and the timestamp is seconds since midnight UTC, both integers, so
+  `assert_min` and `assert_max` can bound them. Fix hold exists so these keep
+  arriving after the receiver loses its fix, so this is where a hold scenario
+  asserts the far end rather than inferring it from the GPS Data page.
 - `scan.end_callbacks`: numeric count of scan-end callbacks delivered by the
   current scan. A bounded discovery scan should deliver exactly one callback.
 - `scan.advertisements`: number of advertisements the virtual radio has

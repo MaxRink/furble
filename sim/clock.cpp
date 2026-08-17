@@ -80,3 +80,13 @@ void setClockAdvanceHook(ClockAdvanceHook hook) {
 }
 
 }  // namespace Furble::Sim
+
+// TinyGPSPlus ages every reading against this global millis(). Its own
+// non-Arduino fallback reads the host wall clock, which made every fix age and
+// every GPS Data page render depend on how long the run happened to take. The
+// simulator builds TinyGPS++.cpp with that fallback suppressed and supplies the
+// virtual clock here instead, so fix age advances with `wait` like everything
+// else does.
+unsigned long millis(void) {
+  return Furble::Sim::clockMillis();
+}

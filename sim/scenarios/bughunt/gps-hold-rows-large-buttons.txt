@@ -1,0 +1,59 @@
+# The two fix hold rows have to fit and stay reachable on every panel, in both
+# navigation layouts, at every text size. The GPS settings page is the longest
+# settings page furble has and these two rows made it longer, so a row that
+# overflowed or that sat under a floating navigation indicator would be
+# unreachable rather than merely ugly.
+#
+# Fix hold is seeded on so the Extrapolate switch renders enabled rather than
+# greyed out, which is the wider of its two states.
+#
+# Killing mutations, both confirmed to fail this file:
+#   - give either row a fixed width instead of letting it wrap: the Fix Hold
+#     roller page reports ui.overflow yes.
+#   - drop the Fix Hold page from the menu: ui.page reads other, not gps_hold.
+seed gps true
+seed gps_hold 2
+seed gps_extrap true
+seed text_size 2
+seed no_touch true
+wait 400
+action nav gps
+wait 400
+assert ui.page gps
+# Fix hold is seeded on here, so the switch is reachable. The greyed out half of
+# the pair is in e2e/gps-hold-default-off.txt.
+assert ui.gps_extrap_enabled yes
+# The GPS settings page is an intentional-scroll page, so the guard is that both
+# ends of it stay reachable, exactly as bughunt/page-matrix.txt does.
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+# Floating navigation indicators already overlap long settings pages on the
+# physical button layout. The 80x160 panel overlaps the GPS settings page on
+# master too, and the 320x240 panel never overlaps. The gap is therefore
+# recorded per panel rather than pinned, so this file guards the panels that are
+# clear today without pretending the 80x160 one is.
+xassert board-varies ui.indicator_clearance clear
+assert_min ui.visible_objects 1
+
+action nav gps_hold
+wait 400
+assert ui.page gps_hold
+assert ui.overflow no
+# Every GPS roller page overlaps the floating indicator on some panel and text
+# size combinations, on master too: gps_rate and gps_assist both report one
+# overlap on the 80x160 panel at every size, and on the 135x240 panel at the
+# Large size. This page inherits the same addGPSOptionMenu layout, so the gap is
+# recorded rather than pinned. Promote both lines to assert in the PR that fixes
+# the shared roller layout.
+xassert board-varies ui.indicator_clearance clear
+assert_min ui.visible_objects 1
+back
+wait 400
+assert ui.page gps
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+exit

@@ -20,6 +20,7 @@
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleGPSHold.h"
 #include "FurbleGPX.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -138,6 +139,7 @@ void wakeGPSService(QueueHandle_t queue) {
   const uart_event_t wake = {.type = UART_DATA, .size = 0};
   xQueueSendToFront(queue, &wake, 0);
 }
+
 }  // namespace
 
 GPS &GPS::getInstance() {
@@ -1413,12 +1415,22 @@ void GPS::disable(void) {
   setRailPower(false);
 
   releasePowerLock();
+
+  m_FixCache = {};
+  m_HoldActive = false;
+  m_HoldRemainingMs.store(0);
+  m_Fix.store(static_cast<uint8_t>(Fix::NONE));
+  m_Source.store(SOURCE_NONE);
+  m_Satellites.store(0);
 }
 
 /** Refresh the setting from NVS. */
 void GPS::reloadSetting(void) {
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   reloadLogSettings();
+  const uint8_t hold = Settings::load<Settings::GPS_HOLD>();
+  m_HoldLimitMs.store(gpsHoldLimitMs(hold));
+  m_Extrapolate.store(Settings::load<Settings::GPS_EXTRAP>());
 
   m_Enabled = Settings::load<Settings::GPS>();
   if (m_Enabled) {
@@ -1509,17 +1521,40 @@ void GPS::clearExternalFix(void) {
   m_ExternalFix = {};
   m_ExternalFixReceivedMs = 0;
   m_HasExternalFix = false;
+
+  // Dropping the companion ends that fix source, so its cached position must
+  // not keep being held. The cache belongs to the update() caller, so raise a
+  // flag here and let update() clear it.
+  m_ExternalDropped.store(true);
 }
 
 /** Send GPS data updates to the control task. */
 void GPS::update(void) {
   const uint64_t now_ms = esp_timer_get_time() / 1000;
+  const uint32_t now_tick = Platform::getInstance().tick();
+
+  // A cached companion fix dies with its companion. A cached wired fix does not.
+  if (m_ExternalDropped.exchange(false) && (m_FixCache.source == SOURCE_COMPANION)) {
+    m_FixCache = {};
+    m_HoldActive = false;
+    m_HoldRemainingMs.store(0);
+  }
   Camera::gps_t dgps = {};
   Camera::timesync_t timesync = {};
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
   bool altitudeValid = false;
   const status_t status = getStatusSnapshot();
+  // When the receiver produced this fix, not when update() got round to looking
+  // at it. A fix is only declared stale after the freshness window, so anchoring
+  // on now_tick would throw away up to that whole window: the held timestamp
+  // would start a full window behind, and the projection would travel a full
+  // window short.
+  uint32_t fix_tick = now_tick;
+  double course_deg = 0.0;
+  double speed_mps = 0.0;
+  bool course_valid = false;
+  bool speed_valid = false;
 
   if (wiredFixIsFresh(status)) {
     source = SOURCE_UART;
@@ -1543,6 +1578,15 @@ void GPS::update(void) {
     updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(std::min<uint32_t>(status.satellites, 255u));
     altitudeValid = status.altitude_valid;
+    fix_tick = now_tick - status.time_age;
+    course_valid = m_GPS.course.isValid() && (m_GPS.course.age() < MAX_AGE_MS);
+    speed_valid = m_GPS.speed.isValid() && (m_GPS.speed.age() < MAX_AGE_MS);
+    if (course_valid) {
+      course_deg = m_GPS.course.deg();
+    }
+    if (speed_valid) {
+      speed_mps = m_GPS.speed.mps();
+    }
   } else {
     external_fix_t external = {};
     uint64_t received_ms = 0;
@@ -1565,14 +1609,69 @@ void GPS::update(void) {
       timesync = external.timesync;
       satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
       altitudeValid = external.altitude_valid;
+      // The companion reports how old its fix already was when it sent it, on
+      // top of how long ago it arrived here.
+      fix_tick = now_tick - static_cast<uint32_t>(external.age_ms + elapsed_ms);
     }
+  }
+
+  Fix fix = Fix::NONE;
+  if (source != SOURCE_NONE) {
+    m_FixCache = {
+        dgps,
+        timesync,
+        fix_tick,
+        course_deg,
+        speed_mps,
+        source,
+        course_valid && std::isfinite(course_deg),
+        speed_valid && std::isfinite(speed_mps),
+        true,
+    };
+    m_HoldActive = false;
+    m_HoldRemainingMs.store(0);
+    fix = Fix::LIVE;
+  } else if (m_FixCache.valid) {
+    if (!m_HoldActive) {
+      m_HoldStartTick = now_tick;
+      m_HoldActive = true;
+    }
+
+    const uint32_t hold_limit_ms = m_HoldLimitMs.load();
+    const uint32_t hold_elapsed_ms = now_tick - m_HoldStartTick;
+    Camera::timesync_t held_timesync = {};
+    if (gpsHoldInBound(hold_elapsed_ms, hold_limit_ms)
+        && gpsAdvanceUtc(m_FixCache.timesync, now_tick - m_FixCache.tick, held_timesync)) {
+      dgps = m_FixCache.gps;
+      timesync = held_timesync;
+      source = m_FixCache.source;
+      satellites =
+          static_cast<uint8_t>(std::min<uint32_t>(static_cast<uint32_t>(dgps.satellites), 255u));
+
+      // No motion source exists yet, so a stationary result is never assumed.
+      // The reported speed is the only evidence of motion available here.
+      if (gpsExtrapolateAllowed(m_Extrapolate.load(), m_FixCache.course_valid,
+                                m_FixCache.speed_valid, m_FixCache.speed_mps)) {
+        gpsExtrapolate(m_FixCache.gps.latitude, m_FixCache.gps.longitude, m_FixCache.course_deg,
+                       m_FixCache.speed_mps,
+                       gpsExtrapolateElapsedMs(now_tick - m_FixCache.tick, hold_elapsed_ms),
+                       dgps.latitude, dgps.longitude);
+      }
+
+      m_HoldRemainingMs.store(gpsHoldRemainingMs(hold_elapsed_ms, hold_limit_ms));
+      fix = Fix::HELD;
+    }
+  }
+
+  if (fix != Fix::HELD) {
+    m_HoldRemainingMs.store(0);
   }
 
   m_Source.store(static_cast<uint8_t>(source));
   m_Satellites.store(satellites);
-  m_HasFix = (source != SOURCE_NONE);
+  m_Fix.store(static_cast<uint8_t>(fix));
 
-  if (m_HasFix) {
+  if (fix != Fix::NONE) {
     Control::getInstance().updateGPS(dgps, timesync);
 
     const uint32_t fixSequence = m_FixSequence.load();
@@ -1584,8 +1683,11 @@ void GPS::update(void) {
     }
 
     // both fix sources are logged, the point is built from the normalized
-    // dgps and timesync values and only queued, the SD writer task does the I/O
-    if (m_LogEnabled.load()) {
+    // dgps and timesync values and only queued, the SD writer task does the I/O.
+    // A held or extrapolated fix is deliberately not logged: the camera geotag
+    // wants the last known position, but a track log would record an hour of
+    // synthetic points that no reader could tell from measured ones.
+    if (m_LogEnabled.load() && (fix == Fix::LIVE)) {
       const uint32_t now = Platform::getInstance().tick();
       if ((m_LastLoggedFix == 0) || ((now - m_LastLoggedFix) >= m_LogPeriodMs.load())) {
         // a stale fix repeats its timestamp under duty cycling, log it once
@@ -1636,10 +1738,10 @@ void GPS::update(void) {
   // setting the source invalidates the image and forces a decode, only do it
   // when the icon actually changes
   const lv_image_dsc_t *symbol = &icon_location_disabled;
-  if (source == SOURCE_UART) {
-    symbol = &icon_my_location;
-  } else if (source == SOURCE_COMPANION) {
+  if (fix == Fix::HELD || (fix == Fix::LIVE && source == SOURCE_COMPANION)) {
     symbol = &icon_location_searching;
+  } else if (fix == Fix::LIVE) {
+    symbol = &icon_my_location;
   } else if (degraded) {
     symbol = &icon_location_searching;
   }
@@ -1676,6 +1778,18 @@ GPS::source_t GPS::getSource(void) const {
 
 uint8_t GPS::getSatellites(void) const {
   return m_Satellites.load();
+}
+
+GPS::Fix GPS::getFix(void) const {
+  return static_cast<Fix>(m_Fix.load());
+}
+
+uint32_t GPS::getHoldRemainingMs(void) const {
+  return m_HoldRemainingMs.load();
+}
+
+uint32_t GPS::getHoldLimitMs(void) const {
+  return m_HoldLimitMs.load();
 }
 
 void GPS::completeNavxQuery(void) {

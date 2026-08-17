@@ -113,6 +113,11 @@ wait 100
 print ui.page
 print ui.overflow
 assert ui.overflow no
+action nav gps_hold
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
 action nav gps_data
 wait 300
 print ui.page

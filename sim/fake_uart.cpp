@@ -32,6 +32,23 @@ constexpr char gpsData[] =
     "$GPRMC,123519.00,A,4807.038,N,01131.000,E,22.678,0.0,230394,,,A*67\r\n"
     "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*69\r\n";
 
+// The same fix standing still. Fix hold extrapolation only projects a track
+// above 2 m/s, so a scenario needs a receiver that reports motion below it to
+// prove a parked user is never moved around by dead reckoning. Padded to the
+// same length as the moving track so a burst already in flight stays coherent.
+constexpr char gpsDataStationary[] =
+    "$GPRMC,123519.00,A,4807.038,N,01131.000,E,00.412,0.0,230394,,,A*69\r\n"
+    "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*69\r\n";
+
+static_assert(sizeof(gpsDataStationary) == sizeof(gpsData),
+              "both canned tracks must be the same length");
+
+bool gpsStationary = false;
+
+const char *gpsSentences(void) {
+  return gpsStationary ? gpsDataStationary : gpsData;
+}
+
 uint32_t gpsRatePeriodMillis(void) {
   constexpr uint32_t periods[] = {1000, 1000, 500, 200, 100};
   const uint8_t rate = Furble::Settings::load<Furble::Settings::GPS_RATE>();
@@ -175,7 +192,7 @@ int uart_read_bytes(uart_port_t, uint8_t *buffer, uint32_t length, TickType_t) {
   }
   const size_t remaining = (sizeof(gpsData) - 1) - gpsOffset;
   const size_t count = std::min<size_t>(length, remaining);
-  std::memcpy(buffer, gpsData + gpsOffset, count);
+  std::memcpy(buffer, gpsSentences() + gpsOffset, count);
   gpsOffset += count;
   if (gpsOffset >= sizeof(gpsData) - 1) {
     gpsEventQueued = false;
@@ -252,6 +269,11 @@ std::vector<std::string> furble_sim_uart_take_writes(void) {
 void furble_sim_uart_clear_writes(void) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   uartWrites.clear();
+}
+
+void furble_sim_uart_set_stationary(bool stationary) {
+  const std::lock_guard<std::mutex> lock(gpsMutex);
+  gpsStationary = stationary;
 }
 
 void furble_sim_uart_set_mode(const char *mode) {

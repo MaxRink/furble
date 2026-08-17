@@ -81,6 +81,9 @@ std::vector<std::string> furble_sim_uart_writes_snapshot(void);
 std::vector<std::string> furble_sim_uart_take_writes(void);
 void furble_sim_uart_clear_writes(void);
 void furble_sim_uart_set_mode(const char *mode);
+
+/** Select the stationary canned NMEA track instead of the moving one. */
+void furble_sim_uart_set_stationary(bool stationary);
 void furble_sim_uart_inject_event(const char *event);
 #endif
 

@@ -187,3 +187,10 @@ set_target_properties(furble-sim PROPERTIES ENABLE_EXPORTS ON)
 if(APPLE)
   target_link_libraries(furble-sim PRIVATE "-framework Cocoa")
 endif()
+
+# TinyGPSPlus ages readings against a global millis(). Suppress its host
+# wall-clock fallback so sim/clock.cpp can supply the virtual one. __AVR__
+# guards nothing else in that file. Keep this in step with sim/build.sh.
+set_source_files_properties(
+    "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
+    PROPERTIES COMPILE_DEFINITIONS "__AVR__")
