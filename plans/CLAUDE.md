@@ -8,6 +8,8 @@ lands on fork master. This file applies once it does.
 
 - Each PR must update its own plans/NN doc before merge: implementation state,
   and any deviation from the written plan with the reason.
+- Fork-only delivery changes record their implementation state in the related
+  plan even when the upstream plan says the work has no PR.
 - Docs state motivation first, then design. Keep the upstream maintainer's
   preferences in mind: issue first, fewer UI elements, defaults keep current
   behavior, everything new is configurable.

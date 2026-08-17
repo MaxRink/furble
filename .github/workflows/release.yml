@@ -6,6 +6,7 @@ on:
 
 env:
   FURBLE_VERSION: ${{ github.ref_name }}+${{ github.run_attempt }}
+  FURBLE_TEST: "0"
 
 jobs:
   build:
@@ -70,6 +71,7 @@ jobs:
           # PLATFORM carries the -debug suffix for debug builds. The suffix
           # flows straight into the binary paths in manifest.tmpl, while the
           # flash offsets stay shared with the release path.
+          RELEASE: ${{ github.ref_name }}
           PLATFORM: ${{ matrix.platform }}${{ matrix.variant }}
         run: |
           python generate-manifest.py > ../manifest_${{ matrix.platform }}${{ matrix.variant }}.json
