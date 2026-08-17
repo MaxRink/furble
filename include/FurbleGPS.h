@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -27,6 +28,7 @@ using lv_obj_t = _lv_obj_t;
 #include <cstdint>
 #include <mutex>
 
+#include "Camera.h"
 #include "FurblePower.h"
 
 namespace Furble {
@@ -42,9 +44,11 @@ class GPS {
     Camera::gps_t gps;
     Camera::timesync_t timesync;
     uint32_t age_ms;
+    float accuracy_m;
     bool position_valid;
     bool time_valid;
     bool altitude_valid;
+    bool accuracy_valid;
   } external_fix_t;
 
   static GPS &getInstance();
@@ -66,6 +70,7 @@ class GPS {
   TinyGPSPlus &get(void);
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
+  bool getCurrentFix(external_fix_t &fix) const;
 
   void reset(void);
   void task(void);
@@ -178,13 +183,15 @@ class GPS {
   QueueHandle_t m_Queue = NULL;
 
   std::atomic<bool> m_Enabled = false;
-  bool m_HasFix = false;
+  std::atomic<bool> m_HasFix = false;
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
   std::atomic<uint8_t> m_Satellites {0};
   external_fix_t m_ExternalFix = {};
   uint64_t m_ExternalFixReceivedMs = 0;
   bool m_HasExternalFix = false;
   mutable std::mutex m_ExternalMutex;
+  external_fix_t m_CurrentFix = {};
+  mutable std::mutex m_FixMutex;
   TinyGPSPlus m_GPS;
 
   uint8_t m_PowerPolicy = POWER_ALWAYS_ON;

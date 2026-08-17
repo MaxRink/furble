@@ -7,6 +7,7 @@ set(furble_sources
     FurbleFeedback.cpp
     FurbleGPS.cpp
     FurbleIR.cpp
+    FurbleMQTT.cpp
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleSettings.cpp
@@ -32,4 +33,5 @@ endif()
 # them out and the release binaries are unchanged.
 idf_component_register(SRCS ${furble_sources}
                        PRIV_REQUIRES console esp_driver_rmt esp_driver_usb_serial_jtag esp_pm
+                                     mqtt json esp_netif
                        REQUIRES icons)

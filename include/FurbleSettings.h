@@ -50,6 +50,12 @@ class Settings {
     FB_EVENTS,
     FB_VOLUME,
     PRESET_PICKER,
+    MQTT,
+    MQTT_URI,
+    MQTT_USER,
+    MQTT_PASS,
+    MQTT_BASE,
+    MQTT_HA,
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
@@ -132,13 +138,13 @@ class Settings {
   template <type_t S>
   struct storage_type;
 
-  /** Load a setting — type deduced from the setting. */
+  /** Load a setting. The type is deduced from the setting. */
   template <type_t S>
   static typename storage_type<S>::type load() {
     return load<typename storage_type<S>::type>(S);
   }
 
-  /** Save a setting — type deduced from the setting. */
+  /** Save a setting. The type is deduced from the setting. */
   template <type_t S>
   static void save(const typename storage_type<S>::type &value) {
     save<typename storage_type<S>::type>(S, value);
@@ -302,6 +308,30 @@ struct Settings::storage_type<Settings::FB_VOLUME> {
 };
 template <>
 struct Settings::storage_type<Settings::PRESET_PICKER> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_URI> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_USER> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_PASS> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_BASE> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_HA> {
   using type = bool;
 };
 #if !defined(FURBLE_NO_DISPLAY)
