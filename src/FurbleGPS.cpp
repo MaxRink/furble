@@ -1279,9 +1279,10 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
   }
 
   if (fix.time_valid
-      && ((fix.timesync.month < 1) || (fix.timesync.month > 12) || (fix.timesync.day < 1)
-          || (fix.timesync.day > 31) || (fix.timesync.hour > 23) || (fix.timesync.minute > 59)
-          || (fix.timesync.second > 60) || (fix.timesync.centisecond > 99))) {
+      && ((fix.timesync.year < 2000) || (fix.timesync.month < 1) || (fix.timesync.month > 12)
+          || (fix.timesync.day < 1) || (fix.timesync.day > 31) || (fix.timesync.hour > 23)
+          || (fix.timesync.minute > 59) || (fix.timesync.second > 60)
+          || (fix.timesync.centisecond > 99))) {
     return false;
   }
 
@@ -1397,6 +1398,11 @@ void GPS::update(void) {
           if (SD::getInstance().logPoint(point)) {
             m_LastLoggedFix = now;
             m_LastLoggedStamp = stamp;
+            m_LogDropWarned = false;
+          } else if (!m_LogDropWarned) {
+            // warn once per run of drops, a full queue repeats every period
+            m_LogDropWarned = true;
+            ESP_LOGW(LOG_TAG, "GPX point dropped, SD writer queue is full.");
           }
         }
       }

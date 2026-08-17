@@ -32,7 +32,12 @@ constexpr const char *SETTINGS_FILE = "/sd/furble/settings.txt";
 constexpr uint32_t SD_SPI_FREQUENCY_KHZ = 10000;
 constexpr UBaseType_t WRITER_QUEUE_LENGTH = 8;
 constexpr uint32_t WRITER_STACK_BYTES = 6144;
-constexpr UBaseType_t WRITER_PRIORITY = 2;
+// same priority as the UI main task, SD calls block anyway, so a long mount
+// competes with the UI for CPU instead of preempting it
+constexpr UBaseType_t WRITER_PRIORITY = 1;
+// control requests share the queue with GPX points, a short send timeout
+// rides out a transient point backlog instead of dropping the request
+constexpr uint32_t REQUEST_SEND_TIMEOUT_MS = 100;
 constexpr uint32_t POWER_OFF_WAIT_MS = 3000;
 constexpr uint8_t MAX_FAILURES = 3;
 
@@ -172,6 +177,10 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
+    case Settings::IR_PROTO:
+    case Settings::FB_OUTPUT:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
       value = std::to_string(Settings::load<uint8_t>(setting.type));
       return true;
 
@@ -199,6 +208,9 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
+    case Settings::IR:
+    case Settings::CONN_SAVER:
+    case Settings::TX_ADAPTIVE:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -300,6 +312,22 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::FB_OUTPUT:
+      if (!parseUnsigned(text, 4, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::IR_PROTO:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
+      if (!parseUnsigned(text, UINT8_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::GPS_BAUD:
       if (!parseUnsigned(text, 115200, value)
           || ((value != Settings::BAUD_9600) && (value != Settings::BAUD_115200))) {
@@ -342,6 +370,9 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
+    case Settings::IR:
+    case Settings::CONN_SAVER:
+    case Settings::TX_ADAPTIVE:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -449,7 +480,7 @@ bool SD::request(request_t request) {
   }
 
   const message_t message = {request, {}};
-  return xQueueSend(m_Queue, &message, 0) == pdTRUE;
+  return xQueueSend(m_Queue, &message, pdMS_TO_TICKS(REQUEST_SEND_TIMEOUT_MS)) == pdTRUE;
 }
 
 bool SD::logPoint(const GPX::point_t &point) {
@@ -568,7 +599,6 @@ void SD::handlePoint(const GPX::point_t &point) {
     m_LoggingEnabled = false;
     Settings::save<Settings::SD_GPX>(false);
     ESP_LOGE(LOG_TAG, "Disabling GPX logging after repeated SD failures.");
-    printf("sd: gpx logging disabled after repeated failures\n");
     maybeUnmount();
   }
   publish();
@@ -581,7 +611,7 @@ void SD::handleReload(void) {
   if (m_LoggingEnabled) {
     m_Failures = 0;
     if (!mount()) {
-      printf("sd: mount failed\n");
+      ESP_LOGW(LOG_TAG, "SD mount failed on logging reload.");
     }
   } else {
     GPX::getInstance().close();
@@ -597,6 +627,7 @@ void SD::handleTransfer(bool import) {
   const bool ok = import ? importSettings() : exportSettings();
   if (ok && import) {
     ESP_LOGI(LOG_TAG, "SD settings import complete, restarting.");
+    unmount();
     esp_restart();
   }
 
@@ -604,7 +635,6 @@ void SD::handleTransfer(bool import) {
     ESP_LOGI(LOG_TAG, "SD settings export complete.");
   } else {
     ESP_LOGE(LOG_TAG, "SD settings %s failed.", import ? "import" : "export");
-    printf("sd: settings %s failed\n", import ? "import" : "export");
   }
   maybeUnmount();
   publish();

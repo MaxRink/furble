@@ -129,9 +129,11 @@ bool GPX::addPoint(const point_t &point, uint16_t periodSeconds) {
     return false;
   }
 
-  // a long gap means the receiver was off, start a fresh track segment
+  // a long gap or a backwards time step means the receiver was off or lost
+  // its clock, start a fresh track segment either way
   const int64_t seconds = pointSeconds(point);
-  if ((m_LastPointSeconds != 0) && ((seconds - m_LastPointSeconds) > SEGMENT_GAP_SECONDS)
+  const int64_t delta = seconds - m_LastPointSeconds;
+  if ((m_LastPointSeconds != 0) && ((delta > SEGMENT_GAP_SECONDS) || (delta < 0))
       && (fputs(GPX_SEGMENT_BREAK, file) == EOF)) {
     fail("write segment");
     return false;

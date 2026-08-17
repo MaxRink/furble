@@ -290,6 +290,7 @@ class GPS {
   std::atomic<uint32_t> m_LogPeriodMs = 5000;
   uint32_t m_LastLoggedFix = 0;
   uint64_t m_LastLoggedStamp = 0;
+  bool m_LogDropWarned = false;
   TinyGPSPlus m_GPS;
 
   uint8_t m_PowerPolicy = POWER_ALWAYS_ON;
