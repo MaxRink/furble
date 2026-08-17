@@ -41,6 +41,7 @@ class Settings {
     GPS_HOLD,
     GPS_EXTRAP,
     GPS_PLATFORM,
+    GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,

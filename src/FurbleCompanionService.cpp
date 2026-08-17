@@ -275,6 +275,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
+    case Settings::GPS_MOTION:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::TX_ADAPTIVE:
@@ -346,6 +347,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
+    case Settings::GPS_MOTION:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::TX_ADAPTIVE:
@@ -617,6 +619,10 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_EXTRAP:
     case Settings::GPS_PLATFORM:
       GPS::getInstance().reloadSetting();
+      break;
+    case Settings::GPS_MOTION:
+      // The detector gate only, so an advisory toggle never re-acquires.
+      GPS::getInstance().reloadMotionSetting();
       break;
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:

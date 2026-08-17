@@ -36,6 +36,7 @@ const char *const TIMER_NAMES[] = {
     "connect_timer",
     "intervalometer_timer",
     "gps_service_timer",
+    "gps_motion_timer",
     "gps_data_timer",
     "nmea_timer",
     "interval_page_refresh",

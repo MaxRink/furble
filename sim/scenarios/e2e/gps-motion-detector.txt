@@ -1,0 +1,61 @@
+# Phase 1 GPS motion detector state machine (plans/18-gps-motion.md).
+#
+# The detector samples the IMU at 10 Hz and keeps a 50 sample magnitude variance
+# window. Entry is deliberately slow and exit is immediate: the window has to
+# fill and then stay under the variance threshold for a continuous 60 s before
+# the state flips to stationary, while a single sample past the threshold flips
+# it straight back to moving. That asymmetry is what protects geodata freshness
+# once PR15 consumes GPS::isStationary().
+#
+# The second half of this scenario is the phase 1 contract: the detector is
+# advisory and must not move the receiver. Nothing consumes isStationary() yet,
+# so the receiver state, the degraded flag, the UART write count and the wake
+# lock all have to read the same on both sides of a state transition. The exit
+# transition is bracketed inside a 200 ms window, shorter than the 1 s GPS
+# service tick, so the pinned lock acquire count cannot drift for an unrelated
+# reason. If a GPS timing change re-pins that number, re-pin it here too, but
+# only after checking that the two reads still match each other.
+#
+# Mutations that kill these assertions are recorded in plans/18-gps-motion.md.
+seed gps true
+seed imu true
+seed gps_motion true
+seed gps_power 0
+seed gps_duty 0
+seed gps_uart_mode ack
+wait 400
+
+# All three gates are on, so the detector is running and starts out moving: an
+# unfilled window says nothing about variance.
+assert setting.gps_motion 1
+assert gps.motion_state moving
+assert gps.state tracking
+assert uart.count 0
+
+# Hold the device flat and still. The window fills in 5 s, then the 60 s dwell
+# runs. Entry lands between 64.5 s and 65.0 s of held-still virtual time.
+action imu.accel 0 0 1
+wait 63600
+assert gps.motion_state moving
+wait 2400
+assert gps.motion_state stationary
+
+# The receiver did not move while the detector did.
+assert gps.state tracking
+assert gps.degraded 0
+assert uart.count 0
+assert power.no_light_sleep 0
+
+# Exit is immediate. 2 g is 1 g clear of the running mean, far past the 0.02
+# squared-g threshold, so the next sample 100 ms later reports moving.
+action imu.accel 0 0 2
+wait 200
+assert gps.motion_state moving
+
+# And the receiver still did not move. Same reads, same values, one transition
+# later.
+assert gps.state tracking
+assert gps.degraded 0
+assert uart.count 0
+assert power.no_light_sleep 0
+exit

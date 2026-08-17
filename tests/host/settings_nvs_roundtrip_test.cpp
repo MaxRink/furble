@@ -89,6 +89,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:
     case Settings::IMU_TRIG:
+    case Settings::GPS_MOTION:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -228,6 +229,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_HOLD,          "GPS_HOLD",          uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
       {Settings::GPS_EXTRAP,        "GPS_EXTRAP",        false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS_PLATFORM,      "GPS_PLATFORM",      uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
+      {Settings::GPS_MOTION,        "GPS_MOTION",        false,                                                true,                        StorageKind::BOOL  },
       {Settings::INTERVAL,          "INTERVAL",          defaultInterval(),                                    representativeInterval(),
        StorageKind::BLOB                                                                                                                                       },
       {Settings::MULTICONNECT,      "MULTICONNECT",      false,                                                true,                        StorageKind::BOOL  },
@@ -336,6 +338,7 @@ ASSERT_STORAGE_TYPE(BATTERY_SAVER, bool);
 ASSERT_STORAGE_TYPE(IMU, bool);
 ASSERT_STORAGE_TYPE(IMU_WAKE, uint8_t);
 ASSERT_STORAGE_TYPE(IMU_TRIG, bool);
+ASSERT_STORAGE_TYPE(GPS_MOTION, bool);
 #if defined(FURBLE_M5STICKS3)
 ASSERT_STORAGE_TYPE(WATCHDOG, bool);
 #endif
@@ -404,6 +407,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:
     case Settings::IMU_TRIG:
+    case Settings::GPS_MOTION:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
