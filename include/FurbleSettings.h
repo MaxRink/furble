@@ -16,6 +16,7 @@ class Settings {
   typedef enum {
     BRIGHTNESS,
     INACTIVITY,
+    DISPLAY_OFF,
     THEME,
     TX_POWER,
     GPS,
@@ -137,6 +138,10 @@ struct Settings::storage_type<Settings::BRIGHTNESS> {
 };
 template <>
 struct Settings::storage_type<Settings::INACTIVITY> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::DISPLAY_OFF> {
   using type = uint8_t;
 };
 template <>

@@ -6,6 +6,38 @@ Cut display power during idle. Today the screen only dims to a per-board floor a
 stays lit forever. Add longer inactivity choices, a real display off state, and a
 blind remote mode where the screen is off but the shutter still fires.
 
+## Implementation status
+
+State: Implemented on `feat/12-display-off`.
+
+The inactivity roller now offers 2, 5 and 10 minutes. `DISPLAY_OFF` uses the
+standard Settings and NVS mechanics. The panel sleeps and wakes through M5GFX.
+The APB lock is released only while the panel is off. It is reacquired before
+wakeup. Blind remote passes shutter and focus input through on non-touch remote
+pages. Other input wakes the display and is swallowed.
+
+Deviations:
+
+- The remote-active option is hidden on touch boards. Mode 2 behaves like off on
+  those boards.
+- `src/FurbleConsole.cpp` includes the new uint8 setting in console mechanics.
+- PlatformIO could not complete in the original environment. After the rebase
+  onto current master, `m5stick-s3` and `m5stick-s3-debug` build clean.
+  Hardware verification remains pending on the M5StickS3.
+- Console-visible change: `setInactivityTimeout` snaps the stored value to the
+  nearest ladder entry, so an off-ladder `inactivity` value set from the
+  console takes effect as the closest roller value.
+- Owed hardware test: blank the screen, press a button within 100 ms, confirm
+  the display wakes (exercises the 120 ms SLPIN to SLPOUT dwell).
+
+Rebase notes:
+
+- `DISPLAY_OFF` is assigned wire_id 24, continuing after `WATCHDOG` (23).
+- `src/FurbleCompanion.cpp` settingType and settingValue treat `DISPLAY_OFF`
+  as a uint8 setting, matching `INACTIVITY`.
+- Console `appliesImmediately` stays false for `DISPLAY_OFF`: the UI caches
+  the mode at startup and only its own roller updates the cache live.
+
 ## Scope
 
 In scope:

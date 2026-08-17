@@ -43,6 +43,9 @@ CLAUDE.md whose directory it touches.
   `UART_SCLK_XTAL`. The LEDC backlight PWM flickers unless the display holds
   `ESP_PM_APB_FREQ_MAX` while the backlight is on. When touching power
   management, audit every peripheral clock source.
+- Display sleep: the display releases `ESP_PM_APB_FREQ_MAX` while the panel
+  sleeps and must reacquire it before `M5.Display.wakeup()`. ST7789/ILI934x
+  need a 120 ms dwell between SLPIN and SLPOUT; M5GFX does not enforce it.
 - Never hold the Control mutex across a delay. The reconnect cancel deadlock
   bricked the device (buttons and USB dead) because furble disables all M5PM1
   power button gestures at boot. Rescue: hold the side button while replugging

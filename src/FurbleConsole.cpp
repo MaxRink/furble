@@ -162,6 +162,7 @@ const char *settingType(Settings::type_t type) {
   switch (type) {
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
+    case Settings::DISPLAY_OFF:
     case Settings::TX_POWER:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
@@ -230,6 +231,7 @@ void printValue(const char *prefix, Settings::type_t type) {
   switch (type) {
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
+    case Settings::DISPLAY_OFF:
     case Settings::TX_POWER:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
@@ -270,6 +272,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   switch (setting.type) {
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
+    case Settings::DISPLAY_OFF:
     case Settings::TX_POWER:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
