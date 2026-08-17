@@ -83,6 +83,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [33-wifi-hub.md](33-wifi-hub.md) | WiFi hub: displayless build, provisioning, MQTT |
 | [34-ota-partitions.md](34-ota-partitions.md) | OTA updates and the partition scheme change |
 | [35-exposure-presets.md](35-exposure-presets.md) | Exposure time presets in 1/3 stops |
+| [36-camera-test-harness.md](36-camera-test-harness.md) | Camera protocol test harness: host tests, mock NimBLE, virtual peer |
 
 ## Framework work
 
