@@ -79,6 +79,10 @@ void Control::Target::task(void) {
     switch (cmd) {
       case CMD_SHUTTER_PRESS:
         m_Camera->noteConnActivity(true);
+        // Request the fast profile but do not wait for it. A central-initiated
+        // update applies a few connection events after the request, so this
+        // press still goes out at the current (possibly idle) interval. The
+        // fast profile serves the follow-up commands.
         m_Camera->setConnProfile(Camera::ConnProfile::FAST);
         ESP_LOGI(LOG_TAG, "shutterPress(%s)", name);
         m_Camera->shutterPress();
@@ -90,6 +94,7 @@ void Control::Target::task(void) {
         break;
       case CMD_FOCUS_PRESS:
         m_Camera->noteConnActivity(true);
+        // Same fire-and-forget fast request as CMD_SHUTTER_PRESS.
         m_Camera->setConnProfile(Camera::ConnProfile::FAST);
         ESP_LOGI(LOG_TAG, "focusPress(%s)", name);
         m_Camera->focusPress();
@@ -107,7 +112,11 @@ void Control::Target::task(void) {
         m_Camera->setActive(false);
         goto task_exit;
       case CMD_ERROR:
+        // Not an error: getCommand() returns CMD_ERROR when the 50 ms queue
+        // wait times out. Reuse that tick as the idle profile timer and the
+        // connection statistics sampler (both are internally rate limited).
         m_Camera->maybeSetIdle();
+        m_Camera->updateConnStats();
         break;
       default:
         ESP_LOGE(LOG_TAG, "Invalid control command %d.", cmd);
@@ -141,6 +150,7 @@ Control::state_t Control::connectAll(void) {
   static uint32_t failcount = 0;
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
   std::vector<Camera *> cameras;
+  std::vector<Camera *> all;
 
   const bool connSaver = Settings::load<Settings::CONN_SAVER>();
 
@@ -150,12 +160,18 @@ Control::state_t Control::connectAll(void) {
     // Snapshot cameras so the mutex is not held during connection attempts.
     for (const auto &target : m_Targets) {
       Camera *camera = target->getCamera();
-      camera->setConnSaverEnabled(connSaver);
+      all.push_back(camera);
       if (!camera->isConnected()) {
         cameras.push_back(camera);
       }
     }
     m_ConnectInProgress = true;
+  }
+
+  // Apply the setting outside the mutex. On an already connected camera this
+  // enters NimBLE and can block on the HCI transport.
+  for (auto *camera : all) {
+    camera->setConnSaverEnabled(connSaver);
   }
 
   for (auto *camera : cameras) {
@@ -300,8 +316,15 @@ bool Control::allConnected(void) {
   return true;
 }
 
-const std::vector<std::unique_ptr<Control::Target>> &Control::getTargets(void) {
-  return m_Targets;
+std::vector<Control::Target *> Control::getTargets(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  std::vector<Target *> targets;
+  targets.reserve(m_Targets.size());
+  for (const auto &target : m_Targets) {
+    targets.push_back(target.get());
+  }
+  return targets;
 }
 
 void Control::connectAll(bool infiniteReconnect) {
@@ -606,9 +629,19 @@ void Control::setPower(esp_power_level_t power) {
 }
 
 void Control::setConnSaver(bool enabled) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  for (const auto &target : m_Targets) {
-    target->getCamera()->setConnSaverEnabled(enabled);
+  std::vector<Camera *> cameras;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto &target : m_Targets) {
+      cameras.push_back(target->getCamera());
+    }
+  }
+
+  // Apply outside the mutex. setConnSaverEnabled() on a connected camera
+  // enters NimBLE and can block on the HCI transport for up to two seconds,
+  // and this runs on the caller's task (the LVGL task for the UI toggle).
+  for (auto *camera : cameras) {
+    camera->setConnSaverEnabled(enabled);
   }
 }
 

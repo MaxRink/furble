@@ -29,20 +29,15 @@ void Camera::onConnect(NimBLEClient *pClient) {
            static_cast<int>(m_Power), set ? "ok" : "failed");
   m_Connected = true;
 
-  bool connSaverEnabled;
-  {
-    const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
-    m_LastConnActivityMs = connectionTimeMs();
-    m_ShutterHeld = false;
-    m_LastRequestValid = false;
-    m_LastRequestSucceeded = false;
-    m_PeerOverride = false;
-    connSaverEnabled = m_ConnSaverEnabled;
-  }
-
-  if (connSaverEnabled) {
-    setConnProfile(ConnProfile::IDLE);
-  }
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
+  m_LastConnActivityMs = connectionTimeMs();
+  m_ShutterHeld = false;
+  m_LastRequestValid = false;
+  m_LastRequestSucceeded = false;
+  m_PeerOverride = false;
+  // Never request the idle profile here. Connection setup still has to run
+  // service discovery and subscriptions at the fast interval; the inactivity
+  // timer moves the link to idle once the connect has finished.
 }
 
 void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
@@ -56,16 +51,27 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
   m_LastRequestValid = false;
   m_LastRequestSucceeded = false;
   m_PeerOverride = false;
+  m_StatsValid = false;
 }
 
 bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  {
+    // Gate the idle profile out for the whole connection attempt. Discovery
+    // and subscription round trips at the idle interval would stretch a two
+    // second connect into minutes.
+    const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    m_ConnectInProgress = true;
+  }
 
   m_Power = power;
 
   m_Client = NimBLEDevice::createClient();
   if (m_Client == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to create client");
+    const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    m_ConnectInProgress = false;
     return false;
   }
 
@@ -88,6 +94,14 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     this->_disconnect();
   }
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(m_SecurityModeDefault));
+
+  {
+    const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    m_ConnectInProgress = false;
+    // Restart the inactivity timer so the idle countdown begins at connect
+    // completion, not at the connection event mid-setup.
+    m_LastConnActivityMs = connectionTimeMs();
+  }
 
   return m_Connected;
 }
@@ -140,7 +154,7 @@ void Camera::noteConnActivity(bool held) {
 void Camera::maybeSetIdle(void) {
   {
     const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
-    if (!m_ConnSaverEnabled || m_ShutterHeld || m_PeerOverride
+    if (!m_ConnSaverEnabled || m_ShutterHeld || m_PeerOverride || m_ConnectInProgress
         || (connectionTimeMs() - m_LastConnActivityMs < m_ConnSaverIdleMs)) {
       return;
     }
@@ -183,7 +197,12 @@ bool Camera::setConnProfile(ConnProfile profile) {
       if (m_LastRequestSucceeded) {
         return true;
       }
-      if (now - m_LastRequestMs < m_ConnParamsUpdateGuardMs) {
+      // Only idle requests honour the retry guard. A failed fast request must
+      // stay retryable on the next press: the host returns BLE_HS_EALREADY
+      // while an idle update is still in flight, and latching that failure
+      // for the guard period would leave the link slow when the user is
+      // actively shooting.
+      if ((profile == ConnProfile::IDLE) && (now - m_LastRequestMs < m_ConnParamsUpdateGuardMs)) {
         return false;
       }
     }
@@ -209,6 +228,12 @@ bool Camera::setConnProfile(ConnProfile profile) {
 
   // Do not hold m_ConnParamsMutex while entering NimBLE. The host may invoke
   // the peer request callback as part of this operation.
+  //
+  // Mirror the requested profile into the client wrapper first. NimBLE fills
+  // the counter-proposal in a peer CONN_UPDATE_REQ from those stored values,
+  // so without this a renegotiating camera would be answered with the stale
+  // pre-connect fast parameters and the idle profile would never stick.
+  client->setConnectionParams(minInterval, maxInterval, latency, timeout);
   const bool updated = client->updateConnParams(minInterval, maxInterval, latency, timeout);
 
   {
@@ -229,19 +254,57 @@ bool Camera::setConnProfile(ConnProfile profile) {
   return updated;
 }
 
+void Camera::updateConnStats(void) {
+  {
+    const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    if (connectionTimeMs() - m_LastStatsMs < m_ConnStatsIntervalMs) {
+      return;
+    }
+  }
+
+  // m_Mutex guards m_Client against the connect and disconnect paths. Use
+  // try_lock so this sampler never stalls behind a connection attempt; the
+  // previous snapshot simply stays in place.
+  const std::unique_lock<std::mutex> lock(m_Mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    return;
+  }
+
+  const bool valid = m_Connected && (m_Client != nullptr) && m_Client->isConnected();
+  uint16_t interval = 0;
+  uint16_t latency = 0;
+  uint16_t timeout = 0;
+  int rssi = 0;
+  if (valid) {
+    const NimBLEConnInfo info = m_Client->getConnInfo();
+    interval = info.getConnInterval();
+    latency = info.getConnLatency();
+    timeout = info.getConnTimeout();
+    rssi = m_Client->getRssi();
+  }
+
+  const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+  m_LastStatsMs = connectionTimeMs();
+  m_StatsValid = valid;
+  m_StatsInterval = interval;
+  m_StatsLatency = latency;
+  m_StatsTimeout = timeout;
+  m_StatsRssi = rssi;
+}
+
 bool Camera::getConnParams(uint16_t &interval,
                            uint16_t &latency,
                            uint16_t &timeout,
                            int &rssi) const {
-  if (m_Client == nullptr || !m_Connected || !m_Client->isConnected()) {
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
+  if (!m_StatsValid) {
     return false;
   }
 
-  const NimBLEConnInfo info = m_Client->getConnInfo();
-  interval = info.getConnInterval();
-  latency = info.getConnLatency();
-  timeout = info.getConnTimeout();
-  rssi = m_Client->getRssi();
+  interval = m_StatsInterval;
+  latency = m_StatsLatency;
+  timeout = m_StatsTimeout;
+  rssi = m_StatsRssi;
   return true;
 }
 

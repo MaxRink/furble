@@ -96,26 +96,31 @@ straight to `ble_gap_update_params()` with no conversion.
 | Profile | Interval | Latency | Supervision timeout |
 |---|---|---|---|
 | Fast (current) | 30 to 50 ms | 1 | 5120 ms |
-| Idle | 500 to 1000 ms | 1 | 16000 to 32000 ms |
+| Idle | 250 to 300 ms | 0 | 16000 ms |
 
 Correction to the roadmap assumption, worth stating in the PR body: peripheral
 latency lets the *peripheral* skip connection events. furble is the central, so
 the central still has to be present at every connection event. Raising the
-interval is what reduces furble's own wakeups. Latency mainly saves the camera's
-battery and adds delay to data the camera wants to send. Keep latency at 1 and
-get the power win from the interval.
+interval is what reduces furble's own wakeups. Latency adds delay to data
+either side wants to send and saves furble nothing, so the idle profile keeps
+latency 0 and gets the whole power win from the interval.
 
-Consequences of a 1 s idle interval:
+Consequences of the idle interval:
 
-- Worst case added shutter delay is one interval plus the renegotiation time,
-  unless the code snaps to fast before sending.
+- A central-initiated parameter update applies several connection events after
+  the request (the controller picks an instant at least six events out), so
+  snapping to fast cannot speed up the press that triggers it. The first press
+  after a quiet period always goes out at the idle interval. That is why the
+  idle interval is capped at 300 ms rather than the 1 s first considered: it
+  bounds the worst case first press instead of relying on the snap.
 - A camera to furble notification such as Fujifilm's GEOTAG request can be
-  delayed by up to interval times (latency + 1), so up to 2 s at these values.
-  The GPS `MAX_AGE_MS` budget in `src/FurbleGPS.cpp:166-172` must still be met.
+  delayed by up to one idle interval, so up to 300 ms at these values. The GPS
+  `MAX_AGE_MS` budget in `src/FurbleGPS.cpp:166-172` is easily met.
 - Supervision timeout must stay comfortably above interval times (latency + 1).
-  Use the 16 s to 32 s range and check the return value of `updateConnParams()`.
-  The controller rejects values outside the specification limits, so log
-  rejections rather than assuming they applied.
+  16 s detects a dead link in half the time of the 32 s BLE maximum and check
+  the return value of `updateConnParams()`. The controller rejects values
+  outside the specification limits, so log rejections rather than assuming
+  they applied.
 
 Snap to fast:
 
@@ -224,12 +229,22 @@ Implemented on `feat/10-adaptive-conn-params`:
 - Added the experimental `CONN_SAVER` setting with NVS key `conn_saver`, default
   `false`, under `Settings > Bluetooth > Connection power save`.
 - Added fast and idle live profiles in `Camera`. Fast retains the existing 30 to
-  50 ms interval, latency 1 and 5120 ms supervision timeout. Idle requests 500
-  to 1000 ms, latency 1 and a 32000 ms supervision timeout after 10 seconds
+  50 ms interval, latency 1 and 5120 ms supervision timeout. Idle requests 250
+  to 300 ms, latency 0 and a 16000 ms supervision timeout after 10 seconds
   without shutter or focus activity.
-- The target task requests fast before every shutter or focus press, tracks held
-  shutter state, and allows the idle request only after the quiet period. A
-  three second request guard avoids repeated renegotiation attempts.
+- The target task requests fast on every shutter or focus press without waiting
+  for it, tracks held shutter state, and allows the idle request only after the
+  quiet period. A three second request guard on idle requests avoids repeated
+  renegotiation attempts; fast requests bypass the guard so a failed request is
+  retried on the next press.
+- Honest latency numbers at the idle profile: the fast request applies at least
+  six connection events after it is issued, so the press that triggers it still
+  goes out at the idle interval. With latency 0 the camera listens at every
+  event, so the added delay for that first press is up to one idle interval
+  (300 ms) plus up to 50 ms of command queue tick, about 350 ms worst case and
+  roughly 150 to 200 ms typical. The fast profile is in force about 1.5 to
+  1.8 s later (six events at 250 to 300 ms) and follow-up presses run at the
+  fast 30 to 50 ms interval.
 
 Rebase notes:
 
@@ -239,8 +254,8 @@ Rebase notes:
   the mutex and connect outside it. The setting is now loaded once before the
   lock and applied to every camera inside the snapshot loop.
 - Console settingType, printValue and setValue cover `CONN_SAVER` as bool.
-  `appliesImmediately` stays false: only the UI toggle calls
-  `Control::setConnSaver()` live; a console or companion write reaches
+  The console reports `applies: on next connect` for it: only the UI toggle
+  calls `Control::setConnSaver()` live; a console or companion write reaches
   cameras on the next connect.
 - `src/FurbleCompanion.cpp` settingType and settingValue cover `CONN_SAVER`
   as SETTING_BOOL.
@@ -258,6 +273,34 @@ Rebase notes:
   `pio run -e m5stick-c-plus`.
 - Only Fujifilm hardware is available for follow-up testing. Sony, Nikon, Canon
   and Ricoh remain untested, and the experimental setting remains off by default.
+
+Review fixes (deep review of the first branch revision):
+
+- Connect no longer runs at the idle interval. The idle request on
+  `onConnect()` is gone and `Camera::connect()` sets a connect-in-progress
+  gate that `maybeSetIdle()` checks, so discovery and subscriptions always run
+  at the fast interval. Previously a saver-enabled connect could take minutes
+  and the 10 s idle timer could drop a mid-discovery link to idle. The
+  inactivity timer restarts when the connect completes.
+- `Control::setConnSaver()` and the saver application in
+  `Control::connectAll()` snapshot cameras under the control mutex and apply
+  outside it, because applying to a connected camera enters NimBLE and can
+  block on the HCI transport for up to two seconds (previously on the LVGL
+  task with the mutex held).
+- Idle profile retuned from 500 to 1000 ms, latency 1, 32 s timeout down to
+  250 to 300 ms, latency 0, 16 s timeout, bounding the first-press latency
+  described above.
+- The three second request guard now applies only to idle requests. A fast
+  request that failed (for example `BLE_HS_EALREADY` while an idle update was
+  in flight) is retried on the next press instead of being latched for 3 s.
+- The BLE diagnostics page reads a cached parameter and RSSI snapshot that the
+  per-target task refreshes once a second. The UI no longer issues blocking
+  RSSI HCI reads or touches a client that may have self-deleted on disconnect.
+  `Control::getTargets()` returns a snapshot copied under the mutex.
+- `setConnProfile()` mirrors the requested profile into the NimBLE client so a
+  peer CONN_UPDATE_REQ is counter-proposed with the current profile instead of
+  the stale pre-connect fast parameters. The pre-connect parameter members are
+  const again.
 
 ## References
 
