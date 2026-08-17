@@ -60,6 +60,27 @@ xassert ui.overflow no
 print ui.indicator_overlaps
 xassert ui.indicator_clearance clear
 
+# Settings > GPS list, carrying the new Motion Adaptive row (plans/18). The list
+# scrolls by design on every panel, so the contract is that both extents stay
+# reachable and the row stays clear of the floating button indicators.
+action page settings
+action nav gps
+wait 200
+assert ui.page gps
+assert ui.gps_motion_row enabled
+print ui.overflow
+print ui.indicator_overlaps
+# WILL_FAIL: 1 widget renders under an indicator at the top of this list, which
+# is a pre-existing gap on this panel. The Motion Adaptive row is the eighth
+# entry and sits well below the fold at scroll top, so it is not what overlaps.
+xassert ui.indicator_clearance clear
+action scroll bottom
+wait 200
+assert ui.scroll_bottom 0
+action scroll top
+wait 200
+assert ui.scroll_top 0
+
 # Timer settings list.
 action page settings
 action nav timer

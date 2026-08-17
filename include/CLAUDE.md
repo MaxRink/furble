@@ -21,7 +21,10 @@ Public headers for the app layer in src/, one header per module
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46. Wire id 45 is
-  reserved for the companion-password contract and must not be reused.
+  reserved for the companion-password contract and must not be reused. Wire id
+  66 is the GPS motion-adaptive switch (`gps_motion`), claimed at rebase per
+  issue #280: a PR takes the next free id at rebase time and regenerates its
+  golden corpus under `tests/protocol/golden/settings/`.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.

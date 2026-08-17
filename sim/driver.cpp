@@ -290,12 +290,25 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",           "gps_nmea",          "fauxny",
-      "autoconnect",   "reconnect",         "sleep_conn",
-      "boot_splash",   "connect_fail",      "no_touch",
-      "saved_camera",  "scan_start_probe",  "ble_saved",
-      "recon_backoff", "auto_off_charging", "imu",
-      "imu_sensor",    "liveness_check",    "ble_client_selfdelete",
+      "gps",
+      "gps_nmea",
+      "gps_motion",
+      "fauxny",
+      "autoconnect",
+      "reconnect",
+      "sleep_conn",
+      "boot_splash",
+      "connect_fail",
+      "no_touch",
+      "saved_camera",
+      "scan_start_probe",
+      "ble_saved",
+      "recon_backoff",
+      "auto_off_charging",
+      "imu",
+      "imu_sensor",
+      "liveness_check",
+      "ble_client_selfdelete",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -811,6 +824,7 @@ std::string settingBoolValue(const std::string &name) {
 #endif
       {"gps",               Settings::GPS              },
       {"gps_nmea",          Settings::GPS_NMEA         },
+      {"gps_motion",        Settings::GPS_MOTION       },
       {"ir",                Settings::IR               },
       {"conn_saver",        Settings::CONN_SAVER       },
       {"preset_picker",     Settings::PRESET_PICKER    },
@@ -1093,6 +1107,14 @@ std::string queryValue(const std::string &key) {
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
     }
+    // The phase 1 detector state. "off" means the detector is not running at
+    // all, which is the default and the state a receiver policy must never see.
+    if (sub == "motion_state") {
+      if (!gps.isMotionEnabled()) {
+        return "off";
+      }
+      return gps.isStationary() ? "stationary" : "moving";
+    }
     if (sub == "degraded") {
       return gps.getCycleStatusSnapshot().degraded ? "1" : "0";
     }
@@ -1308,6 +1330,7 @@ void applyScenarioSettings(void) {
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
+  saveBoolean("gps_motion", Settings::GPS_MOTION);
   saveBoolean("imu", Settings::IMU);
   // Keep the host sensor surface in step with the setting used to construct
   // the UI. The SDL platform cannot initialize a physical IMU, so the shared

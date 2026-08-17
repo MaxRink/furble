@@ -35,6 +35,7 @@ class GPS {
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
   void reloadSetting(void) {}
+  void reloadMotionSetting(void) {}
 
   // The production GPS task performs the arbitration and then calls
   // Control::updateGPS. This host hook runs that same downstream handoff after

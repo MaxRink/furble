@@ -348,6 +348,41 @@ void testSettings(void) {
   checkContains(runDirect("settings set gps off").out, "applies: immediately",
                 "an immediate setting says so");
 
+  // The motion adaptive switch is the console surface the simulator has no
+  // console for. It is a boolean that applies immediately and has to reach the
+  // detector, but it must NOT take the GPS_RELOAD path: that runs
+  // GPS::reloadSetting(), which calls enable() and restarts the receiver, so an
+  // advisory toggle would cost a re-acquisition. The two counters below are the
+  // regression guard for the console path; the simulator guards the UI path.
+  const size_t beforeRequests = ConsoleHost::ui().requests.size();
+  const size_t beforeReload = ConsoleHost::gps().reloadSettingCalls;
+  const size_t beforeMotionReload = ConsoleHost::gps().reloadMotionSettingCalls;
+  checkContains(runDirect("settings set gps_motion on").out, "saved: gps_motion",
+                "the motion adaptive setting saves");
+  checkContains(runDirect("settings get gps_motion").out, "value: true",
+                "the motion adaptive setting reads back true");
+  check(Furble::Settings::load<bool>(Furble::Settings::GPS_MOTION),
+        "the motion adaptive value reached the real Settings store");
+  check(ConsoleHost::gps().reloadMotionSettingCalls > beforeMotionReload,
+        "saving gps_motion refreshes the detector gate");
+  check(ConsoleHost::gps().reloadSettingCalls == beforeReload,
+        "saving gps_motion does not restart the GPS receiver");
+  check(ConsoleHost::ui().requests.size() == beforeRequests,
+        "saving gps_motion does not queue the GPS_RELOAD UI request");
+  checkContains(runDirect("settings set gps_motion off").out, "applies: immediately",
+                "the motion adaptive setting applies immediately");
+  checkContains(runDirect("settings get gps_motion").out, "value: false",
+                "the motion adaptive setting reads back false");
+  const Result badMotion = runDirect("settings set gps_motion sometimes");
+  check(badMotion.rc != 0, "a non boolean motion adaptive value fails");
+
+  // A receiver setting still takes the restart path, so the check above is a
+  // statement about GPS_MOTION and not about a console that stopped reloading.
+  const size_t beforeBaud = ConsoleHost::ui().requests.size();
+  runDirect("settings set gps_baud 9600");
+  check(ConsoleHost::ui().requests.size() > beforeBaud,
+        "a real receiver setting still queues the GPS reload");
+
   checkContains(runDirect("settings set theme Dark").out, "saved: theme", "a string setting saves");
   checkContains(runDirect("settings get theme").out, "value: Dark", "the string reads back");
 

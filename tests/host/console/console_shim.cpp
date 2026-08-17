@@ -701,6 +701,10 @@ void GPS::reloadSetting(void) {
   ConsoleHost::gps().reloadSettingCalls++;
 }
 
+void GPS::reloadMotionSetting(void) {
+  ConsoleHost::gps().reloadMotionSettingCalls++;
+}
+
 void GPS::reloadLogSettings(void) {
   ConsoleHost::gps().reloadLogSettingsCalls++;
 }
