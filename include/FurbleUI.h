@@ -327,6 +327,7 @@ class UI {
   static constexpr const char *m_GPSRateStr = "Update rate";
   static constexpr const char *m_GPSSentencesStr = "Sentences";
   static constexpr const char *m_GPSConstellationStr = "Constellation";
+  static constexpr const char *m_GPSPowerStr = "Power saving";
   static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
 
   // settings->gps rollers
@@ -334,6 +335,8 @@ class UI {
   static constexpr const char *m_GPSSentencesOptions = "Default\nRMC+GGA";
   static constexpr const char *m_GPSConstellationOptions =
       "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
+  static constexpr const char *m_GPSPowerOptions = "Always on\nStandby (PCAS12)\nRail cycling";
+  static constexpr const char *m_GPSDutyOptions = "No standby\n5 s\n10 s\n15 s";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";
@@ -539,6 +542,9 @@ class UI {
 
   /** Add the 'GPS' menu entry. */
   void addGPSMenu(const menu_t &parent);
+
+  /** Add the 'Power saving' GPS page. */
+  void addGPSPowerMenu(const menu_t &parent);
 
   /** Add 'GPS Data' page. */
   void addGPSDataMenu(const menu_t &parent);

@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <limits>
+
 #include <M5Unified.h>
 #include <TinyGPS++.h>
 #include <esp_timer.h>
@@ -21,6 +24,45 @@ void gps_task(void *param) {
 }
 
 namespace Furble {
+
+namespace {
+constexpr uint32_t BURST_GAP_MS = 75;
+constexpr uint32_t WINDOW_DEFAULT_MS = 50;
+constexpr uint32_t WINDOW_MIN_MS = 20;
+constexpr uint32_t WINDOW_WIDEN_MS = 25;
+constexpr uint32_t WINDOW_SHRINK_MS = 10;
+constexpr uint8_t CLEAN_BURSTS_TO_SHRINK = 10;
+constexpr uint8_t BAD_BURSTS_TO_RESYNC = 3;
+constexpr uint32_t UNKNOWN_MEASURE_MS = 5000;
+constexpr uint32_t MIN_WAKE_WAIT_MS = 5000;
+constexpr uint32_t MIN_CYCLE_WAIT_MS = 10;
+
+/**
+ * Switch the Port A 5 V rail through the PMIC.
+ *
+ * The M5PM1 sleeps after an I2C idle period and the first access after that
+ * only wakes it, so read the rail state back and retry once on mismatch.
+ */
+void setRailPower(bool enable) {
+  M5.Power.setExtOutput(enable, m5::ext_PA);
+  if (M5.Power.getExtOutput() != enable) {
+    M5.Power.setExtOutput(enable, m5::ext_PA);
+  }
+}
+
+bool tickReached(uint32_t now, uint32_t target) {
+  return static_cast<int32_t>(now - target) >= 0;
+}
+
+uint32_t tickUntil(uint32_t now, uint32_t target) {
+  return tickReached(now, target) ? 0 : target - now;
+}
+
+uint32_t tickDistance(uint32_t first, uint32_t second) {
+  const int32_t delta = static_cast<int32_t>(first - second);
+  return delta < 0 ? static_cast<uint32_t>(-delta) : static_cast<uint32_t>(delta);
+}
+}  // namespace
 
 GPS &GPS::getInstance() {
   static GPS instance;
@@ -79,13 +121,17 @@ void GPS::reset(void) {
 
 void GPS::task(void) {
   while (true) {
-    uart_event_t event;
     if (!m_Enabled) {
+      releasePowerLock();
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
 
-    if (xQueueReceive(m_Queue, &event, pdMS_TO_TICKS(100))) {
+    serviceCycle();
+    serviceConfig();
+
+    uart_event_t event;
+    if (xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick()))) {
       switch (event.type) {
         case UART_DATA:
           break;
@@ -116,30 +162,433 @@ void GPS::task(void) {
     }
 
     serviceConfig();
+    serviceCycle();
   }
 }
 
 void GPS::enable(void) {
   const uint32_t baud = Settings::load<Settings::GPS_BAUD>();
+  const uint8_t policy = powerPolicy();
+  const uint8_t duty = dutySeconds();
+
+  // park the GPS task first, m_Enabled gates every cycle entry point
+  m_Enabled = false;
 
   uart_set_baudrate(m_UART, baud);
   reset();
 
-  // power on
-  M5.Power.setExtOutput(true, m5::ext_PA);
+  // power on, no mutex may be held across the PMIC access
+  setRailPower(true);
 
+  {
+    // serialise against a cycle pass still running on the GPS task
+    std::lock_guard<std::mutex> guard(m_CycleMutex);
+
+    m_PowerPolicy = policy;
+    m_DutySeconds = duty;
+    m_CycleState = cycle_state_t::ACQUIRING;
+    m_BurstActive = false;
+    m_DutyWake = false;
+    m_HavePrediction = false;
+    m_BurstStart = 0;
+    m_LastSentence = 0;
+    m_NextBurst = 0;
+    m_WakeDeadline = 0;
+    m_ExpectedInterval = gpsRateInterval();
+    m_Window = WINDOW_DEFAULT_MS;
+    m_BurstFailed = 0;
+    m_MeasureDeadline = 0;
+    m_ResyncDeadline = 0;
+    m_LastBurstStart = 0;
+    m_PeriodSamples.fill(0);
+    m_PeriodCount = 0;
+    m_ConsecutiveBadBursts = 0;
+    m_CleanBursts = 0;
+    m_LastLocationAge = std::numeric_limits<uint32_t>::max();
+    m_BurstSequence = 0;
+    m_FixSequence = 0;
+    m_PushedSequence = 0;
+    m_CycleRequest = false;
+
+    // the receiver is not ready for commands yet, ask the GPS task to
+    // configure it once sentences arrive
+    m_ConfigChars = m_GPS.charsProcessed();
+    m_ConfigStart = Platform::getInstance().tick();
+    m_ConfigPending = true;
+  }
+
+  m_Enabled = true;
+  acquirePowerLock();
+}
+
+void GPS::acquirePowerLock(void) {
 #if defined(FURBLE_M5STICKS3)
-  // ESP32S3 UART does not function with light sleep
+  if (!m_Enabled) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> guard(m_PowerLockMutex);
   if (!m_PowerLock.has_value()) {
     m_PowerLock.emplace(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
   }
 #endif
+}
 
-  // the receiver is not ready for commands yet, ask the GPS task to configure
-  // it once sentences arrive
-  m_ConfigChars = m_GPS.charsProcessed();
-  m_ConfigStart = Platform::getInstance().tick();
-  m_ConfigPending = true;
+void GPS::releasePowerLock(void) {
+#if defined(FURBLE_M5STICKS3)
+  std::lock_guard<std::mutex> guard(m_PowerLockMutex);
+  m_PowerLock.reset();
+#endif
+}
+
+uint8_t GPS::powerPolicy(void) const {
+  const uint8_t policy = Settings::load<Settings::GPS_POWER>();
+  return policy <= POWER_RAIL_CYCLE ? policy : POWER_ALWAYS_ON;
+}
+
+uint8_t GPS::dutySeconds(void) const {
+  const uint8_t seconds = Settings::load<Settings::GPS_DUTY>();
+  for (const uint8_t supported : DUTY_SECONDS) {
+    if (supported == seconds) {
+      return seconds;
+    }
+  }
+  return 0;
+}
+
+uint32_t GPS::gpsRateInterval(void) const {
+  const uint8_t rate = Settings::load<Settings::GPS_RATE>();
+  return (rate < RATE_MS.size()) ? RATE_MS[rate] : 0;
+}
+
+bool GPS::dutyCycleEnabled(void) const {
+  return ((m_PowerPolicy == POWER_STANDBY) || (m_PowerPolicy == POWER_RAIL_CYCLE))
+         && (m_DutySeconds > 0);
+}
+
+TickType_t GPS::cycleWait(uint32_t now) const {
+  uint32_t wait = 100;
+
+  // a burst can be active in any state, wake in time for the idle gap check
+  if (m_BurstActive) {
+    wait = std::min(wait, tickUntil(now, m_LastSentence + BURST_GAP_MS));
+  }
+
+  switch (m_CycleState) {
+    case cycle_state_t::WAITING:
+    case cycle_state_t::STANDBY:
+    case cycle_state_t::RAIL_OFF:
+      if (m_HavePrediction) {
+        wait = std::min(wait, tickUntil(now, m_NextBurst - m_Window));
+      }
+      break;
+
+    case cycle_state_t::BURST:
+      if (!m_BurstActive && (m_WakeDeadline != 0)) {
+        wait = std::min(wait, tickUntil(now, m_WakeDeadline));
+      }
+      break;
+
+    case cycle_state_t::MEASURING:
+      if (!m_BurstActive && (m_MeasureDeadline != 0)) {
+        wait = std::min(wait, tickUntil(now, m_MeasureDeadline));
+      }
+      break;
+
+    case cycle_state_t::RESYNC:
+      if (!m_BurstActive) {
+        wait = std::min(wait, tickUntil(now, m_ResyncDeadline));
+      }
+      break;
+
+    case cycle_state_t::DISABLED:
+    case cycle_state_t::ACQUIRING:
+    case cycle_state_t::PERMANENT_LOCK:
+      break;
+  }
+
+  // a stale deadline must never turn the task loop into a busy spin
+  return pdMS_TO_TICKS(std::max(wait, MIN_CYCLE_WAIT_MS));
+}
+
+void GPS::serviceCycle(void) {
+  std::unique_lock<std::mutex> lock(m_CycleMutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // enable() or disable() is resetting the cycle state
+    return;
+  }
+
+  if (!m_Enabled) {
+    releasePowerLock();
+    return;
+  }
+
+  const uint32_t now = Platform::getInstance().tick();
+
+  // a burst can go idle in any state, the per state early returns in
+  // finishBurst() decide what happens next
+  if (m_BurstActive && tickReached(now, m_LastSentence + BURST_GAP_MS)) {
+    finishBurst(now);
+  }
+
+  // The application update sets this only after it has accepted a valid fix.
+  if (m_CycleRequest.exchange(false)) {
+    acquirePowerLock();
+
+    if ((m_PowerPolicy == POWER_STANDBY) && (m_DutySeconds > 0)) {
+      sendCommand("PCAS12," + std::to_string(m_DutySeconds));
+      enterStandby(now);
+      return;
+    }
+
+    if ((m_PowerPolicy == POWER_RAIL_CYCLE) && (m_DutySeconds > 0)) {
+      enterRailOff(now);
+      return;
+    }
+  }
+
+  switch (m_CycleState) {
+    case cycle_state_t::WAITING:
+    case cycle_state_t::STANDBY:
+    case cycle_state_t::RAIL_OFF:
+      if (m_HavePrediction && tickReached(now, m_NextBurst - m_Window)) {
+        beginWindow(now);
+      }
+      break;
+
+    case cycle_state_t::BURST:
+      if (!m_BurstActive && (m_WakeDeadline != 0) && tickReached(now, m_WakeDeadline)) {
+        enterPermanentLock();
+      }
+      break;
+
+    case cycle_state_t::ACQUIRING:
+      // re-assert the lock, a release raced by enable() must not leave the
+      // receiver deaf under light sleep
+      acquirePowerLock();
+      break;
+
+    case cycle_state_t::MEASURING:
+      if (!m_BurstActive && (m_MeasureDeadline != 0) && tickReached(now, m_MeasureDeadline)) {
+        finishMeasurement();
+      }
+      break;
+
+    case cycle_state_t::RESYNC:
+      if (!m_BurstActive && tickReached(now, m_ResyncDeadline)) {
+        if (m_ExpectedInterval == 0) {
+          enterPermanentLock();
+        } else {
+          m_NextBurst = m_LastBurstStart + m_ExpectedInterval;
+          if (tickReached(now, m_NextBurst)) {
+            m_NextBurst = now + m_ExpectedInterval;
+          }
+          m_HavePrediction = true;
+          m_CycleState = cycle_state_t::WAITING;
+          releasePowerLock();
+        }
+      }
+      break;
+
+    case cycle_state_t::DISABLED:
+    case cycle_state_t::PERMANENT_LOCK:
+      break;
+  }
+}
+
+void GPS::beginBurst(uint32_t now) {
+  if (m_BurstActive) {
+    m_LastSentence = now;
+    return;
+  }
+
+  acquirePowerLock();
+
+  const cycle_state_t previous = m_CycleState;
+  if (m_HavePrediction && (previous != cycle_state_t::RESYNC)
+      && (tickDistance(now, m_NextBurst) > m_Window)) {
+    beginResync(now);
+  }
+
+  m_BurstActive = true;
+  m_BurstStart = now;
+  m_LastSentence = now;
+  m_BurstFailed = m_GPS.failedChecksum();
+  m_BurstSequence++;
+
+  if (m_LastBurstStart != 0) {
+    if (m_PeriodCount < m_PeriodSamples.size()) {
+      m_PeriodSamples[m_PeriodCount++] = now - m_LastBurstStart;
+    }
+  }
+  m_LastBurstStart = now;
+
+  if (m_CycleState == cycle_state_t::ACQUIRING) {
+    if (m_ExpectedInterval == 0) {
+      m_CycleState = cycle_state_t::MEASURING;
+      m_MeasureDeadline = now + UNKNOWN_MEASURE_MS;
+    } else {
+      m_CycleState = cycle_state_t::BURST;
+    }
+  } else if ((m_CycleState == cycle_state_t::WAITING) || (m_CycleState == cycle_state_t::STANDBY)
+             || (m_CycleState == cycle_state_t::RAIL_OFF)) {
+    m_CycleState = cycle_state_t::BURST;
+  }
+}
+
+void GPS::finishBurst(uint32_t now) {
+  if (!m_BurstActive) {
+    return;
+  }
+
+  m_BurstActive = false;
+
+  const uint32_t failed = m_GPS.failedChecksum() - m_BurstFailed;
+  if (failed > 0) {
+    m_Window += WINDOW_WIDEN_MS;
+    const uint32_t interval = (m_ExpectedInterval > 0) ? m_ExpectedInterval : 1000;
+    const uint32_t cap = std::max(WINDOW_MIN_MS, interval / 2);
+    m_Window = std::min(m_Window, cap);
+    m_ConsecutiveBadBursts++;
+    m_CleanBursts = 0;
+  } else {
+    m_ConsecutiveBadBursts = 0;
+    if (++m_CleanBursts >= CLEAN_BURSTS_TO_SHRINK) {
+      m_Window = std::max(WINDOW_MIN_MS, m_Window - WINDOW_SHRINK_MS);
+      m_CleanBursts = 0;
+    }
+  }
+
+  if (m_CycleState == cycle_state_t::RESYNC) {
+    return;
+  }
+
+  if (m_CycleState == cycle_state_t::MEASURING) {
+    return;
+  }
+
+  if (m_CycleState == cycle_state_t::PERMANENT_LOCK) {
+    return;
+  }
+
+  if (m_DutyWake) {
+    m_DutyWake = false;
+
+    if ((m_PowerPolicy == POWER_RAIL_CYCLE)
+        && (m_PushedSequence.load() != m_BurstSequence.load())) {
+      enterPermanentLock();
+      return;
+    }
+
+    if (m_PowerPolicy == POWER_STANDBY) {
+      m_ExpectedInterval = gpsRateInterval();
+      if (m_ExpectedInterval == 0) {
+        enterPermanentLock();
+        return;
+      }
+    }
+  }
+
+  if (m_ConsecutiveBadBursts >= BAD_BURSTS_TO_RESYNC) {
+    beginResync(now);
+    return;
+  }
+
+  if (m_ExpectedInterval == 0) {
+    enterPermanentLock();
+    return;
+  }
+
+  m_NextBurst = m_BurstStart + m_ExpectedInterval;
+  m_HavePrediction = true;
+  m_CycleState = cycle_state_t::WAITING;
+  m_WakeDeadline = 0;
+  releasePowerLock();
+}
+
+void GPS::beginWindow(uint32_t now) {
+  const cycle_state_t previous = m_CycleState;
+  acquirePowerLock();
+
+  if (previous == cycle_state_t::RAIL_OFF) {
+    setRailPower(true);
+    reset();
+    m_ConfigChars = m_GPS.charsProcessed();
+    m_ConfigStart = now;
+    m_ConfigPending = true;
+  }
+
+  m_BurstActive = false;
+  m_DutyWake = (previous == cycle_state_t::STANDBY) || (previous == cycle_state_t::RAIL_OFF);
+  m_WakeDeadline = now + std::max(MIN_WAKE_WAIT_MS, m_ExpectedInterval / 2);
+  m_CycleState = cycle_state_t::BURST;
+}
+
+void GPS::enterStandby(uint32_t now) {
+  m_BurstActive = false;
+  m_DutyWake = false;
+  m_ExpectedInterval = static_cast<uint32_t>(m_DutySeconds) * 1000;
+  m_NextBurst = now + m_ExpectedInterval;
+  m_HavePrediction = true;
+  m_WakeDeadline = 0;
+  m_CycleState = cycle_state_t::STANDBY;
+  releasePowerLock();
+}
+
+void GPS::enterRailOff(uint32_t now) {
+  m_ConfigPending = false;
+  m_BurstActive = false;
+  m_DutyWake = false;
+  m_ExpectedInterval = static_cast<uint32_t>(m_DutySeconds) * 1000;
+  m_NextBurst = now + m_ExpectedInterval;
+  m_HavePrediction = true;
+  m_WakeDeadline = 0;
+  m_CycleState = cycle_state_t::RAIL_OFF;
+  setRailPower(false);
+  releasePowerLock();
+}
+
+void GPS::beginResync(uint32_t now) {
+  m_ExpectedInterval = (m_ExpectedInterval > 0) ? m_ExpectedInterval : 1000;
+  m_ResyncDeadline = now + m_ExpectedInterval;
+  m_HavePrediction = false;
+  m_DutyWake = false;
+  m_CycleState = cycle_state_t::RESYNC;
+  acquirePowerLock();
+}
+
+void GPS::finishMeasurement(void) {
+  if (m_PeriodCount < 2) {
+    enterPermanentLock();
+    return;
+  }
+
+  const size_t count = std::min(m_PeriodCount, m_PeriodSamples.size());
+  decltype(m_PeriodSamples) periods = {};
+  std::copy_n(m_PeriodSamples.begin(), count, periods.begin());
+  std::sort(periods.begin(), periods.begin() + count);
+
+  const uint32_t median = periods[count / 2];
+  const uint32_t tolerance = std::max<uint32_t>(50, median / 10);
+  if ((periods[count - 1] - periods[0]) > tolerance) {
+    enterPermanentLock();
+    return;
+  }
+
+  m_ExpectedInterval = median;
+  m_Window = std::min(m_Window, std::max(WINDOW_MIN_MS, median / 2));
+  m_NextBurst = m_LastBurstStart + m_ExpectedInterval;
+  m_HavePrediction = true;
+  m_MeasureDeadline = 0;
+  m_CycleState = cycle_state_t::WAITING;
+  releasePowerLock();
+}
+
+void GPS::enterPermanentLock(void) {
+  m_HavePrediction = false;
+  m_WakeDeadline = 0;
+  m_CycleState = cycle_state_t::PERMANENT_LOCK;
+  acquirePowerLock();
 }
 
 /** XOR of every character between '$' and '*', both excluded. */
@@ -220,20 +669,26 @@ void GPS::serviceConfig(void) {
 }
 
 void GPS::disable(void) {
-  m_ConfigPending = false;
+  m_Enabled = false;
 
-  // power off
-  M5.Power.setExtOutput(false, m5::ext_PA);
+  {
+    // serialise against a cycle pass still running on the GPS task
+    std::lock_guard<std::mutex> guard(m_CycleMutex);
+    m_ConfigPending = false;
+    m_CycleRequest = false;
+    m_BurstActive = false;
+    m_CycleState = cycle_state_t::DISABLED;
+  }
 
-#if defined(FURBLE_M5STICKS3)
-  m_PowerLock.reset();
-#endif
+  // power off, no mutex may be held across the PMIC access
+  setRailPower(false);
+
+  releasePowerLock();
 }
 
 /** Refresh the setting from NVS. */
 void GPS::reloadSetting(void) {
-  m_Enabled = Settings::load<Settings::GPS>();
-  if (m_Enabled) {
+  if (Settings::load<Settings::GPS>()) {
     enable();
   } else {
     disable();
@@ -341,6 +796,14 @@ void GPS::update(void) {
 
   if (m_HasFix) {
     Control::getInstance().updateGPS(dgps, timesync);
+
+    const uint32_t fixSequence = m_FixSequence.load();
+    if ((fixSequence != 0) && (fixSequence != m_PushedSequence.load())) {
+      m_PushedSequence = fixSequence;
+      if (dutyCycleEnabled()) {
+        m_CycleRequest = true;
+      }
+    }
   }
 
   // setting the source invalidates the image and forces a decode, only do it
@@ -376,14 +839,25 @@ uint8_t GPS::getSatellites(void) const {
 void GPS::serviceSerial(void) {
   std::array<uint8_t, BUFFER_SIZE> buffer;
 
-  if (!m_Enabled) {
+  std::unique_lock<std::mutex> lock(m_CycleMutex, std::try_to_lock);
+  if (!lock.owns_lock() || !m_Enabled) {
+    // enable() or disable() owns the cycle state, drop this pass
     return;
   }
 
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
+    beginBurst(Platform::getInstance().tick());
     Console::gpsRaw(reinterpret_cast<const char *>(buffer.data()), bytes);
     m_GPS.encode(reinterpret_cast<char *>(buffer.data()), bytes);
+
+    const uint32_t locationAge = m_GPS.location.age();
+    if (m_GPS.location.isValid() && (locationAge < m_LastLocationAge)) {
+      m_FixSequence = m_BurstSequence.load();
+    }
+    m_LastLocationAge = locationAge;
+
+    m_LastSentence = Platform::getInstance().tick();
     captureSentences(reinterpret_cast<char *>(buffer.data()), bytes);
   }
 }

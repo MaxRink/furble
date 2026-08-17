@@ -169,6 +169,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::SCAN_MODE:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
       return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -219,6 +221,8 @@ bool appliesImmediately(Settings::type_t type) {
     case Settings::GPS_RATE:
     case Settings::GPS_NMEA:
     case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
     case Settings::SLEEP_CONN:
       return true;
     default:
@@ -238,6 +242,8 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SCAN_MODE:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPS_BAUD:
@@ -279,11 +285,31 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SCAN_MODE:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > UINT8_MAX)) {
         return fail("expected 0-255");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::GPS_DUTY:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      bool supported = false;
+      if (end != text) {
+        for (const uint8_t seconds : GPS::DUTY_SECONDS) {
+          if (seconds == value) {
+            supported = true;
+            break;
+          }
+        }
+      }
+      if (!supported) {
+        return fail("expected 0, 5, 10 or 15");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -338,7 +364,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   }
 
   // The GPS receiver has to be told about its own settings.
-  if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)) {
+  if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
+      || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
 
