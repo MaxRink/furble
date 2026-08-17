@@ -104,21 +104,37 @@ service is defined with `NimBLEService`, `NimBLECharacteristic`, and
 
 ### 3.2 UUIDs
 
-The service is private and is not registered with the Bluetooth SIG, so it needs
-128 bit UUIDs. Generate one random base UUID with `uuidgen` before
-implementation, freeze it in the protocol document, and derive every
-characteristic from it by varying the first 32 bit field. The values below are
-placeholders and must be replaced by the generated base.
+The service is private and is not registered with the Bluetooth SIG, so it uses
+128 bit UUIDs. The base UUID is frozen at
+`b57f4f5e-087b-4740-b71d-8262cf26ebbc`. Every custom characteristic derives
+from it by varying the first 32 bit field.
 
 | Name | UUID | Properties |
 |---|---|---|
-| Companion service | `00000001-6675-7262-6c65-e0d1c2b3a495` | primary service |
-| Location and time | `00000002-6675-7262-6c65-e0d1c2b3a495` | write, write-no-response |
-| Status | `00000003-6675-7262-6c65-e0d1c2b3a495` | read, notify |
-| Settings | `00000004-6675-7262-6c65-e0d1c2b3a495` | write, indicate |
-| Trigger | `00000005-6675-7262-6c65-e0d1c2b3a495` | write |
-| OTA control | `00000010-6675-7262-6c65-e0d1c2b3a495` | write, indicate |
-| OTA data | `00000011-6675-7262-6c65-e0d1c2b3a495` | write-no-response |
+| Companion service | `b57f4f5e-087b-4740-b71d-8262cf26ebbc` | primary service |
+| Location and time | `b57f4f5f-087b-4740-b71d-8262cf26ebbc` | write, write-no-response |
+| Status | `b57f4f60-087b-4740-b71d-8262cf26ebbc` | read, notify |
+| Settings | `b57f4f61-087b-4740-b71d-8262cf26ebbc` | write, indicate |
+| Trigger | `b57f4f62-087b-4740-b71d-8262cf26ebbc` | write |
+| Capability | `b57f4f64-087b-4740-b71d-8262cf26ebbc` | read |
+| OTA control | `b57f4f6d-087b-4740-b71d-8262cf26ebbc` | write, indicate |
+| OTA data | `b57f4f6e-087b-4740-b71d-8262cf26ebbc` | write-no-response |
+
+The implemented capability characteristic is read-only at
+`b57f4f64-087b-4740-b71d-8262cf26ebbc`. Its six-byte value is:
+
+```c
+typedef struct __attribute__((packed)) {
+  uint8_t  version;       // 1
+  uint8_t  wire_version;  // 2 for settings parity v2
+  uint32_t features;      // bit0 settings v2 flags, bit1 cameras, bit2 OTA
+                           // all other bits reserved
+} companion_capability_t;
+```
+
+This firmware sets only feature bit 0. Existing location, status and trigger
+payloads remain version 1. `Companion::WIRE_VERSION` is 2 for capability and
+rig version negotiation.
 
 Firmware version and device name do not need custom characteristics. Use the
 standard Device Information Service (`0x180A`) with Firmware Revision String
@@ -287,7 +303,16 @@ uint8  value[len]
 ```
 
 `list` returns one indication per setting, terminated by a record with
-`id = 0xFF`.
+`id = 0xFF`. List records append a `flags` byte after `value`:
+
+```c
+uint8  flags     // bit0 needs restart, bit1 dangerous over the air
+                  // bits 2-7 reserved
+```
+
+Get and set responses keep the response shape above and do not include the
+list-only flags byte. The trailing flags byte preserves the v1 reader shape.
+Older readers ignore bit 1.
 
 The `id` must not be the raw `Settings::type_t` enum value. That enum is
 appended to by many PRs and could be reordered by any of them. Add an explicit
@@ -731,16 +756,21 @@ the integrated master:
   | 23 | WATCHDOG | bool, StickS3 builds only |
   | 0 | TOUCH_CALIBRATION, BULB | not on the wire |
 
-- Settings written over the wire are saved to NVS. Only GPS, TX_POWER and
-  COMPANION are hot applied, everything else takes effect where the firmware
-  reads it, which for some settings means the next boot.
+- Settings written over the wire are saved to NVS. GPS, GPS baud, GPS rate, GPS
+  sentence filtering and GPS constellation reload the receiver. TX_POWER and
+  COMPANION use their existing apply paths. The shared settings metadata tells
+  the app which other values need a reboot.
+- A COMPANION-off write indicates its success before waiting one second and
+  disabling the service. There is no automatic revert.
 - The GPS status icon keeps the changed check from the integrated master and
   adds a third state, `icon_location_searching`, for a companion sourced fix.
 - The standalone protocol document under `docs/` from section 8 does not exist
   yet. This table and the structs in this plan remain the contract until it is
   written.
-- Verified: m5stick-s3, m5stick-s3-debug and m5stick-c build. End to end BLE
-  testing against the Android app has not happened yet.
+- The settings parity v2 changes are implemented in `feat/51-settings-v2`.
+  The requested M5StickS3 build is pending because the sandbox cannot write
+  PlatformIO's global lock and cache. End to end BLE testing against the
+  Android app has not happened yet.
 
 ## Implementation state, Android app
 

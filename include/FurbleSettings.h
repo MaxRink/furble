@@ -128,6 +128,12 @@ class Settings {
   static const setting_t *getByWireId(uint8_t wire_id);
   static const std::unordered_map<type_t, setting_t> &all(void);
 
+  /** Return true when a saved value takes effect without a reboot. */
+  static bool appliesImmediately(type_t type);
+
+  /** Return true when an over-the-air write can affect the companion link. */
+  static bool isDangerous(type_t type);
+
   /** Retrieve every setting, keyed by type. */
   static const std::unordered_map<type_t, setting_t> &getAll(void) { return m_Setting; }
 

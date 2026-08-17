@@ -41,7 +41,9 @@ enum companion_char_id_t : uint8_t {
 /** Transport-independent companion service logic. */
 class CompanionService {
  public:
-  static constexpr uint8_t WIRE_VERSION = 1;
+  static constexpr uint8_t WIRE_VERSION = 2;
+  static constexpr uint8_t CAPABILITY_VERSION = 1;
+  static constexpr uint32_t FEATURE_SETTINGS_V2 = 1U << 0;
   static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
 
   typedef struct __attribute__((packed)) {
@@ -81,8 +83,15 @@ class CompanionService {
     uint8_t reserved_tail;
   } companion_status_t;
 
+  typedef struct __attribute__((packed)) {
+    uint8_t version;
+    uint8_t wire_version;
+    uint32_t features;
+  } companion_capability_t;
+
   static_assert(sizeof(companion_fix_t) == 42, "companion fix wire size changed");
   static_assert(sizeof(companion_status_t) == 20, "companion status wire size changed");
+  static_assert(sizeof(companion_capability_t) == 6, "companion capability wire size changed");
 
   explicit CompanionService(CompanionTransport &transport);
 
@@ -114,6 +123,9 @@ class CompanionService {
   static constexpr uint8_t LOCATION_VALID = 1 << 0;
   static constexpr uint8_t TIME_VALID = 1 << 1;
   static constexpr uint8_t ALTITUDE_VALID = 1 << 2;
+  static constexpr uint8_t PACKET_VERSION = 1;
+  static constexpr uint8_t SETTING_NEEDS_RESTART = 1 << 0;
+  static constexpr uint8_t SETTING_DANGEROUS = 1 << 1;
 
   enum setting_type_t : uint8_t {
     SETTING_BOOL,
@@ -139,7 +151,6 @@ class CompanionService {
   static setting_type_t settingType(Settings::type_t type);
   static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
   static bool saveSetting(Settings::type_t type, const uint8_t *value, uint8_t length);
-  static bool settingNeedsRestart(Settings::type_t type);
   static void appendResponse(std::vector<uint8_t> &response,
                              setting_status_t status,
                              uint8_t id,

@@ -1,6 +1,24 @@
 # 51 - Companion app feature parity
 
-Status: design only. No code in this document.
+Status: firmware settings parity v2 implemented. The app and camera phases
+remain design only.
+
+## Implementation state, firmware settings parity v2
+
+- `Settings::appliesImmediately` is the shared source for console and companion
+  restart metadata. The settings layer also owns dangerous-write metadata.
+- Settings list records keep the v1 reader layout. The trailing flags byte uses
+  bit 0 as the inverse of `appliesImmediately`. Bit 1 marks `COMPANION`,
+  `TX_POWER`, `SLEEP_CONN` and `CPU_FREQ`.
+- The capability characteristic is `b57f4f64-087b-4740-b71d-8262cf26ebbc`.
+  Its capability version is 1, its wire version is 2, and it advertises only
+  feature bit 0 for settings v2. The Cameras characteristic is not included.
+- GPS, GPS baud, GPS rate, GPS sentence filtering and GPS constellation writes
+  reload the receiver through the existing GPS path.
+- A companion disable written over the companion link waits one second before
+  removing the service. The settings response is indicated first.
+- No new NVS setting was added. Existing defaults, keys and wire ids are
+  unchanged. Hardware verification is still pending.
 
 The companion app from [50-companion-app-design.md](50-companion-app-design.md)
 shipped with status, trigger, location push and a first settings editor. The

@@ -87,7 +87,7 @@ void CompanionService::setSettingReloadCallback(std::function<void(bool)> callba
 
 CompanionService::companion_status_t CompanionService::getStatus(void) const {
   companion_status_t status = {};
-  status.version = WIRE_VERSION;
+  status.version = PACKET_VERSION;
 
   const int32_t batteryLevel = UI::getBatteryLevel();
   status.battery_percent =
@@ -376,10 +376,6 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
   return false;
 }
 
-bool CompanionService::settingNeedsRestart(Settings::type_t type) {
-  return type == Settings::THEME;
-}
-
 void CompanionService::appendResponse(std::vector<uint8_t> &response,
                                       setting_status_t status,
                                       uint8_t id,
@@ -393,11 +389,12 @@ void CompanionService::appendResponse(std::vector<uint8_t> &response,
   response.push_back(static_cast<uint8_t>(status));
   response.push_back(id);
   response.push_back(static_cast<uint8_t>(type));
-  if (listRecord) {
-    response.push_back(flags);
-  }
   response.push_back(static_cast<uint8_t>(value.size()));
   response.insert(response.end(), value.begin(), value.end());
+  if (listRecord) {
+    // Keep the flags trailing. The v1 app parses them after the value.
+    response.push_back(flags);
+  }
 }
 
 void CompanionService::notifySettings(const std::vector<uint8_t> &value) {
@@ -438,8 +435,12 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       std::vector<uint8_t> current;
       if (settingValue(entry->type, current)) {
         std::vector<uint8_t> response;
-        appendResponse(response, SETTING_OK, entry->wire_id, settingType(entry->type),
-                       settingNeedsRestart(entry->type) ? 1 : 0, current, true);
+        uint8_t flags = Settings::appliesImmediately(entry->type) ? 0 : SETTING_NEEDS_RESTART;
+        if (Settings::isDangerous(entry->type)) {
+          flags |= SETTING_DANGEROUS;
+        }
+        appendResponse(response, SETTING_OK, entry->wire_id, settingType(entry->type), flags,
+                       current, true);
         notifySettings(response);
       }
     }
