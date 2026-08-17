@@ -20,7 +20,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -33,6 +33,7 @@
 
 #include "Camera.h"
 #include "FurbleBtDebug.h"
+#include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
@@ -208,8 +209,8 @@ const char *settingType(Settings::type_t type) {
       return "uint16";
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
-      return "enum";
 #endif
+      return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       return "uint32";
@@ -322,17 +323,9 @@ void printValue(const char *prefix, Settings::type_t type) {
       break;
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
-    {
-      const uint8_t mode = Settings::load<uint8_t>(type);
-      const char *name = "unknown";
-      if (mode == Settings::GUI) {
-        name = "gui";
-      } else if (mode == Settings::CONSOLE) {
-        name = "console";
-      }
-      printf("%s%s\n", prefix, name);
-    } break;
 #endif
+      printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
+      break;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
@@ -444,12 +437,18 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::DISPLAY_MODE:
     {
       uint8_t value;
+      // numeric like every other uint8 setting, gui and console stay accepted
       if (!strcasecmp(text, "gui")) {
         value = Settings::GUI;
       } else if (!strcasecmp(text, "console")) {
         value = Settings::CONSOLE;
       } else {
-        return fail("expected gui or console");
+        char *end = nullptr;
+        unsigned long numeric = strtoul(text, &end, 0);
+        if ((end == text) || (numeric > Settings::CONSOLE)) {
+          return fail("expected 0 (gui) or 1 (console)");
+        }
+        value = static_cast<uint8_t>(numeric);
       }
       Settings::save<uint8_t>(setting.type, value);
       if (!UI::sendRequest(UI::Request::DISPLAY_MODE, value)) {
@@ -592,6 +591,9 @@ int cmdSettings(int argc, char **argv) {
   }
 
 #if defined(FURBLE_NO_DISPLAY)
+  // Redundant on purpose: DISPLAY_MODE is not in the settings table of this
+  // build, so findSetting() would miss it anyway. Scripts written against the
+  // GUI build get a clear answer instead of 'no such setting'.
   if (!strcasecmp(argv[2], "display_mode")) {
     return fail("not supported in this build");
   }
@@ -1506,6 +1508,48 @@ int cmdBt(int argc, char **argv) {
   return fail("expected scan, explore, pair or journal");
 }
 
+/**
+ * Companion numeric-comparison pairing.
+ *
+ * The GUI shows a confirm dialog. The displayless build has no other confirm
+ * path, so pairing is console driven there: the headless loop prints the PIN
+ * when a request arrives and this command answers it. Companion state is
+ * mutex guarded, so calling it from the console task is safe.
+ */
+int cmdPair(int argc, char **argv) {
+  auto &companion = Companion::getInstance();
+
+  if (!companion.isEnabled()) {
+    return fail("companion disabled, settings set companion on");
+  }
+
+  if (argc < 2) {
+    const bool pending = companion.hasPendingPairing();
+    printf("pending: %s\n", boolStr(pending));
+    if (pending) {
+      printf("pin: %06lu\n", static_cast<unsigned long>(companion.getPendingPairingPin()));
+    }
+    return 0;
+  }
+
+  bool accept;
+  if (!strcasecmp(argv[1], "yes")) {
+    accept = true;
+  } else if (!strcasecmp(argv[1], "no")) {
+    accept = false;
+  } else {
+    return fail("usage: pair [yes|no]");
+  }
+
+  if (!companion.hasPendingPairing()) {
+    return fail("no pairing pending");
+  }
+
+  companion.confirmPairing(accept);
+  printf("pairing: %s\n", accept ? "accepted" : "rejected");
+  return 0;
+}
+
 int cmdLog(int argc, char **argv) {
   if (argc < 3) {
     return fail("usage: log <tag> <none|error|warn|info|debug|verbose>");
@@ -1806,6 +1850,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("feedback",
             "feedback test <shutter|countdown|connect|disconnect|battery>",
             cmdFeedback),
+    command("pair", "pair [yes|no], answer a companion pairing request", cmdPair),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
@@ -1835,7 +1880,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -1861,7 +1906,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(100));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(100));

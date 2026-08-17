@@ -66,6 +66,9 @@ namespace {
 
 constexpr UBaseType_t HEADLESS_REQUEST_QUEUE_LENGTH = 8;
 
+/** 250 ms at the 5 ms loop period, matching the GUI pairing dialog timer. */
+constexpr uint32_t PAIRING_POLL_TICKS = 50;
+
 typedef struct {
   UI::Request request;
   int32_t arg;
@@ -88,6 +91,9 @@ void printCameras(bool reload) {
   }
 }
 
+// TODO: connectCamera() and scanCameras() duplicate the connect and scan logic
+// in FurbleUI.cpp (doConnect(), startScan()). Extract a shared helper below the
+// UI, for example in FurbleControl, once the headless profile settles.
 void connectCamera(int32_t index) {
   CameraList::load();
   if (index >= 0) {
@@ -126,6 +132,29 @@ void scanCameras(void) {
   scan.start(
       [](void *) { printf("scan camera count: %u\n", static_cast<unsigned>(CameraList::size())); },
       NULL, [](void *) { printf("scan finished\n"); });
+}
+
+/**
+ * Announce a companion pairing request on the console.
+ *
+ * The GUI polls the same state from a dialog timer. Without a display the
+ * console is the only confirm path, so print the PIN once per request and
+ * point at the pair command.
+ */
+void pollCompanionPairing(void) {
+  static bool announced = false;
+
+  auto &companion = Companion::getInstance();
+  if (companion.isEnabled() && companion.hasPendingPairing()) {
+    if (!announced) {
+      printf("companion pairing pin: %06lu\n",
+             static_cast<unsigned long>(companion.getPendingPairingPin()));
+      printf("confirm with 'pair yes' or 'pair no'\n");
+      announced = true;
+    }
+  } else {
+    announced = false;
+  }
 }
 
 }  // namespace
@@ -205,22 +234,23 @@ static void vUITask(void *param) {
   (void)param;
   using namespace Furble;
 #if defined(FURBLE_NO_DISPLAY)
-  // The display build ticks GPS::update() from an LVGL timer (GPS::SERVICE_MS).
-  // Headless has no LVGL, so drive the same one second service cadence here so
-  // geotag fixes still push to the camera.
-  constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
-  int64_t nextGPSService = esp_timer_get_time();
+  // The GUI constructor does both of these for the display build. startService
+  // keeps the 1 s GPS::update() tick alive so camera geotag pushes still happen.
+  GPS::init();
+  GPS::getInstance().startService();
+
+#if defined(FURBLE_CONSOLE)
+  uint32_t count = 0;
+#endif
   while (true) {
     Platform::getInstance().update();
 #if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
-#endif
-    const int64_t now = esp_timer_get_time();
-    if (now >= nextGPSService) {
-      GPS::getInstance().update();
-      nextGPSService = now + GPS_SERVICE_US;
+    if ((count++ % PAIRING_POLL_TICKS) == 0) {
+      pollCompanionPairing();
     }
+#endif
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 #else
@@ -276,13 +306,6 @@ void app_main() {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");
     abort();
   }
-
-#if defined(FURBLE_NO_DISPLAY)
-  // The display build starts GPS when the UI constructs. Headless has no UI, so
-  // bring GPS up here: this starts the UART task and applies the stored enable
-  // state, then vUITask() ticks GPS::update() to push geotag fixes.
-  Furble::GPS::init();
-#endif
 
 #if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
   Furble::UI::init();
