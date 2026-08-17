@@ -1571,10 +1571,8 @@ void UI::addMainMenu(void) {
           lv_timer_pause(ui->m_DiagnosticsTimer);
         }
 
-        bool presetPage = ((page == m_Menu.at(m_IntervalShutterStr).page)
-                           && ui->m_Intervalometer.m_Shutter.usesPresetPicker())
-                          || ((page == m_Menu.at(m_BulbDurationStr).page)
-                              && ui->m_Bulb.m_Duration.usesPresetPicker());
+        bool presetPage =
+            (page == m_Menu.at(m_BulbDurationStr).page) && ui->m_Bulb.m_Duration.usesPresetPicker();
         if (presetPage) {
           ui->configureControl(ControlMode::PRESET);
         } else if (ui->m_ControlMode == ControlMode::PRESET) {
@@ -2128,7 +2126,6 @@ std::string UI::simQueryState(const char *key) {
 #endif
 
 void UI::setPresetPicker(bool enabled) {
-  m_Intervalometer.m_Shutter.setPresetPicker(enabled);
   m_Bulb.m_Duration.setPresetPicker(enabled);
 }
 
@@ -2199,17 +2196,14 @@ void UI::configPresetControl(void) {
 
 void UI::presetStep(int direction) {
   auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
-  if (page == m_Menu.at(m_IntervalShutterStr).page) {
-    m_Intervalometer.m_Shutter.stepPreset(direction);
-  } else if (page == m_Menu.at(m_BulbDurationStr).page) {
+  if (page == m_Menu.at(m_BulbDurationStr).page) {
     m_Bulb.m_Duration.stepPreset(direction);
   }
 }
 
 void UI::presetConfirm(void) {
   auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
-  if ((page == m_Menu.at(m_IntervalShutterStr).page)
-      || (page == m_Menu.at(m_BulbDurationStr).page)) {
+  if (page == m_Menu.at(m_BulbDurationStr).page) {
     lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
     lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
     configureControl(ControlMode::MENU);
@@ -3250,7 +3244,6 @@ void UI::gpsNMEAStop(lv_event_t *e) {
 void UI::addFeaturesMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_FeaturesStr, &icon_wand_stars, true, parent);
 
-  addSettingItem(menu.page, NULL, Settings::PRESET_PICKER);
   addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
   addSettingItem(menu.page, NULL, Settings::FAUXNY);
   addSettingItem(menu.page, NULL, Settings::RECONNECT);
@@ -3260,6 +3253,7 @@ void UI::addFeaturesMenu(const menu_t &parent) {
 #if defined(FURBLE_M5STICKS3)
   addSettingItem(menu.page, NULL, Settings::WATCHDOG);
 #endif
+  addSettingItem(menu.page, NULL, Settings::PRESET_PICKER);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -3456,6 +3450,18 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
         },
         LV_EVENT_ALL, &spinner);
 
+    if (M5.Touch.isEnabled()) {
+      // The synthesized A/B/C buttons navigate the group, so the plus and
+      // minus buttons have to be group members to be reachable.
+      lv_group_add_obj(m_Group, spinner.m_PresetMinus);
+      lv_group_add_obj(m_Group, spinner.m_PresetPlus);
+    } else {
+      // The physical keys step directly, the on-screen buttons only waste
+      // width on the small displays.
+      lv_obj_add_flag(spinner.m_PresetMinus, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_flag(spinner.m_PresetPlus, LV_OBJ_FLAG_HIDDEN);
+    }
+
     lv_obj_add_flag(spinner.m_PresetRow, LV_OBJ_FLAG_HIDDEN);
   }
 
@@ -3476,10 +3482,15 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
         lv_obj_set_style_pad_right(r, 2, LV_STATE_DEFAULT);
       }
 
-      if ((spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
-          && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF)) {
+      if (spinner.m_RollerUnit != nullptr) {
         lv_obj_set_style_pad_left(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
         lv_obj_set_style_pad_right(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
+      }
+
+      if (spinner.m_PresetRow != nullptr) {
+        // squeeze the preset row too so the value label gets the width
+        lv_obj_set_style_pad_left(spinner.m_PresetRow, 2, LV_STATE_DEFAULT);
+        lv_obj_set_style_pad_right(spinner.m_PresetRow, 2, LV_STATE_DEFAULT);
       }
       break;
     default:

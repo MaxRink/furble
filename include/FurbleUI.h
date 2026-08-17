@@ -80,7 +80,7 @@ class UI {
   /** Configure input control mode. */
   void configureControl(ControlMode mode, bool set = true);
 
-  /** Apply the exposure preset setting to its two supported spinners. */
+  /** Apply the exposure preset setting to the bulb duration spinner. */
   void setPresetPicker(bool enabled);
 
   /** Display shutter intervalometer menu .*/
@@ -222,7 +222,7 @@ class UI {
       lv_obj_t *m_RowInfinite;
       lv_obj_t *m_SwitchInfinite;
 
-      lv_obj_t *m_RowSpinners;
+      lv_obj_t *m_RowSpinners = nullptr;
       // array of rollers, 0 = hundred, 1 = ten, 2 = one
       std::array<lv_obj_t *, 3> m_Roller = {nullptr, nullptr, nullptr};
       lv_obj_t *m_RollerUnit = nullptr;
@@ -236,7 +236,7 @@ class UI {
       static size_t nearestPreset(uint32_t milliseconds);
       static SpinValue::nvs_t presetNVS(size_t index);
       void updatePresetPickerVisibility(void);
-      void snapToPreset(void);
+      void snapToDigits(void);
 
       const bool m_PresetSupported;
       bool m_PresetPicker = false;

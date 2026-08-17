@@ -8,7 +8,7 @@ UI::Intervalometer::Intervalometer(const interval_t &interval)
     : m_State {STATE_IDLE},
       m_Count(this, interval.count, true),
       m_Delay(this, interval.delay),
-      m_Shutter(this, interval.shutter, false, true),
+      m_Shutter(this, interval.shutter),
       m_Wait(this, interval.wait) {}
 
 void UI::Intervalometer::save(void) {
@@ -78,11 +78,38 @@ SpinValue::nvs_t UI::Intervalometer::Spinner::presetNVS(size_t index) {
   return SpinValue::nvs_t {static_cast<uint16_t>(milliseconds), SpinValue::UNIT_MS};
 }
 
-void UI::Intervalometer::Spinner::snapToPreset(void) {
-  m_PresetIndex = nearestPreset(m_SpinValue.toMilliseconds());
-  SpinValue::nvs_t nvs = presetNVS(m_PresetIndex);
-  m_SpinValue.m_Value = nvs.value;
-  m_SpinValue.m_Unit = nvs.unit;
+void UI::Intervalometer::Spinner::snapToDigits(void) {
+  uint32_t milliseconds = m_SpinValue.toMilliseconds();
+  if (milliseconds < 1000) {
+    m_SpinValue.m_Value = static_cast<uint16_t>(milliseconds);
+    m_SpinValue.m_Unit = SpinValue::UNIT_MS;
+    return;
+  }
+
+  uint32_t seconds = (milliseconds + 500) / 1000;
+  if (seconds <= 999) {
+    m_SpinValue.m_Value = static_cast<uint16_t>(seconds);
+    m_SpinValue.m_Unit = SpinValue::UNIT_SEC;
+    return;
+  }
+
+  // Above 999 s pick the nearer of 999 s and the rounded whole minute. The
+  // 1000 s series entry lands on 999 s, not 17 min.
+  uint32_t minutes = (seconds + 30) / 60;
+  if (minutes > 999) {
+    minutes = 999;
+  }
+  uint32_t secDistance = milliseconds - 999000;
+  uint32_t minMilliseconds = minutes * 60000;
+  uint32_t minDistance = milliseconds > minMilliseconds ? milliseconds - minMilliseconds
+                                                        : minMilliseconds - milliseconds;
+  if (secDistance <= minDistance) {
+    m_SpinValue.m_Value = 999;
+    m_SpinValue.m_Unit = SpinValue::UNIT_SEC;
+  } else {
+    m_SpinValue.m_Value = static_cast<uint16_t>(minutes);
+    m_SpinValue.m_Unit = SpinValue::UNIT_MIN;
+  }
 }
 
 void UI::Intervalometer::Spinner::setPresetPicker(bool enabled) {
@@ -92,8 +119,9 @@ void UI::Intervalometer::Spinner::setPresetPicker(bool enabled) {
 
   m_PresetPicker = enabled;
   if (enabled) {
-    snapToPreset();
-    m_Owner->save();
+    // Track the nearest series entry for stepping. The stored value is not
+    // modified or saved until the user steps in the picker.
+    m_PresetIndex = nearestPreset(m_SpinValue.toMilliseconds());
   }
 
   updatePresetPickerVisibility();
@@ -123,28 +151,29 @@ void UI::Intervalometer::Spinner::updatePresetPickerVisibility(void) {
     return;
   }
 
+  // The rollers stay in their group. LVGL 9 group navigation skips objects
+  // with a hidden ancestor, and removing plus re-adding would scramble the
+  // traversal order because lv_group_add_obj appends to the tail.
   if (m_PresetPicker) {
     lv_obj_add_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(m_PresetRow, LV_OBJ_FLAG_HIDDEN);
-    for (auto &roller : m_Roller) {
-      lv_group_remove_obj(roller);
-    }
-    if (m_RollerUnit != nullptr) {
-      lv_group_remove_obj(m_RollerUnit);
-    }
   } else {
     lv_obj_clear_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(m_PresetRow, LV_OBJ_FLAG_HIDDEN);
-    for (auto &roller : m_Roller) {
-      lv_group_add_obj(lv_group_get_default(), roller);
-    }
-    if (m_RollerUnit != nullptr) {
-      lv_group_add_obj(lv_group_get_default(), m_RollerUnit);
-    }
   }
 }
 
 void UI::Intervalometer::Spinner::updateLabels(void) {
+  // In digit mode the rollers can only show values 0-999. A preset value like
+  // 1.3 s is stored as 1300 ms, so snap it to the nearest representable value
+  // before driving the rollers. Not persisted, saving happens when the user
+  // next changes the value.
+  if (!m_PresetPicker && (m_SpinValue.m_Value > 999)
+      && ((m_SpinValue.m_Unit == SpinValue::UNIT_MS) || (m_SpinValue.m_Unit == SpinValue::UNIT_SEC)
+          || (m_SpinValue.m_Unit == SpinValue::UNIT_MIN))) {
+    snapToDigits();
+  }
+
   switch (m_SpinValue.m_Unit) {
     case SpinValue::UNIT_INF:
       lv_label_set_text_fmt(m_Value, "Infinite");
@@ -161,7 +190,9 @@ void UI::Intervalometer::Spinner::updateLabels(void) {
 
   if (m_PresetPicker) {
     if (m_PresetValue != nullptr) {
-      uint32_t milliseconds = m_ExposurePresetMilliseconds[m_PresetIndex];
+      // Show the actual stored value. It equals a series entry after stepping,
+      // but until the first step it may sit between entries.
+      uint32_t milliseconds = m_SpinValue.toMilliseconds();
       if ((milliseconds % 1000) == 0) {
         lv_label_set_text_fmt(m_PresetValue, "%lu secs",
                               static_cast<unsigned long>(milliseconds / 1000));
