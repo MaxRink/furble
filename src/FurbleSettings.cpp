@@ -73,6 +73,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
+    {IVL_SLEEP,         {IVL_SLEEP, 42, "Deep Sleep", "ivl_sleep", FURBLE_STR}               },
+    {IVL_SLEEP_THR,     {IVL_SLEEP_THR, 43, "Sleep Threshold", "ivl_sleep_thr", FURBLE_STR}  },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -525,6 +527,9 @@ void Settings::init(void) {
           multiselect_t selection = {};
           save<multiselect_t>(setting.type, selection);
         } break;
+        case IVL_SLEEP_THR:
+          save<uint32_t>(setting.type, IVL_SLEEP_THR_DEFAULT);
+          break;
         case GPS:
         case IMU:
         case GPS_NMEA:
@@ -542,6 +547,7 @@ void Settings::init(void) {
         case SD_GPX:
         // Default off keeps today's behaviour, the profile is strictly opt-in.
         case BATTERY_SAVER:
+        case IVL_SLEEP:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:

@@ -171,7 +171,6 @@ bool Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
-
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     return false;
@@ -205,6 +204,20 @@ void Platform::watchdogFeed(void) {
 }
 
 void Platform::setDisplayOff(bool) {}
+
+bool Platform::canTimedWake(void) {
+  // The host simulator has no RTC alarm rail, so timed wake is unavailable.
+  return false;
+}
+
+void Platform::powerOffUntil(uint32_t seconds) {
+  (void)seconds;
+  powerOff();
+}
+
+bool Platform::consumeTimedWake(void) {
+  return false;
+}
 
 void Platform::setCPUMaxFreq(uint8_t mhz) {
   m_CPUMaxFreqMHz = isCPUMaxFreqValid(mhz) ? mhz : CPU_MAX_FREQ_DEFAULT_MHZ;
