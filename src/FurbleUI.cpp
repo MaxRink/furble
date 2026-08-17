@@ -21,6 +21,7 @@
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
+#include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
@@ -73,6 +74,8 @@ lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
 std::atomic<uint8_t> UI::m_IntervalometerState {0};
 std::atomic<uint16_t> UI::m_IntervalometerRemaining {0};
+bool UI::m_IntervalCountdownActive;
+uint8_t UI::m_IntervalLastAnnouncedSecond;
 
 lv_timer_t *UI::m_BulbTimer;
 lv_timer_t *UI::m_BulbPageRefresh;
@@ -107,8 +110,11 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
     {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
     {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeedbackEventsStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeedbackVolumeStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -406,7 +412,7 @@ UI::UI(const interval_t &interval)
   configureControl(ControlMode::MENU);
 
   // create connection timer
-  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL};
+  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false};
   m_ConnectTimer = lv_timer_create(connectTimerHandler, 125, &m_ConnectContext);
   lv_timer_pause(m_ConnectTimer);
 
@@ -851,6 +857,7 @@ void UI::setTheme(std::string name) {
 void UI::shutterLock(Control &control) {
   if (!m_ShutterLock) {
     control.sendCommand(Control::CMD_SHUTTER_PRESS);
+    Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
     m_ShutterLock = true;
     ESP_LOGI("ui", "SHUTTER LOCKED");
 
@@ -892,6 +899,7 @@ void UI::handleShutter(lv_event_t *e) {
         ui->shutterLock(control);
       } else if (!ui->m_ShutterLock) {
         control.sendCommand(Control::CMD_SHUTTER_PRESS);
+        Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
       }
       break;
     case LV_EVENT_RELEASED:
@@ -1518,6 +1526,16 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   Camera *camera = nullptr;
   auto state = control.getState();
 
+  // A drop out of the active state is a disconnect no matter which state
+  // follows: with infinite reconnect the control re-enters connecting without
+  // ever passing through idle. Clearing the flag here also re-arms the
+  // connected signal for a successful reconnect, and guards against double
+  // signaling with doDisconnect().
+  if ((state != Control::STATE_ACTIVE) && ctx->feedbackConnected) {
+    Feedback::getInstance().signal(Feedback::DISCONNECTED);
+    ctx->feedbackConnected = false;
+  }
+
   switch (state) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
@@ -1545,6 +1563,11 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       break;
 
     case Control::STATE_ACTIVE:
+      if (!ctx->feedbackConnected) {
+        Feedback::getInstance().signal(Feedback::CONNECTED);
+        ctx->feedbackConnected = true;
+      }
+
       if (!lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
         // if from scan, save the connection
         if (ctx->menuName == m_ScanStr) {
@@ -1565,7 +1588,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
 
     case Control::STATE_IDLE:
     case Control::STATE_DISCONNECTING:
-      // nothing to do
+      // The disconnect feedback fired above on leaving the active state.
       break;
   }
 }
@@ -1631,6 +1654,7 @@ void UI::intervalometer(lv_timer_t *timer) {
   switch (interval->m_State) {
     case Intervalometer::STATE_IDLE:
       count = 0;
+      m_IntervalCountdownActive = false;
       lv_label_set_text(interval->m_StateLabel, "IDLE");
       lv_timer_ready(timer);
       interval->m_State = Intervalometer::STATE_WAIT;
@@ -1639,13 +1663,18 @@ void UI::intervalometer(lv_timer_t *timer) {
     case Intervalometer::STATE_WAIT:
       lv_label_set_text(interval->m_StateLabel, "WAIT");
       next = interval->m_Wait.m_SpinValue.toMilliseconds();
+      m_IntervalCountdownActive = next > 0;
+      m_IntervalLastAnnouncedSecond = 0;
       interval->m_State = Intervalometer::STATE_SHUTTER_OPEN;
       break;
 
     case Intervalometer::STATE_SHUTTER_OPEN:
+      m_IntervalCountdownActive = false;
+      m_IntervalLastAnnouncedSecond = 0;
       count++;
       lv_label_set_text(interval->m_StateLabel, "SHUTTER");
       control.sendCommand(Control::CMD_SHUTTER_PRESS);
+      Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
       next = interval->m_Shutter.m_SpinValue.toMilliseconds();
       interval->m_State = Intervalometer::STATE_DELAY;
       break;
@@ -1654,14 +1683,20 @@ void UI::intervalometer(lv_timer_t *timer) {
       lv_label_set_text(interval->m_StateLabel, "DELAY");
       control.sendCommand(Control::CMD_SHUTTER_RELEASE);
       next = interval->m_Delay.m_SpinValue.toMilliseconds();
+      m_IntervalLastAnnouncedSecond = 0;
       if (count >= interval->m_Count.m_SpinValue.m_Value) {
+        m_IntervalCountdownActive = false;
         interval->m_State = Intervalometer::STATE_FINISHED;
       } else {
+        // The delay precedes the next frame, so the countdown announces
+        // before every frame, not only the first.
+        m_IntervalCountdownActive = next > 0;
         interval->m_State = Intervalometer::STATE_SHUTTER_OPEN;
       }
       break;
 
     case Intervalometer::STATE_FINISHED:
+      m_IntervalCountdownActive = false;
       lv_label_set_text(interval->m_StateLabel, "FINISHED");
       next = 0;
       lv_timer_pause(timer);
@@ -1775,6 +1810,15 @@ void UI::serviceRequests(void) {
       case Request::IR_RELOAD:
         updateIRMenuVisibility();
         break;
+
+      case Request::FEEDBACK_RELOAD:
+        Feedback::getInstance().reload();
+        break;
+
+      case Request::FEEDBACK_TEST:
+        // Runs here because signal() touches the LVGL feedback timer.
+        Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
+        break;
     }
   }
 }
@@ -1782,6 +1826,8 @@ void UI::serviceRequests(void) {
 
 void UI::doConnect(lv_event_t *e) {
   auto &control = Control::getInstance();
+
+  m_ConnectContext.feedbackConnected = false;
 
   // activate selected cameras
   for (auto n = 0; n < CameraList::size(); n++) {
@@ -1804,6 +1850,11 @@ void UI::doConnect(lv_event_t *e) {
 
 void UI::doDisconnect(void) {
   lv_timer_pause(m_ConnectTimer);
+
+  if (m_ConnectContext.feedbackConnected) {
+    Feedback::getInstance().signal(Feedback::DISCONNECTED);
+    m_ConnectContext.feedbackConnected = false;
+  }
 
   // release a held bulb exposure before the connection goes away
   m_ConnectContext.ui->bulbStop();
@@ -2666,6 +2717,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
 
         interval->m_State = Intervalometer::STATE_IDLE;
+        m_IntervalCountdownActive = false;
+        m_IntervalLastAnnouncedSecond = 0;
         lv_timer_resume(timer);
 
         lv_timer_resume(m_IntervalPageRefresh);
@@ -2695,6 +2748,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         // pause all interval timers
         lv_timer_pause(timer);
         lv_timer_pause(m_IntervalPageRefresh);
+        m_IntervalCountdownActive = false;
+        m_IntervalLastAnnouncedSecond = 0;
 
         // release shutter and exit
         control.sendCommand(Control::CMD_SHUTTER_RELEASE);
@@ -2710,6 +2765,18 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         uint32_t remaining = m_IntervalNext > now ? m_IntervalNext - now : 0;
         SpinValue::hms_t hms = SpinValue::toHMS(remaining);
         lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", hms.hours, hms.minutes, hms.seconds);
+
+        if (!m_IntervalCountdownActive || (remaining == 0)) {
+          m_IntervalLastAnnouncedSecond = 0;
+        } else if (remaining > 3000) {
+          m_IntervalLastAnnouncedSecond = 0;
+        } else {
+          uint8_t second = static_cast<uint8_t>((remaining + 999) / 1000);
+          if ((second >= 1) && (second <= 3) && (second != m_IntervalLastAnnouncedSecond)) {
+            Feedback::getInstance().signal(Feedback::COUNTDOWN);
+            m_IntervalLastAnnouncedSecond = second;
+          }
+        }
       },
       333, m_Intervalometer.m_RemainingLabel);
   lv_timer_pause(m_IntervalPageRefresh);
@@ -2994,6 +3061,12 @@ void UI::batteryUpdate(lv_timer_t *timer) {
   status->meanLevel += (status->battery.level - status->meanLevel) / 4.0f;
   status->displayLevel = lroundf(status->meanLevel);
 
+  if (caps.level) {
+    // feed the smoothed level, the raw reading jitters across the threshold
+    Feedback::getInstance().updateBattery(status->displayLevel,
+                                          caps.charging && status->battery.charging);
+  }
+
   if (caps.voltage) {
     status->meanVoltage += (status->battery.voltage - status->meanVoltage) / 4.0f;
   }
@@ -3178,6 +3251,173 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   // Add the battery page entry below the controls
   addBatteryMenu(menu);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::updateFeedbackVolumeVisibility(Feedback::output_t output) {
+  auto &feedback = Feedback::getInstance();
+  auto &volume = m_Menu.at(m_FeedbackVolumeStr);
+  bool show = feedback.supports(output) && Feedback::outputIncludesSound(output);
+
+  if (show) {
+    lv_obj_clear_flag(volume.button, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(volume.button, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void UI::addFeedbackMenu(const menu_t &parent) {
+  auto &feedback = Feedback::getInstance();
+
+  std::array<Feedback::output_t, Feedback::OUTPUT_OPTION_COUNT> outputOptions = {};
+  size_t outputCount = feedback.getOutputOptions(outputOptions);
+  if (outputCount <= 1) {
+    // Only Off is available on this board, a menu with one no-op choice is
+    // clutter.
+    return;
+  }
+
+  menu_t &menu = addMenu(m_FeedbackStr, &icon_settings_remote, true, parent);
+
+  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+
+  // Output is filtered from the board capability table. The stored enum is
+  // kept intact when it is unavailable, so moving the setting to another
+  // supported board restores it.
+  lv_obj_t *outputCont = lv_menu_cont_create(menu.page);
+  lv_obj_set_flex_flow(outputCont, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_t *outputLabel = lv_label_create(outputCont);
+  lv_label_set_text(outputLabel, "Output");
+  lv_label_set_long_mode(outputLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_flex_grow(outputLabel, 1);
+
+  static constexpr const char *outputNames[] = {
+      "Off", "Sound", "Light", "Vibrate", "Sound and Light",
+  };
+  std::string outputText;
+  uint8_t selectedOutput = 0;
+  uint8_t storedOutput = Settings::load<uint8_t>(Settings::FB_OUTPUT);
+  for (size_t n = 0; n < outputCount; n++) {
+    if (!outputText.empty()) {
+      outputText += "\n";
+    }
+    outputText += outputNames[outputOptions[n]];
+    if (outputOptions[n] == static_cast<Feedback::output_t>(storedOutput)) {
+      selectedOutput = n;
+    }
+  }
+
+  lv_obj_t *outputRoller = lv_roller_create(outputCont);
+  lv_obj_set_width(outputRoller, LV_PCT(60));
+  lv_roller_set_options(outputRoller, outputText.c_str(), LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(outputRoller, 2);
+  lv_roller_set_selected(outputRoller, selectedOutput, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      outputRoller,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        auto output = Feedback::getInstance().outputForOption(lv_roller_get_selected(roller));
+        Settings::save<Settings::FB_OUTPUT>(static_cast<uint8_t>(output));
+        ui->updateFeedbackVolumeVisibility(output);
+      },
+      LV_EVENT_VALUE_CHANGED, this);
+
+  lv_obj_t *restart = lv_button_create(menu.page);
+  lv_obj_t *restartLabel = lv_label_create(restart);
+  lv_label_set_text(restartLabel, "Restart to apply");
+  lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_obj_add_event_cb(
+      restart,
+      [](lv_event_t *) {
+#if defined(FURBLE_M5STICKS3)
+        Platform::getInstance().watchdogEnable(false);
+#endif
+        esp_restart();
+      },
+      LV_EVENT_CLICKED, NULL);
+
+  menu_t &events = addMenu(m_FeedbackEventsStr, NULL, true, menu);
+  lv_obj_set_flex_flow(events.page, LV_FLEX_FLOW_COLUMN);
+  static const uint8_t shutterMask = Feedback::EVENT_SHUTTER_MASK;
+  static const uint8_t countdownMask = Feedback::EVENT_COUNTDOWN_MASK;
+  static const uint8_t connectionMask = Feedback::EVENT_CONNECTION_MASK;
+  static const uint8_t lowBatteryMask = Feedback::EVENT_LOW_BATTERY_MASK;
+
+  auto addEventSwitch = [&events](const char *name, const uint8_t *mask) {
+    lv_obj_t *row = lv_menu_cont_create(events.page);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_t *label = lv_label_create(row);
+    lv_label_set_text(label, name);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_flex_grow(label, 1);
+    lv_obj_t *sw = lv_switch_create(row);
+    if ((Settings::load<uint8_t>(Settings::FB_EVENTS) & *mask) != 0) {
+      lv_obj_add_state(sw, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *mask = static_cast<const uint8_t *>(lv_event_get_user_data(e));
+          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint8_t events = Settings::load<uint8_t>(Settings::FB_EVENTS);
+          if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
+            events |= *mask;
+          } else {
+            events &= static_cast<uint8_t>(~*mask);
+          }
+          Settings::save<Settings::FB_EVENTS>(events);
+          Feedback::getInstance().reload();
+        },
+        LV_EVENT_VALUE_CHANGED, const_cast<uint8_t *>(mask));
+  };
+
+  addEventSwitch("Shutter fired", &shutterMask);
+  addEventSwitch("Countdown", &countdownMask);
+  addEventSwitch("Connect and disconnect", &connectionMask);
+  addEventSwitch("Low battery", &lowBatteryMask);
+  lv_menu_set_load_page_event(events.main, events.button, events.page);
+
+  menu_t &volume = addMenu(m_FeedbackVolumeStr, NULL, true, menu);
+  lv_obj_set_flex_flow(volume.page, LV_FLEX_FLOW_COLUMN);
+  lv_obj_t *volumeLabel = lv_label_create(volume.page);
+  lv_label_set_text(volumeLabel, "Volume");
+  lv_obj_set_width(volumeLabel, LV_PCT(100));
+  lv_obj_t *volumeSlider = lv_slider_create(volume.page);
+  lv_obj_set_width(volumeSlider, LV_PCT(90));
+  lv_slider_set_range(volumeSlider, 0, UINT8_MAX);
+  lv_slider_set_value(volumeSlider, Settings::load<uint8_t>(Settings::FB_VOLUME), LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      volumeSlider,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        switch (lv_event_get_code(e)) {
+          case LV_EVENT_VALUE_CHANGED:
+            // Live preview only, the brightness slider precedent: persist on
+            // release, not on every step, to spare NVS.
+            Feedback::getInstance().setVolume(static_cast<uint8_t>(lv_slider_get_value(slider)));
+            break;
+          case LV_EVENT_FOCUSED:
+            ui->configureControl(lv_obj_has_state(slider, LV_STATE_EDITED) ? ControlMode::SLIDER
+                                                                           : ControlMode::MENU);
+            break;
+          default:
+            break;
+        }
+      },
+      LV_EVENT_ALL, this);
+
+  lv_obj_add_event_cb(
+      volumeSlider,
+      [](lv_event_t *e) {
+        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        Settings::save<Settings::FB_VOLUME>(static_cast<uint8_t>(lv_slider_get_value(slider)));
+      },
+      LV_EVENT_RELEASED, NULL);
+  lv_menu_set_load_page_event(volume.main, volume.button, volume.page);
+  updateFeedbackVolumeVisibility(static_cast<Feedback::output_t>(storedOutput));
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -3666,6 +3906,7 @@ void UI::addSettingsMenu(void) {
   addBluetoothMenu(menu);
   addAboutMenu(menu);
   addPowerMenu(menu);
+  addFeedbackMenu(menu);
   // after 'Power', the battery page it builds is linked from diagnostics
   addDiagnosticsMenu(menu);
 

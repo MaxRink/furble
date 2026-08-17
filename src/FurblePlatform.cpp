@@ -3,8 +3,10 @@
 #include <M5PM1.h>
 #include <M5Unified.h>
 
+#include "FurbleFeedback.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
@@ -26,7 +28,8 @@ Platform &Platform::getInstance(void) {
     auto cfg = M5.config();
     cfg.clear_display = true;
     cfg.internal_imu = false;
-    cfg.internal_spk = false;
+    cfg.internal_spk = Feedback::outputIncludesSound(
+        static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
     M5.begin(cfg);
@@ -93,6 +96,13 @@ void Platform::watchdogFeed(void) {
   if (!m5pm1Access([this]() { return m_M5PM1.wdtFeed(); })) {
     ESP_LOGW(LOG_TAG, "Failed to feed M5PM1 watchdog");
   }
+}
+
+void Platform::wakeM5PM1(void) {
+  uint16_t mv = 0;
+  // The read result is discarded, m5pm1Access retries once so the PMIC is
+  // awake when this returns.
+  (void)m5pm1Access([this, &mv]() { return m_M5PM1.readVbat(&mv); });
 }
 #endif
 

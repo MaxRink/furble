@@ -25,6 +25,7 @@
 #include "Scan.h"
 
 #include "FurbleControl.h"
+#include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
 #include "FurbleSettings.h"
@@ -173,6 +174,9 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::IR_PROTO:
+    case Settings::FB_OUTPUT:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
       return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -232,6 +236,8 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -257,6 +263,9 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::IR_PROTO:
+    case Settings::FB_OUTPUT:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPS_BAUD:
@@ -303,11 +312,23 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::IR_PROTO:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > UINT8_MAX)) {
         return fail("expected 0-255");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::FB_OUTPUT:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > Feedback::OUTPUT_SOUND_LIGHT)) {
+        return fail("expected 0-4");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -392,6 +413,12 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   // The UI caches the IR menu visibility, so it has to be told as well.
   if (setting.type == Settings::IR) {
     UI::sendRequest(UI::Request::IR_RELOAD, 0);
+  }
+
+  // The feedback cache reloads on the UI task. FB_OUTPUT is deliberately
+  // excluded, output changes apply on restart only.
+  if ((setting.type == Settings::FB_EVENTS) || (setting.type == Settings::FB_VOLUME)) {
+    UI::sendRequest(UI::Request::FEEDBACK_RELOAD, 0);
   }
 
   printf("saved: %s\n", setting.key);
@@ -749,6 +776,33 @@ int cmdLog(int argc, char **argv) {
   return fail("expected none, error, warn, info, debug or verbose");
 }
 
+int cmdFeedback(int argc, char **argv) {
+  if ((argc < 3) || strcmp(argv[1], "test")) {
+    return fail("usage: feedback test shutter|countdown|connect|disconnect|battery");
+  }
+
+  static const struct {
+    const char *name;
+    Feedback::event_t event;
+  } events[] = {
+      {"shutter",    Feedback::SHUTTER_FIRED},
+      {"countdown",  Feedback::COUNTDOWN    },
+      {"connect",    Feedback::CONNECTED    },
+      {"disconnect", Feedback::DISCONNECTED },
+      {"battery",    Feedback::LOW_BATTERY  },
+  };
+
+  for (const auto &entry : events) {
+    if (!strcasecmp(argv[2], entry.name)) {
+      // Bypasses the event mask but honors the output selection, so a host
+      // script can drive every pattern during hardware verification.
+      return sendRequest(UI::Request::FEEDBACK_TEST, entry.event, "feedback test");
+    }
+  }
+
+  return fail("expected shutter, countdown, connect, disconnect or battery");
+}
+
 int cmdReboot(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -787,6 +841,9 @@ const esp_console_cmd_t COMMANDS[] = {
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
     command("scan", "scan start | stop | list", cmdScan),
+    command("feedback",
+            "feedback test <shutter|countdown|connect|disconnect|battery>",
+            cmdFeedback),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
     command("reboot", "Restart the device", cmdReboot),
 };

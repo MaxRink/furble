@@ -45,6 +45,9 @@ class Settings {
     CONN_SAVER,
     IR,
     IR_PROTO,
+    FB_OUTPUT,
+    FB_EVENTS,
+    FB_VOLUME,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -260,6 +263,18 @@ struct Settings::storage_type<Settings::IR> {
 };
 template <>
 struct Settings::storage_type<Settings::IR_PROTO> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::FB_OUTPUT> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::FB_EVENTS> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::FB_VOLUME> {
   using type = uint8_t;
 };
 #if defined(FURBLE_M5STICKS3)

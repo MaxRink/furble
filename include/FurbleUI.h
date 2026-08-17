@@ -12,6 +12,7 @@
 
 #include "FurbleCalibrate.h"
 #include "FurbleControl.h"
+#include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
@@ -30,13 +31,15 @@ class UI {
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the UI task to carry out on its behalf. */
   enum class Request {
-    CONNECT,    /**< arg: saved camera index, negative for the multi-connect selection */
-    DISCONNECT, /**< arg: unused */
-    SCAN,       /**< arg: non-zero to start, zero to stop */
-    CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
-    GPS_RELOAD, /**< arg: unused */
-    GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
-    IR_RELOAD,  /**< arg: unused */
+    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT,      /**< arg: unused */
+    SCAN,            /**< arg: non-zero to start, zero to stop */
+    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD,      /**< arg: unused */
+    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,       /**< arg: unused */
+    FEEDBACK_RELOAD, /**< arg: unused */
+    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
   };
 
   /**
@@ -243,6 +246,7 @@ class UI {
     lv_obj_t *bar;
     lv_obj_t *cancel;
     const char *menuName;
+    bool feedbackConnected;
   } ConnectContext_t;
 
   static std::mutex m_Mutex;
@@ -314,10 +318,15 @@ class UI {
   static constexpr const char *m_BluetoothStr = "Bluetooth";
   static constexpr const char *m_AboutStr = "About";
   static constexpr const char *m_PowerStr = "Power";
+  static constexpr const char *m_FeedbackStr = "Feedback";
   static constexpr const char *m_DiagnosticsStr = "Diagnostics";
 
   // settings->power
   static constexpr const char *m_BatteryStr = "Battery";
+
+  // settings->feedback
+  static constexpr const char *m_FeedbackEventsStr = "Feedback Events";
+  static constexpr const char *m_FeedbackVolumeStr = "Volume";
 
   // settings->diagnostics
   static constexpr const char *m_DeviceInfoStr = "Device info";
@@ -388,6 +397,8 @@ class UI {
   static uint32_t m_IntervalNext;
   static std::atomic<uint8_t> m_IntervalometerState;
   static std::atomic<uint16_t> m_IntervalometerRemaining;
+  static bool m_IntervalCountdownActive;
+  static uint8_t m_IntervalLastAnnouncedSecond;
 
   static lv_timer_t *m_BulbTimer;
   static lv_timer_t *m_BulbPageRefresh;
@@ -610,6 +621,12 @@ class UI {
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);
+
+  /** Add the 'Feedback' menu entry. */
+  void addFeedbackMenu(const menu_t &parent);
+
+  /** Update visibility of the sound volume page. */
+  void updateFeedbackVolumeVisibility(Feedback::output_t output);
 
   /** Add the 'Battery' page. */
   void addBatteryMenu(const menu_t &parent);
