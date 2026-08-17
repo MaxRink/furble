@@ -1,0 +1,13 @@
+# Exercise the initial menu, fake FauxNY scan, connection flow, and shutter page.
+wait 200
+capture main
+key left
+wait 200
+capture scan
+key left
+wait 1100
+capture connected
+key left
+wait 200
+capture shutter
+exit

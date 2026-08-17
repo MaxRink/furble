@@ -1,0 +1,21 @@
+wait 300
+capture settings-00-main
+key down
+wait 200
+capture settings-01-main-focus
+key left
+wait 200
+capture settings-02-page
+key down
+wait 200
+capture settings-03-page
+key down
+wait 200
+capture settings-04-page
+key down
+wait 200
+capture settings-05-page
+key left
+wait 200
+capture settings-06-open
+exit
