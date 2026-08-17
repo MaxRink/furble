@@ -652,11 +652,22 @@ The host implementation is under `sim/`.
 - `sim/fake_uart.cpp` supplies the UART driver used by the unmodified GPS
   source.
 - `sim/driver.cpp` reads `wait`, `advance`, `key`, `press`, `capture`,
-  `uart-dump`, and `exit` commands.
+  `uart-dump`, `home`, `back`, and `exit` commands.
 - `sim/capture.cpp` reads the M5GFX SDL panel and writes RGB PNG files without
   adding an image library dependency.
 - `.gitignore` excludes the local native build output and the temporary
   PlatformIO core directory.
+
+## Screenshot CI
+
+Screenshot CI is implemented on `feat/ui-screenshot-ci`, rebased onto the
+merged simulator on master. The deterministic script captures the modeled
+M5StickS3 135 by 240 UI pages, and `.github/workflows/ui-screenshots.yml`
+builds the simulator, runs the capture under Xvfb, uploads `ui-screenshots`,
+and updates one marker-based PR comment. The current simulator models only
+this board class. The workflow is interim: plan 63 later consolidates it into
+one combined sim-report job. `gps.png` is not byte-reproducible across runs,
+so no baseline comparison may include it.
 
 ## Deviations
 

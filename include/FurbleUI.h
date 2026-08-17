@@ -52,6 +52,14 @@ class UI {
 
   void task(void);
 
+#if defined(FURBLE_SIM)
+  /** Reset to the root menu for scripted simulator runs. */
+  bool simulatorHome(void);
+
+  /** Navigate to the previous LVGL menu page for scripted simulator runs. */
+  bool simulatorBack(void);
+#endif
+
   /** Set inactivity timeout in multiples of 30s. */
   void setInactivityTimeout(uint8_t timeout);
 

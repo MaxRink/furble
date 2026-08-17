@@ -1,0 +1,182 @@
+name: UI screenshots
+
+# Keep this workflow focused on files that can change the rendered UI. The
+# sdkconfig files select LVGL fonts and themes, and the generator is part of
+# that configuration path.
+'on':
+  pull_request:
+    paths:
+      - 'src/FurbleUI*'
+      - 'src/FurbleGPS.cpp'
+      - 'src/FurbleSettings.cpp'
+      - 'src/FurbleSpinValue.cpp'
+      - 'src/FurbleCalibrate.cpp'
+      - 'include/FurbleUI.h'
+      - 'include/FurbleGPS.h'
+      - 'include/FurbleSettings.h'
+      - 'include/FurbleSpinValue.h'
+      - 'include/FurbleCalibrate.h'
+      - 'components/icons/**'
+      - 'sim/**'
+      - 'sdkconfig.*'
+      - 'tools/gen_lv_conf.py'
+      - '.github/workflows/ui-screenshots.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ui-screenshots:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            sim/.pio
+          key: ${{ runner.os }}-ui-screenshots-${{ hashFiles('sim/platformio.ini', 'requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-ui-screenshots-
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install SDL2, Clang, and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang libsdl2-dev xvfb
+
+      - name: Install simulator dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          platformio pkg install --project-dir sim --environment sim
+
+      - name: Generate LVGL configuration
+        run: python tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+
+      - name: Build simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+        run: sh sim/build.sh
+
+      - name: Capture UI screenshots
+        env:
+          FURBLE_SIM_PREFS: ${{ runner.temp }}/furble-sim-prefs.bin
+        run: |
+          mkdir -p "$RUNNER_TEMP/ui-screenshots"
+          # Panel_sdl needs a display-backed GL surface for pixel readback on
+          # Linux. The SDL dummy video driver does not provide that surface.
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
+            env \
+              SDL_VIDEODRIVER=x11 \
+              SDL_AUDIODRIVER=dummy \
+              LIBGL_ALWAYS_SOFTWARE=1 \
+              ./sim/build/furble-sim \
+              --script sim/scripts/ui-screenshots.txt \
+              --out "$RUNNER_TEMP/ui-screenshots"
+
+      - name: Write screenshot list and job summary
+        shell: bash
+        run: |
+          names="$(find "$RUNNER_TEMP/ui-screenshots" -maxdepth 1 -type f -name '*.png' -printf '%f\n' | sort)"
+          test -n "$names"
+          {
+            echo 'UI_SCREEN_NAMES<<EOF'
+            echo "$names"
+            echo EOF
+          } >> "$GITHUB_ENV"
+          {
+            echo '## UI screenshots'
+            echo
+            echo 'The simulator currently models the M5StickS3 135x240 board class.'
+            echo
+            echo '| Screen | Board class | PNG |'
+            echo '| --- | --- | --- |'
+            while IFS= read -r name; do
+              screen="${name#m5stick-s3-}"
+              screen="${screen%.png}"
+              echo "| \`$screen\` | \`m5stick-s3 135x240\` | \`$name\` |"
+            done <<< "$names"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: ${{ runner.temp }}/ui-screenshots
+          if-no-files-found: error
+
+      # Artifact URLs cannot be embedded as inline PR images, and the job
+      # summary is scoped to the workflow run. Keep one marker-based comment
+      # with the artifact link and use the summary for the per-screen table.
+      - name: Update sticky PR comment
+        uses: actions/github-script@v7
+        env:
+          SCREEN_NAMES: ${{ env.UI_SCREEN_NAMES }}
+        with:
+          script: |
+            const marker = '<!-- furble-ui-screenshots -->';
+            const { owner, repo } = context.repo;
+            const runId = context.runId;
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              { owner, repo, run_id: runId, per_page: 100 },
+            );
+            const artifact = artifacts.find((item) => item.name === 'ui-screenshots');
+            if (!artifact) {
+              core.setFailed('The ui-screenshots artifact was not found.');
+              return;
+            }
+
+            const artifactUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${runId}/artifacts/${artifact.id}`;
+            const names = (process.env.SCREEN_NAMES || '').split('\n').filter(Boolean);
+            const rows = names.map((name) => {
+              const screen = name.replace(/^m5stick-s3-/, '').replace(/\.png$/, '');
+              return `| \`${screen}\` | \`m5stick-s3 135x240\` | \`${name}\` |`;
+            }).join('\n');
+            const body = [
+              marker,
+              '## UI screenshots',
+              '',
+              `Captured ${names.length} screens from the M5StickS3 135x240 board class.`,
+              '',
+              `[Download the ui-screenshots artifact](${artifactUrl})`,
+              '',
+              '| Screen | Board class | PNG |',
+              '| --- | --- | --- |',
+              rows,
+              '',
+              'The workflow summary contains the same table for this run.',
+            ].join('\n');
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: context.issue.number, per_page: 100 },
+            );
+            const existing = comments.find(
+              (comment) => comment.body && comment.body.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

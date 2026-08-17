@@ -1,0 +1,219 @@
+# Capture every modeled UI page for the M5StickS3 135x240 class.
+# 'left' activates the focused item and 'down' advances focus. 'home' clears
+# the LVGL menu history and focuses Scan so each route starts deterministically.
+wait 300
+capture m5stick-s3-main
+
+key down
+wait 200
+key left
+wait 250
+capture m5stick-s3-settings
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-display
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-features
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-gps
+# GPS starts enabled, so the page shows the full receiver configuration list.
+# Six focus steps skip baud, Update rate, Sentences, Constellation, and Power
+# to reach GPS Data.
+key down
+wait 100
+key down
+wait 100
+key down
+wait 100
+key down
+wait 100
+key down
+wait 100
+key down
+wait 100
+key left
+wait 1200
+capture m5stick-s3-gps
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-timer
+key left
+wait 200
+capture m5stick-s3-settings-timer-count
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-timer-delay
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-timer-shutter
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-timer-wait
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-theme
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-tx-power
+
+home
+wait 200
+key down
+wait 200
+key left
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key down
+wait 200
+key left
+wait 200
+capture m5stick-s3-settings-about
+
+home
+wait 200
+key left
+wait 200
+key left
+wait 1100
+capture m5stick-s3-connected
+exit
