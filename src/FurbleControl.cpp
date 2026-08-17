@@ -42,7 +42,9 @@ Control::Target::Target(Camera *camera) {
 Control::Target::~Target() {
   vQueueDelete(m_Queue);
   m_Queue = NULL;
-  m_Camera->disconnect();
+  if (!m_Stopped) {
+    m_Camera->disconnect();
+  }
   m_Camera = NULL;
 }
 
@@ -110,6 +112,7 @@ void Control::Target::task(void) {
         break;
       case CMD_DISCONNECT:
         m_Camera->setActive(false);
+        m_Camera->disconnect();
         goto task_exit;
       case CMD_ERROR:
         // Not an error: getCommand() returns CMD_ERROR when the 50 ms queue
@@ -200,6 +203,7 @@ Control::state_t Control::connectAll(void) {
     if (allConnected()) {
       failcount = 0;
       m_ReconnectAttempt = 0;
+      m_ReconnectHintLogged = false;
       return STATE_ACTIVE;
     }
   }
@@ -212,6 +216,19 @@ Control::state_t Control::connectAll(void) {
         delay = SLEEP_INFINITE_MS << shift;
         if (delay > BACKOFF_MAX_MS) {
           delay = BACKOFF_MAX_MS;
+        }
+      }
+
+      if (m_ReconnectAttempt == 0) {
+        if (!m_ReconnectHintLogged) {
+          ESP_LOGW(LOG_TAG,
+                   "Reconnect failed; camera may still hold the previous session. Waiting "
+                   "%lu ms before the first retry.",
+                   RECONNECT_STALE_SESSION_MS);
+          m_ReconnectHintLogged = true;
+        }
+        if (delay < RECONNECT_STALE_SESSION_MS) {
+          delay = RECONNECT_STALE_SESSION_MS;
         }
       }
 
@@ -331,12 +348,39 @@ void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect = infiniteReconnect;
   m_ReconnectBackoff = Settings::load<Settings::RECON_BACKOFF>();
   m_ReconnectAttempt = 0;
+  m_ReconnectHintLogged = false;
   m_ConnectAbort = false;
 
   this->sendCommand(CMD_CONNECT);
 }
 
-void Control::disconnect(void) {
+bool Control::disconnectComplete(void) {
+  std::vector<Camera *> cameras;
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto &target : m_Targets) {
+      if (!target->m_Stopped) {
+        return false;
+      }
+      cameras.push_back(target->getCamera());
+    }
+  }
+
+  if (m_ConnectInProgress) {
+    return false;
+  }
+
+  for (auto *camera : cameras) {
+    if (camera->isConnected()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool Control::disconnect(uint32_t timeout_ms) {
   m_ConnectAbort = true;
   setState(STATE_DISCONNECTING);
   m_ReconnectAttempt = 0;
@@ -356,14 +400,13 @@ void Control::disconnect(void) {
     }
   }
 
-  // wait for tasks to finish
-  for (const auto &target : m_Targets) {
-    do {
-      vTaskDelay(pdMS_TO_TICKS(1));
-    } while (!target.get()->m_Stopped);
-  }
-
-  while (m_ConnectInProgress) {
+  const TickType_t start = xTaskGetTickCount();
+  const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+  while (!disconnectComplete()) {
+    if ((timeout == 0) || (xTaskGetTickCount() - start >= timeout)) {
+      ESP_LOGW(LOG_TAG, "Camera disconnect timed out after %lu ms.", timeout_ms);
+      return false;
+    }
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 
@@ -373,6 +416,7 @@ void Control::disconnect(void) {
     m_ConnectCamera = nullptr;
   }
   setState(STATE_IDLE);
+  return true;
 }
 
 void Control::addActive(Camera *camera) {

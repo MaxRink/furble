@@ -90,6 +90,12 @@ class Platform {
    */
   void watchdogEnable(bool enable);
 
+  /** Disconnect cameras and disable restart-sensitive hardware before reset. */
+  void prepareRestart(void);
+
+  /** Gracefully prepare the device and restart it. */
+  void restart(void);
+
   /**
    * Feed the M5PM1 hardware watchdog.
    */

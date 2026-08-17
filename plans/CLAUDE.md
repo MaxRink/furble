@@ -17,3 +17,5 @@ lands on fork master. This file applies once it does.
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS
   backup rail, $PCAS support). Cite it instead of re-measuring.
+- Restart and BLE recovery plans must cover both clean shutdown and unclean
+  reset paths, and must include an immediate reconnect acceptance test.

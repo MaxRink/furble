@@ -1301,7 +1301,7 @@ int cmdReboot(int argc, char **argv) {
   printf("reboot: now\n");
   fflush(stdout);
   vTaskDelay(pdMS_TO_TICKS(100));
-  esp_restart();
+  Platform::getInstance().restart();
   return 0;
 }
 

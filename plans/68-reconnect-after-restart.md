@@ -1,0 +1,92 @@
+# Reconnect after restart
+
+Status: implemented in `feat/68-reconnect-restart`. Hardware verification remains
+to be run on the M5StickS3 with a Fujifilm camera.
+
+## Motivation
+
+Restarting furble while a camera is connected can leave the camera believing the
+old BLE link is still active. The next boot autoconnect starts while that stale
+session is still held. A restart from Settings, touch calibration, or the USB
+console should release the camera first. An unclean reset must still recover
+without asking the user to wait for the camera's timeout.
+
+The acceptance test is: restart while connected, then start an immediate
+reconnect. It must succeed without waiting for the camera timeout.
+
+## Root cause
+
+The three `esp_restart()` call sites did not share shutdown behavior. The theme
+page disabled the StickS3 watchdog, but calibration and the console reboot did
+not. None of them asked `Control` to disconnect its active cameras.
+
+`Control::disconnect()` sent target stop commands, then waited without a bound.
+The target destructor initiated the camera disconnect only after the target task
+stopped. A slow or stuck BLE stack could therefore delay restart, and a normal
+reset gave the camera no clean disconnect at all.
+
+Master requests 30 to 50 ms interval, latency 1, and
+`2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT`. The NimBLE initial supervision value
+is `0x0100`, so the camera-side supervision timeout is 5.12 seconds. The
+conn-saver worktree uses a 16 second idle supervision timeout. The existing
+first reconnect wait was only 5 seconds, which was too close to the master
+timeout and shorter than the conn-saver case.
+
+## Design
+
+- `Platform::restart()` is the only application restart entry point. It calls
+  `prepareRestart()`, which asks `Control` to stop all target tasks and cameras,
+  waits up to one second, logs a timeout if needed, and disables the StickS3
+  watchdog. A timeout never prevents the reset.
+- `Control::disconnect()` keeps the existing abort and GAP cancel behavior. The
+  target task performs `Camera::disconnect()` before it reports stopped. The
+  control task checks completion in short slices and never holds `m_Mutex`
+  during a delay. It clears targets only after target tasks, the connection
+  attempt, and camera connection state have all completed.
+- The first infinite-reconnect retry waits 17 seconds. This gives a one second
+  margin over the 16 second conn-saver case and is also longer than master's
+  5.12 second timeout. Later retries retain the existing 5, 10, 20, 40, 80,
+  and 120 second backoff schedule. One warning says that the camera may still
+  hold the previous session.
+
+## Restart-path inventory
+
+| Path | Entry point | Shared behavior |
+|---|---|---|
+| Theme settings | `UI::addThemeMenu()` | `Platform::restart()` |
+| Touch calibration | `CalibrationUI::calibrate()` | `Platform::restart()` |
+| USB console | `cmdReboot()` | `Platform::restart()` |
+
+There are no direct application calls to `esp_restart()` outside
+`Platform::restart()`.
+
+## Verification
+
+Build both requested S3 environments:
+
+```text
+FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3
+FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug
+```
+
+Build status: the sandboxed worktree could not run PlatformIO. The
+`m5stick-s3` release build was run on the harvest machine at commit time and
+succeeded. The `m5stick-s3-debug` build remains to be run with hardware
+verification.
+
+On hardware:
+
+1. Connect a Fujifilm camera and confirm the shutter page is active.
+2. Restart from the theme settings page. Confirm the log shows the camera
+   disconnect before reset and the camera releases the old link.
+3. Repeat with touch calibration and with the console `reboot` command.
+4. After each reset, leave autoconnect enabled and reconnect immediately. The
+   camera must connect without waiting for its supervision timeout.
+5. Interrupt a reconnect during the 17 second first retry wait. Confirm the
+   existing abort path returns promptly and no Control mutex remains held.
+6. Force an unclean reset or power loss while connected. Confirm the first
+   retry warning appears once and the patient retry window reconnects after the
+   camera releases its old session.
+
+Only Fujifilm hardware is available for this verification. Other camera types
+remain covered by code review and FauxNY tests.

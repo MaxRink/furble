@@ -2,6 +2,7 @@
 #define FURBLE_CONTROL_H
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
@@ -77,6 +78,8 @@ class Control {
   const uint32_t SLEEP_INFINITE_MS = (5 * 1000);
   const uint32_t BACKOFF_MAX_MS = (120 * 1000);
   const uint32_t BACKOFF_SLICE_MS = 100;
+  static constexpr uint32_t DISCONNECT_TIMEOUT_MS = (1 * 1000);
+  static constexpr uint32_t RECONNECT_STALE_SESSION_MS = (17 * 1000);
 
   /**
    * FreeRTOS control task function.
@@ -113,8 +116,11 @@ class Control {
 
   /**
    * Disconnect all connected cameras.
+   *
+   * @param[in] timeout_ms Maximum time to wait for target tasks and cameras.
+   * @return true if all disconnect work completed before the timeout.
    */
-  void disconnect(void);
+  bool disconnect(uint32_t timeout_ms = DISCONNECT_TIMEOUT_MS);
 
   /**
    * Add specified camera to active target list.
@@ -148,6 +154,9 @@ class Control {
 
   /** Iterate over cameras and attempt connection. */
   state_t connectAll(void);
+
+  /** Check whether all disconnect work has completed. */
+  bool disconnectComplete(void);
 
   /**
    * Move to a new state and update the light sleep lock to match.
@@ -188,6 +197,7 @@ class Control {
   bool m_InfiniteReconnect = false;
   bool m_ReconnectBackoff = false;
   uint32_t m_ReconnectAttempt = 0;
+  bool m_ReconnectHintLogged = false;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;
