@@ -441,6 +441,49 @@ What remains for PR-B, PR-C, PR-D to rebase onto this base:
 - PR-D (web UI): rebases on PR-C.
 - The intervalometer refactor out of the UI task is still required before the
   headless build can run intervalometer sequences; PR-C depends on it.
+
+### PR33b, stage 33b
+
+Implemented in `feat/33b-provisioning`:
+
+- Added `WIFI`, `WIFI_SSID`, `WIFI_PSK`, `NTP` and `NTP_SERVER` settings.
+  WiFi and NTP default to off. Credentials default to empty. The NTP server
+  defaults to `pool.ntp.org`.
+- Added station provisioning over the console. The driver uses modem sleep,
+  stores the last BSSID and channel, retries with jittered exponential
+  backoff, and refuses fallback scans while a camera is connected.
+- Added `wifi` and `ntp` console command groups. Passphrases are never printed
+  by settings or status output. WiFi status includes radio state, link data,
+  battery current and the runtime estimate when the board reports current.
+- Added SNTP startup on the got-IP event and teardown on station disconnect.
+  NTP uses immediate UTC synchronization. GPS geodata uses the synchronized
+  system time when an NTP time is available.
+
+Deviations:
+
+- The WiFi settings take wire ids 51 to 55 (`WIFI`, `WIFI_SSID`, `WIFI_PSK`,
+  `NTP`, `NTP_SERVER`). Master reached wire id 44 in the gap, so 51 to 55 do
+  not collide. The WiFi state keys for BSSID and channel are private NVS
+  values, not settings.
+
+Rebase onto the PR-A base (resolved):
+
+- The known release-link failure is fixed. The five release sdkconfig files
+  and `sdkconfig.esp32-s3-headless` now all select the LWIP TCP/IP stack
+  (`CONFIG_ESP_NETIF_TCPIP_LWIP=y`, WiFi and LWIP driver symbols enabled)
+  instead of the loopback netif, so the WiFi netstack symbols link on every
+  env. `src/CMakeLists.txt` adds `esp_wifi`, `esp_netif`, `esp_event` and
+  `lwip` to `PRIV_REQUIRES`.
+- The headless env is the primary automation surface, so it gets the same
+  WiFi/LWIP symbols as the release envs. It is not left on a loopback netif.
+- The earlier headless `syscfg/syscfg.h` failure is gone: the PR-A base ships
+  a full `sdkconfig.esp32-s3-headless` seeded from the StickS3 config with the
+  BT controller and NimBLE enabled, so the headless build compiles from clean.
+- `esp_netif_init()` and `esp_event_loop_create_default()` are called exactly
+  once at boot, guarded so WiFi bring-up does not double-init them.
+- Hardware verification is still pending. On-device WiFi association, IP
+  acquisition and NTP sync must be checked on a real S3 with an AP and
+  credentials before this merges.
 ---
 
 # PR33b: WiFi station provisioning over the console, and NTP
