@@ -491,6 +491,38 @@ Rebase onto the PR-A base (resolved):
   acquisition and NTP sync must be checked on a real S3 with an AP and
   credentials before this merges.
 
+### PR33c, MQTT and Home Assistant integration
+
+Implemented in `feat/33c-mqtt`:
+
+- Added the ESP-IDF `esp-mqtt` client with URI, username, password, topic base,
+  master enable and Home Assistant settings. MQTT is disabled by default.
+- Added retained availability, camera, battery and shutter state. Added
+  command topics for shutter, focus, interval, connect, disconnect and location.
+- Added bounded connection retries. Ten failed starts or disconnects block the
+  client until `mqtt connect` is issued.
+- Added Home Assistant device discovery for the hub and for each saved camera.
+  Camera devices use `via_device`, combined hub and camera availability, a
+  connect button, a connectivity binary sensor and a diagnostic RSSI sensor.
+  The hub exposes shutter, focus, interval, camera count, camera connectivity,
+  battery, battery voltage and GPS.
+- Added the location command parser. Valid JSON fixes feed
+  `GPS::setExternalFix` and use the existing 30 second fix arbitration.
+- Lifted intervalometer timing into the MQTT task. It uses the saved interval
+  setting and does not require the display UI.
+- The base does not contain PR33b WiFi provisioning. MQTT waits for an existing
+  `WIFI_STA_DEF` interface and remains inactive until one has an IP address.
+- This base has no `FurbleCompanion` source and no `setting_t.wire_id` field.
+  Camera IDs are deterministic address and type IDs until the persisted camera
+  IDs from plan 51 land. No provisional companion wire IDs are encoded here.
+- Hardware verification is pending. The sandboxed worktree could not run
+  PlatformIO; the `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3`
+  build was run on the harvest machine at commit time and succeeded.
+- None of the plans/65 coexistence rules are implemented in this branch.
+  There is no esp_wifi code on this base, so the BLE connection interval
+  floor above 50 ms while WiFi is up, the three camera cap in hub mode and
+  WIFI_PS_MIN_MODEM all defer to the WiFi radio bring-up PR.
+
 ---
 
 # PR33b: WiFi station provisioning over the console, and NTP
