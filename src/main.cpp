@@ -6,6 +6,7 @@
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
+#include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
@@ -28,6 +29,7 @@ void app_main() {
 
   Furble::Platform::init();
   Furble::Settings::init();
+  Furble::IR::init();
 
   // Platform::init() runs before NVS exists, apply the stored frequency now
   Furble::Platform::getInstance().setCPUMaxFreq(
