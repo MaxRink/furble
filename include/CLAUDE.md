@@ -16,3 +16,4 @@ Public headers for the app layer in src/, one header per module
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
   methods directly.
+- `FurbleWiFi.h` exposes station provisioning and NTP status for the app layer.

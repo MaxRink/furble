@@ -1,6 +1,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include <esp_event.h>
+#include <esp_netif.h>
+
 #if defined(FURBLE_NO_DISPLAY)
 #include <M5Unified.h>
 #include <esp_timer.h>
@@ -22,6 +25,7 @@
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
@@ -286,6 +290,9 @@ void app_main() {
   Furble::SD::init();
   Furble::BootScreen::step("Storage");
 
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+
   // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
@@ -315,6 +322,7 @@ void app_main() {
   // state, then vUITask() ticks GPS::update() to push geotag fixes.
   Furble::GPS::init();
 #endif
+  Furble::WiFi::init();
 
 #if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
   Furble::UI::init();

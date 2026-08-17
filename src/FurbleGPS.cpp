@@ -28,6 +28,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
+#include "FurbleWiFi.h"
 
 namespace {
 
@@ -1351,6 +1352,8 @@ void GPS::update(void) {
         m_GPS.date.year(),   m_GPS.date.month(),  m_GPS.date.day(),         m_GPS.time.hour(),
         m_GPS.time.minute(), m_GPS.time.second(), m_GPS.time.centisecond(),
     };
+    // NTP supplies time when synced. GPS still supplies the position.
+    WiFi::getNtpTimesync(timesync);
     updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
