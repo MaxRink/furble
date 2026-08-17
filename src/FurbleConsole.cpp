@@ -228,6 +228,7 @@ const char *settingType(Settings::type_t type) {
 #endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
@@ -257,7 +258,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -319,6 +320,8 @@ const char *appliesWhen(Settings::type_t type) {
 #endif
     case Settings::IMU_WAKE:
     case Settings::IMU_TRIG:
+    case Settings::IVL_SLEEP:
+    case Settings::IVL_SLEEP_THR:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -375,6 +378,7 @@ void printValue(const char *prefix, Settings::type_t type) {
 #endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
       break;
     case Settings::THEME:
@@ -413,7 +417,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -551,6 +555,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
@@ -640,7 +645,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
