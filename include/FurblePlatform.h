@@ -135,11 +135,8 @@ class Platform {
 
   /**
    * Power off and arrange for a timed power-on.
-   *
-   * @return true after the wake timer and power-off request were accepted;
-   * false if setup failed and the device remains awake.
    */
-  bool powerOffUntil(uint32_t seconds);
+  void powerOffUntil(uint32_t seconds);
 
   /**
    * Consume the wake marker left by a timed power-on.

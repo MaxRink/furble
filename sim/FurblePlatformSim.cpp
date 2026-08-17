@@ -126,7 +126,7 @@ bool Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
-  const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
+  const uint8_t timeout = enable ? WDT_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     return false;
   }
@@ -157,20 +157,13 @@ void Platform::watchdogFeed(void) {
 void Platform::setDisplayOff(bool) {}
 
 bool Platform::canTimedWake(void) {
-  // Model board capability separately from the physical rail operation. This
-  // makes the production menu expose timed-wake controls on StickS3 so layout
-  // and settings behavior are testable, while powerOffUntil remains a safe
-  // failure seam until the reboot-cycle simulator layer is present.
-#if defined(FURBLE_M5STICKS3)
-  return true;
-#else
+  // The host simulator has no RTC alarm rail, so timed wake is unavailable.
   return false;
-#endif
 }
 
-bool Platform::powerOffUntil(uint32_t seconds) {
+void Platform::powerOffUntil(uint32_t seconds) {
   (void)seconds;
-  return powerOff();
+  powerOff();
 }
 
 bool Platform::consumeTimedWake(void) {

@@ -21,8 +21,8 @@ namespace Furble {
 
 #if defined(FURBLE_M5STICKS3)
 namespace {
-using Watchdog::PM1_FEED_PERIOD_MS;
-using Watchdog::PM1_TIMEOUT_S;
+constexpr uint8_t WDT_TIMEOUT_S = 10;  // Keep the feed period below one third of this timeout.
+constexpr uint32_t WDT_FEED_PERIOD_MS = 1000;
 constexpr uint32_t TIMED_WAKE_MARKER = 0x49564c31;
 }  // namespace
 #endif
@@ -317,9 +317,10 @@ bool Platform::canTimedWake(void) {
   }
 }
 
-bool Platform::powerOffUntil(uint32_t seconds) {
+void Platform::powerOffUntil(uint32_t seconds) {
   if (seconds == 0) {
-    return powerOff();
+    powerOff();
+    return;
   }
 
 #if defined(FURBLE_M5STICKS3)
@@ -332,14 +333,14 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     };
 
     if (!watchdogEnable(false)) {
-      return false;
+      return;
     }
 
     if (!m5pm1Access(
             [this, seconds]() { return m_M5PM1.timerSet(seconds, M5PM1_TIM_ACTION_POWERON); })) {
       ESP_LOGE(LOG_TAG, "Failed to set M5PM1 wake timer");
       restoreWatchdog();
-      return false;
+      return;
     }
 
     const uint32_t marker = TIMED_WAKE_MARKER;
@@ -349,7 +350,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       ESP_LOGE(LOG_TAG, "Failed to save M5PM1 wake marker");
       (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
       restoreWatchdog();
-      return false;
+      return;
     }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
@@ -360,46 +361,35 @@ bool Platform::powerOffUntil(uint32_t seconds) {
         return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
       });
       restoreWatchdog();
-      return false;
     }
-    return true;
+    return;
   }
 #endif
 
   if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
     if (!M5.Rtc.isEnabled()) {
       ESP_LOGW(LOG_TAG, "StickC Plus2 RTC is unavailable, staying awake");
-      return false;
+      return;
     }
 
     M5.Rtc.disableIRQ();
     M5.Rtc.clearIRQ();
     const int requested_seconds = static_cast<int>(seconds);
     const int programmed_seconds = M5.Rtc.setAlarmIRQ(requested_seconds);
-    // The BM8563 has one-second resolution up to 255 seconds and minute
-    // resolution above that. Accept an upward rounding, which is the only
-    // safe direction for a power-off interval, but reject a failed or shorter
-    // timer because it could wake before the saved resume deadline.
-    if ((programmed_seconds <= 0) || (programmed_seconds < requested_seconds)) {
+    if (programmed_seconds != requested_seconds) {
       ESP_LOGW(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
                programmed_seconds);
       M5.Rtc.disableIRQ();
-      return false;
-    }
-
-    if (programmed_seconds != requested_seconds) {
-      ESP_LOGI(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
-               programmed_seconds);
+      return;
     }
 
     M5.Display.sleep();
     (void)gpio_set_direction(STICKC_PLUS2_HOLD_PIN, GPIO_MODE_OUTPUT);
     (void)gpio_set_level(STICKC_PLUS2_HOLD_PIN, 0);
-    return true;
+    return;
   }
 
   ESP_LOGW(LOG_TAG, "Timed wake is unsupported on this board");
-  return false;
 }
 
 bool Platform::consumeTimedWake(void) {
