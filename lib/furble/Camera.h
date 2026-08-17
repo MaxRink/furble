@@ -240,6 +240,9 @@ class Camera: public NimBLEClientCallbacks {
   static void gattJournalClear(void);
 #endif
 
+  /** Get the connected peer RSSI in dBm, or -127 when unavailable. */
+  int getRSSI(void) const;
+
  protected:
   Camera(Type type, PairType pairType);
   std::atomic<uint8_t> m_Progress;
