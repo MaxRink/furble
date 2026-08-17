@@ -206,6 +206,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::HW_MOTION:
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
@@ -323,6 +324,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::HW_MOTION:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPX_PERIOD:
@@ -468,6 +470,15 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
     } break;
 #endif
+    case Settings::HW_MOTION:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > Settings::HW_MOTION_HARDWARE)) {
+        return fail("expected 0-2 (auto, software, hardware)");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
 
     case Settings::SCAN_TIMEOUT:
     {

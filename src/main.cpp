@@ -6,6 +6,8 @@
 #include <esp_timer.h>
 #endif
 
+#include <M5Unified.h>
+
 #include "Device.h"
 #include "Scan.h"
 

@@ -127,6 +127,18 @@ class Platform {
   bool powerOff(void);
 
   /**
+   * Arm the IMU interrupt as a light-sleep wake source.
+   *
+   * @return true when this board has a configured interrupt path.
+   */
+  bool armMotionWake(void);
+
+  /**
+   * Disarm the IMU light-sleep wake source.
+   */
+  void disarmMotionWake(void);
+
+  /**
    * Set the maximum CPU frequency in MHz.
    *
    * Unsupported values fall back to the default. Use getCPUMaxFreq() to read
@@ -266,6 +278,7 @@ class Platform {
   mutable std::mutex m_BatteryMutex;
   battery_sample_t m_BatterySample = {};
   bool m_BatterySampleInitialized = false;
+  bool m_MotionWakeArmed = false;
 #if defined(FURBLE_M5STICKS3)
   bool m_StatusLedLevel = false;
   bool m_StatusLedLevelValid = false;
