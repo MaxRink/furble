@@ -150,13 +150,26 @@ class Control {
    */
   void setState(state_t state);
 
-  /** Sample connection RSSI and adjust the shared transmit power. */
+  /**
+   * Sample connection RSSI and adjust the shared transmit power.
+   *
+   * Control task only. Takes m_Mutex internally in short sections. NVS reads,
+   * per-camera RSSI reads and radio calls all run with the mutex released.
+   */
   void sampleAdaptivePower(void);
 
-  /** Reset RSSI state and restore the user transmit power cap. */
-  void resetAdaptivePower(void);
+  /**
+   * Reset adaptive power tracking state. No NVS or radio calls.
+   *
+   * Caller must hold m_Mutex.
+   */
+  void resetAdaptiveState(void);
 
-  /** Apply one runtime transmit power level to all targets. */
+  /**
+   * Request one shared connection transmit power level from the radio.
+   *
+   * Blocking radio call. Caller must not hold m_Mutex.
+   */
   void applyPower(esp_power_level_t power);
 
   static constexpr UBaseType_t m_QueueLength = 32;
@@ -179,12 +192,16 @@ class Control {
 
   // Camera connects are serialised, the following tracks the last attempt
   Camera *m_ConnectCamera = nullptr;
+
+  // User transmit power cap, loaded from TX_POWER at first getInstance()
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
 
+  // Adaptive power state, guarded by m_Mutex
   uint32_t m_LastRssiSample = 0;
   uint8_t m_RssiStrongSamples = 0;
   uint8_t m_RssiWeakSamples = 0;
   bool m_AdaptiveActive = false;
+  esp_power_level_t m_AdaptivePower = ESP_PWR_LVL_P3;
 };
 
 };  // namespace Furble

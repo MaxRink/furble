@@ -27,6 +27,11 @@ class Device {
   static void init(esp_power_level_t power);
 
   /**
+   * Map a supported transmit power level to dBm for the NimBLE API.
+   */
+  static int8_t powerLevelToDbm(esp_power_level_t power);
+
+  /**
    * Return a device consistent 128-bit UUID.
    */
   static uuid128_t getUUID128(void);

@@ -126,12 +126,6 @@ class Camera: public NimBLEClientCallbacks {
    */
   int8_t getRssi(void) const;
 
-  /** Get the current runtime transmit power level. */
-  esp_power_level_t getCurrentPower(void) const;
-
-  /** Set the current runtime transmit power level. */
-  void setCurrentPower(esp_power_level_t power);
-
   /**
    * Camera is active (ie. connect() has succeeded previously).
    */
@@ -204,7 +198,6 @@ class Camera: public NimBLEClientCallbacks {
   mutable std::mutex m_Mutex;
 
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
-  esp_power_level_t m_CurrentPower = ESP_PWR_LVL_P3;
   bool m_FromScan = false;
   bool m_Active = false;
 };

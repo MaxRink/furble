@@ -6,9 +6,7 @@
 
 namespace Furble {
 
-namespace {
-
-int8_t powerLevelToDbm(esp_power_level_t power) {
+int8_t Device::powerLevelToDbm(esp_power_level_t power) {
   switch (power) {
     case ESP_PWR_LVL_P3:
       return 3;
@@ -20,8 +18,6 @@ int8_t powerLevelToDbm(esp_power_level_t power) {
       return 3;
   }
 }
-
-}  // namespace
 
 Device::uuid128_t Device::m_Uuid;
 char Device::m_StringID[DEVICE_ID_STR_MAX];
