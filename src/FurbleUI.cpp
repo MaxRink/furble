@@ -2919,15 +2919,74 @@ void UI::bulbRefresh(void) {
                         hms.seconds);
 }
 
+void UI::bulbStart(void) {
+  if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
+    return;
+  }
+
+  uint32_t duration = m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
+  m_Bulb.m_State = Bulb::STATE_RUNNING;
+  m_Bulb.m_StartedAt = tick();
+
+  lv_label_set_text(m_Bulb.m_StateLabel, "Exposing");
+  lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
+
+  // Hold the shutter with the same lock the remote page uses.
+  shutterLock(Control::getInstance());
+
+  m_BulbEnd = m_Bulb.m_StartedAt + duration;
+  lv_timer_set_period(m_BulbTimer, duration);
+  lv_timer_reset(m_BulbTimer);
+  lv_timer_resume(m_BulbTimer);
+
+  bulbRefresh();
+  lv_timer_resume(m_BulbPageRefresh);
+}
+
+void UI::bulbComplete(void) {
+  if (m_Bulb.m_State != Bulb::STATE_RUNNING) {
+    return;
+  }
+
+  uint32_t now = tick();
+  uint32_t elapsed = now - m_Bulb.m_StartedAt;
+  SpinValue::hms_t hms = SpinValue::toHMS(elapsed);
+
+  m_Bulb.m_State = Bulb::STATE_DONE;
+  lv_timer_pause(m_BulbTimer);
+  lv_timer_pause(m_BulbPageRefresh);
+
+  // The state guard makes a late timer callback unable to release twice.
+  shutterUnlock(Control::getInstance());
+
+  // Show the next exposure length while the completed exposure remains visible.
+  m_BulbEnd = now + m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
+  bulbRefresh();
+  lv_label_set_text_fmt(m_Bulb.m_StateLabel, "Done (%02lu:%02lu:%02lu)", hms.hours, hms.minutes,
+                        hms.seconds);
+  lv_label_set_text(m_Bulb.m_ActionLabel, "Restart");
+}
+
 void UI::bulbStop(void) {
   lv_timer_pause(m_BulbTimer);
   lv_timer_pause(m_BulbPageRefresh);
 
-  // no-op if the shutter is not held
-  shutterUnlock(Control::getInstance());
+  if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
+    m_Bulb.m_State = Bulb::STATE_IDLE;
+
+    // no-op if the shutter is not held
+    shutterUnlock(Control::getInstance());
+  } else if (m_Bulb.m_State == Bulb::STATE_DONE) {
+    m_Bulb.m_State = Bulb::STATE_IDLE;
+  }
 
   m_BulbEnd = tick();
   bulbRefresh();
+}
+
+void UI::updateBulbModeHint(void) {
+  // Keep this setter as the hook for future BLE detected camera mode status.
+  lv_label_set_text(m_Bulb.m_ModeHintLabel, m_BulbModeHintStr);
 }
 
 void UI::addBulbMenu(const menu_t &parent) {
@@ -2935,6 +2994,14 @@ void UI::addBulbMenu(const menu_t &parent) {
   menu_t &menuBulbRun = addMenu(m_BulbRunStr, NULL, false, menu);
 
   addSpinnerPage(menu, m_BulbDurationStr, m_Bulb.m_Duration);
+
+  m_Bulb.m_ModeHintLabel = lv_label_create(menu.page);
+  lv_obj_set_width(m_Bulb.m_ModeHintLabel, LV_PCT(100));
+  lv_label_set_long_mode(m_Bulb.m_ModeHintLabel, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_font(m_Bulb.m_ModeHintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Bulb.m_ModeHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_set_style_text_letter_space(m_Bulb.m_ModeHintLabel, -2, LV_PART_MAIN);
+  updateBulbModeHint();
 
   m_BulbStart = lv_button_create(menu.page);
   lv_obj_t *startLabel = lv_label_create(m_BulbStart);
@@ -2947,18 +3014,7 @@ void UI::addBulbMenu(const menu_t &parent) {
       m_BulbStart,
       [](lv_event_t *e) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        uint32_t duration = ui->m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
-
-        // hold the shutter with the same lock the remote page uses
-        ui->shutterLock(Control::getInstance());
-
-        m_BulbEnd = tick() + duration;
-        lv_timer_set_period(m_BulbTimer, duration);
-        lv_timer_reset(m_BulbTimer);
-        lv_timer_resume(m_BulbTimer);
-
-        ui->bulbRefresh();
-        lv_timer_resume(m_BulbPageRefresh);
+        ui->bulbStart();
       },
       LV_EVENT_CLICKED, this);
 
@@ -2968,11 +3024,12 @@ void UI::addBulbMenu(const menu_t &parent) {
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
 
+  m_Bulb.m_StateLabel = lv_label_create(cont);
   m_Bulb.m_RemainingLabel = lv_label_create(cont);
 
   lv_obj_t *stop = lv_button_create(cont);
-  lv_obj_t *stopLabel = lv_label_create(stop);
-  lv_label_set_text(stopLabel, "Stop");
+  m_Bulb.m_ActionLabel = lv_label_create(stop);
+  lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
   lv_obj_add_flag(stop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
   addToInputGroup(m_Group, stop);
   lv_obj_add_event_cb(
@@ -2980,7 +3037,12 @@ void UI::addBulbMenu(const menu_t &parent) {
       [](lv_event_t *e) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
 
-        // release the shutter and exit
+        if (ui->m_Bulb.m_State == Bulb::STATE_DONE) {
+          ui->bulbStart();
+          return;
+        }
+
+        // Cancel the exposure, release the shutter, and exit.
         ui->bulbStop();
         lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
         lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
@@ -2991,7 +3053,7 @@ void UI::addBulbMenu(const menu_t &parent) {
   m_BulbTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
-        ui->bulbStop();
+        ui->bulbComplete();
       },
       1000, this);
   lv_timer_pause(m_BulbTimer);

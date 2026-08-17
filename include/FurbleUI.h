@@ -228,13 +228,24 @@ class UI {
    */
   class Bulb: public SpinnerOwner {
    public:
+    typedef enum {
+      STATE_IDLE,
+      STATE_RUNNING,
+      STATE_DONE,
+    } state_t;
+
     Bulb(const SpinValue::nvs_t &duration);
 
     void save(void) override;
 
+    state_t m_State = STATE_IDLE;
     Intervalometer::Spinner m_Duration;
 
+    uint32_t m_StartedAt = 0;
+    lv_obj_t *m_StateLabel = nullptr;
     lv_obj_t *m_RemainingLabel = nullptr;
+    lv_obj_t *m_ActionLabel = nullptr;
+    lv_obj_t *m_ModeHintLabel = nullptr;
   };
 
   typedef enum { MODE_SCAN, MODE_DELETE, MODE_CONNECT, MODE_MULTICONNECT } CameraListMode_t;
@@ -307,6 +318,7 @@ class UI {
 
   // connected->bulb
   static constexpr const char *m_BulbDurationStr = "Duration";
+  static constexpr const char *m_BulbModeHintStr = "Camera must be in B (bulb) mode";
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";
@@ -622,8 +634,17 @@ class UI {
   /** Refresh the bulb exposure countdown. */
   void bulbRefresh(void);
 
+  /** Start or restart the bulb exposure. */
+  void bulbStart(void);
+
+  /** Complete an automatic bulb exposure. */
+  void bulbComplete(void);
+
   /** Stop any bulb exposure and release the shutter. */
   void bulbStop(void);
+
+  /** Update the bulb mode hint. BLE mode detection can replace this hook. */
+  void updateBulbModeHint(void);
 
   /** Add spinner menu item entry. */
   lv_obj_t *addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner);
