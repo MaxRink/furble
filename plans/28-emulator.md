@@ -490,6 +490,12 @@ table. Do not build a UI story on it.
 
 ## Relationship to other plans
 
+- Fork PR #44 (screenshot CI) depends on this PR. It builds the simulator in
+  CI and compares the scripted captures against reviewed baselines. Note for
+  that work: `gps.png` is not byte-reproducible, because TinyGPSPlus ages the
+  fix with the real host clock, so the rendered fix age varies between runs.
+  PR #44 must exclude it from the baseline set or mask the age field before
+  comparing.
 - PR27 (USB console) is a prerequisite for phase E only. Phases A to D do not
   need it.
 - PR00b (dev USB debug) is a prerequisite for PR27 and therefore for phase E.
@@ -583,3 +589,166 @@ Read from source rather than documentation:
 - `managed_components/lvgl__lvgl` at 9.4.0. Contains `src/drivers/sdl` and
   `src/others/snapshot`. `src/lv_conf_internal.h:3290-3296` guards
   `LV_USE_SNAPSHOT` with `#ifndef` before consulting `CONFIG_LV_USE_SNAPSHOT`.
+## Implementation state
+
+Rebase notes, ported from base `2b79ce8` to current fork master:
+
+- The plans document keeps the full reviewed plan; the implementation state
+  from the branch is appended below it.
+- The fakes were updated to master's grown interfaces: `Scan` gained `Mode`,
+  `setMode`, `setTimeout` and the three-argument `start` with an end
+  callback; the sim `Platform` implements `watchdogEnable`, `watchdogFeed`,
+  `setCPUMaxFreq`, `getCPUMaxFreq`, `getPMConfig`, `dumpPMLocks`,
+  `hasTicklessIdle`, and the battery caps, sample, capacity and fail count
+  readers; `Platform::setSleep` no longer exists and was dropped.
+- New shim headers: `esp_chip_info.h`, `esp_flash.h`, `esp_idf_version.h`,
+  and a `FurbleCompanion.h` fake that reports the companion disabled (the
+  real one needs NimBLE). `esp_system.h` adds reset reasons and heap
+  getters, `esp_err.h` adds `esp_err_to_name`, `esp_pm.h` adds the lock
+  API, and the fake UART accepts `uart_write_bytes` and `uart_wait_tx_done`
+  with `UART_SCLK_XTAL`.
+- `src/FurblePower.cpp` and `src/FurbleUIBulb.cpp` joined the sim source
+  list; both are required by master's UI.
+- Verified after the rebase: `sim/build.sh` builds (with `FURBLE_DEP_ROOT`
+  and `FURBLE_LVGL_DIR` pointing at the worktree's PlatformIO caches), the
+  headless smoke run exits 0 with four 135x240 captures, and the GPS run
+  exits 0 with one capture.
+
+Status at commit `2b79ce8`, 16 August 2026:
+
+- Phase A is implemented for the M5StickS3 geometry, 135 by 240 pixels.
+- Phase B is implemented with a virtual clock, scripted SDL key events, and
+  RGB PNG framebuffer capture.
+- The real `src/FurbleUI.cpp`, `src/FurbleUIIntervalometer.cpp`,
+  `src/FurbleSpinValue.cpp`, `src/FurbleCalibrate.cpp`,
+  `src/FurbleSettings.cpp`, and `src/FurbleGPS.cpp` are compiled.
+- `src/FurbleGPS.cpp` is unchanged. The simulator supplies a fake
+  `driver/uart.h` and a fake UART implementation that repeatedly emits valid
+  RMC and GGA NMEA sentences. This preserves the real GPS task, UART event
+  handling, TinyGPSPlus parsing, fix ageing, and control update path.
+- The fake scan exposes one FauxNY camera. The fake control layer ramps the
+  connection to active after 750 virtual milliseconds. Shutter, focus, GPS,
+  and disconnect commands reach the fake camera.
+- Preferences persist in a host file selected with `FURBLE_SIM_PREFS`.
+- `sim/scripts/smoke.txt` covers the main menu, scan, connection progress,
+  connected page, and shutter page.
+- `sim/scripts/settings.txt` covers navigation through the settings menu.
+- `sim/scripts/gps.txt` opens GPS Data and captures the parsed fake fix.
+- `sim/lv_conf.h` is generated from `sdkconfig.m5stick-s3` by
+  `tools/gen_lv_conf.py`.
+
+## Files
+
+The host implementation is under `sim/`.
+
+- `sim/platformio.ini` contains the planned native PlatformIO environment.
+- `sim/CMakeLists.txt` is a direct CMake build description for machines with
+  CMake installed.
+- `sim/build.sh` is the working macOS fallback. It uses cached M5GFX,
+  M5Unified, LVGL, and TinyGPSPlus sources and invokes Apple Clang directly.
+- `sim/shim/` supplies the ESP-IDF, FreeRTOS, M5PM1, and BLE-facing headers.
+- `sim/*Sim.cpp` supplies fake platform, device, scan, camera, control, and
+  preferences implementations.
+- `sim/fake_uart.cpp` supplies the UART driver used by the unmodified GPS
+  source.
+- `sim/driver.cpp` reads `wait`, `advance`, `key`, `press`, `capture`,
+  `uart-dump`, and `exit` commands.
+- `sim/capture.cpp` reads the M5GFX SDL panel and writes RGB PNG files without
+  adding an image library dependency.
+- `.gitignore` excludes the local native build output and the temporary
+  PlatformIO core directory.
+
+## Deviations
+
+The selected approach was tried first.
+
+1. `pio run -c sim/platformio.ini` first stopped on the existing PlatformIO
+   core lock permissions. Retrying with a worktree-local
+   `PLATFORMIO_CORE_DIR` reached the native platform install, but the sandbox
+   blocked its network download. The PlatformIO configuration remains for a
+   normal networked developer environment.
+2. CMake was prepared as the next fallback, but CMake is not installed in this
+   macOS environment. The direct Clang script is therefore the verified build
+   path. It discovers LVGL in a sibling worktree cache and M5 libraries in the
+   repository `.pio/libdeps` cache. No dependency source was copied into the
+   worktree.
+3. The earlier planning document proposed replacing `src/FurbleGPS.cpp` in
+   the simulator. The later requirement supersedes that proposal. The real GPS
+   source is compiled unchanged, with only the fake UART driver substituted at
+   the include and link seams.
+4. Only the M5StickS3 board is wired in this first implementation. Other board
+   geometries can be added by changing the M5GFX board definition and input
+   mapping after the S3 path is stable.
+
+## Verification
+
+From the worktree root:
+
+```sh
+python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+sh sim/build.sh
+```
+
+Run the deterministic smoke script headlessly:
+
+```sh
+mkdir -p /private/tmp/furble-sim-captures
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  FURBLE_SIM_PREFS=/private/tmp/furble-sim-prefs.bin \
+  ./sim/build/furble-sim \
+  --script sim/scripts/smoke.txt \
+  --capture-dir /private/tmp/furble-sim-captures
+```
+
+Run the GPS capture:
+
+```sh
+mkdir -p /private/tmp/furble-sim-gps-captures
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  FURBLE_SIM_PREFS=/private/tmp/furble-sim-gps-prefs.bin \
+  ./sim/build/furble-sim \
+  --script sim/scripts/gps.txt \
+  --capture-dir /private/tmp/furble-sim-gps-captures
+```
+
+The verified build produced `sim/build/furble-sim`, a macOS arm64 Mach-O
+binary. The dummy-video smoke run exited with status 0 and captured four
+135 by 240 RGB PNGs. The GPS run exited with status 0 and rendered a valid
+fix at 48.12 degrees latitude, 11.52 degrees longitude, 545.40 meters, and
+eight satellites. Two smoke runs produced byte-identical PNGs.
+
+The dummy SDL driver rendered and supported panel readback on this macOS
+machine. Linux CI may need an Xvfb-style display if a future SDL or M5GFX
+version requires a display-backed surface. That is a Linux CI concern and is
+not needed for the verified macOS build.
+
+## Review fixes
+
+Applied on the PR branch after review:
+
+- `sim/CMakeLists.txt` now compiles `src/FurblePower.cpp` and
+  `src/FurbleUIBulb.cpp`, matching `sim/build.sh`. The two lists carry a
+  keep-in-sync note; a generated shared list was considered and rejected as
+  more machinery than two entries justify.
+- Both build paths preflight TinyGPSPlus and default `DEP_ROOT` to the
+  repo-local `.pio/libdeps/m5stick-s3`. The hardcoded sibling worktree LVGL
+  fallbacks are gone; only `managed_components/lvgl__lvgl` is probed, which
+  tracks the LVGL version pinned by `src/idf_component.yml`.
+- The fake `Scan` stores and invokes the scan end callback, so the UI leaves
+  the scanning state, and it always delivers the scripted scan result even
+  when FauxNY is already seeded. Deviation from hardware: the result and the
+  end callback fire in the same `update()` tick, where real scans end on the
+  scan timeout.
+- The fake UART records every `uart_write_bytes` payload. The script driver
+  gained a `uart-dump` verb that prints each captured command as a
+  `uart-tx` line and clears the capture, so $PCAS sends are assertable.
+- Unmodelled error branches in the fake UART: every `uart_*` call returns
+  `ESP_OK`, and the event queue only ever carries `UART_PATTERN_DET`. The
+  `UART_FIFO_OVF`, `UART_BUFFER_FULL`, break and parity paths in
+  `src/FurbleGPS.cpp` are never exercised by the simulator.
+
+## Remaining work
+
+Phase C can add a CI job and golden image comparison (fork PR #44). Phase D
+can add scripted failure, battery, stale-fix, and reconnect states. Other M5
+board geometries and a hardware screenshot comparison remain future work.

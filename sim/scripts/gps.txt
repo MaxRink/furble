@@ -1,0 +1,23 @@
+# Open Settings > GPS > GPS Data and leave the page visible long enough for
+# the real FurbleGPS task and LVGL timer to consume the fake UART stream.
+wait 300
+key down
+wait 200
+key left
+wait 250
+key down
+wait 200
+key down
+wait 200
+key left
+wait 250
+key down
+wait 200
+key down
+wait 200
+key left
+wait 1200
+capture gps
+# Print the $PCAS commands the firmware sent to the fake receiver.
+uart-dump
+exit
