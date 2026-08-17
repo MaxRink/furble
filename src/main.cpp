@@ -17,9 +17,7 @@
 #include "FurbleGPS.h"
 #endif
 #include "FurbleIR.h"
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
 #include "FurbleMQTT.h"
-#endif
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -271,7 +269,7 @@ void printCameras(bool reload) {
   printf("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
   printf("count: %u\n", static_cast<unsigned>(CameraList::size()));
   for (size_t n = 0; n < CameraList::size(); n++) {
-    const auto *camera = CameraList::get(n);
+    const auto camera = CameraList::get(n);
     printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
     printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
            static_cast<unsigned long>(camera->getType()));
@@ -297,7 +295,7 @@ void connectCamera(int32_t index) {
 
   auto &control = Control::getInstance();
   for (size_t n = 0; n < CameraList::size(); n++) {
-    auto *camera = CameraList::get(n);
+    const auto camera = CameraList::get(n);
     if (camera->isActive()) {
       control.addActive(camera);
     }
@@ -488,10 +486,7 @@ void app_main() {
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
   Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
-  Furble::BootScreen::step("Companion");
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
   Furble::MQTT::init();
-#endif
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);

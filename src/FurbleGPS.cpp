@@ -17,6 +17,9 @@
 #include "icons.h"
 #endif
 
+#include <algorithm>
+#include <cmath>
+
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -1361,7 +1364,6 @@ void GPS::update(void) {
     updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
-    altitudeValid = m_GPS.altitude.isValid();
     current.gps = dgps;
     current.timesync = timesync;
     current.age_ms = static_cast<uint32_t>(m_GPS.location.age());
@@ -1389,7 +1391,6 @@ void GPS::update(void) {
       }
       timesync = external.timesync;
       satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
-      altitudeValid = external.altitude_valid;
       current = external;
       current.age_ms = static_cast<uint32_t>(external.age_ms + elapsed_ms);
     }
@@ -1486,151 +1487,6 @@ GPS::source_t GPS::getSource(void) const {
 
 uint8_t GPS::getSatellites(void) const {
   return m_Satellites.load();
-}
-
-void GPS::completeNavxQuery(void) {
-  if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->navx_query || !m_NavxPayloadValid
-      || !m_ConfigNavxAcked) {
-    return;
-  }
-
-  const size_t queryStatus = m_ConfigInFlight->status_index;
-  std::vector<uint8_t> write(m_NavxPayload.begin(), m_NavxPayload.end());
-  m_ConfigInFlight.reset();
-  m_ConfigAttempts = 0;
-  m_ConfigNavxAcked = false;
-  m_NavxPayloadValid = false;
-  {
-    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-    m_ConfigStatus[queryStatus].state = CONFIG_ACKED;
-  }
-
-  const uint8_t constellation = Settings::load<Settings::GPS_CONSTEL>();
-  writeU32(write.data(), NAVX_MASK_NAV_SYSTEM);
-  write[NAVX_NAV_SYSTEM_OFFSET] = constellation;
-  enqueueConfig(CFG_CLASS, CFG_NAVX_ID, write, "PCAS04," + std::to_string(constellation), false,
-                true);
-}
-
-void GPS::handleNavxResponse(const uint8_t *payload, size_t length) {
-  if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->navx_query
-      || (m_ConfigInFlight->class_id != CFG_CLASS) || (m_ConfigInFlight->message_id != CFG_NAVX_ID)
-      || (length != NAVX_PAYLOAD_SIZE)) {
-    return;
-  }
-
-  std::copy(payload, payload + length, m_NavxPayload.begin());
-  m_NavxPayloadValid = true;
-  completeNavxQuery();
-}
-
-void GPS::serviceBinary(const uint8_t *frame, size_t length) {
-  if (length < BINARY_FRAME_OVERHEAD) {
-    return;
-  }
-
-  const uint16_t payloadLength = readU16(frame + 2);
-  if (length != (BINARY_FRAME_OVERHEAD + payloadLength)) {
-    return;
-  }
-
-  const uint8_t class_id = frame[4];
-  const uint8_t message_id = frame[5];
-  const uint8_t *payload = frame + BINARY_HEADER_SIZE;
-
-  if ((class_id == ACK_CLASS) && ((message_id == ACK_ACK_ID) || (message_id == ACK_NACK_ID))
-      && (payloadLength >= 2)) {
-    if (m_ConfigInFlight.has_value() && (payload[0] == m_ConfigInFlight->class_id)
-        && (payload[1] == m_ConfigInFlight->message_id)) {
-      if ((message_id == ACK_ACK_ID) && m_ConfigInFlight->navx_query) {
-        m_ConfigNavxAcked = true;
-        {
-          const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-          auto &status = m_ConfigStatus[m_ConfigInFlight->status_index];
-          status.state = CONFIG_ACKED;
-          status.attempts = m_ConfigAttempts;
-        }
-        completeNavxQuery();
-      } else {
-        finishConfigCommand(message_id == ACK_ACK_ID ? CONFIG_ACKED : CONFIG_NACKED);
-      }
-    }
-    return;
-  }
-
-  if ((class_id == CFG_CLASS) && (message_id == CFG_NAVX_ID)
-      && (payloadLength == NAVX_PAYLOAD_SIZE)) {
-    handleNavxResponse(payload, payloadLength);
-  }
-}
-
-void GPS::processNmea(uint8_t *data, size_t length) {
-  if (length == 0) {
-    return;
-  }
-
-  Console::gpsRaw(reinterpret_cast<const char *>(data), length);
-  m_GPS.encode(reinterpret_cast<char *>(data), length);
-  captureSentences(reinterpret_cast<const char *>(data), length);
-}
-
-void GPS::processSerial(const uint8_t *data, size_t length) {
-  m_RxBuffer.insert(m_RxBuffer.end(), data, data + length);
-
-  while (!m_RxBuffer.empty()) {
-    size_t header = m_RxBuffer.size();
-    for (size_t i = 0; i + 1 < m_RxBuffer.size(); i++) {
-      if ((m_RxBuffer[i] == BINARY_SYNC_0) && (m_RxBuffer[i + 1] == BINARY_SYNC_1)) {
-        header = i;
-        break;
-      }
-    }
-
-    if (header == m_RxBuffer.size()) {
-      const size_t keep = (m_RxBuffer.back() == BINARY_SYNC_0) ? 1 : 0;
-      const size_t nmea = m_RxBuffer.size() - keep;
-      if (nmea > 0) {
-        processNmea(m_RxBuffer.data(), nmea);
-        m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + nmea);
-      }
-      break;
-    }
-
-    if (header > 0) {
-      processNmea(m_RxBuffer.data(), header);
-      m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + header);
-      continue;
-    }
-
-    if (m_RxBuffer.size() < BINARY_HEADER_SIZE) {
-      break;
-    }
-
-    const uint16_t payloadLength = readU16(m_RxBuffer.data() + 2);
-    if ((payloadLength > MAX_BINARY_PAYLOAD) || ((payloadLength % 4) != 0)) {
-      m_RxBuffer.erase(m_RxBuffer.begin());
-      continue;
-    }
-
-    const size_t frameLength = BINARY_FRAME_OVERHEAD + payloadLength;
-    if (m_RxBuffer.size() < frameLength) {
-      break;
-    }
-
-    const uint8_t class_id = m_RxBuffer[4];
-    const uint8_t message_id = m_RxBuffer[5];
-    const uint32_t expected =
-        casicChecksum(class_id, message_id, payloadLength, m_RxBuffer.data() + BINARY_HEADER_SIZE);
-    const uint32_t received = readU32(m_RxBuffer.data() + BINARY_HEADER_SIZE + payloadLength);
-    if (expected != received) {
-      m_RxBuffer.erase(m_RxBuffer.begin());
-      continue;
-    }
-
-    Console::gpsBinary(m_RxBuffer.data(), frameLength);
-    serviceBinary(m_RxBuffer.data(), frameLength);
-    m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + frameLength);
-  }
 }
 
 bool GPS::getCurrentFix(external_fix_t &fix) const {

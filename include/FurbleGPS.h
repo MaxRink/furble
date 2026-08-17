@@ -3,7 +3,6 @@
 
 #include <array>
 #include <atomic>
-#include <deque>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -308,12 +307,6 @@ class GPS {
   uint64_t m_ExternalFixReceivedMs = 0;
   bool m_HasExternalFix = false;
   mutable std::mutex m_ExternalMutex;
-  // cached GPX logging settings, no NVS reads on the periodic update path
-  std::atomic<bool> m_LogEnabled = false;
-  std::atomic<uint32_t> m_LogPeriodMs = 5000;
-  uint32_t m_LastLoggedFix = 0;
-  uint64_t m_LastLoggedStamp = 0;
-  bool m_LogDropWarned = false;
   external_fix_t m_CurrentFix = {};
   mutable std::mutex m_FixMutex;
   TinyGPSPlus m_GPS;

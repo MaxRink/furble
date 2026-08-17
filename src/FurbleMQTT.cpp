@@ -1,7 +1,5 @@
 #include "FurbleMQTT.h"
 
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
@@ -197,9 +195,17 @@ void MQTT::init(void) {
 void MQTT::reloadSetting(void) {
   const bool enabled = Settings::load<Settings::MQTT>();
 
-  // app_main owns the single esp_netif_init and esp_event_loop_create_default,
-  // and the network module (WiFi now, Ethernet later) creates the interface.
-  // MQTT only rides on top, so it never touches the shared network stack init.
+  if (enabled) {
+    const esp_err_t netif_err = esp_netif_init();
+    if ((netif_err != ESP_OK) && (netif_err != ESP_ERR_INVALID_STATE)) {
+      ESP_LOGW(MQTT_LOG_TAG, "esp_netif_init failed: %s", esp_err_to_name(netif_err));
+    }
+
+    const esp_err_t event_err = esp_event_loop_create_default();
+    if ((event_err != ESP_OK) && (event_err != ESP_ERR_INVALID_STATE)) {
+      ESP_LOGW(MQTT_LOG_TAG, "event loop init failed: %s", esp_err_to_name(event_err));
+    }
+  }
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -326,26 +332,18 @@ void MQTT::task(void) {
 }
 
 bool MQTT::networkReady(void) const {
-  // Key on the generic network-up seam: any interface that is up and holds an
-  // assigned IPv4 address. This tracks the IP_EVENT_*_GOT_IP outcome without
-  // binding to WiFi, so a wired Ethernet interface satisfies it just as well.
-  for (esp_netif_t *netif = esp_netif_next_unsafe(nullptr); netif != nullptr;
-       netif = esp_netif_next_unsafe(netif)) {
-    if (!esp_netif_is_netif_up(netif)) {
-      continue;
+  esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (netif == nullptr) {
+    const uint32_t now = static_cast<uint32_t>(nowMs());
+    if ((now - m_LastNetworkLogMs) > 10000) {
+      m_LastNetworkLogMs = now;
+      ESP_LOGI(MQTT_LOG_TAG, "Waiting for the WiFi station interface.");
     }
-    esp_netif_ip_info_t info = {};
-    if ((esp_netif_get_ip_info(netif, &info) == ESP_OK) && (info.ip.addr != 0)) {
-      return true;
-    }
+    return false;
   }
 
-  const uint32_t now = static_cast<uint32_t>(nowMs());
-  if ((now - m_LastNetworkLogMs) > 10000) {
-    m_LastNetworkLogMs = now;
-    ESP_LOGI(MQTT_LOG_TAG, "Waiting for a network interface with an assigned IP.");
-  }
-  return false;
+  esp_netif_ip_info_t info = {};
+  return esp_netif_get_ip_info(netif, &info) == ESP_OK && info.ip.addr != 0;
 }
 
 void MQTT::loadTopics(void) {
@@ -1240,10 +1238,6 @@ std::string MQTT::typeName(Camera::Type type) {
       return "fujifilm_secure";
     case Camera::Type::RICOH:
       return "ricoh";
-    case Camera::Type::PANASONIC_LUMIX:
-      return "panasonic_lumix";
-    case Camera::Type::DJI_OSMO:
-      return "dji_osmo";
   }
   return "unknown";
 }
@@ -1441,5 +1435,3 @@ void MQTT::clearDiscoveryRecords(void) {
 }
 
 }  // namespace Furble
-
-#endif  // defined(FURBLE_MQTT) && FURBLE_MQTT

@@ -57,6 +57,12 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
     {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
     {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
+    {MQTT,              {MQTT, 56, "MQTT", "mqtt", FURBLE_STR}                               },
+    {MQTT_URI,          {MQTT_URI, 57, "MQTT URI", "mqtt_uri", FURBLE_STR}                   },
+    {MQTT_USER,         {MQTT_USER, 58, "MQTT User", "mqtt_user", FURBLE_STR}                },
+    {MQTT_PASS,         {MQTT_PASS, 59, "MQTT Password", "mqtt_pass", FURBLE_STR}            },
+    {MQTT_BASE,         {MQTT_BASE, 60, "MQTT Base", "mqtt_base", FURBLE_STR}                },
+    {MQTT_HA,           {MQTT_HA, 61, "MQTT Home Assistant", "mqtt_ha", FURBLE_STR}          },
 #if !defined(FURBLE_NO_DISPLAY)
     {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
@@ -533,6 +539,18 @@ void Settings::init(void) {
           break;
         case FB_VOLUME:
           save<uint8_t>(setting.type, 64);
+          break;
+        case MQTT:
+        case MQTT_HA:
+          save<bool>(setting.type, false);
+          break;
+        case MQTT_URI:
+        case MQTT_USER:
+        case MQTT_PASS:
+          save<std::string>(setting.type, "");
+          break;
+        case MQTT_BASE:
+          save<std::string>(setting.type, "furble");
           break;
 #if !defined(FURBLE_NO_DISPLAY)
         case DISPLAY_MODE:
