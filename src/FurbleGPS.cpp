@@ -1240,6 +1240,11 @@ void GPS::reloadSetting(void) {
   } else {
     disable();
   }
+
+  const bool motionEnabled = m_Enabled && Settings::load<Settings::GPS_MOTION>()
+                             && Settings::load<Settings::IMU>() && M5.Imu.isEnabled();
+  m_MotionEnabled.store(motionEnabled);
+  m_MotionResetPending.store(true);
 }
 
 /** Refresh the cached GPX logging settings from NVS. */
@@ -1255,6 +1260,10 @@ bool GPS::isEnabled(void) const {
   return m_Enabled;
 }
 
+bool GPS::isStationary(void) const {
+  return m_MotionEnabled.load() && m_MotionStationary.load();
+}
+
 /** Start timer event to service/update GPS. */
 void GPS::startService(void) {
   if (m_Timer != NULL) {
@@ -1268,6 +1277,109 @@ void GPS::startService(void) {
         gps->update();
       },
       SERVICE_MS, this);
+
+  syncMotionTimer();
+}
+
+void GPS::syncMotionTimer(void) {
+  if (m_MotionResetPending.exchange(false)) {
+    resetMotion();
+  }
+
+  if (m_Timer == NULL) {
+    return;
+  }
+
+  if (m_MotionEnabled.load() && (m_MotionTimer == NULL)) {
+    m_MotionTimer = lv_timer_create(
+        [](lv_timer_t *timer) {
+          auto *gps = static_cast<GPS *>(lv_timer_get_user_data(timer));
+          gps->updateMotion();
+        },
+        MOTION_SAMPLE_MS, this);
+  } else if (!m_MotionEnabled.load() && (m_MotionTimer != NULL)) {
+    lv_timer_del(m_MotionTimer);
+    m_MotionTimer = NULL;
+  }
+}
+
+void GPS::resetMotion(void) {
+  m_MotionStationary.store(false);
+  m_MotionStillSinceMs = 0;
+  m_MotionSamples.fill(0.0f);
+  m_MotionSampleCount = 0;
+  m_MotionSampleNext = 0;
+}
+
+void GPS::updateMotion(void) {
+  if (!m_MotionEnabled.load() || !M5.Imu.isEnabled()) {
+    return;
+  }
+
+  M5.Imu.update();
+  float accel[3];
+  if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
+    return;
+  }
+
+  const float magnitude =
+      std::sqrt((accel[0] * accel[0]) + (accel[1] * accel[1]) + (accel[2] * accel[2]));
+  if (!std::isfinite(magnitude)) {
+    return;
+  }
+
+  float previousMean = 0.0f;
+  for (size_t index = 0; index < m_MotionSampleCount; index++) {
+    previousMean += m_MotionSamples[index];
+  }
+  if (m_MotionSampleCount > 0) {
+    previousMean /= static_cast<float>(m_MotionSampleCount);
+  }
+
+  const float deviation = magnitude - previousMean;
+  const bool sampleMoved =
+      (m_MotionSampleCount > 0) && ((deviation * deviation) > MOTION_VARIANCE_THRESHOLD);
+
+  m_MotionSamples[m_MotionSampleNext] = magnitude;
+  m_MotionSampleNext = (m_MotionSampleNext + 1) % MOTION_WINDOW_SAMPLES;
+  m_MotionSampleCount = std::min(m_MotionSampleCount + 1, MOTION_WINDOW_SAMPLES);
+
+  float mean = 0.0f;
+  for (size_t index = 0; index < m_MotionSampleCount; index++) {
+    mean += m_MotionSamples[index];
+  }
+  mean /= static_cast<float>(m_MotionSampleCount);
+
+  float variance = 0.0f;
+  for (size_t index = 0; index < m_MotionSampleCount; index++) {
+    const float difference = m_MotionSamples[index] - mean;
+    variance += difference * difference;
+  }
+  variance /= static_cast<float>(m_MotionSampleCount);
+
+  const bool moved =
+      sampleMoved
+      || ((m_MotionSampleCount == MOTION_WINDOW_SAMPLES) && (variance > MOTION_VARIANCE_THRESHOLD));
+  if (moved) {
+    if (m_MotionStationary.exchange(false)) {
+      ESP_LOGI(LOG_TAG, "GPS motion: moving");
+    }
+    m_MotionStillSinceMs = 0;
+    return;
+  }
+
+  if (m_MotionSampleCount < MOTION_WINDOW_SAMPLES) {
+    return;
+  }
+
+  const uint64_t now_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000;
+  if (m_MotionStillSinceMs == 0) {
+    m_MotionStillSinceMs = now_ms;
+  } else if (!m_MotionStationary.load()
+             && ((now_ms - m_MotionStillSinceMs) >= MOTION_STATIONARY_MS)) {
+    m_MotionStationary.store(true);
+    ESP_LOGI(LOG_TAG, "GPS motion: stationary");
+  }
 }
 
 bool GPS::setExternalFix(const external_fix_t &fix) {
@@ -1303,6 +1415,8 @@ void GPS::clearExternalFix(void) {
 
 /** Send GPS data updates to the control task. */
 void GPS::update(void) {
+  syncMotionTimer();
+
   const uint64_t now_ms = esp_timer_get_time() / 1000;
   Camera::gps_t dgps = {};
   Camera::timesync_t timesync = {};
