@@ -1209,8 +1209,10 @@ void GPS::disable(void) {
   m_NavxPayloadValid = false;
   m_RxBuffer.clear();
   m_LastLoggedFix = 0;
-  GPX::getInstance().close();
-  SD::getInstance().unmount();
+  m_LastLoggedStamp = 0;
+
+  // the SD writer task owns the track file, never touch it from here
+  SD::getInstance().request(SD::request_t::CLOSE);
 
   {
     // serialise against a cycle pass still running on the GPS task
@@ -1230,12 +1232,22 @@ void GPS::disable(void) {
 /** Refresh the setting from NVS. */
 void GPS::reloadSetting(void) {
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
+  reloadLogSettings();
+
   m_Enabled = Settings::load<Settings::GPS>();
   if (m_Enabled) {
     enable();
   } else {
     disable();
   }
+}
+
+/** Refresh the cached GPX logging settings from NVS. */
+void GPS::reloadLogSettings(void) {
+  m_LogEnabled = SD::getInstance().isSupported() && Settings::load<Settings::SD_GPX>();
+  m_LogPeriodMs =
+      static_cast<uint32_t>(Settings::clampGPXPeriod(Settings::load<Settings::GPX_PERIOD>()))
+      * 1000UL;
 }
 
 /** Is GPS enabled? */
@@ -1295,15 +1307,7 @@ void GPS::update(void) {
   Camera::timesync_t timesync = {};
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
-
-  const bool logging = Settings::load<Settings::SD_GPX>() && SD::getInstance().isSupported();
-  if (!logging) {
-    if (GPX::getInstance().isOpen()) {
-      GPX::getInstance().close();
-      SD::getInstance().unmount();
-    }
-    m_LastLoggedFix = 0;
-  }
+  bool altitudeValid = false;
 
   if (wiredFixIsFresh()) {
     source = SOURCE_UART;
@@ -1320,6 +1324,7 @@ void GPS::update(void) {
     updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
+    altitudeValid = m_GPS.altitude.isValid();
   } else {
     external_fix_t external = {};
     uint64_t received_ms = 0;
@@ -1341,6 +1346,7 @@ void GPS::update(void) {
       }
       timesync = external.timesync;
       satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
+      altitudeValid = external.altitude_valid;
     }
   }
 
@@ -1359,23 +1365,39 @@ void GPS::update(void) {
       }
     }
 
-    if (logging && (source == SOURCE_UART)) {
-      uint16_t period = Settings::load<Settings::GPX_PERIOD>();
-      if ((period < 1) || (period > 60)) {
-        period = 5;
-      }
-
+    // both fix sources are logged, the point is built from the normalized
+    // dgps and timesync values and only queued, the SD writer task does the I/O
+    if (m_LogEnabled.load()) {
       const uint32_t now = Platform::getInstance().tick();
-      if ((m_LastLoggedFix == 0) || ((now - m_LastLoggedFix) >= (period * 1000UL))) {
-        GPX::point_t point = {
-            m_GPS.location.lat(),     m_GPS.location.lng(), m_GPS.altitude.meters(),
-            m_GPS.satellites.value(), m_GPS.date.year(),    m_GPS.date.month(),
-            m_GPS.date.day(),         m_GPS.time.hour(),    m_GPS.time.minute(),
-            m_GPS.time.second(),
-        };
+      if ((m_LastLoggedFix == 0) || ((now - m_LastLoggedFix) >= m_LogPeriodMs.load())) {
+        // a stale fix repeats its timestamp under duty cycling, log it once
+        const uint64_t stamp =
+            (((((static_cast<uint64_t>(timesync.year) * 16 + timesync.month) * 32 + timesync.day)
+                   * 32
+               + timesync.hour)
+                  * 64
+              + timesync.minute)
+             * 64)
+            + timesync.second;
+        if (stamp != m_LastLoggedStamp) {
+          const GPX::point_t point = {
+              dgps.latitude,
+              dgps.longitude,
+              dgps.altitude,
+              altitudeValid,
+              dgps.satellites,
+              static_cast<uint16_t>(timesync.year),
+              static_cast<uint8_t>(timesync.month),
+              static_cast<uint8_t>(timesync.day),
+              static_cast<uint8_t>(timesync.hour),
+              static_cast<uint8_t>(timesync.minute),
+              static_cast<uint8_t>(timesync.second),
+          };
 
-        if (GPX::getInstance().addPoint(point)) {
-          m_LastLoggedFix = now;
+          if (SD::getInstance().logPoint(point)) {
+            m_LastLoggedFix = now;
+            m_LastLoggedStamp = stamp;
+          }
         }
       }
     }

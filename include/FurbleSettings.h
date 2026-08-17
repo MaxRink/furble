@@ -124,6 +124,16 @@ class Settings {
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
 
+  static constexpr uint16_t GPX_PERIOD_MIN = 1;
+  static constexpr uint16_t GPX_PERIOD_MAX = 60;
+  static constexpr uint16_t GPX_PERIOD_DEFAULT = 5;
+
+  /** Clamp a GPX period to the valid range, falling back to the default. */
+  static constexpr uint16_t clampGPXPeriod(uint16_t seconds) {
+    return ((seconds >= GPX_PERIOD_MIN) && (seconds <= GPX_PERIOD_MAX)) ? seconds
+                                                                        : GPX_PERIOD_DEFAULT;
+  }
+
   static void init(void);
 
   static const setting_t &get(type_t);

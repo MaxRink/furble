@@ -69,6 +69,9 @@ class GPS {
   void setIcon(lv_obj_t *icon);
   bool isEnabled(void) const;
   void reloadSetting(void);
+
+  /** Refresh the cached GPX logging settings from NVS. */
+  void reloadLogSettings(void);
   void startService(void);
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
@@ -281,7 +284,12 @@ class GPS {
   uint64_t m_ExternalFixReceivedMs = 0;
   bool m_HasExternalFix = false;
   mutable std::mutex m_ExternalMutex;
+
+  // cached GPX logging settings, no NVS reads on the periodic update path
+  std::atomic<bool> m_LogEnabled = false;
+  std::atomic<uint32_t> m_LogPeriodMs = 5000;
   uint32_t m_LastLoggedFix = 0;
+  uint64_t m_LastLoggedStamp = 0;
   TinyGPSPlus m_GPS;
 
   uint8_t m_PowerPolicy = POWER_ALWAYS_ON;

@@ -30,7 +30,6 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
-#include "FurbleGPX.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -1495,17 +1494,13 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   }
 
   if (setting == Settings::SD_GPX) {
+    m_StorageGPXSwitch = sw;
     lv_obj_add_event_cb(
         sw,
-        [](lv_event_t *e) {
-          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
-          auto &sd = SD::getInstance();
-          if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
-            sd.mount();
-          } else {
-            GPX::getInstance().close();
-            sd.unmount();
-          }
+        [](lv_event_t *) {
+          // the SD writer task applies the change, never mount from the UI task
+          GPS::getInstance().reloadLogSettings();
+          SD::getInstance().request(SD::request_t::RELOAD);
         },
         LV_EVENT_VALUE_CHANGED, NULL);
   }
@@ -2809,12 +2804,8 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::SD_RELOAD:
-        if (Settings::load<Settings::SD_GPX>()) {
-          SD::getInstance().mount();
-        } else {
-          GPX::getInstance().close();
-          SD::getInstance().unmount();
-        }
+        GPS::getInstance().reloadLogSettings();
+        SD::getInstance().request(SD::request_t::RELOAD);
         break;
 
       case Request::GPS_POWER:
@@ -5308,17 +5299,65 @@ void UI::addDiagnosticsMenu(const menu_t &parent) {
 
 void UI::updateStorageInfo(lv_obj_t *label) {
   auto &sd = SD::getInstance();
-  sd.mount();
-  if (!sd.isMounted()) {
-    lv_label_set_text_fmt(label, "%s\nNot mounted", m_CardInfoStr);
+
+  switch (sd.cardState()) {
+    case SD::card_state_t::MOUNTED:
+      lv_label_set_text_fmt(label, "%s\nMounted\nCapacity: %lu MB\nFree: %lu MB", m_CardInfoStr,
+                            static_cast<unsigned long>(sd.capacityMB()),
+                            static_cast<unsigned long>(sd.freeMB()));
+      break;
+    case SD::card_state_t::FAILED:
+      lv_label_set_text_fmt(label, "%s\nMount failed", m_CardInfoStr);
+      break;
+    case SD::card_state_t::UNMOUNTED:
+      lv_label_set_text_fmt(label, "%s\nNot mounted", m_CardInfoStr);
+      break;
+  }
+}
+
+void UI::serviceStorage(void) {
+  auto &sd = SD::getInstance();
+  if (!sd.isSupported() || (m_StoragePage == nullptr)) {
     return;
   }
 
-  const auto capacity = sd.capacityBytes() / (1024 * 1024);
-  const auto free = sd.freeBytes() / (1024 * 1024);
-  lv_label_set_text_fmt(label, "%s\nMounted\nCapacity: %llu MB\nFree: %llu MB", m_CardInfoStr,
-                        static_cast<unsigned long long>(capacity),
-                        static_cast<unsigned long long>(free));
+  // request a mount on page entry, release the mount hold on page leave
+  const bool visible = lv_menu_get_cur_main_page(m_StorageMenuMain) == m_StoragePage;
+  if (visible != m_StorageVisible) {
+    m_StorageVisible = visible;
+    if (visible) {
+      sd.request(SD::request_t::MOUNT);
+      if (sd.cardState() != SD::card_state_t::MOUNTED) {
+        lv_label_set_text_fmt(m_StorageInfoLabel, "%s\nMounting...", m_CardInfoStr);
+      } else {
+        updateStorageInfo(m_StorageInfoLabel);
+      }
+    } else {
+      sd.request(SD::request_t::PAGE_LEAVE);
+    }
+  }
+
+  // refresh the storage widgets when the writer task publishes a new state
+  const uint32_t generation = sd.generation();
+  if (generation != m_StorageGeneration) {
+    m_StorageGeneration = generation;
+    GPS::getInstance().reloadLogSettings();
+
+    if (m_StorageVisible) {
+      updateStorageInfo(m_StorageInfoLabel);
+    }
+
+    // reflect an auto-disable after repeated SD failures in the switch
+    const bool enabled = Settings::load<Settings::SD_GPX>();
+    if ((m_StorageGPXSwitch != nullptr)
+        && (lv_obj_has_state(m_StorageGPXSwitch, LV_STATE_CHECKED) != enabled)) {
+      if (enabled) {
+        lv_obj_add_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+      } else {
+        lv_obj_remove_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+      }
+    }
+  }
 }
 
 void UI::addStorageMenu(const menu_t &parent) {
@@ -5347,6 +5386,8 @@ void UI::addStorageMenu(const menu_t &parent) {
         const uint32_t selected = lv_roller_get_selected(roller);
         if (selected < (sizeof(values) / sizeof(values[0]))) {
           Settings::save<Settings::GPX_PERIOD>(values[selected]);
+          GPS::getInstance().reloadLogSettings();
+          SD::getInstance().request(SD::request_t::RELOAD);
         }
       },
       LV_EVENT_VALUE_CHANGED, NULL);
@@ -5385,13 +5426,11 @@ void UI::addStorageMenu(const menu_t &parent) {
   lv_label_set_text_fmt(cardInfoLabel, "%s\nNot mounted", m_CardInfoStr);
   lv_label_set_long_mode(cardInfoLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(cardInfoLabel, LV_PCT(100));
-  lv_obj_add_event_cb(
-      menu.button,
-      [](lv_event_t *e) {
-        auto *label = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
-        UI::updateStorageInfo(label);
-      },
-      LV_EVENT_CLICKED, cardInfoLabel);
+
+  // serviceStorage() requests the mount on page entry and refreshes the label
+  m_StorageMenuMain = menu.main;
+  m_StoragePage = menu.page;
+  m_StorageInfoLabel = cardInfoLabel;
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -5441,24 +5480,11 @@ void UI::confirmStorageAction(void) {
   const bool import = m_StorageImport;
   lv_obj_t *messageBox = m_StorageMessageBox;
   m_StorageMessageBox = nullptr;
-
-  GPX::getInstance().close();
-  const bool ok = import ? SD::getInstance().importSettings() : SD::getInstance().exportSettings();
-  if (import) {
-    SD::getInstance().unmount();
-  } else if (!Settings::load<Settings::SD_GPX>()) {
-    SD::getInstance().unmount();
-  }
   lv_msgbox_close_async(messageBox);
 
-  if (!ok) {
-    ESP_LOGE(LOG_TAG, "SD settings %s failed.", import ? "import" : "export");
-    return;
-  }
-  ESP_LOGI(LOG_TAG, "SD settings %s complete.", import ? "import" : "export");
-  if (import) {
-    esp_restart();
-  }
+  // the SD writer task closes a running track, runs the transfer, and
+  // restarts the device after a successful import
+  SD::getInstance().request(import ? SD::request_t::IMPORT : SD::request_t::EXPORT);
 }
 
 void UI::addSettingsMenu(void) {
@@ -5826,6 +5852,7 @@ void UI::task(void) {
 #if defined(FURBLE_SIM)
     Sim::profilerBeginUiCycle();
 #endif
+    serviceStorage();
     lv_task_handler();
 #if defined(FURBLE_SIM)
     Sim::profilerEndUiCycle();

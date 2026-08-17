@@ -519,6 +519,12 @@ class UI {
   lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
   lv_obj_t *m_StorageMessageBox = nullptr;
   bool m_StorageImport = false;
+  lv_obj_t *m_StorageMenuMain = nullptr;
+  lv_obj_t *m_StoragePage = nullptr;
+  lv_obj_t *m_StorageInfoLabel = nullptr;
+  lv_obj_t *m_StorageGPXSwitch = nullptr;
+  bool m_StorageVisible = false;
+  uint32_t m_StorageGeneration = 0;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -829,8 +835,17 @@ class UI {
   /** Close a storage action confirmation dialog. */
   void cancelStorageAction(void);
 
-  /** Refresh the card information label. */
+  /** Refresh the card information label from the published SD state. */
   static void updateStorageInfo(lv_obj_t *label);
+
+  /**
+   * Track the storage page and the SD writer task state.
+   *
+   * Requests a mount when the page is entered, releases the mount hold when
+   * it is left, and refreshes the storage widgets when the writer task
+   * publishes a new state. Runs on the UI task, never blocks.
+   */
+  void serviceStorage(void);
 
   /** Add the 'Device info' page. */
   void addDeviceInfoMenu(const menu_t &parent);

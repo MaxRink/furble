@@ -335,6 +335,7 @@ void Settings::init(void) {
         case AUTOCONNECT:
         case SLEEP_CONN:
         case COMPANION:
+        case SD_GPX:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:
@@ -344,7 +345,7 @@ void Settings::init(void) {
           save<uint32_t>(setting.type, 0);
           break;
         case GPX_PERIOD:
-          save<uint16_t>(setting.type, 5);
+          save<uint16_t>(setting.type, GPX_PERIOD_DEFAULT);
           break;
         case CPU_FREQ:
           save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);
@@ -366,9 +367,6 @@ void Settings::init(void) {
           };
           save<calibration_t>(setting.type, calibration);
         } break;
-        case SD_GPX:
-          save<bool>(setting.type, false);
-          break;
       }
     }
   }

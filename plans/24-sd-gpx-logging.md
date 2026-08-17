@@ -379,10 +379,6 @@ Rebase notes:
   PR 35. `GPX_PERIOD` is uint16, which has no companion wire type, so it gets
   wire_id 0 and the companion rejects it with the other non-wire settings.
   If the wire protocol grows a u16 type it can be assigned a fresh id then.
-- Master's GPS gained an external companion fix source. GPX logging now runs
-  only for `SOURCE_UART` fixes, because the log point is built from the wired
-  `m_GPS` object.
-- `src/FurbleGPX.cpp` was reflowed by clang-format 21 (whitespace only).
 - `UI::Request::SD_RELOAD` was referenced by the console and the UI task but
   never declared in the Request enum, so the branch's console (debug) build
   never compiled. The enum member is added.
@@ -391,35 +387,80 @@ Rebase notes:
   (0/5/10/15), RECON_BACKOFF, COMPANION and WATCHDOG as bools. The INACTIVITY
   import bound widens from 2 to 20 to match the post-PR-26 roller values.
 
-Implemented:
+### Writer task design (review rework)
 
-- Added Core and Core2 SD capability detection and SDSPI mounting on the display
-  SPI host. Mounting uses 10 MHz, does not format cards, and reports card size
-  and free space.
-- Added GPX 1.1 logging from valid GPS fixes. Logging requires GPS to be enabled
-  and `SD_GPX` to be true. The setting defaults to false and the interval
-  defaults to 5 seconds.
-- Added the Storage menu with GPX Logging, GPX Interval, Export Settings, Import
-  Settings, and Card Info entries. The complete menu is omitted at runtime when
-  `SD::isSupported()` is false.
-- Added text settings export and import with range validation, length-prefixed
-  hexadecimal struct values, unknown-key skipping, and restart after a valid
-  import.
-- Added clean GPX close and SD unmount handling for GPS disable, logging disable,
-  and power off. Repeated SD failures disable GPX logging.
+The first cut ran every SD and file operation on the caller's task. That put
+fopen, fprintf, fsync, ftruncate and even the slow SDSPI mount on the LVGL
+timer path (`GPS::update` runs inside `lv_task_handler` with the UI mutex
+held) and raced the `FILE*` against `GPS::disable` on the NimBLE task. The
+review rework moves all of it to a single owner:
 
-The GPX writer keeps the closing tags on disk after every point and rewrites them
-before appending the next point. It calls `fsync()` after every point for an
-interval of 10 seconds or more, and after every fifth point below 10 seconds.
+- `FurbleSD` starts a dedicated writer task (priority 2, 6 KB stack) with an
+  8-deep request queue. The writer task is the only code that mounts,
+  unmounts, or touches the GPX `FILE*`. Requests: POINT, CLOSE, MOUNT,
+  PAGE_LEAVE, RELOAD, EXPORT, IMPORT, POWER_OFF.
+- `GPS::update` only builds a `GPX::point_t` from the normalized `dgps` and
+  `timesync` values and queues it with `SD::logPoint()` (never blocks). Both
+  fix sources are logged now, UART and companion; `<ele>` is omitted when the
+  companion fix carries no altitude. The earlier UART-only gating is gone.
+- `GPS::disable` posts CLOSE and never touches SD or GPX directly, which
+  removes the NimBLE-task `FILE*` race via the companion reloadSetting path.
+- `FurbleGPX` is a pure file writer with no SD or settings knowledge. The
+  auto-disable policy (three consecutive failures clear `SD_GPX`) lives in the
+  writer task, which also prints one console line and bumps the generation
+  counter so the UI refreshes the switch.
+- The writer publishes card state, capacity and free space as atomics plus a
+  generation counter. The UI task polls the counter in its loop (the request
+  queue is console-gated and absent in release builds) and refreshes the
+  storage widgets only on change. The Storage page renders "Mounting..." on
+  entry and never mounts from the UI task; leaving the page releases the mount
+  hold and unmounts unless logging holds the card.
+- `Platform::powerOff` calls `SD::powerOff()`, which posts POWER_OFF and waits
+  on a semaphore (3 s cap) for the writer to close the track and unmount.
+- Export and import run on the writer task too. A running track is closed
+  cleanly before either transfer, so an export or import in the middle of a
+  session ends the current track file; logging reopens a new file on the next
+  point. Import restarts the device from the writer on success.
+
+Other review fixes:
+
+- Duplicate timestamps are skipped: a stale fix repeated under duty cycling
+  logs once. A gap of more than 30 s between points starts a new `<trkseg>`.
+- `SD_GPX` and `GPX_PERIOD` are cached in GPS members refreshed on SD_RELOAD
+  and on generation change; the periodic path does no NVS reads. The period is
+  passed into `GPX::addPoint` for the fsync cadence.
+- A single `Settings::clampGPXPeriod` helper owns the 1-60 s range; console
+  and import validate against the same constants.
+- The console rejects `settings set sd_gpx` on boards without a card slot and
+  the writer prints one line when a reload mount fails.
+- The `Bus_SPI` downcast is guarded by a `busType()` check.
+- `SD_GPX` joined the bool default group in `Settings::init`.
+- The companion applying `SD_GPX` posts RELOAD to the writer; on boards
+  without a slot the value can still land in NVS but is inert, because both
+  the GPS cache and the writer gate on `SD::isSupported()`.
+
+Known quirk: the GPX Interval roller shows only 1/2/5/10/30/60 while the
+console accepts any 1-60 s value. A console-set intermediate value works but
+the roller displays the default position (5 s) for it.
+
+The GPX writer keeps the closing tags on disk after every point and rewrites
+them before appending the next point. It calls `fsync()` after every point for
+an interval of 10 seconds or more, and after every fifth point below 10
+seconds.
 
 Verification completed:
 
-- `m5stack-core`: passed with `FURBLE_VERSION=dev FURBLE_TEST=0`.
-- `m5stack-core2`: passed with `FURBLE_VERSION=dev FURBLE_TEST=0`.
-- `m5stick-s3`: passed with `FURBLE_VERSION=dev FURBLE_TEST=0`.
-- Clang-format 21.1.2 was run on the touched C++ files. No TinyGPSPlus socket
-  retry was needed because the dependency was available locally.
+- `m5stick-s3`, `m5stick-s3-debug`, `m5stack-core`: passed with
+  `FURBLE_VERSION=dev FURBLE_TEST=0` after the writer task rework.
+- Clang-format 21 was run on the touched C++ files.
 
-No Core or Core2 hardware was attached during this work. Physical SD behavior,
-SPI sharing, power-loss file validity, and battery impact still need community
-verification before merge.
+Honest pending list. No Core or Core2 hardware was attached during this work,
+and the writer task rework invalidates any earlier on-device observations, so
+all hardware verification must happen AFTER this rework:
+
+- Physical SD behavior on Core and Core2, including SPI bus sharing with the
+  display while logging.
+- Power-loss file validity (rewound closer trick) on real cards.
+- Card-pull recovery and the three-failure auto-disable path.
+- Battery impact with a mounted card.
+- Storage page mount, "Mounting..." rendering, and page-leave unmount.

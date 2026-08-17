@@ -8,7 +8,6 @@
 
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
-#include "FurbleGPX.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSD.h"
@@ -248,8 +247,8 @@ bool Platform::hasTicklessIdle(void) {
 }
 
 bool Platform::powerOff(void) {
-  GPX::getInstance().close();
-  SD::getInstance().unmount();
+  // the SD writer task closes the track and unmounts, wait for it to finish
+  SD::getInstance().powerOff();
 
 #if defined(FURBLE_M5STICKS3)
   const bool wasArmed = m_WatchdogEnabled;

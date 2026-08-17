@@ -10,7 +10,11 @@
 #include <M5Unified.h>
 #include <driver/sdspi_host.h>
 #include <esp_log.h>
+#include <esp_system.h>
 #include <esp_vfs_fat.h>
+
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -26,6 +30,11 @@ constexpr const char *SD_MOUNT_POINT = "/sd";
 constexpr const char *SETTINGS_DIRECTORY = "/sd/furble";
 constexpr const char *SETTINGS_FILE = "/sd/furble/settings.txt";
 constexpr uint32_t SD_SPI_FREQUENCY_KHZ = 10000;
+constexpr UBaseType_t WRITER_QUEUE_LENGTH = 8;
+constexpr uint32_t WRITER_STACK_BYTES = 6144;
+constexpr UBaseType_t WRITER_PRIORITY = 2;
+constexpr uint32_t POWER_OFF_WAIT_MS = 3000;
+constexpr uint8_t MAX_FAILURES = 3;
 
 bool isCoreBoard(void) {
   switch (M5.getBoard()) {
@@ -308,7 +317,8 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::GPX_PERIOD:
-      if (!parseUnsigned(text, 60, value) || (value < 1)) {
+      if (!parseUnsigned(text, Settings::GPX_PERIOD_MAX, value)
+          || (value < Settings::GPX_PERIOD_MIN)) {
         return false;
       }
       Settings::save<uint16_t>(setting.type, static_cast<uint16_t>(value));
@@ -418,9 +428,186 @@ void SD::init(void) {
   }
 
   ESP_LOGI(LOG_TAG, "SD card storage is supported, CS=%d.", cs);
-  if (Settings::load<Settings::SD_GPX>()) {
-    sd.mount();
+
+  sd.m_Queue = xQueueCreate(WRITER_QUEUE_LENGTH, sizeof(message_t));
+  sd.m_PowerOffDone = xSemaphoreCreateBinary();
+  if ((sd.m_Queue == nullptr) || (sd.m_PowerOffDone == nullptr)
+      || (xTaskCreate([](void *param) { static_cast<SD *>(param)->taskLoop(); }, "sd",
+                      WRITER_STACK_BYTES, &sd, WRITER_PRIORITY, nullptr)
+          != pdTRUE)) {
+    ESP_LOGE(LOG_TAG, "Failed to create the SD writer task.");
+    abort();
   }
+
+  // apply the stored settings, mounts the card when logging is enabled
+  sd.request(request_t::RELOAD);
+}
+
+bool SD::request(request_t request) {
+  if (m_Queue == nullptr) {
+    return false;
+  }
+
+  const message_t message = {request, {}};
+  return xQueueSend(m_Queue, &message, 0) == pdTRUE;
+}
+
+bool SD::logPoint(const GPX::point_t &point) {
+  if (m_Queue == nullptr) {
+    return false;
+  }
+
+  const message_t message = {request_t::POINT, point};
+  return xQueueSend(m_Queue, &message, 0) == pdTRUE;
+}
+
+void SD::powerOff(void) {
+  if (!request(request_t::POWER_OFF)) {
+    return;
+  }
+  xSemaphoreTake(m_PowerOffDone, pdMS_TO_TICKS(POWER_OFF_WAIT_MS));
+}
+
+SD::card_state_t SD::cardState(void) const {
+  return static_cast<card_state_t>(m_CardState.load());
+}
+
+uint32_t SD::capacityMB(void) const {
+  return m_CapacityMB.load();
+}
+
+uint32_t SD::freeMB(void) const {
+  return m_FreeMB.load();
+}
+
+uint32_t SD::generation(void) const {
+  return m_Generation.load();
+}
+
+void SD::taskLoop(void) {
+  while (true) {
+    message_t message;
+    if (xQueueReceive(m_Queue, &message, portMAX_DELAY) == pdTRUE) {
+      handleRequest(message);
+    }
+  }
+}
+
+void SD::handleRequest(const message_t &message) {
+  auto &gpx = GPX::getInstance();
+
+  switch (message.request) {
+    case request_t::POINT:
+      handlePoint(message.point);
+      break;
+
+    case request_t::CLOSE:
+      gpx.close();
+      maybeUnmount();
+      publish();
+      break;
+
+    case request_t::MOUNT:
+      m_UIHold = true;
+      mount();
+      publish();
+      break;
+
+    case request_t::PAGE_LEAVE:
+      m_UIHold = false;
+      maybeUnmount();
+      publish();
+      break;
+
+    case request_t::RELOAD:
+      handleReload();
+      break;
+
+    case request_t::EXPORT:
+      handleTransfer(false);
+      break;
+
+    case request_t::IMPORT:
+      handleTransfer(true);
+      break;
+
+    case request_t::POWER_OFF:
+      gpx.close();
+      unmount();
+      publish();
+      xSemaphoreGive(m_PowerOffDone);
+      break;
+  }
+}
+
+void SD::handlePoint(const GPX::point_t &point) {
+  if (!m_LoggingEnabled) {
+    return;
+  }
+
+  const bool wasMounted = m_Mounted;
+  bool ok = mount();
+  if (ok) {
+    ok = GPX::getInstance().addPoint(point, m_PeriodSeconds);
+    if (!ok) {
+      // the card may be gone, force a fresh enumeration on the next attempt
+      unmount();
+    }
+  }
+
+  if (ok) {
+    m_Failures = 0;
+    if (!wasMounted) {
+      publish();
+    }
+    return;
+  }
+
+  m_Failures++;
+  if (m_Failures >= MAX_FAILURES) {
+    m_LoggingEnabled = false;
+    Settings::save<Settings::SD_GPX>(false);
+    ESP_LOGE(LOG_TAG, "Disabling GPX logging after repeated SD failures.");
+    printf("sd: gpx logging disabled after repeated failures\n");
+    maybeUnmount();
+  }
+  publish();
+}
+
+void SD::handleReload(void) {
+  m_LoggingEnabled = Settings::load<Settings::SD_GPX>();
+  m_PeriodSeconds = Settings::clampGPXPeriod(Settings::load<Settings::GPX_PERIOD>());
+
+  if (m_LoggingEnabled) {
+    m_Failures = 0;
+    if (!mount()) {
+      printf("sd: mount failed\n");
+    }
+  } else {
+    GPX::getInstance().close();
+    maybeUnmount();
+  }
+  publish();
+}
+
+void SD::handleTransfer(bool import) {
+  // a running track is closed cleanly before the settings file is touched
+  GPX::getInstance().close();
+
+  const bool ok = import ? importSettings() : exportSettings();
+  if (ok && import) {
+    ESP_LOGI(LOG_TAG, "SD settings import complete, restarting.");
+    esp_restart();
+  }
+
+  if (ok) {
+    ESP_LOGI(LOG_TAG, "SD settings export complete.");
+  } else {
+    ESP_LOGE(LOG_TAG, "SD settings %s failed.", import ? "import" : "export");
+    printf("sd: settings %s failed\n", import ? "import" : "export");
+  }
+  maybeUnmount();
+  publish();
 }
 
 bool SD::mount(void) {
@@ -431,6 +618,8 @@ bool SD::mount(void) {
     return true;
   }
 
+  m_MountFailed = true;
+
   const int cs = static_cast<int>(M5.getPin(m5::pin_name_t::sd_spi_cs));
   auto *panel = M5.Display.getPanel();
   if ((cs < 0) || (cs == 255) || (panel == nullptr)) {
@@ -438,11 +627,12 @@ bool SD::mount(void) {
     return false;
   }
 
-  auto *bus = static_cast<lgfx::Bus_SPI *>(panel->getBus());
-  if (bus == nullptr) {
+  auto *ibus = panel->getBus();
+  if ((ibus == nullptr) || (ibus->busType() != lgfx::bus_spi)) {
     ESP_LOGE(LOG_TAG, "Display does not expose an SPI bus for SD sharing.");
     return false;
   }
+  auto *bus = static_cast<lgfx::Bus_SPI *>(ibus);
 
   const auto bus_config = bus->config();
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
@@ -468,6 +658,7 @@ bool SD::mount(void) {
 
   m_Card = card;
   m_Mounted = true;
+  m_MountFailed = false;
   ESP_LOGI(LOG_TAG, "SD card mounted.");
   return true;
 }
@@ -483,30 +674,40 @@ void SD::unmount(void) {
   }
   m_Card = nullptr;
   m_Mounted = false;
+  m_MountFailed = false;
 }
 
-bool SD::isMounted(void) const {
-  return m_Mounted;
+void SD::maybeUnmount(void) {
+  if (m_Mounted && !m_UIHold && !m_LoggingEnabled && !GPX::getInstance().isOpen()) {
+    unmount();
+  }
 }
 
-uint64_t SD::capacityBytes(void) const {
-  if ((m_Card == nullptr) || !m_Mounted) {
-    return 0;
-  }
-  return static_cast<uint64_t>(m_Card->csd.capacity) * m_Card->csd.sector_size;
-}
+void SD::publish(void) {
+  card_state_t state = card_state_t::UNMOUNTED;
+  uint32_t capacityMB = 0;
+  uint32_t freeMB = 0;
 
-uint64_t SD::freeBytes(void) const {
-  if (!m_Mounted) {
-    return 0;
+  if (m_Mounted) {
+    state = card_state_t::MOUNTED;
+    if (m_Card != nullptr) {
+      capacityMB = static_cast<uint32_t>(
+          (static_cast<uint64_t>(m_Card->csd.capacity) * m_Card->csd.sector_size) >> 20);
+    }
+
+    uint64_t totalBytes = 0;
+    uint64_t freeBytes = 0;
+    if (esp_vfs_fat_info(SD_MOUNT_POINT, &totalBytes, &freeBytes) == ESP_OK) {
+      freeMB = static_cast<uint32_t>(freeBytes >> 20);
+    }
+  } else if (m_MountFailed) {
+    state = card_state_t::FAILED;
   }
 
-  uint64_t totalBytes = 0;
-  uint64_t freeBytes = 0;
-  if (esp_vfs_fat_info(SD_MOUNT_POINT, &totalBytes, &freeBytes) != ESP_OK) {
-    return 0;
-  }
-  return freeBytes;
+  m_CardState.store(static_cast<uint8_t>(state));
+  m_CapacityMB.store(capacityMB);
+  m_FreeMB.store(freeMB);
+  m_Generation.fetch_add(1);
 }
 
 bool SD::exportSettings(void) {

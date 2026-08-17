@@ -39,6 +39,7 @@
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -472,6 +473,10 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::WATCHDOG:
 #endif
     {
+      if ((setting.type == Settings::SD_GPX) && !SD::getInstance().isSupported()) {
+        return fail("no SD card slot on this board");
+      }
+
       bool value = false;
       if (!parseBool(text, value)) {
         return fail("expected on or off");
@@ -490,7 +495,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
-  if (setting.type == Settings::SD_GPX) {
+  if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
     UI::sendRequest(UI::Request::SD_RELOAD, 0);
   }
 
