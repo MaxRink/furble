@@ -1133,6 +1133,38 @@ int cmdDisconnect(int argc, char **argv) {
   return sendRequest(UI::Request::DISCONNECT, 0, "disconnect");
 }
 
+int cmdPair(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: pair yes | no");
+  }
+
+  bool accept = false;
+  if (!strcasecmp(argv[1], "yes")) {
+    accept = true;
+  } else if (strcasecmp(argv[1], "no")) {
+    return fail("expected yes or no");
+  }
+
+  auto &control = Control::getInstance();
+  Camera *camera = control.getConnectingCamera();
+  if ((camera == nullptr) || !camera->hasPendingPairing()) {
+    camera = nullptr;
+    for (const auto &target : control.getTargets()) {
+      if (target->getCamera()->hasPendingPairing()) {
+        camera = target->getCamera();
+        break;
+      }
+    }
+  }
+
+  if ((camera == nullptr) || !camera->answerPairing(accept)) {
+    return fail("no camera pairing request");
+  }
+
+  printf("pair: %s\n", accept ? "yes" : "no");
+  return 0;
+}
+
 int cmdShutter(int argc, char **argv) {
   if (argc < 2) {
     return fail("usage: shutter press | release | hold <ms>");
@@ -1731,6 +1763,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+    command("pair", "pair yes | no", cmdPair),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
