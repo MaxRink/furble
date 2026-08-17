@@ -680,7 +680,10 @@ PlatformIO route also resolves them. Fixing the dependencies exposed a second
 break: plan 10 changed `Control::getTargets` to return a snapshot vector of
 raw pointers, and the rebased sim shim still returned a reference to the
 owning vector. `sim/FurbleControlSim.cpp` now mirrors the firmware
-implementation.
+implementation. Plan 22 then added `FurbleIR.h`, which includes the ESP-IDF
+RMT driver. `sim/shim/FurbleIR.h` shadows it with a fake that reports
+unsupported, so the IR menus stay hidden and the scripted menu routes keep
+their positions.
 
 ## Deviations
 
