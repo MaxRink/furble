@@ -1,8 +1,39 @@
+#include <array>
+
+#include "Device.h"
+
 #include "FurbleControl.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 
 namespace Furble {
+
+namespace {
+
+constexpr uint32_t RSSI_SAMPLE_INTERVAL_MS = 5000;
+constexpr float RSSI_FILTER_ALPHA = 0.25f;
+constexpr int8_t RSSI_STEP_DOWN_DBM = -60;
+constexpr int8_t RSSI_STEP_UP_DBM = -80;
+constexpr uint8_t RSSI_STEP_DOWN_SAMPLES = 3;
+constexpr uint8_t RSSI_STEP_UP_SAMPLES = 2;
+
+constexpr std::array<esp_power_level_t, 3> POWER_LEVELS = {
+    ESP_PWR_LVL_P3,
+    ESP_PWR_LVL_P6,
+    ESP_PWR_LVL_P9,
+};
+
+int powerIndex(esp_power_level_t power) {
+  for (size_t i = 0; i < POWER_LEVELS.size(); i++) {
+    if (POWER_LEVELS[i] == power) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
+}  // namespace
+
 Control::Target::Target(Camera *camera) {
   m_Camera = camera;
   m_Queue = xQueueCreate(m_QueueLength, sizeof(cmd_t));
@@ -89,6 +120,12 @@ Control &Control::getInstance(void) {
       ESP_LOGE(LOG_TAG, "Failed to create control queue.");
       abort();
     }
+
+    // First call runs after Settings::init() in app_main. Load the user
+    // transmit power cap so boot matches Device::init() instead of pinning
+    // the compile-time default.
+    instance.m_Power = Settings::load<esp_power_level_t>(Settings::TX_POWER);
+    instance.m_AdaptivePower = instance.m_Power;
   }
 
   return instance;
@@ -197,9 +234,15 @@ void Control::task(void) {
 
       case STATE_ACTIVE:
         if (!allConnected()) {
+          {
+            const std::lock_guard<std::mutex> lock(m_Mutex);
+            resetAdaptiveState();
+          }
           setState(STATE_CONNECT);
           continue;
         }
+
+        sampleAdaptivePower();
 
         if (ret == pdTRUE) {
           for (const auto &target : m_Targets) {
@@ -271,6 +314,9 @@ void Control::disconnect(void) {
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    // State only, no radio calls under m_Mutex.
+    resetAdaptiveState();
 
     // send disconnect
     for (const auto &target : m_Targets) {
@@ -367,8 +413,187 @@ void Control::setState(state_t state) {
   m_SleepLockHeld = hold;
 }
 
+void Control::sampleAdaptivePower(void) {
+  struct sample_t {
+    Camera *camera;
+    int8_t rssi;
+  };
+
+  std::vector<Camera *> cameras;
+  esp_power_level_t cap;
+  bool restoreCap = false;
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    const uint32_t now = xTaskGetTickCount();
+    if ((now - m_LastRssiSample) < pdMS_TO_TICKS(RSSI_SAMPLE_INTERVAL_MS)) {
+      return;
+    }
+    m_LastRssiSample = now;
+  }
+
+  // NVS read, keep it off m_Mutex.
+  const bool enabled = Settings::load<Settings::TX_ADAPTIVE>();
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    cap = m_Power;
+    if (!enabled) {
+      if (m_AdaptiveActive) {
+        restoreCap = (m_AdaptivePower != m_Power);
+        resetAdaptiveState();
+      }
+    } else {
+      m_AdaptiveActive = true;
+      // Snapshot cameras so the RSSI reads below run without the mutex.
+      cameras.reserve(m_Targets.size());
+      for (const auto &target : m_Targets) {
+        cameras.push_back(target->getCamera());
+      }
+    }
+  }
+
+  if (!enabled) {
+    if (restoreCap) {
+      applyPower(cap);
+    }
+    return;
+  }
+
+  // Each getRssi() is a synchronous HCI round trip, keep m_Mutex released.
+  std::vector<sample_t> samples;
+  samples.reserve(cameras.size());
+  for (auto *camera : cameras) {
+    const int8_t rssi = camera->getRssi();
+    if (rssi != 0) {
+      samples.push_back({camera, rssi});
+    }
+  }
+
+  bool step = false;
+  int nextIndex = 0;
+  esp_power_level_t next = cap;
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    bool haveRssi = false;
+    float weakestRssi = 0.0f;
+    for (const auto &target : m_Targets) {
+      auto *camera = target->getCamera();
+      for (const auto &sample : samples) {
+        if (sample.camera != camera) {
+          continue;
+        }
+
+        if (target->m_HasRssi) {
+          target->m_RssiAverage += RSSI_FILTER_ALPHA * (sample.rssi - target->m_RssiAverage);
+        } else {
+          target->m_RssiAverage = sample.rssi;
+          target->m_HasRssi = true;
+        }
+
+        if (!haveRssi || (target->m_RssiAverage < weakestRssi)) {
+          weakestRssi = target->m_RssiAverage;
+          haveRssi = true;
+        }
+        break;
+      }
+    }
+
+    if (!haveRssi) {
+      ESP_LOGD(LOG_TAG, "Adaptive transmit power skipped, no RSSI sample");
+      return;
+    }
+
+    ESP_LOGD(LOG_TAG, "Adaptive RSSI %.1f dBm", weakestRssi);
+
+    int capIndex = powerIndex(m_Power);
+    if (capIndex < 0) {
+      capIndex = 0;
+    }
+    int current = powerIndex(m_AdaptivePower);
+    if ((current < 0) || (current > capIndex)) {
+      current = capIndex;
+    }
+
+    if (weakestRssi > RSSI_STEP_DOWN_DBM) {
+      m_RssiWeakSamples = 0;
+      if (m_RssiStrongSamples < UINT8_MAX) {
+        m_RssiStrongSamples++;
+      }
+      if (m_RssiStrongSamples < RSSI_STEP_DOWN_SAMPLES) {
+        return;
+      }
+
+      m_RssiStrongSamples = 0;
+      if (current > 0) {
+        nextIndex = current - 1;
+        next = POWER_LEVELS[nextIndex];
+        m_AdaptivePower = next;
+        step = true;
+      }
+    } else if (weakestRssi < RSSI_STEP_UP_DBM) {
+      m_RssiStrongSamples = 0;
+      if (m_RssiWeakSamples < UINT8_MAX) {
+        m_RssiWeakSamples++;
+      }
+      if (m_RssiWeakSamples < RSSI_STEP_UP_SAMPLES) {
+        return;
+      }
+
+      m_RssiWeakSamples = 0;
+      if (current < capIndex) {
+        nextIndex = current + 1;
+        next = POWER_LEVELS[nextIndex];
+        m_AdaptivePower = next;
+        step = true;
+      }
+    } else {
+      m_RssiStrongSamples = 0;
+      m_RssiWeakSamples = 0;
+    }
+  }
+
+  if (step) {
+    // Radio call, outside m_Mutex.
+    applyPower(next);
+    ESP_LOGI(LOG_TAG, "Adaptive transmit power stepped to level %d", nextIndex);
+  }
+}
+
+void Control::resetAdaptiveState(void) {
+  m_LastRssiSample = xTaskGetTickCount();
+  m_RssiStrongSamples = 0;
+  m_RssiWeakSamples = 0;
+  m_AdaptiveActive = false;
+  m_AdaptivePower = m_Power;
+
+  for (const auto &target : m_Targets) {
+    target->m_RssiAverage = 0.0f;
+    target->m_HasRssi = false;
+  }
+}
+
+void Control::applyPower(esp_power_level_t power) {
+  // NimBLETxPowerType::Connection maps to the shared default connection power,
+  // so one call covers every link. The controller offers no clean
+  // per-connection readback, log the request only.
+  const int8_t dbm = Device::powerLevelToDbm(power);
+  const bool set = NimBLEDevice::setPower(dbm, NimBLETxPowerType::Connection);
+  ESP_LOGI(LOG_TAG, "Transmit power requested %d dBm (level %d), set %s", dbm,
+           static_cast<int>(power), set ? "ok" : "failed");
+}
+
 void Control::setPower(esp_power_level_t power) {
-  m_Power = power;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_Power = power;
+    resetAdaptiveState();
+  }
+
+  // Radio call, outside m_Mutex.
+  applyPower(power);
 }
 
 };  // namespace Furble

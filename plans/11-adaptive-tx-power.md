@@ -61,12 +61,9 @@ Key is 11 characters, under the 15 character NVS limit. Default `false` leaves
 
 ## Menu placement
 
-`Settings > TX Power > Adaptive`, added to the existing page at
-`src/FurbleUI.cpp:1997-2040` as a switch above the slider. This keeps the PR
-independent of PR08.
-
-Once PR08 has landed, the TX Power page lives under `Settings > Bluetooth`, and
-the toggle moves with it. No extra work.
+`Settings > Bluetooth > TX Power > Adaptive`, added to the existing page as a
+switch above the slider. The existing page already lives under Bluetooth on
+master, so no additional menu branch was needed.
 
 Show the live level and RSSI on the PR05 Diagnostics BLE page if PR10 has already
 added it.
@@ -176,6 +173,67 @@ Camera testing:
 - [Espressif nimble power_save example](https://github.com/espressif/esp-idf/blob/master/examples/bluetooth/nimble/power_save/README.md)
   for the scale of radio current, which sets expectations for how much transmit
   power stepping can save.
+
+## Implementation status
+
+Implemented on `feat/11-adaptive-tx-power`.
+
+- Added the `TX_ADAPTIVE` boolean setting with NVS key `tx_adaptive`, defaulting
+  to `false`, and added its switch to `Settings > Bluetooth > TX Power`.
+- The control task samples each connected camera every 5 seconds. Samples use a
+  0.25 EWMA, and the weakest connected camera drives the shared BLE connection
+  power level.
+- The selected `TX_POWER` level remains the maximum. Runtime power steps through
+  P3, P6 and P9, resets to the cap on connect, disconnect and cap changes, and
+  skips cameras that report no RSSI.
+- Hysteresis uses a step down above -60 dBm for three consecutive samples and a
+  step up below -80 dBm for two consecutive samples. The 20 dB dead band and
+  asymmetric sample counts reduce oscillation while restoring link margin faster
+  when the signal weakens.
+- NimBLE power calls now map P3, P6 and P9 to 3, 6 and 9 dBm explicitly via
+  `Device::powerLevelToDbm`.
+- Existing bug fixed by this change: master passed the `esp_power_level_t`
+  enum values (P3 is 5, P6 is 6, P9 is 7) straight into the `int8_t` dBm
+  parameter of `NimBLEDevice::setPower`. Its rounding collapses 5, 6 and 7
+  into the same level, so every `TX_POWER` selection ran at 6 dBm. Passing
+  real dBm changes effective radio power for all users, including with the
+  adaptive setting off.
+- No applied-power readback. `NimBLETxPowerType::Connection` maps to
+  `ESP_BLE_PWR_TYPE_DEFAULT`, one shared level for every link, and the
+  controller offers no clean per-connection readback through the NimBLE
+  client. Power logs therefore report the requested level, not an applied
+  value.
+- The loop is open loop with respect to its own actuator. RSSI is measured on
+  packets the camera transmits, so changing our transmit power does not move
+  the measured RSSI. The hysteresis rides out measurement noise and geometry
+  changes, it does not damp actuator feedback.
+- Master has generic Diagnostics pages but no BLE debug page. The requested RSSI
+  debug-page display was therefore skipped.
+- Hardware verification remains pending and is owed before merge, including the
+  walk-away test with the Fujifilm X100VI. Only Fujifilm hardware is available
+  for real camera testing.
+
+Rebase notes:
+
+- `TX_ADAPTIVE` is assigned wire_id 28, continuing after `IMU` (27) from PR 28.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `TX_ADAPTIVE` as
+  SETTING_BOOL. No companion apply hook is needed because the control task
+  loads the setting on every sample.
+
+Review fixes:
+
+- The control task now uses the snapshot pattern from `connectAll()`. NVS
+  reads, per-camera `getRssi()` HCI round trips and radio power calls all run
+  with `Control::m_Mutex` released.
+- `resetAdaptiveState()` is state only, no radio calls, and must be called
+  with `m_Mutex` held. `Control::disconnect()` and the STATE_ACTIVE reconnect
+  path use it; the radio restore lives in `Control::setPower()` and the
+  sample loop, outside the lock.
+- Boot loads `TX_POWER` into the Control cap at first `getInstance()`, so the
+  cap matches `Device::init()` instead of pinning the compile-time default.
+- The current adaptive level is a Control member. `Camera` no longer tracks a
+  runtime power level; on connect it applies the cap it was given, and
+  `applyPower()` issues one shared radio call instead of one per target.
 
 ## Hardware verification, 2026-08-17
 

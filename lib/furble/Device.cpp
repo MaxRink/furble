@@ -6,6 +6,19 @@
 
 namespace Furble {
 
+int8_t Device::powerLevelToDbm(esp_power_level_t power) {
+  switch (power) {
+    case ESP_PWR_LVL_P3:
+      return 3;
+    case ESP_PWR_LVL_P6:
+      return 6;
+    case ESP_PWR_LVL_P9:
+      return 9;
+    default:
+      return 3;
+  }
+}
+
 Device::uuid128_t Device::m_Uuid;
 char Device::m_StringID[DEVICE_ID_STR_MAX];
 std::string Device::m_ID;
@@ -40,7 +53,7 @@ void Device::init(esp_power_level_t power) {
   m_ID = std::string(m_StringID);
 
   NimBLEDevice::init(m_ID);
-  NimBLEDevice::setPower(power);
+  NimBLEDevice::setPower(powerLevelToDbm(power));
 
   // configure RPA (where possible) and distribute encryption key and ID key (IRK)
   NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);

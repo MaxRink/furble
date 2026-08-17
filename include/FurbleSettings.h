@@ -19,6 +19,7 @@ class Settings {
     DISPLAY_OFF,
     THEME,
     TX_POWER,
+    TX_ADAPTIVE,
     GPS,
     GPS_BAUD,
     GPS_RATE,
@@ -153,6 +154,10 @@ struct Settings::storage_type<Settings::THEME> {
 template <>
 struct Settings::storage_type<Settings::TX_POWER> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::TX_ADAPTIVE> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::GPS> {

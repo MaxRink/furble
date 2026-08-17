@@ -1,6 +1,7 @@
 #include <NimBLEAdvertisedDevice.h>
 
 #include "Camera.h"
+#include "Device.h"
 
 namespace Furble {
 
@@ -12,9 +13,12 @@ Camera::~Camera() {
 }
 
 void Camera::onConnect(NimBLEClient *pClient) {
-  ESP_LOGI(LOG_TAG, "Connected, adjusting transmit power to %d", m_Power);
-  // Set BLE transmit power after connection is established.
-  NimBLEDevice::setPower(m_Power);
+  const int8_t requestedDbm = Device::powerLevelToDbm(m_Power);
+  // Set BLE transmit power after connection is established. The controller
+  // offers no clean per-connection readback, log the request only.
+  const bool set = NimBLEDevice::setPower(requestedDbm);
+  ESP_LOGI(LOG_TAG, "Connected, transmit power requested %d dBm (level %d), set %s", requestedDbm,
+           static_cast<int>(m_Power), set ? "ok" : "failed");
   m_Connected = true;
 }
 
@@ -87,6 +91,16 @@ const NimBLEAddress &Camera::getAddress(void) const {
 
 uint8_t Camera::getConnectProgress(void) const {
   return m_Progress.load();
+}
+
+int8_t Camera::getRssi(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  if ((m_Type == Type::FAUXNY) || !m_Connected || (m_Client == nullptr)
+      || !m_Client->isConnected()) {
+    return 0;
+  }
+
+  return static_cast<int8_t>(m_Client->getRssi());
 }
 
 bool Camera::isConnected(void) const {

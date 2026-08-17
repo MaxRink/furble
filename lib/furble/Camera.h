@@ -2,6 +2,7 @@
 #define CAMERA_H
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 
 #include <NimBLEAddress.h>
@@ -117,6 +118,13 @@ class Camera: public NimBLEClientCallbacks {
    * Checks if the client is still connected.
    */
   virtual bool isConnected(void) const;
+
+  /**
+   * Get the latest connection RSSI in dBm.
+   *
+   * @return RSSI in dBm, or 0 when no sample is available.
+   */
+  int8_t getRssi(void) const;
 
   /**
    * Camera is active (ie. connect() has succeeded previously).
