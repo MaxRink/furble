@@ -3421,6 +3421,16 @@ void UI::rebuildCamerasPage(menu_t &menu) {
 void UI::camerasUpdate(lv_timer_t *timer) {
   auto *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
+
+  // Self-pause outside STATE_ACTIVE. Camera::connect() holds the Camera
+  // mutex for the whole attempt, so isConnected() below would block the
+  // render task if a tick lands between a drop and connectTimerHandler
+  // noticing. getState() only takes the state mutex and never blocks.
+  if (control.getState() != Control::STATE_ACTIVE) {
+    lv_timer_pause(timer);
+    return;
+  }
+
   const auto &targets = control.getTargets();
 
   if (lv_obj_get_child_count(menu->page) != targets.size()) {
