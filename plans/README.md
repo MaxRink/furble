@@ -102,7 +102,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [60-issue-257.md](60-issue-257.md) | Nikon Z50II smart device analysis, upstream issue 257 |
 | [61-camera-compatibility.md](61-camera-compatibility.md) | BLE protocol survey across camera vendors, ranked additions |
 | [62-issue-140.md](62-issue-140.md) | Configurable button behavior, upstream issue 140 |
-| [63-sim-power-analysis.md](63-sim-power-analysis.md) | Simulator based power analysis: profiler, sleep estimator, energy model, CI gate |
+| [63-sim-power-analysis.md](63-sim-power-analysis.md) | Simulator based power analysis: profiler, sleep estimator, usage test suite, energy model, CI gate and PR reporting |
 | [65-bt-coexistence.md](65-bt-coexistence.md) | Classic BT feasibility, WiFi+BLE coexistence for hub mode |
 | [64-debug-tooling.md](64-debug-tooling.md) | Expanded debug tooling: power stats, performance monitoring, BT debug console |
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |

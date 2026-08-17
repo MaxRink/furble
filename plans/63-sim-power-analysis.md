@@ -84,13 +84,16 @@ change:
 Scenarios reuse the plan 28 scripted navigation (`sim/driver.cpp`: `wait`,
 `key`, `capture`, `exit` on the virtual clock from `sim/clock.h`). The driver
 gains a `report <file>` step that dumps and resets the counters. The scenario
-set:
+set starts from this sketch:
 
 - menu idle, 30 s
 - connected idle against the FauxNY fake camera, 30 s
 - GPS page open
 - screen dimmed
 - screen off
+
+The normative suite, with initial state, scripted steps and duration per
+scenario, is the Usage tests section below.
 
 The virtual clock makes 30 s of scenario time milliseconds of wall time, and
 makes two runs of the same scenario produce identical reports. Output is one
@@ -232,6 +235,144 @@ drain console logging from PR02 ([02-battery-display.md](02-battery-display.md))
 are the hardware complement to this plan. Task 14, the assisted-refix
 retest, stays hardware.
 
+## Usage tests
+
+The named scenario suite. Each script is the sim's model of one way the
+device is actually used, and every number in the CI report is "estimated mA
+while doing X" for one of these names. The suite is normative: the reports,
+the baselines and the gate all key on these scenario names.
+
+Conventions, fixed here so an implementer needs no further decisions:
+
+- Scripts live at `sim/scripts/power/<name>.txt` and use the plan 28 driver
+  verbs `wait`, `key`, `capture`, `exit` plus the `report <file>` step from
+  pillar 1. `wait` takes milliseconds of virtual time. Key names follow the
+  M5Unified PC mapping: `left` is BtnA, `down` is BtnB, `right` is BtnC,
+  `up` is BtnPWR.
+- Every script is a setup phase, then `report` to a throwaway file to reset
+  the counters, then the measured window, then `report <name>.json`. Only
+  the final report is scored.
+- Durations are virtual scenario time. The wall cost stays milliseconds.
+- Seeded state comes from the plan 28 preferences file. Each scenario names
+  the settings it seeds; everything else stays at defaults.
+- Connected scenarios seed `FAUXNY` on and share one connect prologue: boot
+  to the menu, navigate to Connect and select the FauxNY entry with the same
+  key walk the ui-screenshots script uses, then `wait 5000`, which is past
+  the end of the deterministic FauxNY connect ramp, landing on the Connected
+  page.
+- GPS scenarios feed the sim GPS a recorded NMEA file with a valid fix at
+  1 Hz, the plan 28 `FurbleGPSSim` path.
+
+The baseline suite:
+
+**menu-idle-30s.** Initial state: fresh boot, main menu, no camera, GPS
+off, display on at full brightness. Steps: `wait 30000`. Measured window
+30 s. Captures the idle floor: per-timer fires, invalidated and flushed
+pixels, lock holds, residency. Every other scenario is read against this
+one.
+
+**connected-idle-30s.** Initial state: connect prologue, Connected page, no
+GPS. Steps: `wait 30000`. Measured window 30 s. Captures the connected
+floor: the BLE duty integral at the idle connection parameters, residency
+with the link up. The RESYNC leak class and a pinned fast profile both show
+here.
+
+**connected-gps-active-30s.** Initial state: connect prologue with GPS
+seeded on, duty cycling off, fake NMEA at 1 Hz. Steps: `wait 30000`.
+Measured window 30 s. Captures GPS tracking cost on top of connected idle:
+UART and GPS task wakeups per second, receiver model residency in tracking,
+location notification traffic in the BLE duty integral.
+
+**screen-dimmed-30s.** Initial state: menu idle with the display dim
+timeout seeded to 10 s and the display off timeout seeded to 120 s. Steps:
+`wait 15000` so the dim engages, reset, `wait 30000`. Measured window 30 s.
+Captures the dimmed delta: backlight level, the `APB_FREQ_MAX` hold from
+the backlight PWM, timer behavior while dimmed.
+
+**screen-off-30s.** Initial state: menu idle with the display off timeout
+seeded to 10 s. Steps: `wait 15000` so the display turns off, reset,
+`wait 30000`. Measured window 30 s. Captures the deepest reachable floor:
+flushed pixels must be zero, and residency should be the best of any
+scenario.
+
+**blind-remote-shutter.** Initial state: connect prologue, display off
+timeout seeded to 10 s, then `wait 15000` so the screen is off with the
+link up. Steps: ten repetitions of `key left` then `wait 3000`, ten shutter
+presses over 30 s. Measured window 30 s. Captures the cost of one blind
+press times ten: per-press lock acquire and release, per-press BLE
+notification cost, and whether a press wakes the display. Flushed pixels
+during the window are reported so review sees a press that redraws for
+nobody.
+
+**intervalometer-5-frames.** Initial state: connect prologue with the
+intervalometer seeded to count 5, interval 2 s, no bulb. Steps: navigate to
+the intervalometer page with the ui-screenshots key walk, start it, reset,
+`wait 15000`. Measured window 15 s, which covers the 8 s run plus margin.
+Captures: exactly five shutter commands in the report, the interval timer
+fire pattern, residency between frames, and what the display does mid-run.
+
+**gps-duty-standby-cycle.** Initial state: menu idle with GPS seeded on,
+duty cycling on at a 5 s fix interval, `$PCAS12` standby enabled, fake NMEA
+at 1 Hz. Steps: `wait 15000` so the first fix and the first standby entry
+have happened, reset, `wait 15000`. Measured window 15 s, which contains at
+least one full standby, wake, reacquire, fix, standby cycle. Captures:
+receiver model residency per state, at least one standby entry, zero wake
+flapping, and `NO_LIGHT_SLEEP` held only inside bursts.
+
+**settings-navigation-sweep.** Initial state: fresh boot, main menu, no
+camera. Steps: open every settings page once with the ui-screenshots key
+walk, `wait 2000` on each page, back out to the menu after each, end on the
+menu, then `wait 5000`. Measured window is the whole sweep, roughly 60 s.
+Captures the page hygiene report: per-timer fires attributed to the
+interval each page was open, so a timer that keeps firing after its page
+closed is named in the report. This scenario catches the hidden page timer
+class directly.
+
+Growth rule, enforced in review: a feature that adds a power-relevant state
+MUST add or extend a scenario in the same PR. A new page extends the sweep.
+A new duty policy, link mode or sleep state gets a named scenario. A PR
+that adds such a state without touching `sim/scripts/power/` is incomplete,
+the same way a PR without its plans/NN update is incomplete.
+
+## CI reporting
+
+The sim CI job runs the suite on every PR that touches firmware or UI
+paths: `src/**`, `include/**`, `lib/**`, `components/icons/**`, `sim/**`,
+`sdkconfig.*`, `tools/power-model/**`. Docs-only PRs skip it.
+
+The job maintains exactly one sticky PR comment, using the marker-comment
+pattern the ui-screenshots workflow already implements: a hidden HTML
+marker in the comment body, find the existing comment by marker, update it
+in place, create it only when absent. The comment never stacks. Every push
+rewrites it.
+
+The comment contains, in order:
+
+- A table of estimated mA per scenario per board class, S3 first. Columns:
+  scenario, estimated mA, baseline mA, delta percent. A row past the 10%
+  gate threshold is flagged: bold, with a FAIL marker in the delta column.
+  Markdown tables carry no color, so the marker carries the signal.
+- One lock-hold-time anomalies line: any lock whose total hold time moved
+  past the threshold against baseline, or any lock still held at scenario
+  end. Reads "none" when clean.
+- A link to the full JSON report artifact for the run.
+
+Consolidation. Three PR-facing sim reports exist or are planned: the
+screenshot comment (fork PR #44, branch `feat/ui-screenshot-ci`), the
+ui-audit overlap findings (fork PR #42), and this power table. They
+consolidate into one combined sim-report workflow with one sticky comment
+holding three sections, in order: power table, overlap findings, screenshot
+links. One walker pass produces all three, per the pillar 5 rule. The
+standalone ui-screenshots workflow on `feat/ui-screenshot-ci` is folded
+into the combined job when this plan's phases land, and its marker comment
+retires in the same PR.
+
+The pattern generalizes. The firmware size-report job being added to main
+CI follows the same sticky-comment shape: flash and RAM per release
+environment, delta versus the base branch, its own marker and its own
+comment. It has no sim dependency and does not join the combined sim
+comment. Same reporting pattern, applied independently.
+
 ## Hardware calibration micro-task
 
 One-time measurement run on the StickS3 using the existing battery
@@ -305,6 +446,18 @@ The micro-task above. Independent of every other phase, needs only a
 StickS3 and the debug console. Upgrades table confidence and validates the
 composed model against the Experiment A floor. Effort: one bench session
 plus soak time.
+
+### Phase G: usage test suite and PR reporting
+
+Depends on phases A and E. Grow the phase A sketch scripts into the nine
+scenario suite from the Usage tests section, wire the sticky PR comment
+from the CI reporting section, and consolidate: the power table, the
+ui-audit overlap findings and the screenshot links merge into the one
+sim-report workflow with one marker comment, and the standalone
+ui-screenshots workflow from `feat/ui-screenshot-ci` is folded in and
+retired. The growth rule enters review practice with this phase. The
+firmware size-report job is independent of the sim and can land at any
+time. Effort: one to two days.
 
 ## Risks
 
