@@ -231,9 +231,10 @@ class Camera: public NimBLEClientCallbacks {
   static constexpr uint16_t m_FastTimeout = (2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT);
   // Idle profile: 250 to 300 ms interval. A central-initiated switch to fast
   // applies several connection events after the request, so the first shutter
-  // press after a quiet period goes out at the idle interval. Keeping the
-  // interval moderate bounds that first press to well under a second while
-  // still cutting radio duty by roughly 8x against the fast profile.
+  // press after a quiet period goes out at the idle interval. Fujifilm shutter
+  // is two write with response operations, so that first press costs up to
+  // about 1.25 s worst case. Keeping the interval moderate bounds it there
+  // while still cutting radio duty by roughly 8x against the fast profile.
   static constexpr uint16_t m_IdleMinInterval = 200;
   static constexpr uint16_t m_IdleMaxInterval = 240;
   // furble is the central, so latency saves nothing on our side. A non-zero

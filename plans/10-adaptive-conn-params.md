@@ -239,12 +239,13 @@ Implemented on `feat/10-adaptive-conn-params`:
   retried on the next press.
 - Honest latency numbers at the idle profile: the fast request applies at least
   six connection events after it is issued, so the press that triggers it still
-  goes out at the idle interval. With latency 0 the camera listens at every
-  event, so the added delay for that first press is up to one idle interval
-  (300 ms) plus up to 50 ms of command queue tick, about 350 ms worst case and
-  roughly 150 to 200 ms typical. The fast profile is in force about 1.5 to
-  1.8 s later (six events at 250 to 300 ms) and follow-up presses run at the
-  fast 30 to 50 ms interval.
+  goes out at the idle interval. Fujifilm shutter is two sequential write with
+  response operations. Each costs up to one idle interval to reach the next
+  anchor plus one interval for the response, so about 600 ms per write and
+  about 1.25 s worst case for the first press including the 50 ms command
+  queue tick. Typical is 600 to 900 ms. The fast profile is in force about
+  1.5 to 1.8 s later (six events at 250 to 300 ms) and follow-up presses run
+  at the fast profile, about 200 ms.
 
 Rebase notes:
 
