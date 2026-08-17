@@ -12,6 +12,8 @@
 #include <driver/uart.h>
 
 #if defined(FURBLE_NO_DISPLAY)
+#include <esp_timer.h>
+
 struct _lv_obj_t;
 using lv_obj_t = _lv_obj_t;
 #else
@@ -168,6 +170,8 @@ class GPS {
   lv_obj_t *m_Icon = NULL;
   const lv_image_dsc_t *m_IconSymbol = NULL;
   lv_timer_t *m_Timer = NULL;
+#else
+  esp_timer_handle_t m_ServiceTimer = nullptr;
 #endif
 
   TaskHandle_t m_Task = NULL;

@@ -3,10 +3,13 @@
 Application layer on top of lib/furble. Headers live in include/, sources here.
 
 - `main.cpp` starts two contexts: a FreeRTOS control task
-  (`Furble::Control::getInstance()`, priority 4) and the UI loop in the main
-  task. Init order matters: Settings, Platform, Feedback, Device before
-  Control. Settings must precede Platform because Platform reads FB_OUTPUT to
-  set `cfg.internal_spk` before `M5.begin()`.
+  (`Furble::Control::getInstance()`, priority 4) and, in the main task, one of
+  two loop variants: the LVGL UI loop (`UI::task()`) or, with
+  `FURBLE_NO_DISPLAY`, a headless 5 ms loop in main.cpp that services console
+  requests, companion pairing and the GPS tick. Keep the variants in step.
+  Init order matters: Settings, Platform, Feedback, Device before Control.
+  Settings must precede Platform because Platform reads FB_OUTPUT to set
+  `cfg.internal_spk` before `M5.begin()`.
 - `FurbleControl`: camera connection state machine. It owns the mutex from the
   root traps section. Keep critical sections short and delay-free. Restart
   entry points use `Platform::restart()` so camera disconnects, the bounded
@@ -48,5 +51,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   passthrough and passive third-party sniffing is not supported by NimBLE.
 - The GPS Data and Raw NMEA pages show TinyGPSPlus speed in km/h. Format
   user-visible coordinates to five decimal places without narrowing the double.
+- Display-only sources (`FurbleCalibrate.cpp`, `FurbleSpinValue.cpp`,
+  `FurbleUI*.cpp`) sit in a separate list in `src/CMakeLists.txt` behind the
+  `FURBLE_NO_DISPLAY` gate. Everything else must compile in both profiles.
+  CI does not build `esp32-s3-headless`, so build it manually to prove it.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.

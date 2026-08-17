@@ -149,7 +149,7 @@ AUTO_OFF/LOW_BATT, 39 SD_GPX, 40 TEXT_SIZE. Off-wire id 0: BULB,
 TOUCH_CALIBRATION, MULTISELECT, GPX_PERIOD (uint16 has no wire type yet;
 a u16 type is a settings-v2 item). Next free id: 41. Stacked branches with
 provisional ids (dead-reckoning 36, hw-motion 34, gps-hold 35 and friends)
- renumber at their rebase; ids only freeze when a PR merges.
+renumber at their rebase; ids only freeze when a PR merges.
 
 ## Dependencies
 

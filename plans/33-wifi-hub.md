@@ -270,7 +270,8 @@ pio run -e m5stick-c -e m5stick-c-plus -e m5stack-core -e m5stack-core2 -e m5sti
 Then:
 
 1. `pio run -e esp32-s3-headless`. Confirm it builds and that `size` shows LVGL
-   and icons gone.
+   and icons gone. This env is not in CI: every PR that touches shared code
+   must build it manually and say so in the PR body.
 2. Flash the headless build to the StickS3. Confirm it boots to a console prompt
    with a blank screen and no crash.
 3. From the console, `cameras list`, `connect 0`, `shutter hold 200`. Confirm
@@ -322,9 +323,28 @@ Implemented in `feat/33-wifi-hub`:
 - Added `esp32-s3-headless` with `FURBLE_NO_DISPLAY`, a headless 5 ms loop,
   and USB console request handling. The profile compiles out the UI sources
   and excludes the `icons` component.
-- The intervalometer remains unavailable in the displayless profile because its
-  state machine still lives in the UI. The planned refactor is required before
-  33c.
+- The headless env also defines `FURBLE_M5STICKS3`: it is StickS3 hardware,
+  only the panel is absent, and the board define keeps the M5PM1 watchdog,
+  the power locks and the USB console transport in the build.
+  `sdkconfig.esp32-s3-headless` is seeded from `sdkconfig.m5stick-s3` (BT and
+  NimBLE, SPIRAM, single core FreeRTOS, 8MB flash all kept) with only
+  `CONFIG_FURBLE_NO_DISPLAY=y` changed, and is committed fully expanded like
+  the other five.
+- The GPS UART clock source is keyed on `SOC_UART_SUPPORT_XTAL_CLK` instead of
+  the board define, so any S3 build keeps the DFS safe XTAL clock.
+- `GPS::startService()` drives the 1 s `GPS::update()` tick from an esp_timer
+  in the headless profile, so camera geotag pushes work without LVGL.
+- Companion pairing in the headless profile is console driven: the headless
+  loop prints the pending PIN on the console and the `pair yes|no` command
+  answers the numeric comparison. The command also exists in GUI console
+  builds alongside the dialog.
+- `DISPLAY_MODE` is a plain uint8 on the console (0 gui, 1 console); the
+  symbolic names stay accepted on set.
+- The companion status record reads battery and intervalometer values through
+  `UI` accessors in both profiles. The headless stubs read the battery from
+  M5.Power like the GUI and report the intervalometer as idle, because its
+  state machine still lives in the UI. The planned refactor is required
+  before 33c.
 - Hardware verification on the StickS3 via the console is pending.
 
 Deviations:
@@ -333,15 +353,34 @@ Deviations:
   reverted during integration. The `CONFIG_FURBLE_NO_DISPLAY` rule made the
   component manager drop LVGL for the five release envs, because the symbol is
   undefined at dependency resolution time, which broke every GUI build. LVGL
-  now resolves unconditionally again. Source gating and `EXCLUDE_COMPONENTS`
-  keep the UI and icons out of the headless image. Full LVGL dependency
-  exclusion for the headless profile is follow-up work.
+  now resolves unconditionally again.
+- `EXCLUDE_COMPONENTS=icons` did not work either: `REQUIRES icons` is expanded
+  in an early CMake pass that does not see the profile cache variable, so
+  icons was force-included with its lvgl dependency edge severed, which is why
+  the headless env never compiled. The requirement is now unconditional and
+  `components/icons/CMakeLists.txt` registers an empty component when
+  `CONFIG_FURBLE_NO_DISPLAY` is set. LVGL still compiles in the headless env
+  and the linker drops it; the size numbers below confirm the drop. Full LVGL
+  dependency exclusion remains follow-up work.
 - The new `Furble` Kconfig menu appends a derived
   `# CONFIG_FURBLE_NO_DISPLAY is not set` block on regeneration. It was added
   consistently to all five committed sdkconfig files.
 
-The `m5stick-s3` build passes with `FURBLE_VERSION=dev FURBLE_TEST=0` after
-the revert.
+Build results with `FURBLE_VERSION=dev FURBLE_TEST=0`, review fix round:
+
+- `esp32-s3-headless` compiles for the first time. RAM 35316 bytes (10.8%),
+  flash 891644 bytes (58.0%), `firmware.bin` 892128 bytes. `nm` on the ELF
+  shows no LVGL symbols and no icon arrays; the M5PM1 watchdog symbols
+  (`Platform::watchdogEnable`, `M5PM1::wdtSet`, `M5PM1::wdtFeed`) are present.
+- `m5stick-s3`: RAM 36324 bytes (11.1%), flash 1099672 bytes (71.6%),
+  `firmware.bin` 1100160 bytes.
+- Delta: the headless image saves 208028 bytes of flash (LVGL, icons and the
+  UI sources) and 1008 bytes of statically allocated RAM against `m5stick-s3`
+  on the same branch.
+- `m5stick-s3-debug` also compiles.
+
+Console pairing and geotag flow on hardware are still pending StickS3
+verification.
 
 ---
 
