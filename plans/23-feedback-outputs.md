@@ -465,3 +465,10 @@ queued via `feedback test` and the user confirmed they are audible. User
 preference: the sounds are annoying, so `fb_events 0` and `fb_output 0` are
 now set. `fb_events` and `fb_volume` apply immediately, `fb_output` on reboot,
 as designed.
+
+## Simulator note, 2026-08-17
+
+The host simulator shadows `FurbleFeedback.h` with `sim/shim/FurbleFeedback.h`,
+the same pattern as the IR shim. The fake reports no capability beyond Off, so
+the Feedback settings menu stays hidden and the scripted menu routes keep
+their existing positions.
