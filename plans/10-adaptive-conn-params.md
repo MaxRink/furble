@@ -234,3 +234,14 @@ Camera testing:
   without unit conversion, and for `getRssi()`.
 - [esp-nimble-cpp 2.5.0 NimBLEClient.h](https://raw.githubusercontent.com/h2zero/esp-nimble-cpp/2.5.0/src/NimBLEClient.h)
   for the `NimBLEClientCallbacks::onConnParamsUpdateRequest()` signature.
+
+## Hardware verification, 2026-08-17
+
+Verified on the combined image with the X100VI. With `conn_saver` on, the link
+dropped to the idle profile 10 s after the last activity, log:
+`Requested idle connection profile (200-240, latency 0, timeout 1600)`. A
+shutter press after idle immediately requested the fast profile (24-40,
+latency 1, timeout 512) and issued `shutterPress` 3 ms later, so the command
+is not blocked behind the renegotiation. Finding: active GPS geotagging keeps
+the link permanently fast because every geotag write counts as activity, so
+the saver only helps with GPS off or without a fix.

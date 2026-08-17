@@ -449,3 +449,13 @@ sends, so no vendor specific code is touched. State this in the PR body.
   https://docs.platformio.org/en/latest/frameworks/espidf.html
 - PlatformIO, device monitor:
   https://docs.platformio.org/en/latest/core/userguide/device/cmd_monitor.html
+
+## Hardware verification, 2026-08-17
+
+The console drove the whole verification pass: settings sweep over every key,
+camera connect and shutter, GPS control, reboot and audit. One inaccuracy
+found: `appliesWhen` reports `immediately` for CPU_FREQ, but the console
+`setValue` path only saves the value. Only the UI roller applies it live via
+`Platform::setCPUMaxFreq`. Empirically a console-set 160 took effect at the
+next reboot (`pm: CPU_MAX: 160`). The label should say `on reboot` for the
+console path.

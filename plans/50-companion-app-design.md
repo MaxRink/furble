@@ -756,3 +756,14 @@ Implemented in PR #18 on the fork, under `companion/android`. Notes:
   crashes, pairing without BLE degrades to a dismissable error card.
   Screenshots live in `companion/android/docs/screenshots/`.
 - End to end BLE against the firmware service is still pending.
+
+## Hardware verification, 2026-08-17
+
+Findings from the host-side GATT attempt. `settings set companion on` plus
+reboot never starts advertising: `Companion::enable(pairingWindow)` only opens
+the pairing window when called from the UI toggle path, and reconnect
+advertising requires an existing bond. A Mac-side bleak scan found no
+advertisement in repeated 45 s and 180 s windows. The pairing window,
+numeric-comparison modal and the 42 byte location write therefore need the
+device UI toggle and remain on the user checklist. The modal itself has a
+focus trap after Accept, see plans/26 note.

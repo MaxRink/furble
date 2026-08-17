@@ -305,3 +305,10 @@ All links fetched and checked.
   http://www.cfd.tu-berlin.de/~panek/foto/rc-1/canon_remote_control.html
 - Philips RC-6, cited only to show it is a different protocol from the Canon RC-6
   handset: https://www.sbprojects.net/knowledge/ir/rc6.php
+
+## Hardware verification, 2026-08-17
+
+Console path verified on the combined image. `ir fire 0..3` queues for all four
+protocols and correctly errors with `ir is disabled` when the setting is off.
+Actual IR emission is fired blind, filming the emitter with a phone camera is
+on the user checklist.
