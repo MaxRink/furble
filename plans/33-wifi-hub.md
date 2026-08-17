@@ -296,7 +296,11 @@ sends.
 Rebase notes:
 
 - `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
-  from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard.
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
+  from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
+  `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
+  this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
+  dead-reckoning renumbers its provisional ids at its rebase.
 - `src/FurbleCompanion.cpp` settingType and settingValue cover `DISPLAY_MODE`
   as SETTING_U8 under the same guard.
 - `src/FurbleGPS.cpp` was rewritten on master by PR 27 (burst-windowed
