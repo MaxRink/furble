@@ -239,6 +239,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
@@ -291,6 +292,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
+    case Settings::GPS_MOTION:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -370,6 +372,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
@@ -534,6 +537,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
@@ -561,6 +565,12 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
+  }
+  if (setting.type == Settings::GPS_MOTION) {
+    // Not GPS_RELOAD: that restarts the receiver, and the motion detector owns
+    // no receiver state. Direct call like the companion path below, since the
+    // gate is only atomics and NVS reads.
+    GPS::getInstance().reloadMotionSetting();
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
 #if defined(FURBLE_NO_DISPLAY)

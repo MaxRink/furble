@@ -36,6 +36,7 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,

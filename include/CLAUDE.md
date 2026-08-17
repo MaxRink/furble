@@ -20,11 +20,12 @@ Public headers for the app layer in src/, one header per module
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
-- `FurbleSettings.h` assigns the IMU enable switch wire id 46 and the motion
-  engine selector wire id 74. Wire id 45 is reserved for the companion-password
-  contract and wire id 47 for the companion-password branches; neither may be
-  reused. A PR claims the next free id at rebase time and regenerates its golden
-  corpus. See issue #280 for the full reservation table.
+- `FurbleSettings.h` assigns the IMU enable switch wire id 46, the GPS
+  motion-adaptive switch wire id 66 and the motion engine selector wire id 74.
+  Wire id 45 is reserved for the companion-password contract and wire id 47 for
+  the companion-password branches; neither may be reused. A PR claims the next
+  free id at rebase time and regenerates its golden corpus. See issue #280 for
+  the full reservation table.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.

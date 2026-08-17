@@ -1,0 +1,37 @@
+# The IMU gate on the Settings > GPS Motion Adaptive row
+# (plans/18-gps-motion.md).
+#
+# The detector reads the accelerometer, so with the IMU capability off the row
+# must render disabled rather than offering a switch that cannot do anything.
+# The gate is evaluated when the row is constructed, which matches the hardware:
+# the IMU is brought up during Platform init and the Sensors page says "Restart
+# to apply", so the capability cannot change under a live page.
+#
+# The setting is seeded on here on purpose. A user who enabled motion adaptive
+# and then turned the IMU off must not leave a detector running against a sensor
+# that is not there, so the detector reports off even though the setting is on.
+#
+# Mutations that kill these assertions are recorded in plans/18-gps-motion.md.
+seed gps true
+seed imu false
+seed gps_motion true
+seed gps_uart_mode ack
+wait 400
+
+assert setting.gps_motion 1
+assert gps.motion_state off
+
+action nav settings
+wait 150
+action nav gps
+wait 250
+assert ui.page gps
+assert ui.gps_motion_row disabled
+assert ui.indicator_overlaps 0
+action scroll bottom
+wait 200
+assert ui.scroll_bottom 0
+action scroll top
+wait 200
+assert ui.scroll_top 0
+exit

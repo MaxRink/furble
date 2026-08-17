@@ -1,0 +1,68 @@
+# The GPS_MOTION setting plumbing, seed side and widget side.
+#
+# The setting is off by default, which is the whole safety argument for phase 1:
+# an unseeded, untouched device must behave exactly as it did before this
+# feature existed, so the detector must not be running. The scenario then drives
+# the real Settings > GPS switch, whose value-changed callback persists the
+# setting and calls GPS::reloadMotionSetting(). The simulator has no USB
+# console, so this is the equivalent of the firmware console "settings set
+# gps_motion" path; that path is covered on the host by
+# tests/host/console_commands_test.cpp.
+#
+# The receiver assertion is 50 ms after the toggle, not after it has settled.
+# GPS::reloadSetting() calls enable(), which parks the GPS task, re-sets the
+# baud, resets the parser, cycles the rail, re-enters ACQUIRING and marks the
+# $PCAS configuration pending. Routing GPS_MOTION through it made an advisory
+# toggle cost a re-acquisition, and the receiver was back at "tracking" within
+# a second, so a settled assertion could not see it. Fifty milliseconds is
+# inside the acquisition window and outside nothing: assert early or do not
+# assert at all.
+#
+# Mutations that kill these assertions are recorded in plans/18-gps-motion.md.
+seed gps true
+seed imu true
+seed gps_uart_mode ack
+wait 400
+
+# Default off: no seed, no switch press, no detector.
+assert setting.gps_motion 0
+assert gps.motion_state off
+
+action nav settings
+wait 150
+action nav gps
+wait 200
+assert ui.page gps
+assert ui.gps_motion_row enabled
+
+# Flip the real switch. Before anything else, prove the receiver did not move:
+# still tracking, no bytes written, not degraded.
+action toggle gps_motion
+wait 50
+assert gps.state tracking
+assert uart.count 0
+assert gps.degraded 0
+
+# The detector timer is created by the next GPS service tick, so give it more
+# than the 1 s SERVICE_MS before reading the detector state.
+wait 1500
+assert setting.gps_motion 1
+assert gps.motion_state moving
+assert gps.state tracking
+
+# And back off, with the same early receiver check. The detector stops and
+# reports off again, so an opt-out is a real opt-out rather than a detector
+# that keeps sampling the IMU.
+action toggle gps_motion
+wait 50
+assert gps.state tracking
+assert uart.count 0
+assert gps.degraded 0
+wait 1500
+assert setting.gps_motion 0
+assert gps.motion_state off
+
+# The receiver was never touched by either flip.
+assert gps.state tracking
+assert uart.count 0
+exit

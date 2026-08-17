@@ -65,6 +65,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:
+    case Settings::GPS_MOTION:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

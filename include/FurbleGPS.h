@@ -27,6 +27,7 @@ using lv_obj_t = _lv_obj_t;
 #include <mutex>
 
 #include "FurbleGPSPowerCycle.h"
+#include "FurbleMotion.h"
 #include "FurblePower.h"
 
 namespace Furble {
@@ -106,7 +107,20 @@ class GPS {
 
   void setIcon(lv_obj_t *icon);
   bool isEnabled(void) const;
+  /** True when the software motion detector is running. */
+  bool isMotionEnabled(void) const;
+  /** True when the enabled software motion detector reports stationary. */
+  bool isStationary(void) const;
   void reloadSetting(void);
+
+  /**
+   * Refresh only the motion detector gate.
+   *
+   * Every GPS_MOTION write uses this instead of reloadSetting(). The detector
+   * is advisory and owns no receiver state, so flipping it must not cost a
+   * re-acquisition.
+   */
+  void reloadMotionSetting(void);
 
   /** Refresh the cached GPX logging settings from NVS. */
   void reloadLogSettings(void);
@@ -338,6 +352,9 @@ class GPS {
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
+  void syncMotionTimer(void);
+  void updateMotion(void);
+  void resetMotion(void);
   bool wiredFixIsFresh(const status_t &status) const;
 
   void acquirePowerLock(void);
@@ -402,6 +419,7 @@ class GPS {
   // status icon on a change and never re-invalidates it every update
   bool m_IconDegraded = false;
   lv_timer_t *m_Timer = NULL;
+  lv_timer_t *m_MotionTimer = NULL;
 #endif
 
   TaskHandle_t m_Task = NULL;
@@ -415,6 +433,12 @@ class GPS {
 
   std::atomic<bool> m_Enabled = false;
   bool m_HasFix = false;
+  std::atomic<bool> m_MotionEnabled {false};
+  std::atomic<bool> m_MotionStationary {false};
+  std::atomic<bool> m_MotionResetPending {false};
+  // Owned by the LVGL task through the motion timer. Only the atomics above are
+  // read from other tasks.
+  Motion::Detector m_Motion;
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
   std::atomic<uint8_t> m_Satellites {0};
   external_fix_t m_ExternalFix = {};

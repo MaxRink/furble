@@ -749,6 +749,16 @@ target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
 
+# Pure stationary detector from include/FurbleMotion.h. The GPS motion timer
+# feeds it accelerometer magnitudes, so the variance threshold, the slow entry
+# and immediate exit hysteresis, and the window length are pinned here rather
+# than on the device. No hardware dependency, so it needs no furble sources on
+# its link line.
+add_executable(motion_detector_test motion_detector_test.cpp)
+target_include_directories(motion_detector_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(motion_detector_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                     -Wno-unused-parameter)
+
 # The GPS Data page sentence age formatter. Pure, header only, and the only
 # unbounded field on a row with a hard character budget, so its clamp is a unit
 # test rather than a scenario assertion. The simulator cannot reach the ages
@@ -1439,6 +1449,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
   add_test(NAME gps-format COMMAND gps_format_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
+  add_test(NAME motion-detector COMMAND motion_detector_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   # The console suite drives the real console task through its transport, and

@@ -29,19 +29,11 @@ constexpr int NO_LIGHT_SLEEP_LOCK = 2;
 constexpr uint64_t REPORT_TIME_QUANTUM_MS = 1000;
 
 const char *const TIMER_NAMES[] = {
-    "inactivity_timer",
-    "battery_timer",
-    "diagnostics_timer",
-    "icon_timer",
-    "connect_timer",
-    "intervalometer_timer",
-    "gps_service_timer",
-    "gps_data_timer",
-    "nmea_timer",
-    "interval_page_refresh",
-    "bulb_timer",
-    "bulb_page_refresh",
-    "companion_pairing_timer",
+    "inactivity_timer",  "battery_timer",           "diagnostics_timer",
+    "icon_timer",        "connect_timer",           "intervalometer_timer",
+    "gps_service_timer", "gps_motion_timer",        "gps_data_timer",
+    "nmea_timer",        "interval_page_refresh",   "bulb_timer",
+    "bulb_page_refresh", "companion_pairing_timer",
 };
 
 struct OwnerData {

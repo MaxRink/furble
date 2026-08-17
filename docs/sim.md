@@ -268,10 +268,11 @@ Battery seeds select the initial deterministic platform sample:
 `false`).
 
 These boolean settings are applied before the UI is constructed:
-`gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `recon_backoff`,
-`sleep_conn`, and
+`gps`, `gps_nmea`, `gps_motion`, `fauxny`, `autoconnect`, `reconnect`,
+`recon_backoff`, `sleep_conn`, and
 `boot_splash`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
-`imu_sensor` controls modeled IMU presence. The M5StickS3 model also accepts
+`imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
+as well: the detector only runs when the receiver and the sensor are both on. The M5StickS3 model also accepts
 `watchdog`; other board models reject that seed because they cannot apply it.
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
 until the page is left, so a scenario that asserts a scan-end callback must
@@ -402,9 +403,9 @@ action imu.roll DEGREES
 action imu.pitch DEGREES
 ```
 
-`toggle NAME` accepts `gps`, `gps_nmea`, `autoconnect`, `reconnect`,
-`multiconnect`, `companion`, `watchdog`, `ir`, `show_title`, `tx_adaptive`,
-`conn_saver`, `preset_picker`, and `recon_backoff`.
+`toggle NAME` accepts `gps`, `gps_nmea`, `gps_motion`, `autoconnect`,
+`reconnect`, `multiconnect`, `companion`, `watchdog`, `ir`, `show_title`,
+`tx_adaptive`, `conn_saver`, `preset_picker`, and `recon_backoff`.
 
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `motion_engine`, `infrared`, `gps_rate`,
@@ -532,6 +533,7 @@ The complete `ui.*` query set is:
 | `ui.battery_x` | Numeric header x position, or `none`. |
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
+| `ui.gps_motion_row` | `absent`, `hidden`, `disabled`, or `enabled` for the Settings > GPS motion-adaptive row. |
 | `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
@@ -549,6 +551,13 @@ its configuration and any received byte refreshes the tick; they are unit tested
 in `tests/host/gps_format_test.cpp`.
 
 The other namespaces are:
+
+- `gps.motion_state` reports the phase 1 motion detector as `off`, `moving`, or
+  `stationary`. `off` means the detector is not running, which is the default
+  and what every scenario that does not seed `gps_motion` must observe. The
+  detector is advisory in this phase: `GPS::isStationary()` has no consumer, so
+  a scenario that flips the state must also assert that the receiver did not
+  move, with `gps.state`, `power.no_light_sleep` and `uart.count`.
 
 - `platform.battery.level`, `platform.battery.voltage`,
   `platform.battery.current`, and `platform.battery.charging` report the
@@ -611,7 +620,8 @@ reports nothing about the bottom two rather than proving them clear.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,
-  `setting.gps`, `setting.gps_nmea`, `setting.ir`, `setting.conn_saver`,
+  `setting.gps`, `setting.gps_nmea`, `setting.gps_motion`, `setting.ir`,
+  `setting.conn_saver`,
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
