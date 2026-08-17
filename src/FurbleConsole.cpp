@@ -200,6 +200,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -233,6 +234,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
@@ -277,6 +279,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -363,6 +366,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
@@ -418,6 +422,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > Feedback::OUTPUT_SOUND_LIGHT)) {
+        return fail("expected 0-4");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::GPS_HOLD:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > GPS::HOLD_MAX)) {
         return fail("expected 0-4");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -518,6 +532,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
@@ -547,6 +562,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
+      || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
+      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
+      || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {

@@ -31,6 +31,8 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_HOLD,
+    GPS_EXTRAP,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -193,12 +195,14 @@ class Settings {
   struct storage_type;
 
   /** Load a setting, with type deduced from the setting. */
+  /** Load a setting, with its type deduced from the setting. */
   template <type_t S>
   static typename storage_type<S>::type load() {
     return load<typename storage_type<S>::type>(S);
   }
 
   /** Save a setting, with type deduced from the setting. */
+  /** Save a setting, with its type deduced from the setting. */
   template <type_t S>
   static void save(const typename storage_type<S>::type &value) {
     save<typename storage_type<S>::type>(S, value);
@@ -282,6 +286,14 @@ struct Settings::storage_type<Settings::GPS_DUTY> {
 template <>
 struct Settings::storage_type<Settings::GPS_ASSIST> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_HOLD> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_EXTRAP> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::INTERVAL> {

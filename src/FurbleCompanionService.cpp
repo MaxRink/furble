@@ -276,6 +276,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::GPS_EXTRAP:
       return SETTING_BOOL;
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
@@ -299,6 +300,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::GPS_HOLD:
       return SETTING_U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -341,6 +343,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::GPS_EXTRAP:
     {
       const bool v = Settings::load<bool>(type);
       value.assign(reinterpret_cast<const uint8_t *>(&v),
@@ -369,6 +372,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::GPS_HOLD:
     {
       const uint8_t v = Settings::load<uint8_t>(type);
       value.assign(1, v);
@@ -420,6 +424,9 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
         return false;
       }
       if ((type == Settings::GPS_ASSIST) && (value[0] > 2)) {
+        return false;
+      }
+      if ((type == Settings::GPS_HOLD) && (value[0] > GPS::HOLD_MAX)) {
         return false;
       }
       Settings::save<uint8_t>(type, value[0]);
@@ -573,6 +580,8 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_EXTRAP:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:

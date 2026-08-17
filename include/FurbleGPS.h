@@ -53,6 +53,13 @@ class GPS {
     uint8_t attempts;
   } config_status_t;
 
+  /** Quality of the fix currently sent to the camera. */
+  enum class Fix : uint8_t {
+    NONE,
+    HELD,
+    LIVE,
+  };
+
   typedef struct {
     Camera::gps_t gps;
     Camera::timesync_t timesync;
@@ -125,6 +132,10 @@ class GPS {
   status_t getStatusSnapshot(void) const;
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
+  /** Get the quality of the fix currently sent to the camera. */
+  Fix getFix(void) const;
+  /** Get the remaining duration of a bounded held fix. */
+  uint32_t getHoldRemainingMs(void) const;
 
   void reset(void);
   void task(void);
@@ -142,6 +153,9 @@ class GPS {
 
   /** Supported standby intervals, in seconds. */
   static constexpr const std::array<uint8_t, 4> DUTY_SECONDS = {0, 5, 10, 15};
+
+  /** Highest valid fix hold setting. */
+  static constexpr const uint8_t HOLD_MAX = 4;
 
   /** Restart the receiver, 0 hot, 1 warm, 2 cold. */
   void restart(uint8_t mode);
@@ -312,6 +326,18 @@ class GPS {
   /** Store raw NMEA sentences while the debug page is open. */
   void captureSentences(const char *data, size_t length);
 
+  typedef struct {
+    Camera::gps_t gps;
+    Camera::timesync_t timesync;
+    uint32_t tick;
+    double course_deg;
+    double speed_mps;
+    source_t source;
+    bool course_valid;
+    bool speed_valid;
+    bool valid;
+  } fix_cache_t;
+
   uart_port_t m_UART = UART_NUM_2;
 
 #if !defined(FURBLE_NO_DISPLAY)
@@ -330,9 +356,15 @@ class GPS {
   std::mutex m_ServiceMutex;
 
   std::atomic<bool> m_Enabled = false;
-  bool m_HasFix = false;
+  std::atomic<uint8_t> m_Fix {static_cast<uint8_t>(Fix::NONE)};
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
   std::atomic<uint8_t> m_Satellites {0};
+  std::atomic<uint32_t> m_HoldRemainingMs {0};
+  std::atomic<uint32_t> m_HoldLimitMs {0};
+  std::atomic<bool> m_Extrapolate {false};
+  bool m_HoldActive = false;
+  uint32_t m_HoldStartTick = 0;
+  fix_cache_t m_FixCache = {};
   external_fix_t m_ExternalFix = {};
   uint64_t m_ExternalFixReceivedMs = 0;
   bool m_HasExternalFix = false;

@@ -345,6 +345,41 @@ Camera checks, Fujifilm only, the only hardware available:
 Battery impact: none expected. This PR adds no sensor polling and no extra BLE
 traffic. State that in the PR body rather than running a drain test.
 
+## Implementation state
+
+Implemented:
+
+- Added `GPS_HOLD` with key `gps_hold`, default `0`, and a five-position hold
+  roller from off through 60 minutes.
+- Added `GPS_EXTRAP` with key `gps_extrap`, default `false`, and an experimental
+  switch that is disabled when fix hold is off.
+- Added a complete fix cache with UTC timestamp advancement, cached satellites,
+  cached course and speed, a separate `LIVE`, `HELD`, or `NONE` state, and the
+  searching icon for held fixes.
+- Added straight-line extrapolation only for valid course and speed data at or
+  above 2 m/s. It stops before 30 seconds and uses the selected hold window.
+- Added console and companion settings support. The provisional `DEAD_RECKON`
+  wire id is 35 for `GPS_HOLD`. `GPS_EXTRAP` uses the next provisional id, 36.
+- Updated the GPS Data page with the fix state and remaining hold time.
+
+Deviations:
+
+- This worktree does not contain the `GPS_MOTION` setting or a motion source
+  from PR18 or PR20. Stationary-aware hold is therefore inactive. No stationary
+  state is guessed, so tier 3 cannot extrapolate a claimed stationary fix.
+- Companion-sourced live fixes keep the existing searching icon. This preserves
+  the current companion UI while held wired fixes use the same icon.
+
+Verification:
+
+- clang-format 21 and `git diff --check` pass.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` was blocked before
+  compilation because the sandbox denied the global PlatformIO lock. A retry
+  with a worktree-local PlatformIO core reached dependency installation and
+  failed with `HTTPClientError`. No firmware build result is available.
+
+Hardware verification is pending, and no camera hardware test was performed.
+
 ## References
 
 All links checked.
