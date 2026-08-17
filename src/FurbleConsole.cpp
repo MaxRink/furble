@@ -4,8 +4,10 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include <esp_console.h>
 #include <esp_heap_caps.h>
@@ -193,6 +195,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -255,6 +258,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -286,6 +290,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -338,6 +343,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
+    case Settings::GPS_ASSIST:
     case Settings::IR_PROTO:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
@@ -349,6 +355,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       if ((setting.type == Settings::TEXT_SIZE) && (value > Settings::TEXT_SIZE_LARGE)) {
         return fail("expected 0 (small), 1 (normal) or 2 (large)");
+      }
+      if ((setting.type == Settings::GPS_ASSIST) && (value > 2)) {
+        return fail("expected 0, 1 or 2");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -448,7 +457,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
   // The GPS receiver has to be told about its own settings.
   if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
-      || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)) {
+      || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
+      || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
+      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
 
@@ -557,6 +568,68 @@ int gpsSend(const char *body) {
   return 0;
 }
 
+bool parseHexByte(const char *text, uint8_t &value) {
+  char *end = nullptr;
+  const unsigned long parsed = strtoul(text, &end, 16);
+  if ((end == text) || (*end != '\0') || (parsed > UINT8_MAX)) {
+    return false;
+  }
+  value = static_cast<uint8_t>(parsed);
+  return true;
+}
+
+int gpsBinarySend(int argc, char **argv) {
+  if (argc < 3) {
+    return fail("usage: gps binary <class hex> <id hex> [payload bytes]");
+  }
+
+  uint8_t class_id;
+  uint8_t message_id;
+  if (!parseHexByte(argv[1], class_id) || !parseHexByte(argv[2], message_id)) {
+    return fail("class and id must be hex bytes");
+  }
+
+  std::vector<uint8_t> payload;
+  for (int i = 3; i < argc; i++) {
+    uint8_t byte;
+    if (!parseHexByte(argv[i], byte)) {
+      return fail("payload must contain hex bytes");
+    }
+    payload.push_back(byte);
+  }
+  if ((payload.size() % 4) != 0) {
+    return fail("payload length must be a multiple of four");
+  }
+
+  if (!GPS::getInstance().sendBinary(class_id, message_id, payload)) {
+    return fail("binary uart write failed");
+  }
+  printf("sent: binary %02X %02X, payload %u\n", class_id, message_id,
+         static_cast<unsigned>(payload.size()));
+  return 0;
+}
+
+int gpsAid(void) {
+  if (!GPS::getInstance().sendAidIni()) {
+    return fail("no valid cached fix or assistance is off");
+  }
+  printf("sent: AID-INI\n");
+  return 0;
+}
+
+int gpsConfig(void) {
+  const auto status = GPS::getInstance().getConfigStatus();
+  if (status.empty()) {
+    printf("config: empty\n");
+    return 0;
+  }
+  for (const auto &entry : status) {
+    printf("config: class=%02X id=%02X state=%s attempts=%u\n", entry.class_id, entry.message_id,
+           GPS::configStateName(entry.state), entry.attempts);
+  }
+  return 0;
+}
+
 int gpsStatus(void) {
   auto &gps = GPS::getInstance();
   auto &tiny = gps.get();
@@ -607,6 +680,18 @@ int cmdGPS(int argc, char **argv) {
     return gpsSend(argv[2]);
   }
 
+  if (!strcmp(argv[1], "binary")) {
+    return gpsBinarySend(argc - 1, argv + 1);
+  }
+
+  if (!strcmp(argv[1], "config")) {
+    return gpsConfig();
+  }
+
+  if (!strcmp(argv[1], "aid")) {
+    return gpsAid();
+  }
+
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {
       return fail("usage: gps power on | off");
@@ -614,7 +699,7 @@ int cmdGPS(int argc, char **argv) {
     return sendRequest(UI::Request::GPS_POWER, value, value ? "gps power on" : "gps power off");
   }
 
-  return fail("expected on, off, raw, send or power");
+  return fail("expected on, off, raw, send, binary, config, aid or power");
 }
 
 void cmdPowerStats(void) {
@@ -1369,7 +1454,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
-    command("gps", "gps [on|off|raw on|off|send <body>|power on|off]", cmdGPS),
+    command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
     command("ui", "ui audit", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
@@ -1534,6 +1619,14 @@ void Console::gpsRaw(const char *data, size_t length) {
       line.push_back(c);
     }
   }
+}
+
+void Console::gpsBinary(const uint8_t *data, size_t length) {
+  printf("binary:");
+  for (size_t i = 0; i < length; i++) {
+    printf(" %02X", data[i]);
+  }
+  printf("\n");
 }
 
 }  // namespace Furble

@@ -221,6 +221,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -278,6 +279,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -331,6 +333,9 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       return true;
     case SETTING_U8:
       if (length != 1) {
+        return false;
+      }
+      if ((type == Settings::GPS_ASSIST) && (value[0] > 2)) {
         return false;
       }
       Settings::save<uint8_t>(type, value[0]);
@@ -475,6 +480,11 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
 
   switch (setting->type) {
     case Settings::GPS:
+    case Settings::GPS_BAUD:
+    case Settings::GPS_RATE:
+    case Settings::GPS_NMEA:
+    case Settings::GPS_CONSTEL:
+    case Settings::GPS_ASSIST:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
