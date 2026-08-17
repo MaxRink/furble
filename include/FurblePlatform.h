@@ -117,8 +117,11 @@ class Platform {
 
   /**
    * Power off the device.
+   *
+   * On success this call never returns. Returns false if the PMIC refused the
+   * shutdown, with the hardware watchdog re-armed if it was armed before.
    */
-  void powerOff(void);
+  bool powerOff(void);
 
   /**
    * Set the maximum CPU frequency in MHz.

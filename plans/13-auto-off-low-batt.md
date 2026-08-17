@@ -16,16 +16,65 @@ Rebase notes:
 AUTO_OFF and LOW_BATT use the planned settings and NVS paths. The Power page
 has both rollers on boards with a reliable software power-off path. The M5Stack
 Core hides both policy rollers because its IP5306 cannot provide true software
-power off. Auto off checks the LVGL inactive time and `STATE_IDLE`. Low battery
-checks the cached battery sample, charging state, thresholds, hysteresis,
-warning latch, and graceful shutdown delay. Manual Off and both automatic paths
-share `UI::doPowerOff()`.
+power off. Manual Off and both automatic paths share `UI::doPowerOff()`.
+
+Evaluation model:
+
+- The one-second housekeeping timer calls `processAutoOff` and
+  `processLowBattery` directly, independent of the `processInactivity`
+  early-return paths. INACTIVITY defaults to never, so the policies must not
+  hang off the inactivity decision.
+- Both settings are cached in UI members. The rollers and the console (via
+  `Request::POWER_RELOAD`) refresh the cache, and any policy change resets the
+  warn latch and all hysteresis counters.
+- Auto off compares the LVGL idle clock against the setting while
+  `Control::STATE_IDLE` holds and no discovery scan is active. `STATE_IDLE`
+  also covers an active scan, so the scan check keeps auto off from cutting a
+  scan short.
+- Low battery hysteresis counts consecutive qualifying battery samples, six
+  samples at the 5 s refresh is 30 s. Any non-qualifying or dropped sample
+  resets the count. The comparison uses the smoothed `displayLevel`, and a
+  raw level of zero with the pack voltage above 3300 mV is treated as an
+  M5PM1 failed-read clamp and dropped.
+- Power off (policy 2) is gated on `caps.charging`. Boards without a charging
+  measurement (StickC Plus2, fallback boards) cannot distinguish USB power
+  from discharge, so they warn but never power off.
+
+Warning surface:
+
+- The warning is an LVGL message box with an OK button. A passive header-only
+  treatment was rejected because the battery style setting can hide the
+  header label, and a dismissible box is the cheapest honest surface.
+- The box wakes the panel through the display state machine (`wakeDisplay`
+  plus the DIM brightness restore), never through raw M5GFX calls, and
+  `processInactivity` holds the panel awake while the box is visible. The
+  LVGL idle clock is not touched, so a warning does not postpone auto off and
+  does not stall the power-off countdown.
+- Dismissing closes the box and cancels a pending power off, the press proves
+  a user is present. The policy re-arms after another qualifying 30 seconds.
+- On recovery (charging seen, or the level rising back over a threshold) the
+  box downgrades from the countdown text to the warn text, or closes.
+
+Power off ordering in `UI::doPowerOff`:
+
+1. Disable the S3 watchdog, the BLE teardown can outlast a feed period.
+2. Quiesce the intervalometer, releasing a mid-exposure shutter with a real
+   `CMD_SHUTTER_RELEASE`.
+3. Release the shutter lock, disconnect.
+4. `Platform::powerOff()`, which retries the M5PM1 shutdown through the
+   standard retry helper and returns false if the PMIC refused. On failure
+   the UI logs a warning, re-arms the watchdog from the setting, and clears
+   the power-off latch so the device keeps working.
+
+`prepareRestart` on feat/68 wants the same quiesce ordering. A future shared
+helper should absorb both, marked with a TODO in `doPowerOff`.
 
 Verification completed:
 
 - clang-format 21 passes for all changed C++ and header files.
 - `git diff --check` passes.
-- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` passes.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
+  `-e m5stick-s3-debug` pass.
 - Hardware testing is pending. No boards have been tested.
 
 Deviations:
@@ -33,8 +82,13 @@ Deviations:
 - This branch already has PR02 battery instrumentation with a 5-second cached
   sample. The low battery policy uses `m_Status.battery` instead of adding a
   second I2C reader.
-- PR12 display-off code is not in fork master. The warning calls the safe
-  M5GFX wakeup API directly and restores the configured brightness.
+- Fork master does carry the PR12/#26 display state machine. An earlier
+  revision claimed otherwise and bypassed it with raw M5GFX calls, which broke
+  the SLPIN/SLPOUT dwell and desynced the APB lock. The warning now goes
+  through `wakeDisplay()`.
+- `lv_display_trigger_activity` moved out of `wakeDisplay` to the input path
+  that saw the real press, so programmatic wakes are not counted as user
+  activity.
 
 ## Goal
 

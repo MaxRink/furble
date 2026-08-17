@@ -471,6 +471,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::FEEDBACK_RELOAD, 0);
   }
 
+  // The UI caches the power policies, tell it to re-read them.
+  if ((setting.type == Settings::AUTO_OFF) || (setting.type == Settings::LOW_BATT)) {
+    UI::sendRequest(UI::Request::POWER_RELOAD, 0);
+  }
+
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
   return 0;
