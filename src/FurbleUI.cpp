@@ -1927,6 +1927,20 @@ void UI::addMainMenu(void) {
           lv_timer_pause(ui->m_DiagnosticsTimer);
         }
 
+        // the diagnostics timer polls the IMU only while its live page is open
+        ui->m_Diagnostics.imuPageActive = (page == m_Menu.at(m_IMUDataStr).page);
+
+        // the spirit level timer only runs while its page is open
+        if (page == m_Menu.at(m_LevelStr).page) {
+          ui->m_Level.filterReady = false;
+          ui->m_Level.displayReady = false;
+          // settle the layout so the first frame reads real geometry
+          lv_obj_update_layout(ui->m_Level.surface);
+          lv_timer_resume(m_LevelTimer);
+        } else {
+          lv_timer_pause(m_LevelTimer);
+        }
+
         bool presetPage =
             (page == m_Menu.at(m_BulbDurationStr).page) && ui->m_Bulb.m_Duration.usesPresetPicker();
         if (presetPage) {
@@ -4338,32 +4352,13 @@ void UI::addLevelMenu(const menu_t &parent) {
   m_Level.pitch = lv_label_create(values);
   lv_label_set_text(m_Level.pitch, "Pitch: --");
 
+  // the main menu page dispatch resumes and pauses this timer
   m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
   lv_timer_pause(m_LevelTimer);
-  lv_obj_add_event_cb(menu.button, levelStart, LV_EVENT_CLICKED, m_LevelTimer);
 
   if (!M5.Imu.isEnabled()) {
     lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
   }
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::levelStart(lv_event_t *e) {
-  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-  auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
-  level->filterReady = false;
-  level->displayReady = false;
-  lv_timer_resume(timer);
-
-  auto &menu = m_Menu.at(m_LevelStr);
-  lv_obj_add_event_cb(menu.main, levelStop, LV_EVENT_CLICKED, timer);
-}
-
-void UI::levelStop(lv_event_t *e) {
-  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-  lv_timer_pause(timer);
-  lv_obj_remove_event_cb(static_cast<lv_obj_t *>(lv_event_get_target(e)), levelStop);
 }
 
 void UI::levelUpdate(lv_timer_t *timer) {
@@ -4394,15 +4389,16 @@ void UI::levelUpdate(lv_timer_t *timer) {
                                                        + (level->accel[2] * level->accel[2])))
                 * radiansToDegrees;
 
-  int32_t diameter = lv_obj_get_width(level->surface);
+  // content width excludes the surface border and padding
+  int32_t contentDiameter = lv_obj_get_content_width(level->surface);
   int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
-  int32_t maxOffset = std::max<int32_t>(0, ((diameter - bubbleDiameter) / 2) - 4);
+  int32_t maxOffset = std::max<int32_t>(0, ((contentDiameter - bubbleDiameter) / 2) - 4);
   constexpr float maximumDisplayedTilt = 45.0f;
   float rollOffset = std::clamp(roll / maximumDisplayedTilt, -1.0f, 1.0f);
   float pitchOffset = std::clamp(pitch / maximumDisplayedTilt, -1.0f, 1.0f);
-  int32_t center = (diameter - bubbleDiameter) / 2;
-  int32_t bubbleX = center + static_cast<int32_t>(std::round(rollOffset * maxOffset));
-  int32_t bubbleY = center + static_cast<int32_t>(std::round(pitchOffset * maxOffset));
+  // the bubble keeps its centre alignment, the position is a delta from centre
+  int32_t bubbleX = static_cast<int32_t>(std::round(rollOffset * maxOffset));
+  int32_t bubbleY = static_cast<int32_t>(std::round(pitchOffset * maxOffset));
 
   if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
     level->bubbleX = bubbleX;
@@ -5044,13 +5040,7 @@ void UI::addSensorsMenu(const menu_t &parent) {
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart");
   lv_obj_center(label);
-  lv_obj_add_event_cb(
-      restart,
-      [](lv_event_t *) {
-        Settings::save<Settings::IMU>(Settings::load<Settings::IMU>());
-        esp_restart();
-      },
-      LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(restart, [](lv_event_t *) { esp_restart(); }, LV_EVENT_CLICKED, NULL);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -6794,7 +6784,8 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
     }
   }
 
-  if ((diagnostics->imuAccel != nullptr) || (diagnostics->imuGyro != nullptr)) {
+  // only poll the IMU over I2C while its live page is open
+  if (diagnostics->imuPageActive) {
     if (M5.Imu.isEnabled()) {
       M5.Imu.update();
       float accel[3];

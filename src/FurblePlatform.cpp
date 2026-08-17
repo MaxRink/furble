@@ -41,19 +41,9 @@ Platform &Platform::getInstance(void) {
     cfg.pmic_button = true;
     M5.begin(cfg);
 
-    using Axis = m5::IMU_Class::axis_t;
-    switch (M5.getBoard()) {
-      case m5::board_t::board_M5StickS3:
-        M5.Imu.setAxisOrder(Axis::axis_x_pos, Axis::axis_y_pos, Axis::axis_z_pos);
-        break;
-      case m5::board_t::board_M5StickC:
-      case m5::board_t::board_M5StickCPlus:
-      case m5::board_t::board_M5StickCPlus2:
-        M5.Imu.setAxisOrder(Axis::axis_x_pos, Axis::axis_y_pos, Axis::axis_z_pos);
-        break;
-      default:
-        break;
-    }
+    // The IMU keeps the M5Unified default axis order. The spirit level derives
+    // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
+    // That orientation is UNVERIFIED on all boards pending a hardware check.
 
     switch (M5.getBoard()) {
       case m5::board_t::board_M5StickC:

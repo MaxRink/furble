@@ -201,14 +201,24 @@ Battery impact, on-board instrumentation only, no external meter:
 Implemented:
 - Added the `IMU` setting with key `imu`, default `false`, and `cfg.internal_imu` loading before `M5.begin()`.
 - Reordered startup so `Settings::init()` runs before `Platform::init()`. This is safe because Settings initialization only brings up NVS and the Preferences wrapper.
-- Added runtime M5Unified IMU reads for the Connected level and Diagnostics live pages, with EWMA filtering, runtime visibility, and board-selected axis-order setup.
+- Added runtime M5Unified IMU reads for the Connected level and Diagnostics live pages, with EWMA filtering and runtime visibility.
 - Added Settings -> Sensors with the IMU switch, restart notice, and Restart action. Added Connected -> Level and Settings -> Diagnostics -> IMU live.
-- Paused the level timer outside the page and used the diagnostics timer dispatch for one-Hz IMU updates while the live page is open.
+- The main menu page dispatch resumes the level timer only while the Level page is open and pauses it otherwise, the same pattern as the diagnostics timer. The dispatch also gates diagnostics IMU polling on the IMU live page being active.
+
+Review fixes after the first PR pass:
+- Bubble positioning keeps the LVGL centre alignment and applies only a delta, computed from the surface content width. The earlier code doubled the offset because style x/y adds to the centre alignment.
+- Removed the board axis-order switch. It only re-applied the M5Unified default, so it was a no-op. The code now documents the assumption at the IMU init site: default axis order, roll from atan2(ay, az) drives screen X, pitch drives screen Y.
+- Replaced the CLICKED-based level timer start/stop with the page dispatch. The old stop callback never unregistered itself (wrong event target) and programmatic navigation stranded the timer.
+- The layout is settled with `lv_obj_update_layout` on page entry so the first frame reads real geometry.
+- Dropped the duplicate `lv_menu_set_load_page_event` for the Level button and the no-op IMU setting re-save before restart.
 
 Deviations:
-- No scope deviations. The runtime board cases currently select M5Unified's logical X+, Y+, Z+ order for the StickS3 and AXP192 Stick families. Final axis sign confirmation is deferred to hardware verification.
+- No scope deviations. Axis orientation uses the M5Unified default on every board. Sign confirmation is deferred to hardware verification.
 
-Hardware verification is still pending: IMU detection and level readings on the StickS3 have not been checked on device.
+Known cost, accepted for now:
+- The 20 Hz level timer keeps running through the inactivity dim while the Level page stays open. Not fixed in this PR.
+
+Hardware verification is still pending on all boards: IMU detection, level axis orientation per board, and bubble centring have not been checked on device. The StickS3 walk is owed before merge.
 
 Rebase notes:
 - `IMU` is assigned wire_id 27, continuing after `GPS_DUTY` (26) from PR 27.
@@ -217,6 +227,9 @@ Rebase notes:
   `M5.begin()` and the UI offers an explicit restart.
 - `src/FurbleCompanion.cpp` settingType and settingValue cover `IMU` as
   SETTING_BOOL.
+- Second rebase onto master with PR 26 and PR 27 merged: the Settings menu
+  keeps both master's GPS 'Power saving' page and this branch's 'Sensors'
+  page. The empty CI retrigger commit was dropped.
 
 ## References
 

@@ -257,6 +257,8 @@ class UI {
     float imuAccelValues[3];
     float imuGyroValues[3];
     bool imuValuesValid;
+    /** True while the 'IMU live' page is open, gates I2C polling. */
+    bool imuPageActive;
   } diagnostics_t;
 
   typedef struct {
@@ -1033,12 +1035,6 @@ class UI {
 
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);
-
-  /** Start the spirit level timer. */
-  static void levelStart(lv_event_t *e);
-
-  /** Stop the spirit level timer. */
-  static void levelStop(lv_event_t *e);
 
   /** Refresh the spirit level page. */
   static void levelUpdate(lv_timer_t *timer);
