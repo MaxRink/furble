@@ -1,5 +1,8 @@
 #include <M5GFX.h>
 
+#include <cstdlib>
+#include <string>
+
 #include <freertos/FreeRTOS.h>
 
 #include "CameraList.h"
@@ -34,6 +37,12 @@ int runSimulator(bool *) {
     auto *camera = CameraList::last();
     CameraList::save(camera);
     camera->setActive(true);
+  }
+
+  // Let capture scripts pick a theme without navigating the roller. The theme
+  // is applied once at UI construction, so seed it before the UI exists.
+  if (const char *theme = std::getenv("FURBLE_SIM_THEME"); theme != nullptr && theme[0] != '\0') {
+    Settings::save<Settings::THEME>(std::string(theme));
   }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));

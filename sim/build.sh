@@ -13,6 +13,14 @@ LVGL_DIR=${FURBLE_LVGL_DIR:-}
 CXX=${CXX:-clang++}
 CC=${CC:-clang}
 
+# Board selection. Defaults model the M5StickS3 (135x240) so CI and the plain
+# `sh sim/build.sh` invocation are unchanged. Override both together to emulate
+# a different panel class:
+#   M5StickC   80x160  : FURBLE_SIM_FURBLE_BOARD=FURBLE_M5STICKC   FURBLE_SIM_M5GFX_BOARD=board_M5StickC
+#   M5Stack    320x240 : FURBLE_SIM_FURBLE_BOARD=FURBLE_M5COREX    FURBLE_SIM_M5GFX_BOARD=board_M5Stack
+FURBLE_BOARD=${FURBLE_SIM_FURBLE_BOARD:-FURBLE_M5STICKS3}
+M5GFX_BOARD=${FURBLE_SIM_M5GFX_BOARD:-board_M5StickS3}
+
 if [ ! -f "$DEP_ROOT/M5GFX/src/M5GFX.cpp" ]; then
   echo "M5GFX was not found at $DEP_ROOT" >&2
   exit 1
@@ -62,14 +70,14 @@ INCLUDES="\
 -I/usr/local/include/SDL2"
 
 DEFINES="\
--DFURBLE_M5STICKS3 \
+-D$FURBLE_BOARD \
 -DFURBLE_RIG \
 -DFURBLE_SIM \
 -DFURBLE_VERSION=\"sim\" \
 -DFURBLE_TEST_VERSION=1 \
 -DFURBLE_BATTERY_DEBUG=0 \
 -DM5GFX_SCALE=2 \
--DM5GFX_BOARD=board_M5StickS3 \
+-DM5GFX_BOARD=$M5GFX_BOARD \
 -DLV_CONF_INCLUDE_SIMPLE \
 -DLV_LVGL_H_INCLUDE_SIMPLE \
 -DLV_KCONFIG_IGNORE \
