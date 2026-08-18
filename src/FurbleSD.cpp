@@ -280,12 +280,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     }
 
     case Settings::MULTISELECT:
-    {
-      const Settings::multiselect_t selection =
-          Settings::load<Settings::multiselect_t>(setting.type);
-      value = sizedHex(&selection, sizeof(selection));
-      return true;
-    }
+      // Runtime camera selection, not a user preference worth backing up.
+      return false;
   }
   return false;
 }
@@ -513,14 +509,8 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     }
 
     case Settings::MULTISELECT:
-    {
-      Settings::multiselect_t selection = {};
-      if (!decodeSizedHex(text, &selection, sizeof(selection)) || !validMultiselect(selection)) {
-        return false;
-      }
-      Settings::save<Settings::multiselect_t>(setting.type, selection);
-      return true;
-    }
+      // Runtime camera selection, not a user preference worth restoring.
+      return false;
   }
   return false;
 }

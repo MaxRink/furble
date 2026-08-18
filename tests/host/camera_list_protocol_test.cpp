@@ -10,16 +10,19 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "protocol/CameraListProtocol.h"
 
 using Furble::CameraListProtocol::addressKey;
+using Furble::CameraListProtocol::assignCameraIds;
 using Furble::CameraListProtocol::decodeIndex;
 using Furble::CameraListProtocol::encodeIndex;
 using Furble::CameraListProtocol::INDEX_ENTRY_BYTES;
 using Furble::CameraListProtocol::INDEX_NAME_BYTES;
 using Furble::CameraListProtocol::IndexEntry;
+using Furble::CameraListProtocol::LEGACY_INDEX_ENTRY_BYTES;
 using Furble::CameraListProtocol::upsertIndex;
 
 namespace {
@@ -100,18 +103,104 @@ void testEmpty() {
 }
 
 void testRejects() {
-  IndexEntry probe = {};
+  // Two records so the deliberately bad lengths below are not a whole multiple
+  // of either the current or the legacy record size.
+  std::vector<IndexEntry> entries = {makeEntry("alpha", 1), makeEntry("beta", 2)};
   std::vector<uint8_t> bytes;
-  check(encodeIndex({probe}, bytes), "encodeIndex accepts a probe entry");
+  check(encodeIndex(entries, bytes), "encodeIndex accepts probe entries");
 
   std::vector<IndexEntry> decoded;
-  // A buffer that is not a whole number of records must be rejected.
+  // A buffer that is not a whole number of records must be rejected. The length
+  // 2 * 21 - 1 = 41 is a multiple of neither 21 nor the legacy 20.
   check(!decodeIndex(bytes.data(), bytes.size() - 1, decoded),
         "decodeIndex rejects a length that is not a record multiple");
   check(!decodeIndex(bytes.data(), 1, decoded), "decodeIndex rejects a single stray byte");
   // A null pointer with a nonzero length is a programming error, not empty.
   check(!decodeIndex(nullptr, INDEX_ENTRY_BYTES, decoded),
         "decodeIndex rejects a null pointer with a nonzero length");
+}
+
+// Build a pre-id index blob: fixed width name then a little endian type, with
+// no trailing id byte. This is exactly what firmware wrote before the stable id.
+std::vector<uint8_t> makeLegacyBlob(const std::vector<std::pair<std::string, uint32_t>> &items) {
+  std::vector<uint8_t> bytes(items.size() * LEGACY_INDEX_ENTRY_BYTES, 0x00);
+  for (size_t i = 0; i < items.size(); i++) {
+    const size_t offset = i * LEGACY_INDEX_ENTRY_BYTES;
+    std::memcpy(bytes.data() + offset, items[i].first.data(),
+                std::min(items[i].first.size(), INDEX_NAME_BYTES));
+    const uint32_t type = items[i].second;
+    bytes[offset + INDEX_NAME_BYTES + 0] = static_cast<uint8_t>(type);
+    bytes[offset + INDEX_NAME_BYTES + 1] = static_cast<uint8_t>(type >> 8);
+    bytes[offset + INDEX_NAME_BYTES + 2] = static_cast<uint8_t>(type >> 16);
+    bytes[offset + INDEX_NAME_BYTES + 3] = static_cast<uint8_t>(type >> 24);
+  }
+  return bytes;
+}
+
+void testLegacyMigration() {
+  const std::vector<uint8_t> blob = makeLegacyBlob({
+      {"fujifilm-x100", 0x00000003},
+      {"sony-a7",       0x11223344}
+  });
+  check(blob.size() == 2 * LEGACY_INDEX_ENTRY_BYTES, "legacy blob is two id-less records");
+
+  std::vector<IndexEntry> decoded;
+  check(decodeIndex(blob.data(), blob.size(), decoded),
+        "decodeIndex accepts a legacy id-less blob");
+  // No data loss: every saved camera survives the size change.
+  check(decoded.size() == 2, "legacy decode loses no saved camera");
+  check(std::memcmp(decoded[0].name, "fujifilm-x100", 13) == 0,
+        "legacy decode keeps the first name");
+  check(decoded[0].type == 0x00000003, "legacy decode keeps the first type");
+  check(decoded[1].type == 0x11223344, "legacy decode keeps the second type");
+  check(decoded[0].camera_id == 0 && decoded[1].camera_id == 0,
+        "legacy entries decode without an id");
+}
+
+void testAssignCameraIds() {
+  // makeEntry leaves camera_id zero, so these are all fresh.
+  std::vector<IndexEntry> fresh = {makeEntry("a", 1), makeEntry("b", 2), makeEntry("c", 3)};
+  assignCameraIds(fresh);
+  check(fresh[0].camera_id == 1 && fresh[1].camera_id == 2 && fresh[2].camera_id == 3,
+        "assignCameraIds numbers fresh entries from one");
+
+  // An existing id is kept and new ids continue above the highest.
+  std::vector<IndexEntry> mixed = {makeEntry("keep", 1), makeEntry("new", 2)};
+  mixed[0].camera_id = 5;
+  mixed[1].camera_id = 0;
+  assignCameraIds(mixed);
+  check(mixed[0].camera_id == 5, "assignCameraIds keeps an existing id");
+  check(mixed[1].camera_id == 6, "assignCameraIds continues above the highest id");
+
+  // A second pass is a no-op once every entry already carries an id.
+  std::vector<IndexEntry> settled = mixed;
+  assignCameraIds(settled);
+  check(settled[0].camera_id == 5 && settled[1].camera_id == 6,
+        "assignCameraIds leaves fully numbered entries untouched");
+}
+
+void testMigrationFullFlow() {
+  // Decode an old blob, assign ids, and confirm the ids persist on re-encode.
+  const std::vector<uint8_t> blob = makeLegacyBlob({
+      {"cam-a", 1},
+      {"cam-b", 2},
+      {"cam-c", 3}
+  });
+  std::vector<IndexEntry> decoded;
+  check(decodeIndex(blob.data(), blob.size(), decoded), "full flow decodes the legacy blob");
+  assignCameraIds(decoded);
+  check(decoded.size() == 3, "full flow keeps every saved camera");
+  check(decoded[0].camera_id == 1 && decoded[1].camera_id == 2 && decoded[2].camera_id == 3,
+        "full flow assigns a stable id to each migrated camera");
+
+  std::vector<uint8_t> reencoded;
+  check(encodeIndex(decoded, reencoded), "full flow re-encodes with ids");
+  check(reencoded.size() == 3 * INDEX_ENTRY_BYTES, "re-encoded blob uses the current record size");
+  std::vector<IndexEntry> reread;
+  check(decodeIndex(reencoded.data(), reencoded.size(), reread),
+        "full flow re-reads the migrated blob");
+  check(reread.size() == 3 && reread[0].camera_id == 1 && reread[2].camera_id == 3,
+        "persisted ids survive a decode round trip");
 }
 
 void testUpsert() {
@@ -139,6 +228,9 @@ int main() {
   testEmpty();
   testRejects();
   testUpsert();
+  testLegacyMigration();
+  testAssignCameraIds();
+  testMigrationFullFlow();
 
   if (g_failures > 0) {
     std::cerr << "camera list protocol tests: " << g_failures << " FAILED\n";

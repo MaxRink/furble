@@ -28,6 +28,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   static constexpr const char *STATUS_UUID = "b57f4f60-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
+  static constexpr const char *CAMERAS_UUID = "b57f4f63-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *CAPABILITY_UUID = "b57f4f64-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *OTA_CONTROL_UUID = "b57f4f6d-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *OTA_DATA_UUID = "b57f4f6e-087b-4740-b71d-8262cf26ebbc";
@@ -35,6 +36,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   static constexpr uint8_t WIRE_VERSION = CompanionService::WIRE_VERSION;
   static constexpr uint8_t CAPABILITY_VERSION = CompanionService::CAPABILITY_VERSION;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = CompanionService::FEATURE_SETTINGS_V2;
+  static constexpr uint32_t FEATURE_CAMERAS = CompanionService::FEATURE_CAMERAS;
   static constexpr uint32_t PAIRING_WINDOW_MS = CompanionService::PAIRING_WINDOW_MS;
   static constexpr uint32_t MAX_BONDS = 15;
 
@@ -111,8 +113,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   NimBLECharacteristic *m_Location = nullptr;
   NimBLECharacteristic *m_Status = nullptr;
   NimBLECharacteristic *m_Settings = nullptr;
-  NimBLECharacteristic *m_Trigger = nullptr;
+  NimBLECharacteristic *m_Cameras = nullptr;
   NimBLECharacteristic *m_Capability = nullptr;
+  NimBLECharacteristic *m_Trigger = nullptr;
   NimBLECharacteristic *m_Firmware = nullptr;
   NimBLECharacteristic *m_Manufacturer = nullptr;
   NimBLEAdvertising *m_Advertising = nullptr;

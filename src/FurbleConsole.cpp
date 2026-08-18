@@ -243,6 +243,7 @@ const char *settingType(Settings::type_t type) {
 #endif
       return "bool";
     case Settings::INTERVAL:
+    case Settings::MULTISELECT:
     case Settings::TOUCH_CALIBRATION:
     case Settings::BULB:
     case Settings::MULTISELECT:
@@ -295,6 +296,8 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
       // picked up when the next connection attempt starts.
+      return "on next connect";
+    case Settings::MULTISELECT:
       return "on next connect";
     default:
       return "on reboot";
@@ -373,6 +376,12 @@ void printValue(const char *prefix, Settings::type_t type) {
 #endif
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
+    case Settings::MULTISELECT:
+    {
+      const auto selection = Settings::load<Settings::multiselect_t>(type);
+      printf("%scount=%u\n", prefix, static_cast<unsigned>(selection.count));
+      break;
+    }
     default:
       printf("%s<unsupported type>\n", prefix);
       break;
@@ -537,6 +546,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       Settings::save<bool>(setting.type, value);
     } break;
+
+    case Settings::MULTISELECT:
+      return fail("unsupported type");
 
     default:
       return fail("unsupported type");
