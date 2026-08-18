@@ -93,9 +93,17 @@ bool Settings::appliesImmediately(type_t type) {
     case SLEEP_CONN:
     case SCAN_MODE:
     case SCAN_TIMEOUT:
+    case TX_ADAPTIVE:
+    case GPS_POWER:
+    case GPS_DUTY:
+    case IR:
+    case IR_PROTO:
+    case FB_EVENTS:
+    case FB_VOLUME:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
+    case DISPLAY_OFF:
     case THEME:
     case TX_POWER:
     case INTERVAL:
@@ -103,6 +111,8 @@ bool Settings::appliesImmediately(type_t type) {
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
+    case CONN_SAVER:
+    case FB_OUTPUT:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
@@ -114,18 +124,22 @@ bool Settings::appliesImmediately(type_t type) {
 bool Settings::isDangerous(type_t type) {
   switch (type) {
     case TX_POWER:
+    case TX_ADAPTIVE:
     case CPU_FREQ:
     case SLEEP_CONN:
     case COMPANION:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
+    case DISPLAY_OFF:
     case THEME:
     case GPS:
     case GPS_BAUD:
     case GPS_RATE:
     case GPS_NMEA:
     case GPS_CONSTEL:
+    case GPS_POWER:
+    case GPS_DUTY:
     case INTERVAL:
     case MULTICONNECT:
     case RECONNECT:
@@ -138,6 +152,12 @@ bool Settings::isDangerous(type_t type) {
     case BULB:
     case SCAN_MODE:
     case SCAN_TIMEOUT:
+    case CONN_SAVER:
+    case IR:
+    case IR_PROTO:
+    case FB_OUTPUT:
+    case FB_EVENTS:
+    case FB_VOLUME:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif

@@ -17,6 +17,12 @@ remain design only.
   reload the receiver through the existing GPS path.
 - A companion disable written over the companion link waits one second before
   removing the service. The settings response is indicated first.
+- The INTERVAL companion blob uses a stable packed 12-byte wire form, four
+  {uint16 value little endian, uint8 unit} fields in count, delay, shutter,
+  wait order. `src/FurbleCompanion.cpp` locks it with
+  `static_assert(sizeof(interval_wire_t) == 12)` and packs and unpacks against
+  the NVS `interval_t`. The 24-byte NVS layout is unchanged. This matches the
+  companion app `decodeInterval`, which already assumes 12 bytes.
 - No new NVS setting was added. Existing defaults, keys and wire ids are
   unchanged. Hardware verification is still pending.
 
@@ -96,12 +102,23 @@ must update it, the same rule the console already follows.
 | blob | INTERVAL | dedicated structured editor |
 
 INTERVAL is the one blob worth an editor. It is `interval_t`, count, delay,
-shutter and wait, and the firmware already accepts a full-size blob write
-(`src/FurbleCompanion.cpp:772-779`). The app editor mirrors the on-device
-spinner semantics: count with the infinite sentinel, times in the same units
-the device shows. The blob layout is copied into the app protocol layer with a
-size check, the same pattern `FurbleProtocol` uses for the fix and status
-structs.
+shutter and wait. The NVS `interval_t` is 24 bytes because each field is a
+`SpinValue::nvs_t` whose `unit_t` enum the compiler sizes as 4 bytes. That
+layout is a storage detail and must not leak onto the wire. The companion
+characteristic therefore uses a stable packed 12-byte form: four
+{uint16 value little endian, uint8 unit} fields in count, delay, shutter, wait
+order. `src/FurbleCompanion.cpp` defines `interval_wire_t` with a
+`static_assert(sizeof(interval_wire_t) == 12)` and packs and unpacks between
+that wire form and the NVS `interval_t` in `settingValue` and `saveSetting`.
+The set path rejects any write that is not 12 bytes or that carries an unknown
+unit code. The NVS on-disk `interval_t` layout is unchanged.
+
+The app editor mirrors the on-device spinner semantics: count with the infinite
+sentinel, times in the same units the device shows. The app decodes the same
+12-byte wire form with a size check, the same pattern `FurbleProtocol` uses for
+the fix and status structs. The app `decodeInterval` and `encodeInterval`
+already assume this 12-byte layout, so they line up with the firmware once this
+change lands.
 
 ### 1.4 Apply semantics mirrored from the console
 
