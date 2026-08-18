@@ -20,6 +20,7 @@
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
+#include "FurbleWebUI.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
@@ -288,6 +289,7 @@ void app_main() {
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
   Furble::Companion::getInstance().init();
   Furble::MQTT::init();
+  Furble::WebUI::init();
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);
