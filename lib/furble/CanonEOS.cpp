@@ -39,7 +39,7 @@ bool CanonEOS::writePrefix(const NimBLEUUID &serviceUUID,
   uint8_t buffer[length + 1] = {0};
   buffer[0] = prefix;
   memcpy(&buffer[1], data, length);
-  return m_Client->setValue(serviceUUID, characteristicUUID, {&buffer[0], (uint16_t)(length + 1)});
+  return gattWrite(serviceUUID, characteristicUUID, &buffer[0], length + 1, false);
 }
 
 size_t CanonEOS::getSerialisedBytes(void) const {

@@ -1,5 +1,16 @@
+#include <algorithm>
+#include <cstring>
+
 #include <NimBLEAdvertisedDevice.h>
+#include <NimBLERemoteService.h>
+#include <NimBLEUtils.h>
 #include <esp_timer.h>
+
+#if defined(FURBLE_CONSOLE)
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
+#endif
 
 #include "Camera.h"
 #include "Device.h"
@@ -10,6 +21,132 @@ namespace {
 uint32_t connectionTimeMs(void) {
   return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
 }
+
+#if defined(FURBLE_CONSOLE)
+
+enum class journal_direction_t : uint8_t {
+  WRITE,
+  WRITE_RESPONSE,
+  READ,
+  NOTIFY,
+  INDICATE,
+};
+
+constexpr uint8_t JOURNAL_FLAG_OK = 1 << 0;
+constexpr uint8_t JOURNAL_FLAG_TRUNCATED = 1 << 1;
+
+#if defined(FURBLE_M5STICKS3)
+constexpr size_t JOURNAL_BYTES = 64 * 1024;
+constexpr size_t JOURNAL_PAYLOAD_BYTES = 64;
+#else
+constexpr size_t JOURNAL_BYTES = 8 * 1024;
+constexpr size_t JOURNAL_PAYLOAD_BYTES = 32;
+#endif
+
+struct journal_record_t {
+  uint32_t timestamp_ms;
+  journal_direction_t direction;
+  uint8_t flags;
+  uint16_t length;
+  uint8_t service_uuid[16];
+  uint8_t characteristic_uuid[16];
+  uint8_t payload[JOURNAL_PAYLOAD_BYTES];
+};
+
+static_assert(sizeof(journal_record_t) == (40 + JOURNAL_PAYLOAD_BYTES),
+              "journal record layout changed");
+
+portMUX_TYPE g_JournalMux = portMUX_INITIALIZER_UNLOCKED;
+uint8_t *g_JournalBuffer = nullptr;
+size_t g_JournalSlots = 0;
+size_t g_JournalCount = 0;
+uint64_t g_JournalWriteSequence = 0;
+uint64_t g_JournalLiveSequence = 0;
+std::atomic_bool g_JournalEnabled = false;
+
+void copyUuid(uint8_t destination[16], const NimBLEUUID &source) {
+  memset(destination, 0, 16);
+  NimBLEUUID uuid = source;
+  if (uuid.bitSize() != 128) {
+    uuid.to128();
+  }
+
+  const uint8_t *value = uuid.getValue();
+  if (value != nullptr) {
+    memcpy(destination, value, 16);
+  }
+}
+
+std::string uuidString(const uint8_t value[16]) {
+  return NimBLEUUID(value, 16).toString();
+}
+
+const char *journalDirection(journal_direction_t direction) {
+  switch (direction) {
+    case journal_direction_t::WRITE:
+      return "tx";
+    case journal_direction_t::WRITE_RESPONSE:
+      return "txr";
+    case journal_direction_t::READ:
+      return "rx";
+    case journal_direction_t::NOTIFY:
+      return "nfy";
+    case journal_direction_t::INDICATE:
+      return "ind";
+  }
+  return "?";
+}
+
+void printJournalRecord(const journal_record_t &record) {
+  const std::string service = uuidString(record.service_uuid);
+  const std::string characteristic = uuidString(record.characteristic_uuid);
+  const size_t bytes = std::min<size_t>(record.length, JOURNAL_PAYLOAD_BYTES);
+  const std::string payload = NimBLEUtils::dataToHexString(record.payload, bytes);
+  printf("bt: %lu %s %s %s %u %s%s\n", static_cast<unsigned long>(record.timestamp_ms),
+         journalDirection(record.direction), service.c_str(), characteristic.c_str(),
+         static_cast<unsigned>(record.length), payload.c_str(),
+         (record.flags & JOURNAL_FLAG_TRUNCATED) ? "..." : "");
+}
+
+void journalRecord(journal_direction_t direction,
+                   const NimBLEUUID &service,
+                   const NimBLEUUID &characteristic,
+                   const uint8_t *data,
+                   size_t length,
+                   bool success) {
+  if (!g_JournalEnabled.load()) {
+    return;
+  }
+
+  journal_record_t record = {};
+  record.timestamp_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+  record.direction = direction;
+  record.flags = success ? JOURNAL_FLAG_OK : 0;
+  record.length = static_cast<uint16_t>(std::min<size_t>(length, UINT16_MAX));
+  copyUuid(record.service_uuid, service);
+  copyUuid(record.characteristic_uuid, characteristic);
+
+  const size_t bytes = std::min(length, JOURNAL_PAYLOAD_BYTES);
+  if (data != nullptr && bytes > 0) {
+    memcpy(record.payload, data, bytes);
+  }
+  if (length > JOURNAL_PAYLOAD_BYTES) {
+    record.flags |= JOURNAL_FLAG_TRUNCATED;
+  }
+
+  portENTER_CRITICAL(&g_JournalMux);
+  if (g_JournalEnabled.load() && (g_JournalBuffer != nullptr) && (g_JournalSlots > 0)) {
+    const size_t slot = g_JournalWriteSequence % g_JournalSlots;
+    memcpy(g_JournalBuffer + (slot * sizeof(record)), &record, sizeof(record));
+    g_JournalWriteSequence++;
+    if (g_JournalCount < g_JournalSlots) {
+      g_JournalCount++;
+    }
+  }
+  portEXIT_CRITICAL(&g_JournalMux);
+}
+
+#endif
 }  // namespace
 
 Camera::Camera(Type type, PairType pairType) : m_PairType(pairType), m_Type(type) {}
@@ -341,6 +478,227 @@ const char *Camera::connProfileName(ConnProfile profile) {
   }
   return "peer";
 }
+
+bool Camera::gattWrite(NimBLERemoteCharacteristic *characteristic,
+                       const uint8_t *data,
+                       size_t length,
+                       bool response) {
+  if (characteristic == nullptr) {
+    return false;
+  }
+
+  const bool result = characteristic->writeValue(data, length, response);
+
+#if defined(FURBLE_CONSOLE)
+  const NimBLERemoteService *service = characteristic->getRemoteService();
+  const NimBLEUUID empty;
+  journalRecord(response ? journal_direction_t::WRITE_RESPONSE : journal_direction_t::WRITE,
+                service != nullptr ? service->getUUID() : empty, characteristic->getUUID(), data,
+                length, result);
+#endif
+
+  return result;
+}
+
+bool Camera::gattWrite(const NimBLEUUID &service,
+                       const NimBLEUUID &characteristic,
+                       const uint8_t *data,
+                       size_t length,
+                       bool response) {
+  const NimBLEAttValue value(data, static_cast<uint16_t>(length));
+  return gattWrite(service, characteristic, value, response);
+}
+
+bool Camera::gattWrite(const NimBLEUUID &service,
+                       const NimBLEUUID &characteristic,
+                       const NimBLEAttValue &value,
+                       bool response) {
+  if (m_Client == nullptr) {
+    return false;
+  }
+
+  const bool result = m_Client->setValue(service, characteristic, value, response);
+
+#if defined(FURBLE_CONSOLE)
+  journalRecord(response ? journal_direction_t::WRITE_RESPONSE : journal_direction_t::WRITE,
+                service, characteristic, value.data(), value.size(), result);
+#endif
+
+  return result;
+}
+
+bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue &value) {
+  if (characteristic == nullptr) {
+    value = NimBLEAttValue();
+    return false;
+  }
+
+  value = characteristic->readValue();
+
+#if defined(FURBLE_CONSOLE)
+  const NimBLERemoteService *service = characteristic->getRemoteService();
+  const NimBLEUUID empty;
+  journalRecord(journal_direction_t::READ, service != nullptr ? service->getUUID() : empty,
+                characteristic->getUUID(), value.data(), value.size(), true);
+#endif
+
+  return true;
+}
+
+bool Camera::gattRead(const NimBLEUUID &service,
+                      const NimBLEUUID &characteristic,
+                      NimBLEAttValue &value) {
+  if (m_Client == nullptr) {
+    value = NimBLEAttValue();
+    return false;
+  }
+
+  value = m_Client->getValue(service, characteristic);
+
+#if defined(FURBLE_CONSOLE)
+  journalRecord(journal_direction_t::READ, service, characteristic, value.data(), value.size(),
+                true);
+#endif
+
+  return true;
+}
+
+bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
+                           gatt_notify_cb callback,
+                           bool indicate) {
+  if (characteristic == nullptr) {
+    return false;
+  }
+
+  return characteristic->subscribe(
+      !indicate,
+      [callback](NimBLERemoteCharacteristic *remoteCharacteristic, uint8_t *data, size_t length,
+                 bool isNotify) {
+#if defined(FURBLE_CONSOLE)
+        const NimBLERemoteService *service = remoteCharacteristic->getRemoteService();
+        const NimBLEUUID empty;
+        journalRecord(isNotify ? journal_direction_t::NOTIFY : journal_direction_t::INDICATE,
+                      service != nullptr ? service->getUUID() : empty,
+                      remoteCharacteristic->getUUID(), data, length, true);
+#endif
+        if (callback) {
+          callback(remoteCharacteristic, data, length, isNotify);
+        }
+      },
+      true);
+}
+
+#if defined(FURBLE_CONSOLE)
+
+bool Camera::gattJournalSetEnabled(bool enabled) {
+  if (!enabled) {
+    g_JournalEnabled.store(false);
+    portENTER_CRITICAL(&g_JournalMux);
+    g_JournalLiveSequence = g_JournalWriteSequence;
+    portEXIT_CRITICAL(&g_JournalMux);
+    return true;
+  }
+
+  if (g_JournalBuffer == nullptr) {
+    const size_t bytes = JOURNAL_BYTES - (JOURNAL_BYTES % sizeof(journal_record_t));
+#if defined(FURBLE_M5STICKS3)
+    uint8_t *buffer = static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+#else
+    uint8_t *buffer =
+        static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+#endif
+    if (buffer == nullptr) {
+      return false;
+    }
+
+    portENTER_CRITICAL(&g_JournalMux);
+    if (g_JournalBuffer == nullptr) {
+      g_JournalBuffer = buffer;
+      g_JournalSlots = bytes / sizeof(journal_record_t);
+    } else {
+      heap_caps_free(buffer);
+    }
+    portEXIT_CRITICAL(&g_JournalMux);
+  }
+
+  g_JournalEnabled.store(true);
+  return true;
+}
+
+void Camera::gattJournalDrain(void) {
+  while (true) {
+    journal_record_t record = {};
+    bool lost = false;
+    bool haveRecord = false;
+
+    portENTER_CRITICAL(&g_JournalMux);
+    const uint64_t oldest = g_JournalWriteSequence - g_JournalCount;
+    if (g_JournalLiveSequence < oldest) {
+      g_JournalLiveSequence = oldest;
+      lost = true;
+    }
+    if (g_JournalLiveSequence < g_JournalWriteSequence) {
+      const size_t slot = g_JournalLiveSequence % g_JournalSlots;
+      memcpy(&record, g_JournalBuffer + (slot * sizeof(record)), sizeof(record));
+      g_JournalLiveSequence++;
+      haveRecord = true;
+    }
+    portEXIT_CRITICAL(&g_JournalMux);
+
+    if (lost) {
+      printf("bt: journal_lost true\n");
+    }
+    if (!haveRecord) {
+      return;
+    }
+    printJournalRecord(record);
+  }
+}
+
+void Camera::gattJournalDump(size_t count) {
+  uint64_t start;
+  uint64_t end;
+
+  portENTER_CRITICAL(&g_JournalMux);
+  end = g_JournalWriteSequence;
+  const size_t available = g_JournalCount;
+  if (count == 0 || count > available) {
+    count = available;
+  }
+  start = end - count;
+  const bool ready = (g_JournalBuffer != nullptr) && (g_JournalSlots > 0);
+  portEXIT_CRITICAL(&g_JournalMux);
+
+  if (!ready) {
+    return;
+  }
+
+  for (uint64_t sequence = start; sequence < end; sequence++) {
+    journal_record_t record = {};
+    bool haveRecord = false;
+    portENTER_CRITICAL(&g_JournalMux);
+    if (sequence >= (g_JournalWriteSequence - g_JournalCount)
+        && sequence < g_JournalWriteSequence) {
+      const size_t slot = sequence % g_JournalSlots;
+      memcpy(&record, g_JournalBuffer + (slot * sizeof(record)), sizeof(record));
+      haveRecord = true;
+    }
+    portEXIT_CRITICAL(&g_JournalMux);
+    if (haveRecord) {
+      printJournalRecord(record);
+    }
+  }
+}
+
+void Camera::gattJournalClear(void) {
+  portENTER_CRITICAL(&g_JournalMux);
+  g_JournalCount = 0;
+  g_JournalWriteSequence = 0;
+  g_JournalLiveSequence = 0;
+  portEXIT_CRITICAL(&g_JournalMux);
+}
+
+#endif
 
 bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_params *params) {
   (void)pClient;

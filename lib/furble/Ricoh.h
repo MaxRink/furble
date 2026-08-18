@@ -10,7 +10,7 @@ namespace Furble {
  * RICOH GR III / IIIx / IV BLE remote.
  *
  * Shutter control via ShootingFlavor + OperationRequest characteristics (single-write
- * capture; no half-press/release). GPS geotagging deferred — stub validates and logs.
+ * capture; no half-press/release). GPS geotagging deferred - stub validates and logs.
  * MITM LE Secure Connections pairing with numeric comparison.
  *
  * Protocol reference: dm-zharov/ricoh-gr-bluetooth-api, Android HCI snoop analysis.
@@ -125,6 +125,9 @@ class Ricoh: public Camera {
 
   static bool nameMatches(const std::string &name);
   void clearRemoteState(void);
+  void logChr(NimBLERemoteCharacteristic *pChr,
+              const char *label,
+              const char *(*decode)(uint8_t) = nullptr);
   bool writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label);
   bool writeOperation(OperationCode code, OperationParameter parameter);
   bool subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char *label);

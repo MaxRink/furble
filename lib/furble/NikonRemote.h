@@ -18,7 +18,8 @@ class NikonRemote: public NikonBase {
               QueueHandle_t queue,
               NimBLERemoteCharacteristic *pairChr,
               const NikonBase::Pairing::id_t &id,
-              std::atomic<uint8_t> *progress);
+              std::atomic<uint8_t> *progress,
+              Camera *camera);
 
   void shutterPress(void) override final;
   void shutterRelease(void) override final;

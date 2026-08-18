@@ -135,14 +135,15 @@ bool FujifilmSecure::_connect(void) {
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Requesting status");
-  auto status = m_Client->getValue(PAIR_SVC_UUID, STATUS_CHR_UUID);
+  NimBLEAttValue status;
+  gattRead(PAIR_SVC_UUID, STATUS_CHR_UUID, status);
   if (status.size() == 4) {
     ESP_LOGI(LOG_TAG, "Status: %s",
              NimBLEUtils::dataToHexString(status.data(), status.size()).c_str());
     const auto ack = NimBLEAttValue({status[0], status[1], status[2], 0x20});
     ESP_LOGI(LOG_TAG, "Responding status with %s",
              NimBLEUtils::dataToHexString(ack.data(), ack.size()).c_str());
-    if (!m_Client->setValue(PAIR_SVC_UUID, STATUS_CHR_UUID, ack, true)) {
+    if (!gattWrite(PAIR_SVC_UUID, STATUS_CHR_UUID, ack, true)) {
       ESP_LOGI(LOG_TAG, "Failed to write status response");
       return false;
     }
@@ -154,7 +155,7 @@ bool FujifilmSecure::_connect(void) {
 
   auto name = NimBLEAttValue(Device::getStringID());
   ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
-  if (!m_Client->setValue(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true)) {
+  if (!gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true)) {
     ESP_LOGI(LOG_TAG, "Failed to send identifier");
     return false;
   }
@@ -206,7 +207,7 @@ bool FujifilmSecure::_connect(void) {
   auto sync_interval = NimBLEAttValue(reinterpret_cast<const uint8_t *>(&GEOTAG_SYNC_INTERVAL),
                                       sizeof(GEOTAG_SYNC_INTERVAL));
   ESP_LOGI(LOG_TAG, "Configuring %hus geotag sync interval", GEOTAG_SYNC_INTERVAL);
-  if (!m_Client->setValue(NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, sync_interval, true)) {
+  if (!gattWrite(NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, sync_interval, true)) {
     ESP_LOGI(LOG_TAG, "Failed to configure geotag sync interval");
     return false;
   }

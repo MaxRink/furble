@@ -28,7 +28,8 @@ class NikonSmart: public NikonBase {
              NimBLERemoteCharacteristic *pairChr,
              const NikonBase::Pairing::id_t &id,
              const uint64_t timestamp,
-             std::atomic<uint8_t> *progress);
+             std::atomic<uint8_t> *progress,
+             Camera *camera);
 
   void shutterPress(void) override final;
   void shutterRelease(void) override final;

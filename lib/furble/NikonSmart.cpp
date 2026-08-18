@@ -126,16 +126,17 @@ NikonSmart::NikonSmart(NimBLEClient *client,
                        NimBLERemoteCharacteristic *pairChr,
                        const NikonBase::Pairing::id_t &id,
                        const uint64_t timestamp,
-                       std::atomic<uint8_t> *progress)
-    : NikonBase(client, queue, pairChr, progress) {
+                       std::atomic<uint8_t> *progress,
+                       Camera *camera)
+    : NikonBase(client, queue, pairChr, progress, camera) {
   m_Pairing = std::make_unique<SmartPairing>(timestamp, id);
 }
 
 bool NikonSmart::preSubscribe(NimBLERemoteService *pSvc) {
   ESP_LOGI(LOG_TAG, "Connecting as smart device, subscribing to success notification");
   auto *pChr = pSvc->getCharacteristic(NOT1_CHR_UUID);
-  if (!pChr->subscribe(
-          true,
+  if (!gattSubscribe(
+          pChr,
           [this](NimBLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData,
                  size_t length, bool isNotify) {
             bool rc = false;
@@ -148,7 +149,7 @@ bool NikonSmart::preSubscribe(NimBLERemoteService *pSvc) {
             }
             xQueueSend(m_Queue, &rc, 0);
           },
-          true)) {
+          false)) {
     return false;
   }
   ESP_LOGI(LOG_TAG, "Subscribed to success notification!");
@@ -176,7 +177,8 @@ bool NikonSmart::connectFinalise(void) {
 
   const auto name = Device::getStringID();
   ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
-  if (!m_Client->setValue(SERVICE_UUID, ID_CHR_UUID, name, true)) {
+  if (!gattWrite(SERVICE_UUID, ID_CHR_UUID, reinterpret_cast<const uint8_t *>(name.data()),
+                 name.size(), true)) {
     return false;
   }
 
@@ -238,8 +240,8 @@ void NikonSmart::updateGeoData(const Camera::gps_t &gps, const Camera::timesync_
 
   ESP_LOGI(LOG_TAG, "sending GPS = %s",
            NimBLEUtils::dataToHexString((const uint8_t *)&geo, sizeof(geo)).c_str());
-  if (m_Client->setValue(SERVICE_UUID, GEO_CHR_UUID, {(const uint8_t *)&geo, (uint16_t)sizeof(geo)},
-                         true)) {
+  if (gattWrite(SERVICE_UUID, GEO_CHR_UUID, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo),
+                true)) {
     ESP_LOGI(LOG_TAG, "  success");
   } else {
     ESP_LOGI(LOG_TAG, "  failed");

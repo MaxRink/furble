@@ -30,6 +30,10 @@ protocol core.
   `setConnProfile()` also mirrors the profile into the NimBLE client so peer
   renegotiation counter-proposals carry the current values, not the
   pre-connect ones.
+- Vendor GATT traffic goes through the protected `Camera::gattWrite`,
+  `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
+  live at that seam, so companion traffic and raw explorer traffic stay out
+  of the vendor journal. Keep new vendor operations on these wrappers.
 - Vendor protocol files are per-camera. Any change here needs the
   hardware-tested-vendors statement in the PR: only Fujifilm is testable on
   real hardware, all other vendors must be declared untested.

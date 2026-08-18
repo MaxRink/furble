@@ -29,13 +29,47 @@ const NikonBase::Pairing::msg_t *NikonBase::Pairing::getMessage(void) const {
 NikonBase::NikonBase(NimBLEClient *client,
                      QueueHandle_t queue,
                      NimBLERemoteCharacteristic *pairChr,
-                     std::atomic<uint8_t> *progress)
-    : m_Client(client), m_Queue(queue), m_PairChr(pairChr), m_Progress(progress) {}
+                     std::atomic<uint8_t> *progress,
+                     Camera *camera)
+    : m_Client(client),
+      m_Camera(camera),
+      m_Queue(queue),
+      m_PairChr(pairChr),
+      m_Progress(progress) {}
+
+bool NikonBase::gattWrite(NimBLERemoteCharacteristic *characteristic,
+                          const uint8_t *data,
+                          size_t length,
+                          bool response) {
+  return (m_Camera != nullptr) && m_Camera->gattWrite(characteristic, data, length, response);
+}
+
+bool NikonBase::gattWrite(const NimBLEUUID &service,
+                          const NimBLEUUID &characteristic,
+                          const uint8_t *data,
+                          size_t length,
+                          bool response) {
+  return (m_Camera != nullptr)
+         && m_Camera->gattWrite(service, characteristic, data, length, response);
+}
+
+bool NikonBase::gattWrite(const NimBLEUUID &service,
+                          const NimBLEUUID &characteristic,
+                          const NimBLEAttValue &value,
+                          bool response) {
+  return (m_Camera != nullptr) && m_Camera->gattWrite(service, characteristic, value, response);
+}
+
+bool NikonBase::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
+                              gatt_notify_cb callback,
+                              bool indicate) {
+  return (m_Camera != nullptr) && m_Camera->gattSubscribe(characteristic, callback, indicate);
+}
 
 bool NikonBase::subscribePair(void) {
   ESP_LOGI(LOG_TAG, "Subscribing to pairing indication");
-  if (!m_PairChr->subscribe(
-          false,
+  if (!gattSubscribe(
+          m_PairChr,
           [this](NimBLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData,
                  size_t length, bool isNotify) {
 #if NIKON_DEBUG
@@ -62,7 +96,7 @@ bool NikonBase::handshake4Stage(void) {
   bool success = true;
   for (uint8_t stage = 0; stage < 4 && success; stage += 2) {
     const auto *msg = m_Pairing->getMessage();
-    if (!m_PairChr->writeValue((const uint8_t *)msg, sizeof(*msg), true)) {
+    if (!gattWrite(m_PairChr, (const uint8_t *)msg, sizeof(*msg), true)) {
       return false;
     }
 #if NIKON_DEBUG
