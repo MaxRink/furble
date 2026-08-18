@@ -6,13 +6,9 @@
 
 #include "Device.h"
 #include "Fujifilm.h"
+#include "protocol/FujifilmProtocol.h"
 
 namespace Furble {
-
-constexpr std::array<uint8_t, 2> Fujifilm::SHUTTER_RELEASE;
-constexpr std::array<uint8_t, 2> Fujifilm::SHUTTER_CMD;
-constexpr std::array<uint8_t, 2> Fujifilm::SHUTTER_PRESS;
-constexpr std::array<uint8_t, 2> Fujifilm::SHUTTER_FOCUS;
 
 void Fujifilm::notify(BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
   ESP_LOGI(LOG_TAG, "Got %s (%u bytes) from %s", isNotify ? "notification" : "indication", length,
@@ -22,11 +18,11 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr, uint8_t *pData, size_t leng
   }
 
   if (pChr->getUUID() == CHR_NOT1_UUID) {
-    if ((length >= 2) && (pData[0] == 0x02) && (pData[1] == 0x00)) {
+    if (FujifilmProtocol::isConfigurationNotification(pData, length)) {
       m_Configured = true;
     }
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
-    if ((length >= 2) && (pData[0] == 0x01) && (pData[1] == 0x00)) {
+    if (FujifilmProtocol::isGeotagRequest(pData, length)) {
       m_GeoRequested = true;
     }
   } else {
@@ -57,10 +53,10 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc, const NimBLEUUID &chr, bool noti
  * Determine if the advertised BLE device is a Fujifilm.
  */
 bool Fujifilm::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice->haveManufacturerData()
-      && pDevice->getManufacturerData().length() >= sizeof(fujifilm_adv_t)) {
-    const fujifilm_adv_t adv = pDevice->getManufacturerData<fujifilm_adv_t>();
-    return (adv.company_id == COMPANY_ID);
+  if (pDevice->haveManufacturerData()) {
+    const auto manufacturerData = pDevice->getManufacturerData();
+    return FujifilmProtocol::isFujifilmAdvertisement(
+        reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length());
   }
   return false;
 }
@@ -75,15 +71,18 @@ void Fujifilm::sendShutterCommand(const std::array<uint8_t, N> &cmd,
 }
 
 void Fujifilm::shutterPress(void) {
-  sendShutterCommand(SHUTTER_CMD, SHUTTER_PRESS);
+  const auto frame = FujifilmProtocol::makeShutterFrame(FujifilmProtocol::ShutterAction::PRESS);
+  sendShutterCommand(frame.command, frame.parameter);
 }
 
 void Fujifilm::shutterRelease(void) {
-  sendShutterCommand(SHUTTER_CMD, SHUTTER_RELEASE);
+  const auto frame = FujifilmProtocol::makeShutterFrame(FujifilmProtocol::ShutterAction::RELEASE);
+  sendShutterCommand(frame.command, frame.parameter);
 }
 
 void Fujifilm::focusPress(void) {
-  sendShutterCommand(SHUTTER_CMD, SHUTTER_FOCUS);
+  const auto frame = FujifilmProtocol::makeShutterFrame(FujifilmProtocol::ShutterAction::FOCUS);
+  sendShutterCommand(frame.command, frame.parameter);
 }
 
 void Fujifilm::focusRelease(void) {
@@ -102,30 +101,23 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
   }
 
   if (pChr->canWrite()) {
-    geotag_t geotag = {
-        .latitude = (int32_t)(gps.latitude * 10000000),
-        .longitude = (int32_t)(gps.longitude * 10000000),
-        .altitude = (int32_t)gps.altitude,
-        .pad = {0},
-        .gps_time = {
-                .year = (uint16_t)timesync.year,
-                .month = (uint8_t)timesync.month,
-                .day = (uint8_t)timesync.day,
-                .hour = (uint8_t)timesync.hour,
-                .minute = (uint8_t)timesync.minute,
-                .second = (uint8_t)timesync.second,
-                }
-    };
+    const FujifilmProtocol::GeotagInput input = {gps.latitude,  gps.longitude,   gps.altitude,
+                                                 timesync.year, timesync.month,  timesync.day,
+                                                 timesync.hour, timesync.minute, timesync.second};
+    const auto geotag = FujifilmProtocol::encodeGeotag(input);
+    const int32_t latitude = static_cast<int32_t>(gps.latitude * 10000000);
+    const int32_t longitude = static_cast<int32_t>(gps.longitude * 10000000);
+    const int32_t altitude = static_cast<int32_t>(gps.altitude);
 
     ESP_LOGI(LOG_TAG,
              "Sending geotag data (%u bytes) to 0x%04x\r\n"
              "  lat: %f, %ld\r\n"
              "  lon: %f, %ld\r\n"
              "  alt: %f, %ld\r\n",
-             sizeof(geotag), pChr->getHandle(), gps.latitude, geotag.latitude, gps.longitude,
-             geotag.longitude, gps.altitude, geotag.altitude);
+             geotag.size(), pChr->getHandle(), gps.latitude, latitude, gps.longitude, longitude,
+             gps.altitude, altitude);
 
-    pChr->writeValue((uint8_t *)&geotag, sizeof(geotag), true);
+    pChr->writeValue(geotag.data(), geotag.size(), true);
   }
 }
 

@@ -1,0 +1,36 @@
+name: Camera protocol tests
+
+on:
+  pull_request:
+    paths:
+      - "lib/furble/**"
+      - "lib/blowfish/**"
+      - "tests/camera/**"
+      - ".github/workflows/camera-tests.yml"
+  push:
+    branches: [master]
+    paths:
+      - "lib/furble/**"
+      - "lib/blowfish/**"
+      - "tests/camera/**"
+      - ".github/workflows/camera-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  camera-tests:
+    name: Host camera protocol tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure host tests
+        run: cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build host tests
+        run: cmake --build build/camera-tests --parallel 2
+
+      - name: Run host tests
+        run: ctest --test-dir build/camera-tests --output-on-failure
