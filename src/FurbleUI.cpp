@@ -45,9 +45,12 @@
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
 #define icon_add_a_photo icon_add_a_photo_24
+#define icon_bluetooth icon_bluetooth_24
+#define icon_cell_tower icon_cell_tower_24
 #define icon_delete icon_delete_24
 #define icon_info icon_info_24
 #define icon_linked_camera icon_linked_camera_24
+#define icon_notifications_active icon_notifications_active_24
 #define icon_location_searching icon_location_searching_24
 #define icon_no_photography icon_no_photography_24
 #define icon_palette icon_palette_24
@@ -56,6 +59,7 @@
 #define icon_settings_brightness icon_settings_brightness_24
 #define icon_settings_remote icon_settings_remote_24
 #define icon_timer icon_timer_24
+#define icon_troubleshoot icon_troubleshoot_24
 #define icon_wand_stars icon_wand_stars_24
 #endif
 
@@ -3642,7 +3646,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
     return;
   }
 
-  menu_t &menu = addMenu(m_FeedbackStr, &icon_settings_remote, true, parent);
+  menu_t &menu = addMenu(m_FeedbackStr, &icon_notifications_active, true, parent);
 
   lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
@@ -3841,7 +3845,7 @@ void UI::addThemeMenu(const menu_t &parent) {
 }
 
 void UI::addTransmitPowerMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_TransmitPowerStr, &icon_settings_remote, true, parent);
+  menu_t &menu = addMenu(m_TransmitPowerStr, &icon_cell_tower, true, parent);
   addSettingItem(menu.page, NULL, Settings::TX_ADAPTIVE);
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
@@ -4092,7 +4096,7 @@ void UI::updateIRMenuVisibility(void) {
 }
 
 void UI::addBluetoothMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_BluetoothStr, &icon_settings_remote, true, parent);
+  menu_t &menu = addMenu(m_BluetoothStr, &icon_bluetooth, true, parent);
 
   lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
@@ -4247,7 +4251,7 @@ void UI::addBLEMenu(const menu_t &parent) {
 }
 
 void UI::addDiagnosticsMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_DiagnosticsStr, &icon_info, true, parent);
+  menu_t &menu = addMenu(m_DiagnosticsStr, &icon_troubleshoot, true, parent);
 
   addDeviceInfoMenu(menu);
 

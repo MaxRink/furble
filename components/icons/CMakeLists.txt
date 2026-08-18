@@ -11,8 +11,12 @@ set(COMPONENT_SRCS
     icon_battery_android_frame_4.c
     icon_battery_android_frame_6.c
     icon_battery_android_frame_full.c
+    icon_bluetooth.c
+    icon_bluetooth_24.c
     icon_camera.c
     icon_camera_24.c
+    icon_cell_tower.c
+    icon_cell_tower_24.c
     icon_center_focus_strong.c
     icon_center_focus_strong_24.c
     icon_check_24.c
@@ -35,6 +39,8 @@ set(COMPONENT_SRCS
     icon_no_photography_24.c
     icon_north_east_20.c
     icon_north_west_20.c
+    icon_notifications_active.c
+    icon_notifications_active_24.c
     icon_palette.c
     icon_palette_24.c
     icon_power_settings_new.c
@@ -53,6 +59,8 @@ set(COMPONENT_SRCS
     icon_south_west_20.c
     icon_timer.c
     icon_timer_24.c
+    icon_troubleshoot.c
+    icon_troubleshoot_24.c
     icon_undo.c
     icon_wand_stars.c
     icon_wand_stars_24.c)
