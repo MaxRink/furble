@@ -222,3 +222,30 @@ BMI270 line because M5Unified detects the IMU silently, and this branch has no
 `imu` console command. On-device checks remain: the Diagnostics menu should
 show the `IMU live` page (gated on `M5.Imu.isEnabled()`) and the spirit level
 page needs a visual pass. Both are on the user checklist.
+
+## Hardware verification, pass 3, 2026-08-18
+
+Verdict: PARTIAL. Tested on the combined image (fork/master plus feat/16,
+feat/35, feat/13, feat/25, version `hwv3`, app `v3.9.1-159-g138dd80`) flashed to
+the M5StickS3 over USB.
+
+Console evidence:
+
+- `settings set imu true` then reboot then `settings get imu` returns
+  `value: true`, `applies: on reboot`. The setting saves, persists across a
+  power cycle, and is wired at wire id 27.
+- Boot with `imu true` completes and the device runs. No crash attributable to
+  the IMU. Toggling `imu false` and rebooting also boots clean.
+
+Not console observable, still on the user checklist:
+
+- BMI270 detection does not print a boot line. M5Unified brings up the IMU
+  silently and this branch adds no `imu` console command, so the boot log shows
+  no `bmi270`. Same conclusion as pass 2.
+- Spirit level bubble centering when flat and direction under tilt, the page
+  timer stopping on leave, the Diagnostics `IMU live` accel and gyro readout,
+  and the Level menu entry icon all need eyes on the screen.
+
+Combined image caveat: this build tripped a one shot boot task watchdog. See the
+cross cutting note in plans/25. The watchdog is independent of the `imu` setting,
+it reproduced with `imu false`, so it is not attributed to this PR.

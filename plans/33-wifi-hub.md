@@ -1346,3 +1346,29 @@ All fetched and verified.
 - PlatformIO, Espressif 32 platform. Board definitions and `board_build`
   options:
   https://docs.platformio.org/en/latest/platforms/espressif32.html
+
+## Hardware verification, pass 3, 2026-08-18
+
+Verdict: PARTIAL, blocked on device access.
+
+Build evidence:
+
+- The `esp32-s3-headless` env compiles from this branch (fork/feat/33-wifi-hub).
+  As plans/33 predicted, the headless profile still pulls and compiles LVGL even
+  though it never renders, confirming the noted size trade off.
+
+On-device checks not run this pass, blocked:
+
+- The M5StickS3 was bricked during the combined image camera walk (a disconnect
+  during connect hang de-enumerated USB, see plans/25). Recovery needs the
+  physical rescue, hold the side button while replugging USB until the green LED
+  flashes, then reflash. The headless image was therefore not flashed.
+
+Owed on the user checklist, once the device is recovered and the headless image
+is flashed:
+
+- Boot without a display and confirm the console comes up.
+- `settings set display_mode console` and `settings set display_mode gui`
+  toggle, confirm the display stops and starts.
+- The console `pair` command responds.
+- With the GPS unit attached, confirm geotag still pushes to a connected camera.

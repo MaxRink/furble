@@ -78,3 +78,28 @@ implementation time.
 
 - https://github.com/gkoh/furble/issues/244
 - https://github.com/gkoh/furble/pull/292
+
+## Hardware verification, pass 3, 2026-08-18
+
+Verdict: PARTIAL. Tested on the combined image (version `hwv3`, app
+`v3.9.1-159-g138dd80`) on the M5StickS3 over USB.
+
+Console evidence:
+
+- `settings set preset_picker true` then reboot then `settings get preset_picker`
+  returns `value: true`, name `Preset Picker`, `type: bool`,
+  `applies: on reboot`. The setting saves, persists across a power cycle, and is
+  wired at wire id 30.
+- `settings set preset_picker false` also round trips. Default is off, current
+  behaviour, as designed.
+
+Still on the user checklist, needs eyes and fingers on the device:
+
+- Open the bulb page and step the 1/3 stop preset roller. Confirm the value
+  displays, plus and minus step one series entry, the value never sticks at 0,
+  boundaries hold at 1 s and 1000 s, and Cancel leaves the picker without
+  changing the stored duration.
+- Confirm digit entry is unchanged when the toggle is off.
+
+There is no console command to drive the picker, so the roller behaviour cannot
+be exercised over USB.
