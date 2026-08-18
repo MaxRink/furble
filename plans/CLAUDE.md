@@ -11,6 +11,8 @@ lands on fork master. This file applies once it does.
 - Docs state motivation first, then design. Keep the upstream maintainer's
   preferences in mind: issue first, fewer UI elements, defaults keep current
   behavior, everything new is configurable.
+- Camera compatibility plans record shared protocol bytes, model-specific
+  additions, and hardware validation status explicitly.
 - Numbering: 0x small improvements, 1x-2x phased features, 30+ framework work,
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS

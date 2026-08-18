@@ -150,6 +150,8 @@ bool Ricoh::nameMatches(const std::string &name) {
   std::transform(upper.begin(), upper.end(), upper.begin(),
                  [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 
+  // Ricoh Imaging documents the PENTAX K bodies in the same BLE family as GR.
+  // Their advertised names carry the PENTAX prefix and model suffix.
   const std::array<const char *, 5> matches = {"RICOH", "PENTAX", "GR ", "GRIII", "GR III"};
   return upper == "GR" || std::any_of(matches.begin(), matches.end(), [&upper](const char *match) {
            return upper.find(match) != std::string::npos;
