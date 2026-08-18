@@ -47,7 +47,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
-#include "FurbleWiFi.h"
+#include "FurbleWebUI.h"
 
 namespace Furble {
 
@@ -234,6 +234,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::MQTT:
     case Settings::MQTT_HA:
+    case Settings::WEB_UI:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
@@ -290,6 +291,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::MQTT_PASS:
     case Settings::MQTT_BASE:
     case Settings::MQTT_HA:
+    case Settings::WEB_UI:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -363,6 +365,7 @@ void printValue(const char *prefix, Settings::type_t type) {
 #endif
     case Settings::MQTT:
     case Settings::MQTT_HA:
+    case Settings::WEB_UI:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -547,6 +550,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 #endif
     case Settings::MQTT:
     case Settings::MQTT_HA:
+    case Settings::WEB_UI:
     {
       bool value = false;
       if (!parseBool(text, value)) {
@@ -593,6 +597,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::MQTT_USER) || (setting.type == Settings::MQTT_PASS)
       || (setting.type == Settings::MQTT_BASE) || (setting.type == Settings::MQTT_HA)) {
     MQTT::getInstance().reloadSetting();
+  }
+
+  // The WebUI supervisor re-reads WEB_UI and starts or stops the server.
+  if (setting.type == Settings::WEB_UI) {
+    WebUI::getInstance().reloadSetting();
   }
 
   printf("saved: %s\n", setting.key);
