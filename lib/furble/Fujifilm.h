@@ -68,40 +68,12 @@ class Fujifilm: public Camera {
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
 
  private:
-  /**
-   * Time synchronisation.
-   */
-  typedef struct __attribute__((packed)) _fujifilm_time_t {
-    uint16_t year;
-    uint8_t month;
-    uint8_t day;
-    uint8_t hour;
-    uint8_t minute;
-    uint8_t second;
-  } fujifilm_time_t;
-
-  /**
-   * Location and time packet.
-   */
-  typedef struct __attribute__((packed)) _fujigeotag_t {
-    int32_t latitude;
-    int32_t longitude;
-    int32_t altitude;
-    uint8_t pad[4];
-    fujifilm_time_t gps_time;
-  } geotag_t;
-
   // Currently unused
   // const NimBLEUUID SVC_READ_UUID {0x4e941240, 0xd01d, 0x46b9, 0xa5ea67636806830b};
   // const NimBLEUUID CHR_READ_UUID{0xbf6dc9cf, 0x3606, 0x4ec9, 0xa4c8d77576e93ea4};
 
   const NimBLEUUID SVC_GEOTAG_UUID {0x3b46ec2b, 0x48ba, 0x41fd, 0xb1b8ed860b60d22b};
   const NimBLEUUID CHR_GEOTAG_UUID {0x0f36ec14, 0x29e5, 0x411a, 0xa1b664ee8383f090};
-
-  static constexpr std::array<uint8_t, 2> SHUTTER_RELEASE = {0x00, 0x00};
-  static constexpr std::array<uint8_t, 2> SHUTTER_CMD = {0x01, 0x00};
-  static constexpr std::array<uint8_t, 2> SHUTTER_PRESS = {0x02, 0x00};
-  static constexpr std::array<uint8_t, 2> SHUTTER_FOCUS = {0x03, 0x00};
 
   void notify(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool);
   void sendGeoData(const gps_t &gps, const timesync_t &timesync);

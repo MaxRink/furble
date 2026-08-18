@@ -4,9 +4,12 @@
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
 
+#include <cstring>
+
 #include "Device.h"
 #include "FujifilmSecure.h"
 #include "Scan.h"
+#include "protocol/FujifilmProtocol.h"
 
 namespace Furble {
 
@@ -17,9 +20,14 @@ const NimBLEUUID FujifilmSecure::PRI_SVC_UUID {0x731893f9, 0x744e, 0x4899, 0xb7e
  * Determine if the advertised BLE device is a Fujifilm secure camera.
  */
 bool FujifilmSecure::matches(const NimBLEAdvertisedDevice *pDevice) {
-  return (Fujifilm::matches(pDevice)
-          && (pDevice->getManufacturerData().length() == sizeof(adv_secure_t))
-          && pDevice->isAdvertisingService(SERVICE_UUID));
+  if (!pDevice->haveManufacturerData()) {
+    return false;
+  }
+
+  const auto manufacturerData = pDevice->getManufacturerData();
+  return FujifilmProtocol::matchesSecureAdvertisement(
+      reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
+      pDevice->isAdvertisingService(SERVICE_UUID));
 }
 
 FujifilmSecure::FujifilmSecure(const void *data, size_t len)
@@ -36,10 +44,16 @@ FujifilmSecure::FujifilmSecure(const void *data, size_t len)
 
 FujifilmSecure::FujifilmSecure(const NimBLEAdvertisedDevice *pDevice)
     : Fujifilm(Type::FUJIFILM_SECURE, pDevice) {
-  const adv_secure_t secure = pDevice->getManufacturerData<adv_secure_t>();
+  const auto manufacturerData = pDevice->getManufacturerData();
+  FujifilmProtocol::SecureAdvertisement advertisement;
+  const bool parsed = FujifilmProtocol::parseSecureAdvertisement(
+      reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
+      advertisement);
   m_Name = pDevice->getName();
   m_Address = pDevice->getAddress();
-  m_Serial = secure.serial;
+  if (parsed) {
+    std::memcpy(m_Serial.data, advertisement.serial.data(), advertisement.serial.size());
+  }
   m_Queue = xQueueCreate(3, sizeof(bool));
 
   ESP_LOGI(LOG_TAG, "Name = %s", m_Name.c_str());
@@ -53,16 +67,22 @@ FujifilmSecure::~FujifilmSecure(void) {
 }
 
 void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
-  if ((Fujifilm::matches(pDevice)
-       && (pDevice->getManufacturerData().length() == sizeof(adv_secure_t))
-       && pDevice->isAdvertisingService(PAIR_SVC_UUID))) {
-    const adv_secure_t scan = pDevice->getManufacturerData<adv_secure_t>();
-    ESP_LOGD(LOG_TAG, "got %s, want %s",
-             NimBLEUtils::dataToHexString(scan.serial.data, sizeof(scan.serial.data)).c_str(),
-             NimBLEUtils::dataToHexString(m_Serial.data, sizeof(m_Serial.data)).c_str());
-    if (memcmp(&scan.serial, &m_Serial, sizeof(m_Serial)) == 0) {
-      bool success = true;
-      xQueueSend(m_Queue, &success, 0);
+  if (pDevice->haveManufacturerData()) {
+    const auto manufacturerData = pDevice->getManufacturerData();
+    FujifilmProtocol::SecureAdvertisement advertisement;
+    if (FujifilmProtocol::parseSecureAdvertisement(
+            reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
+            advertisement)
+        && pDevice->isAdvertisingService(PAIR_SVC_UUID)) {
+      ESP_LOGD(
+          LOG_TAG, "got %s, want %s",
+          NimBLEUtils::dataToHexString(advertisement.serial.data(), advertisement.serial.size())
+              .c_str(),
+          NimBLEUtils::dataToHexString(m_Serial.data, sizeof(m_Serial.data)).c_str());
+      if (memcmp(advertisement.serial.data(), m_Serial.data, sizeof(m_Serial.data)) == 0) {
+        bool success = true;
+        xQueueSend(m_Queue, &success, 0);
+      }
     }
   }
 }

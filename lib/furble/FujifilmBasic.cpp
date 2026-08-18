@@ -4,8 +4,11 @@
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
 
+#include <cstring>
+
 #include "Device.h"
 #include "FujifilmBasic.h"
+#include "protocol/FujifilmProtocol.h"
 
 namespace Furble {
 
@@ -21,13 +24,11 @@ void FujifilmBasic::print_token(const token_t &token) {
  * Determine if the advertised BLE device is a Fujifilm basic.
  */
 bool FujifilmBasic::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (Fujifilm::matches(pDevice)
-      && pDevice->getManufacturerData().length() == sizeof(adv_basic_t)) {
-    const adv_basic_t basic = pDevice->getManufacturerData<adv_basic_t>();
-    if (basic.adv.type == TYPE_TOKEN) {
-      return pDevice->isAdvertisingService(CR_SVC_UUID)
-             || pDevice->isAdvertisingService(XAPP_SVC_UUID);
-    }
+  if (pDevice->haveManufacturerData()) {
+    const auto manufacturerData = pDevice->getManufacturerData();
+    return FujifilmProtocol::matchesBasicAdvertisement(
+        reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
+        pDevice->isAdvertisingService(CR_SVC_UUID), pDevice->isAdvertisingService(XAPP_SVC_UUID));
   }
 
   return false;
@@ -46,10 +47,16 @@ FujifilmBasic::FujifilmBasic(const void *data, size_t len)
 
 FujifilmBasic::FujifilmBasic(const NimBLEAdvertisedDevice *pDevice)
     : Fujifilm(Type::FUJIFILM_BASIC, pDevice) {
-  const adv_basic_t adv = pDevice->getManufacturerData<adv_basic_t>();
+  const auto manufacturerData = pDevice->getManufacturerData();
+  FujifilmProtocol::BasicAdvertisement advertisement;
+  const bool parsed = FujifilmProtocol::parseBasicAdvertisement(
+      reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
+      advertisement);
   m_Name = pDevice->getName();
   m_Address = pDevice->getAddress();
-  m_Token = adv.token;
+  if (parsed) {
+    std::memcpy(m_Token.data, advertisement.token.data(), advertisement.token.size());
+  }
   ESP_LOGI(LOG_TAG, "Name = %s", m_Name.c_str());
   ESP_LOGI(LOG_TAG, "Address = %s", m_Address.toString().c_str());
   print_token(m_Token);

@@ -55,8 +55,38 @@ Secure connection sequences, Canon Remote and Smart, the four-stage Nikon
 pairing handshake, Sony manufacturer data parsing and location permission,
 and Ricoh's bonded-connection requirement with time and movement throttling.
 Every matcher takes a `NimBLEAdvertisedDevice`, and every geotag encoder
-packs its struct inline inside the NimBLE write path. None of it compiles on
-a host today. The only host-clean component is `lib/blowfish/Blowfish.cpp`.
+packs its struct inline inside the NimBLE write path. On the baseline before
+this slice, none of it compiled on a host. The only host-clean component was
+`lib/blowfish/Blowfish.cpp`.
+
+## Implementation state
+
+Tier A Fujifilm protocol coverage and the Tier B seam groundwork are complete
+in this worktree. The host target is under `tests/camera/` as requested and
+has no ESP-IDF or NimBLE dependency.
+
+Implemented seams:
+
+- `FujifilmProtocol` parses the common, basic, and secure advertisement bytes,
+  supplies service-flag match predicates, recognizes the two Fujifilm
+  notifications, frames shutter writes, and encodes the 23-byte geotag.
+- `CameraListProtocol` encodes and decodes the fixed NVS index records,
+  formats the persisted address key, and provides the index upsert operation.
+- The existing NimBLE and Preferences methods call these helpers at their
+  current transport boundaries. No connection lifecycle or application-layer
+  files were changed.
+
+The requested path differs from the earlier design sketch's `tests/host/`
+layout. The implementation uses `tests/camera/` and a small CMake/CTest target
+to keep the first host job self-contained. The full Tier B NimBLE mock and
+scripted lifecycle tests remain future work. This slice covers only the pure
+logic seam groundwork requested here.
+
+The macOS clang host binary passes advertisement, token, service-flag,
+notification, shutter, geotag, CameraList persistence, and Blowfish vector
+tests. The PlatformIO firmware check was attempted twice. Both attempts were
+blocked before compilation while cloning the pinned TinyGPSPlus dependency
+because the execution environment could not resolve `github.com`.
 
 ## Design
 

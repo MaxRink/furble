@@ -11,6 +11,7 @@
 #include "Sony.h"
 
 #include "CameraList.h"
+#include "protocol/CameraListProtocol.h"
 
 #define FURBLE_PREF_INDEX "index"
 
@@ -19,25 +20,27 @@ namespace Furble {
 std::vector<std::unique_ptr<Furble::Camera>> CameraList::m_ConnectList;
 Preferences CameraList::m_Prefs;
 
-/**
- * Non-volatile storage index entry.
- *
- * The name is unique identifier along with type of device so we can deserialise
- * properly.
- */
-typedef struct {
-  char name[16];
-  Camera::Type type;
-} index_entry_t;
-
 void CameraList::fillSaveEntry(index_entry_t &entry, const Camera *camera) {
-  snprintf(entry.name, sizeof(entry.name), "%08llX", (uint64_t)camera->getAddress());
+  const auto key = CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
+  snprintf(entry.name, sizeof(entry.name), "%s", key.c_str());
   entry.type = camera->getType();
 }
 
 void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   if (index.size() > 0) {
-    m_Prefs.put(FURBLE_PREF_INDEX, index.data(), sizeof(index[0]) * index.size());
+    std::vector<CameraListProtocol::IndexEntry> encoded;
+    encoded.reserve(index.size());
+    for (const auto &entry : index) {
+      CameraListProtocol::IndexEntry item = {};
+      memcpy(item.name, entry.name, sizeof(item.name));
+      item.type = static_cast<uint32_t>(entry.type);
+      encoded.push_back(item);
+    }
+
+    std::vector<uint8_t> bytes;
+    if (CameraListProtocol::encodeIndex(encoded, bytes)) {
+      m_Prefs.put(FURBLE_PREF_INDEX, bytes.data(), bytes.size());
+    }
   } else {
     m_Prefs.remove(FURBLE_PREF_INDEX);
   }
@@ -48,16 +51,19 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
 
   if (m_Prefs.isKey(FURBLE_PREF_INDEX)) {
     size_t bytes = m_Prefs.getBytesLength(FURBLE_PREF_INDEX);
-    if (bytes > 0 && (bytes % sizeof(index_entry_t) == 0)) {
-      uint8_t buffer[bytes] = {0};
-      size_t count = bytes / sizeof(index_entry_t);
-      ESP_LOGI(LOG_TAG, "Index entries: %d", count);
-      m_Prefs.get(FURBLE_PREF_INDEX, buffer, bytes);
-      index_entry_t *entry = (index_entry_t *)buffer;
-
-      for (int i = 0; i < count; i++) {
-        ESP_LOGI(LOG_TAG, "Loading index entry: %s", entry[i].name);
-        index.push_back(entry[i]);
+    if (bytes > 0) {
+      std::vector<uint8_t> buffer(bytes, 0x00);
+      std::vector<CameraListProtocol::IndexEntry> decoded;
+      m_Prefs.get(FURBLE_PREF_INDEX, buffer.data(), bytes);
+      if (CameraListProtocol::decodeIndex(buffer.data(), bytes, decoded)) {
+        ESP_LOGI(LOG_TAG, "Index entries: %d", decoded.size());
+        for (const auto &item : decoded) {
+          index_entry_t entry = {};
+          memcpy(entry.name, item.name, sizeof(entry.name));
+          entry.type = static_cast<Camera::Type>(item.type);
+          ESP_LOGI(LOG_TAG, "Loading index entry: %s", entry.name);
+          index.push_back(entry);
+        }
       }
     }
   }
