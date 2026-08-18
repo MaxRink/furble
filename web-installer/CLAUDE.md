@@ -32,3 +32,38 @@ committed.
   is `./manifest_${board}${variant}.json`, where `variant` is `-debug` when the
   checkbox is set and empty otherwise. The manifest is recomputed on both board
   and checkbox change.
+
+## Capture BT debug dump panel
+
+- `index.html` carries a collapsed "Capture BT debug dump" panel below the
+  install button, plus its own `<script id="bt-dump-script">` block. It drives
+  the debug firmware console over the Web Serial API so a reporter can attach a
+  Bluetooth diagnostic transcript to a camera bug report without a terminal.
+- It needs a debug build flashed first. The debug build carries `FURBLE_CONSOLE`
+  and the `bt` command family (journal, scan, explore). A release build has no
+  console, so the panel reports "flash a debug build first" and disconnects.
+- esp-web-tools and a `navigator.serial` console cannot hold the same port at
+  once. The flow is sequential: flash with the install button, close its dialog,
+  then click Connect in this panel. The panel never blocks flashing.
+- Transport is USB CDC at 115200 8N1, the same port the S3 flasher uses. The
+  script reads with a `TextDecoderStream`-style loop, splits the stream on
+  newlines, and detects the `furble> ` prompt as the unterminated tail of the
+  buffer. The device echo of each sent command is suppressed once so the
+  transcript shows each command a single time behind a `> ` marker.
+- Command completion: journal commands finish when the prompt returns. `bt scan`
+  and `bt explore` return the prompt immediately then stream asynchronously, so
+  they finish on their own end marker instead: `bt.scan: done` (or a
+  `bt.scan: refused` line) and `explore.read: end` (or `bt.explore: refused` /
+  `explore.connect_failed`). Every command has a timeout that is logged to the
+  transcript and swallowed, so one silent command cannot hang the capture.
+- Buttons: Connect / Disconnect, Start recording (`bt journal clear` then
+  `bt journal on`), Stop and dump journal (`bt journal dump` then
+  `bt journal off`), Run scan (`bt scan <seconds>`), Run explore
+  (`bt explore <addr>` then `bt explore stop`), plus Download dump (a
+  `furble-bt-dump-<timestamp>.txt` blob), Copy and Clear.
+- Web Serial is Chromium only (Chrome, Edge) and needs a secure context, which
+  the deployed HTTPS page satisfies. The panel feature-detects `navigator.serial`
+  and shows a one line note on unsupported browsers instead of the controls.
+- The command surface is owned by fork PR #76 (`feat/64-bt-debug`). If it renames
+  a `bt` command or an end marker, update `endConditionFor` and the button
+  handlers in the script to match.
