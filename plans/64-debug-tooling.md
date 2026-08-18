@@ -1,13 +1,13 @@
 # 64: expanded debug tooling
 
-Status: pillar 3 implemented in this branch. Pillars 1 and 2 remain on their
-separate branch. Line anchors below were read at `f455b0b` on fork master. The
-plan ships as a series of independently mergeable PRs, one per phase, each
-updating this document.
+Status: pillars 1 and 2 implemented on `feat/64-power-perf`; pillar 3 has
+already merged to fork master. Line anchors below were read at `f455b0b` on fork
+master. The plan ships as a series of independently mergeable PRs, one per
+phase, each updating this document.
 
 ## Implementation state
 
-Pillar 3 only is implemented behind `FURBLE_CONSOLE`:
+Pillar 3 (merged, behind `FURBLE_CONSOLE`):
 
 - `bt scan [seconds]` uses the custom `Scan::start` callback path and prints
   unfiltered advertisement and scan-response data, manufacturer data, and
@@ -23,6 +23,32 @@ Pillar 3 only is implemented behind `FURBLE_CONSOLE`:
   traffic.
 - No settings, NVS entries, CameraList entries, or companion characteristics
   were added. Hardware validation is still outstanding.
+
+Pillars 1 and 2 (this branch):
+
+- Debug builds merge the committed `sdkconfig.debug` fragment into a generated
+  overlay under the environment build directory. Release sdkconfig files were
+  not changed.
+- `Furble::Power` now records cumulative acquires, hold time, and per-owner
+  counts. `power stats` reports the table and the IDF PM dump.
+- Battery EWMA state moved to `Platform::sampleBattery()`. `power log` emits
+  timestamped CSV from the console task tick.
+- `perf tasks`, `perf heap`, and `perf lvgl` are implemented. The LVGL overlay
+  is hidden by default and toggled through the UI request queue.
+- The Power state page has changed-check guarded rows for each Furble lock.
+- The `m5stick-s3` release build and the `m5stick-s3-debug` build both compile
+  and link cleanly. The debug build confirms `debug_sdkconfig.py` generates the
+  overlay with the profiling and LVGL sysmon symbols, so the console and perf
+  code paths compile under those flags. The five committed release sdkconfig
+  files remain unchanged.
+- Deviation: the debug environments packed both pre-scripts on one
+  `extra_scripts` line separated by a space, which PlatformIO does not split,
+  so every debug build failed with a missing SConscript error. Each debug
+  environment now lists the two scripts as a newline-separated value.
+
+The queue-depth and Performance diagnostics page items listed later under
+pillar 2 remain follow-up work because this implementation request named the
+tasks, heap, and LVGL commands only.
 
 ## Motivation
 

@@ -8,10 +8,14 @@
 #include <string>
 
 #include <esp_console.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_pm.h>
 #include <esp_system.h>
 #include <esp_timer.h>
+
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <driver/uart.h>
 #if defined(FURBLE_M5STICKS3)
@@ -31,6 +35,8 @@
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
+#include "FurblePlatform.h"
+#include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -41,7 +47,7 @@ namespace {
 
 constexpr const char *PROMPT = "furble> ";
 constexpr size_t MAX_LINE = 128;
-constexpr uint32_t TASK_STACK = 6144;
+constexpr uint32_t TASK_STACK = 8192;
 
 // Below the control task (4) and the per camera target tasks (3).
 constexpr UBaseType_t TASK_PRIORITY = 2;
@@ -54,6 +60,16 @@ constexpr uart_port_t LOG_UART = static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UAR
 
 /** Mirror incoming NMEA to the console. */
 bool g_GPSRaw = false;
+
+struct power_log_t {
+  bool active = false;
+  uint64_t intervalUs = 0;
+  uint64_t nextUs = 0;
+  uint64_t startUs = 0;
+  float startLevel = 0;
+};
+
+power_log_t g_PowerLog;
 
 /** Report a command result the same way every command does. */
 int fail(const char *message) {
@@ -570,6 +586,270 @@ int cmdGPS(int argc, char **argv) {
   return fail("expected on, off, raw, send or power");
 }
 
+void cmdPowerStats(void) {
+  auto &power = Power::getInstance();
+
+  for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
+    const auto type = static_cast<Power::LockType>(n);
+    const auto stats = power.getStats(type);
+    const char *name = power.getName(type);
+
+    printf("lock.%s.held: %lu\n", name, static_cast<unsigned long>(stats.count));
+    printf("lock.%s.acquires: %lu\n", name, static_cast<unsigned long>(stats.totalAcquires));
+    printf("lock.%s.held_ms: %llu\n", name,
+           static_cast<unsigned long long>(stats.totalHeldUs / 1000));
+
+    for (const auto &owner : stats.owners) {
+      if ((owner.owner != nullptr) && (owner.acquires > 0)) {
+        printf("lock.%s.owner.%s: %lu\n", name, owner.owner,
+               static_cast<unsigned long>(owner.acquires));
+      }
+    }
+  }
+
+  Platform::getInstance().dumpPMLocks();
+}
+
+float powerLogDrainPercentPerHour(const Platform::battery_sample_t &sample, uint64_t nowUs) {
+  const uint64_t elapsedUs = nowUs - g_PowerLog.startUs;
+  if (elapsedUs == 0) {
+    return 0;
+  }
+
+  const float elapsedHours = static_cast<float>(elapsedUs) / 3600000000.0f;
+  return (g_PowerLog.startLevel - sample.meanLevel) / elapsedHours;
+}
+
+void printPowerLogLine(uint64_t nowUs) {
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+  const auto sample = platform.getBatterySample();
+  const auto pm = platform.getPMConfig();
+
+  printf("powerlog: %llu,", static_cast<unsigned long long>(nowUs / 1000000ULL));
+  if (caps.voltage) {
+    printf("%u,", static_cast<unsigned>(sample.battery.voltage));
+  } else {
+    printf("na,");
+  }
+  printf("%u,", static_cast<unsigned>(sample.displayLevel));
+
+  bool runtimeKnown = false;
+  float runtimeMinutes = 0;
+  if (caps.current) {
+    const float drainMa = sample.meanCurrent;
+    printf("%ld,%.1f,%.1f,", static_cast<long>(sample.battery.current), sample.meanCurrent,
+           drainMa);
+    if (!sample.battery.charging && (drainMa < -1.0f)) {
+      const float remainingMah = platform.getBatteryCapacity() * (sample.meanLevel / 100.0f);
+      runtimeMinutes = (remainingMah / -drainMa) * 60.0f;
+      runtimeKnown = true;
+    }
+  } else {
+    const float drainPercent = powerLogDrainPercentPerHour(sample, nowUs);
+    printf("na,na,%.2f,", drainPercent);
+    if (drainPercent > 0) {
+      runtimeMinutes = (sample.meanLevel / drainPercent) * 60.0f;
+      runtimeKnown = true;
+    }
+  }
+
+  if (runtimeKnown) {
+    printf("%.1f,", runtimeMinutes);
+  } else {
+    printf("na,");
+  }
+  printf("%u\n", static_cast<unsigned>(pm.max_freq_mhz));
+}
+
+void powerLogTick(void) {
+  if (!g_PowerLog.active) {
+    return;
+  }
+
+  const uint64_t nowUs = static_cast<uint64_t>(esp_timer_get_time());
+  if (nowUs < g_PowerLog.nextUs) {
+    return;
+  }
+
+  g_PowerLog.nextUs = nowUs + g_PowerLog.intervalUs;
+  printPowerLogLine(nowUs);
+  fflush(stdout);
+}
+
+int cmdPower(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: power stats | log <seconds> | log off");
+  }
+
+  if (!strcmp(argv[1], "stats")) {
+    if (argc != 2) {
+      return fail("usage: power stats");
+    }
+    cmdPowerStats();
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "log")) {
+    if (argc < 3) {
+      return fail("usage: power log <seconds> | off");
+    }
+
+    if (!strcmp(argv[2], "off")) {
+      if (argc != 3) {
+        return fail("usage: power log <seconds> | off");
+      }
+      g_PowerLog.active = false;
+      printf("powerlog: off\n");
+      return 0;
+    }
+
+    if (argc != 3) {
+      return fail("usage: power log <seconds> | off");
+    }
+
+    char *end = nullptr;
+    unsigned long seconds = strtoul(argv[2], &end, 10);
+    if ((end == argv[2]) || (*end != '\0') || (seconds == 0) || (seconds > 86400)) {
+      return fail("expected an interval from 1 to 86400 seconds or off");
+    }
+
+    const auto sample = Platform::getInstance().getBatterySample();
+    const uint64_t nowUs = static_cast<uint64_t>(esp_timer_get_time());
+    g_PowerLog.active = true;
+    g_PowerLog.intervalUs = static_cast<uint64_t>(seconds) * 1000000ULL;
+    g_PowerLog.nextUs = nowUs + g_PowerLog.intervalUs;
+    g_PowerLog.startUs = nowUs;
+    g_PowerLog.startLevel = sample.meanLevel;
+
+    const auto &caps = Platform::getInstance().getBatteryCaps();
+    if (caps.current) {
+      printf(
+          "powerlog: timestamp_s,voltage_mv,level_pct,current_ma,current_ewma_ma,"
+          "drain_ma,runtime_min,cpu_freq_mhz\n");
+    } else {
+      printf(
+          "powerlog: timestamp_s,voltage_mv,level_pct,current_ma,current_ewma_ma,"
+          "drain_pct_per_h,runtime_min,cpu_freq_mhz\n");
+    }
+    printf("powerlog: interval_s: %lu\n", seconds);
+    return 0;
+  }
+
+  return fail("expected stats or log");
+}
+
+constexpr size_t MAX_TASK_SNAPSHOT = 24;
+
+int cmdPerfTasks(void) {
+  TaskStatus_t before[MAX_TASK_SNAPSHOT] = {};
+  TaskStatus_t after[MAX_TASK_SNAPSHOT] = {};
+  uint32_t beforeTotal = 0;
+  uint32_t afterTotal = 0;
+
+  // uxTaskGetSystemState() returns 0 when the array is too small to hold every
+  // task, so a zero count while tasks exist means the snapshot overflowed. The
+  // old count >= MAX_TASK_SNAPSHOT guard never fired in that case and the
+  // command silently reported a count of 0 instead of an error.
+  const UBaseType_t beforeCount = uxTaskGetSystemState(before, MAX_TASK_SNAPSHOT, &beforeTotal);
+  if (beforeCount == 0 && uxTaskGetNumberOfTasks() > 0) {
+    return fail("more than 24 tasks, increase the perf snapshot size");
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(1000));
+
+  const UBaseType_t afterCount = uxTaskGetSystemState(after, MAX_TASK_SNAPSHOT, &afterTotal);
+  if (afterCount == 0 && uxTaskGetNumberOfTasks() > 0) {
+    return fail("more than 24 tasks, increase the perf snapshot size");
+  }
+
+  const uint32_t totalDelta = afterTotal - beforeTotal;
+  printf("perf.tasks.window_ms: 1000\n");
+  printf("perf.tasks.count: %u\n", static_cast<unsigned>(afterCount));
+
+  for (UBaseType_t n = 0; n < afterCount; n++) {
+    const TaskStatus_t *old = nullptr;
+    for (UBaseType_t previous = 0; previous < beforeCount; previous++) {
+      if (before[previous].xTaskNumber == after[n].xTaskNumber) {
+        old = &before[previous];
+        break;
+      }
+    }
+    if (old == nullptr) {
+      continue;
+    }
+
+    const uint32_t runtimeDelta = after[n].ulRunTimeCounter - old->ulRunTimeCounter;
+    const double cpu = (totalDelta == 0) ? 0.0 : (runtimeDelta * 100.0) / totalDelta;
+    const char *name = (after[n].pcTaskName != nullptr) ? after[n].pcTaskName : "unknown";
+    const uint32_t stackBytes =
+        static_cast<uint32_t>(after[n].usStackHighWaterMark * sizeof(StackType_t));
+
+    printf("task.%s.priority: %u\n", name, static_cast<unsigned>(after[n].uxCurrentPriority));
+    printf("task.%s.cpu_pct: %.1f\n", name, cpu);
+    printf("task.%s.stack_high_watermark: %lu\n", name, static_cast<unsigned long>(stackBytes));
+  }
+
+  return 0;
+}
+
+void printHeapCapability(const char *name, uint32_t capabilities) {
+  multi_heap_info_t info = {};
+  heap_caps_get_info(&info, capabilities);
+
+  printf("heap.%s.free: %lu\n", name, static_cast<unsigned long>(info.total_free_bytes));
+  printf("heap.%s.largest_block: %lu\n", name, static_cast<unsigned long>(info.largest_free_block));
+  printf("heap.%s.minimum_free: %lu\n", name, static_cast<unsigned long>(info.minimum_free_bytes));
+}
+
+int cmdPerfHeap(void) {
+  printHeapCapability("internal", MALLOC_CAP_INTERNAL);
+  printHeapCapability("dma", MALLOC_CAP_DMA);
+#if defined(CONFIG_SPIRAM)
+  printHeapCapability("spiram", MALLOC_CAP_SPIRAM);
+#endif
+  return 0;
+}
+
+int cmdPerfLVGL(int argc, char **argv) {
+  if (argc == 2) {
+    return sendPrintingRequest(UI::Request::PERF, -1);
+  }
+
+  if ((argc == 4) && !strcmp(argv[2], "overlay")) {
+    bool value = false;
+    if (!parseBool(argv[3], value)) {
+      return fail("usage: perf lvgl overlay on | off");
+    }
+    return sendRequest(UI::Request::PERF, value ? 1 : 0,
+                       value ? "perf lvgl overlay on" : "perf lvgl overlay off");
+  }
+
+  return fail("usage: perf lvgl | perf lvgl overlay on | off");
+}
+
+int cmdPerf(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: perf tasks | heap | lvgl [overlay on | off]");
+  }
+
+  if (!strcmp(argv[1], "tasks")) {
+    return (argc == 2) ? cmdPerfTasks() : fail("usage: perf tasks");
+  }
+  if (!strcmp(argv[1], "heap")) {
+    return (argc == 2) ? cmdPerfHeap() : fail("usage: perf heap");
+  }
+  if (!strcmp(argv[1], "lvgl")) {
+#if !defined(CONFIG_LV_USE_PERF_MONITOR)
+    return fail("LVGL performance monitor is not enabled");
+#else
+    return cmdPerfLVGL(argc, argv);
+#endif
+  }
+
+  return fail("expected tasks, heap or lvgl");
+}
+
 /*
  * Status, cameras and camera control.
  */
@@ -1043,6 +1323,8 @@ constexpr esp_console_cmd_t command(const char *name,
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
+    command("power", "power stats | log <seconds> | log off", cmdPower),
+    command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw on|off|send <body>|power on|off]", cmdGPS),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
     command("cameras", "cameras list | status", cmdCameras),
@@ -1136,10 +1418,12 @@ void task(void) {
   fflush(stdout);
 
   while (true) {
+    powerLogTick();
     uint8_t byte = 0;
 
     if (readByte(&byte) != 1) {
       Camera::gattJournalDrain();
+      powerLogTick();
       continue;
     }
 

@@ -1,9 +1,14 @@
 #include <esp_log.h>
+#include <esp_timer.h>
 
 #include "FurblePower.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
+
+namespace {
+constexpr const char *OTHER_OWNER = "other";
+}  // namespace
 
 Power &Power::getInstance(void) {
   static Power instance;
@@ -66,7 +71,13 @@ void Power::acquire(LockType type, const char *owner) {
     return;
   }
 
+  const std::lock_guard<std::mutex> guard(m_StatsMutex);
   uint32_t count = ++lock.count;
+  lock.totalAcquires.fetch_add(1);
+  recordOwner(lock, owner);
+  if (count == 1) {
+    lock.heldSinceUs.store(esp_timer_get_time());
+  }
   ESP_LOGI(LOG_TAG, "'%s' acquired '%s' power lock, held %u times.", owner, lock.name,
            (unsigned int)count);
 }
@@ -77,6 +88,8 @@ void Power::release(LockType type, const char *owner) {
   if (lock.handle == nullptr) {
     return;
   }
+
+  const std::lock_guard<std::mutex> guard(m_StatsMutex);
 
   if (lock.count == 0) {
     // an unbalanced release is a bug, do not confuse esp_pm with it
@@ -98,6 +111,14 @@ void Power::release(LockType type, const char *owner) {
   }
 
   uint32_t count = --lock.count;
+  if (count == 0) {
+    const int64_t now = esp_timer_get_time();
+    const int64_t heldSince = lock.heldSinceUs.load();
+    if (now > heldSince) {
+      lock.totalHeldUs.fetch_add(now - heldSince);
+    }
+    lock.heldSinceUs.store(0);
+  }
   ESP_LOGI(LOG_TAG, "'%s' released '%s' power lock, held %u times.", owner, lock.name,
            (unsigned int)count);
 }
@@ -108,6 +129,56 @@ uint32_t Power::getCount(LockType type) const {
 
 const char *Power::getName(LockType type) const {
   return getLock(type).name;
+}
+
+void Power::recordOwner(lock_t &lock, const char *owner) {
+  const char *ownerName = (owner != nullptr) ? owner : OTHER_OWNER;
+
+  // Owners are matched by pointer identity, not by string content. Every caller
+  // must therefore pass a string LITERAL (or another pointer with static
+  // storage duration), so repeated acquisitions from the same owner share one
+  // stable address and aggregate into a single slot. A heap or stack buffer
+  // holding the same characters would land in a new slot each time.
+  for (size_t n = 0; n < OWNER_SLOTS - 1; n++) {
+    auto &slot = lock.owners[n];
+    if (slot.owner == ownerName) {
+      slot.acquires++;
+      return;
+    }
+    if (slot.owner == nullptr) {
+      slot.owner = ownerName;
+      slot.acquires = 1;
+      return;
+    }
+  }
+
+  auto &other = lock.owners[OWNER_SLOTS - 1];
+  other.owner = OTHER_OWNER;
+  other.acquires++;
+}
+
+Power::stats_t Power::getStats(LockType type) const {
+  const auto &lock = getLock(type);
+  const std::lock_guard<std::mutex> guard(m_StatsMutex);
+  stats_t stats = {};
+
+  stats.count = lock.count.load();
+  stats.totalAcquires = lock.totalAcquires.load();
+  stats.heldSinceUs = lock.heldSinceUs.load();
+  stats.totalHeldUs = static_cast<uint64_t>(lock.totalHeldUs.load());
+
+  if (stats.count > 0) {
+    const int64_t now = esp_timer_get_time();
+    if (now > stats.heldSinceUs) {
+      stats.totalHeldUs += static_cast<uint64_t>(now - stats.heldSinceUs);
+    }
+  }
+
+  for (size_t n = 0; n < OWNER_SLOTS; n++) {
+    stats.owners[n] = {lock.owners[n].owner, lock.owners[n].acquires};
+  }
+
+  return stats;
 }
 
 Power::Lock::Lock(LockType type, const char *owner) : m_Type(type), m_Owner(owner) {

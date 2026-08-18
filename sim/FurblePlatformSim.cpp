@@ -96,6 +96,17 @@ Platform::battery_t Platform::readBattery(void) {
   return {80, 4000, 0, false};
 }
 
+Platform::battery_sample_t Platform::sampleBattery(void) {
+  // The sim battery reading is fixed, so the smoothed means just mirror it.
+  const battery_t battery = readBattery();
+  m_BatterySample.battery = battery;
+  m_BatterySample.meanLevel = battery.level;
+  m_BatterySample.meanVoltage = battery.voltage;
+  m_BatterySample.meanCurrent = battery.current;
+  m_BatterySample.displayLevel = battery.level;
+  return m_BatterySample;
+}
+
 uint16_t Platform::getBatteryCapacity(void) {
   return 250;
 }

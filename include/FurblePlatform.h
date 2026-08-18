@@ -2,6 +2,7 @@
 #define FURBLE_PLATFORM_H
 
 #include <array>
+#include <mutex>
 
 #include <esp_err.h>
 #include <esp_log.h>
@@ -38,6 +39,15 @@ class Platform {
     int32_t current;   // milliamps, positive when charging
     bool charging;
   } battery_t;
+
+  /** Battery sample with the shared UI and console EWMA values. */
+  typedef struct {
+    battery_t battery;
+    float meanLevel;
+    float meanVoltage;
+    float meanCurrent;
+    uint8_t displayLevel;
+  } battery_sample_t;
 
   /**
    * Power management configuration.
@@ -145,6 +155,12 @@ class Platform {
    */
   battery_t readBattery(void);
 
+  /** Read the battery and update the shared exponentially weighted averages. */
+  battery_sample_t sampleBattery(void);
+
+  /** Get the most recent battery sample without touching the hardware. */
+  battery_sample_t getBatterySample(void) const;
+
   /**
    * Get the battery capacity in mAh, zero if unknown.
    */
@@ -208,6 +224,9 @@ class Platform {
   uint16_t m_BatteryCapacity = 0;
   uint32_t m_M5PM1RetryCount = 0;
   uint32_t m_M5PM1FailCount = 0;
+  mutable std::mutex m_BatteryMutex;
+  battery_sample_t m_BatterySample = {};
+  bool m_BatterySampleInitialized = false;
 #if defined(FURBLE_M5STICKS3)
   bool m_StatusLedLevel = false;
   bool m_StatusLedLevelValid = false;
