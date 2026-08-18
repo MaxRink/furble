@@ -104,11 +104,11 @@ inline std::string wireTypeName(WireType type) {
 }
 
 inline std::unordered_map<std::string, WireType> parseSettingTypes(const std::string &root) {
-  const std::string source = readText(root + "/src/FurbleCompanion.cpp");
-  const size_t begin = source.find("Companion::settingType");
-  const size_t end = source.find("bool Companion::settingValue", begin);
+  const std::string source = readText(root + "/src/FurbleCompanionService.cpp");
+  const size_t begin = source.find("CompanionService::settingType");
+  const size_t end = source.find("bool CompanionService::settingValue", begin);
   if ((begin == std::string::npos) || (end == std::string::npos) || (begin >= end)) {
-    throw std::runtime_error("cannot find Companion::settingType in source");
+    throw std::runtime_error("cannot find CompanionService::settingType in source");
   }
 
   const std::string function = source.substr(begin, end - begin);
