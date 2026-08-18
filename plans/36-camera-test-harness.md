@@ -235,3 +235,27 @@ throughout.
 - Corpus replay matches captured X100VI vectors.
 - The ESP32 peer passes the same scripted scenarios over real BLE.
 - The normal PlatformIO build remains unchanged.
+
+## Implementation state
+
+Tier C host groundwork is implemented in tests/host/. The
+FujifilmVirtualCamera models the Fujifilm Basic advertisement, token pairing
+write, identifier write, configuration indication, geotag request notification,
+shutter writes, and geotag write. It runs against the production Camera,
+Device, Fujifilm, and FujifilmBasic sources through a dependency-free
+in-memory NimBLE seam.
+
+The Tier B host scaffold was not present on master when this worktree was
+created. The narrow seam under tests/host/nimble/ therefore carries the
+standalone surface required by Tier C. It is test-only and is the adapter
+boundary to replace or align when Tier B lands. No firmware behavior was
+changed. No new settings or simulator shim is required.
+
+Tier D groundwork is implemented as schema 1 normalized text captures, a
+dependency-free loader, and tests/corpus/x100vi/synthetic.golden. The replay
+test checks the production token and geotag byte vectors. The fixture is
+synthetic and is not evidence of X100VI interoperability. Reviewed real
+captures remain dependent on the BT journal work in plan 64.
+
+The host CMake/CTest job runs both tests in CI. Hardware validation remains
+untested in this implementation state because no BLE peer radio was exercised.
