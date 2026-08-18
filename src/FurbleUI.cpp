@@ -58,6 +58,12 @@ uint32_t gpsDutyIndex(uint8_t seconds) {
   }
   return 0;
 }
+
+void addToInputGroup(lv_group_t *group, lv_obj_t *obj) {
+  if ((group != nullptr) && (obj != nullptr) && (lv_obj_get_group(obj) != group)) {
+    lv_group_add_obj(group, obj);
+  }
+}
 }  // namespace
 
 std::mutex UI::m_Mutex;
@@ -413,7 +419,7 @@ UI::UI(const interval_t &interval)
 
   // create connection timer
   m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false};
-  m_ConnectTimer = lv_timer_create(connectTimerHandler, 125, &m_ConnectContext);
+  m_ConnectTimer = lv_timer_create(connectTimerHandler, 50, &m_ConnectContext);
   lv_timer_pause(m_ConnectTimer);
 
   // create intervalometer timer
@@ -435,11 +441,24 @@ void UI::startCompanionPairingTimer(void) {
   }
 }
 
-void UI::stopCompanionPairingTimer(void) {
+void UI::closeCompanionPairingDialog(void) {
   if (m_CompanionPairingDialog != nullptr) {
-    lv_msgbox_close_async(m_CompanionPairingDialog);
+    if (lv_obj_is_valid(m_CompanionPairingDialog)) {
+      lv_msgbox_close_async(m_CompanionPairingDialog);
+    }
     m_CompanionPairingDialog = nullptr;
   }
+
+  if (m_CompanionPairingPrevFocus != nullptr) {
+    if (lv_obj_is_valid(m_CompanionPairingPrevFocus)) {
+      lv_group_focus_obj(m_CompanionPairingPrevFocus);
+    }
+    m_CompanionPairingPrevFocus = nullptr;
+  }
+}
+
+void UI::stopCompanionPairingTimer(void) {
+  closeCompanionPairingDialog();
   if (m_CompanionPairingTimer != nullptr) {
     lv_timer_del(m_CompanionPairingTimer);
     m_CompanionPairingTimer = nullptr;
@@ -450,10 +469,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
   auto &companion = Companion::getInstance();
   if (!companion.isEnabled() || !companion.hasPendingPairing()) {
-    if (ui->m_CompanionPairingDialog != nullptr) {
-      lv_msgbox_close_async(ui->m_CompanionPairingDialog);
-      ui->m_CompanionPairingDialog = nullptr;
-    }
+    ui->closeCompanionPairingDialog();
     return;
   }
 
@@ -463,6 +479,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
 
   char text[96];
   std::snprintf(text, sizeof(text), "Confirm number:\n%06lu", companion.getPendingPairingPin());
+  ui->m_CompanionPairingPrevFocus = lv_group_get_focused(ui->m_Group);
   ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
@@ -473,10 +490,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       [](lv_event_t *event) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
         Companion::getInstance().confirmPairing(true);
-        if (ui->m_CompanionPairingDialog != nullptr) {
-          lv_msgbox_close_async(ui->m_CompanionPairingDialog);
-          ui->m_CompanionPairingDialog = nullptr;
-        }
+        ui->closeCompanionPairingDialog();
       },
       LV_EVENT_CLICKED, ui);
 
@@ -486,18 +500,21 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       [](lv_event_t *event) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
         Companion::getInstance().confirmPairing(false);
-        if (ui->m_CompanionPairingDialog != nullptr) {
-          lv_msgbox_close_async(ui->m_CompanionPairingDialog);
-          ui->m_CompanionPairingDialog = nullptr;
-        }
+        ui->closeCompanionPairingDialog();
       },
       LV_EVENT_CLICKED, ui);
+
+  lv_group_focus_obj(accept);
 }
 
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnPWR.isPressed();
+  if (ui->handleLeftLongPress(drv, pressed)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
   if (ui->handleDisplayInput(drv, data, pressed, true)) {
     return;
   }
@@ -513,6 +530,11 @@ void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
 void UI::buttonPEKRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
+  bool held = M5.BtnPWR.isPressed();
+  if (ui->handleLeftLongPress(drv, held)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
   bool pressed = Platform::getInstance().getPWRClickCount() > 0;
   if (ui->handleDisplayInput(drv, data, pressed, false)) {
     return;
@@ -529,6 +551,10 @@ void UI::buttonARead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnA.isPressed();
+  if (ui->handleLeftLongPress(drv, pressed)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
   if (ui->handleDisplayInput(drv, data, pressed, true)) {
     return;
   }
@@ -544,6 +570,10 @@ void UI::buttonBRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnB.isPressed();
+  if (ui->handleLeftLongPress(drv, pressed)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
   if (ui->handleDisplayInput(drv, data, pressed, true)) {
     return;
   }
@@ -559,6 +589,10 @@ void UI::buttonCRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnC.isPressed();
+  if (ui->handleLeftLongPress(drv, pressed)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
   if (ui->handleDisplayInput(drv, data, pressed, true)) {
     return;
   }
@@ -633,6 +667,65 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
   return true;
 }
 
+bool UI::handleLeftLongPress(lv_indev_t *drv, bool pressed) {
+  if (drv != m_ButtonL) {
+    return false;
+  }
+
+  if (!pressed) {
+    const bool handled = m_LeftLongPressHandled;
+    m_LeftPressed = false;
+    m_LeftLongPressHandled = false;
+    m_LeftPressTick = 0;
+    return handled;
+  }
+
+  if (!m_LeftPressed) {
+    m_LeftPressed = true;
+    m_LeftPressTick = tick();
+  }
+
+  if (m_LeftLongPressHandled) {
+    return true;
+  }
+
+  if ((tick() - m_LeftPressTick) < LEFT_LONG_PRESS_MS) {
+    return false;
+  }
+
+  m_LeftLongPressHandled = true;
+  m_SwallowPending &= static_cast<uint8_t>(~inputBit(drv));
+  if (m_SwallowPending == 0) {
+    m_SwallowInput = false;
+  }
+  if (m_DisplayOff) {
+    wakeDisplay();
+  }
+  navigateBack();
+  return true;
+}
+
+void UI::navigateBack(void) {
+  if ((m_MainMenu.main == nullptr) || !lv_obj_is_valid(m_MainMenu.main)) {
+    return;
+  }
+
+  lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+  if ((back == nullptr) || !lv_obj_is_valid(back)) {
+    return;
+  }
+
+  // Some connected and remote pages hide or disable the visual back arrow.
+  // The raw left-button escape is deliberately stronger than that policy.
+  lv_obj_remove_state(back, LV_STATE_DISABLED);
+  lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
+  if (m_Group != nullptr) {
+    lv_group_set_editing(m_Group, false);
+  }
+  lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+  configureControl(ControlMode::MENU);
+}
+
 uint8_t UI::inputBit(lv_indev_t *drv) const {
   if (drv == m_ButtonL) {
     return 0x01;
@@ -673,6 +766,8 @@ void UI::sleepDisplay(void) {
   m_SleepTick = tick();
   m_DisplayOff = true;
   m_DisplayState = DisplayState::OFF;
+  Feedback::getInstance().setDisplayOff(true);
+  Platform::getInstance().setDisplayOff(true);
   lv_timer_pause(m_IconTimer);
 
   // The backlight PWM no longer needs a fixed APB clock while the panel sleeps.
@@ -698,6 +793,8 @@ void UI::wakeDisplay(void) {
   m_WakeTick = tick();
   m_DisplayOff = false;
   m_DisplayState = DisplayState::ACTIVE;
+  Platform::getInstance().setDisplayOff(false);
+  Feedback::getInstance().setDisplayOff(false);
   lv_timer_resume(m_IconTimer);
   lv_display_trigger_activity(m_Display);
 }
@@ -1033,7 +1130,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_checkbox_set_text(check, text);
     lv_obj_set_width(check, LV_PCT(100));
     lv_obj_add_flag(check, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-    lv_group_add_obj(menu.group, check);
+    addToInputGroup(menu.group, check);
     return check;
   } else {
     lv_obj_t *label = lv_label_create(cont);
@@ -1049,7 +1146,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_STATE_TRICKLE);
-    lv_group_add_obj(menu.group, cont);
+    addToInputGroup(menu.group, cont);
   }
 
   return cont;
@@ -1072,6 +1169,8 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   lv_obj_set_flex_grow(label, 1);
 
   lv_obj_t *sw = lv_switch_create(obj);
+  lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, sw);
   bool enable = Settings::load<bool>(setting);
   lv_obj_add_state(sw, enable ? LV_STATE_CHECKED : LV_STATE_DEFAULT);
   lv_obj_add_event_cb(
@@ -1241,9 +1340,10 @@ void UI::addMainMenu(void) {
   }
 
   lv_menu_set_mode_root_back_button(m_MainMenu.main, LV_MENU_ROOT_BACK_BUTTON_DISABLED);
+  lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+  addToInputGroup(m_Group, back);
 #if defined(FURBLE_M5COREX) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   // StickC display too narrow for icons
-  lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
   lv_obj_t *back_img = lv_obj_get_child(back, 0);
   lv_image_set_src(back_img, &icon_undo);
 #if defined(FURBLE_M5COREX)
@@ -1295,6 +1395,21 @@ void UI::addMainMenu(void) {
         auto *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
         auto &scan = Scan::getInstance();
 
+        // A roller or slider can leave the shared encoder group in edit mode.
+        // Menu pages always start in navigation mode so left/right can reach
+        // the shared header back button.
+        lv_group_set_editing(ui->m_Group, false);
+
+        // LVGL hides the header back button on the root page. Only re-enable and
+        // un-hide it on sub-pages so the encoder can reach it. On the root page
+        // keep it hidden so no stray back arrow appears on the home screen.
+        if (page != m_MainMenu.page) {
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
+        } else {
+          lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
+        }
+
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
             || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)) {
@@ -1325,11 +1440,6 @@ void UI::addMainMenu(void) {
 
           // Ensure no active scans
           scan.stop();
-
-          // Enable Back button
-          if (lv_obj_has_state(back, LV_STATE_DISABLED)) {
-            lv_obj_remove_state(back, LV_STATE_DISABLED);
-          }
 
           // If enabled and connections exist, auto connect to first camera on first display of main
           // menu
@@ -1492,6 +1602,7 @@ void UI::configShutterControl(void) {
 }
 
 void UI::configMenuControl(void) {
+  lv_group_set_editing(m_Group, false);
   if (!M5.Touch.isEnabled()) {
     lv_obj_set_style_bg_image_src(m_Left, &icon_arrow_upward_24, 0);
     lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
@@ -1584,6 +1695,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         ctx->ui->configureControl(ControlMode::REVERT);
         lv_group_focus_next(lv_group_get_default());
       }
+      lv_timer_pause(m_ConnectTimer);
       break;
 
     case Control::STATE_IDLE:
@@ -1841,7 +1953,7 @@ void UI::doConnect(lv_event_t *e) {
       m_ConnectContext.cancel, [](lv_event_t *e) { doDisconnect(); }, LV_EVENT_CLICKED, NULL);
 
   control.connectAll(Settings::load<Settings::RECONNECT>());
-  lv_timer_reset(m_ConnectTimer);
+  lv_timer_ready(m_ConnectTimer);
   lv_timer_resume(m_ConnectTimer);
 
   menu_t &menu = m_Menu.at(m_ConnectedStr);
@@ -2075,6 +2187,8 @@ void UI::addConnectMenu(void) {
           lv_obj_t *label = lv_label_create(multibutton);
           lv_label_set_text(label, "Multi-Connect");
           lv_obj_center(label);
+          lv_obj_add_flag(multibutton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+          addToInputGroup(menu.group, multibutton);
           lv_obj_add_event_cb(multibutton, doConnect, LV_EVENT_CLICKED, e);
         }
 
@@ -2137,7 +2251,7 @@ void UI::startScan(void) {
   lv_obj_t *rescan = lv_button_create(m_ScanFinished);
   lv_obj_t *rescanLabel = lv_label_create(rescan);
   lv_label_set_text(rescanLabel, "Rescan");
-  lv_group_add_obj(menu.group, rescan);
+  addToInputGroup(menu.group, rescan);
 
   lv_obj_add_event_cb(
       rescan,
@@ -2221,6 +2335,8 @@ void UI::addGPSMenu(const menu_t &parent) {
   lv_obj_set_flex_grow(label, 1);
 
   lv_obj_t *baud_sw = lv_switch_create(gpsBaud);
+  lv_obj_add_flag(baud_sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, baud_sw);
   uint32_t baud = Settings::load<Settings::GPS_BAUD>();
   lv_obj_add_state(baud_sw, baud == Settings::BAUD_115200 ? LV_STATE_CHECKED : LV_STATE_DEFAULT);
   lv_obj_add_event_cb(
@@ -2296,6 +2412,7 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
     lv_obj_set_width(roller, LV_PCT(90));
 #endif
     lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, roller);
     lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(roller, 2);
     lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
@@ -2353,6 +2470,7 @@ void UI::addGPSOptionMenu(const menu_t &parent,
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
   lv_roller_set_visible_row_count(roller, 2);
   lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
@@ -2455,6 +2573,7 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Hot restart");
   lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, restart);
   lv_obj_add_event_cb(
       restart, [](lv_event_t *e) { GPS::getInstance().restart(0); }, LV_EVENT_CLICKED, NULL);
 
@@ -2529,7 +2648,7 @@ void UI::addIRMenu(void) {
   lv_obj_t *label = lv_label_create(fire);
   lv_label_set_text(label, "Fire");
   lv_obj_center(label);
-  lv_group_add_obj(menu.group, fire);
+  addToInputGroup(menu.group, fire);
 
   lv_obj_add_event_cb(
       fire,
@@ -2574,7 +2693,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   menu_t &menu = addMenu(item, NULL, false, parent);
   menu.button = addSpinItem(parent.page, item, spinner);
 
-  lv_group_add_obj(m_Group, menu.button);
+  addToInputGroup(m_Group, menu.button);
 
   lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_scrollbar_mode(menu.page, LV_SCROLLBAR_MODE_OFF);
@@ -2587,6 +2706,8 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_flex_grow(label, 1);
   spinner.m_SwitchInfinite = lv_switch_create(spinner.m_RowInfinite);
+  lv_obj_add_flag(spinner.m_SwitchInfinite, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, spinner.m_SwitchInfinite);
   if (spinner.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
     lv_obj_add_state(spinner.m_SwitchInfinite, LV_STATE_CHECKED);
   } else {
@@ -2631,7 +2752,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
     lv_roller_set_options(r, Intervalometer::Spinner::m_SpinDigitRoller, LV_ROLLER_MODE_INFINITE);
 
     lv_roller_set_visible_row_count(r, 2);
-    lv_group_add_obj(m_Group, r);
+    addToInputGroup(m_Group, r);
     lv_obj_add_event_cb(
         r,
         [](lv_event_t *e) {
@@ -2656,7 +2777,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
         },
         LV_EVENT_VALUE_CHANGED, &spinner);
 
-    lv_group_add_obj(m_Group, spinner.m_RollerUnit);
+    addToInputGroup(m_Group, spinner.m_RollerUnit);
   }
 
   // squeeze width for smaller displays
@@ -2699,6 +2820,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   lv_obj_t *label = lv_label_create(m_IntervalStart);
   lv_label_set_text(label, "Start");
   lv_obj_center(label);
+  lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, m_IntervalStart);
 
   addSpinnerPage(menu, m_IntervalCountStr, m_Intervalometer.m_Count);
   addSpinnerPage(menu, m_IntervalDelayStr, m_Intervalometer.m_Delay);
@@ -2739,6 +2862,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   lv_obj_t *stop = lv_button_create(cont);
   lv_obj_t *stopLabel = lv_label_create(stop);
   lv_label_set_text(stopLabel, "Stop");
+  lv_obj_add_flag(stop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, stop);
   lv_obj_add_event_cb(
       stop,
       [](lv_event_t *e) {
@@ -2815,6 +2940,8 @@ void UI::addBulbMenu(const menu_t &parent) {
   lv_obj_t *startLabel = lv_label_create(m_BulbStart);
   lv_label_set_text(startLabel, "Start");
   lv_obj_center(startLabel);
+  lv_obj_add_flag(m_BulbStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, m_BulbStart);
 
   lv_obj_add_event_cb(
       m_BulbStart,
@@ -2846,6 +2973,8 @@ void UI::addBulbMenu(const menu_t &parent) {
   lv_obj_t *stop = lv_button_create(cont);
   lv_obj_t *stopLabel = lv_label_create(stop);
   lv_label_set_text(stopLabel, "Stop");
+  lv_obj_add_flag(stop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, stop);
   lv_obj_add_event_cb(
       stop,
       [](lv_event_t *e) {
@@ -2898,6 +3027,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
 
   lv_obj_t *slider = lv_slider_create(cont);
   lv_obj_set_width(slider, LV_PCT(90));
+  lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, slider);
 
   // m_BrightnessSteps * 16 == 256 == black screen :(
   // limit maximum to m_BrightnessSteps * (16 - 1)
@@ -2950,6 +3081,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
 
   lv_obj_t *roller = lv_roller_create(cont);
   lv_obj_set_width(roller, LV_PCT(90));
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, "Never\n30 secs\n60 secs\n2 mins\n5 mins\n10 mins",
                         LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
@@ -2979,6 +3112,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
 
   roller = lv_roller_create(cont);
   lv_obj_set_width(roller, LV_PCT(90));
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller,
                         M5.Touch.isEnabled() ? m_DisplayOffTouchOptions : m_DisplayOffOptions,
                         LV_ROLLER_MODE_INFINITE);
@@ -3010,6 +3145,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
     lv_obj_t *calibrate_button = lv_button_create(cont);
     lv_obj_t *calibrate_label = lv_label_create(calibrate_button);
     lv_label_set_text(calibrate_label, "Calibrate");
+    lv_obj_add_flag(calibrate_button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, calibrate_button);
 
     lv_obj_add_event_cb(
         calibrate_button,
@@ -3198,6 +3335,8 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   lv_obj_t *roller = lv_roller_create(cont);
   lv_obj_set_width(roller, LV_PCT(90));
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
 
@@ -3233,6 +3372,8 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   roller = lv_roller_create(cont);
   lv_obj_set_width(roller, LV_PCT(90));
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, "Icon\nPercent\nBoth", LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
   lv_roller_set_selected(roller, Settings::load<Settings::BATT_STYLE>(), LV_ANIM_OFF);
@@ -3310,6 +3451,8 @@ void UI::addFeedbackMenu(const menu_t &parent) {
 
   lv_obj_t *outputRoller = lv_roller_create(outputCont);
   lv_obj_set_width(outputRoller, LV_PCT(60));
+  lv_obj_add_flag(outputRoller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, outputRoller);
   lv_roller_set_options(outputRoller, outputText.c_str(), LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(outputRoller, 2);
   lv_roller_set_selected(outputRoller, selectedOutput, LV_ANIM_OFF);
@@ -3328,6 +3471,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   lv_obj_t *restartLabel = lv_label_create(restart);
   lv_label_set_text(restartLabel, "Restart to apply");
   lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, restart);
   lv_obj_add_event_cb(
       restart,
       [](lv_event_t *) {
@@ -3345,7 +3489,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   static const uint8_t connectionMask = Feedback::EVENT_CONNECTION_MASK;
   static const uint8_t lowBatteryMask = Feedback::EVENT_LOW_BATTERY_MASK;
 
-  auto addEventSwitch = [&events](const char *name, const uint8_t *mask) {
+  auto addEventSwitch = [this, &events](const char *name, const uint8_t *mask) {
     lv_obj_t *row = lv_menu_cont_create(events.page);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_t *label = lv_label_create(row);
@@ -3353,6 +3497,8 @@ void UI::addFeedbackMenu(const menu_t &parent) {
     lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_flex_grow(label, 1);
     lv_obj_t *sw = lv_switch_create(row);
+    lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, sw);
     if ((Settings::load<uint8_t>(Settings::FB_EVENTS) & *mask) != 0) {
       lv_obj_add_state(sw, LV_STATE_CHECKED);
     }
@@ -3386,6 +3532,8 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   lv_obj_set_width(volumeLabel, LV_PCT(100));
   lv_obj_t *volumeSlider = lv_slider_create(volume.page);
   lv_obj_set_width(volumeSlider, LV_PCT(90));
+  lv_obj_add_flag(volumeSlider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, volumeSlider);
   lv_slider_set_range(volumeSlider, 0, UINT8_MAX);
   lv_slider_set_value(volumeSlider, Settings::load<uint8_t>(Settings::FB_VOLUME), LV_ANIM_OFF);
   lv_obj_add_event_cb(
@@ -3453,6 +3601,8 @@ void UI::addThemeMenu(const menu_t &parent) {
   lv_obj_t *restart = lv_button_create(cont);
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart");
+  lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, restart);
 
   lv_obj_add_event_cb(
       restart,
@@ -3480,6 +3630,8 @@ void UI::addTransmitPowerMenu(const menu_t &parent) {
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_t *slider = lv_slider_create(cont);
   lv_obj_set_width(slider, LV_PCT(80));
+  lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, slider);
   lv_slider_set_range(slider, 0, 2);
 
   uint8_t power = Settings::load<Settings::TX_POWER>();
@@ -3526,7 +3678,7 @@ lv_obj_t *UI::addInfoRow(lv_obj_t *cont) {
   // rows are read only, but must be focusable so the button boards can scroll
   lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(label, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  lv_group_add_obj(lv_group_get_default(), label);
+  addToInputGroup(lv_group_get_default(), label);
 
   return label;
 }
@@ -3662,6 +3814,7 @@ static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *opt
   lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
   lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(lv_group_get_default(), roller);
 
   return roller;
 }
@@ -3847,6 +4000,8 @@ void UI::addPowerStateMenu(const menu_t &parent) {
   lv_obj_t *dump = lv_button_create(cont);
   lv_obj_t *label = lv_label_create(dump);
   lv_label_set_text(label, "Dump locks");
+  lv_obj_add_flag(dump, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, dump);
   lv_obj_add_event_cb(
       dump, [](lv_event_t *e) { Platform::getInstance().dumpPMLocks(); }, LV_EVENT_CLICKED, NULL);
 

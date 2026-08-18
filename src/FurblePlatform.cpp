@@ -104,6 +104,41 @@ void Platform::wakeM5PM1(void) {
   // awake when this returns.
   (void)m5pm1Access([this, &mv]() { return m_M5PM1.readVbat(&mv); });
 }
+
+void Platform::setDisplayOff(bool off) {
+  if (off) {
+    if (m_StatusLedLevelValid) {
+      return;
+    }
+
+    uint8_t powerConfig = 0;
+    if (!m5pm1Access([this, &powerConfig]() { return m_M5PM1.getPowerConfig(&powerConfig); })) {
+      ESP_LOGW(LOG_TAG, "Unable to read StickS3 status LED level");
+      return;
+    }
+
+    m_StatusLedLevel = (powerConfig & M5PM1_PWR_CFG_LED_CTRL) != 0;
+    if (!m5pm1Access([this]() { return m_M5PM1.setLedEnLevel(false); })) {
+      ESP_LOGW(LOG_TAG, "Unable to turn off StickS3 status LED");
+      return;
+    }
+
+    m_StatusLedLevelValid = true;
+    return;
+  }
+
+  if (!m_StatusLedLevelValid) {
+    return;
+  }
+
+  const bool ledLevel = m_StatusLedLevel;
+  if (!m5pm1Access([this, ledLevel]() { return m_M5PM1.setLedEnLevel(ledLevel); })) {
+    ESP_LOGW(LOG_TAG, "Unable to restore StickS3 status LED level");
+    return;
+  }
+
+  m_StatusLedLevelValid = false;
+}
 #endif
 
 uint32_t Platform::tick(void) {
@@ -190,6 +225,12 @@ void Platform::powerOff(void) {
   M5.Power.powerOff();
 #endif
 }
+
+#if !defined(FURBLE_M5STICKS3)
+void Platform::setDisplayOff(bool off) {
+  (void)off;
+}
+#endif
 
 void Platform::initBattery(void) {
   // capabilities follow the PMIC, capacities are from the vendor product pages

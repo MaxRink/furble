@@ -190,6 +190,13 @@ void Feedback::setVolume(uint8_t volume) {
   }
 }
 
+void Feedback::setDisplayOff(bool off) {
+  m_DisplayOff = off;
+  if (off) {
+    stopLight();
+  }
+}
+
 void Feedback::ensureTimer(void) {
   if (m_Timer == nullptr) {
     m_Timer = lv_timer_create(timerHandler, TIMER_PERIOD_MS, this);
@@ -225,7 +232,7 @@ void Feedback::signal(event_t event, bool force) {
   }
 
   const bool sound = outputIncludesSound(m_Output);
-  const bool light = outputIncludesLight(m_Output);
+  const bool light = !m_DisplayOff && outputIncludesLight(m_Output);
   const bool vibration = outputIncludesVibration(m_Output);
 
   // A new pattern silences the current tone but keeps the speaker session
@@ -385,7 +392,7 @@ void Feedback::setLight(bool on) {
 }
 
 void Feedback::startLight(uint16_t on, uint16_t off, uint8_t count) {
-  if (!m_Capabilities.light || count == 0) {
+  if (!m_Capabilities.light || m_DisplayOff || count == 0) {
     return;
   }
 

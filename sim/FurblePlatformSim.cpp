@@ -53,6 +53,8 @@ void Platform::watchdogEnable(bool) {}
 
 void Platform::watchdogFeed(void) {}
 
+void Platform::setDisplayOff(bool) {}
+
 void Platform::setCPUMaxFreq(uint8_t mhz) {
   m_CPUMaxFreqMHz = isCPUMaxFreqValid(mhz) ? mhz : CPU_MAX_FREQ_DEFAULT_MHZ;
 }

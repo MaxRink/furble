@@ -95,6 +95,11 @@ class Platform {
   void wakeM5PM1(void);
 
   /**
+   * Apply the display-off status LED policy for boards with PMIC hardware.
+   */
+  void setDisplayOff(bool off);
+
+  /**
    * Power off the device.
    */
   void powerOff(void);
@@ -204,6 +209,8 @@ class Platform {
   uint32_t m_M5PM1RetryCount = 0;
   uint32_t m_M5PM1FailCount = 0;
 #if defined(FURBLE_M5STICKS3)
+  bool m_StatusLedLevel = false;
+  bool m_StatusLedLevelValid = false;
   bool m_WatchdogEnabled = false;
   uint32_t m_WatchdogLastFeed = 0;
 #endif
