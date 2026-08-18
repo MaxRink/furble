@@ -11,12 +11,15 @@ class UI {
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the headless loop to carry out. */
   enum class Request {
-    CONNECT,    /**< arg: saved camera index, negative for the multi-connect selection */
-    DISCONNECT, /**< arg: unused */
-    SCAN,       /**< arg: non-zero to start, zero to stop */
-    CAMERAS,    /**< arg: non-zero to reload the saved cameras before printing */
-    GPS_RELOAD, /**< arg: unused */
-    GPS_POWER,  /**< arg: non-zero to power the external 5V rail */
+    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT,      /**< arg: unused */
+    SCAN,            /**< arg: non-zero to start, zero to stop */
+    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD,      /**< arg: unused */
+    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,       /**< arg: unused */
+    FEEDBACK_RELOAD, /**< arg: unused */
+    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
   };
 
   /** Create the request queue used by the headless main loop. */
