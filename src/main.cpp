@@ -142,6 +142,19 @@ void UI::serviceRequests(void) {
       case Request::GPS_POWER:
         M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
         break;
+
+      case Request::IR_RELOAD:
+        // The IR reload only refreshes the UI menu cache, which the headless
+        // build does not have. Nothing to do here.
+        break;
+
+      case Request::FEEDBACK_RELOAD:
+        Feedback::getInstance().reload();
+        break;
+
+      case Request::FEEDBACK_TEST:
+        Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
+        break;
     }
   }
 }
