@@ -64,7 +64,17 @@ bool Fujifilm::waitForRegistration(uint8_t progress) {
   m_Progress = progress;
 
   const unsigned int iterations = REGISTRATION_TIMEOUT_MS / REGISTRATION_POLL_MS;
-  for (unsigned int i = 0; i < iterations && !m_Configured; i++) {
+  for (unsigned int i = 0; i < iterations; i++) {
+    // Break as soon as the camera confirms registration, or a disconnect/cancel
+    // is requested, or the link drops. m_Active is cleared lock-free by the
+    // target task's CMD_DISCONNECT handler before that task blocks on the Camera
+    // mutex this connect holds, so polling it makes a cancel during the wait
+    // responsive instead of stalling for the full REGISTRATION_TIMEOUT_MS.
+    // !m_Connected covers a link the camera dropped underneath us. The timeout
+    // stays the backstop for a silent camera that is simply not in pairing mode.
+    if (m_Configured || !m_Connected || !isActive()) {
+      break;
+    }
     vTaskDelay(pdMS_TO_TICKS(REGISTRATION_POLL_MS));
   }
 

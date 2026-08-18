@@ -91,9 +91,15 @@ class Fujifilm: public Camera {
   // golden X100VI capture shows it about 12 s into a healthy connect, so the
   // timeout is generous to avoid rejecting a slow but genuine camera.
   static constexpr uint32_t REGISTRATION_TIMEOUT_MS = 25000;
-  static constexpr uint32_t REGISTRATION_POLL_MS = 250;
+  // Short poll slice so a disconnect/cancel request (m_Active cleared) or a
+  // dropped link (m_Connected cleared) is observed within one slice, keeping a
+  // cancel during the wait responsive. The 25 s timeout is the backstop.
+  static constexpr uint32_t REGISTRATION_POLL_MS = 20;
 
-  volatile bool m_Configured = false;
+  // Set in the notify() callback on the NimBLE host task, polled in
+  // waitForRegistration on the Control task. Atomic so the cross-task handoff is
+  // well defined (plan 96 A3d); the notification callback stays a plain store.
+  std::atomic<bool> m_Configured {false};
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
 
  private:
