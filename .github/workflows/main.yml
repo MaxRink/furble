@@ -89,22 +89,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for environment in \
-            m5stick-c \
-            m5stick-c-plus \
-            m5stack-core \
-            m5stack-core2 \
-            m5stick-s3; do
-            section="$(awk -v target="[env:${environment}]" '
-              $0 == target { found = 1; print; next }
-              found && /^\[env:/ { exit }
-              found { print }
-            ' platformio.ini)"
-            if printf '%s\n' "$section" | grep -n 'FURBLE_RIG'; then
-              echo "FURBLE_RIG is present in release environment ${environment}" >&2
-              exit 1
-            fi
-          done
+          # The rig transport is simulator only. Its PlatformIO environment lives
+          # in sim/platformio.ini, so FURBLE_RIG must never appear anywhere in the
+          # release platformio.ini. Grepping the whole file also catches a define
+          # placed in the shared [env] block or in any base section that a release
+          # environment inherits through 'extends', which a per-[env:X] section
+          # scan would miss.
+          if grep -n 'FURBLE_RIG' platformio.ini; then
+            echo "FURBLE_RIG must not appear in the release platformio.ini" >&2
+            exit 1
+          fi
+
+      - name: Require rig transport to bind loopback only
+        shell: bash
+        run: |
+          set -euo pipefail
+          transport="sim/CompanionRigTransport.cpp"
+          # The sim rig listens on a TCP socket. It must only ever bind the
+          # loopback address so the rig is never reachable off the host. Fail on
+          # any wildcard bind (INADDR_ANY, 0.0.0.0, in6addr_any, "::") and require
+          # the 127.0.0.1 loopback literal to be present as the bind target.
+          if grep -nE 'INADDR_ANY|in6addr_any|0\.0\.0\.0|"::"' "$transport"; then
+            echo "Rig transport must not bind a wildcard address" >&2
+            exit 1
+          fi
+          if ! grep -q '"127\.0\.0\.1"' "$transport"; then
+            echo "Rig transport must bind the 127.0.0.1 loopback literal" >&2
+            exit 1
+          fi
 
   format:
     name: clang-format

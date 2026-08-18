@@ -1,5 +1,8 @@
-#ifndef FURBLE_SIM_COMPANION_SERVICE_H
-#define FURBLE_SIM_COMPANION_SERVICE_H
+// Guard matches the real include/FurbleCompanionService.h on purpose. If a TU
+// pulls in both (shim first via the sim include path), the real header becomes
+// a no-op and there is no duplicate Furble::CompanionService definition.
+#ifndef FURBLE_COMPANION_SERVICE_H
+#define FURBLE_COMPANION_SERVICE_H
 
 #include <cstdint>
 
