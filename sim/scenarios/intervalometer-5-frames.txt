@@ -1,0 +1,13 @@
+# Connected FauxNY, five frames, two seconds between frames.
+seed fauxny true
+seed autoconnect true
+seed interval_count 5
+seed interval_delay 2
+seed interval_shutter 30
+seed interval_wait 0
+wait 5000
+action intervalometer
+report setup.json
+wait 15000
+report intervalometer-5-frames.json
+exit

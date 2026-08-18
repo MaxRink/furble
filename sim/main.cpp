@@ -2,6 +2,7 @@
 
 #include <freertos/FreeRTOS.h>
 
+#include "CameraList.h"
 #include "Device.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
@@ -18,15 +19,22 @@ int runSimulator(bool *) {
   using namespace Furble;
 
   Platform::init();
+  Sim::startProfiler();
+  Sim::preparePreferences();
   Settings::init();
+  Sim::applyScenarioSettings();
+  Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
 
-  // Keep the host run useful without requiring an NVS seed step.
-  Settings::save<bool>(Settings::GPS, true);
-  Settings::save<bool>(Settings::FAUXNY, true);
+  // The companion service mirrors the rig request so the rig transport can
+  // attach. Scenarios drive every other setting through their seed lines.
   Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
-  Settings::save<bool>(Settings::MULTICONNECT, false);
-  Settings::save<bool>(Settings::RECONNECT, false);
-  Settings::save<bool>(Settings::AUTOCONNECT, false);
+
+  if (Sim::scenarioSettingIsTrue("autoconnect")) {
+    CameraList::addFauxNY();
+    auto *camera = CameraList::last();
+    CameraList::save(camera);
+    camera->setActive(true);
+  }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));
 
@@ -38,6 +46,7 @@ int runSimulator(bool *) {
   const auto interval = Settings::load<Settings::INTERVAL>();
   UI ui(interval);
   Sim::setBackTarget(&ui);
+  Sim::registerUI(&ui);
   ui.task();
   return 0;
 }

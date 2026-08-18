@@ -1,0 +1,10 @@
+# GPS standby policy with a five second fix interval.
+seed gps true
+seed gps_power 1
+seed gps_duty 5
+seed gps_rate 1
+wait 5000
+report setup.json
+wait 15000
+report gps-duty-standby-cycle.json
+exit

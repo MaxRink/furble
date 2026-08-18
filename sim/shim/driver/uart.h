@@ -69,6 +69,8 @@ int uart_read_bytes(uart_port_t uart_num,
 int uart_write_bytes(uart_port_t uart_num, const void *buffer, size_t length);
 esp_err_t uart_wait_tx_done(uart_port_t uart_num, TickType_t ticks_to_wait);
 
+void furble_sim_uart_update(void);
+
 #ifdef __cplusplus
 #include <string>
 #include <vector>

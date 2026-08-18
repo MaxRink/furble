@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "scenario": "gps-duty-standby-cycle",
+  "estimate_kind": "relative simulator estimate, not a hardware measurement",
+  "model_source": "tools/power-model/board-currents.yaml",
+  "board": "m5stick-s3",
+  "duration_ms": 15010,
+  "activity": {
+    "timer_fires": {
+      "battery_timer": {"count": 3, "per_second": 0.199867},
+      "bulb_page_refresh": {"count": 0, "per_second": 0.000000},
+      "bulb_timer": {"count": 0, "per_second": 0.000000},
+      "companion_pairing_timer": {"count": 0, "per_second": 0.000000},
+      "connect_timer": {"count": 0, "per_second": 0.000000},
+      "diagnostics_timer": {"count": 0, "per_second": 0.000000},
+      "gps_data_timer": {"count": 0, "per_second": 0.000000},
+      "gps_service_timer": {"count": 15, "per_second": 0.999334},
+      "icon_timer": {"count": 60, "per_second": 3.997335},
+      "inactivity_timer": {"count": 15, "per_second": 0.999334},
+      "interval_page_refresh": {"count": 0, "per_second": 0.000000},
+      "intervalometer_timer": {"count": 0, "per_second": 0.000000},
+      "nmea_timer": {"count": 0, "per_second": 0.000000}
+    },
+    "invalidated_area_pixels": 0,
+    "invalidated_area_pixels_per_second": 0.000000,
+    "flushed_pixels": 0,
+    "flushed_pixels_per_second": 0.000000,
+    "scheduler": {
+      "ui_cycles": 3002,
+      "timer_queue_idle_ms": 15000,
+      "task_idle_ms": 15000,
+      "queue_receives": {
+        "queue": 14
+      },
+      "queue_empty_receives": {},
+      "task_delay_count": {
+        "ui": 3002
+      },
+      "task_delay_ms": {
+        "ui": 15010
+      }
+    }
+  },
+  "sleep": {
+    "locks": {
+      "cpu_freq_max": {
+        "acquire_count": 0,
+        "release_count": 0,
+        "unbalanced_release_count": 0,
+        "current_count": 0,
+        "total_hold_ms": 0,
+        "held_at_end": false,
+        "hold_histogram_ms": {
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 0,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      },
+        "owners": {}
+      },
+      "apb_freq_max": {
+        "acquire_count": 0,
+        "release_count": 0,
+        "unbalanced_release_count": 0,
+        "current_count": 1,
+        "total_hold_ms": 15000,
+        "held_at_end": true,
+        "hold_histogram_ms": {
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 1,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      },
+        "owners": {
+          "display": {"acquire_count": 0, "release_count": 0, "total_hold_ms": 15000, "hold_histogram_ms": {
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 1,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      }}
+        }
+      },
+      "no_light_sleep": {
+        "acquire_count": 1,
+        "release_count": 0,
+        "unbalanced_release_count": 0,
+        "current_count": 1,
+        "total_hold_ms": 14000,
+        "held_at_end": true,
+        "hold_histogram_ms": {
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 1,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      },
+        "owners": {
+          "gps": {"acquire_count": 1, "release_count": 0, "total_hold_ms": 14000, "hold_histogram_ms": {
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 1,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      }}
+        }
+      }
+    },
+    "light_sleep": {
+      "zero_lock_ms": 0,
+      "timer_queue_idle_ms": 15000,
+      "task_idle_ms": 15000,
+      "eligible_ms": 0,
+      "residency_ms": 0,
+      "residency_percent": 0.000000
+    },
+    "frequency_residency_ms": {
+      "80": 15000,
+      "160": 0,
+      "240": 0
+    },
+    "configured_max_frequency_mhz": 160,
+    "configured_min_frequency_mhz": 40,
+    "light_sleep_enabled": true
+  },
+  "states": {
+    "display_ms": {
+      "on": 15000,
+      "dim": 0,
+      "off": 0
+    },
+    "radio_connected_ms": 0,
+    "radio_events": {},
+    "gps_ms": {
+      "off": 0,
+      "acquiring": 0,
+      "tracking": 14000,
+      "standby": 1000
+    }
+  },
+  "energy": {
+    "board": "m5stick-s3",
+    "components_mA": {
+      "mcu": 40.173218,
+      "radio": 0.000000,
+      "display": 40.972685,
+      "gps": 21.485676,
+      "pmic": 0.052470,
+      "peripherals": 0.003500
+    },
+    "estimated_mA": 102.687549
+  },
+  "estimated_mA": 102.687549
+}

@@ -18,6 +18,15 @@
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 
+#if defined(FURBLE_SIM)
+#include "power_profiler.h"
+#define FURBLE_SIM_GPS_STATE(state) Furble::Sim::profilerSetGpsState(state)
+#define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
+#else
+#define FURBLE_SIM_GPS_STATE(state) ((void)0)
+#define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
+#endif
+
 void gps_task(void *param) {
   Furble::GPS *gps = static_cast<Furble::GPS *>(param);
   gps->task();
@@ -218,6 +227,7 @@ void GPS::enable(void) {
   }
 
   m_Enabled = true;
+  FURBLE_SIM_GPS_STATE("acquiring");
   acquirePowerLock();
 }
 
@@ -411,6 +421,7 @@ void GPS::beginBurst(uint32_t now) {
   }
 
   m_BurstActive = true;
+  FURBLE_SIM_GPS_STATE("tracking");
   m_BurstStart = now;
   m_LastSentence = now;
   m_BurstFailed = m_GPS.failedChecksum();
@@ -532,6 +543,7 @@ void GPS::enterStandby(uint32_t now) {
   m_HavePrediction = true;
   m_WakeDeadline = 0;
   m_CycleState = cycle_state_t::STANDBY;
+  FURBLE_SIM_GPS_STATE("standby");
   releasePowerLock();
 }
 
@@ -544,6 +556,7 @@ void GPS::enterRailOff(uint32_t now) {
   m_HavePrediction = true;
   m_WakeDeadline = 0;
   m_CycleState = cycle_state_t::RAIL_OFF;
+  FURBLE_SIM_GPS_STATE("off");
   setRailPower(false);
   releasePowerLock();
 }
@@ -554,6 +567,7 @@ void GPS::beginResync(uint32_t now) {
   m_HavePrediction = false;
   m_DutyWake = false;
   m_CycleState = cycle_state_t::RESYNC;
+  FURBLE_SIM_GPS_STATE("acquiring");
   acquirePowerLock();
 }
 
@@ -588,6 +602,7 @@ void GPS::enterPermanentLock(void) {
   m_HavePrediction = false;
   m_WakeDeadline = 0;
   m_CycleState = cycle_state_t::PERMANENT_LOCK;
+  FURBLE_SIM_GPS_STATE("tracking");
   acquirePowerLock();
 }
 
@@ -670,6 +685,7 @@ void GPS::serviceConfig(void) {
 
 void GPS::disable(void) {
   m_Enabled = false;
+  FURBLE_SIM_GPS_STATE("off");
 
   {
     // serialise against a cycle pass still running on the GPS task
@@ -708,6 +724,7 @@ void GPS::startService(void) {
 
   m_Timer = lv_timer_create(
       [](lv_timer_t *timer) {
+        FURBLE_SIM_TIMER_FIRE("gps_service_timer");
         auto *gps = static_cast<GPS *>(lv_timer_get_user_data(timer));
         gps->update();
       },

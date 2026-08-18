@@ -3,6 +3,8 @@
 #include "FurbleControl.h"
 
 #include "FurblePlatform.h"
+#include "FurblePower.h"
+#include "FurbleSettings.h"
 #include "clock.h"
 
 namespace Furble {
@@ -136,19 +138,19 @@ void Control::connectAll(bool infiniteReconnect) {
   }
 
   if (m_ConnectCamera == nullptr) {
-    m_State = STATE_CONNECT_FAILED;
+    setState(STATE_CONNECT_FAILED);
     return;
   }
 
   connectStart = Sim::clockMillis();
   m_ConnectCamera->setConnectProgress(0);
-  m_State = STATE_CONNECTING;
+  setState(STATE_CONNECTING);
 }
 
 void Control::disconnect(void) {
   m_ConnectCamera = nullptr;
   m_Targets.clear();
-  m_State = STATE_IDLE;
+  setState(STATE_IDLE);
 }
 
 void Control::addActive(Camera *camera) {
@@ -172,10 +174,30 @@ Control::state_t Control::getState(void) const {
     if (elapsed >= CONNECT_DURATION_MS) {
       control->m_ConnectCamera->connect(control->m_Power, CONNECT_DURATION_MS);
       control->m_ConnectCamera = nullptr;
-      control->m_State = STATE_ACTIVE;
+      control->setState(STATE_ACTIVE);
     }
   }
   return m_State;
+}
+
+void Control::setState(state_t state) {
+  if (state == m_State) {
+    return;
+  }
+
+  m_State = state;
+  const bool hold = (state == STATE_ACTIVE) && !Settings::load<Settings::SLEEP_CONN>();
+  if (hold == m_SleepLockHeld) {
+    return;
+  }
+
+  auto &power = Power::getInstance();
+  if (hold) {
+    power.acquire(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
+  } else {
+    power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
+  }
+  m_SleepLockHeld = hold;
 }
 
 void Control::setPower(esp_power_level_t power) {
