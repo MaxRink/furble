@@ -122,6 +122,11 @@ const char *Power::getName(LockType type) const {
 void Power::recordOwner(lock_t &lock, const char *owner) {
   const char *ownerName = (owner != nullptr) ? owner : OTHER_OWNER;
 
+  // Owners are matched by pointer identity, not by string content. Every caller
+  // must therefore pass a string LITERAL (or another pointer with static
+  // storage duration), so repeated acquisitions from the same owner share one
+  // stable address and aggregate into a single slot. A heap or stack buffer
+  // holding the same characters would land in a new slot each time.
   for (size_t n = 0; n < OWNER_SLOTS - 1; n++) {
     auto &slot = lock.owners[n];
     if (slot.owner == ownerName) {

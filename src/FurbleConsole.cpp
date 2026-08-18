@@ -747,15 +747,19 @@ int cmdPerfTasks(void) {
   uint32_t beforeTotal = 0;
   uint32_t afterTotal = 0;
 
+  // uxTaskGetSystemState() returns 0 when the array is too small to hold every
+  // task, so a zero count while tasks exist means the snapshot overflowed. The
+  // old count >= MAX_TASK_SNAPSHOT guard never fired in that case and the
+  // command silently reported a count of 0 instead of an error.
   const UBaseType_t beforeCount = uxTaskGetSystemState(before, MAX_TASK_SNAPSHOT, &beforeTotal);
-  if (beforeCount >= MAX_TASK_SNAPSHOT) {
+  if (beforeCount == 0 && uxTaskGetNumberOfTasks() > 0) {
     return fail("more than 24 tasks, increase the perf snapshot size");
   }
 
   vTaskDelay(pdMS_TO_TICKS(1000));
 
   const UBaseType_t afterCount = uxTaskGetSystemState(after, MAX_TASK_SNAPSHOT, &afterTotal);
-  if (afterCount >= MAX_TASK_SNAPSHOT) {
+  if (afterCount == 0 && uxTaskGetNumberOfTasks() > 0) {
     return fail("more than 24 tasks, increase the perf snapshot size");
   }
 
