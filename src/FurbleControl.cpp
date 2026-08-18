@@ -5,6 +5,7 @@
 #include "Device.h"
 
 #include "FurbleControl.h"
+#include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 
@@ -286,6 +287,15 @@ void Control::task(void) {
         break;
 
       case STATE_CONNECT:
+        // Do not start a new connection while a prior teardown is still
+        // draining. A fresh NimBLE client allocated in connectAll() would race
+        // the client a quarantined target's teardown task is still releasing,
+        // the connect-side use-after-free. Stay in STATE_CONNECT and retry on
+        // the next tick; reapZombieTargets() above clears the drain once each
+        // teardown task has stopped.
+        if (teardownDraining()) {
+          break;
+        }
         setState(STATE_CONNECTING);
         setState(connectAll());
         break;
@@ -400,7 +410,7 @@ bool Control::disconnectComplete(void) {
   return true;
 }
 
-bool Control::disconnect(uint32_t timeout_ms) {
+bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   m_ConnectAbort = true;
   setState(STATE_DISCONNECTING);
   m_ReconnectAttempt = 0;
@@ -420,40 +430,55 @@ bool Control::disconnect(uint32_t timeout_ms) {
     }
   }
 
+  // Interactive callers wait for the teardown to actually complete. The old
+  // force-complete-on-timeout design returned while NimBLE was still tearing
+  // down, so a later connect raced the still-freeing client and crashed with a
+  // use-after-free. Waiting here closes that race by completing the teardown,
+  // not by force-freeing. The wait bound is large (DISCONNECT_WAIT_MAX_MS) and
+  // acts only as a backstop against a genuinely stuck teardown; a normal
+  // teardown finishes in well under a second once the aborting connect unwinds.
+  //
+  // The restart caller passes forRestart == true and a short timeout. It may
+  // force-complete because esp_restart() runs immediately after and kills the
+  // in-flight teardown, so no later connect can race it.
   const TickType_t start = xTaskGetTickCount();
-  const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+  const uint32_t waitMs = forRestart ? timeout_ms : DISCONNECT_WAIT_MAX_MS;
+  const TickType_t timeout = pdMS_TO_TICKS(waitMs);
   bool completed = true;
   while (!disconnectComplete()) {
     if ((timeout == 0) || (xTaskGetTickCount() - start >= timeout)) {
-      ESP_LOGW(LOG_TAG, "Camera disconnect timed out after %lu ms, forcing completion.",
-               timeout_ms);
+      ESP_LOGW(LOG_TAG, "Camera disconnect timed out after %lu ms, forcing completion.", waitMs);
       completed = false;
       break;
     }
-    vTaskDelay(pdMS_TO_TICKS(1));
+    // The interactive wait runs on the LVGL task, which also feeds the M5PM1
+    // watchdog. A slow teardown can outlast the feed period, so feed it here.
+    // No mutex is held across this slice.
+    Platform::getInstance().watchdogFeed();
+    vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
   }
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
 
-    // Force-complete on timeout so Control never stays wedged in
-    // STATE_DISCONNECTING. The underlying BLE teardown may still be in flight,
-    // but Control ends in a recoverable state so a later CMD_CONNECT is honored.
+    // Reaching here without completion means the restart force-complete fired,
+    // or the interactive backstop expired on a stuck teardown. Control must not
+    // stay wedged in STATE_DISCONNECTING, so end in a recoverable state, but the
+    // underlying BLE teardown may still be in flight. Two independent lifetimes
+    // must be respected here:
     //
-    // A target with m_Stopped == false has not finished: its task dequeued the
-    // undroppable CMD_DISCONNECT and is blocked inside Camera::disconnect(),
-    // which can outlast the timeout while an aborting connect() unwinds the
-    // Camera mutex. That task will still write m_Stopped = true through its own
+    // Object lifetime: a target with m_Stopped == false has not finished. Its
+    // task dequeued the undroppable CMD_DISCONNECT and is still inside
+    // Camera::disconnect(), and it will write m_Stopped = true through its own
     // `this` when it returns, so freeing the object now is a use-after-free.
-    // Quarantine those targets in m_ZombieTargets instead of destroying them and
-    // reap them from the control task once m_Stopped flips. Targets that already
-    // stopped are safe to destroy here; their task is gone.
+    // Move those targets to m_ZombieTargets (no destructor runs) and reap them
+    // from the control task once m_Stopped flips, at which point the task has
+    // called vTaskDelete(NULL) and can never touch the object again.
     //
-    // ~Target() calls m_Camera->disconnect() (a radio call) only when m_Stopped
-    // is false. We never destroy an m_Stopped == false target (it is moved to
-    // the zombie list instead), so no ~Target() destroyed here or by the reaper
-    // ever makes a radio call, which is also what keeps a radio call from
-    // running under m_Mutex.
+    // Radio-call lifetime: ~Target() calls m_Camera->disconnect() only when
+    // m_Stopped is false. We never destroy an m_Stopped == false target here
+    // (it is quarantined instead), so no destructor run here or by the reaper
+    // makes a radio call, which also keeps radio calls off m_Mutex.
     if (!completed) {
       for (auto &target : m_Targets) {
         if (!target->m_Stopped) {
@@ -469,6 +494,11 @@ bool Control::disconnect(uint32_t timeout_ms) {
   }
   setState(STATE_IDLE);
   return completed;
+}
+
+bool Control::teardownDraining(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return !m_ZombieTargets.empty();
 }
 
 void Control::reapZombieTargets(void) {

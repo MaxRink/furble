@@ -69,7 +69,10 @@ void Platform::init(void) {
 
 void Platform::prepareRestart(void) {
   auto &control = Control::getInstance();
-  if (!control.disconnect(Control::DISCONNECT_TIMEOUT_MS)) {
+  // forRestart == true: esp_restart() runs immediately after, so a force-
+  // complete on timeout is safe here. The reset kills any in-flight BLE
+  // teardown, so nothing can reconnect and race the still-freeing client.
+  if (!control.disconnect(Control::DISCONNECT_TIMEOUT_MS, true)) {
     ESP_LOGW(LOG_TAG, "Restart continuing after camera disconnect timeout.");
   }
 

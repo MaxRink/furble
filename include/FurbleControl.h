@@ -80,6 +80,15 @@ class Control {
   const uint32_t BACKOFF_SLICE_MS = 100;
   static constexpr uint32_t DISCONNECT_TIMEOUT_MS = (1 * 1000);
   static constexpr uint32_t RECONNECT_STALE_SESSION_MS = (17 * 1000);
+  // Interactive disconnect safety cap. The interactive path waits for the
+  // teardown to actually complete instead of force-completing, so this is only
+  // a backstop against a genuinely stuck NimBLE teardown, never the normal
+  // exit. Sized to the connect timeout so an aborting connect always unwinds
+  // first.
+  static constexpr uint32_t DISCONNECT_WAIT_MAX_MS = (30 * 1000);
+  // Wait slice for the interactive teardown wait. Short enough to feed the
+  // M5PM1 watchdog well inside its window while holding no mutex across it.
+  static constexpr uint32_t DISCONNECT_WAIT_SLICE_MS = 20;
 
   /**
    * FreeRTOS control task function.
@@ -117,10 +126,19 @@ class Control {
   /**
    * Disconnect all connected cameras.
    *
+   * The interactive path (forRestart == false) waits until the teardown has
+   * actually completed before clearing targets and returning to STATE_IDLE, so
+   * a later connect never races NimBLE state that is still being freed. Only
+   * the restart caller passes forRestart == true, which force-completes on the
+   * timeout: esp_restart() runs immediately after and kills the in-flight
+   * teardown, so the force-complete race cannot happen there.
+   *
    * @param[in] timeout_ms Maximum time to wait for target tasks and cameras.
+   * @param[in] forRestart Caller will esp_restart() immediately, so a timeout
+   *                       may force-complete the teardown.
    * @return true if all disconnect work completed before the timeout.
    */
-  bool disconnect(uint32_t timeout_ms = DISCONNECT_TIMEOUT_MS);
+  bool disconnect(uint32_t timeout_ms = DISCONNECT_WAIT_MAX_MS, bool forRestart = false);
 
   /**
    * Add specified camera to active target list.
@@ -168,6 +186,17 @@ class Control {
    * to destroy and ~Target() skips its radio call. No radio calls, no delays.
    */
   void reapZombieTargets(void);
+
+  /**
+   * Is a prior teardown still draining?
+   *
+   * Control task only. Takes m_Mutex. True while any force-completed target is
+   * still quarantined in m_ZombieTargets. connectAll() must not start a new
+   * connection while this holds: a fresh NimBLE client allocated here would
+   * race the client that a zombie's teardown task is still releasing, the
+   * connect-side use-after-free.
+   */
+  bool teardownDraining(void);
 
   /**
    * Move to a new state and update the light sleep lock to match.

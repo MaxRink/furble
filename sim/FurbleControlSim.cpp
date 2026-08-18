@@ -147,8 +147,9 @@ void Control::connectAll(bool infiniteReconnect) {
   setState(STATE_CONNECTING);
 }
 
-bool Control::disconnect(uint32_t timeout_ms) {
+bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   (void)timeout_ms;
+  (void)forRestart;
   m_ConnectCamera = nullptr;
   m_Targets.clear();
   m_State = STATE_IDLE;

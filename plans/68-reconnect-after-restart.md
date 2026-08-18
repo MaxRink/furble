@@ -1,7 +1,9 @@
 # Reconnect after restart
 
-Status: implemented in `feat/68-reconnect-restart`. Hardware verification remains
-to be run on the M5StickS3 with a Fujifilm camera.
+Status: implemented in `feat/68-reconnect-restart`, disconnect lifecycle
+redesigned after the first hardware run crashed. Hardware verification remains to
+be re-run on the M5StickS3 with a Fujifilm camera. The redesign is not claimed
+hardware-safe; it awaits re-review and re-verification.
 
 ## Motivation
 
@@ -32,41 +34,98 @@ conn-saver worktree uses a 16 second idle supervision timeout. The existing
 first reconnect wait was only 5 seconds, which was too close to the master
 timeout and shorter than the conn-saver case.
 
+## Hardware failure and disconnect lifecycle redesign
+
+The first hardware run of this branch passed normal single
+connect/shutter/disconnect and the restart path, but cancel-mid-connect and a
+connect/disconnect storm crashed reliably with `LoadProhibited` on
+`0xcececece` freed-heap poison. Two use-after-frees were decoded:
+
+1. Connect side: `Control::connectAll` to `Camera::connect` to
+   `Fujifilm::subscribe` to `NimBLEClient::getService` on a freed client. A
+   fresh connect raced the still-tearing-down prior session over shared NimBLE
+   state.
+2. Disconnect side: a quarantined `Control::Target::task` to `Camera::disconnect`
+   to `Fujifilm::_disconnect` to `NimBLEClient::disconnect` on a freed client.
+
+Root cause: the `NimBLEClient` is owned by NimBLE, not by `Camera`.
+`Camera::connect()` creates it with `setSelfDelete(true, true)`, so NimBLE frees
+it on the host task right after the disconnect callback, and synchronously
+inside `NimBLEClient::connect()` when a connect attempt fails. Neither path
+nulls `Camera::m_Client`, so it becomes a dangling pointer. The first design
+force-completed a disconnect on a one second timeout and returned, letting a
+reconnect proceed while that async teardown was still in flight. Keeping the
+`Target` object alive (the quarantine) did not protect the `NimBLEClient` and
+`Camera` internals it points at; those were freed and reused underneath the
+still-running teardown.
+
+The redesign closes both:
+
+- Force-completing (free and return while teardown is in flight) is safe only on
+  the restart path, where `esp_restart()` runs immediately after and the reset
+  kills the in-flight teardown, so nothing can reconnect and race it. That is now
+  the only caller that opts in.
+- The interactive and reconnect path waits for the teardown to actually complete
+  before it clears targets and returns to `STATE_IDLE`, so no later connect can
+  race a client that is still being freed.
+- A new connect does not start while a prior teardown is still draining.
+- `Camera` never dereferences a self-deleted `NimBLEClient`: the two disconnect
+  derefs are gated on `m_Connected`, which is always false once the client has
+  been freed.
+
 ## Design
 
 - `Platform::restart()` is the only application restart entry point. It calls
   `prepareRestart()`, which asks `Control` to stop all target tasks and cameras,
   waits up to one second, logs a timeout if needed, and disables the StickS3
   watchdog. A timeout never prevents the reset.
-- `Control::disconnect()` keeps the existing abort and GAP cancel behavior. The
-  target task performs `Camera::disconnect()` before it reports stopped. The
-  control task checks completion in short slices and never holds `m_Mutex`
-  during a delay. On the clean path it clears targets only after target tasks,
-  the connection attempt, and camera connection state have all completed.
-- Bounded force-completing disconnect (plans/96 batch 1, items B2 and B3). The
-  earlier bounded timeout returned early and left `Control` in
-  `STATE_DISCONNECTING` with `m_Targets` and `m_ConnectCamera` intact. The
-  control task then discarded every later command, including `CMD_CONNECT`, so
-  connect was dead until reboot. On timeout `disconnect()` now force-completes:
-  it clears `m_ConnectCamera`, moves to `STATE_IDLE`, and logs the forced
-  completion, so `Control` always ends in a recoverable state with an exit edge
-  out of `STATE_DISCONNECTING`. `disconnect()` returns `false` only to report
-  that the wait did not finish cleanly; `prepareRestart()` still logs and
-  continues, and `UI::doDisconnect()` needs no return handling because the state
-  is guaranteed recoverable.
-- Target lifetime on force-complete. A target whose `m_Stopped` is still false at
-  the timeout has a live task blocked inside `Camera::disconnect()`, and that
-  task will still write `m_Stopped` through its own object when it returns.
-  Freeing the object then would be a use-after-free that the allocator can hand
-  to a reconnecting target, which is the brick-class corruption the design must
-  avoid. So force-complete does not destroy unstopped targets. It moves them into
-  `m_ZombieTargets` under the mutex and destroys only the already-stopped ones.
-  The control task calls `reapZombieTargets()` each 50 ms tick and frees a zombie
-  only once its `m_Stopped` has flipped, at which point the task has run
-  `task_exit` and no longer touches the object. `~Target()` issues its camera
+- `Control::disconnect(timeout_ms, forRestart)` keeps the existing abort and GAP
+  cancel behavior and sends the undroppable `CMD_DISCONNECT` to every target
+  under `m_Mutex`. The target task performs `Camera::disconnect()` before it
+  reports stopped. The wait runs in short slices and never holds `m_Mutex`
+  across a slice. On the clean path it clears targets only after target tasks,
+  the connection attempt, and camera connection state have all completed
+  (`disconnectComplete()`).
+- Interactive disconnect waits for real completion. `forRestart == false` (the
+  `UI::doDisconnect()` caller) waits up to `DISCONNECT_WAIT_MAX_MS` (30 s, sized
+  to the connect timeout) for `disconnectComplete()`. A normal teardown finishes
+  in well under a second once the aborting connect unwinds; the large bound is
+  only a backstop against a genuinely stuck NimBLE teardown, never the normal
+  exit. This closes the first design's wedge by completing the teardown, not by
+  force-freeing, so a later connect never races a still-freeing client. The wait
+  runs on the LVGL task, so each slice feeds the M5PM1 watchdog and holds no
+  mutex. It is acceptable for an interactive disconnect to take longer; it must
+  never crash and never wedge `STATE_DISCONNECTING` permanently.
+- Restart-only force-complete. `forRestart == true` (only `prepareRestart()`)
+  waits up to the one second `DISCONNECT_TIMEOUT_MS` and then force-completes.
+  This is safe only here because `esp_restart()` runs immediately after and the
+  reset kills the in-flight teardown, so nothing reconnects to race it.
+  `disconnect()` returns `false` to report the wait did not finish cleanly;
+  `prepareRestart()` logs and continues.
+- Connect gated on teardown drained. The control task does not leave
+  `STATE_CONNECT` for `connectAll()` while any force-completed target is still
+  quarantined in `m_ZombieTargets` (`teardownDraining()`). A fresh
+  `NimBLEDevice::createClient()` there would race the client a zombie's teardown
+  task is still releasing, the connect-side use-after-free. The task stays in
+  `STATE_CONNECT` and retries on the next tick; `reapZombieTargets()` clears the
+  drain once each teardown task has stopped.
+- Target lifetime on force-complete (unchanged, now reached only on the restart
+  path or the interactive backstop). A target whose `m_Stopped` is still false at
+  the timeout has a live task inside `Camera::disconnect()`, and that task will
+  still write `m_Stopped` through its own object when it returns. Freeing it then
+  would be a use-after-free the allocator can hand to a reconnecting target. So
+  force-complete moves unstopped targets into `m_ZombieTargets` under the mutex
+  and destroys only the already-stopped ones. `reapZombieTargets()` frees a
+  zombie only once its `m_Stopped` has flipped, at which point the task has run
+  `task_exit` and can never touch the object again. `~Target()` issues its camera
   disconnect only while `m_Stopped` is false, so neither the immediate destroy
-  nor the reaper ever makes a radio call, and no radio call runs under
-  `m_Mutex`.
+  nor the reaper makes a radio call, and no radio call runs under `m_Mutex`.
+- `Camera` is robust to `NimBLEClient` self-deletion. `Camera::disconnect()` and
+  the failed-connect cleanup in `Camera::connect()` call `_disconnect()` only
+  when `m_Connected` is true. When it is false the client has already
+  self-deleted (on a disconnect callback or a failed connect) and `m_Client`
+  dangles, so the guard prevents the disconnect-side use-after-free. Every other
+  live-link deref of `m_Client` was already gated on `m_Connected`.
 - Undroppable `CMD_DISCONNECT` (plans/96 batch 1, item B2). `Target::sendCommand`
   previously used a zero-timeout `xQueueSend` that could silently drop a full
   queue. A dropped `CMD_DISCONNECT` stranded the target task in its command
@@ -121,6 +180,17 @@ On hardware:
 6. Force an unclean reset or power loss while connected. Confirm the first
    retry warning appears once and the patient retry window reconnects after the
    camera releases its old session.
+7. Cancel mid-connect: start a connect and cancel it while pairing and
+   subscription are still running. Confirm no crash and that a following connect
+   succeeds.
+8. Disconnect storm: repeat connect then immediate disconnect many times in
+   quick succession. Confirm no `LoadProhibited` or freed-heap poison crash, that
+   each interactive disconnect returns only after the teardown completed, and
+   that the device never wedges in `STATE_DISCONNECTING`.
+
+These two scenarios crashed the first design; they are the primary regression
+targets for the redesign. The redesign is not claimed hardware-safe until this
+run passes.
 
 Only Fujifilm hardware is available for this verification. Other camera types
 remain covered by code review and FauxNY tests.
