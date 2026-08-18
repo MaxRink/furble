@@ -14,6 +14,9 @@ review and the FauxNY test camera, and are marked as untested in each PR.
   build, CI, git, and protocol findings. Read the matching section before you
   touch that area so you do not relearn them. The CLAUDE.md files carry the
   one-line pointers, this doc carries the detail.
+- [96-wifi-bt-ble-hardening.md](96-wifi-bt-ble-hardening.md): WiFi, Bluetooth
+  and BLE issue inventory with a sequenced remediation plan across fork/master
+  and the open radio PRs.
 
 ## Hardware experiments
 
