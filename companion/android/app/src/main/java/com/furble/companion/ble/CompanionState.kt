@@ -27,8 +27,11 @@ data class CompanionUiState(
     val association: AssociationState = AssociationState(),
     val connection: ConnectionState = ConnectionState.NO_ASSOCIATION,
     val status: FurbleProtocol.StatusSnapshot? = null,
+    val capability: FurbleProtocol.CapabilitySnapshot? = null,
+    val settingsSupported: Boolean = false,
     val settings: List<FurbleProtocol.SettingRecord> = emptyList(),
     val settingsLoading: Boolean = false,
+    val pendingSettingConfirmation: PendingSettingConfirmation? = null,
     val locationEnabled: Boolean = false,
     val locationIntervalSeconds: Int = 10,
     val locationFixesSent: Long = 0,
@@ -37,4 +40,9 @@ data class CompanionUiState(
     val pairingInProgress: Boolean = false,
     val chooserIntentSender: IntentSender? = null,
     val error: String? = null,
+)
+
+data class PendingSettingConfirmation(
+    val record: FurbleProtocol.SettingRecord,
+    val value: ByteArray,
 )

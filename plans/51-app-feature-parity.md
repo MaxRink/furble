@@ -1,7 +1,7 @@
 # 51 - Companion app feature parity
 
-Status: firmware settings parity v2 implemented. The app and camera phases
-remain design only.
+Status: firmware settings parity v2 and the Android settings editors are
+implemented. The camera phase remains design only.
 
 ## Implementation state, firmware settings parity v2
 
@@ -25,6 +25,27 @@ remain design only.
   companion app `decodeInterval`, which already assumes 12 bytes.
 - No new NVS setting was added. Existing defaults, keys and wire ids are
   unchanged. Hardware verification is still pending.
+
+## Implementation state, Android settings editors
+
+The Android settings portion is implemented. The app now:
+
+- reads the optional capability characteristic and shows the Settings tab only
+  for capability version 1, wire version 2 and feature bit 0;
+- compiles the current nonzero `wire_id` table from `src/FurbleSettings.cpp`
+  into `FurbleSettingMetadata.kt`, with unknown IDs rendered as read-only
+  hexadecimal rows;
+- supports bool, enum, range, uint32 stepper, theme and packed INTERVAL
+  editors over the existing settings TLV characteristic;
+- interprets list flag bit 0 as restart required and bit 1 as dangerous, with a
+  two-step confirmation for COMPANION, TX_POWER, SLEEP_CONN and CPU_FREQ; and
+- accepts the firmware list response layout with flags before length while
+  retaining compatibility with the earlier trailing-flags parser.
+
+This Android change consumes the firmware capability and settings parity
+contract described in sections 1 and 4, which the stacked settings parity v2
+firmware change below implements. The camera phase in section 5 is still
+pending.
 
 The companion app from [50-companion-app-design.md](50-companion-app-design.md)
 shipped with status, trigger, location push and a first settings editor. The

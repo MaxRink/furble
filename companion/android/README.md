@@ -18,10 +18,13 @@ Gradle wrapper is configured for Gradle 8.11.1.
 
 ## Protocol
 
-The app targets furble companion protocol version 1 from
-`plans/50-companion-app-design.md`. It uses the UUIDs listed in that document,
+The app targets the additive companion capability contract from
+`plans/51-app-feature-parity.md`. It uses the UUIDs listed in that document,
 negotiates an MTU of at least 45 before location writes, and uses little-endian
-wire integers.
+wire integers. The Settings tab is shown only when the optional capability
+characteristic (`b57f4f64-087b-4740-b71d-8262cf26ebbc`) reports capability
+version 1, wire version 2 and feature bit 0. Older firmware keeps Settings
+hidden.
 
 The location encoder keeps the named fields in the document's order. The
 declared `companion_fix_t` size is 42 bytes, but those packed fields add up to
@@ -36,12 +39,18 @@ named fields occupy 19 bytes, so the decoder consumes one optional trailing
 byte after `uptime_s`. The app does not expose that byte as a field.
 
 The settings request is the exact `op`, `id`, `len`, `value` TLV from the design.
-Responses use `status`, `id`, `type`, `len`, `value`. The design says list
-records also gain a flags byte but does not place it in the response table, so
-the decoder treats one byte after the value as optional list flags. The design
-does not provide the firmware wire-id/name table in this repository; until
-that table is frozen, the UI renders names as `Setting <wire id>` and never
-invent ids for writes.
+List responses use `status`, `id`, `type`, `flags`, `len`, `value`; the parser
+also accepts the early app prototype's trailing-flags form. The app compiles
+the frozen firmware metadata table in
+`app/src/main/java/com/furble/companion/protocol/FurbleSettingMetadata.kt`,
+keyed only by wire ID. Unknown IDs render as read-only hexadecimal rows.
+Bool, enum, range, uint32 stepper, theme and packed interval editors all write
+typed values through the existing settings characteristic. The interval blob
+is four packed little-endian `{uint16 value, uint8 unit}` parts.
+
+Settings list flag bit 0 is interpreted as restart required. Bit 1 marks the
+four link-affecting settings and opens a two-step confirmation before a write:
+COMPANION, TX_POWER, SLEEP_CONN and CPU_FREQ.
 
 ## Runtime behavior
 

@@ -28,6 +28,7 @@ class GattConnection(
         fun onDiscoveringServices()
         fun onReady()
         fun onStatus(snapshot: FurbleProtocol.StatusSnapshot)
+        fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?)
         fun onSettings(response: FurbleProtocol.SettingsResponse)
         fun onDisconnected()
         fun onError(message: String)
@@ -44,6 +45,7 @@ class GattConnection(
     private var statusCharacteristic: BluetoothGattCharacteristic? = null
     private var settingsCharacteristic: BluetoothGattCharacteristic? = null
     private var triggerCharacteristic: BluetoothGattCharacteristic? = null
+    private var capabilityCharacteristic: BluetoothGattCharacteristic? = null
     private var currentOperation: Operation? = null
     private var isReady = false
     private var mtu = 23
@@ -131,6 +133,7 @@ class GattConnection(
         statusCharacteristic = service?.getCharacteristic(FurbleProtocol.STATUS_UUID)
         settingsCharacteristic = service?.getCharacteristic(FurbleProtocol.SETTINGS_UUID)
         triggerCharacteristic = service?.getCharacteristic(FurbleProtocol.TRIGGER_UUID)
+        capabilityCharacteristic = service?.getCharacteristic(FurbleProtocol.CAPABILITY_UUID)
         if (service == null || locationCharacteristic == null || statusCharacteristic == null ||
             settingsCharacteristic == null || triggerCharacteristic == null
         ) {
@@ -155,6 +158,7 @@ class GattConnection(
         val currentGatt = gatt ?: return
         val status = statusCharacteristic ?: return
         val settings = settingsCharacteristic ?: return
+        val capability = capabilityCharacteristic
         val statusDescriptor = status.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
         val settingsDescriptor = settings.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
         if (statusDescriptor == null || settingsDescriptor == null) {
@@ -173,22 +177,19 @@ class GattConnection(
             }
             enqueueDescriptorWrite(settingsDescriptor, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) {
                 if (!it) return@enqueueDescriptorWrite
+                if (capability != null) {
+                    enqueueCharacteristicRead(FurbleProtocol.CAPABILITY_UUID, optional = true)
+                }
                 enqueueCharacteristicRead(FurbleProtocol.STATUS_UUID)
-                enqueueCharacteristicWrite(
-                    uuid = FurbleProtocol.SETTINGS_UUID,
-                    value = FurbleProtocol.encodeSettingsListRequest(),
-                    writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
-                    waitForCallback = true,
-                )
                 isReady = true
                 listener.onReady()
             }
         }
     }
 
-    private fun enqueueCharacteristicRead(uuid: UUID) {
+    private fun enqueueCharacteristicRead(uuid: UUID, optional: Boolean = false) {
         val characteristic = characteristic(uuid) ?: return
-        operations.addLast(Operation.ReadCharacteristic(characteristic))
+        operations.addLast(Operation.ReadCharacteristic(characteristic, optional))
         pump()
     }
 
@@ -277,6 +278,7 @@ class GattConnection(
         statusCharacteristic = null
         settingsCharacteristic = null
         triggerCharacteristic = null
+        capabilityCharacteristic = null
         val oldGatt = gatt
         gatt = null
         oldGatt?.disconnect()
@@ -291,12 +293,16 @@ class GattConnection(
     private fun dispatchCharacteristic(characteristic: BluetoothGattCharacteristic, value: ByteArray) {
         when (characteristic.uuid) {
             FurbleProtocol.STATUS_UUID -> FurbleProtocol.decodeStatus(value)?.let(listener::onStatus)
+            FurbleProtocol.CAPABILITY_UUID -> listener.onCapabilities(FurbleProtocol.parseCapability(value))
             FurbleProtocol.SETTINGS_UUID -> FurbleProtocol.parseSettingsResponse(value)?.let(listener::onSettings)
         }
     }
 
     private sealed interface Operation {
-        data class ReadCharacteristic(val characteristic: BluetoothGattCharacteristic) : Operation
+        data class ReadCharacteristic(
+            val characteristic: BluetoothGattCharacteristic,
+            val optional: Boolean,
+        ) : Operation
 
         data class WriteCharacteristic(
             val characteristic: BluetoothGattCharacteristic,
@@ -349,10 +355,17 @@ class GattConnection(
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
                 if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value)
-                if (currentOperation is Operation.ReadCharacteristic) finishCurrent(
-                    status == BluetoothGatt.GATT_SUCCESS,
-                    "furble status read failed with status $status",
-                )
+                val operation = currentOperation
+                if (operation is Operation.ReadCharacteristic) {
+                    if (status != BluetoothGatt.GATT_SUCCESS && operation.optional) {
+                        listener.onCapabilities(null)
+                    }
+                    finishCurrent(
+                        status == BluetoothGatt.GATT_SUCCESS,
+                        if (operation.optional) null else
+                            "furble characteristic read failed with status $status",
+                    )
+                }
             }
         }
 
@@ -365,10 +378,17 @@ class GattConnection(
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
                 if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value.copyOf())
-                if (currentOperation is Operation.ReadCharacteristic) finishCurrent(
-                    status == BluetoothGatt.GATT_SUCCESS,
-                    "furble status read failed with status $status",
-                )
+                val operation = currentOperation
+                if (operation is Operation.ReadCharacteristic) {
+                    if (status != BluetoothGatt.GATT_SUCCESS && operation.optional) {
+                        listener.onCapabilities(null)
+                    }
+                    finishCurrent(
+                        status == BluetoothGatt.GATT_SUCCESS,
+                        if (operation.optional) null else
+                            "furble characteristic read failed with status $status",
+                    )
+                }
             }
         }
 
