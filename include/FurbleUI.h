@@ -411,6 +411,7 @@ class UI {
   lv_timer_t *m_DiagnosticsTimer;
   lv_timer_t *m_CompanionPairingTimer = nullptr;
   lv_obj_t *m_CompanionPairingDialog = nullptr;
+  lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -471,6 +472,11 @@ class UI {
   uint8_t m_SwallowPending = 0;
   uint32_t m_SleepTick = 0;
   uint32_t m_WakeTick = 0;
+  bool m_LeftPressed = false;
+  bool m_LeftLongPressHandled = false;
+  uint32_t m_LeftPressTick = 0;
+
+  static constexpr uint32_t LEFT_LONG_PRESS_MS = 800;
 
   /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
@@ -502,6 +508,12 @@ class UI {
                           lv_indev_data_t *data,
                           bool pressed,
                           bool releaseExpected);
+
+  /** Handle the raw left-button escape gesture before LVGL sees the input. */
+  bool handleLeftLongPress(lv_indev_t *drv, bool pressed);
+
+  /** Navigate back one menu page, including pages which hide the back arrow. */
+  void navigateBack(void);
 
   /** Check whether blind remote mode is active. */
   bool isBlindRemoteActive(void) const;
@@ -717,6 +729,9 @@ class UI {
 
   /** Stop the companion pairing prompt timer. */
   void stopCompanionPairingTimer(void);
+
+  /** Close the pairing prompt and restore the focus captured before it opened. */
+  void closeCompanionPairingDialog(void);
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);

@@ -70,6 +70,8 @@ class Feedback {
 
   void setVolume(uint8_t volume) { (void)volume; }
 
+  void setDisplayOff(bool off) { (void)off; }
+
   void signal(event_t event, bool force = false) {
     (void)event;
     (void)force;

@@ -65,6 +65,9 @@ class Feedback {
   /** Set the cached volume without persisting it, for live slider preview. */
   void setVolume(uint8_t volume);
 
+  /** Suppress app-controlled light feedback while the display is off. */
+  void setDisplayOff(bool off);
+
   /** Signal an enabled feedback event without blocking the caller.
    * With force set the event mask is bypassed, for console testing. */
   void signal(event_t event, bool force = false);
@@ -115,6 +118,7 @@ class Feedback {
   output_t m_Output = OUTPUT_OFF;
   uint8_t m_Events = 0;
   uint8_t m_Volume = 0;
+  bool m_DisplayOff = false;
 
   std::array<tone_step_t, 3> m_Tones = {};
   uint8_t m_ToneCount = 0;
