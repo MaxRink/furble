@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <cmath>
 
+#include <esp_system.h>
+
 #include <M5PM1.h>
 #include <M5Unified.h>
 
+#include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -62,6 +65,25 @@ Platform &Platform::getInstance(void) {
 
 void Platform::init(void) {
   (void)getInstance();
+}
+
+void Platform::prepareRestart(void) {
+  auto &control = Control::getInstance();
+  // forRestart == true: esp_restart() runs immediately after, so a force-
+  // complete on timeout is safe here. The reset kills any in-flight BLE
+  // teardown, so nothing can reconnect and race the still-freeing client.
+  if (!control.disconnect(Control::DISCONNECT_TIMEOUT_MS, true)) {
+    ESP_LOGW(LOG_TAG, "Restart continuing after camera disconnect timeout.");
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  watchdogEnable(false);
+#endif
+}
+
+void Platform::restart(void) {
+  prepareRestart();
+  esp_restart();
 }
 
 #if defined(FURBLE_M5STICKS3)
@@ -140,6 +162,11 @@ void Platform::setDisplayOff(bool off) {
 
   m_StatusLedLevelValid = false;
 }
+#endif
+
+#if !defined(FURBLE_M5STICKS3)
+// Boards without the M5PM1 have no hardware watchdog to feed.
+void Platform::watchdogFeed(void) {}
 #endif
 
 uint32_t Platform::tick(void) {

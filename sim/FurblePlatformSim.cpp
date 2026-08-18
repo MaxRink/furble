@@ -54,6 +54,12 @@ void Platform::powerOff(void) {
   std::_Exit(0);
 }
 
+void Platform::restart(void) {
+  // The host simulator has no reset vector; ending the process is the closest
+  // equivalent for scripted runs.
+  std::exit(0);
+}
+
 void Platform::watchdogEnable(bool) {}
 
 void Platform::watchdogFeed(void) {}

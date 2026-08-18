@@ -8,7 +8,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Control. Settings must precede Platform because Platform reads FB_OUTPUT to
   set `cfg.internal_spk` before `M5.begin()`.
 - `FurbleControl`: camera connection state machine. It owns the mutex from the
-  root traps section. Keep critical sections short and delay-free.
+  root traps section. Keep critical sections short and delay-free. Restart
+  entry points use `Platform::restart()` so camera disconnects, the bounded
+  wait, and the S3 watchdog shutdown stay together.
 - Adaptive Bluetooth power sampling stays in the control task and uses the
   weakest connected camera because NimBLE connection power is global. NVS
   reads, RSSI reads and radio calls run with the Control mutex released,

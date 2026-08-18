@@ -3,6 +3,7 @@
 #include "icons.h"
 
 #include "FurbleCalibrate.h"
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 
 namespace Furble {
@@ -139,6 +140,7 @@ void CalibrationUI::calibrate(void) {
       },
       LV_EVENT_CLICKED, this);
 
-  lv_obj_add_event_cb(m_Restart, [](lv_event_t *e) { esp_restart(); }, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(
+      m_Restart, [](lv_event_t *e) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
 }
 };  // namespace Furble

@@ -3824,10 +3824,7 @@ void UI::addThemeMenu(const menu_t &parent) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         auto index = lv_roller_get_selected(roller);
         Settings::save<Settings::THEME>(themes[index]);
-#if defined(FURBLE_M5STICKS3)
-        Platform::getInstance().watchdogEnable(false);
-#endif
-        esp_restart();
+        Platform::getInstance().restart();
       },
       LV_EVENT_CLICKED, roller);
 

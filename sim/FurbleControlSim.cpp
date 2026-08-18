@@ -147,10 +147,17 @@ void Control::connectAll(bool infiniteReconnect) {
   setState(STATE_CONNECTING);
 }
 
-void Control::disconnect(void) {
+bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
+  (void)timeout_ms;
+  (void)forRestart;
   m_ConnectCamera = nullptr;
   m_Targets.clear();
-  setState(STATE_IDLE);
+  m_State = STATE_IDLE;
+  return true;
+}
+
+bool Control::disconnectComplete(void) {
+  return true;
 }
 
 void Control::addActive(Camera *camera) {

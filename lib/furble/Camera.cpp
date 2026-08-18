@@ -227,7 +227,12 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   bool connected = this->_connect();
   if (connected) {
     m_Paired = true;
-  } else {
+  } else if (m_Connected) {
+    // Only tear down a live link. When m_Connected is false the attempt failed
+    // at NimBLEClient::connect(), which self-deletes the client on connect
+    // failure (setSelfDelete). m_Client is then a dangling pointer, so calling
+    // _disconnect() here would dereference freed memory. This is the
+    // cancel-mid-connect use-after-free.
     this->_disconnect();
   }
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(m_SecurityModeDefault));
@@ -720,7 +725,17 @@ void Camera::disconnect(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   m_Active = false;
   m_Progress = 0;
-  this->_disconnect();
+  // Only tear down a live link. When m_Connected is false the NimBLE client has
+  // already self-deleted (setSelfDelete on disconnect or on a failed connect)
+  // and m_Client is a dangling pointer. A target task force-completed during a
+  // connect abort reaches here after the aborted connect freed the client, so
+  // calling _disconnect() unconditionally would dereference freed memory. Every
+  // live-link deref of m_Client (isConnected, getRssi, setConnProfile,
+  // updateConnStats) is likewise gated on m_Connected, which the disconnect
+  // callback clears before NimBLE frees the client.
+  if (m_Connected) {
+    this->_disconnect();
+  }
 }
 
 bool Camera::isActive(void) const {
