@@ -164,6 +164,11 @@ void Platform::setDisplayOff(bool off) {
 }
 #endif
 
+#if !defined(FURBLE_M5STICKS3)
+// Boards without the M5PM1 have no hardware watchdog to feed.
+void Platform::watchdogFeed(void) {}
+#endif
+
 uint32_t Platform::tick(void) {
   return (esp_timer_get_time() / 1000LL);
 }
