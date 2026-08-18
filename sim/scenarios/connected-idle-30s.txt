@@ -1,0 +1,8 @@
+# FauxNY and autoconnect are the deterministic headless form of the connect prologue.
+seed fauxny true
+seed autoconnect true
+wait 5000
+report setup.json
+wait 30000
+report connected-idle-30s.json
+exit

@@ -1,0 +1,31 @@
+# The connected seed is the headless connect prologue. The action enters the
+# remote control mode after the display has gone off.
+seed fauxny true
+seed autoconnect true
+seed inactivity 1
+seed display_off 2
+wait 31000
+report setup.json
+action blind
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+action blind-shutter
+wait 3000
+report blind-remote-shutter.json
+exit

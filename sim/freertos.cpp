@@ -9,6 +9,9 @@
 
 #include <freertos/FreeRTOS.h>
 
+#include "clock.h"
+#include "power_profiler.h"
+
 struct FurbleSimQueue {
   FurbleSimQueue(size_t length, size_t itemSize) : capacity {length}, item_size {itemSize} {}
 
@@ -20,8 +23,10 @@ struct FurbleSimQueue {
   FurbleSimQueueResetCallback reset_callback = nullptr;
 };
 
+thread_local const char *simTaskName = "ui";
+
 BaseType_t xTaskCreate(TaskFunction_t task,
-                       const char *,
+                       const char *name,
                        uint32_t,
                        void *parameter,
                        UBaseType_t,
@@ -30,7 +35,10 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     return pdFALSE;
   }
 
-  std::thread worker([task, parameter]() { task(parameter); });
+  std::thread worker([task, parameter, name]() {
+    simTaskName = name == nullptr ? "task" : name;
+    task(parameter);
+  });
   worker.detach();
   if (task_handle != nullptr) {
     *task_handle = reinterpret_cast<TaskHandle_t>(static_cast<uintptr_t>(1));
@@ -41,7 +49,14 @@ BaseType_t xTaskCreate(TaskFunction_t task,
 void vTaskDelete(TaskHandle_t) {}
 
 void vTaskDelay(TickType_t ticks) {
-  std::this_thread::sleep_for(std::chrono::milliseconds(ticks));
+  if (std::strcmp(simTaskName, "ui") == 0) {
+    Furble::Sim::profilerTaskDelay(simTaskName, ticks);
+    Furble::Sim::advanceClock(ticks);
+  } else {
+    // Background tasks use this only to yield to the host scheduler. Counting
+    // these calls would expose host thread timing instead of scenario time.
+    std::this_thread::yield();
+  }
 }
 
 QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size) {
@@ -70,6 +85,7 @@ BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t) {
 
 BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks_to_wait) {
   if (queue == nullptr || item == nullptr) {
+    Furble::Sim::profilerQueueReceive("queue", false);
     return pdFALSE;
   }
 
@@ -83,12 +99,14 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks_to_wa
   }
 
   if (queue->items.empty()) {
+    Furble::Sim::profilerQueueReceive("queue", false);
     return pdFALSE;
   }
 
   const auto value = std::move(queue->items.front());
   queue->items.pop_front();
   std::memcpy(item, value.data(), queue->item_size);
+  Furble::Sim::profilerQueueReceive("queue", true);
   return pdTRUE;
 }
 

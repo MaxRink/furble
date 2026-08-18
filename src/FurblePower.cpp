@@ -53,7 +53,13 @@ void Power::acquire(LockType type, const char *owner) {
     return;
   }
 
+#if defined(FURBLE_SIM)
+  esp_pm_sim_set_owner(owner);
+#endif
   esp_err_t err = esp_pm_lock_acquire(lock.handle);
+#if defined(FURBLE_SIM)
+  esp_pm_sim_set_owner(nullptr);
+#endif
   if (err != ESP_OK) {
     ESP_LOGE(LOG_TAG, "'%s' failed to acquire '%s' power lock (%s).", owner, lock.name,
              esp_err_to_name(err));
@@ -78,7 +84,13 @@ void Power::release(LockType type, const char *owner) {
     return;
   }
 
+#if defined(FURBLE_SIM)
+  esp_pm_sim_set_owner(owner);
+#endif
   esp_err_t err = esp_pm_lock_release(lock.handle);
+#if defined(FURBLE_SIM)
+  esp_pm_sim_set_owner(nullptr);
+#endif
   if (err != ESP_OK) {
     ESP_LOGE(LOG_TAG, "'%s' failed to release '%s' power lock (%s).", owner, lock.name,
              esp_err_to_name(err));

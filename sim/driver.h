@@ -10,6 +10,11 @@ class UI;
 namespace Furble::Sim {
 
 void configure(int argc, char **argv);
+void startProfiler(void);
+void preparePreferences(void);
+void applyScenarioSettings(void);
+bool scenarioSettingIsTrue(const char *name);
+void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);
 

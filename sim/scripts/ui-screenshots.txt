@@ -1,6 +1,10 @@
 # Capture every modeled UI page for the M5StickS3 135x240 class.
 # 'left' activates the focused item and 'down' advances focus. 'home' clears
 # the LVGL menu history and focuses Scan so each route starts deterministically.
+# Seed the fake camera and GPS so the camera and GPS pages render. The host run
+# no longer forces these settings, so each scenario now declares what it needs.
+seed fauxny true
+seed gps true
 wait 300
 capture m5stick-s3-main
 

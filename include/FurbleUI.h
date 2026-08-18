@@ -88,6 +88,11 @@ class UI {
   /** Unlock shutter. */
   void shutterUnlock(Control &control);
 
+#if defined(FURBLE_SIM)
+  /** Apply one deterministic scenario action without changing firmware builds. */
+  void simScenarioAction(const char *action);
+#endif
+
   /** Current intervalometer state for the companion status record. */
   static uint8_t getIntervalometerState(void);
 

@@ -1,0 +1,5 @@
+# Fresh boot, main menu, no camera and no GPS.
+report setup.json
+wait 30000
+report menu-idle-30s.json
+exit

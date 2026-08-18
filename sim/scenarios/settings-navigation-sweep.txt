@@ -1,0 +1,36 @@
+# Visit every settings page. Page actions keep this script deterministic while
+# retaining the same virtual-time navigation coverage as button walks.
+report setup.json
+action page settings
+wait 2000
+action page menu
+action page display
+wait 2000
+action page menu
+action page features
+wait 2000
+action page menu
+action page gps
+wait 2000
+action page menu
+action page timer
+wait 2000
+action page menu
+action page theme
+wait 2000
+action page menu
+action page bluetooth
+wait 2000
+action page menu
+action page about
+wait 2000
+action page menu
+action page power
+wait 2000
+action page menu
+action page diagnostics
+wait 2000
+action page menu
+wait 5000
+report settings-navigation-sweep.json
+exit

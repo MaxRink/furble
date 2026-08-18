@@ -12,6 +12,32 @@ the diff.
 Line anchors below were read at `f455b0b` on fork `master` and at `7487f64` on
 `feat/28-emulator`.
 
+## Implementation state
+
+Updated 2026-08-17 on `feat/63-sim-power`, stacked on `feat/28-emulator`.
+
+- Phase A is complete: the simulator records named LVGL timer fires,
+  invalidated pixels, flushed pixels, queue wakeups and task delays. The
+  driver supports `report <file>.json` and the nine usage scenarios live in
+  `sim/scenarios/`.
+- Phase B is complete: the `esp_pm` shim records lock transitions with
+  virtual timestamps, Power owner names, hold histograms and estimated light
+  sleep residency.
+- Phase C is complete for the simulator scope: DFS residency is reported and
+  the M5PM1 stub covers wake-on-first-access, watchdog, timer and shutdown
+  behavior.
+- The S3 energy model is implemented from
+  `tools/power-model/board-currents.yaml`. It combines the activity, lock,
+  display, radio and GPS state intervals into estimated average mA.
+- Phase G usage coverage is implemented and all nine scripts run headless.
+  The CI workflow and sticky PR reporting are intentionally deferred so they
+  can be consolidated with the screenshot job later.
+- The initial pull and rebase could not update the linked worktree Git
+  control file because the sandbox denied access to `FETCH_HEAD`. The
+  starting tip did not contain the parallel CMake source-list, Scan callback
+  or build path fixes. The CMake and Scan fixes are present in this worktree;
+  the build script still uses its available dependency discovery path.
+
 ## Motivation
 
 Reviews keep catching power bugs of the same three classes before merge. Each
@@ -199,7 +225,8 @@ profiler exists, and does not wait for the hardware calibration below.
 
 Extends the plan 28 CI sim build (fork PR #39). The job builds the sim, runs
 the scenario suite headless, compares each scenario report against
-`sim/power/baseline/*.json`, and uploads the JSON reports as an artifact.
+`tools/power-model/baseline/*.json`, and uploads the JSON reports as an
+artifact.
 
 The gate, precisely:
 
@@ -258,7 +285,7 @@ the baselines and the gate all key on these scenario names.
 
 Conventions, fixed here so an implementer needs no further decisions:
 
-- Scripts live at `sim/scripts/power/<name>.txt` and use the plan 28 driver
+- Scripts live at `sim/scenarios/<name>.txt` and use the plan 28 driver
   verbs `wait`, `key`, `capture`, `exit` plus the `report <file>` step from
   pillar 1. `wait` takes milliseconds of virtual time. Key names follow the
   M5Unified PC mapping: `left` is BtnA, `down` is BtnB, `right` is BtnC,
@@ -345,7 +372,7 @@ class directly.
 Growth rule, enforced in review: a feature that adds a power-relevant state
 MUST add or extend a scenario in the same PR. A new page extends the sweep.
 A new duty policy, link mode or sleep state gets a named scenario. A PR
-that adds such a state without touching `sim/scripts/power/` is incomplete,
+that adds such a state without touching `sim/scenarios/` is incomplete,
 the same way a PR without its plans/NN update is incomplete.
 
 ## CI reporting
@@ -423,7 +450,7 @@ disagreement is the bug report.
 
 Depends on plan 28 (fork PR #39) merging. Counters in `sim/freertos.cpp`,
 the flush path and an LVGL invalidation hook; the timer name table; the
-`report` driver step; the five scenario scripts under `sim/scripts/power/`;
+`report` driver step; the five scenario scripts under `sim/scenarios/`;
 the JSON schema. Effort: one to two days.
 
 ### Phase B: sleep-opportunity estimator
@@ -585,3 +612,33 @@ Read from source, at `f455b0b` on fork `master` unless noted:
 - `tools/power-model/board-currents.yaml`: the current table, seeded in
   parallel from datasheets and published measurements, schema described in
   pillar 4.
+
+## Rebase reconciliation (fork master `a5c2ca8`)
+
+Rebasing onto fork master picked up the merged simulator work from PRs #80,
+#88, #89 and #91. The profiler was reconciled with those changes as follows,
+with no behavioral change to the profiler itself. All eight scenario reports
+regenerate byte-for-byte against their committed baselines after the rebase.
+
+- `sim/driver.{h,cpp}`: kept both the merged rig transport surface
+  (`--rig`, `uart-dump`, `home`, `back`, `setBackTarget`) and the profiler
+  surface (`report`, `action`, `startProfiler`, `preparePreferences`,
+  `applyScenarioSettings`, `registerUI`). Both UI pointers are registered in
+  `sim/main.cpp`.
+- `sim/main.cpp`: the host run no longer force-seeds `GPS`, `FAUXNY` and the
+  connection settings. Scenarios now declare what they need through `seed`
+  lines, which keeps every profiler report deterministic. The merged
+  `COMPANION = rigRequested()` wiring is preserved for the rig.
+- `sim/scripts/ui-screenshots.txt`: seeds `fauxny` and `gps` so the camera
+  and GPS pages still render now that the host run does not force them. The
+  seeded values match the old forced defaults, so the screenshots are
+  unchanged.
+- `sim/fake_uart.cpp`: `uart_write_bytes` both records writes for the merged
+  `uart-dump` assertion hook and honors the `$PCAS12` standby interval for the
+  GPS duty model. `furble_sim_uart_update` is retained.
+- `sim/shim/esp_timer.h`: kept the merged threaded `FurbleSimTimer` and the
+  profiler's virtual-clock `esp_timer_get_time`.
+- `tools/power-model/compare.py`: `main()` now rejects a report and baseline
+  whose `scenario` strings disagree. It prints
+  `compare: scenario mismatch (report X vs baseline Y)` to stderr and returns
+  2, so a misrouted report can no longer pass the gate.

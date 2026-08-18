@@ -60,6 +60,10 @@ void Scan::update(void) {
   if (m_ScanEndCallback) {
     m_ScanEndCallback(m_ScanResultPrivateData);
   }
+  m_Active = false;
+  if (m_ScanEndCallback) {
+    m_ScanEndCallback(m_ScanResultPrivateData);
+  }
 }
 
 }  // namespace Furble

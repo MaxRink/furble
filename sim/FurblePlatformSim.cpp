@@ -2,7 +2,10 @@
 
 #include <M5Unified.h>
 
+#include <driver/uart.h>
+
 #include "FurblePlatform.h"
+#include "FurblePower.h"
 #include "Scan.h"
 #include "clock.h"
 #include "driver.h"
@@ -13,6 +16,8 @@ Platform &Platform::getInstance(void) {
   static Platform instance;
 
   if (!instance.m_Init) {
+    Power::init();
+    Power::getInstance().configure(Platform::CPU_MAX_FREQ_DEFAULT_MHZ);
     auto config = M5.config();
     config.clear_display = true;
     config.internal_imu = false;
@@ -40,13 +45,13 @@ uint8_t Platform::getPWRClickCount(void) {
 
 void Platform::update(void) {
   M5.update();
+  furble_sim_uart_update();
   Scan::getInstance().update();
-  Sim::advanceClock(5);
   Sim::driverTick();
 }
 
 void Platform::powerOff(void) {
-  std::exit(0);
+  std::_Exit(0);
 }
 
 void Platform::watchdogEnable(bool) {}

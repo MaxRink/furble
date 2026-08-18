@@ -9,6 +9,8 @@
 
 #include <esp_err.h>
 
+#include "clock.h"
+
 typedef void (*esp_timer_cb_t)(void *arg);
 
 typedef enum {
@@ -75,9 +77,7 @@ struct FurbleSimTimer {
 using esp_timer_handle_t = FurbleSimTimer *;
 
 inline int64_t esp_timer_get_time(void) {
-  static const auto start = std::chrono::steady_clock::now();
-  const auto now = std::chrono::steady_clock::now();
-  return std::chrono::duration_cast<std::chrono::microseconds>(now - start).count();
+  return static_cast<int64_t>(Furble::Sim::clockMillis()) * 1000;
 }
 
 inline esp_err_t esp_timer_create(const esp_timer_create_args_t *args,

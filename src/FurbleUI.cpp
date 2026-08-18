@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 #include <numeric>
+#include <string>
 #include <tuple>
 
 #include <M5Unified.h>
@@ -29,6 +30,13 @@
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "interval.h"
+
+#if defined(FURBLE_SIM)
+#include "power_profiler.h"
+#define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
+#else
+#define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
+#endif
 
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
@@ -168,6 +176,9 @@ UI::UI(const interval_t &interval)
     m_DisplayOffMode = 0;
   }
   setInactivityTimeout(Settings::load<Settings::INACTIVITY>());
+#if defined(FURBLE_SIM)
+  Sim::profilerSetDisplayState("on");
+#endif
 
   // set minimum, ensure this is a multiple of m_BrightnessSteps so the slider steps work
   switch (M5.getBoard()) {
@@ -189,6 +200,7 @@ UI::UI(const interval_t &interval)
   // start inactivity timer
   m_InactivityTimer = lv_timer_create(
       [](lv_timer_t *t) {
+        FURBLE_SIM_TIMER_FIRE("inactivity_timer");
         auto *ui = static_cast<Furble::UI *>(lv_timer_get_user_data(t));
         ui->processInactivity();
       },
@@ -220,6 +232,20 @@ UI::UI(const interval_t &interval)
                    area->x2, area->y2);
           count = 0;
           window = now;
+        }
+      },
+      LV_EVENT_INVALIDATE_AREA, NULL);
+#endif
+
+#if defined(FURBLE_SIM)
+  lv_display_add_event_cb(
+      m_Display,
+      [](lv_event_t *e) {
+        const auto *area = static_cast<const lv_area_t *>(lv_event_get_param(e));
+        if (area != nullptr) {
+          const uint64_t width = static_cast<uint64_t>(area->x2 - area->x1 + 1);
+          const uint64_t height = static_cast<uint64_t>(area->y2 - area->y1 + 1);
+          Sim::profilerInvalidatedArea(width * height);
         }
       },
       LV_EVENT_INVALIDATE_AREA, NULL);
@@ -273,6 +299,7 @@ UI::UI(const interval_t &interval)
   // refresh icons every 250ms
   m_IconTimer = lv_timer_create(
       [](lv_timer_t *timer) {
+        FURBLE_SIM_TIMER_FIRE("icon_timer");
         status_t *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
 
         const lv_image_dsc_t *symbol = NULL;
@@ -466,6 +493,7 @@ void UI::stopCompanionPairingTimer(void) {
 }
 
 void UI::companionPairingTimer(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("companion_pairing_timer");
   auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
   auto &companion = Companion::getInstance();
   if (!companion.isEnabled() || !companion.hasPendingPairing()) {
@@ -768,6 +796,9 @@ void UI::sleepDisplay(void) {
   m_DisplayState = DisplayState::OFF;
   Feedback::getInstance().setDisplayOff(true);
   Platform::getInstance().setDisplayOff(true);
+#if defined(FURBLE_SIM)
+  Sim::profilerSetDisplayState("off");
+#endif
   lv_timer_pause(m_IconTimer);
 
   // The backlight PWM no longer needs a fixed APB clock while the panel sleeps.
@@ -795,6 +826,9 @@ void UI::wakeDisplay(void) {
   m_DisplayState = DisplayState::ACTIVE;
   Platform::getInstance().setDisplayOff(false);
   Feedback::getInstance().setDisplayOff(false);
+#if defined(FURBLE_SIM)
+  Sim::profilerSetDisplayState("on");
+#endif
   lv_timer_resume(m_IconTimer);
   lv_display_trigger_activity(m_Display);
 }
@@ -819,6 +853,9 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   uint32_t w = (area->x2 - area->x1 + 1);
   uint32_t h = (area->y2 - area->y1 + 1);
 
+#if defined(FURBLE_SIM)
+  Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
+#endif
   lv_draw_sw_rgb565_swap(px_map, w * h);
   M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, (uint16_t *)px_map);
   lv_disp_flush_ready(disp);
@@ -1566,6 +1603,61 @@ void UI::configureControl(ControlMode mode, bool set) {
   }
 }
 
+#if defined(FURBLE_SIM)
+void UI::simScenarioAction(const char *action) {
+  const std::string command = action == nullptr ? "" : action;
+  if (command == "blind") {
+    lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_RemoteShutter).page);
+    configureControl(ControlMode::SHUTTER);
+    return;
+  }
+
+  if (command == "blind-shutter") {
+    auto &control = Control::getInstance();
+    control.sendCommand(Control::CMD_SHUTTER_PRESS);
+    control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+    return;
+  }
+
+  if (command == "intervalometer") {
+    m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
+    lv_timer_reset(m_IntervalTimer);
+    lv_timer_resume(m_IntervalTimer);
+    return;
+  }
+
+  constexpr const char *PAGE_PREFIX = "page ";
+  if (command.compare(0, std::char_traits<char>::length(PAGE_PREFIX), PAGE_PREFIX) != 0) {
+    return;
+  }
+
+  const std::string page_name = command.substr(std::char_traits<char>::length(PAGE_PREFIX));
+  lv_obj_t *page = m_MainMenu.page;
+  if (page_name == "settings") {
+    page = m_Menu.at(m_SettingsStr).page;
+  } else if (page_name == "display") {
+    page = m_Menu.at(m_DisplayStr).page;
+  } else if (page_name == "features") {
+    page = m_Menu.at(m_FeaturesStr).page;
+  } else if (page_name == "gps") {
+    page = m_Menu.at(m_GPSStr).page;
+  } else if (page_name == "timer") {
+    page = m_Menu.at(m_IntervalometerStr).page;
+  } else if (page_name == "theme") {
+    page = m_Menu.at(m_ThemeStr).page;
+  } else if (page_name == "bluetooth") {
+    page = m_Menu.at(m_BluetoothStr).page;
+  } else if (page_name == "about") {
+    page = m_Menu.at(m_AboutStr).page;
+  } else if (page_name == "power") {
+    page = m_Menu.at(m_PowerStr).page;
+  } else if (page_name == "diagnostics") {
+    page = m_Menu.at(m_DiagnosticsStr).page;
+  }
+  lv_menu_set_page(m_MainMenu.main, page);
+}
+#endif
+
 void UI::configShutterControl(void) {
   if (!M5.Touch.isEnabled()) {
     lv_obj_set_style_bg_image_src(m_Left, &icon_arrow_back_24, 0);
@@ -1632,6 +1724,7 @@ void UI::showShutterIntervalometer(bool show) {
 }
 
 void UI::connectTimerHandler(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("connect_timer");
   auto *ctx = static_cast<ConnectContext_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
   Camera *camera = nullptr;
@@ -1748,6 +1841,7 @@ bool UI::isBatteryCharging(void) {
 }
 
 void UI::intervalometer(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("intervalometer_timer");
   auto &control = Control::getInstance();
   auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
   uint32_t next = 0;
@@ -2486,6 +2580,7 @@ void UI::addGPSDataMenu(const menu_t &parent) {
 
   m_GPSDataTimer = lv_timer_create(
       [](lv_timer_t *t) {
+        FURBLE_SIM_TIMER_FIRE("gps_data_timer");
         auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
         auto &gps = GPS::getInstance().get();
 
@@ -2579,6 +2674,7 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
 
   m_NMEATimer = lv_timer_create(
       [](lv_timer_t *t) {
+        FURBLE_SIM_TIMER_FIRE("nmea_timer");
         auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
         auto &gps = GPS::getInstance();
         auto &tinygps = gps.get();
@@ -2885,6 +2981,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
 
   m_IntervalPageRefresh = lv_timer_create(
       [](lv_timer_t *timer) {
+        FURBLE_SIM_TIMER_FIRE("interval_page_refresh");
         auto *label = static_cast<lv_obj_t *>(lv_timer_get_user_data(timer));
         uint32_t now = tick();
         uint32_t remaining = m_IntervalNext > now ? m_IntervalNext - now : 0;
@@ -2990,6 +3087,7 @@ void UI::addBulbMenu(const menu_t &parent) {
   // one shot exposure timer, the period is the exposure duration
   m_BulbTimer = lv_timer_create(
       [](lv_timer_t *timer) {
+        FURBLE_SIM_TIMER_FIRE("bulb_timer");
         auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
         ui->bulbStop();
       },
@@ -2998,6 +3096,7 @@ void UI::addBulbMenu(const menu_t &parent) {
 
   m_BulbPageRefresh = lv_timer_create(
       [](lv_timer_t *timer) {
+        FURBLE_SIM_TIMER_FIRE("bulb_page_refresh");
         auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
         ui->bulbRefresh();
       },
@@ -3192,6 +3291,7 @@ void UI::setShowTitle(bool show) {
 }
 
 void UI::batteryUpdate(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("battery_timer");
   auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
   auto &platform = Platform::getInstance();
   const auto &caps = platform.getBatteryCaps();
@@ -3714,6 +3814,7 @@ const char *UI::getResetReason(void) {
 }
 
 void UI::diagnosticsUpdate(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("diagnostics_timer");
   auto *diagnostics = static_cast<diagnostics_t *>(lv_timer_get_user_data(timer));
   auto &platform = Platform::getInstance();
 
@@ -4092,6 +4193,9 @@ void UI::processInactivity(void) {
       auto brightness = Settings::load<Settings::BRIGHTNESS>();
       M5.Display.setBrightness(brightness);
       m_DisplayState = DisplayState::ACTIVE;
+#if defined(FURBLE_SIM)
+      Sim::profilerSetDisplayState("on");
+#endif
     } else if (m_DisplayState == DisplayState::OFF && !isBlindRemoteActive()) {
       wakeDisplay();
     }
@@ -4106,6 +4210,9 @@ void UI::processInactivity(void) {
       if (m_DisplayState == DisplayState::ACTIVE) {
         M5.Display.setBrightness(m_MinimumBrightness);
         m_DisplayState = DisplayState::DIM;
+#if defined(FURBLE_SIM)
+        Sim::profilerSetDisplayState("dim");
+#endif
       }
       break;
     case 1:
@@ -4114,6 +4221,9 @@ void UI::processInactivity(void) {
         auto brightness = Settings::load<Settings::BRIGHTNESS>();
         M5.Display.setBrightness(brightness);
         m_DisplayState = DisplayState::ACTIVE;
+#if defined(FURBLE_SIM)
+        Sim::profilerSetDisplayState("on");
+#endif
       }
       if (m_DisplayState == DisplayState::ACTIVE) {
         sleepDisplay();
@@ -4144,7 +4254,13 @@ void UI::task(void) {
 #if defined(FURBLE_CONSOLE)
     serviceRequests();
 #endif
+#if defined(FURBLE_SIM)
+    Sim::profilerBeginUiCycle();
+#endif
     lv_task_handler();
+#if defined(FURBLE_SIM)
+    Sim::profilerEndUiCycle();
+#endif
     m_Mutex.unlock();
 
     vTaskDelay(pdMS_TO_TICKS(5));

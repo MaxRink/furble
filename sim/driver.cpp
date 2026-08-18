@@ -1,20 +1,28 @@
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <SDL2/SDL.h>
+#include <lgfx/v1/platforms/sdl/common.hpp>
 
 #include <driver/uart.h>
 
+#include "CameraList.h"
+#include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
+#include "power_profiler.h"
 
 namespace Furble::Sim {
 namespace {
@@ -26,6 +34,8 @@ enum class StepType {
   UART_DUMP,
   HOME,
   BACK,
+  REPORT,
+  ACTION,
   EXIT,
 };
 
@@ -37,13 +47,18 @@ struct Step {
 };
 
 std::vector<Step> steps;
+std::map<std::string, std::string> scenarioSettings;
 std::string captureDirectory = ".pio/furble-sim-captures";
+std::string reportDirectory = ".pio/furble-sim-reports";
+std::string scenarioName = "interactive";
 size_t stepIndex = 0;
 uint32_t waitUntil = 0;
 uint32_t releaseAt = 0;
 SDL_Keycode pressedKey = SDLK_UNKNOWN;
+Furble::UI *scenarioUi = nullptr;
 bool configured = false;
 Furble::UI *backTarget = nullptr;
+bool waiting = false;
 
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
@@ -64,12 +79,52 @@ SDL_Keycode keyCode(const std::string &name) {
   return SDLK_UNKNOWN;
 }
 
+bool parseBool(const std::string &value) {
+  return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+uint32_t parseUnsigned(const std::string &value) {
+  try {
+    return static_cast<uint32_t>(std::stoul(value));
+  } catch (...) {
+    std::cerr << "Invalid scenario setting value: " << value << '\n';
+    std::exit(2);
+  }
+}
+
+std::string trim(std::string value) {
+  const auto not_space = [](unsigned char c) { return !std::isspace(c); };
+  value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+  value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+  return value;
+}
+
 void pushKey(SDL_Keycode key, bool pressed) {
-  SDL_Event event {};
-  event.type = pressed ? SDL_KEYDOWN : SDL_KEYUP;
-  event.key.keysym.sym = key;
-  event.key.keysym.mod = KMOD_NONE;
-  SDL_PushEvent(&event);
+  int gpio = -1;
+  switch (key) {
+    case SDLK_LEFT:
+      gpio = 39;
+      break;
+    case SDLK_DOWN:
+      gpio = 38;
+      break;
+    case SDLK_RIGHT:
+      gpio = 37;
+      break;
+    case SDLK_UP:
+      gpio = 36;
+      break;
+    default:
+      break;
+  }
+
+  if (gpio >= 0) {
+    if (pressed) {
+      lgfx::gpio_lo(static_cast<uint32_t>(gpio));
+    } else {
+      lgfx::gpio_hi(static_cast<uint32_t>(gpio));
+    }
+  }
 }
 
 void readScript(const std::string &path) {
@@ -89,6 +144,18 @@ void readScript(const std::string &path) {
     std::string command;
     input >> command;
     if (command.empty()) {
+      continue;
+    }
+
+    if (command == "seed") {
+      std::string name;
+      std::string value;
+      input >> name >> value;
+      if (name.empty() || value.empty()) {
+        std::cerr << "seed requires a name and value\n";
+        std::exit(2);
+      }
+      scenarioSettings[name] = value;
       continue;
     }
 
@@ -125,6 +192,25 @@ void readScript(const std::string &path) {
       Step step;
       step.type = StepType::BACK;
       steps.push_back(step);
+    } else if (command == "report") {
+      Step step;
+      step.type = StepType::REPORT;
+      input >> step.name;
+      if (step.name.empty()) {
+        std::cerr << "report requires a file name\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "action") {
+      Step step;
+      step.type = StepType::ACTION;
+      std::getline(input, step.name);
+      step.name = trim(step.name);
+      if (step.name.empty()) {
+        std::cerr << "action requires a name\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
     } else if (command == "exit") {
       Step step;
       step.type = StepType::EXIT;
@@ -150,14 +236,96 @@ uint32_t parseUnsigned(const std::string &value, const char *option, uint32_t ma
   }
 }
 
-std::string capturePath(const std::string &name) {
-  if (name.size() >= 4 && name.substr(name.size() - 4) == ".png") {
-    return captureDirectory + "/" + name;
+std::filesystem::path reportPath(const std::string &name) {
+  std::filesystem::path path(name);
+  if (!path.has_extension()) {
+    path += ".json";
   }
-  return captureDirectory + "/" + name + ".png";
+  if (path.is_absolute() || name.find('/') != std::string::npos) {
+    return path;
+  }
+  return std::filesystem::path(reportDirectory) / path;
+}
+
+std::string capturePath(const std::string &name) {
+  const std::string filename =
+      name.size() >= 4 && name.substr(name.size() - 4) == ".png" ? name : name + ".png";
+  return captureDirectory + "/" + filename;
+}
+
+void saveBoolean(const std::string &name, Settings::type_t type) {
+  const auto found = scenarioSettings.find(name);
+  if (found != scenarioSettings.end()) {
+    Settings::save<bool>(type, parseBool(found->second));
+  }
+}
+
+void saveByte(const std::string &name, Settings::type_t type) {
+  const auto found = scenarioSettings.find(name);
+  if (found != scenarioSettings.end()) {
+    Settings::save<uint8_t>(type, static_cast<uint8_t>(parseUnsigned(found->second)));
+  }
 }
 
 }  // namespace
+
+void preparePreferences(void) {
+  if (scenarioName == "interactive") {
+    return;
+  }
+  const std::filesystem::path path =
+      std::filesystem::path(".pio") / ("furble-sim-preferences-" + scenarioName + ".bin");
+  setenv("FURBLE_SIM_PREFS", path.string().c_str(), 1);
+  std::remove(path.c_str());
+}
+
+void applyScenarioSettings(void) {
+  saveByte("brightness", Settings::BRIGHTNESS);
+  saveByte("inactivity", Settings::INACTIVITY);
+  saveByte("display_off", Settings::DISPLAY_OFF);
+  saveByte("gps_rate", Settings::GPS_RATE);
+  saveByte("gps_constel", Settings::GPS_CONSTEL);
+  saveByte("gps_power", Settings::GPS_POWER);
+  saveByte("gps_duty", Settings::GPS_DUTY);
+  saveByte("cpu_freq", Settings::CPU_FREQ);
+  saveByte("tx_power", Settings::TX_POWER);
+  saveByte("scan_mode", Settings::SCAN_MODE);
+  saveBoolean("gps", Settings::GPS);
+  saveBoolean("gps_nmea", Settings::GPS_NMEA);
+  saveBoolean("fauxny", Settings::FAUXNY);
+  saveBoolean("autoconnect", Settings::AUTOCONNECT);
+  saveBoolean("reconnect", Settings::RECONNECT);
+  saveBoolean("sleep_conn", Settings::SLEEP_CONN);
+
+  interval_t interval = Settings::load<Settings::INTERVAL>();
+  bool interval_changed = false;
+  const auto set_interval = [&](const char *name, SpinValue::nvs_t &value, SpinValue::unit_t unit) {
+    const auto found = scenarioSettings.find(name);
+    if (found != scenarioSettings.end()) {
+      value = {static_cast<uint16_t>(parseUnsigned(found->second)), unit};
+      interval_changed = true;
+    }
+  };
+  set_interval("interval_count", interval.count, SpinValue::UNIT_NIL);
+  set_interval("interval_delay", interval.delay, SpinValue::UNIT_SEC);
+  set_interval("interval_shutter", interval.shutter, SpinValue::UNIT_MS);
+  set_interval("interval_wait", interval.wait, SpinValue::UNIT_SEC);
+  if (interval_changed) {
+    Settings::save<Settings::INTERVAL>(interval);
+  }
+}
+
+bool scenarioSettingIsTrue(const char *name) {
+  if (name == nullptr) {
+    return false;
+  }
+  const auto found = scenarioSettings.find(name);
+  return found != scenarioSettings.end() && parseBool(found->second);
+}
+
+void registerUI(UI *ui) {
+  scenarioUi = ui;
+}
 
 void configure(int argc, char **argv) {
   if (configured) {
@@ -177,6 +345,8 @@ void configure(int argc, char **argv) {
       script = argv[++i];
     } else if ((argument == "--capture-dir" || argument == "--out") && i + 1 < argc) {
       captureDirectory = argv[++i];
+    } else if (argument == "--report-dir" && i + 1 < argc) {
+      reportDirectory = argv[++i];
     } else if (argument == "--rig") {
       rig = true;
     } else if (argument == "--rig-port" && i + 1 < argc) {
@@ -193,8 +363,8 @@ void configure(int argc, char **argv) {
     } else if (argument == "--delay-ms" && i + 1 < argc) {
       delayMs = parseUnsigned(argv[++i], "--delay-ms", std::numeric_limits<uint32_t>::max());
     } else if (argument == "--help") {
-      std::cout << "furble-sim [--script FILE] [--out DIR] [--rig] [--rig-port PORT] "
-                   "[--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS]\n";
+      std::cout << "furble-sim [--script FILE] [--out DIR] [--report-dir DIR] [--rig] "
+                   "[--rig-port PORT] [--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS]\n";
       std::exit(0);
     }
   }
@@ -202,12 +372,17 @@ void configure(int argc, char **argv) {
   rigConfigure(rig, rigPort, ignoreUuidMismatch, dropNotify, delayMs);
 
   if (!script.empty()) {
+    scenarioName = std::filesystem::path(script).stem().string();
     readScript(script);
   }
 }
 
 void setBackTarget(Furble::UI *ui) {
   backTarget = ui;
+}
+
+void startProfiler(void) {
+  profilerBegin(scenarioName.c_str());
 }
 
 void driverTick(void) {
@@ -229,10 +404,11 @@ void driverTick(void) {
   Step &step = steps[stepIndex];
   switch (step.type) {
     case StepType::WAIT:
-      if (waitUntil == 0) {
+      if (!waiting) {
         waitUntil = now + step.milliseconds;
+        waiting = true;
       } else if (now >= waitUntil) {
-        waitUntil = 0;
+        waiting = false;
         ++stepIndex;
       }
       break;
@@ -281,8 +457,28 @@ void driverTick(void) {
       ++stepIndex;
       break;
 
+    case StepType::REPORT:
+    {
+      const std::filesystem::path path = reportPath(step.name);
+      const std::string reportName = path.stem().string();
+      profilerWriteReport(path.string().c_str(), reportName.c_str());
+      profilerResetWindow();
+      std::cout << "Reported " << path.string() << '\n';
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::ACTION:
+      if (scenarioUi == nullptr) {
+        std::cerr << "Scenario action ran before the UI was ready: " << step.name << '\n';
+        std::exit(1);
+      }
+      scenarioUi->simScenarioAction(step.name.c_str());
+      ++stepIndex;
+      break;
+
     case StepType::EXIT:
-      std::exit(0);
+      std::_Exit(0);
   }
 }
 
