@@ -1,0 +1,135 @@
+name: Power model gate
+
+# The plan 63 simulator turns each scenario script into a relative power
+# estimate. tools/power-model/baseline/*.json holds the reference estimate for
+# every scenario, generated from master. This job rebuilds the simulator, runs
+# each scenario through the profiler, and fails when a scenario estimate climbs
+# more than the compare.py threshold above its committed baseline or when a
+# scenario has no baseline. The baselines are in-tree, so the check is branch
+# safe and needs no cross-branch cache.
+'on':
+  push:
+    branches:
+      - master
+      - combined
+  pull_request:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/furble/**'
+      - 'components/icons/**'
+      - 'sim/**'
+      - 'sdkconfig.*'
+      - 'tools/power-model/**'
+      - 'tools/gen_lv_conf.py'
+      - '.github/workflows/power-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  power-gate:
+    name: Simulator power regression
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # No restore-keys on purpose: the fetch step below skips a dependency
+      # when its directory exists, so a stale prefix match could pin an old
+      # version. An exact key miss just re-clones, which takes seconds.
+      - uses: actions/cache@v5
+        with:
+          path: sim/.pio
+          key: ${{ runner.os }}-power-gate-${{ hashFiles('sim/platformio.ini', '.github/workflows/power-gate.yml') }}
+
+      - name: Install SDL2 and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang libsdl2-dev
+
+      # These are the same pinned shallow clones the UI screenshot workflow
+      # uses. build.sh never invokes PlatformIO; it only needs the four source
+      # trees. Keep these pins in sync with sim/platformio.ini and
+      # src/idf_component.yml.
+      - name: Fetch simulator dependencies
+        env:
+          DEPS: ${{ github.workspace }}/sim/.pio/libdeps/sim
+        run: |
+          clone_tag() {
+            test -d "$DEPS/$3" || \
+              git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
+          }
+          mkdir -p "$DEPS"
+          clone_tag m5stack/M5GFX 0.2.19 M5GFX
+          clone_tag m5stack/M5Unified 0.2.13 M5Unified
+          clone_tag lvgl/lvgl v9.4.0 lvgl
+          if [ ! -d "$DEPS/TinyGPSPlus" ]; then
+            git init "$DEPS/TinyGPSPlus"
+            git -C "$DEPS/TinyGPSPlus" fetch --depth 1 \
+              https://github.com/gkoh/TinyGPSPlus \
+              92ac8c21b8179201c2c8c534e46af3320b76d3e7
+            git -C "$DEPS/TinyGPSPlus" checkout --detach FETCH_HEAD
+          fi
+
+      - name: Generate LVGL configuration
+        run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+
+      - name: Build simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+        run: sh sim/build.sh
+
+      - name: Run scenarios and compare against the plan 63 baselines
+        shell: bash
+        env:
+          # The power scenarios only advance the virtual clock and write JSON
+          # reports, so the SDL dummy video driver is enough. No display or
+          # Xvfb is needed because nothing reads back pixels.
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          REPORT_DIR: ${{ runner.temp }}/power-reports
+          BASELINE_DIR: tools/power-model/baseline
+        run: |
+          set -uo pipefail
+          mkdir -p "$REPORT_DIR"
+          failed=0
+          for scenario in sim/scenarios/*.txt; do
+            name="$(basename "$scenario" .txt)"
+            baseline="$BASELINE_DIR/$name.json"
+            report="$REPORT_DIR/$name.json"
+
+            if [ ! -f "$baseline" ]; then
+              echo "$name: no baseline at $baseline. Add one with the plan 63 flow." >&2
+              failed=1
+              continue
+            fi
+
+            if ! ./sim/build/furble-sim --script "$scenario" --report-dir "$REPORT_DIR"; then
+              echo "$name: simulator run failed." >&2
+              failed=1
+              continue
+            fi
+
+            if [ ! -f "$report" ]; then
+              echo "$name: scenario produced no report at $report." >&2
+              failed=1
+              continue
+            fi
+
+            # compare.py exits 0 on pass, 1 on a regression over threshold, and
+            # 2 on a read or schema error. It prints the scenario, both current
+            # and baseline mA, and the percentage delta on every run, so the log
+            # already names which scenario diverged and by how much.
+            if ! python3 tools/power-model/compare.py "$report" "$baseline"; then
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "Power model gate failed. One or more scenarios regressed or lacked a baseline." >&2
+            exit 1
+          fi
+          echo "All scenarios stayed within the plan 63 baseline threshold."
