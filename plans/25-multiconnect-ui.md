@@ -450,3 +450,81 @@ and are untested. State this in the PR body.
   https://docs.m5stack.com/en/core/StickS3
 - PlatformIO, device monitor, for on-device logs during page testing:
   https://docs.platformio.org/en/latest/core/userguide/device/cmd_monitor.html
+
+## Hardware verification, pass 3, 2026-08-18
+
+Verdict: PARTIAL. Tested on the combined image (version `hwv3`, app
+`v3.9.1-159-g138dd80`) on the M5StickS3 over USB, with a Fujifilm X100VI as the
+live camera (saved index 1) and a saved Fujifilm X-E5 (index 0).
+
+Console evidence:
+
+- `settings list` shows both `multiconnect` (bool, `Multi-Connect`) and
+  `multiselect` (struct, `Multi-Select`, `applies: on reboot`, wire id 0). The
+  remembered selection blob is present and, being a persisted struct, survives a
+  reboot at the settings layer.
+- `cameras list` returns the two saved cameras with names and types. `cameras
+  status` returns per target name and `connected` flags, the data the Cameras
+  page renders.
+- RSSI is reachable. Connection RSSI shows in the logs while connected (for
+  example the adaptive TX log `Adaptive RSSI -74.6 dBm` and idle values near
+  -70 dBm), which is the same client RSSI the Cameras page reads through the new
+  `Camera::getRSSI()` accessor.
+
+Still on the user checklist, needs eyes, fingers and a second camera:
+
+- Multi-Connect selection list with the Connect count in the button label, the
+  disable when count is zero, and the pre-tick of the remembered set after a
+  reboot.
+- The Cameras status page rows, states and RSSI values while connected.
+- The residual race check: power cycle the camera 5 or 6 times with the Cameras
+  page open and confirm no multi second UI freeze.
+
+Cross cutting stability note for the combined image (affects the whole
+integration, not only this PR):
+
+1. Boot task watchdog. Every boot of the `hwv3` combined image tripped a single
+   `task_wdt` at about 8 s: the main task stalled for roughly 5 s during UI
+   construction and starved the CPU 0 IDLE task, then recovered and ran normally.
+   It reproduced across a fresh flash, a warm reboot and with `imu false`. No
+   plain master or `combined3` boot log in the bench archive shows this. The
+   LVGL invalidation rate at boot (359 per second) is normal, master boots show
+   360 to 570 per second, so the storm is not the cause. Because the four merged
+   branches all touch UI construction, this may be a merge resolution artifact of
+   the combined test image rather than a single PR defect. It should be isolated
+   per branch before merge.
+2. Disconnect during connect hang. Issuing a console `disconnect` immediately
+   followed by `connect` while the X100VI was connected de-enumerated the device
+   from USB entirely (`AppleUSBSerial = 0`, no 303a device present), matching the
+   reconnect cancel deadlock documented in the repo CLAUDE.md. Recovery needs the
+   physical rescue: hold the side button while replugging USB until the green LED
+   flashes, then reflash. None of these four PRs change the reconnect state
+   machine (this PR explicitly leaves it alone), so this is most likely a pre
+   existing reconnect path hazard exposed by back to back console commands rather
+   than a regression from these PRs. It still needs a fix before the reconnect UX
+   work lands.
+
+Lifecycle and camera walk evidence captured on this image (feeds reconnect and
+connection UX diagnosis):
+
+- Good connect to the X100VI (Secure path): scan match, `Connecting to
+  58:5E:B0:EF:23:76`, GATT `Connected` at about 1.2 s, then `Requesting status`,
+  `Status: 16552300`, `Responding status with 16552320`, then subscribe to
+  notifications 1 through 11 (8 and 10 fail to subscribe), first notification
+  (2 bytes) from `c95d91ae-b247-4d6d-8661-7dd5d6a0f85b`, then the periodic 2 byte
+  notification from `ad06c7b7-f41a-46f4-a29a-712055319122`. Full setup completes
+  about 6 s after `Connected`.
+- Connection UX (task 39): furble commits to `Connected` at the GATT layer about
+  1.2 s in, but the status handshake and 11 notification subscriptions run for
+  about 6 s more. The connecting overlay lingering past the real connect lines up
+  with the UI holding the overlay until this setup finishes.
+- Secure path confirm (plans/75, PR 70): on the X100VI there is no confirm wait.
+  furble declares connected right after the GATT connect. The Fujifilm status
+  characteristic value in the registered, awake state read `16552300` and furble
+  answered `16552320`. The unregistered comparison, camera in its settings menu,
+  needs the user and is on the checklist below.
+- Shutter fires on the X100VI: `shutterPress(X100VI)` and `shutterRelease(X100VI)`
+  log cleanly with no error. Physical capture confirmation needs the user.
+- Reconnect backoff (feat/62): after a drop the log shows `Timeout waiting for
+  camera` then `Reconnect retry N, waiting 5000 ms`, the 5 s infinite reconnect
+  interval.

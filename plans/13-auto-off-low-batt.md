@@ -170,3 +170,41 @@ specific code is touched. State that in the PR body.
   https://raw.githubusercontent.com/m5stack/M5Unified/master/src/M5Unified.cpp
 - M5PM1 driver, `shutdown()` and battery read:
   https://raw.githubusercontent.com/m5stack/M5PM1/main/src/M5PM1.h
+
+## Hardware verification, pass 3, 2026-08-18
+
+Verdict: PARTIAL. Tested on the combined image (version `hwv3`, app
+`v3.9.1-159-g138dd80`) on the M5StickS3 over USB.
+
+Console evidence:
+
+- `settings set auto_off 5` then `settings get auto_off` returns `value: 5`,
+  name `Auto off`, `type: uint8`, `applies: immediately`. 5 is the shortest non
+  zero option. Wire id 37.
+- `settings set low_batt 1` then `settings get low_batt` returns `value: 1`,
+  name `Low battery`, `type: uint8`, `applies: immediately`. 1 is warn. Wire id
+  38.
+- Both survive a reboot (`auto_off` reads 5 and `low_batt` reads 1 after a power
+  cycle).
+- `applies: immediately` confirms both policies are read live by the running 1 s
+  timer, no reboot needed. The `status` command is the power and battery
+  readout: it returns live `battery`, `voltage` and `current` (for example
+  `battery: 100 voltage: 4110 current: 0`), which is the same sampled level the
+  low battery check consumes. During the connected and idle test window the
+  device did not spuriously power off.
+
+Not reachable over console, on the user checklist:
+
+- The real auto power off fire needs the device disconnected and untouched for
+  the full 5 minutes, which powers the device off and ends console access. The
+  code logs `ESP_LOGI("ui", "Auto power off after %u minutes idle.")` at fire
+  time. Run this on the bench and confirm the log line and the power off.
+- The low battery warning box needs a genuine low battery. It cannot be forced
+  from the console. Drain the battery below 10 percent and confirm one warning
+  box appears, that nothing shows while charging, and, for the modal focus fix,
+  that dismissing the box restores focus to the page underneath rather than
+  leaving the UI unfocused.
+
+Combined image caveat: this build tripped a one shot boot task watchdog and a
+disconnect during connect hang. See the cross cutting note in plans/25. Neither
+is attributed to this PR's policy code.
