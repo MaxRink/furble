@@ -53,6 +53,18 @@ Camera *Control::Target::getCamera(void) const {
 }
 
 void Control::Target::sendCommand(cmd_t cmd) {
+  if (cmd == CMD_DISCONNECT) {
+    // CMD_DISCONNECT must never be dropped. Losing it strands the target task in
+    // its command loop and hangs disconnect(). The transient commands still in
+    // the queue (shutter, focus, GPS) are moot once we are tearing down, so
+    // clear the queue and place the disconnect at the front for immediate
+    // delivery. Reset guarantees space, so this never blocks the caller and
+    // never fails on a full queue.
+    xQueueReset(m_Queue);
+    xQueueSendToFront(m_Queue, &cmd, 0);
+    return;
+  }
+
   BaseType_t ret = xQueueSend(m_Queue, &cmd, 0);
   if (ret != pdTRUE) {
     ESP_LOGE(LOG_TAG, "Failed to send command to target.");
@@ -402,21 +414,43 @@ bool Control::disconnect(uint32_t timeout_ms) {
 
   const TickType_t start = xTaskGetTickCount();
   const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+  bool completed = true;
   while (!disconnectComplete()) {
     if ((timeout == 0) || (xTaskGetTickCount() - start >= timeout)) {
-      ESP_LOGW(LOG_TAG, "Camera disconnect timed out after %lu ms.", timeout_ms);
-      return false;
+      ESP_LOGW(LOG_TAG, "Camera disconnect timed out after %lu ms, forcing completion.",
+               timeout_ms);
+      completed = false;
+      break;
     }
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    // Force-complete on timeout so Control never stays wedged in
+    // STATE_DISCONNECTING. The underlying BLE teardown may still be in flight,
+    // but Control ends in a recoverable state so a later CMD_CONNECT is honored.
+    //
+    // Mark every remaining target stopped before destroying it. ~Target() only
+    // issues its own Camera::disconnect() when m_Stopped is false, so this
+    // prevents a second disconnect racing the one the target task is already
+    // running. CMD_DISCONNECT is enqueued undroppably above and jumps the queue,
+    // so a target that has not stopped is blocked inside Camera::disconnect(),
+    // past its last queue read; deleting the queue in ~Target() is therefore
+    // safe. On the clean path every target is already stopped and this loop is a
+    // no-op.
+    if (!completed) {
+      for (const auto &target : m_Targets) {
+        target->m_Stopped = true;
+      }
+    }
+
     m_Targets.clear();
     m_ConnectCamera = nullptr;
   }
   setState(STATE_IDLE);
-  return true;
+  return completed;
 }
 
 void Control::addActive(Camera *camera) {

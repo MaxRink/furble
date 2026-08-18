@@ -41,8 +41,31 @@ timeout and shorter than the conn-saver case.
 - `Control::disconnect()` keeps the existing abort and GAP cancel behavior. The
   target task performs `Camera::disconnect()` before it reports stopped. The
   control task checks completion in short slices and never holds `m_Mutex`
-  during a delay. It clears targets only after target tasks, the connection
-  attempt, and camera connection state have all completed.
+  during a delay. On the clean path it clears targets only after target tasks,
+  the connection attempt, and camera connection state have all completed.
+- Bounded force-completing disconnect (plans/96 batch 1, items B2 and B3). The
+  earlier bounded timeout returned early and left `Control` in
+  `STATE_DISCONNECTING` with `m_Targets` and `m_ConnectCamera` intact. The
+  control task then discarded every later command, including `CMD_CONNECT`, so
+  connect was dead until reboot. On timeout `disconnect()` now force-completes:
+  it marks each remaining target stopped, clears `m_Targets` and
+  `m_ConnectCamera` under the mutex, moves to `STATE_IDLE`, and logs the forced
+  completion. The underlying BLE teardown may still be in flight, but `Control`
+  always ends in a recoverable state with an exit edge out of
+  `STATE_DISCONNECTING`. `disconnect()` returns `false` only to report that the
+  wait did not finish cleanly; `prepareRestart()` still logs and continues, and
+  `UI::doDisconnect()` needs no return handling because the state is guaranteed
+  recoverable.
+- Undroppable `CMD_DISCONNECT` (plans/96 batch 1, item B2). `Target::sendCommand`
+  previously used a zero-timeout `xQueueSend` that could silently drop a full
+  queue. A dropped `CMD_DISCONNECT` stranded the target task in its command
+  loop and hung the disconnect. `CMD_DISCONNECT` now resets the target queue and
+  places itself at the front, so it is delivered immediately and cannot be lost.
+  The transient shutter, focus, and GPS commands it clears are moot once
+  teardown begins. This pairing is what makes the force-complete safe: a target
+  that has not reported stopped is blocked inside `Camera::disconnect()`, past
+  its last queue read, so destroying its queue in `~Target()` does not touch a
+  task that is still waiting on it.
 - The first infinite-reconnect retry waits 17 seconds. This gives a one second
   margin over the 16 second conn-saver case and is also longer than master's
   5.12 second timeout. Later retries retain the existing 5, 10, 20, 40, 80,
