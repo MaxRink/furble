@@ -159,6 +159,17 @@ class Control {
   bool disconnectComplete(void);
 
   /**
+   * Destroy quarantined targets whose task has finished.
+   *
+   * Control task only. Takes m_Mutex. A target force-completed while its task
+   * was still tearing down the camera is held in m_ZombieTargets, not freed,
+   * because that task still writes m_Stopped through its own object. Once
+   * m_Stopped has flipped the task no longer touches the object, so it is safe
+   * to destroy and ~Target() skips its radio call. No radio calls, no delays.
+   */
+  void reapZombieTargets(void);
+
+  /**
    * Move to a new state and update the light sleep lock to match.
    *
    * Every state change goes through here, that is what keeps the lock balanced.
@@ -193,6 +204,12 @@ class Control {
   QueueHandle_t m_Queue = NULL;
   mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
+
+  // Targets force-completed while their task was still tearing down the camera.
+  // Held here, not freed, until the task sets m_Stopped and stops touching its
+  // object. Reaped by reapZombieTargets() on the control task. Guarded by
+  // m_Mutex.
+  std::vector<std::unique_ptr<Control::Target>> m_ZombieTargets;
 
   bool m_InfiniteReconnect = false;
   bool m_ReconnectBackoff = false;

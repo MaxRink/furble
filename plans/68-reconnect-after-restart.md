@@ -48,14 +48,25 @@ timeout and shorter than the conn-saver case.
   `STATE_DISCONNECTING` with `m_Targets` and `m_ConnectCamera` intact. The
   control task then discarded every later command, including `CMD_CONNECT`, so
   connect was dead until reboot. On timeout `disconnect()` now force-completes:
-  it marks each remaining target stopped, clears `m_Targets` and
-  `m_ConnectCamera` under the mutex, moves to `STATE_IDLE`, and logs the forced
-  completion. The underlying BLE teardown may still be in flight, but `Control`
-  always ends in a recoverable state with an exit edge out of
-  `STATE_DISCONNECTING`. `disconnect()` returns `false` only to report that the
-  wait did not finish cleanly; `prepareRestart()` still logs and continues, and
-  `UI::doDisconnect()` needs no return handling because the state is guaranteed
-  recoverable.
+  it clears `m_ConnectCamera`, moves to `STATE_IDLE`, and logs the forced
+  completion, so `Control` always ends in a recoverable state with an exit edge
+  out of `STATE_DISCONNECTING`. `disconnect()` returns `false` only to report
+  that the wait did not finish cleanly; `prepareRestart()` still logs and
+  continues, and `UI::doDisconnect()` needs no return handling because the state
+  is guaranteed recoverable.
+- Target lifetime on force-complete. A target whose `m_Stopped` is still false at
+  the timeout has a live task blocked inside `Camera::disconnect()`, and that
+  task will still write `m_Stopped` through its own object when it returns.
+  Freeing the object then would be a use-after-free that the allocator can hand
+  to a reconnecting target, which is the brick-class corruption the design must
+  avoid. So force-complete does not destroy unstopped targets. It moves them into
+  `m_ZombieTargets` under the mutex and destroys only the already-stopped ones.
+  The control task calls `reapZombieTargets()` each 50 ms tick and frees a zombie
+  only once its `m_Stopped` has flipped, at which point the task has run
+  `task_exit` and no longer touches the object. `~Target()` issues its camera
+  disconnect only while `m_Stopped` is false, so neither the immediate destroy
+  nor the reaper ever makes a radio call, and no radio call runs under
+  `m_Mutex`.
 - Undroppable `CMD_DISCONNECT` (plans/96 batch 1, item B2). `Target::sendCommand`
   previously used a zero-timeout `xQueueSend` that could silently drop a full
   queue. A dropped `CMD_DISCONNECT` stranded the target task in its command

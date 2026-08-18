@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <array>
+#include <utility>
 
 #include "Device.h"
 
@@ -264,6 +266,12 @@ Control::state_t Control::connectAll(void) {
 
 void Control::task(void) {
   while (true) {
+    // Free any target that was force-completed on a disconnect timeout and whose
+    // teardown task has since finished. Runs every 50 ms tick regardless of
+    // state, so quarantined objects never linger and are never freed while their
+    // task can still touch them.
+    reapZombieTargets();
+
     cmd_t cmd;
     BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
 
@@ -432,25 +440,50 @@ bool Control::disconnect(uint32_t timeout_ms) {
     // STATE_DISCONNECTING. The underlying BLE teardown may still be in flight,
     // but Control ends in a recoverable state so a later CMD_CONNECT is honored.
     //
-    // Mark every remaining target stopped before destroying it. ~Target() only
-    // issues its own Camera::disconnect() when m_Stopped is false, so this
-    // prevents a second disconnect racing the one the target task is already
-    // running. CMD_DISCONNECT is enqueued undroppably above and jumps the queue,
-    // so a target that has not stopped is blocked inside Camera::disconnect(),
-    // past its last queue read; deleting the queue in ~Target() is therefore
-    // safe. On the clean path every target is already stopped and this loop is a
-    // no-op.
+    // A target with m_Stopped == false has not finished: its task dequeued the
+    // undroppable CMD_DISCONNECT and is blocked inside Camera::disconnect(),
+    // which can outlast the timeout while an aborting connect() unwinds the
+    // Camera mutex. That task will still write m_Stopped = true through its own
+    // `this` when it returns, so freeing the object now is a use-after-free.
+    // Quarantine those targets in m_ZombieTargets instead of destroying them and
+    // reap them from the control task once m_Stopped flips. Targets that already
+    // stopped are safe to destroy here; their task is gone.
+    //
+    // ~Target() calls m_Camera->disconnect() (a radio call) only when m_Stopped
+    // is false. We never destroy an m_Stopped == false target (it is moved to
+    // the zombie list instead), so no ~Target() destroyed here or by the reaper
+    // ever makes a radio call, which is also what keeps a radio call from
+    // running under m_Mutex.
     if (!completed) {
-      for (const auto &target : m_Targets) {
-        target->m_Stopped = true;
+      for (auto &target : m_Targets) {
+        if (!target->m_Stopped) {
+          m_ZombieTargets.push_back(std::move(target));
+        }
       }
     }
 
+    // Destroys the stopped targets and drops the moved-from slots. On the clean
+    // path every target is stopped, so this frees them all and quarantines none.
     m_Targets.clear();
     m_ConnectCamera = nullptr;
   }
   setState(STATE_IDLE);
   return completed;
+}
+
+void Control::reapZombieTargets(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  // A zombie's task was blocked inside Camera::disconnect() when we force
+  // completed. task_exit writes m_Stopped = true and then only calls
+  // vTaskDelete(NULL), which touches the task handle, not the Target object.
+  // Once m_Stopped reads true the task can no longer touch `this`, so the object
+  // is safe to free, and ~Target() skips its radio call because m_Stopped is
+  // set. Leave any zombie still tearing down for a later sweep.
+  m_ZombieTargets.erase(
+      std::remove_if(m_ZombieTargets.begin(), m_ZombieTargets.end(),
+                     [](const std::unique_ptr<Target> &target) { return target->m_Stopped; }),
+      m_ZombieTargets.end());
 }
 
 void Control::addActive(Camera *camera) {
