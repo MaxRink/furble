@@ -550,6 +550,8 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_RATE:
     case Settings::GPS_NMEA:
     case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
       GPS::getInstance().reloadSetting();
       break;

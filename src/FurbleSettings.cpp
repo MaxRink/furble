@@ -94,6 +94,9 @@ bool Settings::appliesImmediately(type_t type) {
     case SCAN_MODE:
     case SCAN_TIMEOUT:
     case TX_ADAPTIVE:
+    // TX_POWER takes effect live: the companion and console reload paths call
+    // Control::setPower on save, so no restart is required to apply it.
+    case TX_POWER:
     case GPS_POWER:
     case GPS_DUTY:
     case IR:
@@ -105,7 +108,6 @@ bool Settings::appliesImmediately(type_t type) {
     case INACTIVITY:
     case DISPLAY_OFF:
     case THEME:
-    case TX_POWER:
     case INTERVAL:
     case TOUCH_CALIBRATION:
     case SHOW_TITLE:
