@@ -3,6 +3,8 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
+#include <mutex>
 
 #include <esp_err.h>
 #include <esp_pm.h>
@@ -20,6 +22,22 @@ class Power {
     CPU_FREQ_MAX = 1,
     APB_FREQ_MAX = 2,
   };
+
+  static constexpr size_t LOCK_COUNT = 3;
+  static constexpr size_t OWNER_SLOTS = 8;
+
+  typedef struct {
+    const char *owner;
+    uint32_t acquires;
+  } owner_stats_t;
+
+  typedef struct {
+    uint32_t count;
+    uint32_t totalAcquires;
+    int64_t heldSinceUs;
+    uint64_t totalHeldUs;
+    std::array<owner_stats_t, OWNER_SLOTS> owners;
+  } stats_t;
 
   /**
    * Hold a power management lock for the lifetime of the object.
@@ -82,25 +100,44 @@ class Power {
    */
   const char *getName(LockType type) const;
 
+  /**
+   * Get a consistent snapshot of one lock's counters.
+   *
+   * totalHeldUs includes the current hold, if the lock is held when the
+   * snapshot is taken.
+   */
+  stats_t getStats(LockType type) const;
+
  private:
   Power() {};
+
+  typedef struct {
+    const char *owner = nullptr;
+    uint32_t acquires = 0;
+  } owner_t;
 
   typedef struct {
     const esp_pm_lock_type_t type;
     const char *const name;
     esp_pm_lock_handle_t handle;
     std::atomic<uint32_t> count;
+    std::atomic<uint32_t> totalAcquires;
+    std::atomic<int64_t> heldSinceUs;
+    std::atomic<int64_t> totalHeldUs;
+    std::array<owner_t, OWNER_SLOTS> owners;
   } lock_t;
 
   const lock_t &getLock(LockType type) const;
   lock_t &getLock(LockType type);
+  static void recordOwner(lock_t &lock, const char *owner);
 
   bool m_Init = false;
+  mutable std::mutex m_StatsMutex;
 
-  std::array<lock_t, 3> m_Locks = {
-      lock_t {ESP_PM_NO_LIGHT_SLEEP, "no_light_sleep", nullptr, 0},
-      lock_t {ESP_PM_CPU_FREQ_MAX,   "cpu_freq_max",   nullptr, 0},
-      lock_t {ESP_PM_APB_FREQ_MAX,   "apb_freq_max",   nullptr, 0},
+  std::array<lock_t, LOCK_COUNT> m_Locks = {
+      lock_t {ESP_PM_NO_LIGHT_SLEEP, "no_light_sleep", nullptr, 0, 0, 0, 0, {}},
+      lock_t {ESP_PM_CPU_FREQ_MAX,   "cpu_freq_max",   nullptr, 0, 0, 0, 0, {}},
+      lock_t {ESP_PM_APB_FREQ_MAX,   "apb_freq_max",   nullptr, 0, 0, 0, 0, {}},
   };
 };
 }  // namespace Furble

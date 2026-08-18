@@ -40,6 +40,7 @@ class UI {
     IR_RELOAD,       /**< arg: unused */
     FEEDBACK_RELOAD, /**< arg: unused */
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
+    PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
   };
 
   /**
@@ -150,6 +151,7 @@ class UI {
     lv_obj_t *powerSleep;
     lv_obj_t *ble;
     std::string bleText;
+    std::array<lv_obj_t *, 3> powerLocks;
   } diagnostics_t;
 
   /**

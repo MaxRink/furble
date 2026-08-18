@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include <M5PM1.h>
 #include <M5Unified.h>
@@ -336,6 +337,36 @@ Platform::battery_t Platform::readBattery(void) {
 #endif
 
   return battery;
+}
+
+Platform::battery_sample_t Platform::sampleBattery(void) {
+  const std::lock_guard<std::mutex> guard(m_BatteryMutex);
+  const auto &caps = m_BatteryCaps;
+  const battery_t battery = readBattery();
+
+  if (!m_BatterySampleInitialized) {
+    m_BatterySample.meanLevel = battery.level;
+    m_BatterySample.meanVoltage = battery.voltage;
+    m_BatterySample.meanCurrent = battery.current;
+    m_BatterySampleInitialized = true;
+  } else {
+    m_BatterySample.meanLevel += (battery.level - m_BatterySample.meanLevel) / 4.0f;
+    if (caps.voltage) {
+      m_BatterySample.meanVoltage += (battery.voltage - m_BatterySample.meanVoltage) / 4.0f;
+    }
+    if (caps.current) {
+      m_BatterySample.meanCurrent += (battery.current - m_BatterySample.meanCurrent) / 12.0f;
+    }
+  }
+
+  m_BatterySample.battery = battery;
+  m_BatterySample.displayLevel = lroundf(m_BatterySample.meanLevel);
+  return m_BatterySample;
+}
+
+Platform::battery_sample_t Platform::getBatterySample(void) const {
+  const std::lock_guard<std::mutex> guard(m_BatteryMutex);
+  return m_BatterySample;
 }
 
 void Platform::update(void) {

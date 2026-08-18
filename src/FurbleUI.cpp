@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <numeric>
 #include <tuple>
 
@@ -11,6 +12,9 @@
 #include <esp_sleep.h>
 #include <esp_system.h>
 #include <lvgl.h>
+#if defined(FURBLE_CONSOLE)
+#include <lvgl_private.h>
+#endif
 #include <src/themes/lv_theme_private.h>
 
 #include <Device.h>
@@ -63,6 +67,19 @@ void addToInputGroup(lv_group_t *group, lv_obj_t *obj) {
   if ((group != nullptr) && (obj != nullptr) && (lv_obj_get_group(obj) != group)) {
     lv_group_add_obj(group, obj);
   }
+}
+
+void setLabelIfChanged(lv_obj_t *label, const char *text) {
+  if ((label != nullptr) && std::strcmp(lv_label_get_text(label), text)) {
+    lv_label_set_text(label, text);
+  }
+}
+
+template <typename... Args>
+void setLabelIfChangedFmt(lv_obj_t *label, const char *format, Args... args) {
+  char text[128];
+  std::snprintf(text, sizeof(text), format, args...);
+  setLabelIfChanged(label, text);
 }
 }  // namespace
 
@@ -205,6 +222,12 @@ UI::UI(const interval_t &interval)
   lv_display_set_buffers(m_Display, m_Buffer1, m_Buffer2, BUFFER_SIZE,
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
 
+#if defined(FURBLE_CONSOLE) && defined(CONFIG_LV_USE_PERF_MONITOR)
+  // Create the sysmon label and timer, then keep the overlay hidden by default.
+  lv_sysmon_show_performance(m_Display);
+  lv_sysmon_hide_performance(m_Display);
+#endif
+
 #if defined(FURBLE_CONSOLE)
   // diagnostic: log what invalidates, rate limited to avoid flooding
   lv_display_add_event_cb(
@@ -252,11 +275,12 @@ UI::UI(const interval_t &interval)
   m_Status.screenLocked = false;
 
   // prime the battery cache before anything renders it
-  m_Status.battery = Platform::getInstance().readBattery();
-  m_Status.meanLevel = m_Status.battery.level;
-  m_Status.meanVoltage = m_Status.battery.voltage;
-  m_Status.meanCurrent = m_Status.battery.current;
-  m_Status.displayLevel = m_Status.battery.level;
+  const auto sample = Platform::getInstance().sampleBattery();
+  m_Status.battery = sample.battery;
+  m_Status.meanLevel = sample.meanLevel;
+  m_Status.meanVoltage = sample.meanVoltage;
+  m_Status.meanCurrent = sample.meanCurrent;
+  m_Status.displayLevel = sample.displayLevel;
   lv_label_set_text_fmt(m_Status.batteryLabel, "%u%%", m_Status.displayLevel);
   setBatteryStyle(Settings::load<Settings::BATT_STYLE>());
   setShowTitle(Settings::load<Settings::SHOW_TITLE>());
@@ -1931,6 +1955,36 @@ void UI::serviceRequests(void) {
         // Runs here because signal() touches the LVGL feedback timer.
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
+
+      case Request::PERF:
+#if defined(CONFIG_LV_USE_PERF_MONITOR)
+      {
+        lv_display_t *display = lv_display_get_default();
+        if (display == nullptr) {
+          printf("error: no LVGL display\n");
+          break;
+        }
+
+        if (item.arg < 0) {
+          lv_sysmon_performance_dump(display);
+          const auto &perf = display->perf_sysmon_info.calculated;
+          printf("lvgl.fps: %lu\n", static_cast<unsigned long>(perf.fps));
+          printf("lvgl.cpu_pct: %lu\n", static_cast<unsigned long>(perf.cpu));
+          printf("lvgl.render_avg_ms: %lu\n", static_cast<unsigned long>(perf.render_avg_time));
+          printf("lvgl.flush_avg_ms: %lu\n", static_cast<unsigned long>(perf.flush_avg_time));
+        } else if (item.arg != 0) {
+          lv_sysmon_show_performance(display);
+          printf("lvgl.overlay: on\n");
+        } else {
+          lv_sysmon_hide_performance(display);
+          printf("lvgl.overlay: off\n");
+        }
+        break;
+      }
+#else
+        printf("error: LVGL performance monitor is not enabled\n");
+        break;
+#endif
     }
   }
 }
@@ -3194,29 +3248,22 @@ void UI::setShowTitle(bool show) {
 void UI::batteryUpdate(lv_timer_t *timer) {
   auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
   auto &platform = Platform::getInstance();
+
   const auto &caps = platform.getBatteryCaps();
 
-  status->battery = platform.readBattery();
-
-  // the raw readings jitter by a few percent, smooth everything that is
-  // displayed with an exponentially weighted moving average
-  status->meanLevel += (status->battery.level - status->meanLevel) / 4.0f;
-  status->displayLevel = lroundf(status->meanLevel);
+  // sampleBattery() smooths level/voltage/current with an EWMA internally and
+  // honours the battery caps, so the mean values are pulled straight from it.
+  const auto sample = platform.sampleBattery();
+  status->battery = sample.battery;
+  status->meanLevel = sample.meanLevel;
+  status->meanVoltage = sample.meanVoltage;
+  status->meanCurrent = sample.meanCurrent;
+  status->displayLevel = sample.displayLevel;
 
   if (caps.level) {
     // feed the smoothed level, the raw reading jitters across the threshold
     Feedback::getInstance().updateBattery(status->displayLevel,
                                           caps.charging && status->battery.charging);
-  }
-
-  if (caps.voltage) {
-    status->meanVoltage += (status->battery.voltage - status->meanVoltage) / 4.0f;
-  }
-
-  if (caps.current) {
-    // a slower average, a runtime estimate from a twitchy current is useless,
-    // at the 5s sample period this is a time constant of about a minute
-    status->meanCurrent += (status->battery.current - status->meanCurrent) / 12.0f;
   }
 
   if (status->batteryLevel != nullptr) {
@@ -3721,36 +3768,34 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
   uint32_t heap = esp_get_free_heap_size();
   uint32_t minimum = esp_get_minimum_free_heap_size();
 
-  if (diagnostics->aboutUptime != nullptr) {
-    lv_label_set_text_fmt(diagnostics->aboutUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
-                          hms.minutes, hms.seconds);
-  }
-
-  if (diagnostics->aboutHeap != nullptr) {
-    lv_label_set_text_fmt(diagnostics->aboutHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
-  }
-
-  if (diagnostics->deviceUptime != nullptr) {
-    lv_label_set_text_fmt(diagnostics->deviceUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
-                          hms.minutes, hms.seconds);
-  }
-
-  if (diagnostics->deviceHeap != nullptr) {
-    lv_label_set_text_fmt(diagnostics->deviceHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
-  }
+  setLabelIfChangedFmt(diagnostics->aboutUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
+                       hms.minutes, hms.seconds);
+  setLabelIfChangedFmt(diagnostics->aboutHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
+  setLabelIfChangedFmt(diagnostics->deviceUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
+                       hms.minutes, hms.seconds);
+  setLabelIfChangedFmt(diagnostics->deviceHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
 
   if ((diagnostics->powerFrequency != nullptr) || (diagnostics->powerSleep != nullptr)) {
     auto pm = platform.getPMConfig();
 
-    if (diagnostics->powerFrequency != nullptr) {
-      lv_label_set_text_fmt(diagnostics->powerFrequency, "CPU:\n%u to %u MHz", pm.min_freq_mhz,
-                            pm.max_freq_mhz);
+    setLabelIfChangedFmt(diagnostics->powerFrequency, "CPU:\n%u to %u MHz", pm.min_freq_mhz,
+                         pm.max_freq_mhz);
+    setLabelIfChangedFmt(diagnostics->powerSleep, "Light sleep:\n%s",
+                         pm.light_sleep_enable ? "on" : "off");
+  }
+
+  auto &power = Power::getInstance();
+  for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
+    if (diagnostics->powerLocks[n] == nullptr) {
+      continue;
     }
 
-    if (diagnostics->powerSleep != nullptr) {
-      lv_label_set_text_fmt(diagnostics->powerSleep, "Light sleep:\n%s",
-                            pm.light_sleep_enable ? "on" : "off");
-    }
+    const auto type = static_cast<Power::LockType>(n);
+    const auto stats = power.getStats(type);
+    setLabelIfChangedFmt(diagnostics->powerLocks[n], "%s:\ncount %lu, acquires %lu\nheld %llu ms",
+                         power.getName(type), static_cast<unsigned long>(stats.count),
+                         static_cast<unsigned long>(stats.totalAcquires),
+                         static_cast<unsigned long long>(stats.totalHeldUs / 1000));
   }
 
   if (diagnostics->ble != nullptr) {
@@ -3995,6 +4040,9 @@ void UI::addPowerStateMenu(const menu_t &parent) {
   // filled in by the diagnostics timer whenever the page is open
   m_Diagnostics.powerFrequency = addInfoRow(cont);
   m_Diagnostics.powerSleep = addInfoRow(cont);
+  for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
+    m_Diagnostics.powerLocks[n] = addInfoRow(cont);
+  }
 
   lv_obj_t *tickless = addInfoRow(cont);
   lv_label_set_text_fmt(tickless, "Tickless idle:\n%s", Platform::hasTicklessIdle() ? "yes" : "no");
@@ -4011,7 +4059,7 @@ void UI::addPowerStateMenu(const menu_t &parent) {
       dump, [](lv_event_t *e) { Platform::getInstance().dumpPMLocks(); }, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *console = addInfoRow(cont);
-  lv_label_set_text(console, "Locks go to the serial console, without hold times.");
+  lv_label_set_text(console, "Detailed lock stats go to the serial console.");
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
