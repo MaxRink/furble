@@ -2,6 +2,7 @@
 
 #if defined(FURBLE_CONSOLE)
 
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -24,6 +25,8 @@
 #include "CameraList.h"
 #include "Scan.h"
 
+#include "Camera.h"
+#include "FurbleBtDebug.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
@@ -742,6 +745,214 @@ int cmdScan(int argc, char **argv) {
   return fail("expected start, stop or list");
 }
 
+bool parseBtAddress(const char *text) {
+  if ((text == nullptr) || (strlen(text) != 17)) {
+    return false;
+  }
+  for (size_t index = 0; index < 17; index++) {
+    if (((index % 3) == 2) && (text[index] != ':')) {
+      return false;
+    }
+    if (((index % 3) != 2) && !isxdigit(static_cast<unsigned char>(text[index]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool parseBtPairMode(const char *text, BtDebug::PairMode &mode) {
+  if (!strcasecmp(text, "none")) {
+    mode = BtDebug::PairMode::NONE;
+    return true;
+  }
+  if (!strcasecmp(text, "just-works") || !strcasecmp(text, "justworks")
+      || !strcasecmp(text, "bond")) {
+    mode = BtDebug::PairMode::JUST_WORKS;
+    return true;
+  }
+  if (!strcasecmp(text, "numeric-display") || !strcasecmp(text, "numeric-display-passthrough")
+      || !strcasecmp(text, "numeric") || !strcasecmp(text, "passkey")) {
+    mode = BtDebug::PairMode::NUMERIC_DISPLAY;
+    return true;
+  }
+  return false;
+}
+
+bool parseBtSeconds(const char *text, uint32_t &seconds) {
+  char *end = nullptr;
+  unsigned long value = strtoul(text, &end, 0);
+  if ((end == text) || (*end != '\0') || (value < 1) || (value > 3600)) {
+    return false;
+  }
+  seconds = static_cast<uint32_t>(value);
+  return true;
+}
+
+bool parseBtKey(const char *text, uint32_t &key) {
+  if ((text == nullptr) || (strlen(text) != 6)) {
+    return false;
+  }
+  key = 0;
+  for (size_t index = 0; index < 6; index++) {
+    if ((text[index] < '0') || (text[index] > '9')) {
+      return false;
+    }
+    key = (key * 10) + static_cast<uint32_t>(text[index] - '0');
+  }
+  return true;
+}
+
+int cmdBt(int argc, char **argv) {
+  if (argc < 2) {
+    return fail(
+        "usage: bt scan [seconds|all [seconds]] | explore <addr> | pair yes|no|key <digits> | "
+        "journal on|off|dump [n]|clear");
+  }
+
+  if (!strcmp(argv[1], "scan")) {
+    if ((argc >= 3) && !strcmp(argv[2], "stop")) {
+      if (argc != 3) {
+        return fail("usage: bt scan stop");
+      }
+      return BtDebug::stopScan() ? 0 : fail("no bt scan active");
+    }
+
+    bool duplicates = false;
+    int argument = 2;
+    if ((argc >= 3) && !strcmp(argv[2], "all")) {
+      duplicates = true;
+      argument++;
+    }
+
+    uint32_t seconds = 10;
+    if (argument < argc) {
+      if ((argument + 1 != argc) || !parseBtSeconds(argv[argument], seconds)) {
+        return fail("expected 1-3600 seconds");
+      }
+    }
+    return BtDebug::startScan(seconds, duplicates) ? 0 : fail("bt scan unavailable");
+  }
+
+  if (!strcmp(argv[1], "explore")) {
+    if ((argc >= 3) && !strcmp(argv[2], "read")) {
+      if (argc != 3) {
+        return fail("usage: bt explore read");
+      }
+      return BtDebug::readExplore() ? 0 : fail("no connected bt explorer");
+    }
+
+    if ((argc >= 3) && !strcmp(argv[2], "stop")) {
+      bool keep = false;
+      if (argc == 4) {
+        keep = !strcasecmp(argv[3], "keep");
+        if (!keep) {
+          return fail("usage: bt explore stop [keep]");
+        }
+      } else if (argc != 3) {
+        return fail("usage: bt explore stop [keep]");
+      }
+      return BtDebug::stopExplore(keep) ? 0 : fail("no bt explorer active");
+    }
+
+    if ((argc < 3) || !parseBtAddress(argv[2])) {
+      return fail("usage: bt explore <aa:bb:cc:dd:ee:ff> [pair mode] [keep]");
+    }
+
+    BtDebug::PairMode mode = BtDebug::PairMode::NONE;
+    bool keep = false;
+    for (int argument = 3; argument < argc; argument++) {
+      if (!strcasecmp(argv[argument], "keep")) {
+        if (keep) {
+          return fail("duplicate keep");
+        }
+        keep = true;
+        continue;
+      }
+      if (!strcasecmp(argv[argument], "pair")) {
+        if ((argument + 1 >= argc) || !parseBtPairMode(argv[++argument], mode)) {
+          return fail("expected pair none, just-works or numeric-display-passthrough");
+        }
+        continue;
+      }
+      if (!parseBtPairMode(argv[argument], mode)) {
+        return fail("expected pair none, just-works or numeric-display-passthrough");
+      }
+    }
+
+    return BtDebug::startExplore(argv[2], mode, keep) ? 0 : fail("bt explorer unavailable");
+  }
+
+  if (!strcmp(argv[1], "pair")) {
+    if ((argc < 3) || !strcasecmp(argv[2], "yes")) {
+      if (argc != 3) {
+        return fail("usage: bt pair yes | no | key <6 digits>");
+      }
+      return BtDebug::pairConfirm(true) ? 0 : fail("no pairing confirmation pending");
+    }
+    if (!strcasecmp(argv[2], "no")) {
+      if (argc != 3) {
+        return fail("usage: bt pair yes | no | key <6 digits>");
+      }
+      return BtDebug::pairConfirm(false) ? 0 : fail("no pairing confirmation pending");
+    }
+    if (!strcasecmp(argv[2], "key")) {
+      uint32_t key = 0;
+      if ((argc != 4) || !parseBtKey(argv[3], key)) {
+        return fail("usage: bt pair key <6 digits>");
+      }
+      return BtDebug::pairKey(key) ? 0 : fail("no passkey entry pending");
+    }
+    return fail("usage: bt pair yes | no | key <6 digits>");
+  }
+
+  if (!strcmp(argv[1], "journal")) {
+    if ((argc < 3) || !strcasecmp(argv[2], "on")) {
+      if (argc != 3) {
+        return fail("usage: bt journal on|off|dump [n]|clear");
+      }
+      if (!Camera::gattJournalSetEnabled(true)) {
+        return fail("journal allocation failed");
+      }
+      printf("journal: on\n");
+      return 0;
+    }
+    if (!strcasecmp(argv[2], "off")) {
+      if (argc != 3) {
+        return fail("usage: bt journal on|off|dump [n]|clear");
+      }
+      Camera::gattJournalSetEnabled(false);
+      printf("journal: off\n");
+      return 0;
+    }
+    if (!strcasecmp(argv[2], "clear")) {
+      if (argc != 3) {
+        return fail("usage: bt journal on|off|dump [n]|clear");
+      }
+      Camera::gattJournalClear();
+      printf("journal: clear\n");
+      return 0;
+    }
+    if (!strcasecmp(argv[2], "dump")) {
+      size_t count = 0;
+      if (argc == 4) {
+        char *end = nullptr;
+        unsigned long value = strtoul(argv[3], &end, 0);
+        if ((end == argv[3]) || (*end != '\0')) {
+          return fail("usage: bt journal dump [n]");
+        }
+        count = static_cast<size_t>(value);
+      } else if (argc != 3) {
+        return fail("usage: bt journal dump [n]");
+      }
+      Camera::gattJournalDump(count);
+      return 0;
+    }
+    return fail("usage: bt journal on|off|dump [n]|clear");
+  }
+
+  return fail("expected scan, explore, pair or journal");
+}
+
 int cmdLog(int argc, char **argv) {
   if (argc < 3) {
     return fail("usage: log <tag> <none|error|warn|info|debug|verbose>");
@@ -841,6 +1052,10 @@ const esp_console_cmd_t COMMANDS[] = {
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
     command("scan", "scan start | stop | list", cmdScan),
+    command("bt",
+            "bt scan|explore|pair|journal; passive sniffing of third-party links is impossible "
+            "with NimBLE, this covers the active onboarding workflow",
+            cmdBt),
     command("feedback",
             "feedback test <shutter|countdown|connect|disconnect|battery>",
             cmdFeedback),
@@ -924,6 +1139,7 @@ void task(void) {
     uint8_t byte = 0;
 
     if (readByte(&byte) != 1) {
+      Camera::gattJournalDrain();
       continue;
     }
 
@@ -945,6 +1161,7 @@ void task(void) {
       printf("%c", byte);
     }
 
+    Camera::gattJournalDrain();
     fflush(stdout);
   }
 }

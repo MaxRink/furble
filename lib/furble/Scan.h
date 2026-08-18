@@ -65,7 +65,7 @@ class Scan: public NimBLEScanCallbacks {
    *
    * This is the pairing and reconnect path, it always scans at full duty.
    */
-  void start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration);
+  void start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates = false);
 
   /**
    * Stop the scan.

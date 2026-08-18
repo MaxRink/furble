@@ -18,6 +18,8 @@ which only the sim build defines, so firmware builds compile identical code.
   developer machines.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
   sync. Both carry a note.
+- Console-only firmware modules that have no simulator behavior still get a
+  no-capability shadow in `sim/shim`, such as `FurbleBtDebug.h`.
 
 ## Dependency resolution
 

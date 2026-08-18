@@ -33,5 +33,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
   and a wake press is swallowed until every input source reports released.
+- `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
+  independent of `Camera`, NVS, and `CameraList`; pairing input is console
+  passthrough and passive third-party sniffing is not supported by NimBLE.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.

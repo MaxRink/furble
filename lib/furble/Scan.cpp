@@ -75,12 +75,12 @@ void Scan::start(std::function<void(void *)> scanCallback,
   m_Scan->start(m_Timeout * 1000, false);
 }
 
-void Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration) {
+void Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates) {
   // pairing and reconnect ignore the user preset, a low duty cycle here turns a
   // fast reconnect into a timeout
   applyMode(Mode::FULL);
 
-  m_Scan->setScanCallbacks(pScanCallbacks);
+  m_Scan->setScanCallbacks(pScanCallbacks, wantDuplicates);
   m_Scan->start(duration, false);
 }
 

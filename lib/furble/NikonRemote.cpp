@@ -56,16 +56,17 @@ NikonRemote::NikonRemote(NimBLEClient *client,
                          QueueHandle_t queue,
                          NimBLERemoteCharacteristic *pairChr,
                          const NikonBase::Pairing::id_t &id,
-                         std::atomic<uint8_t> *progress)
-    : NikonBase(client, queue, pairChr, progress) {
+                         std::atomic<uint8_t> *progress,
+                         Camera *camera)
+    : NikonBase(client, queue, pairChr, progress, camera) {
   m_Pairing = std::make_unique<RemotePairing>(__builtin_bswap64(0x01), id);
 }
 
 bool NikonRemote::preSubscribe(NimBLERemoteService *pSvc) {
   ESP_LOGI(LOG_TAG, "Connecting as remote, subscribing to indication 1");
   auto *pChr = pSvc->getCharacteristic(REMOTE_IND1_CHR_UUID);
-  if (!pChr->subscribe(
-          false,
+  if (!gattSubscribe(
+          pChr,
           [this](NimBLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData,
                  size_t length, bool isNotify) {
 #if NIKON_DEBUG
@@ -87,12 +88,12 @@ bool NikonRemote::connectFinalise(void) {
 
 void NikonRemote::shutterPress(void) {
   std::array<uint8_t, 2> cmd = {MODE_SHUTTER, CMD_PRESS};
-  m_Client->setValue(SERVICE_UUID, REMOTE_SHUTTER_CHR_UUID, {cmd.data(), cmd.size()}, true);
+  gattWrite(SERVICE_UUID, REMOTE_SHUTTER_CHR_UUID, cmd.data(), cmd.size(), true);
 }
 
 void NikonRemote::shutterRelease(void) {
   std::array<uint8_t, 2> cmd = {MODE_SHUTTER, CMD_RELEASE};
-  m_Client->setValue(SERVICE_UUID, REMOTE_SHUTTER_CHR_UUID, {cmd.data(), cmd.size()}, true);
+  gattWrite(SERVICE_UUID, REMOTE_SHUTTER_CHR_UUID, cmd.data(), cmd.size(), true);
 }
 
 void NikonRemote::focusPress(void) {

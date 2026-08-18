@@ -93,7 +93,7 @@ bool FujifilmBasic::_connect(void) {
   if (!pChr->canWrite())
     return false;
   print_token(m_Token);
-  if (!pChr->writeValue(reinterpret_cast<const uint8_t *>(&m_Token), sizeof(m_Token), true))
+  if (!gattWrite(pChr, reinterpret_cast<const uint8_t *>(&m_Token), sizeof(m_Token), true))
     return false;
   ESP_LOGI(LOG_TAG, "Paired!");
   m_Progress = 30;
@@ -103,7 +103,7 @@ bool FujifilmBasic::_connect(void) {
   if (!pChr->canWrite())
     return false;
   const auto name = Device::getStringID();
-  if (!pChr->writeValue(name.c_str(), name.length(), true))
+  if (!gattWrite(pChr, reinterpret_cast<const uint8_t *>(name.data()), name.length(), true))
     return false;
   ESP_LOGI(LOG_TAG, "Identified!");
   m_Progress = 40;

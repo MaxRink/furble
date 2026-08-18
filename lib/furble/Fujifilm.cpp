@@ -41,12 +41,12 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc, const NimBLEUUID &chr, bool noti
     return false;
   }
 
-  return pChr->subscribe(
-      notification,
+  return gattSubscribe(
+      pChr,
       [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
         this->notify(pChr, pData, length, isNotify);
       },
-      true);
+      !notification);
 }
 
 /**
@@ -65,8 +65,8 @@ template <std::size_t N>
 void Fujifilm::sendShutterCommand(const std::array<uint8_t, N> &cmd,
                                   const std::array<uint8_t, N> &param) {
   if (m_Shutter != nullptr && m_Shutter->canWrite()) {
-    m_Shutter->writeValue(cmd.data(), sizeof(cmd), true);
-    m_Shutter->writeValue(param.data(), sizeof(cmd), true);
+    gattWrite(m_Shutter, cmd.data(), sizeof(cmd), true);
+    gattWrite(m_Shutter, param.data(), sizeof(cmd), true);
   }
 }
 
@@ -117,7 +117,7 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
              geotag.size(), pChr->getHandle(), gps.latitude, latitude, gps.longitude, longitude,
              gps.altitude, altitude);
 
-    pChr->writeValue(geotag.data(), geotag.size(), true);
+    gattWrite(pChr, geotag.data(), geotag.size(), true);
   }
 }
 

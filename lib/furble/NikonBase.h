@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include <freertos/FreeRTOS.h>
@@ -91,13 +92,34 @@ class NikonBase {
   NikonBase(NimBLEClient *client,
             QueueHandle_t queue,
             NimBLERemoteCharacteristic *pairChr,
-            std::atomic<uint8_t> *progress);
+            std::atomic<uint8_t> *progress,
+            Camera *camera);
 
   NimBLEClient *m_Client;
+  Camera *m_Camera;
   QueueHandle_t m_Queue;
   NimBLERemoteCharacteristic *m_PairChr;
   std::atomic<uint8_t> *m_Progress;
   std::unique_ptr<Pairing> m_Pairing;
+
+  using gatt_notify_cb = std::function<void(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool)>;
+
+  bool gattWrite(NimBLERemoteCharacteristic *characteristic,
+                 const uint8_t *data,
+                 size_t length,
+                 bool response);
+  bool gattWrite(const NimBLEUUID &service,
+                 const NimBLEUUID &characteristic,
+                 const uint8_t *data,
+                 size_t length,
+                 bool response);
+  bool gattWrite(const NimBLEUUID &service,
+                 const NimBLEUUID &characteristic,
+                 const NimBLEAttValue &value,
+                 bool response = false);
+  bool gattSubscribe(NimBLERemoteCharacteristic *characteristic,
+                     gatt_notify_cb callback,
+                     bool indicate = false);
 
   /** Pre-stage subscription (e.g. NOT1 / REMOTE_IND1). */
   virtual bool preSubscribe(NimBLERemoteService *pSvc) = 0;

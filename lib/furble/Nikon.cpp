@@ -114,10 +114,10 @@ bool Nikon::_connect(void) {
     if (pairChr == nullptr) {
       return false;
     }
-    m_Nikon =
-        std::make_unique<NikonSmart>(m_Client, m_Queue, pairChr, m_ID, m_Timestamp, &m_Progress);
+    m_Nikon = std::make_unique<NikonSmart>(m_Client, m_Queue, pairChr, m_ID, m_Timestamp,
+                                           &m_Progress, this);
   } else {
-    m_Nikon = std::make_unique<NikonRemote>(m_Client, m_Queue, pairChr, m_ID, &m_Progress);
+    m_Nikon = std::make_unique<NikonRemote>(m_Client, m_Queue, pairChr, m_ID, &m_Progress, this);
   }
 
   return m_Nikon->connect(pSvc);

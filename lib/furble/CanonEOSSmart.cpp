@@ -67,9 +67,12 @@ bool CanonEOSSmart::_connect(void) {
     NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_NAME_UUID);
     if ((pChr != nullptr) && pChr->canIndicate()) {
       ESP_LOGI(LOG_TAG, "Subscribed for pairing indication");
-      pChr->subscribe(false,
-                      [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length,
-                             bool isNotify) { this->pairCallback(pChr, pData, length, isNotify); });
+      gattSubscribe(
+          pChr,
+          [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
+            this->pairCallback(pChr, pData, length, isNotify);
+          },
+          true);
     }
   }
 
@@ -128,21 +131,23 @@ bool CanonEOSSmart::_connect(void) {
     if (pInd != nullptr) {
       m_Progress += 10;
       ESP_LOGI(LOG_TAG, "Subscribing to location service");
-      pInd->subscribe(false, [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length,
-                                    bool isNotify) {
-        if (length > 0) {
-          switch (pData[0]) {
-            case GEO_REQUEST:
-              if ((m_Geo != nullptr) && m_Geo->canWrite()) {
-                m_Geo->writeValue(GEO_ENABLE.data(), GEO_ENABLE.size(), true);
+      gattSubscribe(
+          pInd,
+          [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
+            if (length > 0) {
+              switch (pData[0]) {
+                case GEO_REQUEST:
+                  if ((m_Geo != nullptr) && m_Geo->canWrite()) {
+                    gattWrite(m_Geo, GEO_ENABLE.data(), GEO_ENABLE.size(), true);
+                  }
+                  break;
+                case GEO_SUCCESS:
+                  m_GeoEnabled = true;
+                  break;
               }
-              break;
-            case GEO_SUCCESS:
-              m_GeoEnabled = true;
-              break;
-          }
-        }
-      });
+            }
+          },
+          true);
       m_Progress += 10;
       ESP_LOGI(LOG_TAG, "Subscribed to location service!");
     }
@@ -152,7 +157,7 @@ bool CanonEOSSmart::_connect(void) {
 
   /* write to 0xf104 */
   x = {0x01};
-  if (!m_Client->setValue(PRI_SVC_UUID, CHR_IDEN_UUID, {x.data(), x.size()}))
+  if (!gattWrite(PRI_SVC_UUID, CHR_IDEN_UUID, x.data(), x.size(), false))
     return false;
 
   ESP_LOGI(LOG_TAG, "Paired!");
@@ -162,7 +167,7 @@ bool CanonEOSSmart::_connect(void) {
   ESP_LOGI(LOG_TAG, "Switching mode!");
 
   /* write to 0xf307 */
-  if (!m_Client->setValue(SVC_MODE_UUID, CHR_MODE_UUID, {&MODE_SHOOT, sizeof(MODE_SHOOT)}))
+  if (!gattWrite(SVC_MODE_UUID, CHR_MODE_UUID, &MODE_SHOOT, sizeof(MODE_SHOOT), false))
     return false;
 
   ESP_LOGI(LOG_TAG, "Done!");
@@ -173,12 +178,12 @@ bool CanonEOSSmart::_connect(void) {
 
 void CanonEOSSmart::shutterPress(void) {
   const std::array<uint8_t, 2> x = {0x00, 0x01};
-  m_Client->setValue(SVC_SHUTTER_UUID, CHR_SHUTTER_UUID, {x.data(), x.size()});
+  gattWrite(SVC_SHUTTER_UUID, CHR_SHUTTER_UUID, x.data(), x.size(), false);
 }
 
 void CanonEOSSmart::shutterRelease(void) {
   const std::array<uint8_t, 2> x = {0x00, 0x02};
-  m_Client->setValue(SVC_SHUTTER_UUID, CHR_SHUTTER_UUID, {x.data(), x.size()});
+  gattWrite(SVC_SHUTTER_UUID, CHR_SHUTTER_UUID, x.data(), x.size(), false);
 }
 
 void CanonEOSSmart::focusPress(void) {
@@ -217,7 +222,7 @@ void CanonEOSSmart::updateGeoData(const gps_t &gps, const timesync_t &timesync) 
         .timestamp = static_cast<uint32_t>(timestamp),
     };
     if ((m_Geo != nullptr) && m_Geo->canWrite()) {
-      m_Geo->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
+      gattWrite(m_Geo, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
     }
   }
 

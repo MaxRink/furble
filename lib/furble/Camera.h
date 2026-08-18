@@ -2,19 +2,26 @@
 #define CAMERA_H
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 
 #include <NimBLEAddress.h>
+#include <NimBLEAttValue.h>
 #include <NimBLEClient.h>
 #include <NimBLEConnInfo.h>
 #include <NimBLEDevice.h>
+#include <NimBLERemoteCharacteristic.h>
+#include <NimBLEUUID.h>
 
 #include "FurbleTypes.h"
 
 #define MAX_NAME (64)
 
 namespace Furble {
+
+class NikonBase;
 
 /**
  * Represents a single target camera.
@@ -181,6 +188,20 @@ class Camera: public NimBLEClientCallbacks {
   /** Format a connection profile for diagnostics. */
   static const char *connProfileName(ConnProfile profile);
 
+#if defined(FURBLE_CONSOLE)
+  /** Enable or disable the debug GATT journal for vendor camera links. */
+  static bool gattJournalSetEnabled(bool enabled);
+
+  /** Print records not yet sent to the live console stream. */
+  static void gattJournalDrain(void);
+
+  /** Print the most recent journal records. */
+  static void gattJournalDump(size_t count);
+
+  /** Drop all buffered journal records. */
+  static void gattJournalClear(void);
+#endif
+
  protected:
   Camera(Type type, PairType pairType);
   std::atomic<uint8_t> m_Progress;
@@ -207,6 +228,38 @@ class Camera: public NimBLEClientCallbacks {
    */
   virtual SecurityMode securityMode() const { return m_SecurityModeDefault; }
 
+  using gatt_notify_cb = std::function<void(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool)>;
+
+  /** Write through the single vendor GATT journal seam. */
+  bool gattWrite(NimBLERemoteCharacteristic *characteristic,
+                 const uint8_t *data,
+                 size_t length,
+                 bool response);
+
+  /** Write a characteristic addressed by service and characteristic UUID. */
+  bool gattWrite(const NimBLEUUID &service,
+                 const NimBLEUUID &characteristic,
+                 const uint8_t *data,
+                 size_t length,
+                 bool response);
+
+  /** Write an attribute value addressed by service and characteristic UUID. */
+  bool gattWrite(const NimBLEUUID &service,
+                 const NimBLEUUID &characteristic,
+                 const NimBLEAttValue &value,
+                 bool response = false);
+
+  /** Read through the single vendor GATT journal seam. */
+  bool gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue &value);
+
+  /** Read a characteristic addressed by service and characteristic UUID. */
+  bool gattRead(const NimBLEUUID &service, const NimBLEUUID &characteristic, NimBLEAttValue &value);
+
+  /** Subscribe through the single vendor notification journal seam. */
+  bool gattSubscribe(NimBLERemoteCharacteristic *characteristic,
+                     gatt_notify_cb callback,
+                     bool indicate = false);
+
   const PairType m_PairType;
   NimBLEAddress m_Address = NimBLEAddress {};
   NimBLEClient *m_Client = nullptr;
@@ -215,6 +268,8 @@ class Camera: public NimBLEClientCallbacks {
   bool m_Paired = false;
 
  private:
+  friend class NikonBase;
+
   /** Called on connection success. */
   void onConnect(NimBLEClient *pDevice) override final;
 

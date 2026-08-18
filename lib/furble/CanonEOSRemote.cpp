@@ -66,19 +66,19 @@ bool CanonEOSRemote::_connect(void) {
 
 void CanonEOSRemote::shutterPress(void) {
   const std::array<uint8_t, 1> cmd = {SHUTTER | CTRL};
-  m_Control->writeValue(cmd.data(), cmd.size(), true);
+  gattWrite(m_Control, cmd.data(), cmd.size(), true);
   return;
 }
 
 void CanonEOSRemote::shutterRelease(void) {
   const std::array<uint8_t, 1> cmd = {CTRL};
-  m_Control->writeValue(cmd.data(), cmd.size(), true);
+  gattWrite(m_Control, cmd.data(), cmd.size(), true);
   return;
 }
 
 void CanonEOSRemote::focusPress(void) {
   const std::array<uint8_t, 1> cmd = {FOCUS | CTRL};
-  m_Control->writeValue(cmd.data(), cmd.size(), true);
+  gattWrite(m_Control, cmd.data(), cmd.size(), true);
   return;
 }
 

@@ -92,9 +92,11 @@ const char *opModeName(uint8_t value) {
   }
 }
 
-void logChr(NimBLERemoteCharacteristic *pChr,
-            const char *label,
-            const char *(*decode)(uint8_t) = nullptr) {
+}  // namespace
+
+void Ricoh::logChr(NimBLERemoteCharacteristic *pChr,
+                   const char *label,
+                   const char *(*decode)(uint8_t)) {
   if (pChr == nullptr) {
     ESP_LOGI(LOG_TAG, "Ricoh %s: missing", label);
     return;
@@ -104,7 +106,11 @@ void logChr(NimBLERemoteCharacteristic *pChr,
            pChr->canWriteNoResponse(), pChr->canNotify(), pChr->canIndicate());
   if (!pChr->canRead())
     return;
-  NimBLEAttValue value = pChr->readValue();
+  NimBLEAttValue value;
+  if (!gattRead(pChr, value)) {
+    ESP_LOGI(LOG_TAG, "Ricoh %s read failed", label);
+    return;
+  }
   if (value.length() == 0) {
     ESP_LOGI(LOG_TAG, "Ricoh %s value=<empty>", label);
     return;
@@ -117,8 +123,6 @@ void logChr(NimBLERemoteCharacteristic *pChr,
         LOG_TAG, "Ricoh %s value=%s", label,
         NimBLEUtils::dataToHexString(value.data(), static_cast<uint8_t>(value.length())).c_str());
 }
-
-}  // namespace
 
 Ricoh::Ricoh(const void *data, size_t len) : Camera(Type::RICOH, PairType::SAVED) {
   if (len != sizeof(ricoh_t))
@@ -199,10 +203,13 @@ bool Ricoh::_connect(void) {
   if (pSvc != nullptr) {
     NimBLERemoteCharacteristic *pModel = pSvc->getCharacteristic(MODEL_CHR_UUID);
     if (pModel != nullptr && pModel->canRead()) {
-      std::string model = static_cast<std::string>(pModel->readValue());
-      if (!model.empty()) {
-        ESP_LOGI(LOG_TAG, "Ricoh Model = %s", model.c_str());
-        m_Name = model;
+      NimBLEAttValue modelValue;
+      if (gattRead(pModel, modelValue)) {
+        std::string model = static_cast<std::string>(modelValue);
+        if (!model.empty()) {
+          ESP_LOGI(LOG_TAG, "Ricoh Model = %s", model.c_str());
+          m_Name = model;
+        }
       }
     }
   }
@@ -311,7 +318,7 @@ bool Ricoh::writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const cha
     ESP_LOGW(LOG_TAG, "Ricoh %s unavailable", label);
     return false;
   }
-  bool rc = pChr->writeValue(&value, sizeof(value), true);
+  bool rc = gattWrite(pChr, &value, sizeof(value), true);
   ESP_LOGD(LOG_TAG, "Ricoh %s = %s", label, rc ? "ok" : "failed");
   return rc;
 }
@@ -326,7 +333,7 @@ bool Ricoh::writeOperation(OperationCode code, OperationParameter parameter) {
     return false;
   }
   const std::array<uint8_t, 2> cmd = {static_cast<uint8_t>(code), static_cast<uint8_t>(parameter)};
-  bool rc = m_OperationRequest->writeValue(cmd.data(), cmd.size(), true);
+  bool rc = gattWrite(m_OperationRequest, cmd.data(), cmd.size(), true);
   ESP_LOGI(LOG_TAG, "Ricoh OperationRequest code=%u param=%u => %s", static_cast<unsigned>(code),
            static_cast<unsigned>(parameter), rc ? "ok" : "failed");
   return rc;
@@ -337,14 +344,14 @@ bool Ricoh::subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char
     ESP_LOGD(LOG_TAG, "Ricoh %s subscribe skipped", label);
     return false;
   }
-  bool rc = pChr->subscribe(
-      true,
+  bool rc = gattSubscribe(
+      pChr,
       [](NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
         ESP_LOGI(LOG_TAG, "Ricoh notify %s (%s): %s", chr->getUUID().toString().c_str(),
                  isNotify ? "notify" : "indicate",
                  NimBLEUtils::dataToHexString(data, static_cast<uint8_t>(len)).c_str());
       },
-      true);
+      false);
   ESP_LOGI(LOG_TAG, "Ricoh subscribe %s => %s", label, rc ? "ok" : "failed");
   return rc;
 }
@@ -424,7 +431,7 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
       .centisecond = static_cast<uint8_t>(std::min(timesync.centisecond, 99u)),
   };
 
-  bool rc = m_GpsInfo->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
+  bool rc = gattWrite(m_GpsInfo, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
   ESP_LOGI(
       LOG_TAG, "Ricoh GPS lat=%.7f lon=%.7f alt=%.1f utc=%04u-%02u-%02u %02u:%02u:%02u.%02u => %s",
       gps.latitude, gps.longitude, gps.altitude, timesync.year, timesync.month, timesync.day,

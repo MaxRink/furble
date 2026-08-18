@@ -89,42 +89,55 @@ void Sony::_disconnect(void) {
 }
 
 void Sony::shutterPress(void) {
-  m_Control->writeValue(SHUTTER_DOWN, true);
+  const uint16_t command = SHUTTER_DOWN;
+  gattWrite(m_Control, reinterpret_cast<const uint8_t *>(&command), sizeof(command), true);
   return;
 }
 
 void Sony::shutterRelease(void) {
-  m_Control->writeValue(SHUTTER_UP, true);
+  const uint16_t command = SHUTTER_UP;
+  gattWrite(m_Control, reinterpret_cast<const uint8_t *>(&command), sizeof(command), true);
   return;
 }
 
 void Sony::focusPress(void) {
-  m_Control->writeValue(FOCUS_DOWN, true);
+  const uint16_t command = FOCUS_DOWN;
+  gattWrite(m_Control, reinterpret_cast<const uint8_t *>(&command), sizeof(command), true);
   return;
 }
 
 void Sony::focusRelease(void) {
-  m_Control->writeValue(FOCUS_UP, true);
+  const uint16_t command = FOCUS_UP;
+  gattWrite(m_Control, reinterpret_cast<const uint8_t *>(&command), sizeof(command), true);
 }
 
 bool Sony::locationEnabled(void) {
   if (m_GeoSvc) {
-    auto allowValue = m_GeoSvc->getValue(GEO_ALLOW_CHR_UUID);
-    auto enabledValue = m_GeoSvc->getValue(GEO_ENABLE_CHR_UUID);
+    NimBLEAttValue allowValue;
+    NimBLEAttValue enabledValue;
+    gattRead(GEO_SVC_UUID, GEO_ALLOW_CHR_UUID, allowValue);
+    gattRead(GEO_SVC_UUID, GEO_ENABLE_CHR_UUID, enabledValue);
 
     if (allowValue.size() > 0 && enabledValue.size() > 0) {
       uint8_t allow = allowValue.data()[0];
       uint8_t enabled = enabledValue.data()[0];
       // ESP_LOGI(LOG_TAG, "1: allow = %x, enabled = %x", allow, enabled);
-      if (allow != LOCATION_ALLOW && m_GeoSvc->setValue(GEO_ALLOW_CHR_UUID, {LOCATION_ALLOW})) {
-        allowValue = m_GeoSvc->getValue(GEO_ALLOW_CHR_UUID);
-        allow = allowValue.data()[0];
+      if (allow != LOCATION_ALLOW
+          && gattWrite(GEO_SVC_UUID, GEO_ALLOW_CHR_UUID, &LOCATION_ALLOW, sizeof(LOCATION_ALLOW),
+                       false)) {
+        gattRead(GEO_SVC_UUID, GEO_ALLOW_CHR_UUID, allowValue);
+        if (allowValue.size() > 0) {
+          allow = allowValue.data()[0];
+        }
         ESP_LOGI(LOG_TAG, "Location service allowed!");
       }
       if (enabled != LOCATION_ENABLE
-          && m_GeoSvc->setValue(GEO_ENABLE_CHR_UUID, {LOCATION_ENABLE})) {
-        enabledValue = m_GeoSvc->getValue(GEO_ENABLE_CHR_UUID);
-        enabled = enabledValue.data()[0];
+          && gattWrite(GEO_SVC_UUID, GEO_ENABLE_CHR_UUID, &LOCATION_ENABLE, sizeof(LOCATION_ENABLE),
+                       false)) {
+        gattRead(GEO_SVC_UUID, GEO_ENABLE_CHR_UUID, enabledValue);
+        if (enabledValue.size() > 0) {
+          enabled = enabledValue.data()[0];
+        }
         ESP_LOGI(LOG_TAG, "Location service enabled!");
       }
 
@@ -161,7 +174,7 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     // ESP_LOGI(LOG_TAG, "geo: %s", NimBLEUtils::dataToHexString((const uint8_t *)&geo,
     // sizeof(geo)).c_str());
     auto *pChr = m_GeoSvc->getCharacteristic(GEO_UPDATE_UUID);
-    pChr->writeValue((const uint8_t *)&geo, sizeof(geo), true);
+    gattWrite(pChr, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
   }
 }
 

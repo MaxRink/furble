@@ -1,8 +1,28 @@
 # 64: expanded debug tooling
 
-Status: plan, no implementation yet. Line anchors below were read at `f455b0b`
-on fork master. The plan ships as a series of independently mergeable PRs, one
-per phase, each updating this document.
+Status: pillar 3 implemented in this branch. Pillars 1 and 2 remain on their
+separate branch. Line anchors below were read at `f455b0b` on fork master. The
+plan ships as a series of independently mergeable PRs, one per phase, each
+updating this document.
+
+## Implementation state
+
+Pillar 3 only is implemented behind `FURBLE_CONSOLE`:
+
+- `bt scan [seconds]` uses the custom `Scan::start` callback path and prints
+  unfiltered advertisement and scan-response data, manufacturer data, and
+  advertised service UUIDs. `bt scan all` keeps duplicate reports.
+- `bt explore` uses a raw `NimBLEClient`, walks the full GATT tree, reads on
+  request, subscribes to all notifications and indications, and supports
+  console-only none, just-works, and numeric-display pairing passthrough.
+- `bt journal` uses the single `Camera` GATT wrapper seam for vendor writes,
+  reads, and notifications, with the board-sized ring and live console drain.
+- Passive sniffing of third-party links is impossible with NimBLE. This
+  implementation covers the active onboarding workflow only. `bt journal`
+  against the Fujifilm X100VI can produce the plan 36 golden-capture source
+  traffic.
+- No settings, NVS entries, CameraList entries, or companion characteristics
+  were added. Hardware validation is still outstanding.
 
 ## Motivation
 
@@ -316,7 +336,7 @@ reports the Control state instead.
 Connect without vendor logic, then map everything.
 
 ```
-bt explore <addr> [pair none|bond|passkey]
+bt explore <addr> [pair none|just-works|numeric-display-passthrough] [keep]
 bt explore read             read every readable characteristic, hexdump
 bt explore stop
 ```
