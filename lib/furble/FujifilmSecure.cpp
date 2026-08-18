@@ -125,6 +125,11 @@ bool FujifilmSecure::_connect(void) {
     }
   }
 
+  // Snapshot the bond before connecting. If security later fails on a camera we
+  // thought we were bonded to, the camera has almost certainly deleted its
+  // pairing side and our stale bond can never re-encrypt.
+  const bool bonded = NimBLEDevice::isBonded(m_Address);
+
   ESP_LOGI(LOG_TAG, "Connecting to %s", m_Address.toString().c_str());
   if (!m_Client->connect(m_Address))
     return false;
@@ -134,7 +139,24 @@ bool FujifilmSecure::_connect(void) {
 
   ESP_LOGI(LOG_TAG, "Securing");
   if (!m_Client->secureConnection()) {
-    return false;
+    // A saved reconnect can fail security when the camera deleted its pairing
+    // side while furble kept the local bond. Encrypting with the dead keys then
+    // fails on every attempt, wedging the reconnect loop forever. Delete the
+    // stale bond and retry one fresh pair so the camera can re-register furble.
+    // Guard the retry deref on m_Connected: a failed secureConnection may drop
+    // the link, and setSelfDelete frees m_Client on disconnect, so an unguarded
+    // m_Client deref here would be a use-after-free (the #62 lifecycle rule).
+    if (!bonded || !m_Connected) {
+      return false;
+    }
+    ESP_LOGW(LOG_TAG,
+             "secureConnection failed on a bonded camera; deleting the stale bond and retrying a "
+             "fresh pair");
+    NimBLEDevice::deleteBond(m_Address);
+    if (!m_Client->secureConnection()) {
+      ESP_LOGW(LOG_TAG, "Fresh pair failed; put the camera in pairing mode and reconnect");
+      return false;
+    }
   }
   ESP_LOGI(LOG_TAG, "Secured!");
   m_Progress += 5;

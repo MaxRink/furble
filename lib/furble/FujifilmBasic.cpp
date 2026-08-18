@@ -103,6 +103,8 @@ bool FujifilmBasic::_connect(void) {
 
   ESP_LOGI(LOG_TAG, "Identifying");
   pChr = pSvc->getCharacteristic(CHR_IDEN_UUID);
+  if (pChr == nullptr)
+    return false;
   if (!pChr->canWrite())
     return false;
   const auto name = Device::getStringID();
