@@ -20,6 +20,10 @@ CLAUDE.md whose directory it touches.
 - Quirk: the global git fsmonitor breaks the first TinyGPSPlus install in each
   fresh libdeps dir. Re-run the same pio command once. Worktree-isolated agents
   cannot export `GIT_CONFIG_*` to work around it.
+- Before pushing config, enum, or settings changes, clean-build every
+  documented env, including the non-CI `esp32-s3-headless` env. A new settings
+  enum value must be added in five places or the headless build fails
+  `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 
 ## Style
 
@@ -41,8 +45,9 @@ CLAUDE.md whose directory it touches.
 - DFS clock family: with BT modem sleep enabled, esp_pm DFS actually engages,
   and any peripheral clocked from APB breaks subtly. GPS UART needs
   `UART_SCLK_XTAL`. The LEDC backlight PWM flickers unless the display holds
-  `ESP_PM_APB_FREQ_MAX` while the backlight is on. When touching power
-  management, audit every peripheral clock source.
+  `ESP_PM_APB_FREQ_MAX` while the backlight is on. RMT is safe: it holds its own
+  APB power lock. When touching power management, audit every peripheral clock
+  source.
 - Display sleep: the display releases `ESP_PM_APB_FREQ_MAX` while the panel
   sleeps and must reacquire it before `M5.Display.wakeup()`. ST7789/ILI934x
   need a 120 ms dwell between SLPIN and SLPOUT; M5GFX does not enforce it.
@@ -51,7 +56,11 @@ CLAUDE.md whose directory it touches.
   power button gestures at boot. Rescue: hold the side button while replugging
   USB until the green LED flashes, then reflash.
 - M5PM1 (StickS3 PMIC): the first I2C transaction after its idle sleep fails
-  and only wakes it. Always retry once.
+  and only wakes it. Always retry once. The status LED stays lit at display off
+  unless you clear it: `setLedEnLevel(false)` saves PWR_CFG bit 4.
+- S3 native USB Serial/JTAG resets the chip on each host port open. Use that
+  port-open as the safe state transition, never a disconnect then reconnect.
+  esptool prints a post-write reset that reads `FAILED` on the S3: it is benign.
 - GPS unit v1.1 (AT6668): no backup supply, so a rail cut costs a ~108 s cold
   start. `$PCAS12` timed standby works. `$PCAS02` only accepts 100-1000 ms.
   Sub-second rates need `$PCAS03` sentence pruning first.
@@ -62,6 +71,8 @@ CLAUDE.md whose directory it touches.
   invalidation logger are the diagnosis tools.
 - PSRAM (S3): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
+- Full detail and more findings live in `plans/95-engineering-lessons.md`. Read
+  the matching section before you touch that area.
 
 ## Layout
 
