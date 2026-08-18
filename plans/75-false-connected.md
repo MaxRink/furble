@@ -230,3 +230,44 @@ through.
 A dedicated UI reason string (a distinct message on the connect-failed screen)
 is a possible follow-up. This PR surfaces the distinct failure through the log
 and a clean teardown.
+
+## Plan 96 batch 2 folded in here
+
+This branch was rebased onto master after PR #62 (reconnect lifecycle) landed.
+The rebase was textually clean because #93 only touches the Fujifilm files while
+#62 rewrote Camera.cpp and FurbleControl.cpp, so the two changes never overlap.
+The #62 lifecycle work (m_Connected liveness guards, setSelfDelete, the
+m_Connected-gated _disconnect) and the #93 waitForRegistration gate are both
+preserved.
+
+Two plan 96 batch 2 items were implemented on top of the gate. They share the
+Fujifilm connect files and the same false-connected motivation, so they land
+with this PR. Both are Fujifilm-scoped and both are owed hardware verification
+on the X100VI.
+
+- A1, hard-fail FujifilmBasic discovery (`lib/furble/FujifilmBasic.cpp`).
+  Previously a failed shutter-service discovery only logged, then the next line
+  dereferenced the null service (crash), and a null shutter characteristic still
+  returned true, reporting connected with an inert shutter. That is the
+  confirmed false-connected plus crash bug, also present upstream. Discovery is
+  now a hard failure: a null identify characteristic, a null shutter service, or
+  a null shutter characteristic each return false, so Control settles to
+  STATE_CONNECT_FAILED through the #62 lifecycle instead of a false connect.
+  Every m_Shutter dereference was already guarded (`sendShutterCommand` checks
+  `m_Shutter != nullptr`); the connect path no longer promotes with a null one.
+- A2, stale-bond delete-and-retry (`lib/furble/FujifilmSecure.cpp`). When a
+  saved reconnect fails `secureConnection()` on a camera furble was bonded to,
+  the camera has almost certainly deleted its pairing side while furble kept the
+  local bond, so encrypting with the dead keys fails forever and wedges the
+  reconnect loop. The bond state is snapshotted before connecting; on a security
+  failure for a previously bonded address the local bond is deleted
+  (`NimBLEDevice::deleteBond`) and one fresh pair is attempted. The retry
+  dereference of m_Client is guarded on m_Connected so a security failure that
+  dropped the link (freeing m_Client under setSelfDelete) cannot cause a
+  use-after-free, consistent with the #62 rule. A failed fresh pair returns
+  false cleanly; the deleted bond lets a later reconnect pair afresh once the
+  camera is put back in pairing mode instead of looping on a dead bond.
+
+Deferred plan 96 batch 2 items, not in this PR: A3d (atomic m_Configured, left
+volatile here), A7a (FujifilmSecure address update from the rescan match), and
+A3b (decide the Basic mandatory-gate scope after hardware verification).
