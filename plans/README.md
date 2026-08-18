@@ -100,6 +100,13 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 |---|---|
 | [75-false-connected.md](75-false-connected.md) | False Connected when the camera is not in pairing mode. Promotion to ACTIVE is gated on GATT plumbing, not on the camera-side registration confirmation |
 
+## Tooling and web installer
+
+| Doc | Content |
+|---|---|
+| [68-flasher-debug-firmware.md](68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
+| [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
+
 ## Design documents
 
 | Doc | Content |

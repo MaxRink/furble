@@ -18,16 +18,22 @@ jobs:
           - m5stick-c
           - m5stick-c-plus
           - m5stick-s3
+        # Empty variant is the release build. The -debug variant builds the
+        # matching PlatformIO *-debug env, which enables FURBLE_CONSOLE. Debug
+        # envs share the release sdkconfig, so flash offsets are identical.
+        variant:
+          - ""
+          - "-debug"
 
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     env:
-      FIRMWARE_NAME: furble-${{ matrix.platform }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
-      BOOTLOADER_NAME: furble-bootloader-${{ matrix.platform }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
-      PARTITIONS_NAME: furble-partitions-${{ matrix.platform }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
-      OTA_DATA_NAME: furble-ota_data_initial-${{ matrix.platform }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
+      FIRMWARE_NAME: furble-${{ matrix.platform }}${{ matrix.variant }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
+      BOOTLOADER_NAME: furble-bootloader-${{ matrix.platform }}${{ matrix.variant }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
+      PARTITIONS_NAME: furble-partitions-${{ matrix.platform }}${{ matrix.variant }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
+      OTA_DATA_NAME: furble-ota_data_initial-${{ matrix.platform }}${{ matrix.variant }}-${{ github.ref_name }}+${{ github.run_attempt }}.bin
 
     steps:
       - uses: actions/checkout@v6
@@ -47,25 +53,28 @@ jobs:
           echo "FURBLE_TEST=1" >> $GITHUB_ENV
         if: startsWith(github.ref_name, 'vTEST')
 
-      - name: Build furble (${{ matrix.platform }})
-        run: platformio run -e ${{ matrix.platform }}
+      - name: Build furble (${{ matrix.platform }}${{ matrix.variant }})
+        run: platformio run -e ${{ matrix.platform }}${{ matrix.variant }}
 
-      - name: Rename binaries (${{ matrix.platform}})
+      - name: Rename binaries (${{ matrix.platform }}${{ matrix.variant }})
         run: |
-          mv .pio/build/${{ matrix.platform }}/firmware.bin $FIRMWARE_NAME
-          mv .pio/build/${{ matrix.platform }}/bootloader.bin $BOOTLOADER_NAME
-          mv .pio/build/${{ matrix.platform }}/partitions.bin $PARTITIONS_NAME
-          mv .pio/build/${{ matrix.platform }}/ota_data_initial.bin $OTA_DATA_NAME
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/firmware.bin $FIRMWARE_NAME
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/bootloader.bin $BOOTLOADER_NAME
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/partitions.bin $PARTITIONS_NAME
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/ota_data_initial.bin $OTA_DATA_NAME
 
-      - name: Generate manifest (${{ matrix.platform }})
+      - name: Generate manifest (${{ matrix.platform }}${{ matrix.variant }})
         working-directory: ./web-installer
         env:
           VERSION: ${{ env.FURBLE_VERSION }}
-          PLATFORM: ${{ matrix.platform }}
+          # PLATFORM carries the -debug suffix for debug builds. The suffix
+          # flows straight into the binary paths in manifest.tmpl, while the
+          # flash offsets stay shared with the release path.
+          PLATFORM: ${{ matrix.platform }}${{ matrix.variant }}
         run: |
-          python generate-manifest.py > ../manifest_${{ matrix.platform }}.json
+          python generate-manifest.py > ../manifest_${{ matrix.platform }}${{ matrix.variant }}.json
 
-      - name: Upload artifacts (${{ matrix.platform }})
+      - name: Upload artifacts (${{ matrix.platform }}${{ matrix.variant }})
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.FIRMWARE_NAME }}
@@ -74,7 +83,7 @@ jobs:
             ${{ env.BOOTLOADER_NAME }}
             ${{ env.PARTITIONS_NAME }}
             ${{ env.OTA_DATA_NAME }}
-            manifest_${{ matrix.platform }}.json
+            manifest_${{ matrix.platform }}${{ matrix.variant }}.json
           if-no-files-found: error
 
   release:
