@@ -112,42 +112,10 @@ jobs:
             manifest_*.json
             sha256sum.txt
 
-  deploy:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      deployments: write
-    name: Deploy to Cloudflare Pages
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v7
-        with:
-          merge-multiple: true
-
-      - name: Assemble assets
-        run: |
-          mkdir -p deploy
-          cp web-installer/index.html deploy/index.html
-          mv manifest*.json deploy/.
-          mkdir -p deploy/firmware
-          mv furble-*.bin deploy/firmware
-
-      - name: Publish
-        id: publish
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy deploy --project-name=furble-web-installer --branch=${{ !github.event.release.prerelease && 'main' || 'HEAD' }}
-
-      - name: Update release notes
-        uses: softprops/action-gh-release@v3
-        with:
-          append_body: true
-          body: |
-
-            **Deployment URL**: ${{ steps.publish.outputs.deployment-url }}
+  # The web flasher is deployed by pages.yml to GitHub Pages
+  # (https://maxrink.github.io/furble/). That workflow runs on the same v* tag
+  # this release publishes and self-hosts the firmware, so the fork owns its
+  # installer end to end. The previous Cloudflare Pages deploy was dropped: it
+  # targeted the project name furble-web-installer, which belongs to the
+  # upstream gkoh deployment, and it needed CLOUDFLARE_* secrets the fork does
+  # not set.
