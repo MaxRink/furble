@@ -22,6 +22,7 @@
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <host/ble_hs.h>
 
 #include "FurbleControl.h"
 #include "Scan.h"
@@ -306,6 +307,15 @@ class Explorer final: public NimBLEClientCallbacks {
   static void taskEntry(void *context) { static_cast<Explorer *>(context)->run(); }
 
   void configureSecurity() {
+    if (m_PairMode == BtDebug::PairMode::NONE) {
+      return;
+    }
+    // Snapshot the global NimBLE security config so a later real pairing is not
+    // perturbed by the fixed config this explore session installs.
+    m_PriorSecurityBonding = ble_hs_cfg.sm_bonding;
+    m_PriorSecurityMitm = ble_hs_cfg.sm_mitm;
+    m_PriorSecuritySc = ble_hs_cfg.sm_sc;
+    m_PriorSecurityIOCap = ble_hs_cfg.sm_io_cap;
     switch (m_PairMode) {
       case BtDebug::PairMode::NONE:
         return;
@@ -324,8 +334,10 @@ class Explorer final: public NimBLEClientCallbacks {
     if (m_PairMode == BtDebug::PairMode::NONE) {
       return;
     }
-    NimBLEDevice::setSecurityAuth(true, true, true);
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO);
+    // Restore the security config captured before this explore session so a
+    // later real pairing sees the config it expects.
+    NimBLEDevice::setSecurityAuth(m_PriorSecurityBonding, m_PriorSecurityMitm, m_PriorSecuritySc);
+    NimBLEDevice::setSecurityIOCap(m_PriorSecurityIOCap);
   }
 
   bool connect(const NimBLEAddress &address, bool &bondedBefore) {
@@ -505,6 +517,16 @@ class Explorer final: public NimBLEClientCallbacks {
       }
     }
 
+    // Null m_Client under the mutex before deleting it. A concurrent
+    // `bt explore stop` derefs m_Client under the same mutex, so publishing
+    // nullptr first guarantees it never touches the freed client.
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      m_Client = nullptr;
+      m_PairInfo.reset();
+      m_PairRequest = PairRequest::NONE;
+    }
+
     if (client != nullptr) {
       if (client->isConnected()) {
         client->disconnect();
@@ -516,13 +538,6 @@ class Explorer final: public NimBLEClientCallbacks {
         && !m_KeepBond.load()) {
       NimBLEDevice::deleteBond(address);
       printf("pair.bond: deleted\n");
-    }
-
-    {
-      const std::lock_guard<std::mutex> lock(m_Mutex);
-      m_Client = nullptr;
-      m_PairInfo.reset();
-      m_PairRequest = PairRequest::NONE;
     }
     m_Connected.store(false);
     m_Running.store(false);
@@ -540,6 +555,10 @@ class Explorer final: public NimBLEClientCallbacks {
   std::unique_ptr<NimBLEConnInfo> m_PairInfo;
   PairRequest m_PairRequest = PairRequest::NONE;
   BtDebug::PairMode m_PairMode = BtDebug::PairMode::NONE;
+  uint8_t m_PriorSecurityIOCap = BLE_HS_IO_NO_INPUT_OUTPUT;
+  bool m_PriorSecurityBonding = false;
+  bool m_PriorSecurityMitm = false;
+  bool m_PriorSecuritySc = false;
   std::atomic_bool m_Running = false;
   std::atomic_bool m_Stop = false;
   std::atomic_bool m_Connected = false;
