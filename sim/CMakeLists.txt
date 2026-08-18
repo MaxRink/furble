@@ -72,6 +72,7 @@ file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
+    "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurblePower.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
@@ -117,6 +118,7 @@ target_compile_definitions(
   furble-sim
   PRIVATE
     FURBLE_M5STICKS3
+    FURBLE_RIG
     FURBLE_SIM
     FURBLE_VERSION=\"sim\"
     FURBLE_TEST_VERSION=1

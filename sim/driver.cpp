@@ -1,7 +1,9 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -134,6 +136,20 @@ void readScript(const std::string &path) {
   }
 }
 
+uint32_t parseUnsigned(const std::string &value, const char *option, uint32_t maximum) {
+  try {
+    size_t parsed = 0;
+    const unsigned long number = std::stoul(value, &parsed, 10);
+    if (parsed != value.size() || number > maximum) {
+      throw std::out_of_range("range");
+    }
+    return static_cast<uint32_t>(number);
+  } catch (const std::exception &) {
+    std::cerr << "Invalid " << option << ": " << value << '\n';
+    std::exit(2);
+  }
+}
+
 std::string capturePath(const std::string &name) {
   if (name.size() >= 4 && name.substr(name.size() - 4) == ".png") {
     return captureDirectory + "/" + name;
@@ -150,17 +166,40 @@ void configure(int argc, char **argv) {
   configured = true;
 
   std::string script;
+  bool rig = false;
+  uint16_t rigPort = 6737;
+  bool ignoreUuidMismatch = false;
+  bool dropNotify = false;
+  uint32_t delayMs = 0;
   for (int i = 1; i < argc; ++i) {
     const std::string argument = argv[i];
     if (argument == "--script" && i + 1 < argc) {
       script = argv[++i];
     } else if ((argument == "--capture-dir" || argument == "--out") && i + 1 < argc) {
       captureDirectory = argv[++i];
+    } else if (argument == "--rig") {
+      rig = true;
+    } else if (argument == "--rig-port" && i + 1 < argc) {
+      const uint32_t port = parseUnsigned(argv[++i], "--rig-port", 65535);
+      if (port == 0) {
+        std::cerr << "Invalid --rig-port: 0\n";
+        std::exit(2);
+      }
+      rigPort = static_cast<uint16_t>(port);
+    } else if (argument == "--ignore-uuid-mismatch") {
+      ignoreUuidMismatch = true;
+    } else if (argument == "--drop-notify") {
+      dropNotify = true;
+    } else if (argument == "--delay-ms" && i + 1 < argc) {
+      delayMs = parseUnsigned(argv[++i], "--delay-ms", std::numeric_limits<uint32_t>::max());
     } else if (argument == "--help") {
-      std::cout << "furble-sim [--script FILE] [--out DIR]\n";
+      std::cout << "furble-sim [--script FILE] [--out DIR] [--rig] [--rig-port PORT] "
+                   "[--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS]\n";
       std::exit(0);
     }
   }
+
+  rigConfigure(rig, rigPort, ignoreUuidMismatch, dropNotify, delayMs);
 
   if (!script.empty()) {
     readScript(script);

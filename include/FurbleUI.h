@@ -277,7 +277,9 @@ class UI {
   const uint32_t m_RightYOffset = 0;
 #endif
 
-#if (FURBLE_TEST_VERSION + 0)
+#if defined(FURBLE_RIG)
+  static constexpr const char *m_Title = "RIG BUILD, NO BLE, NO ENCRYPTION";
+#elif (FURBLE_TEST_VERSION + 0)
   static constexpr const char *m_Title = FURBLE_VERSION;
 #else
   static constexpr const char *m_Title = FURBLE_STR;

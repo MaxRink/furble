@@ -2,6 +2,7 @@ set(furble_sources
     FurbleBtDebug.cpp
     FurbleCalibrate.cpp
     FurbleCompanion.cpp
+    FurbleCompanionService.cpp
     FurbleConsole.cpp
     FurbleControl.cpp
     FurbleFeedback.cpp

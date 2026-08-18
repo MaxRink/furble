@@ -3178,12 +3178,17 @@ void UI::setBatteryStyle(uint8_t style) {
 }
 
 void UI::setShowTitle(bool show) {
+#if defined(FURBLE_RIG)
+  (void)show;
+  lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
+#else
   if (show) {
     lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
   } else {
     // the sticks have little header width, the icons take the space instead
     lv_obj_add_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
   }
+#endif
 }
 
 void UI::batteryUpdate(lv_timer_t *timer) {

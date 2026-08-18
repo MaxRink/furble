@@ -23,6 +23,7 @@ int runSimulator(bool *) {
   // Keep the host run useful without requiring an NVS seed step.
   Settings::save<bool>(Settings::GPS, true);
   Settings::save<bool>(Settings::FAUXNY, true);
+  Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
   Settings::save<bool>(Settings::MULTICONNECT, false);
   Settings::save<bool>(Settings::RECONNECT, false);
   Settings::save<bool>(Settings::AUTOCONNECT, false);
@@ -31,6 +32,8 @@ int runSimulator(bool *) {
 
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
+
+  Sim::startRig();
 
   const auto interval = Settings::load<Settings::INTERVAL>();
   UI ui(interval);
