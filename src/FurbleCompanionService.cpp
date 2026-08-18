@@ -274,6 +274,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SLEEP_CONN:
     case Settings::MQTT:
     case Settings::MQTT_HA:
+    case Settings::WEB_UI:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -338,6 +339,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::SLEEP_CONN:
     case Settings::MQTT:
     case Settings::MQTT_HA:
+    case Settings::WEB_UI:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

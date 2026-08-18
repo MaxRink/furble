@@ -906,10 +906,98 @@ Attached StickS3, a Mosquitto broker on the LAN, and a Home Assistant instance.
 
 ---
 
-# PR33d: REST API and WebUI, deferred
+# PR33d: REST API and WebUI
 
-Not proposed. #248 asks for all three of WebUI, MQTT and REST. This documents
-why only MQTT is being built.
+Status: implemented, stacked on PR33c. This section documents the delivered
+design. The original deferral rationale is preserved below under "Original
+deferral rationale" because the trade-offs it records still hold and shape the
+scope: the WebUI here is deliberately small, opt-in and off by default, so it
+adds no always-on cost and does not try to mirror every UI element.
+
+## What it delivers
+
+When the new `WEB_UI` setting is enabled and a WiFi station address is present,
+`Furble::WebUI` runs a lightweight `esp_http_server` on port 80 serving one
+embedded single-page app and a small REST API. The whole feature is gated
+behind `WEB_UI`, which defaults off, so a device that never turns it on pays
+nothing beyond the linked code.
+
+The server runs on its own supervisor task plus the esp_http_server task. No
+request handler holds the Control mutex or performs an unbounded wait. Shutter
+and settings actions go through the same thread-safe paths the console and
+companion already use: `Control::sendCommand` (its lock-free request queue) and
+the shared companion settings wire layer. No secrets are returned.
+
+## REST API
+
+All responses are JSON. `Content-Type: application/json`, `Cache-Control:
+no-store`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | The embedded WebUI (vanilla HTML and JS, no framework, no CDN) |
+| GET | `/api/status` | version, id, control state, camera counts, battery, WiFi (connected, ip, rssi), shutter held |
+| GET | `/api/cameras` | JSON array of cameras (id, name, type, connected, and rssi/progress when active) |
+| POST | `/api/shutter` | `{"action":"press"\|"release"\|"hold"\|"focus_press"\|"focus_release","ms":200}`. `hold` auto-releases after `ms` (0-60000, default 200) |
+| GET | `/api/settings` | Array of settings with a non-zero wire id: `{id, key, name, type, value}`. `MQTT_PASS` is redacted to `{secret:true, set:bool, value:null}` |
+| POST | `/api/settings` | `{"id":<wire id>\|"key":<name>, "value":<typed>}`. Encodes to the wire type and saves through the shared layer, then applies the same live reloads the console and companion do |
+
+Shutter commands require a camera in `STATE_ACTIVE`; otherwise the endpoint
+returns HTTP 409 with `{"error":...}`. `/api/settings` rejects blob settings
+(the intervalometer blob) over REST and returns HTTP 400 on malformed input.
+
+## Settings reuse, not duplication
+
+`/api/settings` iterates `Settings::all()` and resolves ids through
+`Settings::getByWireId()`. The type mapping and value encode/decode reuse the
+companion's wire helpers, which were promoted to public statics:
+`CompanionService::settingType`, `settingValue` and `saveSetting`. The settings
+table is not duplicated; there is one source of truth for the wire ids and
+their types.
+
+## Wire id claimed
+
+`WEB_UI` claims wire id 62, the next free slot above the maximum on the PR33c
+base (61 = `MQTT_HA`). Wire id 62 ledger:
+
+| Wire id | Setting | Source |
+|---|---|---|
+| 56-61 | MQTT family | PR33c |
+| 62 | `WEB_UI` | PR33d (this PR) |
+
+Collision note: on fork master an unrelated branch (#75) also uses wire id 62.
+These are separate stacked lines that reconcile at integration. Whichever lands
+second renumbers; if PR33d is second, move `WEB_UI` to the next free slot and
+update `FurbleSettings.cpp`, the `storage_type` specialisation and the companion
+bool mapping. Nothing here persists the wire id itself, so renumbering is a
+table edit, not an NVS migration.
+
+## Deviations from the general instructions
+
+- New source `src/FurbleWebUI.cpp` is added to `src/CMakeLists.txt` only, not to
+  `sim/build.sh`. This matches the existing `FurbleMQTT.cpp` and
+  `FurbleControl.cpp` precedent: the simulator builds a UI-only subset and never
+  links the network stack, so a network-only translation unit stays out of the
+  sim source list and needs no shim. The sim still builds unchanged.
+- `PRIV_REQUIRES` gains `esp_http_server` and `esp_wifi`. No committed
+  `sdkconfig` symbol needed changing; the default `CONFIG_HTTPD_*` values are
+  sufficient. The five release sdkconfigs are untouched and stay consistent.
+
+## Owed before merge
+
+Device-touching. WiFi is not brought up on the PR33c base (station provisioning
+is PR33b/#53, not present here), so like MQTT the server waits for the
+`WIFI_STA_DEF` interface. On-device verification with WiFi up is owed before
+merge: enable `WEB_UI`, join a network, load `/`, confirm `/api/status`,
+`/api/cameras`, `POST /api/shutter` firing a Fujifilm, and `GET/POST
+/api/settings` round-tripping a value with `MQTT_PASS` redacted.
+
+---
+
+# PR33d: original deferral rationale
+
+Kept for the record. #248 asks for all three of WebUI, MQTT and REST. This
+documented why only MQTT was built first.
 
 **The maintainer picked MQTT.** He said so in
 [#248 comment 3843927598](https://github.com/gkoh/furble/issues/248#issuecomment-3843927598):

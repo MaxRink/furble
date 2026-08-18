@@ -119,14 +119,7 @@ class CompanionService {
   companion_status_t getStatus(void) const;
   void releaseHeldCommands(void);
 
- private:
-  static constexpr uint8_t LOCATION_VALID = 1 << 0;
-  static constexpr uint8_t TIME_VALID = 1 << 1;
-  static constexpr uint8_t ALTITUDE_VALID = 1 << 2;
-  static constexpr uint8_t PACKET_VERSION = 1;
-  static constexpr uint8_t SETTING_NEEDS_RESTART = 1 << 0;
-  static constexpr uint8_t SETTING_DANGEROUS = 1 << 1;
-
+  /** Wire encoding of a setting, keyed off the shared settings table. */
   enum setting_type_t : uint8_t {
     SETTING_BOOL,
     SETTING_U8,
@@ -134,6 +127,21 @@ class CompanionService {
     SETTING_STRING,
     SETTING_BLOB,
   };
+
+  /**
+   * Shared settings wire layer.
+   *
+   * The REST/WebUI service reuses these so the settings table and its type
+   * mapping stay a single source of truth rather than being duplicated.
+   */
+  static setting_type_t settingType(Settings::type_t type);
+  static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
+  static bool saveSetting(Settings::type_t type, const uint8_t *value, uint8_t length);
+
+ private:
+  static constexpr uint8_t LOCATION_VALID = 1 << 0;
+  static constexpr uint8_t TIME_VALID = 1 << 1;
+  static constexpr uint8_t ALTITUDE_VALID = 1 << 2;
 
   enum setting_status_t : uint8_t {
     SETTING_OK,
@@ -148,9 +156,7 @@ class CompanionService {
   void notifySettings(const std::vector<uint8_t> &value);
   static void timedShutter(void *param);
 
-  static setting_type_t settingType(Settings::type_t type);
-  static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
-  static bool saveSetting(Settings::type_t type, const uint8_t *value, uint8_t length);
+  static bool settingNeedsRestart(Settings::type_t type);
   static void appendResponse(std::vector<uint8_t> &response,
                              setting_status_t status,
                              uint8_t id,
