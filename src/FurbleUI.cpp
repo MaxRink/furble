@@ -1399,8 +1399,16 @@ void UI::addMainMenu(void) {
         // Menu pages always start in navigation mode so left/right can reach
         // the shared header back button.
         lv_group_set_editing(ui->m_Group, false);
-        lv_obj_remove_state(back, LV_STATE_DISABLED);
-        lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
+
+        // LVGL hides the header back button on the root page. Only re-enable and
+        // un-hide it on sub-pages so the encoder can reach it. On the root page
+        // keep it hidden so no stray back arrow appears on the home screen.
+        if (page != m_MainMenu.page) {
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
+        } else {
+          lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
+        }
 
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
@@ -1432,11 +1440,6 @@ void UI::addMainMenu(void) {
 
           // Ensure no active scans
           scan.stop();
-
-          // Enable Back button
-          if (lv_obj_has_state(back, LV_STATE_DISABLED)) {
-            lv_obj_remove_state(back, LV_STATE_DISABLED);
-          }
 
           // If enabled and connections exist, auto connect to first camera on first display of main
           // menu
