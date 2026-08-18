@@ -289,37 +289,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  cache-firmware-sizes:
-    name: Cache firmware sizes for master
-    needs:
-      - changes
-      - build
-    if: >-
-      ${{ github.event_name == 'push' &&
-      github.ref == 'refs/heads/master' &&
-      needs.changes.outputs.firmware == 'true' &&
-      needs.build.result == 'success' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download firmware size artifacts
-        uses: actions/download-artifact@v7
-        with:
-          pattern: firmware-size-*
-          path: firmware-sizes
-          merge-multiple: true
-
-      - name: Save firmware sizes for this commit
-        uses: actions/cache/save@v5
-        with:
-          path: firmware-sizes
-          key: furble-firmware-size-v1-${{ github.sha }}
-
   size-report:
     name: Report firmware size on the PR
     permissions:
       contents: read
       pull-requests: write
+      actions: read
     needs:
       - changes
       - build
@@ -337,23 +312,54 @@ jobs:
           path: current-sizes
           merge-multiple: true
 
-      - name: Restore base firmware sizes
-        id: base_cache
-        uses: actions/cache/restore@v5
+      - name: Download base firmware sizes from latest master build
+        id: base
         continue-on-error: true
-        with:
-          path: base-sizes
-          key: furble-firmware-size-v1-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            furble-firmware-size-v1-
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # GitHub cache is branch-scope isolated, so a pull_request run can
+          # never restore a cache written by a master push. Uploaded artifacts
+          # are branch independent, so pull the baseline from the newest
+          # successful master build of this workflow instead. Walk back a few
+          # runs because docs-only master pushes skip the firmware build and
+          # carry no firmware-size artifacts.
+          runs_json="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --branch master \
+            --workflow main.yml \
+            --event push \
+            --status success \
+            --limit 10 \
+            --json databaseId,headSha)"
+          count="$(echo "$runs_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+          baseline_sha=""
+          for i in $(seq 0 "$((count - 1))"); do
+            run_id="$(echo "$runs_json" | python3 -c "import json,sys; print(json.load(sys.stdin)[$i]['databaseId'])")"
+            head_sha="$(echo "$runs_json" | python3 -c "import json,sys; print(json.load(sys.stdin)[$i]['headSha'])")"
+            rm -rf base-sizes
+            if gh run download "$run_id" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'firmware-size-*' \
+              --dir base-sizes; then
+              echo "Using master run $run_id at $head_sha for the baseline."
+              baseline_sha="$head_sha"
+              break
+            fi
+            echo "Master run $run_id at $head_sha had no firmware-size artifacts. Trying an older run."
+          done
+          if [[ -z "$baseline_sha" ]]; then
+            echo "No master build with firmware-size artifacts was found."
+          fi
+          echo "baseline_sha=$baseline_sha" >> "$GITHUB_OUTPUT"
 
       - name: Render firmware size report
         id: render
         env:
           CURRENT_SIZES: current-sizes
           BASE_SIZES: base-sizes
-          BASE_MATCHED_KEY: ${{ steps.base_cache.outputs.cache-matched-key }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASELINE_SHA: ${{ steps.base.outputs.baseline_sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
@@ -370,7 +376,9 @@ jobs:
               sizes = {}
               if not root.exists():
                   return sizes
-              for path in sorted(root.glob("*.json")):
+              # gh run download nests each artifact in its own subdirectory,
+              # so recurse to find every firmware-size record.
+              for path in sorted(root.rglob("*.json")):
                   record = json.loads(path.read_text(encoding="utf-8"))
                   env = record["env"]
                   sizes[env] = record
@@ -380,17 +388,12 @@ jobs:
           if not current:
               raise SystemExit("No current firmware size artifacts were found")
 
-          # The restore step tries the exact base sha first and then falls
-          # back to the newest master size cache via the restore-keys
-          # prefix. cache-matched-key names whichever key actually hit, so
-          # the report can state which commit the baseline came from.
-          key_prefix = "furble-firmware-size-v1-"
-          matched_key = os.environ.get("BASE_MATCHED_KEY", "")
-          baseline_sha = ""
-          if matched_key.startswith(key_prefix):
-              baseline_sha = matched_key[len(key_prefix):]
-          base_cache_hit = bool(baseline_sha)
-          base = load_sizes(os.environ["BASE_SIZES"]) if base_cache_hit else {}
+          # The baseline comes from the newest successful master build of this
+          # workflow. Its head sha is exported by the download step, or empty
+          # when no prior master build carried firmware-size artifacts.
+          baseline_sha = os.environ.get("BASELINE_SHA", "").strip()
+          base_available = bool(baseline_sha)
+          base = load_sizes(os.environ["BASE_SIZES"]) if base_available else {}
 
           def signed_bytes(value):
               if value == 0:
@@ -406,7 +409,7 @@ jobs:
           missing_base = []
           for env in sorted(current):
               record = current[env]
-              if base_cache_hit and env in base:
+              if base_available and env in base:
                   base_record = base[env]
                   flash_delta = (
                       record["flash_used_bytes"] - base_record["flash_used_bytes"]
@@ -423,7 +426,7 @@ jobs:
                   )
                   ram_delta_text = f"{signed_bytes(ram_delta)}{ram_flag}"
               else:
-                  if base_cache_hit:
+                  if base_available:
                       missing_base.append(env)
                   flash_delta_text = "n/a"
                   ram_delta_text = "n/a"
@@ -447,42 +450,29 @@ jobs:
               *rows,
           ]
 
-          base_sha = os.environ["BASE_SHA"]
           base_ref = os.environ["BASE_REF"]
-          short_sha = base_sha[:12]
           short_baseline = baseline_sha[:12]
-          if not base_cache_hit:
+          if not base_available:
               body.extend(
                   [
                       "",
-                      f"> No size cache was found for `{base_ref}`, not even via "
-                      "the prefix fallback. Deltas are omitted. A successful "
-                      "firmware build on a master push creates this cache.",
-                  ]
-              )
-          elif baseline_sha == base_sha:
-              body.extend(
-                  [
-                      "",
-                      f"Base comparison: `{base_ref}` commit `{short_sha}`.",
-                      "Flash growth over 1% and any positive RAM delta are marked with ⚠️.",
+                      "> No firmware size baseline is available yet. Deltas are "
+                      "omitted. The newest successful firmware build on a "
+                      f"`{base_ref}` push provides the baseline.",
                   ]
               )
           else:
               body.extend(
                   [
                       "",
-                      f"Base comparison: `{base_ref}` commit `{short_baseline}` "
-                      "(nearest cached baseline, not the exact PR base).",
-                      f"The PR base commit `{short_sha}` had no size cache. That "
-                      "happens when that master push skipped firmware builds or "
-                      "its cache save had not finished yet.",
+                      f"Base comparison: latest `{base_ref}` build at commit "
+                      f"`{short_baseline}`.",
                       "Flash growth over 1% and any positive RAM delta are marked with ⚠️.",
                   ]
               )
               if missing_base:
                   body.append(
-                      "> The base cache did not contain: "
+                      "> The baseline build did not contain: "
                       + ", ".join(f"`{env}`" for env in missing_base)
                       + ". Those rows have no deltas."
                   )
