@@ -3,6 +3,7 @@
 
 #include "CanonEOSRemote.h"
 #include "CanonEOSSmart.h"
+#include "DJIOsmo.h"
 #include "FauxNY.h"
 #include "FujifilmBasic.h"
 #include "FujifilmSecure.h"
@@ -196,6 +197,10 @@ void CameraList::load(void) {
         m_ConnectList.push_back(
             std::make_unique<Furble::Lumix>(static_cast<const void *>(dbuffer), dbytes));
         break;
+      case Camera::Type::DJI_OSMO:
+        m_ConnectList.push_back(
+            std::make_unique<Furble::DJIOsmo>(static_cast<const void *>(dbuffer), dbytes));
+        break;
     }
   }
   m_Prefs.end();
@@ -256,6 +261,8 @@ bool CameraList::match(const NimBLEAdvertisedDevice *pDevice) {
     return true;
   } else if (Lumix::matches(pDevice)) {
     m_ConnectList.push_back(std::make_unique<Furble::Lumix>(pDevice));
+  } else if (DJIOsmo::matches(pDevice)) {
+    m_ConnectList.push_back(std::make_unique<Furble::DJIOsmo>(pDevice));
     return true;
   }
 

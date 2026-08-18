@@ -9,7 +9,7 @@ protocol core.
 - `Camera` is the abstract base (also NimBLEClientCallbacks). Each vendor mode
   is one subclass pair (.h/.cpp): Fujifilm Basic/Secure, CanonEOS
   Smart/Remote, Nikon Smart/Remote, Sony, the Ricoh Imaging family (RICOH and
-  PENTAX K), Panasonic Lumix, and FauxNY (software test camera).
+  PENTAX K), Panasonic Lumix, DJI Osmo, and FauxNY (software test camera).
 - `Ricoh` owns the shared Ricoh Imaging GATT family. PENTAX K bodies reuse its
   persisted `Camera::Type::RICOH`, security flow, UUIDs, and command bytes until
   hardware testing proves a model-specific delta.
