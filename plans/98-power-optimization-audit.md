@@ -23,7 +23,8 @@ The numbers are relative model estimates for the S3, not measurements.
 - Read the merged power code: `FurblePower`, `FurbleControl`, `FurbleGPS`,
   `FurbleUI`, `FurbleConsole` (`power stats`, `power log`), all five
   `sdkconfig.*`, `platformio.ini`, and `lib/furble` connection code.
-- Read every power plan (00 to 19, 26, 63, 64) plus the plans README.
+- Read every power plan (00 to 19, 26, 32, 33, 63, 64, 71) plus the plans
+  README.
 
 ## Baseline numbers, S3 energy model
 
@@ -37,7 +38,7 @@ The numbers are relative model estimates for the S3, not measurements.
 | intervalometer-5-frames | 84.7 | 40.2 | 3.5 | 41.0 | 0 |
 | screen-dimmed-30s | 50.6 | 40.2 | 0 | 10.4 | 0 |
 | blind-remote-shutter | 43.6 | 40.1 | 3.5 | 0.01 | 0 |
-| screen-off-30s | 0.31 | 0.24 | 0 | 0.01 | 0 |
+| screen-off-30s | 0.25 | 0.24 | 0 | 0.01 | 0 |
 
 What-if runs against the same binary:
 
@@ -56,7 +57,7 @@ Two conclusions fall straight out of the table. First, the display plus the
 MCU-held-active pattern is 81 of the 84 mA in every screen-on scenario.
 Second, one settings default (`SLEEP_CONN` off) is worth a factor of twelve
 whenever the device is connected with the screen off. On the 250 mAh
-StickS3 cell that is 3 hours versus 69 hours.
+StickS3 cell that is about 6 hours versus 69 hours.
 
 ## What is implemented, and whether it is optimal
 
@@ -175,7 +176,7 @@ windows, rail cycling behind a warning. Two large gaps:
 - **Duty cycling barely ducks.** In the checked-in baseline the receiver
   spends 14 of 15 s tracking and 1 s in standby; GPS averages 21.5 mA
   against 23.0 always-on. Root cause is structural:
-  `MIN_WAKE_WAIT_MS = 5000` and `DUTY_SECONDS = {5, 10, 15}` mean the
+  `MIN_WAKE_WAIT_MS = 5000` and `DUTY_SECONDS = {0, 5, 10, 15}` mean the
   wake dwell eats most or all of the interval. Best case at 15 s duty is
   about 50% standby, roughly 12 mA. The knobs that would matter (longer
   intervals with a cached-fix policy, plan 18 motion gating, plan 32
@@ -312,8 +313,9 @@ Missing plans, in priority order:
   high reward, needs the bench.
 5. **GPS duty rework.** Longer intervals with a cached-fix freshness
   policy, shorter wake dwell, and per-state numbers in the report.
-  Plan 15 clamps to 15 s because of `MAX_AGE_MS`; the clamp is the
-  thing to redesign, together with plan 18 (motion) and plan 32
+  Plan 15 clamps to the top `DUTY_SECONDS` entry of 15 s, well inside the
+  30 s `MAX_AGE_MS` freshness budget; the clamp is the thing to redesign,
+  together with plan 18 (motion) and plan 32
   (ephemeris cache) which both remain unimplemented.
 6. **AXP192 rail and peripheral audit.** Disable unused LDO/DCDC
   blocks on StickC/Plus/Core2, assert IMU suspend state at boot,
