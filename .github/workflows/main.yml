@@ -60,6 +60,22 @@ jobs:
           echo "Firmware paths changed: $firmware_changed"
           echo "firmware=$firmware_changed" >> "$GITHUB_OUTPUT"
 
+  host_camera:
+    name: Host camera harness
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure host harness
+        run: cmake -S tests/host -B "$RUNNER_TEMP/furble-host-build"
+
+      - name: Build host harness
+        run: cmake --build "$RUNNER_TEMP/furble-host-build" --parallel 2
+
+      - name: Run host camera and corpus tests
+        run: ctest --test-dir "$RUNNER_TEMP/furble-host-build" --output-on-failure
+
   format:
     name: clang-format
     needs: changes
@@ -88,7 +104,7 @@ jobs:
       - name: Check clang-format
         shell: bash
         run: |
-          find src include lib/furble sim -type f \( \
+          find src include lib/furble sim tests/host -type f \( \
             -name '*.c' -o \
             -name '*.cc' -o \
             -name '*.cpp' -o \
@@ -525,6 +541,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - changes
+      - host_camera
       - format
       - discover
       - build
@@ -533,6 +550,7 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           FIRMWARE_CHANGED: ${{ needs.changes.outputs.firmware }}
+          HOST_CAMERA_RESULT: ${{ needs.host_camera.result }}
           FORMAT_RESULT: ${{ needs.format.result }}
           DISCOVER_RESULT: ${{ needs.discover.result }}
           BUILD_RESULT: ${{ needs.build.result }}
@@ -540,6 +558,11 @@ jobs:
           set -euo pipefail
           if [[ "$CHANGES_RESULT" != "success" ]]; then
             echo "The changed-path check did not succeed."
+            exit 1
+          fi
+
+          if [[ "$HOST_CAMERA_RESULT" != "success" ]]; then
+            echo "The host camera harness failed or was cancelled."
             exit 1
           fi
 

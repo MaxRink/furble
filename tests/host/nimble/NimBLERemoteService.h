@@ -1,0 +1,6 @@
+#ifndef FURBLE_HOST_NIMBLE_REMOTE_SERVICE_H
+#define FURBLE_HOST_NIMBLE_REMOTE_SERVICE_H
+
+#include "MockNimBLE.h"
+
+#endif

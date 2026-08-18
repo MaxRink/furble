@@ -1,0 +1,16 @@
+# Synthetic fixture. It is not an X100VI hardware capture.
+FURBLE-GOLDEN-CAPTURE 1
+camera=x100vi
+source=synthetic
+note=replace with reviewed vectors from plan 64 BT journal work
+
+advertisement|name||FUJIFILM X100VI
+advertisement|address||112233445566
+advertisement|manufacturer||d80402a1b2c3d4
+advertisement|service|af854c2e-b214-458e-97e2-912c4ecf2cb8|
+connect|||
+write|91f1de68-dff6-466e-8b65-ff13b0f16fb8|aba356eb-9633-4e60-b73f-f52516dbd671|a1b2c3d4
+notify|4c0020fe-f3b6-40de-acc9-77d129067b14|f9150137-5d40-4801-a8dc-f7fc5b01da50|0200
+notify|4c0020fe-f3b6-40de-acc9-77d129067b14|ad06c7b7-f41a-46f4-a29a-712055319122|0100
+write|3b46ec2b-48ba-41fd-b1b8-ed860b60d22b|0f36ec14-29e5-411a-a1b6-64ee8383f090|fbea4d1f046ffd072200000000000000ea0708110c2238
+disconnect|||
