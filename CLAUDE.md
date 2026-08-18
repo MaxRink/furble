@@ -72,5 +72,6 @@ CLAUDE.md whose directory it touches.
 - `sim/`: host SDL simulator for the UI (shims, fakes, script driver). It
   never modifies firmware sources.
 - `web-installer/`: ESP Web Tools manifest generation.
+- `.github/workflows/pages.yml`: tag-triggered GitHub Pages installer builds.
 - `plans/`: numbered improvement plans, one per PR (on the plans branch until
   integration lands).

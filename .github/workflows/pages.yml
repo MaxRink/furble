@@ -1,0 +1,140 @@
+name: Publish web installer
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - m5stack-core
+          - m5stack-core2
+          - m5stick-c
+          - m5stick-c-plus
+          - m5stick-s3
+
+    env:
+      FURBLE_VERSION: ${{ github.ref_name }}
+      FURBLE_TEST: "0"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cache PlatformIO packages and platforms
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-pages-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-pages-
+            ${{ runner.os }}-platformio-
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Build furble
+        shell: bash
+        run: |
+          for attempt in 1 2; do
+            if platformio run -e "${{ matrix.platform }}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            echo "PlatformIO build failed on attempt $attempt. Retrying once."
+          done
+
+      - name: Prepare firmware files
+        shell: bash
+        run: |
+          firmware_dir="$GITHUB_WORKSPACE/site/firmware"
+          platform="${{ matrix.platform }}"
+          version="$FURBLE_VERSION"
+          mkdir -p "$firmware_dir"
+          cp ".pio/build/$platform/firmware.bin" \
+            "$firmware_dir/furble-$platform-$version.bin"
+          cp ".pio/build/$platform/bootloader.bin" \
+            "$firmware_dir/furble-bootloader-$platform-$version.bin"
+          cp ".pio/build/$platform/partitions.bin" \
+            "$firmware_dir/furble-partitions-$platform-$version.bin"
+          cp ".pio/build/$platform/ota_data_initial.bin" \
+            "$firmware_dir/furble-ota_data_initial-$platform-$version.bin"
+
+      - name: Generate manifest
+        working-directory: web-installer
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ github.ref_name }}
+          ASSET_BASE_URL: firmware
+        run: |
+          python generate-manifest.py > \
+            "$GITHUB_WORKSPACE/site/manifest_${PLATFORM}.json"
+
+      - name: Upload installer files
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-${{ matrix.platform }}
+          path: site
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download installer files
+        uses: actions/download-artifact@v7
+        with:
+          pattern: pages-*
+          path: site
+          merge-multiple: true
+
+      - name: Add installer page
+        run: cp web-installer/index.html site/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

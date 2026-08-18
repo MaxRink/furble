@@ -24,8 +24,8 @@ What this fork adds over upstream right now:
 
 Use this fork if you want battery life on a StickS3, the newest features, or
 the developer tooling, and you accept that changes land here first with less
-soak time. Use upstream if you want the most settled firmware and the
-official web installer.
+soak time. Use upstream if you want the most settled firmware and release
+process.
 
 A Bluetooth wireless remote shutter release originally targeted at Fujifilm mirrorless
 cameras. furble now supports:
@@ -113,8 +113,23 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 
 ### Easy Install
 
-The simplest way to get started is with the web installer.
-Follow the instructions on the wiki: [Easy Web Install](https://github.com/gkoh/furble/wiki/Easy-Web-Install)
+The simplest way to get started is with the
+[furble browser installer](https://maxrink.github.io/furble/).
+It flashes a supported M5Stack device from a desktop browser.
+
+### Browser flashing
+
+The installer uses Web Serial. Use Chrome or Edge on a desktop computer with a
+data-capable USB cable. Safari and Firefox do not provide the required browser
+interface.
+
+1. Connect the M5Stack device to the computer.
+2. Open the [furble browser installer](https://maxrink.github.io/furble/).
+3. Select the device model and click `Install`.
+4. Approve the serial port when the browser asks.
+
+If the installer offers to erase the device, decline to keep existing settings
+and paired cameras. Accept the erase when starting from a clean device.
 
 ### PlatformIO
 

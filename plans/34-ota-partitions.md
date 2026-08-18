@@ -860,6 +860,29 @@ expects. USB flashing and OTA flashing converge on the same layout instead of
 being two worlds. A user can move between them freely and in either direction,
 which is the property that makes the whole thing worth the one time reflash.
 
+## Implementation state
+
+The fork-specific web installer is implemented on branch
+`feat/web-installer-fork`.
+
+- Manifest generation supports both MaxRink/furble release assets and a local
+  Pages asset directory. The release workflow passes the tag separately from
+  the versioned asset names.
+- The new Pages workflow builds all five release environments on a `v*` tag,
+  generates one manifest per board, and publishes the installer page with the
+  binaries.
+- Fork deviation: GitHub Pages is added as the fork-owned installer path. It
+  avoids depending on the upstream Cloudflare project credentials.
+- The installer page links to MaxRink/furble. The README documents browser
+  flashing and the erase choice.
+- Manifest and workflow validation passed. The requested m5stick-s3 build was
+  blocked before compilation by the sandbox. The global PlatformIO store is
+  protected, and the task-local retry reached an HTTPClientError while fetching
+  dependencies. No TinyGPSPlus first-install failure occurred.
+- No firmware source, partition table, sdkconfig, or setting changed.
+- No hardware flashing was performed. Browser flashing remains hardware
+  untested in this fork.
+
 ---
 
 # Considered and rejected
