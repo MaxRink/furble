@@ -81,5 +81,33 @@ Serial still flashes firmware normally.
 
 ## Implementation state
 
-Design only. Not implemented. Blocked on PR #76 (`feat/64-bt-debug`) and on
-PR-1 (plan 68).
+Implemented. Both dependencies have merged: PR-1 (plan 68) ships the debug
+firmware and manifests, and PR #76 (`feat/64-bt-debug`) ships the `bt` command
+family.
+
+The panel lives in `web-installer/index.html` as a collapsed "Capture BT debug
+dump" section with its own `<script id="bt-dump-script">` block. It follows the
+design with these concrete choices:
+
+- Buttons: Connect / Disconnect, Start recording (`bt journal clear` then
+  `bt journal on`), Stop and dump journal (`bt journal dump` then
+  `bt journal off`), Run scan (`bt scan <seconds>`), Run explore
+  (`bt explore <addr>` then `bt explore stop`), plus Download dump, Copy and
+  Clear. Scan and explore are offered as separate optional controls rather than
+  chained onto Stop, so the reporter runs them only when the bug is about
+  finding or pairing a camera.
+- Completion detection: journal commands wait for the `furble> ` prompt. Scan
+  and explore return the prompt immediately then stream, so they wait for
+  `bt.scan: done` and `explore.read: end` (or the matching refused / failed
+  lines). Every command has a timeout that is logged and swallowed.
+- Debug build detection: on Connect the panel sends a bare carriage return and
+  waits up to 3 seconds for the prompt. No prompt means a release build, so it
+  shows "flash a debug build first" and disconnects.
+- Web Serial is feature detected. Unsupported browsers see a one line note
+  instead of the controls, and firmware flashing still works.
+
+Verification: the JS was syntax checked with `node --check` and the transport
+logic (line demux, prompt detection, per command end markers, echo suppression,
+the full journal + scan + explore capture flow, and the non-debug timeout path)
+was exercised with a mock Web Serial port under node. Hardware capture on an
+M5StickS3 with a debug build is the remaining manual check.

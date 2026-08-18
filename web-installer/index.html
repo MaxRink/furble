@@ -6,6 +6,35 @@
       .radios li {
         list-style: none;
       }
+      .bt-dump {
+        margin-top: 1.5em;
+        border-top: 1px solid #ccc;
+        padding-top: 0.5em;
+      }
+      .bt-dump summary {
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .bt-dump .row {
+        margin-bottom: 0.5em;
+      }
+      .bt-dump button {
+        margin-right: 0.5em;
+        margin-bottom: 0.25em;
+      }
+      .bt-dump textarea {
+        width: 100%;
+        height: 14em;
+        box-sizing: border-box;
+        font-family: monospace;
+        white-space: pre;
+      }
+      .status {
+        font-style: italic;
+      }
+      .hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -42,6 +71,53 @@
         <esp-web-install-button class="invisible"></esp-web-install-button>
       </p>
 
+      <details class="bt-dump" id="btDumpPanel">
+        <summary>Capture BT debug dump</summary>
+        <p>Attach a Bluetooth diagnostic dump to a camera bug report. This needs
+        a debug build flashed first: tick the "Debug build" box above and install
+        it, then come back here.</p>
+        <p>Flashing and this capture cannot use the serial port at the same time.
+        Finish the install first, close its dialog, then click Connect below.</p>
+
+        <div id="btUnsupported" class="hidden status">
+          This browser does not support Web Serial. Use a Chromium based browser
+          such as Chrome or Edge on a desktop to capture a dump.
+        </div>
+
+        <div id="btSupported" class="hidden">
+          <div class="row">
+            <button id="btConnect">Connect</button>
+            <button id="btDisconnect" disabled>Disconnect</button>
+          </div>
+          <p class="caption">Recommended order: Connect, Start recording,
+          reproduce the problem on the device, Stop and dump journal. Run a scan
+          and an explore too if the bug is about finding or pairing a camera.</p>
+          <div class="row">
+            <button id="btJournalStart" disabled>Start recording</button>
+            <button id="btJournalStop" disabled>Stop and dump journal</button>
+          </div>
+          <div class="row">
+            <label>Scan seconds
+              <input id="btScanSeconds" type="number" min="1" max="60" value="5" style="width: 4em"/>
+            </label>
+            <button id="btScan" disabled>Run scan</button>
+          </div>
+          <div class="row">
+            <label>Explore address
+              <input id="btExploreAddr" type="text" placeholder="aa:bb:cc:dd:ee:ff" size="20"/>
+            </label>
+            <button id="btExplore" disabled>Run explore</button>
+          </div>
+          <p id="btStatus" class="status">Not connected.</p>
+          <textarea id="btOutput" readonly placeholder="Console output appears here."></textarea>
+          <div class="row">
+            <button id="btDownload">Download dump</button>
+            <button id="btCopy">Copy</button>
+            <button id="btClear">Clear</button>
+          </div>
+        </div>
+      </details>
+
       <div class="footer">
         Follow furble development on
         <a href="https://github.com/MaxRink/furble">GitHub</a>.
@@ -62,6 +138,402 @@
       document.querySelectorAll('input[name="type"]').forEach(radio =>
         radio.addEventListener("change", updateManifest));
       document.getElementById('debug').addEventListener("change", updateManifest);
+    </script>
+    <script id="bt-dump-script">
+      // Web Serial "Capture BT debug dump" panel. Drives the furble debug
+      // console (the bt journal, scan and explore commands) over the same USB
+      // CDC serial port the flasher uses, and offers the transcript as a
+      // downloadable file for camera bug reports.
+      var BtDump = (function () {
+        "use strict";
+
+        var PROMPT = "furble> ";
+        var BAUD = 115200;
+
+        // Split a raw serial stream into complete lines plus a trailing prompt.
+        // The prompt is printed without a newline, so it only ever shows up as
+        // the unterminated remainder of the buffer.
+        function createConsoleDemux(prompt, onLine, onPrompt) {
+          var pending = "";
+          return function feed(text) {
+            pending += text;
+            var idx;
+            while ((idx = pending.indexOf("\n")) >= 0) {
+              var line = pending.slice(0, idx).replace(/\r$/, "");
+              pending = pending.slice(idx + 1);
+              onLine(line);
+            }
+            if (pending.length >= prompt.length &&
+                pending.slice(pending.length - prompt.length) === prompt) {
+              pending = pending.slice(0, pending.length - prompt.length);
+              onPrompt();
+            }
+          };
+        }
+
+        // End condition for a command. Journal commands finish when the prompt
+        // returns. Scan and explore return the prompt immediately then stream
+        // asynchronously, so they finish on their own end marker instead.
+        function endConditionFor(command, scanSeconds) {
+          if (/^bt\s+scan(\s|$)/.test(command)) {
+            return {
+              until: function (line) {
+                return line.indexOf("bt.scan: done") === 0 ||
+                       line.indexOf("bt.scan: refused") === 0 ||
+                       line.indexOf("bt.scan: unavailable") === 0;
+              },
+              timeoutMs: (scanSeconds || 5) * 1000 + 5000
+            };
+          }
+          if (/^bt\s+explore(\s|$)/.test(command)) {
+            return {
+              until: function (line) {
+                return line.indexOf("explore.read: end") === 0 ||
+                       line.indexOf("bt.explore: refused") === 0 ||
+                       line.indexOf("explore.connect_failed") === 0;
+              },
+              timeoutMs: 20000
+            };
+          }
+          return { until: "prompt", timeoutMs: 5000 };
+        }
+
+        // A line oriented console over a Web Serial port.
+        function BtConsole(port) {
+          this.port = port;
+          this.reader = null;
+          this.writer = null;
+          this.closed = false;
+          this.transcript = "";
+          this.onData = null;
+          this.lineWaiter = null;
+          this.promptWaiter = null;
+          this.pendingEcho = null;
+          var self = this;
+          this.demux = createConsoleDemux(
+            PROMPT,
+            function (line) { self._onLine(line); },
+            function () { self._onPrompt(); });
+        }
+
+        BtConsole.prototype._append = function (text) {
+          this.transcript += text;
+          if (this.onData) {
+            this.onData(text);
+          }
+        };
+
+        BtConsole.prototype._onLine = function (line) {
+          // Drop the console echo of the command we just sent, once, so the
+          // transcript does not show each command twice.
+          if (this.pendingEcho !== null && line === this.pendingEcho) {
+            this.pendingEcho = null;
+            return;
+          }
+          this._append(line + "\n");
+          if (this.lineWaiter && this.lineWaiter.test(line)) {
+            var w = this.lineWaiter;
+            this.lineWaiter = null;
+            clearTimeout(w.timer);
+            w.resolve(line);
+          }
+        };
+
+        BtConsole.prototype._onPrompt = function () {
+          this.pendingEcho = null;
+          if (this.promptWaiter) {
+            var w = this.promptWaiter;
+            this.promptWaiter = null;
+            clearTimeout(w.timer);
+            w.resolve();
+          }
+        };
+
+        BtConsole.prototype.open = async function () {
+          await this.port.open({ baudRate: BAUD });
+          this.reader = this.port.readable.getReader();
+          this.writer = this.port.writable.getWriter();
+          this._readLoop();
+        };
+
+        BtConsole.prototype._readLoop = async function () {
+          var decoder = new TextDecoder();
+          try {
+            while (true) {
+              var result = await this.reader.read();
+              if (result.done) {
+                break;
+              }
+              this.demux(decoder.decode(result.value, { stream: true }));
+            }
+          } catch (err) {
+            // Port was closed or lost. Nothing to recover here.
+          }
+        };
+
+        BtConsole.prototype.send = function (command) {
+          this._append("> " + command + "\n");
+          this.pendingEcho = command;
+          var data = new TextEncoder().encode(command + "\r");
+          return this.writer.write(data);
+        };
+
+        BtConsole.prototype._waitPrompt = function (timeoutMs) {
+          var self = this;
+          return new Promise(function (resolve, reject) {
+            var w = { resolve: resolve };
+            w.timer = setTimeout(function () {
+              self.promptWaiter = null;
+              reject(new Error("timeout"));
+            }, timeoutMs);
+            self.promptWaiter = w;
+          });
+        };
+
+        BtConsole.prototype._waitLine = function (test, timeoutMs) {
+          var self = this;
+          return new Promise(function (resolve, reject) {
+            var w = { test: test, resolve: resolve };
+            w.timer = setTimeout(function () {
+              self.lineWaiter = null;
+              reject(new Error("timeout"));
+            }, timeoutMs);
+            self.lineWaiter = w;
+          });
+        };
+
+        // Send a command and wait for its end condition. Returns true when the
+        // end condition was met, false on timeout. A timeout is reported in the
+        // transcript and then swallowed so one silent command cannot hang the
+        // whole capture.
+        BtConsole.prototype.run = async function (command, cond) {
+          var wait = cond.until === "prompt"
+            ? this._waitPrompt(cond.timeoutMs)
+            : this._waitLine(cond.until, cond.timeoutMs);
+          await this.send(command);
+          try {
+            await wait;
+            return true;
+          } catch (err) {
+            this._append("(no response, timed out after " +
+              cond.timeoutMs + " ms)\n");
+            return false;
+          }
+        };
+
+        BtConsole.prototype.close = async function () {
+          this.closed = true;
+          try {
+            if (this.reader) {
+              await this.reader.cancel();
+              this.reader.releaseLock();
+            }
+          } catch (err) { /* ignore */ }
+          try {
+            if (this.writer) {
+              this.writer.releaseLock();
+            }
+          } catch (err) { /* ignore */ }
+          try {
+            await this.port.close();
+          } catch (err) { /* ignore */ }
+        };
+
+        function timestamp() {
+          return new Date().toISOString().replace(/[:.]/g, "-");
+        }
+
+        function validAddress(addr) {
+          return /^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$/.test(addr);
+        }
+
+        // Wire the panel to the DOM. Guarded so this file can also be loaded in
+        // node for testing without a document.
+        function init() {
+          var unsupported = document.getElementById("btUnsupported");
+          var supported = document.getElementById("btSupported");
+
+          if (!("serial" in navigator)) {
+            unsupported.classList.remove("hidden");
+            return;
+          }
+          supported.classList.remove("hidden");
+
+          var el = {
+            connect: document.getElementById("btConnect"),
+            disconnect: document.getElementById("btDisconnect"),
+            journalStart: document.getElementById("btJournalStart"),
+            journalStop: document.getElementById("btJournalStop"),
+            scan: document.getElementById("btScan"),
+            scanSeconds: document.getElementById("btScanSeconds"),
+            explore: document.getElementById("btExplore"),
+            exploreAddr: document.getElementById("btExploreAddr"),
+            status: document.getElementById("btStatus"),
+            output: document.getElementById("btOutput"),
+            download: document.getElementById("btDownload"),
+            copy: document.getElementById("btCopy"),
+            clear: document.getElementById("btClear")
+          };
+
+          var device = null;
+
+          function setStatus(text) {
+            el.status.textContent = text;
+          }
+
+          function setState(state) {
+            el.connect.disabled = state !== "disconnected";
+            el.disconnect.disabled = state === "disconnected";
+            el.journalStart.disabled = state !== "idle";
+            el.journalStop.disabled = state !== "recording";
+            el.scan.disabled = state !== "idle";
+            el.explore.disabled = state !== "idle";
+          }
+
+          function appendOutput(text) {
+            el.output.value += text;
+            el.output.scrollTop = el.output.scrollHeight;
+          }
+
+          setState("disconnected");
+
+          el.connect.addEventListener("click", async function () {
+            var port;
+            try {
+              port = await navigator.serial.requestPort();
+            } catch (err) {
+              setStatus("No port selected.");
+              return;
+            }
+            device = new BtConsole(port);
+            device.onData = appendOutput;
+            try {
+              await device.open();
+            } catch (err) {
+              setStatus("Could not open the port. Close any other serial tool " +
+                "and the flasher dialog, then try again.");
+              device = null;
+              return;
+            }
+            setStatus("Checking for the debug console...");
+            // A bare carriage return makes the console reprint its prompt. If no
+            // prompt comes back this is not a debug build.
+            var detected = await device.run("", { until: "prompt", timeoutMs: 3000 });
+            if (!detected) {
+              setStatus("No furble> prompt. Flash a debug build first, then " +
+                "reconnect.");
+              await device.close();
+              device = null;
+              setState("disconnected");
+              return;
+            }
+            setStatus("Connected. Debug console detected.");
+            setState("idle");
+          });
+
+          el.disconnect.addEventListener("click", async function () {
+            if (device) {
+              await device.close();
+              device = null;
+            }
+            setStatus("Disconnected.");
+            setState("disconnected");
+          });
+
+          el.journalStart.addEventListener("click", async function () {
+            setState("busy");
+            setStatus("Starting journal...");
+            await device.run("bt journal clear", endConditionFor("bt journal clear"));
+            await device.run("bt journal on", endConditionFor("bt journal on"));
+            setStatus("Recording. Reproduce the problem on the device, then " +
+              "click Stop and dump journal.");
+            setState("recording");
+          });
+
+          el.journalStop.addEventListener("click", async function () {
+            setState("busy");
+            setStatus("Dumping journal...");
+            await device.run("bt journal dump", endConditionFor("bt journal dump"));
+            await device.run("bt journal off", endConditionFor("bt journal off"));
+            setStatus("Journal captured. Download the dump or run a scan or " +
+              "explore.");
+            setState("idle");
+          });
+
+          el.scan.addEventListener("click", async function () {
+            var seconds = parseInt(el.scanSeconds.value, 10);
+            if (isNaN(seconds) || seconds < 1) {
+              seconds = 5;
+            }
+            setState("busy");
+            setStatus("Scanning for " + seconds + " seconds...");
+            var command = "bt scan " + seconds;
+            await device.run(command, endConditionFor(command, seconds));
+            setStatus("Scan captured.");
+            setState("idle");
+          });
+
+          el.explore.addEventListener("click", async function () {
+            var addr = el.exploreAddr.value.trim();
+            if (!validAddress(addr)) {
+              setStatus("Enter a valid address like aa:bb:cc:dd:ee:ff.");
+              return;
+            }
+            setState("busy");
+            setStatus("Exploring " + addr + "...");
+            var command = "bt explore " + addr;
+            await device.run(command, endConditionFor(command));
+            // Release the connection so the device returns to a clean state.
+            await device.run("bt explore stop", { until: "prompt", timeoutMs: 5000 });
+            setStatus("Explore captured.");
+            setState("idle");
+          });
+
+          el.download.addEventListener("click", function () {
+            var blob = new Blob([el.output.value], { type: "text/plain" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "furble-bt-dump-" + timestamp() + ".txt";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          });
+
+          el.copy.addEventListener("click", async function () {
+            try {
+              await navigator.clipboard.writeText(el.output.value);
+              setStatus("Copied to clipboard.");
+            } catch (err) {
+              setStatus("Could not copy. Select the text and copy manually.");
+            }
+          });
+
+          el.clear.addEventListener("click", function () {
+            el.output.value = "";
+            if (device) {
+              device.transcript = "";
+            }
+          });
+        }
+
+        if (typeof document !== "undefined") {
+          document.addEventListener("DOMContentLoaded", init);
+        }
+
+        return {
+          createConsoleDemux: createConsoleDemux,
+          endConditionFor: endConditionFor,
+          validAddress: validAddress,
+          BtConsole: BtConsole,
+          PROMPT: PROMPT
+        };
+      })();
+
+      if (typeof module !== "undefined" && module.exports) {
+        module.exports = BtDump;
+      }
     </script>
   </body>
 </html>
