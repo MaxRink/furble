@@ -8,6 +8,13 @@ Primary test hardware: M5StickS3 with GPS/BDS Unit v1.1 (AT6668). Only Fujifilm
 cameras are available for hardware tests. Other vendors are covered by code
 review and the FauxNY test camera, and are marked as untested in each PR.
 
+## Engineering lessons
+
+- [95-engineering-lessons.md](95-engineering-lessons.md): durable hardware,
+  build, CI, git, and protocol findings. Read the matching section before you
+  touch that area so you do not relearn them. The CLAUDE.md files carry the
+  one-line pointers, this doc carries the detail.
+
 ## Hardware experiments
 
 - [00-hardware-experiments.md](00-hardware-experiments.md): two cheap tests that

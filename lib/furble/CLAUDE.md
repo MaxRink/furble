@@ -36,4 +36,9 @@ protocol core.
   of the vendor journal. Keep new vendor operations on these wrappers.
 - Vendor protocol files are per-camera. Any change here needs the
   hardware-tested-vendors statement in the PR: only Fujifilm is testable on
-  real hardware, all other vendors must be declared untested.
+  real hardware, all other vendors must be declared untested. Every camera or
+  protocol PR must also cite its data source as a real URL, not a name mention:
+  a capture log, vendor doc, open-source implementation, or datasheet.
+- The Fujifilm X100VI Secure golden GATT handshake (STATUS values, identity
+  write, registration-accept notifications, shutter sequence) is recorded in
+  `plans/95-engineering-lessons.md`. Cite it instead of re-capturing.
