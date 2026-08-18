@@ -37,6 +37,7 @@ constexpr uint8_t BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT = 0;
 constexpr uint16_t BLE_GAP_INITIAL_CONN_ITVL_MIN = 6;
 constexpr uint16_t BLE_GAP_INITIAL_CONN_ITVL_MAX = 12;
 constexpr uint16_t BLE_GAP_INITIAL_SUPERVISION_TIMEOUT = 100;
+constexpr uint16_t BLE_HS_CONN_HANDLE_NONE = 0xffff;
 
 struct ble_gap_upd_params {
   uint16_t itvl_min = 0;
@@ -201,10 +202,18 @@ class NimBLEConnInfo {
   uint16_t getConnLatency() const;
   uint16_t getConnTimeout() const;
 
+  uint16_t getConnHandle() const { return m_Handle; }
+  NimBLEAddress getAddress() const { return NimBLEAddress(); }
+  bool isBonded() const { return false; }
+  bool isEncrypted() const { return false; }
+  bool isAuthenticated() const { return false; }
+  uint8_t getSecKeySize() const { return 0; }
+
  private:
   uint16_t m_Interval;
   uint16_t m_Latency;
   uint16_t m_Timeout;
+  uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
 };
 
 class NimBLEClientCallbacks {
@@ -213,6 +222,16 @@ class NimBLEClientCallbacks {
   virtual void onConnect(NimBLEClient *client);
   virtual void onDisconnect(NimBLEClient *client, int reason);
   virtual bool onConnParamsUpdateRequest(NimBLEClient *client, const ble_gap_upd_params *params);
+  virtual void onPassKeyEntry(NimBLEConnInfo &connInfo) { (void)connInfo; }
+  virtual uint32_t onPassKeyDisplay(NimBLEConnInfo &connInfo) {
+    (void)connInfo;
+    return 0;
+  }
+  virtual void onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {
+    (void)connInfo;
+    (void)pin;
+  }
+  virtual void onAuthenticationComplete(NimBLEConnInfo &connInfo) { (void)connInfo; }
 };
 
 class NimBLEClient {
@@ -243,6 +262,7 @@ class NimBLEClient {
                         uint16_t timeout);
   NimBLEConnInfo getConnInfo() const;
   int getRssi() const;
+  uint16_t getConnHandle() const { return BLE_HS_CONN_HANDLE_NONE; }
 
   NimBLEMockPeer *getPeer() const;
 
@@ -377,6 +397,14 @@ class NimBLEDevice {
   // as the controller does with "Unable to create client; already at max". Zero
   // means unlimited. resetMock() restores unlimited.
   static void setMaxClients(size_t max);
+  static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept) {
+    (void)connInfo;
+    (void)accept;
+  }
+  static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passkey) {
+    (void)connInfo;
+    (void)passkey;
+  }
 };
 
 #endif

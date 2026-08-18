@@ -3139,7 +3139,7 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::IR_RELOAD:
-        updateIRMenuVisibility();
+        m_ConnectContext.ui->updateIRMenuVisibility();
         break;
 
       case Request::FEEDBACK_RELOAD:
