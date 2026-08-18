@@ -71,6 +71,9 @@ FujifilmBasic::FujifilmBasic(const NimBLEAdvertisedDevice *pDevice)
  */
 bool FujifilmBasic::_connect(void) {
   m_Progress = 10;
+  // Clear any stale confirmation from a prior connection so the gate below only
+  // passes on a fresh registration-accepted notification.
+  m_Configured = false;
 
   NimBLERemoteService *pSvc = nullptr;
   NimBLERemoteCharacteristic *pChr = nullptr;
@@ -118,20 +121,8 @@ bool FujifilmBasic::_connect(void) {
     return false;
   }
   ESP_LOGI(LOG_TAG, "Configured");
-  m_Progress = 50;
-
-#if 0
-  // wait for up to (10*500)ms callback
-  for (unsigned int i = 0; i < 10; i++) {
-    if (m_Configured) {
-      break;
-    }
-    m_Progress = m_Progress.load() + 1;
-    vTaskDelay(pdMS_TO_TICKS(500));
-  }
-#endif
-
   m_Progress = 60;
+
   // notifications
   if (!this->subscribe(SVC_CONF_UUID, CHR_NOT1_UUID, true)) {
     return false;
@@ -144,6 +135,14 @@ bool FujifilmBasic::_connect(void) {
   m_Progress = 80;
 
   if (!this->subscribe(SVC_CONF_UUID, CHR_IND3_UUID, false)) {
+    return false;
+  }
+
+  // Gate the connect on the camera confirming registration. CHR_NOT1_UUID is
+  // now subscribed, so its notification can arrive and set m_Configured. Without
+  // this the link plumbing alone would report success and the shutter would be
+  // silently inert. Bounded wait, no Control mutex held.
+  if (!waitForRegistration(85)) {
     return false;
   }
 

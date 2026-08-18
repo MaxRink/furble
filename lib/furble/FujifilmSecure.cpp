@@ -93,6 +93,11 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool FujifilmSecure::_connect(void) {
   bool success = false;
   m_Progress = 0;
+  // Clear any stale confirmation from a prior connection so the gate below only
+  // passes on a fresh registration-accepted notification. secureConnection()
+  // succeeds on a stale bond, so this flag is the only proof the camera app
+  // actually re-registered furble this session.
+  m_Configured = false;
 
   if (m_PairType == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
@@ -208,6 +213,18 @@ bool FujifilmSecure::_connect(void) {
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
     m_Progress += 5;
+  }
+
+  // Gate the connect on the camera confirming registration. All notifications
+  // are subscribed, so CHR_NOT1_UUID can now deliver its confirmation and set
+  // m_Configured. The golden X100VI capture shows this notification about 12 s
+  // in, before the geotag interval write below. secureConnection() and every
+  // GATT write above succeed on a stale bond with a camera that never
+  // re-registered furble, so without this gate the link plumbing alone would
+  // report success and the shutter would be silently inert. Bounded wait, no
+  // Control mutex held.
+  if (!waitForRegistration(85)) {
+    return false;
   }
 
   auto sync_interval = NimBLEAttValue(reinterpret_cast<const uint8_t *>(&GEOTAG_SYNC_INTERVAL),

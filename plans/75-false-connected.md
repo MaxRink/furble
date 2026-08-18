@@ -182,6 +182,51 @@ Risk and sequencing:
 
 ## Implementation state
 
-Not started. Diagnosis only. This document is the input for a follow-up
-implementation PR, which needs `false-connected-settings.log` to fix the Secure
-path.
+Implemented. The defensive registration-confirm gate is in place for both the
+Basic and Secure Fujifilm paths.
+
+What landed:
+
+- `Fujifilm::waitForRegistration(progress)` (`lib/furble/Fujifilm.cpp`): a
+  bounded poll on `m_Configured` with `vTaskDelay`, 25 s timeout, 250 ms poll.
+  It runs inside `_connect()`, which the Control layer calls after releasing its
+  mutex (`src/FurbleControl.cpp` snapshots the targets, then drops the lock), so
+  the wait never holds the Control mutex across a delay. On success it returns
+  true; on timeout it logs a distinct warning ("Registration not confirmed ...
+  put the camera in pairing mode") and returns false.
+- `Fujifilm::notify` now sets `m_Configured` on the arrival of any notification
+  on `CHR_NOT1_UUID` (service 4c0020fe char f9150137). The golden X100VI capture
+  records that notification carrying payload `0100`, not the `0x02 0x00` the old
+  `isConfigurationNotification` predicate expected, so gating on the predicate
+  alone would have rejected a healthy connect. The arrival of the dedicated
+  config/registration characteristic is the signal; the payload is not.
+  `m_Configured` is now `volatile` for cross-task visibility and is cleared at
+  the top of each `_connect()` so a stale confirmation cannot pass the gate on a
+  reconnect.
+- FujifilmBasic (`lib/furble/FujifilmBasic.cpp`): the `#if 0` wait loop is
+  removed. It sat at progress 50, before `CHR_NOT1_UUID` was subscribed, so a
+  naive re-enable could never have seen the notification. The gate now runs
+  after the notification subscriptions, at progress 85, before shutter discovery.
+- FujifilmSecure (`lib/furble/FujifilmSecure.cpp`): the same gate is added after
+  the twelve notification subscriptions, before the geotag interval write, which
+  matches the golden capture ordering (config notification at ~12 s, geotag write
+  at ~15 s). Secure previously had no confirmation wait at all.
+
+On timeout `_connect()` returns false, `Camera::connect()` tears the link down,
+and Control settles to `STATE_CONNECT_FAILED` instead of `STATE_ACTIVE`. furble
+no longer reports Connected when the camera never accepted registration.
+
+Note on the settings-menu capture: `false-connected-settings.log` showed a
+connect started from the camera settings menu that was genuine (both furble and
+the camera reported connected), and the two `0100` notifications were not
+observed inside that ~16 s capture window. That window ended at ~14.6 s, before
+the golden capture's ~12 s notification plus margin, so the notifications most
+likely arrived later. The 25 s timeout is deliberately generous to avoid
+rejecting a slow but genuine camera. This is a defensive gate keyed off the
+confirmation notifications; hardware verification on the X100VI is owed to
+confirm it neither regresses a healthy connect nor lets the false-connected case
+through.
+
+A dedicated UI reason string (a distinct message on the connect-failed screen)
+is a possible follow-up. This PR surfaces the distinct failure through the log
+and a clean teardown.

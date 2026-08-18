@@ -67,7 +67,33 @@ class Fujifilm: public Camera {
                  bool notification,
                  bool response = false);
 
-  bool m_Configured = false;
+  /**
+   * Wait for the camera to confirm app-level registration.
+   *
+   * A bare GATT link, security handshake and characteristic writes all succeed
+   * whether or not the camera has accepted furble as a remote. The camera only
+   * pushes a notification on CHR_NOT1_UUID once its companion-app logic accepts
+   * the registration. The golden X100VI capture records it on service 4c0020fe
+   * char f9150137 about 12 s into a healthy connect. Until it arrives the link
+   * is up but the camera silently ignores shutter writes, so the connect must
+   * not report success.
+   *
+   * Polls m_Configured with vTaskDelay. The caller (_connect) runs outside the
+   * Control mutex, so this respects the "never hold the Control mutex across a
+   * delay" trap.
+   *
+   * @param[in] progress connection progress percentage to hold during the wait.
+   * @return true iff the confirmation arrived within REGISTRATION_TIMEOUT_MS.
+   */
+  bool waitForRegistration(uint8_t progress);
+
+  // Bounded wait for the camera-side registration-accepted notification. The
+  // golden X100VI capture shows it about 12 s into a healthy connect, so the
+  // timeout is generous to avoid rejecting a slow but genuine camera.
+  static constexpr uint32_t REGISTRATION_TIMEOUT_MS = 25000;
+  static constexpr uint32_t REGISTRATION_POLL_MS = 250;
+
+  volatile bool m_Configured = false;
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
 
  private:
