@@ -150,10 +150,14 @@ bool Preferences::begin(const char *name, bool readOnly, const char *) {
   if (_started) {
     return false;
   }
+  // handleFor mutates a shared static map, and loadValues touches the shared
+  // value store. Both must run under values_mutex or two threads opening
+  // preferences at once (the UI constructor and the GPS task both call
+  // Settings::load during startup) race and corrupt the map.
+  std::lock_guard<std::mutex> lock(values_mutex);
   _handle = handleFor(name);
   _readOnly = readOnly;
   _started = true;
-  std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
   return true;
 }
