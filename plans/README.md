@@ -93,6 +93,12 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [40-thinknode-port.md](40-thinknode-port.md) | ThinkNode port feasibility |
 | [41-alternative-hardware.md](41-alternative-hardware.md) | Alternative sidecar hardware |
 
+## Bug analyses
+
+| Doc | Content |
+|---|---|
+| [75-false-connected.md](75-false-connected.md) | False Connected when the camera is not in pairing mode. Promotion to ACTIVE is gated on GATT plumbing, not on the camera-side registration confirmation |
+
 ## Design documents
 
 | Doc | Content |
