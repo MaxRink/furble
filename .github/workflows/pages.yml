@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build ${{ matrix.platform }}${{ matrix.variant }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -25,10 +26,19 @@ jobs:
           - m5stick-c
           - m5stick-c-plus
           - m5stick-s3
+        # Empty variant is the release build. The -debug variant builds the
+        # matching PlatformIO *-debug env, which enables FURBLE_CONSOLE. Debug
+        # envs share the release sdkconfig, so flash offsets are identical. The
+        # installer page offers the debug build behind a checkbox, so the Pages
+        # deploy must publish a manifest for it too.
+        variant:
+          - ""
+          - "-debug"
 
     env:
       FURBLE_VERSION: ${{ github.ref_name }}
       FURBLE_TEST: "0"
+      PLATFORM: ${{ matrix.platform }}${{ matrix.variant }}
 
     steps:
       - uses: actions/checkout@v6
@@ -60,7 +70,7 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2; do
-            if platformio run -e "${{ matrix.platform }}"; then
+            if platformio run -e "$PLATFORM"; then
               exit 0
             fi
             if [ "$attempt" -eq 2 ]; then
@@ -73,7 +83,7 @@ jobs:
         shell: bash
         run: |
           firmware_dir="$GITHUB_WORKSPACE/site/firmware"
-          platform="${{ matrix.platform }}"
+          platform="$PLATFORM"
           version="$FURBLE_VERSION"
           mkdir -p "$firmware_dir"
           cp ".pio/build/$platform/firmware.bin" \
@@ -88,7 +98,6 @@ jobs:
       - name: Generate manifest
         working-directory: web-installer
         env:
-          PLATFORM: ${{ matrix.platform }}
           VERSION: ${{ github.ref_name }}
           ASSET_BASE_URL: firmware
         run: |
@@ -98,7 +107,7 @@ jobs:
       - name: Upload installer files
         uses: actions/upload-artifact@v7
         with:
-          name: pages-${{ matrix.platform }}
+          name: pages-${{ matrix.platform }}${{ matrix.variant }}
           path: site
           if-no-files-found: error
 
