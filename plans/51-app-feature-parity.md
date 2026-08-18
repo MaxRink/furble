@@ -39,8 +39,9 @@ The Android settings portion is implemented. The app now:
   editors over the existing settings TLV characteristic;
 - interprets list flag bit 0 as restart required and bit 1 as dangerous, with a
   two-step confirmation for COMPANION, TX_POWER, SLEEP_CONN and CPU_FREQ; and
-- accepts the firmware list response layout with flags before length while
-  retaining compatibility with the earlier trailing-flags parser.
+- parses the canonical firmware list response layout with the flags byte
+  trailing the value (status, id, type, length, value, flags), and keeps a
+  strict fallback for the retired flags-before-length prototype form.
 
 This Android change consumes the firmware capability and settings parity
 contract described in sections 1 and 4, which the stacked settings parity v2

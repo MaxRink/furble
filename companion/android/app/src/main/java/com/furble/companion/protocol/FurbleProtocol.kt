@@ -365,14 +365,25 @@ object FurbleProtocol {
         val id = bytes[1].u8()
         val type = bytes[2].u8()
 
-        // The firmware list response is status, id, type, flags, length, value.
-        // Flags were appended after value by an early app prototype. Accept that
-        // form below so a paired device can finish a settings refresh during an
-        // app upgrade.
+        // Canonical firmware wire form: status, id, type, length, value, flags.
+        // The flags byte trails the value on list records; a plain get or set
+        // acknowledgement omits it. This is the primary parse, matching the
+        // firmware fixtures in tests/protocol.
+        val length = bytes[3].u8()
+        if (length <= bytes.size - 4) {
+            val value = bytes.copyOfRange(4, 4 + length)
+            val hasTrailingFlags = id != 0xFF && bytes.size > 4 + length
+            val flags = if (hasTrailingFlags) bytes[4 + length].u8() else 0
+            return SettingsResponse(status, id, type, value, flags, hasTrailingFlags || id == 0xFF)
+        }
+
+        // Strict fallback for the retired flags-before-length prototype form
+        // (status, id, type, flags, length, value). Only reached when the value
+        // length cannot be read canonically, so the two forms never collide.
         if (id != 0xFF && bytes.size >= 6) {
             val flags = bytes[3].u8()
-            val length = bytes[4].u8()
-            if (5 + length == bytes.size && canonicalValueLength(id, type, length)) {
+            val fallbackLength = bytes[4].u8()
+            if (5 + fallbackLength == bytes.size && canonicalValueLength(id, type, fallbackLength)) {
                 return SettingsResponse(
                     status = status,
                     id = id,
@@ -384,12 +395,7 @@ object FurbleProtocol {
             }
         }
 
-        val length = bytes[3].u8()
-        if (length > bytes.size - 4) return null
-        val value = bytes.copyOfRange(4, 4 + length)
-        val hasTrailingFlags = id != 0xFF && bytes.size > 4 + length
-        val flags = if (hasTrailingFlags) bytes[4 + length].u8() else 0
-        return SettingsResponse(status, id, type, value, flags, hasTrailingFlags || id == 0xFF)
+        return null
     }
 
     private fun canonicalValueLength(id: Int, type: Int, length: Int): Boolean {

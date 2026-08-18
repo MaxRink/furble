@@ -108,9 +108,10 @@ class FurbleProtocolTest {
         assertFalse(getResponse?.isListRecord == true)
 
         val listRecord = FurbleProtocol.parseSettingsResponse(
-            byteArrayOf(0, 4, FurbleProtocol.SettingType.UINT8.toByte(), 0x82.toByte(), 1, 0x01),
+            byteArrayOf(0, 4, FurbleProtocol.SettingType.UINT8.toByte(), 1, 0x01, 0x82.toByte()),
         )
         assertNotNull(listRecord)
+        assertArrayEquals(byteArrayOf(0x01), listRecord?.value)
         assertEquals(0x82, listRecord?.flags)
         assertTrue(listRecord?.isListRecord == true)
         val dangerousRecord = FurbleProtocol.SettingRecord(
@@ -120,6 +121,36 @@ class FurbleProtocolTest {
             flags = listRecord!!.flags,
         )
         assertTrue(dangerousRecord.isDangerous)
+    }
+
+    @Test
+    fun trailingFlagsEnabledBoolDecodesAsEnabledWithoutDangerousFlag() {
+        // Canonical firmware list record for an enabled bool: status, id, type,
+        // length, value, flags. GPS (wire id 5) is a plain bool with value 0x01
+        // and no flags. The retired flags-before-length parse used to read the
+        // length byte as flags and the value byte as length, decoding this as
+        // Disabled with a spurious restart-required flag.
+        val record = FurbleProtocol.parseSettingsResponse(
+            byteArrayOf(0, 5, FurbleProtocol.SettingType.BOOL.toByte(), 1, 0x01, 0x00),
+        )
+
+        assertNotNull(record)
+        assertEquals(5, record?.id)
+        assertEquals(FurbleProtocol.SettingType.BOOL, record?.type)
+        assertArrayEquals(byteArrayOf(0x01), record?.value)
+        assertEquals(0, record?.flags)
+        assertTrue(record?.isListRecord == true)
+
+        val setting = FurbleProtocol.SettingRecord(
+            id = record!!.id,
+            type = record.type,
+            value = record.value,
+            flags = record.flags,
+        )
+        assertEquals("Enabled", setting.displayValue())
+        assertFalse(setting.needsRestart)
+        assertFalse(setting.isDangerous)
+        assertTrue(setting.appliesImmediately)
     }
 
     @Test
