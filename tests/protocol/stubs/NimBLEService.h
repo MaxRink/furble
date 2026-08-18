@@ -1,0 +1,6 @@
+#ifndef FURBLE_PROTOCOL_NIMBLE_SERVICE_H
+#define FURBLE_PROTOCOL_NIMBLE_SERVICE_H
+
+#include "NimBLEStub.h"
+
+#endif

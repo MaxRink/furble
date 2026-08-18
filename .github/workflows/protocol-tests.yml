@@ -1,0 +1,42 @@
+name: Companion protocol tests
+
+"on":
+  push:
+    paths:
+      - include/FurbleCompanion.h
+      - include/FurbleSettings.h
+      - src/FurbleCompanion.cpp
+      - src/FurbleSettings.cpp
+      - lib/furble/**
+      - companion/android/**/protocol/**
+      - tests/protocol/**
+  pull_request:
+    paths:
+      - include/FurbleCompanion.h
+      - include/FurbleSettings.h
+      - src/FurbleCompanion.cpp
+      - src/FurbleSettings.cpp
+      - lib/furble/**
+      - companion/android/**/protocol/**
+      - tests/protocol/**
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Host protocol conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Regenerate golden corpus
+        run: make -C tests/protocol CXX=clang++ generate
+
+      - name: Check generated corpus
+        run: git diff --exit-code -- tests/protocol/golden
+
+      - name: Build and run host suite
+        run: make -C tests/protocol CXX=clang++ test

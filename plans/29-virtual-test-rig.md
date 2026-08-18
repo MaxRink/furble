@@ -1,5 +1,19 @@
 # 29 - virtual test rig: SDL simulator plus Android emulator
 
+Implementation state: Phase 1 is implemented on branch feat/29-golden-payloads.
+tests/protocol/ now contains a clang host suite, a C++ generator compiled
+against include/FurbleCompanion.h, 159 checked-in binary fixtures, and JSON
+metadata. The suite checks the 42-byte location record, the 20-byte status
+record, every nonzero settings wire ID from src/FurbleSettings.cpp, settings
+TLV status and malformed cases, trigger operations, and textual UUID agreement
+with FurbleProtocol.kt. .github/workflows/protocol-tests.yml runs it on
+relevant protocol changes.
+
+Deviation: This implementation uses the requested tests/protocol/ layout and a
+single Makefile instead of the original tools/rig/corpus/ and Android Gradle
+corpus test. The service extraction and simulator work remain in Phase 2
+through Phase 6.
+
 ## Goal
 
 Run the furble companion feature end to end with no hardware in the room. The
