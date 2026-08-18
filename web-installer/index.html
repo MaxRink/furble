@@ -33,6 +33,11 @@
           <label><input type="radio" name="type" value="m5stack-core"/>M5Stack Core</label>
         </li>
       </ul>
+      <p>
+        <label><input type="checkbox" id="debug"/>Debug build (serial console + BT diagnostics)</label>
+      </p>
+      <p class="caption">The debug build is larger and enables the developer
+      serial console. Use it to capture diagnostics for bug reports.</p>
       <p class="button-row" align="left">
         <esp-web-install-button class="invisible"></esp-web-install-button>
       </p>
@@ -43,13 +48,20 @@
         Installer powered by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>.
       </div>
     <script>
-      document.querySelectorAll('input[name="type"]').forEach(radio =>
-        radio.addEventListener("change", () => {
-          const button = document.querySelector('esp-web-install-button');
-          button.manifest = `./manifest_${radio.value}.json`;
-          button.classList.remove('invisible');
+      function updateManifest() {
+        const radio = document.querySelector('input[name="type"]:checked');
+        if (!radio) {
+          return;
         }
-      ));
+        const button = document.querySelector('esp-web-install-button');
+        const variant = document.getElementById('debug').checked ? '-debug' : '';
+        button.manifest = `./manifest_${radio.value}${variant}.json`;
+        button.classList.remove('invisible');
+      }
+
+      document.querySelectorAll('input[name="type"]').forEach(radio =>
+        radio.addEventListener("change", updateManifest));
+      document.getElementById('debug').addEventListener("change", updateManifest);
     </script>
   </body>
 </html>
