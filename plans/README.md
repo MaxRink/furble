@@ -85,6 +85,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [35-exposure-presets.md](35-exposure-presets.md) | Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](36-camera-test-harness.md) | Camera protocol test harness: host tests, mock NimBLE, virtual peer |
 | [71-ui-bug-batch.md](71-ui-bug-batch.md) | UI focus recovery, left escape, connection progress, display-off LED policy |
+| [76-ui-polish.md](76-ui-polish.md) | Focus ring visible in every theme, simulator theme and board selection for the screenshot matrix |
 
 ## Framework work
 

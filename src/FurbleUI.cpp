@@ -908,6 +908,15 @@ void UI::setTheme(std::string name) {
   lv_style_set_text_opa(&style_disable, LV_OPA_40);
   lv_style_set_image_opa(&style_disable, LV_OPA_40);
 
+  // Make the focus ring explicit and bold so the selected item is obvious in
+  // every theme. Without this the ring inherits the LVGL default width and
+  // opacity, which reads weakly on switches and rollers in the light Default
+  // theme where the outline sits on a white background. The per-theme
+  // outline_color set below still controls the hue.
+  lv_style_set_outline_width(&style_button, 3);
+  lv_style_set_outline_opa(&style_button, LV_OPA_COVER);
+  lv_style_set_outline_pad(&style_button, 2);
+
   if (name == "Dark") {
     dark = true;
     lv_style_set_image_recolor(&style_img, lv_color_white());
