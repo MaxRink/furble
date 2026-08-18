@@ -250,6 +250,10 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       value = sizedHex(&calibration, sizeof(calibration));
       return true;
     }
+
+    case Settings::MULTISELECT:
+      // Runtime camera selection, not a user preference worth backing up.
+      return false;
   }
   return false;
 }
@@ -463,6 +467,10 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<Settings::calibration_t>(setting.type, calibration);
       return true;
     }
+
+    case Settings::MULTISELECT:
+      // Runtime camera selection, not a user preference worth restoring.
+      return false;
   }
   return false;
 }
