@@ -3,30 +3,34 @@
 
 #include <cstdint>
 
+#include "driver.h"
+
 namespace Furble {
 
 /**
- * Simulator stand-in for the BLE companion service.
+ * Simulator stand-in for the BLE companion transport.
  *
  * The real Companion depends on NimBLE. The simulator has no BLE stack, so
- * this fake reports the companion as disabled with no pending pairing.
+ * this fake forwards only the rig controls needed by the UI.
  */
-class Companion {
+class CompanionGatt {
  public:
-  static Companion &getInstance(void) {
-    static Companion instance;
+  static CompanionGatt &getInstance(void) {
+    static CompanionGatt instance;
     return instance;
   }
 
-  bool isEnabled(void) const { return false; }
-  bool hasPendingPairing(void) const { return false; }
-  uint32_t getPendingPairingPin(void) const { return 0; }
-  void confirmPairing(bool) {}
-  void reloadSetting(bool) {}
+  bool isEnabled(void) const { return Sim::rigIsEnabled(); }
+  bool hasPendingPairing(void) const { return Sim::rigHasPendingPairing(); }
+  uint32_t getPendingPairingPin(void) const { return Sim::rigPendingPairingPin(); }
+  void confirmPairing(bool accept) { Sim::rigConfirmPairing(accept); }
+  void reloadSetting(bool pairingWindow) { Sim::rigReloadSetting(pairingWindow); }
 
  private:
-  Companion() {}
+  CompanionGatt() {}
 };
+
+using Companion = CompanionGatt;
 
 }  // namespace Furble
 

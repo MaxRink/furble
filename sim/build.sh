@@ -63,6 +63,7 @@ INCLUDES="\
 
 DEFINES="\
 -DFURBLE_M5STICKS3 \
+-DFURBLE_RIG \
 -DFURBLE_SIM \
 -DFURBLE_VERSION=\"sim\" \
 -DFURBLE_TEST_VERSION=1 \
@@ -130,6 +131,7 @@ done
 
 for source in \
   "$ROOT/src/FurbleCalibrate.cpp" \
+  "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \

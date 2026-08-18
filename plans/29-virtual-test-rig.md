@@ -712,6 +712,36 @@ PR have both landed. Keep the whole rig on the fork until then.
 - Deliberately reintroduce the UUID mismatch and confirm the handshake fails
   with a clear message, and that phase 1 fails first and faster.
 
+## Implementation state
+
+Phase 2 and phase 3 are implemented on `feat/29-rig-transport`.
+
+- The transport-independent wire structs, `CompanionTransport`, and
+  `CompanionService` are in `include/FurbleCompanionService.h` and
+  `src/FurbleCompanionService.cpp`. The plan names the implementation path
+  `lib/furble/CompanionService.cpp`, but this repository keeps the companion
+  service implementation in `src`, where it can use the existing UI, control,
+  GPS, feedback, and settings modules. The source list and simulator compile
+  set both use this one implementation.
+- `include/FurbleCompanion.h` and `src/FurbleCompanion.cpp` now contain the
+  NimBLE transport as `CompanionGatt`. The `Companion` alias preserves the
+  existing firmware callers. GATT UUIDs, permissions, advertising, bonding,
+  callbacks, and service behavior remain unchanged by the extraction.
+- `sim/rig_frame.h` defines the six-byte `FR` frame header and wire enums.
+  `sim/CompanionRigTransport.cpp` implements the loopback-only listener,
+  handshake, pairing frames, permissions, payload limit, notifications,
+  indications, and the requested impairment flags. It is gated by
+  `FURBLE_RIG` and has no implementation in non-rig simulator builds.
+- The simulator has the permanent `RIG BUILD, NO BLE, NO ENCRYPTION` title,
+  `--rig` transport options, and the release-environment CI grep guard.
+
+Phase 4, phase 5, and phase 6 are intentionally not implemented here. No
+settings were added, so there are no new wire IDs. The simulator build passes
+with the repository dependency cache through `sim/build.sh`. The firmware
+PlatformIO build and live socket bind remain hardware or host-environment
+verification items for the final handoff, and hardware testing has not been
+performed.
+
 ## Relationship to other plans
 
 - [28-emulator.md](28-emulator.md) phase A is a hard prerequisite for phase 3,

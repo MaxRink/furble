@@ -1,39 +1,35 @@
-#include <TinyGPS++.h>
 #include <esp_timer.h>
-#include <lvgl.h>
-
-#include <algorithm>
-#include <cstring>
 
 #include "Device.h"
 #include "Scan.h"
 
 #include "FurbleCompanion.h"
-#include "FurbleControl.h"
-#include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
-#include "FurbleUI.h"
 
 namespace Furble {
 
-Companion &Companion::getInstance(void) {
-  static Companion instance;
+CompanionGatt::CompanionGatt() : m_Service {*this} {
+  m_Service.setSettingReloadCallback([this](bool pairingWindow) { reloadSetting(pairingWindow); });
+}
+
+CompanionGatt &CompanionGatt::getInstance(void) {
+  static CompanionGatt instance;
   return instance;
 }
 
-uint64_t Companion::nowMs(void) {
+uint64_t CompanionGatt::nowMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000;
 }
 
-void Companion::init(void) {
+void CompanionGatt::init(void) {
   if (Settings::load<Settings::COMPANION>()) {
     enable(false);
   }
 }
 
-void Companion::reloadSetting(bool pairingWindow) {
+void CompanionGatt::reloadSetting(bool pairingWindow) {
   if (Settings::load<Settings::COMPANION>()) {
     enable(pairingWindow);
   } else {
@@ -41,34 +37,32 @@ void Companion::reloadSetting(bool pairingWindow) {
   }
 }
 
-bool Companion::isEnabled(void) const {
+bool CompanionGatt::isEnabled(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_Enabled;
 }
 
-bool Companion::hasPendingPairing(void) const {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  return m_PendingPairing;
+bool CompanionGatt::hasPendingPairing(void) const {
+  return m_Service.hasPendingPairing();
 }
 
-uint32_t Companion::getPendingPairingPin(void) const {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  return m_PendingPairingPin;
+uint32_t CompanionGatt::getPendingPairingPin(void) const {
+  return m_Service.getPendingPairingPin();
 }
 
-void Companion::confirmPairing(bool accept) {
+void CompanionGatt::confirmPairing(bool accept) {
   uint16_t handle = INVALID_CONN_HANDLE;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    if (!m_PendingPairing || (m_Server == nullptr)) {
+    if (!m_Service.hasPendingPairing() || (m_Server == nullptr)
+        || (m_PendingPairingHandle == INVALID_CONN_HANDLE)) {
       return;
     }
     handle = m_PendingPairingHandle;
     NimBLEConnInfo peer = m_Server->getPeerInfoByHandle(handle);
     NimBLEDevice::injectConfirmPasskey(peer, accept);
-    m_PendingPairing = false;
+    m_Service.confirmPairing(accept);
     m_PendingPairingHandle = INVALID_CONN_HANDLE;
-    m_PendingPairingPin = 0;
   }
 
   if (!accept && (m_Server != nullptr)) {
@@ -76,7 +70,7 @@ void Companion::confirmPairing(bool accept) {
   }
 }
 
-void Companion::enable(bool pairingWindow) {
+void CompanionGatt::enable(bool pairingWindow) {
   bool startPairing = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -105,19 +99,7 @@ void Companion::enable(bool pairingWindow) {
       m_Server->start();
       m_Advertising = NimBLEDevice::getAdvertising();
       loadBond();
-
-      if (m_TimedShutterTimer == nullptr) {
-        const esp_timer_create_args_t args = {
-            .callback = timedShutter,
-            .arg = this,
-            .dispatch_method = ESP_TIMER_TASK,
-            .name = "companion shutter",
-            .skip_unhandled_events = false,
-        };
-        if (esp_timer_create(&args, &m_TimedShutterTimer) != ESP_OK) {
-          ESP_LOGE(LOG_TAG, "Failed to create companion shutter timer");
-        }
-      }
+      m_Service.init();
 
       if (m_Task == nullptr) {
         const BaseType_t result =
@@ -140,10 +122,9 @@ void Companion::enable(bool pairingWindow) {
   }
 }
 
-void Companion::disable(void) {
+void CompanionGatt::disable(void) {
   NimBLEServer *server = nullptr;
   TaskHandle_t task = nullptr;
-  esp_timer_handle_t shutterTimer = nullptr;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (!m_Enabled) {
@@ -152,27 +133,19 @@ void Companion::disable(void) {
     m_Enabled = false;
     m_PairingWindow = false;
     m_PairingDeadlineMs = 0;
-    m_PendingPairing = false;
+    m_Service.confirmPairing(false);
     m_PendingPairingHandle = INVALID_CONN_HANDLE;
-    m_PendingPairingPin = 0;
     server = m_Server;
     task = m_Task;
-    shutterTimer = m_TimedShutterTimer;
   }
 
   stopAdvertising();
-  releaseHeldCommands();
+  m_Service.releaseHeldCommands();
   GPS::getInstance().clearExternalFix();
   if ((server != nullptr) && m_CompanionConnected) {
     server->disconnect(m_CompanionConnHandle);
   }
-  if ((shutterTimer != nullptr) && esp_timer_is_active(shutterTimer)) {
-    esp_timer_stop(shutterTimer);
-  }
-  if ((shutterTimer != nullptr)) {
-    esp_timer_delete(shutterTimer);
-    m_TimedShutterTimer = nullptr;
-  }
+  m_Service.deinit();
 
   if (task != nullptr) {
     vTaskDelete(task);
@@ -182,9 +155,9 @@ void Companion::disable(void) {
   // Remove the custom attributes when the setting is switched off at runtime.
   // On a normal boot with the default false setting no service is ever created.
   if (server != nullptr) {
-    if (m_Service != nullptr) {
-      server->removeService(m_Service, true);
-      m_Service = nullptr;
+    if (m_GattService != nullptr) {
+      server->removeService(m_GattService, true);
+      m_GattService = nullptr;
     }
     if (m_DeviceInfoService != nullptr) {
       server->removeService(m_DeviceInfoService, true);
@@ -199,32 +172,34 @@ void Companion::disable(void) {
     m_Server->setCallbacks(nullptr, false);
   }
   m_CompanionConnected = false;
+  m_CompanionEncrypted = false;
+  m_CompanionAuthenticated = false;
   m_CompanionConnHandle = INVALID_CONN_HANDLE;
 }
 
-void Companion::createGatt(void) {
-  if (m_Service != nullptr) {
+void CompanionGatt::createGatt(void) {
+  if (m_GattService != nullptr) {
     return;
   }
 
-  m_Service = m_Server->createService(SERVICE_UUID);
-  m_Location = m_Service->createCharacteristic(
+  m_GattService = m_Server->createService(SERVICE_UUID);
+  m_Location = m_GattService->createCharacteristic(
       LOCATION_UUID,
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC,
-      sizeof(companion_fix_t));
+      sizeof(CompanionService::companion_fix_t));
   m_Location->setCallbacks(this);
 
-  m_Status = m_Service->createCharacteristic(
+  m_Status = m_GattService->createCharacteristic(
       STATUS_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ_ENC,
-      sizeof(companion_status_t));
+      sizeof(CompanionService::companion_status_t));
   m_Status->setCallbacks(this);
 
-  m_Settings = m_Service->createCharacteristic(
+  m_Settings = m_GattService->createCharacteristic(
       SETTINGS_UUID,
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_AUTHEN, 512);
   m_Settings->setCallbacks(this);
 
-  m_Trigger = m_Service->createCharacteristic(
+  m_Trigger = m_GattService->createCharacteristic(
       TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN, 4);
   m_Trigger->setCallbacks(this);
 
@@ -235,23 +210,23 @@ void Companion::createGatt(void) {
   m_Manufacturer = m_DeviceInfoService->createCharacteristic("2A29", NIMBLE_PROPERTY::READ, 64);
   m_Manufacturer->setValue(FURBLE_STR);
 
-  const companion_status_t status = getStatus();
+  const CompanionService::companion_status_t status = m_Service.getStatus();
   m_Status->setValue(reinterpret_cast<const uint8_t *>(&status), sizeof(status));
 }
 
-void Companion::clearWhitelist(void) {
+void CompanionGatt::clearWhitelist(void) {
   while (NimBLEDevice::getWhiteListCount() > 0) {
     NimBLEDevice::whiteListRemove(NimBLEDevice::getWhiteListAddress(0));
   }
 }
 
-void Companion::stopAdvertising(void) {
+void CompanionGatt::stopAdvertising(void) {
   if ((m_Advertising != nullptr) && m_Advertising->isAdvertising()) {
     m_Advertising->stop();
   }
 }
 
-void Companion::startPairingWindow(void) {
+void CompanionGatt::startPairingWindow(void) {
   if (!m_Enabled || (m_Advertising == nullptr) || (m_Server == nullptr)) {
     return;
   }
@@ -296,7 +271,7 @@ void Companion::startPairingWindow(void) {
   m_Advertising->start(static_cast<uint32_t>(remaining));
 }
 
-void Companion::startReconnectAdvertising(void) {
+void CompanionGatt::startReconnectAdvertising(void) {
   if (!m_Enabled || m_PairingWindow || m_CompanionConnected || !m_BondValid
       || (m_Advertising == nullptr) || Scan::getInstance().isActive()) {
     return;
@@ -322,7 +297,7 @@ void Companion::startReconnectAdvertising(void) {
   m_Advertising->start(0);
 }
 
-void Companion::loadBond(void) {
+void CompanionGatt::loadBond(void) {
   m_Prefs.begin(FURBLE_STR, true);
   const std::string address = m_Prefs.get<std::string>("companion_addr", "");
   const uint8_t type = m_Prefs.get<uint8_t>("companion_addr_type", 0);
@@ -344,7 +319,7 @@ void Companion::loadBond(void) {
   }
 }
 
-void Companion::saveBond(const NimBLEAddress &address) {
+void CompanionGatt::saveBond(const NimBLEAddress &address) {
   m_BondAddress = address;
   m_BondAddressType = address.getType();
   m_BondValid = true;
@@ -354,7 +329,7 @@ void Companion::saveBond(const NimBLEAddress &address) {
   m_Prefs.end();
 }
 
-void Companion::forgetBond(void) {
+void CompanionGatt::forgetBond(void) {
   if (m_BondValid) {
     NimBLEDevice::deleteBond(m_BondAddress);
   }
@@ -365,16 +340,16 @@ void Companion::forgetBond(void) {
   m_Prefs.end();
 }
 
-bool Companion::isCompanionConnection(NimBLEConnInfo &connInfo) const {
+bool CompanionGatt::isCompanionConnection(NimBLEConnInfo &connInfo) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_CompanionConnected && (m_CompanionConnHandle == connInfo.getConnHandle());
 }
 
-void Companion::serviceTaskEntry(void *param) {
-  static_cast<Companion *>(param)->serviceTask();
+void CompanionGatt::serviceTaskEntry(void *param) {
+  static_cast<CompanionGatt *>(param)->serviceTask();
 }
 
-void Companion::serviceTask(void) {
+void CompanionGatt::serviceTask(void) {
   while (true) {
     bool enabled = false;
     {
@@ -402,7 +377,7 @@ void Companion::serviceTask(void) {
       startReconnectAdvertising();
     }
 
-    notifyStatus();
+    m_Service.notifyStatus();
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 
@@ -410,85 +385,7 @@ void Companion::serviceTask(void) {
   vTaskDelete(nullptr);
 }
 
-Companion::companion_status_t Companion::getStatus(void) const {
-  companion_status_t status = {};
-  status.version = WIRE_VERSION;
-
-  const int32_t batteryLevel = UI::getBatteryLevel();
-  status.battery_percent =
-      (batteryLevel >= 0 && batteryLevel <= 100) ? static_cast<uint8_t>(batteryLevel) : 255;
-
-  const int32_t batteryVoltage = UI::getBatteryVoltage();
-  status.battery_mv = (batteryVoltage >= 0) ? static_cast<uint16_t>(batteryVoltage) : 0xffff;
-
-  const int32_t batteryCurrent = UI::getBatteryCurrent();
-  status.battery_ma = static_cast<int16_t>(std::clamp<int32_t>(
-      batteryCurrent, static_cast<int32_t>(-32768), static_cast<int32_t>(32767)));
-  if (UI::isBatteryCharging()) {
-    status.power_flags |= 1 << 0;
-  }
-  if (UI::getBatteryVBUSVoltage() > 0) {
-    status.power_flags |= 1 << 1;
-  }
-
-  const auto &control = Control::getInstance();
-  status.camera_total = static_cast<uint8_t>(std::min<size_t>(control.getTargetCount(), 255));
-  status.camera_connected =
-      static_cast<uint8_t>(std::min<size_t>(control.getConnectedTargetCount(), 255));
-  switch (control.getState()) {
-    case Control::STATE_IDLE:
-      status.control_state = 0;
-      break;
-    case Control::STATE_CONNECT:
-      status.control_state = 1;
-      break;
-    case Control::STATE_CONNECTING:
-      status.control_state = 2;
-      break;
-    case Control::STATE_CONNECT_FAILED:
-      status.control_state = 3;
-      break;
-    case Control::STATE_ACTIVE:
-      status.control_state = 4;
-      break;
-    case Control::STATE_DISCONNECTING:
-      status.control_state = 5;
-      break;
-  }
-
-  const auto &gps = GPS::getInstance();
-  status.gps_source = static_cast<uint8_t>(gps.getSource());
-  status.gps_satellites = gps.getSatellites();
-  status.ivl_state = UI::getIntervalometerState();
-  status.ivl_remaining = UI::getIntervalometerRemaining();
-  status.uptime_s = static_cast<uint32_t>(nowMs() / 1000);
-  return status;
-}
-
-void Companion::notifyStatus(bool force) {
-  if (!m_CompanionConnected || (m_Status == nullptr)) {
-    return;
-  }
-
-  const companion_status_t status = getStatus();
-  const uint64_t now = nowMs();
-  const bool changed =
-      !m_HaveLastStatus || (std::memcmp(&status, &m_LastStatus, sizeof(status)) != 0);
-  const bool keepalive =
-      (m_LastStatusNotificationMs == 0) || ((now - m_LastStatusNotificationMs) >= 30 * 1000);
-  const bool rateAllowed =
-      (m_LastStatusNotificationMs == 0) || ((now - m_LastStatusNotificationMs) >= 1000);
-
-  m_Status->setValue(reinterpret_cast<const uint8_t *>(&status), sizeof(status));
-  if ((force || keepalive || (changed && rateAllowed)) && m_CompanionConnected) {
-    m_Status->notify(m_CompanionConnHandle);
-    m_LastStatusNotificationMs = now;
-    m_LastStatus = status;
-    m_HaveLastStatus = true;
-  }
-}
-
-void Companion::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
+void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
   (void)server;
   bool accept = false;
   {
@@ -500,9 +397,9 @@ void Companion::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
              && (m_PairingWindow || (m_BondValid && connInfo.getIdAddress().equals(m_BondAddress)));
     if (accept) {
       m_CompanionConnected = true;
+      m_CompanionEncrypted = false;
+      m_CompanionAuthenticated = false;
       m_CompanionConnHandle = connInfo.getConnHandle();
-      m_HaveLastStatus = false;
-      m_LastStatusNotificationMs = 0;
     }
   }
 
@@ -513,10 +410,11 @@ void Companion::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
     return;
   }
 
+  m_Service.onConnected();
   stopAdvertising();
 }
 
-void Companion::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) {
+void CompanionGatt::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) {
   (void)server;
   (void)reason;
   bool wasCompanion = false;
@@ -524,6 +422,8 @@ void Companion::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_CompanionConnected && (m_CompanionConnHandle == connInfo.getConnHandle())) {
       m_CompanionConnected = false;
+      m_CompanionEncrypted = false;
+      m_CompanionAuthenticated = false;
       m_CompanionConnHandle = INVALID_CONN_HANDLE;
       wasCompanion = true;
     }
@@ -533,7 +433,7 @@ void Companion::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int
     return;
   }
 
-  releaseHeldCommands();
+  m_Service.onDisconnected();
   if (!m_Enabled) {
     return;
   }
@@ -545,16 +445,15 @@ void Companion::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int
   }
 }
 
-void Companion::onConfirmPassKey(NimBLEConnInfo &connInfo, uint32_t pin) {
+void CompanionGatt::onConfirmPassKey(NimBLEConnInfo &connInfo, uint32_t pin) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   if (m_CompanionConnected && (m_CompanionConnHandle == connInfo.getConnHandle())) {
-    m_PendingPairing = true;
     m_PendingPairingHandle = connInfo.getConnHandle();
-    m_PendingPairingPin = pin;
+    m_Service.beginPairing(pin);
   }
 }
 
-void Companion::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
+void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
   bool companion = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -566,6 +465,11 @@ void Companion::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
 
   if (!connInfo.isEncrypted() || !connInfo.isAuthenticated() || !connInfo.isBonded()) {
     ESP_LOGW(LOG_TAG, "Companion authentication failed");
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      m_CompanionEncrypted = false;
+      m_CompanionAuthenticated = false;
+    }
     if (m_Server != nullptr) {
       m_Server->disconnect(connInfo.getConnHandle());
     }
@@ -577,451 +481,83 @@ void Companion::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     NimBLEDevice::deleteBond(m_BondAddress);
   }
   saveBond(newAddress);
-  m_PairingWindow = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_CompanionEncrypted = true;
+    m_CompanionAuthenticated = true;
+    m_PairingWindow = false;
+  }
   stopAdvertising();
-  notifyStatus(true);
+  m_Service.notifyStatus(true);
 }
 
-void Companion::onRead(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) {
+void CompanionGatt::onRead(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) {
   if ((characteristic == m_Status) && isCompanionConnection(connInfo)) {
-    notifyStatus(true);
+    m_Service.notifyStatus(true);
   }
 }
 
-void Companion::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) {
+void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) {
   if (!isCompanionConnection(connInfo)) {
     return;
   }
+  const NimBLEAttValue value = characteristic->getValue();
   if (characteristic == m_Location) {
-    handleLocation(characteristic->getValue());
+    m_Service.handleLocation(value.data(), value.size());
   } else if (characteristic == m_Settings) {
-    handleSettings(characteristic->getValue(), connInfo);
+    m_Service.handleSettings(value.data(), value.size());
   } else if (characteristic == m_Trigger) {
-    handleTrigger(characteristic->getValue(), connInfo);
+    m_Service.handleTrigger(value.data(), value.size());
   }
 }
 
-void Companion::onSubscribe(NimBLECharacteristic *characteristic,
-                            NimBLEConnInfo &connInfo,
-                            uint16_t subValue) {
+void CompanionGatt::onSubscribe(NimBLECharacteristic *characteristic,
+                                NimBLEConnInfo &connInfo,
+                                uint16_t subValue) {
   (void)characteristic;
   (void)subValue;
   if (isCompanionConnection(connInfo)) {
-    notifyStatus(true);
+    m_Service.notifyStatus(true);
   }
 }
 
-void Companion::handleLocation(const NimBLEAttValue &value) {
-  if (value.size() < (offsetof(companion_fix_t, age_ms) + sizeof(uint32_t))) {
-    ESP_LOGW(LOG_TAG, "Short companion location write");
-    return;
-  }
-
-  companion_fix_t packet = {};
-  std::memcpy(&packet, value.data(), std::min<size_t>(value.size(), sizeof(packet)));
-  if ((packet.version == 0) || (packet.flags & ~(LOCATION_VALID | TIME_VALID | ALTITUDE_VALID))) {
-    return;
-  }
-
-  GPS::external_fix_t fix = {};
-  fix.gps = {
-      packet.latitude,
-      packet.longitude,
-      packet.altitude,
-      packet.satellites,
-  };
-  fix.timesync = {
-      packet.year,   packet.month,  packet.day,         packet.hour,
-      packet.minute, packet.second, packet.centisecond,
-  };
-  fix.age_ms = packet.age_ms;
-  fix.position_valid = (packet.flags & LOCATION_VALID) != 0;
-  fix.time_valid = (packet.flags & TIME_VALID) != 0;
-  fix.altitude_valid = (packet.flags & ALTITUDE_VALID) != 0;
-  GPS::getInstance().setExternalFix(fix);
+bool CompanionGatt::isConnected(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_CompanionConnected;
 }
 
-Companion::setting_type_t Companion::settingType(Settings::type_t type) {
-  switch (type) {
-    case Settings::GPS:
-    case Settings::IR:
-    case Settings::GPS_NMEA:
-    case Settings::CONN_SAVER:
-    case Settings::MULTICONNECT:
-    case Settings::TX_ADAPTIVE:
-    case Settings::RECONNECT:
-    case Settings::RECON_BACKOFF:
-    case Settings::FAUXNY:
-    case Settings::AUTOCONNECT:
-    case Settings::COMPANION:
-    case Settings::SHOW_TITLE:
-    case Settings::SLEEP_CONN:
-#if defined(FURBLE_M5STICKS3)
-    case Settings::WATCHDOG:
-#endif
-      return SETTING_BOOL;
-    case Settings::BRIGHTNESS:
-    case Settings::INACTIVITY:
-    case Settings::DISPLAY_OFF:
-    case Settings::TX_POWER:
-    case Settings::GPS_RATE:
-    case Settings::GPS_CONSTEL:
-    case Settings::GPS_POWER:
-    case Settings::GPS_DUTY:
-    case Settings::IR_PROTO:
-    case Settings::FB_OUTPUT:
-    case Settings::FB_EVENTS:
-    case Settings::FB_VOLUME:
-    case Settings::CPU_FREQ:
-    case Settings::BATT_STYLE:
-    case Settings::SCAN_MODE:
-      return SETTING_U8;
-    case Settings::GPS_BAUD:
-    case Settings::SCAN_TIMEOUT:
-      return SETTING_U32;
-    case Settings::THEME:
-      return SETTING_STRING;
-    case Settings::INTERVAL:
-      return SETTING_BLOB;
-    case Settings::BULB:
-    case Settings::TOUCH_CALIBRATION:
-      return SETTING_BLOB;
-  }
-  return SETTING_BLOB;
+bool CompanionGatt::isEncrypted(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_CompanionEncrypted;
 }
 
-bool Companion::settingValue(Settings::type_t type, std::vector<uint8_t> &value) {
-  switch (type) {
-    case Settings::GPS:
-    case Settings::IR:
-    case Settings::GPS_NMEA:
-    case Settings::CONN_SAVER:
-    case Settings::MULTICONNECT:
-    case Settings::TX_ADAPTIVE:
-    case Settings::RECONNECT:
-    case Settings::RECON_BACKOFF:
-    case Settings::FAUXNY:
-    case Settings::AUTOCONNECT:
-    case Settings::COMPANION:
-    case Settings::SHOW_TITLE:
-    case Settings::SLEEP_CONN:
-#if defined(FURBLE_M5STICKS3)
-    case Settings::WATCHDOG:
-#endif
-    {
-      const bool v = Settings::load<bool>(type);
-      value.assign(reinterpret_cast<const uint8_t *>(&v),
-                   reinterpret_cast<const uint8_t *>(&v) + 1);
-      return true;
-    }
-    case Settings::BRIGHTNESS:
-    case Settings::INACTIVITY:
-    case Settings::DISPLAY_OFF:
-    case Settings::TX_POWER:
-    case Settings::GPS_RATE:
-    case Settings::GPS_CONSTEL:
-    case Settings::GPS_POWER:
-    case Settings::GPS_DUTY:
-    case Settings::IR_PROTO:
-    case Settings::FB_OUTPUT:
-    case Settings::FB_EVENTS:
-    case Settings::FB_VOLUME:
-    case Settings::CPU_FREQ:
-    case Settings::BATT_STYLE:
-    case Settings::SCAN_MODE:
-    {
-      const uint8_t v = Settings::load<uint8_t>(type);
-      value.assign(1, v);
-      return true;
-    }
-    case Settings::GPS_BAUD:
-    case Settings::SCAN_TIMEOUT:
-    {
-      const uint32_t v = Settings::load<uint32_t>(type);
-      value.resize(sizeof(v));
-      std::memcpy(value.data(), &v, sizeof(v));
-      return true;
-    }
-    case Settings::THEME:
-    {
-      const std::string v = Settings::load<std::string>(type);
-      value.assign(v.begin(), v.end());
-      return value.size() <= 255;
-    }
-    case Settings::INTERVAL:
-    {
-      const interval_t v = Settings::load<interval_t>(type);
-      value.resize(sizeof(v));
-      std::memcpy(value.data(), &v, sizeof(v));
-      return true;
-    }
-    case Settings::BULB:
-    case Settings::TOUCH_CALIBRATION:
-      return false;
-  }
-  return false;
+bool CompanionGatt::isAuthenticated(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_CompanionAuthenticated;
 }
 
-bool Companion::saveSetting(Settings::type_t type, const uint8_t *value, uint8_t length) {
-  const setting_type_t wireType = settingType(type);
-  switch (wireType) {
-    case SETTING_BOOL:
-      if (length != 1 || (value[0] > 1)) {
-        return false;
-      }
-      Settings::save<bool>(type, value[0] != 0);
-      return true;
-    case SETTING_U8:
-      if (length != 1) {
-        return false;
-      }
-      Settings::save<uint8_t>(type, value[0]);
-      return true;
-    case SETTING_U32:
-    {
-      if (length != sizeof(uint32_t)) {
-        return false;
-      }
-      uint32_t v;
-      std::memcpy(&v, value, sizeof(v));
-      Settings::save<uint32_t>(type, v);
-      return true;
-    }
-    case SETTING_STRING:
-      Settings::save<std::string>(type, std::string(reinterpret_cast<const char *>(value), length));
-      return true;
-    case SETTING_BLOB:
-      if (type != Settings::INTERVAL || length != sizeof(interval_t)) {
-        return false;
-      }
-      interval_t interval;
-      std::memcpy(&interval, value, sizeof(interval));
-      Settings::save<interval_t>(type, interval);
-      return true;
-  }
-  return false;
+uint16_t CompanionGatt::getMaxPayload(void) const {
+  return 244;
 }
 
-bool Companion::settingNeedsRestart(Settings::type_t type) {
-  return type == Settings::THEME;
+void CompanionGatt::notify(uint8_t charId, const uint8_t *data, size_t len) {
+  if (charId != COMPANION_CHAR_STATUS || data == nullptr || m_Status == nullptr || !isConnected()) {
+    return;
+  }
+  m_Status->setValue(data, len);
+  m_Status->notify(m_CompanionConnHandle);
 }
 
-void Companion::appendResponse(std::vector<uint8_t> &response,
-                               setting_status_t status,
-                               uint8_t id,
-                               setting_type_t type,
-                               uint8_t flags,
-                               const std::vector<uint8_t> &value,
-                               bool listRecord) {
-  if (value.size() > 255) {
+void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
+  if (charId != COMPANION_CHAR_SETTINGS || data == nullptr || m_Settings == nullptr
+      || !isConnected()) {
     return;
   }
-  response.push_back(static_cast<uint8_t>(status));
-  response.push_back(id);
-  response.push_back(static_cast<uint8_t>(type));
-  if (listRecord) {
-    response.push_back(flags);
-  }
-  response.push_back(static_cast<uint8_t>(value.size()));
-  response.insert(response.end(), value.begin(), value.end());
+  m_Settings->indicate(data, len, m_CompanionConnHandle);
 }
 
-void Companion::notifySettings(const std::vector<uint8_t> &value, NimBLEConnInfo &connInfo) {
-  if ((m_Settings != nullptr) && !value.empty()) {
-    m_Settings->indicate(value.data(), value.size(), connInfo.getConnHandle());
-  }
-}
-
-void Companion::handleSettings(const NimBLEAttValue &value, NimBLEConnInfo &connInfo) {
-  if (!connInfo.isEncrypted() || !connInfo.isAuthenticated() || (value.size() < 3)) {
-    return;
-  }
-
-  const uint8_t *data = value.data();
-  const uint8_t op = data[0];
-  const uint8_t id = data[1];
-  const uint8_t length = data[2];
-  const bool lengthMatches = value.size() == (static_cast<size_t>(3) + length);
-  const Settings::setting_t *setting = Settings::getByWireId(id);
-
-  if (!lengthMatches || ((op <= 1) && (length != 0)) || (op > 2)) {
-    std::vector<uint8_t> response;
-    appendResponse(response, SETTING_BAD_LENGTH, id, SETTING_BLOB, 0, {}, false);
-    notifySettings(response, connInfo);
-    return;
-  }
-
-  if (op == 0) {
-    std::vector<const Settings::setting_t *> settings;
-    for (const auto &it : Settings::all()) {
-      if (it.second.wire_id != 0) {
-        settings.push_back(&it.second);
-      }
-    }
-    std::sort(settings.begin(), settings.end(),
-              [](const auto *left, const auto *right) { return left->wire_id < right->wire_id; });
-    for (const auto *entry : settings) {
-      std::vector<uint8_t> current;
-      if (settingValue(entry->type, current)) {
-        std::vector<uint8_t> response;
-        appendResponse(response, SETTING_OK, entry->wire_id, settingType(entry->type),
-                       settingNeedsRestart(entry->type) ? 1 : 0, current, true);
-        notifySettings(response, connInfo);
-      }
-    }
-    std::vector<uint8_t> terminator;
-    appendResponse(terminator, SETTING_OK, 0xff, SETTING_BLOB, 0, {}, true);
-    notifySettings(terminator, connInfo);
-    return;
-  }
-
-  if (setting == nullptr) {
-    std::vector<uint8_t> response;
-    appendResponse(response, SETTING_UNKNOWN_ID, id, SETTING_BLOB, 0, {}, false);
-    notifySettings(response, connInfo);
-    return;
-  }
-
-  const setting_type_t type = settingType(setting->type);
-  if (op == 1) {
-    std::vector<uint8_t> current;
-    const bool valueValid = settingValue(setting->type, current);
-    std::vector<uint8_t> response;
-    appendResponse(response, valueValid ? SETTING_OK : SETTING_REJECTED, id, type, 0, current,
-                   false);
-    notifySettings(response, connInfo);
-    return;
-  }
-
-  const uint8_t expected =
-      (type == SETTING_BOOL || type == SETTING_U8)
-          ? 1
-          : (type == SETTING_U32 ? sizeof(uint32_t)
-                                 : (type == SETTING_STRING ? length : sizeof(interval_t)));
-  const bool saved = (type == SETTING_STRING || length == expected)
-                     && saveSetting(setting->type, data + 3, length);
-  std::vector<uint8_t> response;
-  appendResponse(response, saved ? SETTING_OK : SETTING_BAD_LENGTH, id, type, 0, {}, false);
-  notifySettings(response, connInfo);
-
-  if (!saved) {
-    return;
-  }
-
-  switch (setting->type) {
-    case Settings::GPS:
-      GPS::getInstance().reloadSetting();
-      break;
-    case Settings::FB_EVENTS:
-    case Settings::FB_VOLUME:
-      // Direct call like the GPS case above: the UI request queue exists only
-      // with FURBLE_CONSOLE and the companion also runs in release builds.
-      // reload() is task-safe, with the output frozen at boot it is two byte
-      // stores into the cache. FB_OUTPUT stays restart-only.
-      Feedback::getInstance().reload();
-      break;
-    case Settings::TX_POWER:
-      Control::getInstance().setPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
-      break;
-    case Settings::COMPANION:
-      reloadSetting(false);
-      break;
-    default:
-      break;
-  }
-}
-
-bool Companion::allowTrigger(void) {
-  const uint64_t now = nowMs();
-  if ((now - m_CommandWindowMs) >= 1000) {
-    m_CommandWindowMs = now;
-    m_CommandCount = 0;
-  }
-  if (m_CommandCount >= 10) {
-    return false;
-  }
-  m_CommandCount++;
-  return true;
-}
-
-void Companion::handleTrigger(const NimBLEAttValue &value, NimBLEConnInfo &connInfo) {
-  if (!connInfo.isEncrypted() || !connInfo.isAuthenticated() || (value.size() < 2)) {
-    return;
-  }
-  const uint8_t *data = value.data();
-  const uint8_t op = data[1];
-  if ((data[0] == 0) || (op > 4) || ((op == 4) && (value.size() != 4))
-      || ((op != 4) && (value.size() != 2))) {
-    return;
-  }
-  if (Control::getInstance().getState() != Control::STATE_ACTIVE || !allowTrigger()) {
-    return;
-  }
-
-  switch (op) {
-    case 0:
-      if (Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE) == pdTRUE) {
-        m_ShutterHeld = false;
-      }
-      break;
-    case 1:
-      if (!m_ShutterHeld
-          && (Control::getInstance().sendCommand(Control::CMD_SHUTTER_PRESS) == pdTRUE)) {
-        m_ShutterHeld = true;
-      }
-      break;
-    case 2:
-      if (!m_FocusHeld
-          && (Control::getInstance().sendCommand(Control::CMD_FOCUS_PRESS) == pdTRUE)) {
-        m_FocusHeld = true;
-      }
-      break;
-    case 3:
-      if (Control::getInstance().sendCommand(Control::CMD_FOCUS_RELEASE) == pdTRUE) {
-        m_FocusHeld = false;
-      }
-      break;
-    case 4:
-    {
-      uint16_t holdMs;
-      std::memcpy(&holdMs, data + 2, sizeof(holdMs));
-      if (m_ShutterHeld
-          || (Control::getInstance().sendCommand(Control::CMD_SHUTTER_PRESS) != pdTRUE)) {
-        return;
-      }
-      m_ShutterHeld = true;
-      if ((m_TimedShutterTimer == nullptr) || (holdMs == 0)) {
-        timedShutter(this);
-      } else {
-        if (esp_timer_is_active(m_TimedShutterTimer)) {
-          esp_timer_stop(m_TimedShutterTimer);
-        }
-        esp_timer_start_once(m_TimedShutterTimer, static_cast<uint64_t>(holdMs) * 1000);
-      }
-      break;
-    }
-    default:
-      break;
-  }
-}
-
-void Companion::releaseHeldCommands(void) {
-  if (m_ShutterHeld) {
-    Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
-    m_ShutterHeld = false;
-  }
-  if (m_FocusHeld) {
-    Control::getInstance().sendCommand(Control::CMD_FOCUS_RELEASE);
-    m_FocusHeld = false;
-  }
-}
-
-void Companion::timedShutter(void *param) {
-  auto *companion = static_cast<Companion *>(param);
-  if (companion->m_ShutterHeld) {
-    Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
-    companion->m_ShutterHeld = false;
-  }
+void CompanionGatt::error(uint8_t charId, uint8_t attError) {
+  ESP_LOGW(LOG_TAG, "Companion transport error char 0x%02x ATT 0x%02x", charId, attError);
 }
 
 }  // namespace Furble

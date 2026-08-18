@@ -76,6 +76,36 @@ jobs:
       - name: Run host camera and corpus tests
         run: ctest --test-dir "$RUNNER_TEMP/furble-host-build" --output-on-failure
 
+  release-transport-gate:
+    name: Release transport gate
+    needs: changes
+    if: ${{ needs.changes.outputs.firmware == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Reject rig transport in release environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          for environment in \
+            m5stick-c \
+            m5stick-c-plus \
+            m5stack-core \
+            m5stack-core2 \
+            m5stick-s3; do
+            section="$(awk -v target="[env:${environment}]" '
+              $0 == target { found = 1; print; next }
+              found && /^\[env:/ { exit }
+              found { print }
+            ' platformio.ini)"
+            if printf '%s\n' "$section" | grep -n 'FURBLE_RIG'; then
+              echo "FURBLE_RIG is present in release environment ${environment}" >&2
+              exit 1
+            fi
+          done
+
   format:
     name: clang-format
     needs: changes

@@ -104,6 +104,22 @@ std::vector<Control::Target *> Control::getTargets(void) {
   return targets;
 }
 
+size_t Control::getTargetCount(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_Targets.size();
+}
+
+size_t Control::getConnectedTargetCount(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  size_t connected = 0;
+  for (const auto &target : m_Targets) {
+    if (target->getCamera() != nullptr && target->getCamera()->isConnected()) {
+      connected++;
+    }
+  }
+  return connected;
+}
+
 void Control::setConnSaver(bool enabled) {
   // The simulated camera has no live BLE connection to retune.
   (void)enabled;
