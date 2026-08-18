@@ -615,6 +615,14 @@ void UI::closePairingDialog(void) {
     m_PairingDialog = nullptr;
   }
   m_PairingCamera = nullptr;
+
+  // Restore the encoder group focus captured before the modal footer buttons
+  // took it. Without this every close path leaves focus on a deleted button and
+  // all buttons go dead on encoder boards.
+  if ((m_PairingPrevFocus != nullptr) && lv_obj_is_valid(m_PairingPrevFocus)) {
+    lv_group_focus_obj(m_PairingPrevFocus);
+  }
+  m_PairingPrevFocus = nullptr;
 }
 
 void UI::closeCompanionPairingDialog(void) {
@@ -630,6 +638,7 @@ void UI::showCompanionPairing(void) {
   }
 
   m_PairingCamera = nullptr;
+  m_PairingPrevFocus = lv_group_get_focused(m_Group);
   m_PairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(m_PairingDialog, "Pair companion");
 
@@ -682,6 +691,7 @@ void UI::showCameraPairing(Camera *camera) {
   const lv_font_t *codeFont = (m_Width < 100) ? &lv_font_montserrat_16 : &lv_font_montserrat_22;
 
   m_PairingCamera = camera;
+  m_PairingPrevFocus = lv_group_get_focused(m_Group);
   m_PairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(m_PairingDialog, "Pair camera");
 

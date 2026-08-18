@@ -538,6 +538,7 @@ class UI {
   lv_timer_t *m_PairingTimer = nullptr;
   lv_obj_t *m_PairingDialog = nullptr;
   Camera *m_PairingCamera = nullptr;
+  lv_obj_t *m_PairingPrevFocus = nullptr;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};

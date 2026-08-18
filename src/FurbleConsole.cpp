@@ -1150,8 +1150,9 @@ int cmdPair(int argc, char **argv) {
   if ((camera == nullptr) || !camera->hasPendingPairing()) {
     camera = nullptr;
     for (const auto &target : control.getTargets()) {
-      if (target->getCamera()->hasPendingPairing()) {
-        camera = target->getCamera();
+      Camera *candidate = target->getCamera();
+      if ((candidate != nullptr) && candidate->hasPendingPairing()) {
+        camera = candidate;
         break;
       }
     }
