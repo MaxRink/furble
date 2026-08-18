@@ -20,7 +20,12 @@ add_library(furble_host_camera STATIC
             ${FURBLE_ROOT}/lib/furble/Camera.cpp
             ${FURBLE_ROOT}/lib/furble/Device.cpp
             ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-            ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp)
+            ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+            # Fujifilm.cpp and FujifilmBasic.cpp delegate their wire encoding to
+            # the shared protocol module landed by the Tier A/B tests. The
+            # end-to-end harness compiles the real production sources, so it
+            # links the same helper the firmware uses.
+            ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
 
 target_include_directories(furble_host_camera
                            PUBLIC ${HOST_NIMBLE_DIR}

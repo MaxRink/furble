@@ -61,9 +61,15 @@ this slice, none of it compiled on a host. The only host-clean component was
 
 ## Implementation state
 
-Tier A Fujifilm protocol coverage and the Tier B seam groundwork are complete
-in this worktree. The host target is under `tests/camera/` as requested and
-has no ESP-IDF or NimBLE dependency.
+Two host harnesses are now in the tree. They cover different tiers and share
+the same production protocol module.
+
+### Tier A pure logic and Tier B seam groundwork (merged)
+
+Landed by the protocol conformance tests. The host target lives under
+`tests/camera/` with its own `camera-tests.yml` CI job. It has no ESP-IDF or
+NimBLE dependency and compiles only the extracted protocol sources plus
+Blowfish.
 
 Implemented seams:
 
@@ -72,21 +78,48 @@ Implemented seams:
   notifications, frames shutter writes, and encodes the 23-byte geotag.
 - `CameraListProtocol` encodes and decodes the fixed NVS index records,
   formats the persisted address key, and provides the index upsert operation.
-- The existing NimBLE and Preferences methods call these helpers at their
+- The production NimBLE and Preferences methods call these helpers at their
   current transport boundaries. No connection lifecycle or application-layer
   files were changed.
 
-The requested path differs from the earlier design sketch's `tests/host/`
-layout. The implementation uses `tests/camera/` and a small CMake/CTest target
-to keep the first host job self-contained. The full Tier B NimBLE mock and
-scripted lifecycle tests remain future work. This slice covers only the pure
-logic seam groundwork requested here.
-
-The macOS clang host binary passes advertisement, token, service-flag,
+The `tests/camera/` binary passes advertisement, token, service-flag,
 notification, shutter, geotag, CameraList persistence, and Blowfish vector
-tests. The PlatformIO firmware check was attempted twice. Both attempts were
-blocked before compilation while cloning the pinned TinyGPSPlus dependency
-because the execution environment could not resolve `github.com`.
+tests. This slice carries the pure logic seam. It ships no NimBLE mock, so the
+full Tier B scripted lifecycle tests remain future work.
+
+### Tier C end-to-end virtual camera harness (this PR)
+
+Implemented under `tests/host/` with the `host_camera` job in
+`.github/workflows/main.yml`. The `FujifilmVirtualCamera` peer models the
+Fujifilm Basic advertisement, token pairing write, identifier write,
+configuration indication, geotag request notification, shutter writes, and
+geotag write. It runs against the production `Camera`, `Device`, `Fujifilm`,
+and `FujifilmBasic` sources through a dependency-free in-memory NimBLE seam
+under `tests/host/nimble/`. Those production sources delegate their wire
+encoding to `FujifilmProtocol`, so the harness links the same protocol module
+the Tier A tests exercise. No firmware behavior was changed, and no new
+settings or simulator shim is required.
+
+`tests/host/` and `tests/camera/` deliberately stay separate. `tests/camera/`
+drives the extracted protocol functions directly with no transport. The Tier C
+harness drives the real client lifecycle, so it needs a NimBLE seam that
+`tests/camera/` does not. The two seams are not duplicates: the merged Tier A
+work ships no NimBLE mock to reuse, and the `FujifilmVirtualCamera` peer
+implements the wire format independently on purpose. If the peer reused the
+client encoder, a bug in that encoder would pass both sides. The peer therefore
+stays the adapter boundary to align when the full Tier B mock lands.
+
+### Tier D corpus groundwork (this PR)
+
+Implemented as schema 1 normalized text captures, a dependency-free loader, and
+`tests/corpus/x100vi/synthetic.golden`. The replay test checks the production
+token and geotag byte vectors. The fixture is synthetic and is not evidence of
+X100VI interoperability. Reviewed real captures remain dependent on the BT
+journal work in plan 64.
+
+The macOS clang host build passes both the `tests/camera/` and `tests/host/`
+suites. Hardware validation remains untested because no BLE peer radio was
+exercised.
 
 ## Design
 
@@ -235,27 +268,3 @@ throughout.
 - Corpus replay matches captured X100VI vectors.
 - The ESP32 peer passes the same scripted scenarios over real BLE.
 - The normal PlatformIO build remains unchanged.
-
-## Implementation state
-
-Tier C host groundwork is implemented in tests/host/. The
-FujifilmVirtualCamera models the Fujifilm Basic advertisement, token pairing
-write, identifier write, configuration indication, geotag request notification,
-shutter writes, and geotag write. It runs against the production Camera,
-Device, Fujifilm, and FujifilmBasic sources through a dependency-free
-in-memory NimBLE seam.
-
-The Tier B host scaffold was not present on master when this worktree was
-created. The narrow seam under tests/host/nimble/ therefore carries the
-standalone surface required by Tier C. It is test-only and is the adapter
-boundary to replace or align when Tier B lands. No firmware behavior was
-changed. No new settings or simulator shim is required.
-
-Tier D groundwork is implemented as schema 1 normalized text captures, a
-dependency-free loader, and tests/corpus/x100vi/synthetic.golden. The replay
-test checks the production token and geotag byte vectors. The fixture is
-synthetic and is not evidence of X100VI interoperability. Reviewed real
-captures remain dependent on the BT journal work in plan 64.
-
-The host CMake/CTest job runs both tests in CI. Hardware validation remains
-untested in this implementation state because no BLE peer radio was exercised.
