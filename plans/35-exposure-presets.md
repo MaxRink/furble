@@ -128,9 +128,28 @@ Rebase notes:
   changed.
 
 The plan called for the full five-environment release build matrix. The
-implementation sandbox could not run PlatformIO, so the m5stick-s3 build was
-verified during integration with `FURBLE_VERSION=dev FURBLE_TEST=0`. It
+m5stick-s3 build was verified with `FURBLE_VERSION=dev FURBLE_TEST=0`. It
 passes. The remaining environments build in CI.
+
+Sim and host verification (no hardware required):
+
+- The protocol golden corpus covers the new `PRESET_PICKER` setting at wire
+  id 30. `make generate` is deterministic (regenerating leaves the goldens
+  unchanged) and `make test` passes, so the get, set, list, and response
+  TLV encodings are pinned.
+- `sim/scenarios/e2e/exposure-preset.txt` drives the real Features switch to
+  enable the picker, asserts the `PRESET_PICKER` setting persisted, then
+  opens the Bulb Duration page and steps the picker one 1/3-stop entry. The
+  step snaps and saves the stored bulb duration, so the persisted
+  `Settings::BULB` value (30 s default stepping up to 40 s) proves the picker
+  selection survived. Teeth confirmed by mutation: dropping the stepped-value
+  apply in `stepPreset` fails the scenario at the bulb-duration assertion.
+- The sim assertion surface additions (`preset_picker` in the toggle and
+  boolean-assert maps, the `bulb_ms` query, the `preset-step` action) are all
+  inside `#if defined(FURBLE_SIM)`, so the production binary is unchanged.
+
+The sim covers the UI, the setting persistence, and the setting TLV encoding.
+The on-camera exposure change still cannot be verified without hardware.
 
 Hardware verification is still pending, including X100VI bulb exposures at
 stepped values. Also verify on hardware that the middle-key confirm firing

@@ -1797,6 +1797,7 @@ void UI::simScenarioAction(const char *action) {
         {"show_title",    Settings::SHOW_TITLE   },
         {"tx_adaptive",   Settings::TX_ADAPTIVE  },
         {"conn_saver",    Settings::CONN_SAVER   },
+        {"preset_picker", Settings::PRESET_PICKER},
         {"recon_backoff", Settings::RECON_BACKOFF},
     };
     const auto found = settings.find(name);
@@ -1829,6 +1830,16 @@ void UI::simScenarioAction(const char *action) {
   // exactly as an on-device press does.
   if (command == "stop") {
     lv_obj_send_event(m_IntervalStop, LV_EVENT_CLICKED, nullptr);
+    return;
+  }
+
+  // Open the Bulb Duration page and step the exposure preset picker one 1/3-stop
+  // entry, running the same handler the physical plus and minus keys drive. The
+  // step snaps the stored bulb duration onto the series and persists it, so a
+  // scenario can assert the picked preset survived through Settings::BULB.
+  if (command == "preset-step-up" || command == "preset-step-down") {
+    lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_BulbDurationStr).page);
+    presetStep(command == "preset-step-up" ? 1 : -1);
     return;
   }
 
@@ -1943,6 +1954,14 @@ std::string UI::simQueryState(const char *key) {
     const bool hidden = m_ConnectContext.messageBox == nullptr
                         || lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
     return hidden ? "hidden" : "visible";
+  }
+
+  // Persisted bulb exposure duration in milliseconds. Lets a scenario confirm
+  // that stepping the exposure preset picker snapped and saved Settings::BULB.
+  if (query == "bulb_ms") {
+    SpinValue::nvs_t nvs = Settings::load<Settings::BULB>();
+    SpinValue value(nvs);
+    return std::to_string(value.toMilliseconds());
   }
 
   if (query == "connected") {

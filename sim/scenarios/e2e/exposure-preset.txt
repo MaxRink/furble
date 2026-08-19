@@ -1,0 +1,26 @@
+# Enable the exposure preset picker through its real Features switch, confirm
+# the new PRESET_PICKER setting persisted, then open the Bulb Duration page and
+# step the picker one 1/3-stop entry. The step snaps the stored bulb duration
+# onto the series and saves it, so the persisted Settings::BULB value proves the
+# picker selection survived. The bulb duration defaults to 30 s; the picker
+# starts on that series entry and one step up lands on 40 s.
+wait 300
+assert ui.page main
+assert setting.preset_picker 0
+assert ui.bulb_ms 30000
+action page settings
+wait 150
+assert ui.page settings
+action page features
+wait 150
+assert ui.page features
+action toggle preset_picker
+wait 150
+assert setting.preset_picker 1
+action page menu
+wait 150
+assert ui.page main
+action preset-step-up
+wait 150
+assert ui.bulb_ms 40000
+exit
