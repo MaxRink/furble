@@ -1,0 +1,45 @@
+# Companion pairing modal: focus-contract and re-entrancy regression.
+#
+# This does NOT reproduce the user-reported #32 symptom (input breaks after
+# approve on an encoder-only StickS3). That needs real hardware plus the
+# companion app to raise a genuine pairing request, and the sim's input model
+# auto-adds the msgbox footer buttons to the default encoder group, so the
+# pre-fix code is not red here. See the PR for the coverage gap.
+#
+# What this locks in:
+#  - when the modal opens, the Accept button is in the encoder group and focused
+#  - a second pairing request while the modal is open does not stack or orphan a
+#    dialog (the timer guard keeps exactly one)
+#  - accepting closes the modal and restores focus to a control on the page below
+wait 300
+assert ui.page main
+assert ui.modal closed
+assert ui.modal_count 0
+
+# Inject a pending pairing without a rig peer and let the pairing timer raise
+# the real modal.
+action companion-pair-request
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.modal_focus yes
+assert ui.focus ok
+
+# A second request while the first modal is open must not stack a dialog. This
+# assertion has teeth: removing the timer's already-open guard makes the count
+# climb.
+action companion-pair-request
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+
+# Accept through the same handler an on-device button press runs.
+action companion-accept
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+
+# Input is restored: a valid control on the returned page holds focus.
+assert ui.focus ok
+assert ui.focus_on_page yes
+exit

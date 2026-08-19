@@ -549,6 +549,9 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
 
   lv_obj_t *accept = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Accept");
+  // Add the button to the encoder group so it is focusable and operable on
+  // non-touch devices. Without this, lv_group_focus_obj below is a no-op.
+  addToInputGroup(ui->m_Group, accept);
   lv_obj_add_event_cb(
       accept,
       [](lv_event_t *event) {
@@ -559,6 +562,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       LV_EVENT_CLICKED, ui);
 
   lv_obj_t *reject = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Reject");
+  addToInputGroup(ui->m_Group, reject);
   lv_obj_add_event_cb(
       reject,
       [](lv_event_t *event) {
@@ -1761,6 +1765,16 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Inject a pending companion pairing without a rig TCP peer, then make sure
+  // the pairing timer is running so it raises the real modal. This lets the
+  // input-after-approve regression (task #32) be reproduced headlessly. The pin
+  // is fixed so captures stay deterministic.
+  if (command == "companion-pair-request") {
+    Sim::rigInjectPendingPairing(123456);
+    startCompanionPairingTimer();
+    return;
+  }
+
   // Click a real companion pairing modal footer button, running the same
   // handler an on-device button press would. Footer child 0 is Accept, 1 is
   // Reject. Used to reproduce the input-after-approve regression (task #32).
@@ -1927,6 +1941,43 @@ std::string UI::simQueryState(const char *key) {
     const bool open =
         m_CompanionPairingDialog != nullptr && lv_obj_is_valid(m_CompanionPairingDialog);
     return open ? "open" : "closed";
+  }
+
+  // Whether the companion pairing modal's Accept button is in the encoder group
+  // and currently focused. This locks in the focus contract the modal relies on
+  // (task #32 class). Note: in this LVGL build the msgbox footer buttons are
+  // auto-added to the default group, so this alone does not go red against the
+  // pre-fix code.
+  if (query == "modal_focus") {
+    if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
+      return "closed";
+    }
+    lv_obj_t *footer = lv_msgbox_get_footer(m_CompanionPairingDialog);
+    lv_obj_t *accept = footer == nullptr ? nullptr : lv_obj_get_child(footer, 0);
+    if (accept == nullptr) {
+      return "no";
+    }
+    const bool inGroup = lv_obj_get_group(accept) == m_Group;
+    const bool focused = lv_group_get_focused(m_Group) == accept;
+    return (inGroup && focused) ? "yes" : "no";
+  }
+
+  // Number of live pairing message boxes on the top layer. A modal message box
+  // built with lv_msgbox_create(nullptr) sits inside a backdrop that is a direct
+  // child of the top layer. More than one means a re-entrancy stacked or
+  // orphaned a dialog (task #32 class); the timer guard should keep this at one.
+  if (query == "modal_count") {
+    int count = 0;
+    lv_obj_t *top = lv_layer_top();
+    for (uint32_t i = 0; i < lv_obj_get_child_count(top); i++) {
+      lv_obj_t *backdrop = lv_obj_get_child(top, i);
+      for (uint32_t j = 0; j < lv_obj_get_child_count(backdrop); j++) {
+        if (lv_obj_check_type(lv_obj_get_child(backdrop, j), &lv_msgbox_class)) {
+          count++;
+        }
+      }
+    }
+    return std::to_string(count);
   }
 
   // Whether the encoder group currently has a valid focused object. After a
