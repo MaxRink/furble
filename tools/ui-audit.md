@@ -87,8 +87,9 @@ Rebase notes:
 - `TEXT_SIZE` is assigned wire_id 40, continuing after `SD_GPX` (39) from
   PR 41. `src/FurbleCompanion.cpp` settingType and settingValue cover it as
   SETTING_U8.
-- The Display settings page keeps master's Screen off roller from PR 26; the
-  Text size page is added below it.
+- The Display settings page is unchanged from master. Text size is a
+  top-level Settings entry next to Theme, so the Display page keeps its
+  narrow-panel fit that the `overflow-sweep` scenario asserts.
 - The three Montserrat font sizes (10, 14, 28) are enabled consistently in
   all five release sdkconfig files.
 - The numbered plans document for this branch is `plans/70-text-scaling.md`,

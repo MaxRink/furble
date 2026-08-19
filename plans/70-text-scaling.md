@@ -45,8 +45,10 @@ sdkconfig files consistently.
 
 The font is baked into the LVGL theme at UI construction, and re-theming a
 live widget tree is not supported by the UI. The Text size page therefore
-follows the Theme page precedent exactly: a roller picks the size, a Restart
-button saves the setting and calls `esp_restart()`. On the M5StickS3 the
+follows the Theme page precedent exactly, including its placement: it is a
+top-level entry in the Settings menu next to Theme, not nested inside the
+Display page. A roller picks the size, a Restart button saves the setting and
+calls `esp_restart()`. On the M5StickS3 the
 handler disarms the M5PM1 hardware watchdog first
 (`Platform::getInstance().watchdogEnable(false)`), the same guard the Theme
 restart uses, because a restart with the watchdog armed trips it during boot.
@@ -86,6 +88,12 @@ reports.
   either, and the upstream preference is fewer UI elements.
 - The roller width uses the same `#if !defined(FURBLE_M5COREX)` guard as the
   Theme menu roller.
+- Text size is a top-level Settings entry, not a row on the Display page. An
+  earlier revision nested it under Display; that added one row and pushed the
+  Display page 36 px past the 135x240 viewport (worse on 80x160), which the
+  `overflow-sweep` regression asserts must not happen. Placing it next to
+  Theme restores the Display page fit and matches the Theme restart pattern.
+  On the Core grid it takes the free cell `{2, 2}`.
 - The worked examples in `tools/ui-audit.md` are illustrative, not captured
   from a run. The simulator (plans/28) is not part of this branch, so a
   cheap real-run regeneration was not available.
@@ -96,8 +104,12 @@ Implemented on `feat/ui-text-scaling`.
 
 - `TEXT_SIZE` has wire_id 40 (after `SD_GPX`, 39). `src/FurbleCompanion.cpp`
   covers it as SETTING_U8.
-- The Display settings page keeps the Screen off roller from PR 26; Text
-  size is added below it.
+- Text size is a top-level Settings entry next to Theme. The Display page is
+  unchanged from master and stays within the 80x160 and 135x240 viewports.
+- `sim/scenarios/e2e/text-size-persist.txt` seeds a non-default size, boots,
+  and asserts the stored setting, the roller selection and no page overflow.
+  The `overflow-sweep` bughunt scenario covers the Display page fit across all
+  three panel classes.
 - Review fixes applied: S3 watchdog disarm before restart, the
   `fontForIconMenu` clamp, the audit walker long-mode and wrap rules,
   content-width comparisons, `int32_t` coordinates, the icon and title-label

@@ -204,7 +204,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IRSettingsStr,        {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
-    {m_TextSizeStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_TextSizeStr,          {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
@@ -1944,6 +1944,7 @@ void UI::simScenarioAction(const char *action) {
         {"nmea",        m_GPSNMEAStr       },
         {"timer",       m_IntervalometerStr},
         {"theme",       m_ThemeStr         },
+        {"text_size",   m_TextSizeStr      },
         {"bluetooth",   m_BluetoothStr     },
         {"about",       m_AboutStr         },
         {"power",       m_PowerStr         },
@@ -1991,6 +1992,8 @@ void UI::simScenarioAction(const char *action) {
     page = m_Menu.at(m_IntervalometerStr).page;
   } else if (page_name == "theme") {
     page = m_Menu.at(m_ThemeStr).page;
+  } else if (page_name == "text_size") {
+    page = m_Menu.at(m_TextSizeStr).page;
   } else if (page_name == "bluetooth") {
     page = m_Menu.at(m_BluetoothStr).page;
   } else if (page_name == "about") {
@@ -2037,7 +2040,7 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 20> pages = {
+    const std::array<std::pair<const char *, const char *>, 21> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -2050,6 +2053,7 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
          {m_DisplayStr, "display"},
+         {m_TextSizeStr, "text_size"},
          {m_GPSStr, "gps"},
          {m_GPSDataStr, "gps_data"},
          {m_GPSNMEAStr, "nmea"},
@@ -2176,6 +2180,31 @@ std::string UI::simQueryState(const char *key) {
     const int32_t below = lv_obj_get_scroll_bottom(page);
     const int32_t above = lv_obj_get_scroll_top(page);
     return (below > 0 || above > 0) ? "yes" : "no";
+  }
+
+  // Report the Text size roller's current selection so scenarios can assert the
+  // saved TEXT_SIZE setting was loaded and reflected in the widget on boot.
+  if (query == "text_size") {
+    const auto entry = m_Menu.find(m_TextSizeStr);
+    if (entry == m_Menu.end() || entry->second.page == nullptr) {
+      return "unknown";
+    }
+    std::function<lv_obj_t *(lv_obj_t *)> findRoller = [&](lv_obj_t *obj) -> lv_obj_t * {
+      if (lv_obj_check_type(obj, &lv_roller_class)) {
+        return obj;
+      }
+      for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        if (lv_obj_t *found = findRoller(lv_obj_get_child(obj, i))) {
+          return found;
+        }
+      }
+      return nullptr;
+    };
+    lv_obj_t *roller = findRoller(entry->second.page);
+    if (roller == nullptr) {
+      return "unknown";
+    }
+    return std::to_string(lv_roller_get_selected(roller));
   }
 
   // Report the intervalometer run state so scenarios can assert a clean reset
@@ -4021,8 +4050,6 @@ void UI::addDisplayMenu(const menu_t &parent) {
       },
       LV_EVENT_VALUE_CHANGED, this);
 
-  addTextSizeMenu(menu);
-
   if (M5.Touch.isEnabled()) {
     lv_obj_t *calibrate_button = lv_button_create(cont);
     lv_obj_t *calibrate_label = lv_label_create(calibrate_button);
@@ -4977,6 +5004,7 @@ void UI::addSettingsMenu(void) {
   addGPSMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);
+  addTextSizeMenu(menu);
   addBluetoothMenu(menu);
   addAboutMenu(menu);
   addPowerMenu(menu);
