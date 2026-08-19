@@ -39,6 +39,11 @@ uint32_t rigPendingPairingPin(void);
 void rigConfirmPairing(bool accept);
 void rigReloadSetting(bool pairingWindow);
 
+// Force a pending companion pairing without a rig TCP peer. The UI pairing
+// timer then raises the real modal, so the input-after-approve regression
+// (task #32) can be reproduced headlessly. rigConfirmPairing clears it.
+void rigInjectPendingPairing(uint32_t pin);
+
 }  // namespace Furble::Sim
 
 #endif

@@ -525,6 +525,12 @@ bool configuredIgnoreUuidMismatch = false;
 bool configuredDropNotify = false;
 uint32_t configuredDelayMs = 0;
 
+// A pending pairing forced by a scenario, independent of any rig TCP peer. The
+// UI treats the companion as enabled and pending while this is set, so the
+// pairing modal appears without a live companion connection.
+std::atomic<bool> injectedPairing {false};
+std::atomic<uint32_t> injectedPin {0};
+
 }  // namespace
 
 void rigConfigure(bool requestedValue,
@@ -554,18 +560,24 @@ bool rigRequested(void) {
 }
 
 bool rigIsEnabled(void) {
-  return rig != nullptr && rig->isEnabled();
+  return injectedPairing.load() || (rig != nullptr && rig->isEnabled());
 }
 
 bool rigHasPendingPairing(void) {
-  return rig != nullptr && rig->hasPendingPairing();
+  return injectedPairing.load() || (rig != nullptr && rig->hasPendingPairing());
 }
 
 uint32_t rigPendingPairingPin(void) {
+  if (injectedPairing.load()) {
+    return injectedPin.load();
+  }
   return rig == nullptr ? 0 : rig->pendingPairingPin();
 }
 
 void rigConfirmPairing(bool accept) {
+  if (injectedPairing.exchange(false)) {
+    return;
+  }
   if (rig != nullptr) {
     rig->confirmPairing(accept);
   }
@@ -575,6 +587,11 @@ void rigReloadSetting(bool pairingWindow) {
   if (rig != nullptr) {
     rig->reloadSetting(pairingWindow);
   }
+}
+
+void rigInjectPendingPairing(uint32_t pin) {
+  injectedPin.store(pin);
+  injectedPairing.store(true);
 }
 
 }  // namespace Furble::Sim
@@ -601,6 +618,7 @@ uint32_t rigPendingPairingPin(void) {
 }
 void rigConfirmPairing(bool) {}
 void rigReloadSetting(bool) {}
+void rigInjectPendingPairing(uint32_t) {}
 
 }  // namespace Furble::Sim
 
