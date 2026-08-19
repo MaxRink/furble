@@ -1,6 +1,38 @@
 # 40 - ThinkNode port feasibility
 
-Status: feasibility study. No code in this document.
+Status: feasibility study. No code in this document. See also
+`plans/41-alternative-hardware.md` and `plans/88-alternate-hardware.md`.
+
+## Update 2026-08-19: newer ThinkNode models and coexistence
+
+What changed. When this study was written the ThinkNode family was M1 to M4 and
+the verdict was that no member was both ESP32 and GNSS-equipped. Elecrow has since
+shipped more models, and a companion study `plans/88-alternate-hardware.md` looked
+at the family as furble remotes rather than sidecars. Three corrections and
+additions to this document:
+
+- ThinkNode M1 is an nRF52840 e-paper handheld with GNSS, a rotary dial, one
+  button and a 1200 mAh cell, near 5.6 uA sleep. It is the same nRF52 rewrite
+  verdict as the M3 and M4. It is a better shaped device than the M4 for a
+  pocket sidecar, but it does not change the rewrite conclusion below.
+  (https://www.espboards.dev/blog/thinknode-m1-m2-meshtastic-review/)
+- ThinkNode M5 is the ESP32-S3 with GNSS this document said did not exist. It is
+  a board profile, not a rewrite. Full analysis is in plan 41, which recommends
+  it for the sidecar.
+- ThinkNode M9 is an ESP32-S3R8 with a 37-key keyboard, a 2.4 inch color LCD and
+  GNSS. It is a board profile too, and belongs to the remote study in plan 88,
+  not to this nRF rewrite study. Note that it ships MeshCore, not Meshtastic, so
+  the published-pinout advantage this document leans on may not apply yet.
+  (https://www.cnx-software.com/2026/08/10/elecrow-thinknode-m9-a-standalone-esp32-s3-meshcore-communication-terminal-with-color-lcd-qwerty-keyboard/)
+
+Meshtastic coexistence. Because the M3, M4 and M1 are all nRF52840 running
+Meshtastic's own firmware, "keep Meshtastic too" on those devices is the same
+two-firmware problem as this document's whole premise. The Adafruit nRF52
+bootloader supports both BLE DFU and USB UF2, so switching between a Meshtastic
+build and a furble build is a reflash, not a dual boot. On the 16 MB ESP32-S3
+devices the cleaner option is two flashed apps switched by an OTA partition
+scheme. Plan 88 has the full coexistence verdict and the exhaustive input catalog
+for every device named across all three documents.
 
 ## Goal
 
@@ -145,13 +177,18 @@ something trustworthy with one camera vendor.
 
 | Device | MCU | Port? | Meets "days on battery"? |
 |---|---|---|---|
+| M1 | nRF52840 | No. Rewrite. | Marginal, e-paper helps, duty cycled |
+| M2 | ESP32-S3 | Yes, board profile, but no GNSS. | Not applicable |
 | M3 | nRF52840 | No. Rewrite. | Marginal, duty cycled only |
 | M4 | nRF52840 | No. Rewrite, tractable via protocol extraction. | Yes, by a wide margin |
-| M2 | ESP32-S3 | Yes, but no GNSS. | Not applicable |
+| M5 | ESP32-S3 | Yes, board profile, has GNSS. | Achievable, see plan 41 |
+| M9 | ESP32-S3R8 | Yes, board profile, keyboard remote. | See plan 88 |
 
-No ThinkNode device is both ESP32 and GNSS-equipped. The dream target for a
-true port (S3 module, GNSS, big battery, no screen) does not exist in this
-family.
+The 2026-08-19 update above supersedes the original conclusion that no ThinkNode
+device was both ESP32 and GNSS-equipped. The M5 is exactly that, and is a board
+profile rather than a rewrite. The dream sidecar target (S3 module, GNSS, big
+battery, no screen) still does not exist in one member, but the M5 comes closest
+and is the plan 41 recommendation.
 
 ## Port plan
 

@@ -1,7 +1,35 @@
 # 41 - Alternative sidecar hardware
 
 Status: hardware survey. No code in this document. Companion to
-`plans/40-thinknode-port.md`.
+`plans/40-thinknode-port.md` and `plans/88-alternate-hardware.md`.
+
+## Update 2026-08-19: the remote-with-screen angle
+
+What changed. This document was written for one job, the headless GPS sidecar.
+A second question has since been studied: what alternate hardware makes a good
+furble remote control with a screen and richer inputs, and whether such a device
+can keep running Meshtastic too. That study is `plans/88-alternate-hardware.md`.
+This update folds its conclusions back here so this document stays canonical, and
+adds the remote-oriented devices to the comparison table below. Three things to
+carry over:
+
+- Input catalog. Plan 88 holds the exhaustive input inventory for every device
+  in both documents: exact button counts and placement, keyboard key counts,
+  trackballs, rotary encoders, touch controllers with capacitive-versus-resistive
+  and multitouch, IMU-as-input, and microphones. It is not duplicated here.
+- Meshtastic coexistence. The RF question is a non-issue: LoRa on the SX1262 or
+  LR1110 over SPI and BLE on the ESP32 radio are separate silicon on separate
+  bands (https://heltec.org/project/wifi-lora-32-v3/). Running both furble and
+  Meshtastic is not one binary though. The practical shape is two separately
+  flashed apps switched by an OTA-style partition scheme, which needs a 16 MB
+  device. See plan 88 for the full verdict.
+- GNSS reuse still rules the recommendation. The remote devices do not change the
+  sidecar pick. The ThinkNode M5 stays the recommendation for the sidecar because
+  its L76K is a `$PCAS` receiver and its e-paper panel costs nothing to hold.
+
+The T-Deck Plus GNSS chip is now verified as a u-blox MIA-M10Q, which speaks UBX
+and so would need a second GNSS driver in furble
+(https://wiki.lilygo.cc/products/t-deck-series/t-deck-plus/).
 
 ## Goal
 
@@ -43,8 +71,13 @@ if runtime beats tidiness.
 | LilyGO T-Beam Supreme, L76K trim | ESP32-S3FN8, 8 MB PSRAM | Quectel L76K, `$PCAS` | 18650 holder, AXP2101 | 1.3" OLED, SH1106 | 66,55 EUR hamparts.shop | board profile |
 | LilyGO T-Beam Supreme, u-blox trim | ESP32-S3FN8, 8 MB PSRAM | u-blox MAX-M10S, UBX | 18650 holder, AXP2101 | 1.3" OLED, SH1106 | 84,90 EUR BerryBase | board profile plus GNSS driver |
 | Heltec Wireless Tracker V1.1 | ESP32-S3FN8 | Unicore UC6580, `$CFG` | none, JST 1.25 for your own cell | 0.96" TFT, ST7735 | about 25 to 35 EUR, OpenELAB DE, hexaspot | board profile plus GNSS driver |
-| LilyGO T-Deck Plus | ESP32-S3 | u-blox class, chip not verified | 2000 mAh internal | 2.8" LCD plus keyboard | 94,90 EUR BerryBase | board profile |
+| LilyGO T-Deck / T-Deck Plus | ESP32-S3, 16 MB / 8 MB | Plus only: u-blox MIA-M10Q, UBX | 2000 mAh internal (Plus) | 2.8" ST7789 320x240 LCD, keyboard, trackball, Plus adds GT911 touch | 94,90 EUR BerryBase | board profile |
 | LilyGO T-LoRa Pager | ESP32-S3, 16 MB flash | u-blox MIA-M10Q, UBX | internal Li-ion, capacity not published | 2.33" IPS plus keyboard | 119,90 EUR BerryBase | board profile |
+| Elecrow ThinkNode M9 | ESP32-S3R8, 16 MB / 8 MB | multi-GNSS + compass, chip not named | 2300 mAh | 2.4" TN 240x320 non-touch, 37-key keyboard | about 74,90 USD Elecrow | board profile plus keyboard and GNSS driver |
+| Elecrow ThinkNode M2 | ESP32-S3 | none | 1000 mAh | 1.3" OLED mono 128x64 | about 22 USD Elecrow | board profile, no GNSS |
+| M5Stack Cardputer / Cardputer-Adv | ESP32-S3, StampS3 | none | 1400 mAh (Adv 1750) | 1.14" ST7789V 240x135, 56-key keyboard | about 30 USD M5Stack | board profile plus keyboard, no LoRa or GNSS |
+| M5Stack CoreS3 | ESP32-S3, 16 MB | via Grove unit, AT6668 `$PCAS` | 500 mAh + modules | 2.0" 320x240 FT6336 touch | about 45 EUR | none to small, M5Unified board |
+| LilyGO T-Watch S3 | ESP32-S3, 16 MB / 8 MB | none (add-on only) | ~300 to 500 mAh | 1.54" 240x240 capacitive touch (AMOLED on Plus) | about 45 to 75 EUR | board profile, wrist form factor |
 | Seeed XIAO ESP32S3 plus L76K GNSS module | ESP32-S3 | Quectel L76K, `$PCAS` | your own LiPo | none | about 10,90 USD module plus board | board profile, DIY, no case |
 | M5Stack Core2 v1.1 plus GPS unit plus Battery Module 13.2 | ESP32 | AT6668, `$PCAS` | 1500 mAh module, stackable | 2.0" touch LCD | 49,90 plus 12,90 EUR BerryBase | none |
 | M5StickC Plus2 or StickS3 plus GPS unit plus USB power bank | ESP32 or ESP32-S3 | AT6668, `$PCAS` | any USB bank | yes | already owned | none |
@@ -428,6 +461,25 @@ Plan 40 baseline
 
 - BerryBase ThinkNode M4, 69,90 EUR:
   https://www.berrybase.de/elecrow-thinknode-m4-powerbank-fuer-meshtastic-nrf52840-lora-868-915-mhz-gps-bluetooth-7000-mah
+
+Remote-with-screen devices added 2026-08-19. Full source list, input catalog and
+Meshtastic-coexistence analysis are in `plans/88-alternate-hardware.md`. Primary
+citations for the rows added above:
+
+- LilyGO T-Deck Plus, ST7789, GT911 touch, MIA-M10Q GPS:
+  https://wiki.lilygo.cc/products/t-deck-series/t-deck-plus/
+- Elecrow ThinkNode M9, ESP32-S3, 37-key keyboard, GNSS:
+  https://www.cnx-software.com/2026/08/10/elecrow-thinknode-m9-a-standalone-esp32-s3-meshcore-communication-terminal-with-color-lcd-qwerty-keyboard/
+- Elecrow ThinkNode M2, ESP32-S3, 1.3" OLED:
+  https://www.elecrow.com/thinknode-m2-meshtastic-lora-signal-transceiver-powered-by-esp32-s3-with-1-3-oled-display.html
+- M5Stack Cardputer, ESP32-S3, 56-key keyboard:
+  https://www.cnx-software.com/2023/10/14/m5stack-cardputer-a-30-card-sized-esp32-s3-computer-with-display-and-keyboard/
+- M5Stack CoreS3, FT6336 touch, BMI270:
+  https://docs.m5stack.com/en/core/CoreS3
+- LilyGO T-Watch S3, capacitive touch, SX1262:
+  https://openelab.io/products/lilygo-t-watch-s3
+- LoRa plus BLE concurrency, Heltec WiFi LoRa 32 V3:
+  https://heltec.org/project/wifi-lora-32-v3/
 
 Sources consulted but not usable. TinyTronics list the T-Beam Supreme L76K in
 868 MHz but return HTTP 403 to automated access, so no price is quoted from
