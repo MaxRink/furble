@@ -1,0 +1,34 @@
+# Walk into the deep diagnostics pages via real button clicks and confirm the
+# header back button is reachable and returns to the parent (task #34 class:
+# BLE / diagnostics pages with no working back).
+seed fauxny true
+wait 300
+action nav settings
+wait 150
+action nav diagnostics
+wait 150
+action nav ble
+wait 200
+print ui.page
+print ui.back
+assert ui.page ble
+assert ui.back visible
+back
+wait 200
+print ui.page
+assert ui.page diagnostics
+action nav power_state
+wait 200
+assert ui.page power_state
+assert ui.back visible
+back
+wait 200
+assert ui.page diagnostics
+action nav device_info
+wait 200
+assert ui.page device_info
+assert ui.back visible
+back
+wait 200
+assert ui.page diagnostics
+exit

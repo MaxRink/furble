@@ -1727,7 +1727,9 @@ void UI::simScenarioAction(const char *action) {
         {"reconnect",     Settings::RECONNECT    },
         {"multiconnect",  Settings::MULTICONNECT },
         {"companion",     Settings::COMPANION    },
+#if defined(FURBLE_M5STICKS3)
         {"watchdog",      Settings::WATCHDOG     },
+#endif
         {"ir",            Settings::IR           },
         {"show_title",    Settings::SHOW_TITLE   },
         {"tx_adaptive",   Settings::TX_ADAPTIVE  },
@@ -1756,6 +1758,61 @@ void UI::simScenarioAction(const char *action) {
     m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
     lv_timer_reset(m_IntervalTimer);
     lv_timer_resume(m_IntervalTimer);
+    return;
+  }
+
+  // Click a real companion pairing modal footer button, running the same
+  // handler an on-device button press would. Footer child 0 is Accept, 1 is
+  // Reject. Used to reproduce the input-after-approve regression (task #32).
+  if (command == "companion-accept" || command == "companion-reject") {
+    if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
+      return;
+    }
+    lv_obj_t *footer = lv_msgbox_get_footer(m_CompanionPairingDialog);
+    if (footer == nullptr) {
+      return;
+    }
+    const uint32_t index = command == "companion-accept" ? 0 : 1;
+    lv_obj_t *button = lv_obj_get_child(footer, index);
+    if (button != nullptr) {
+      lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+    }
+    return;
+  }
+
+  // Navigate to a page by clicking its real menu button, so LVGL records the
+  // menu history and the header back button pops correctly. This reaches the
+  // deep diagnostics pages (BLE, Power state, Device info) the position-based
+  // key walks cannot easily target.
+  constexpr const char *NAV_PREFIX = "nav ";
+  if (command.compare(0, std::char_traits<char>::length(NAV_PREFIX), NAV_PREFIX) == 0) {
+    const std::string name = command.substr(std::char_traits<char>::length(NAV_PREFIX));
+    static const std::unordered_map<std::string, const char *> buttons = {
+        {"settings",    m_SettingsStr      },
+        {"display",     m_DisplayStr       },
+        {"features",    m_FeaturesStr      },
+        {"gps",         m_GPSStr           },
+        {"gps_data",    m_GPSDataStr       },
+        {"nmea",        m_GPSNMEAStr       },
+        {"timer",       m_IntervalometerStr},
+        {"theme",       m_ThemeStr         },
+        {"bluetooth",   m_BluetoothStr     },
+        {"about",       m_AboutStr         },
+        {"power",       m_PowerStr         },
+        {"diagnostics", m_DiagnosticsStr   },
+        {"device_info", m_DeviceInfoStr    },
+        {"power_state", m_PowerStateStr    },
+        {"ble",         m_BLEStr           },
+        {"battery",     m_BatteryStr       },
+    };
+    const auto found = buttons.find(name);
+    if (found == buttons.end()) {
+      return;
+    }
+    lv_obj_t *button = m_Menu.at(found->second).button;
+    if (button != nullptr) {
+      lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+    }
     return;
   }
 
@@ -1816,16 +1873,28 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 8> pages = {
+    const std::array<std::pair<const char *, const char *>, 20> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
          {m_ScanStr, "scan"},
          {m_SettingsStr, "settings"},
          {m_RemoteShutter, "shutter"},
+         {m_RemoteBulb, "bulb"},
+         {m_BulbRunStr, "bulb_run"},
+         {m_IntervalometerStr, "timer"},
+         {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
          {m_DisplayStr, "display"},
          {m_GPSStr, "gps"},
+         {m_GPSDataStr, "gps_data"},
+         {m_GPSNMEAStr, "nmea"},
+         {m_BluetoothStr, "bluetooth"},
+         {m_AboutStr, "about"},
+         {m_DiagnosticsStr, "diagnostics"},
+         {m_DeviceInfoStr, "device_info"},
+         {m_PowerStateStr, "power_state"},
+         {m_BLEStr, "ble"},
          }
     };
     for (const auto &entry : pages) {
@@ -1834,6 +1903,78 @@ std::string UI::simQueryState(const char *key) {
       }
     }
     return "other";
+  }
+
+  // State of the shared header back button. A page that leaves it "hidden" with
+  // no other way out is a navigation dead end (task #34 class).
+  if (query == "back") {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    if (back == nullptr) {
+      return "none";
+    }
+    if (lv_obj_has_flag(back, LV_OBJ_FLAG_HIDDEN)) {
+      return "hidden";
+    }
+    if (lv_obj_has_state(back, LV_STATE_DISABLED)) {
+      return "disabled";
+    }
+    return "visible";
+  }
+
+  // Companion pairing modal presence, for the input-after-approve regression
+  // (task #32).
+  if (query == "modal") {
+    const bool open =
+        m_CompanionPairingDialog != nullptr && lv_obj_is_valid(m_CompanionPairingDialog);
+    return open ? "open" : "closed";
+  }
+
+  // Whether the encoder group currently has a valid focused object. After a
+  // modal closes, a null or stale focus means the input group is trapped and no
+  // button can be reached (task #32 class).
+  if (query == "focus") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused == nullptr) {
+      return "none";
+    }
+    if (!lv_obj_is_valid(focused)) {
+      return "stale";
+    }
+    return "ok";
+  }
+
+  // Whether the focused object sits on the page that is currently displayed. A
+  // "no" means the focus escaped the visible page and the encoder drives an
+  // off-screen widget.
+  if (query == "focus_on_page") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused == nullptr || !lv_obj_is_valid(focused)) {
+      return "no";
+    }
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    for (lv_obj_t *parent = focused; parent != nullptr; parent = lv_obj_get_parent(parent)) {
+      if (parent == page) {
+        return "yes";
+      }
+    }
+    return "no";
+  }
+
+  // Report whether the current page's content is taller than its viewport, i.e.
+  // it needs scrolling. Combined with a screenshot this flags layout overflow
+  // on the narrow panels.
+  if (query == "overflow") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(page);
+    // Scrollable content that extends above or below the viewport means the
+    // page does not fit and must be scrolled. On the narrow panels this flags
+    // pages that overflow the display.
+    const int32_t below = lv_obj_get_scroll_bottom(page);
+    const int32_t above = lv_obj_get_scroll_top(page);
+    return (below > 0 || above > 0) ? "yes" : "no";
   }
 
   return "";

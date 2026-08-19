@@ -1,0 +1,70 @@
+# Report content-overflow (content taller than viewport) for every reachable
+# page. Run against each panel class to surface layout overflow, worst on 80x160.
+seed fauxny true
+seed gps true
+wait 300
+print ui.page
+print ui.overflow
+action page settings
+wait 100
+print ui.page
+print ui.overflow
+action nav display
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav features
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav gps
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav timer
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav bluetooth
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav about
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav power
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav diagnostics
+wait 100
+print ui.page
+print ui.overflow
+action nav device_info
+wait 100
+print ui.page
+print ui.overflow
+action page diagnostics
+action nav power_state
+wait 100
+print ui.page
+print ui.overflow
+action page diagnostics
+action nav ble
+wait 100
+print ui.page
+print ui.overflow
+action page diagnostics
+action nav battery
+wait 100
+print ui.page
+print ui.overflow
+exit
