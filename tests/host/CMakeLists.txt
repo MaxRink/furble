@@ -53,10 +53,40 @@ target_link_libraries(lifecycle_test PRIVATE furble_host_camera)
 target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                               -Wno-unused-parameter)
 
+set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
+
+# Pure logic unit suites. These link their production source directly instead
+# of the mock BLE library because the modules under test have no BLE or NVS
+# dependency. Each suite is standalone so a build or link break is isolated to
+# one module.
+
+add_executable(camera_list_protocol_test
+               camera_list_protocol_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp)
+target_include_directories(camera_list_protocol_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_options(camera_list_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                         -Wno-unused-parameter)
+
+add_executable(fujifilm_protocol_test
+               fujifilm_protocol_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(fujifilm_protocol_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_options(fujifilm_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                      -Wno-unused-parameter)
+
+# The settings table suite parses src/FurbleSettings.cpp as text, so it needs
+# no furble sources on its link line.
+add_executable(settings_table_test settings_table_test.cpp)
+target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                   -Wno-unused-parameter)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
            COMMAND corpus_replay_test
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
+  add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
+  add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
+  add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 endif()
