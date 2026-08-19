@@ -212,6 +212,39 @@ void Control::setPower(esp_power_level_t power) {
   m_Power = power;
 }
 
+#if defined(FURBLE_SIM)
+void Control::simDropActiveLink(void) {
+  if (getState() != STATE_ACTIVE) {
+    return;
+  }
+
+  // Drop the link on every active camera, mirroring a supervision timeout.
+  std::shared_ptr<Camera> dropped;
+  for (const auto &target : m_Targets) {
+    if (target->getCamera() != nullptr) {
+      target->getCamera()->disconnect();
+      if (dropped == nullptr) {
+        dropped = target->getCamera();
+      }
+    }
+  }
+
+  if (m_InfiniteReconnect && dropped != nullptr) {
+    // Reconnect mode re-enters connecting without passing through idle, exactly
+    // like the on-device control task after a dropped supervision timeout.
+    connectStart = Sim::clockMillis();
+    dropped->setActive(true);
+    dropped->setConnectProgress(0);
+    m_ConnectCamera = dropped;
+    setState(STATE_CONNECTING);
+    return;
+  }
+
+  m_ConnectCamera = nullptr;
+  setState(STATE_IDLE);
+}
+#endif
+
 void Control::task(void) {}
 
 }  // namespace Furble

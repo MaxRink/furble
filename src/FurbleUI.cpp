@@ -47,6 +47,10 @@ namespace {
 // Registry of settings switches keyed by Settings::type_t. Scripted scenarios
 // toggle a setting through its real widget and persistence callback.
 std::unordered_map<int, lv_obj_t *> g_simSettingSwitches;
+
+// Counts doDisconnect() calls so a scenario can prove exactly one disconnect
+// fires per Cancel click regardless of how many connect attempts preceded it.
+uint32_t g_simDisconnectCalls = 0;
 }  // namespace
 #else
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
@@ -1960,6 +1964,24 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Simulate a mid-session BLE link drop on an already-active link. Control
+  // leaves STATE_ACTIVE, which the connect timer must observe so the UI shows
+  // the reconnecting box (task #54 / F3).
+  if (command == "drop") {
+    Control::getInstance().simDropActiveLink();
+    return;
+  }
+
+  // Click the real Cancel button on the connect message box, running the same
+  // handler an on-device press would. Used to prove one Cancel click fires
+  // exactly one disconnect regardless of prior connect attempts (F4).
+  if (command == "cancel") {
+    if (m_ConnectContext.cancel != nullptr) {
+      lv_obj_send_event(m_ConnectContext.cancel, LV_EVENT_CLICKED, this);
+    }
+    return;
+  }
+
   // Fire the shutter through the real shutter button handler.
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
@@ -2225,6 +2247,10 @@ std::string UI::simQueryState(const char *key) {
     SpinValue::nvs_t nvs = Settings::load<Settings::BULB>();
     SpinValue value(nvs);
     return std::to_string(value.toMilliseconds());
+  }
+
+  if (query == "disconnect_calls") {
+    return std::to_string(g_simDisconnectCalls);
   }
 
   if (query == "connected") {
@@ -2567,6 +2593,11 @@ void UI::showShutterIntervalometer(bool show) {
 
 void UI::connectTimerHandler(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("connect_timer");
+  // Fast cadence while a connect is in progress so the progress bar animates
+  // smoothly. Slow liveness cadence once active: the timer keeps running to
+  // observe a mid-session drop, but polls gently instead of busy spinning.
+  static constexpr uint32_t CONNECT_POLL_PERIOD_MS = 50;
+  static constexpr uint32_t LIVENESS_POLL_PERIOD_MS = 500;
   auto *ctx = static_cast<ConnectContext_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
   std::shared_ptr<Camera> camera;
@@ -2585,6 +2616,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   switch (state) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
+      lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
       camera = control.getConnectingCamera();
 
       if (lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
@@ -2630,7 +2662,12 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         ctx->ui->configureControl(ControlMode::REVERT);
         lv_group_focus_next(lv_group_get_default());
       }
-      lv_timer_pause(m_ConnectTimer);
+      // Do not pause. A paused timer never observes a mid-session link drop, so
+      // the screen would keep showing connected while control drops and retries
+      // (task #54). Keep polling liveness at a gentle cadence: a drop re-enters
+      // the connecting branch above and shows the reconnecting box, and a
+      // successful reconnect restores this connected view.
+      lv_timer_set_period(m_ConnectTimer, LIVENESS_POLL_PERIOD_MS);
       break;
 
     case Control::STATE_IDLE:
@@ -2927,9 +2964,6 @@ void UI::doConnect(lv_event_t *e) {
     }
   }
 
-  lv_obj_add_event_cb(
-      m_ConnectContext.cancel, [](lv_event_t *e) { doDisconnect(); }, LV_EVENT_CLICKED, NULL);
-
   control.connectAll(Settings::load<Settings::RECONNECT>());
   lv_timer_ready(m_ConnectTimer);
   lv_timer_resume(m_ConnectTimer);
@@ -2939,6 +2973,9 @@ void UI::doConnect(lv_event_t *e) {
 }
 
 void UI::doDisconnect(void) {
+#if defined(FURBLE_SIM)
+  g_simDisconnectCalls++;
+#endif
   lv_timer_pause(m_ConnectTimer);
 
   if (m_ConnectContext.feedbackConnected) {
@@ -3190,6 +3227,11 @@ void UI::addConnectMenu(void) {
   lv_bar_set_value(m_ConnectContext.bar, 0, LV_ANIM_ON);
 
   m_ConnectContext.cancel = lv_msgbox_add_footer_button(m_ConnectContext.messageBox, "Cancel");
+  // Register the Cancel handler once here, not per connect attempt. Adding it in
+  // doConnect stacked one callback per attempt, so after N attempts a single
+  // Cancel click fired N disconnects.
+  lv_obj_add_event_cb(
+      m_ConnectContext.cancel, [](lv_event_t *e) { doDisconnect(); }, LV_EVENT_CLICKED, NULL);
   lv_obj_t *footer = lv_msgbox_get_footer(m_ConnectContext.messageBox);
   lv_obj_update_layout(footer);
   // @todo cancel button bottom is clipped, weird

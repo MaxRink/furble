@@ -216,6 +216,18 @@ class Control {
   /** Enable or disable adaptive connection parameters on active cameras. */
   void setConnSaver(bool enabled);
 
+#if defined(FURBLE_SIM)
+  /**
+   * Simulate a mid-session BLE link drop on the active target (test only).
+   *
+   * Marks the connected camera as disconnected and leaves STATE_ACTIVE, exactly
+   * as the control task does on device when the supervision timeout fires.
+   * Reconnect mode re-enters connecting, otherwise the link goes idle. Lets the
+   * host harness drive the post-active path (task #54 / F3).
+   */
+  void simDropActiveLink(void);
+#endif
+
  private:
   Control() {};
 

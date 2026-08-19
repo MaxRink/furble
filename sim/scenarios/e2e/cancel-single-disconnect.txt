@@ -1,0 +1,17 @@
+# F4: one Cancel click must fire exactly one disconnect.
+#
+# doConnect used to add a fresh Cancel handler on every attempt, so after N
+# connect attempts a single Cancel click ran doDisconnect N times, each
+# re-running teardown and re-navigating. Start three connect attempts, keeping
+# each in progress so the connect timer never auto-disconnects, then click Cancel
+# once and confirm exactly one disconnect ran.
+seed fauxny true
+wait 300
+action connect
+action connect
+action connect
+wait 100
+action cancel
+wait 100
+assert ui.disconnect_calls 1
+exit
