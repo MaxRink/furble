@@ -101,6 +101,23 @@ class Camera: public NimBLEClientCallbacks {
   void disconnect(void);
 
   /**
+   * Clear stale connection liveness before a fresh connect.
+   *
+   * A Camera in the persistent CameraList outlives its Control::Target. If a
+   * prior session ended without onDisconnect firing (camera powered off, so the
+   * disconnect callback is delayed to the supervision timeout, or a connect that
+   * came up at the link level but failed registration), m_Connected can be left
+   * stale-true on the list object. isConnected() then reports connected on the
+   * next connect and connectAll() short-circuits to active without any BLE work.
+   *
+   * Called from Control::addActive() at the start of a user requested connect,
+   * where the camera is not part of a live controlled session, so clearing the
+   * flag is safe. Does not touch m_Client (it may already be self-deleted); the
+   * flag is the only liveness guard, matching the connect and disconnect paths.
+   */
+  void resetConnectionState(void);
+
+  /**
    * Send a shutter button press command.
    */
   virtual void shutterPress(void) = 0;
@@ -264,7 +281,12 @@ class Camera: public NimBLEClientCallbacks {
   NimBLEAddress m_Address = NimBLEAddress {};
   NimBLEClient *m_Client = nullptr;
   std::string m_Name;
-  bool m_Connected = false;
+  // Read lock-free by isConnected() from the UI task on every render, so it must
+  // be atomic. Written by the NimBLE onConnect/onDisconnect callbacks and the
+  // destructor without holding m_Mutex, so the atomic also removes a latent race.
+  // It is the liveness guard for m_Client: onDisconnect clears it before NimBLE
+  // frees the self-deleting client, so a true read means the client is alive.
+  std::atomic<bool> m_Connected = false;
   bool m_Paired = false;
 
  private:
@@ -295,9 +317,25 @@ class Camera: public NimBLEClientCallbacks {
   // furble is the central, so latency saves nothing on our side. A non-zero
   // value lets the camera skip events and doubles worst-case write latency.
   static constexpr uint16_t m_IdleLatency = 0;
-  // 16 s, the middle of the plan's 16 to 32 s range, so a dead link is
-  // detected in half the time of the BLE maximum.
-  static constexpr uint16_t m_IdleTimeout = 1600;
+  // 7 s (unit is 10 ms). This is the link supervision timeout, so it also bounds
+  // how long a dead link (camera powered off, out of range) stays reported as
+  // connected before onDisconnect fires. The earlier 16 s value made a power-off
+  // take up to 16 s to detect and, because the interactive disconnect waits for
+  // the link to actually drop, froze the UI for that whole window.
+  //
+  // Must stay at or above m_FastTimeout (512, about 5.12 s), and here sits a bit
+  // above it. Supervision margin is really a count of missed connection events,
+  // the timeout divided by the connection interval. The idle profile uses much
+  // longer intervals (m_IdleMinInterval to m_IdleMaxInterval, 250 to 300 ms) than
+  // the fast profile (tens of ms), so a given timeout buys the idle link far
+  // fewer events of margin. An idle timeout below fast would therefore make the
+  // idle link the twitchier of the two, the opposite of what we want, and the
+  // spurious-drop risk is worst exactly where furble runs, under BT modem sleep
+  // plus DFS. 7 s keeps the idle link no more drop-prone than fast (about 23
+  // events of margin at a 300 ms interval) while still cutting camera-off
+  // detection from 16 s to about 7 s. Never drop below m_FastTimeout. The final
+  // value is subject to a multi-minute connection-stability soak on hardware.
+  static constexpr uint16_t m_IdleTimeout = 700;
 
   // These are the pre-connect values. Live updates use the profile constants above.
   const uint16_t m_MinInterval = m_FastMinInterval;
@@ -314,7 +352,9 @@ class Camera: public NimBLEClientCallbacks {
 
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
   bool m_FromScan = false;
-  bool m_Active = false;
+  // Read lock-free by isActive() and written by setActive()/disconnect() without
+  // a shared lock discipline, so keep it atomic to remove the latent race.
+  std::atomic<bool> m_Active = false;
 
   static constexpr uint32_t m_ConnSaverIdleMs = 10 * 1000;
   static constexpr uint32_t m_ConnParamsUpdateGuardMs = 3 * 1000;

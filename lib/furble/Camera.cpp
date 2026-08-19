@@ -234,6 +234,16 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     // _disconnect() here would dereference freed memory. This is the
     // cancel-mid-connect use-after-free.
     this->_disconnect();
+    // The link came up (onConnect set m_Connected) but registration failed, so
+    // _connect() returned false. Do not report this half-open session as
+    // connected: connect() returns m_Connected below and the caller treats a
+    // true return as success, which would leave a stale connected flag on the
+    // persistent CameraList camera and short-circuit the next connect. The
+    // async terminate above still runs; onDisconnect will also clear the flag
+    // once it fires, but the camera may already be gone, so clear it now. This
+    // is safe: every m_Client deref is guarded by m_Connected, so clearing it
+    // only removes access, it never races the self-delete.
+    m_Connected = false;
   }
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(m_SecurityModeDefault));
 
@@ -738,6 +748,26 @@ void Camera::disconnect(void) {
   }
 }
 
+void Camera::resetConnectionState(void) {
+  // Drop a stale connected flag left by a prior session. onDisconnect is the
+  // normal clearer, but it can be missed: a powered-off camera delays it to the
+  // supervision timeout, and a session torn down through Control::disconnect()
+  // does not clear the flag on the persistent CameraList object. Clearing it
+  // here, on a fresh connect request, guarantees connectAll() does not skip a
+  // camera it wrongly believes is still connected.
+  //
+  // Deliberately lock-free: this runs on the UI task from Control::addActive(),
+  // and taking m_Mutex would block behind an in-flight cold connect that holds
+  // it across the ~60 s scan, which is the same watchdog starvation isConnected()
+  // avoids. m_Connected and m_Progress are atomic and m_Client is never touched,
+  // so no lock is needed for them.
+  m_Connected = false;
+  m_Progress = 0;
+
+  const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+  m_StatsValid = false;
+}
+
 bool Camera::isActive(void) const {
   return m_Active;
 }
@@ -773,12 +803,23 @@ int8_t Camera::getRssi(void) const {
 }
 
 bool Camera::isConnected(void) const {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  if (m_Type == Type::FAUXNY) {
-    return m_Connected;
-  }
-
-  return m_Connected && m_Client && m_Client->isConnected();
+  // Lock-free status read: return the cached flag with no m_Mutex and no
+  // m_Client dereference. The UI task calls this on every status render. Taking
+  // m_Mutex here was the first-connect watchdog reset: a cold connect holds
+  // m_Mutex across the secure scan and connect timeout (up to ~60 s), the UI
+  // task blocked on the same mutex, and the M5PM1 watchdog fed from the UI task
+  // starved until the device reset.
+  //
+  // Dereferencing m_Client here would be a use-after-free: NimBLE frees the
+  // self-deleting client on the host task inside the disconnect callback and on
+  // a failed connect, so a lock-free reader can race that free. A live-client
+  // cross-check would also give no real benefit: on a silent drop (camera off)
+  // the local client still reports connected until the supervision timeout
+  // fires, so it cannot detect a dead link any earlier than the flag does once
+  // the supervision timeout is capped (see m_IdleTimeout). Correctness therefore
+  // depends on m_Connected being cleared on every teardown path, which
+  // onDisconnect, the connect failure branch, and resetConnectionState() do.
+  return m_Connected.load();
 }
 
 }  // namespace Furble

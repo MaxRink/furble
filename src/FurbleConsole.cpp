@@ -889,6 +889,19 @@ int cmdCameras(int argc, char **argv) {
       const auto camera = targets[n]->getCamera();
       printf("target%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
       printf("target%u.connected: %s\n", static_cast<unsigned>(n), boolStr(camera->isConnected()));
+      // Connection parameter and supervision timeout telemetry. The supervision
+      // timeout bounds dead-link detection, so it is the value to watch during a
+      // connection-stability soak. Units are the raw BLE ones: interval and
+      // timeout in 1.25 ms and 10 ms steps respectively.
+      uint16_t interval = 0;
+      uint16_t latency = 0;
+      uint16_t timeout = 0;
+      int rssi = 0;
+      if (camera->getConnParams(interval, latency, timeout, rssi)) {
+        printf("target%u.conn: profile: %s interval: %u latency: %u timeout: %u rssi: %d\n",
+               static_cast<unsigned>(n), Camera::connProfileName(camera->getConnProfile()),
+               interval, latency, timeout, rssi);
+      }
     }
     return 0;
   }

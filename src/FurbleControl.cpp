@@ -441,6 +441,19 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   // acts only as a backstop against a genuinely stuck teardown; a normal
   // teardown finishes in well under a second once the aborting connect unwinds.
   //
+  // Fast path: disconnectComplete() returns true as soon as the link is really
+  // down (every target task stopped, no connect in progress, isConnected()
+  // false for all), so a healthy disconnect or an already-dead link exits the
+  // first check with zero delay slices. We cannot declare completion any earlier
+  // than isConnected() clearing: that flag drops in onDisconnect, right before
+  // NimBLE frees the client, so a shorter wait would reopen the connect-side
+  // use-after-free above. When the camera is simply powered off, the host issued
+  // ble_gap_terminate (Fujifilm::_disconnect) completes only at the link
+  // supervision timeout, so this wait, and the interactive screen, is bounded by
+  // Camera::m_IdleTimeout (now ~5 s, was ~16 s). Removing the residual freeze
+  // entirely needs the wait moved off the LVGL task, which is a separate change
+  // so it does not disturb this teardown lifecycle.
+  //
   // The restart caller passes forRestart == true and a short timeout. It may
   // force-complete because esp_restart() runs immediately after and kills the
   // in-flight teardown, so no later connect can race it.
@@ -521,6 +534,31 @@ void Control::reapZombieTargets(void) {
 
 void Control::addActive(std::shared_ptr<Camera> camera) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  // Deduplicate: never stack a second target on a camera that is already active.
+  // Repeated connect requests (the console `connect <index>` path, a double tap)
+  // otherwise add a duplicate Target for the same Camera. That stacks another
+  // per-target task and queue until the device runs out of memory and reboots,
+  // and it would run resetConnectionState() below on a live link, clearing the
+  // connected guard so connectAll() re-runs connect() and orphans the still-live
+  // NimBLE client. Skip both by returning here.
+  for (const auto &target : m_Targets) {
+    if (target->getCamera().get() == camera.get()) {
+      ESP_LOGW(LOG_TAG, "Camera '%s' already active, ignoring duplicate connect.",
+               camera->getName().c_str());
+      return;
+    }
+  }
+
+  // Clear any stale connected flag before this camera joins a fresh connect.
+  // The camera comes from the persistent CameraList and may carry a stale-true
+  // flag from a prior session whose onDisconnect never fired (camera powered
+  // off, or a link that came up but failed registration). Without this,
+  // connectAll() would see isConnected() true, skip the real connect, and jump
+  // straight to active with no BLE work done. The dedup check above guarantees
+  // the camera is not an active target here, so clearing the flag cannot race a
+  // live session.
+  camera->resetConnectionState();
 
   auto target = std::make_unique<Control::Target>(camera);
 
