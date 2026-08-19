@@ -57,12 +57,12 @@ class CameraList {
   /**
    * Get last added entry.
    */
-  static Furble::Camera *last(void);
+  static std::shared_ptr<Furble::Camera> last(void);
 
   /**
    * Retrieve device by index.
    */
-  static Furble::Camera *get(size_t n);
+  static std::shared_ptr<Furble::Camera> get(size_t n);
 
  private:
   typedef struct {
@@ -77,8 +77,11 @@ class CameraList {
 
   /**
    * List of connectable devices.
+   *
+   * Held by shared_ptr, not unique_ptr, so an in-flight or active connection can
+   * keep its Camera alive after load() or clear() drops the list's reference.
    */
-  static std::vector<std::unique_ptr<Furble::Camera>> m_ConnectList;
+  static std::vector<std::shared_ptr<Furble::Camera>> m_ConnectList;
 
   static Preferences m_Prefs;
 };

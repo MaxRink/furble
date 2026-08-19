@@ -42,10 +42,10 @@ class Control {
     friend class Control;
 
    public:
-    Target(Camera *camera);
+    Target(std::shared_ptr<Camera> camera);
     ~Target();
 
-    Camera *getCamera(void) const;
+    std::shared_ptr<Camera> getCamera(void) const;
     cmd_t getCommand(void);
     void sendCommand(cmd_t cmd);
     void updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync);
@@ -59,7 +59,9 @@ class Control {
     static constexpr UBaseType_t m_QueueLength = 8;
 
     QueueHandle_t m_Queue = NULL;
-    Furble::Camera *m_Camera = NULL;
+    // Owns a strong reference so the Camera outlives a CameraList::load() that
+    // drops the list's reference while this target is still connecting or active.
+    std::shared_ptr<Furble::Camera> m_Camera;
     Camera::gps_t m_GPS;
     Camera::timesync_t m_Timesync;
     float m_RssiAverage = 0.0f;
@@ -143,14 +145,17 @@ class Control {
   /**
    * Add specified camera to active target list.
    */
-  void addActive(Camera *camera);
+  void addActive(std::shared_ptr<Camera> camera);
 
   /**
    * Get current camera connection attempt.
    *
+   * Returns a strong reference so the caller can safely read the camera even if
+   * CameraList::load() drops the list's reference mid-connect.
+   *
    * @return Camera being connected otherwise nullptr.
    */
-  Camera *getConnectingCamera(void) const;
+  std::shared_ptr<Camera> getConnectingCamera(void) const;
 
   /** Retrieve current control state. */
   state_t getState(void) const;
@@ -252,8 +257,10 @@ class Control {
   std::mutex m_StateMutex;
   bool m_SleepLockHeld = false;
 
-  // Camera connects are serialised, the following tracks the last attempt
-  Camera *m_ConnectCamera = nullptr;
+  // Camera connects are serialised, the following tracks the last attempt.
+  // Holds a strong reference so an in-flight connect keeps its Camera alive even
+  // if CameraList::load() drops the list's reference.
+  std::shared_ptr<Camera> m_ConnectCamera;
 
   // User transmit power cap, loaded from TX_POWER at first getInstance()
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;

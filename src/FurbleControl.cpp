@@ -37,8 +37,7 @@ int powerIndex(esp_power_level_t power) {
 
 }  // namespace
 
-Control::Target::Target(Camera *camera) {
-  m_Camera = camera;
+Control::Target::Target(std::shared_ptr<Camera> camera) : m_Camera(std::move(camera)) {
   m_Queue = xQueueCreate(m_QueueLength, sizeof(cmd_t));
 }
 
@@ -48,10 +47,12 @@ Control::Target::~Target() {
   if (!m_Stopped) {
     m_Camera->disconnect();
   }
-  m_Camera = NULL;
+  // Drop this target's strong reference. The Camera is freed here only if no
+  // other reference (the list, an in-flight connect) still holds it.
+  m_Camera = nullptr;
 }
 
-Camera *Control::Target::getCamera(void) const {
+std::shared_ptr<Camera> Control::Target::getCamera(void) const {
   return m_Camera;
 }
 
@@ -167,17 +168,19 @@ Control &Control::getInstance(void) {
 Control::state_t Control::connectAll(void) {
   static uint32_t failcount = 0;
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
-  std::vector<Camera *> cameras;
-  std::vector<Camera *> all;
+  std::vector<std::shared_ptr<Camera>> cameras;
+  std::vector<std::shared_ptr<Camera>> all;
 
   const bool connSaver = Settings::load<Settings::CONN_SAVER>();
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
 
-    // Snapshot cameras so the mutex is not held during connection attempts.
+    // Snapshot cameras so the mutex is not held during connection attempts. The
+    // snapshot holds strong references, so a camera stays alive through the
+    // unlocked connect even if disconnect() clears its target meanwhile.
     for (const auto &target : m_Targets) {
-      Camera *camera = target->getCamera();
+      auto camera = target->getCamera();
       all.push_back(camera);
       if (!camera->isConnected()) {
         cameras.push_back(camera);
@@ -188,11 +191,11 @@ Control::state_t Control::connectAll(void) {
 
   // Apply the setting outside the mutex. On an already connected camera this
   // enters NimBLE and can block on the HCI transport.
-  for (auto *camera : all) {
+  for (const auto &camera : all) {
     camera->setConnSaverEnabled(connSaver);
   }
 
-  for (auto *camera : cameras) {
+  for (const auto &camera : cameras) {
     if (m_ConnectAbort) {
       break;
     }
@@ -385,7 +388,7 @@ void Control::connectAll(bool infiniteReconnect) {
 }
 
 bool Control::disconnectComplete(void) {
-  std::vector<Camera *> cameras;
+  std::vector<std::shared_ptr<Camera>> cameras;
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -401,7 +404,7 @@ bool Control::disconnectComplete(void) {
     return false;
   }
 
-  for (auto *camera : cameras) {
+  for (const auto &camera : cameras) {
     if (camera->isConnected()) {
       return false;
     }
@@ -516,7 +519,7 @@ void Control::reapZombieTargets(void) {
       m_ZombieTargets.end());
 }
 
-void Control::addActive(Camera *camera) {
+void Control::addActive(std::shared_ptr<Camera> camera) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
   auto target = std::make_unique<Control::Target>(camera);
@@ -535,7 +538,7 @@ void Control::addActive(Camera *camera) {
   }
 }
 
-Camera *Control::getConnectingCamera(void) const {
+std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
   return m_ConnectCamera;
 }
 
@@ -592,7 +595,7 @@ void Control::sampleAdaptivePower(void) {
     int8_t rssi;
   };
 
-  std::vector<Camera *> cameras;
+  std::vector<std::shared_ptr<Camera>> cameras;
   esp_power_level_t cap;
   bool restoreCap = false;
 
@@ -636,10 +639,10 @@ void Control::sampleAdaptivePower(void) {
   // Each getRssi() is a synchronous HCI round trip, keep m_Mutex released.
   std::vector<sample_t> samples;
   samples.reserve(cameras.size());
-  for (auto *camera : cameras) {
+  for (const auto &camera : cameras) {
     const int8_t rssi = camera->getRssi();
     if (rssi != 0) {
-      samples.push_back({camera, rssi});
+      samples.push_back({camera.get(), rssi});
     }
   }
 
@@ -653,7 +656,7 @@ void Control::sampleAdaptivePower(void) {
     bool haveRssi = false;
     float weakestRssi = 0.0f;
     for (const auto &target : m_Targets) {
-      auto *camera = target->getCamera();
+      auto *camera = target->getCamera().get();
       for (const auto &sample : samples) {
         if (sample.camera != camera) {
           continue;
@@ -770,7 +773,7 @@ void Control::setPower(esp_power_level_t power) {
 }
 
 void Control::setConnSaver(bool enabled) {
-  std::vector<Camera *> cameras;
+  std::vector<std::shared_ptr<Camera>> cameras;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     for (const auto &target : m_Targets) {
@@ -781,7 +784,7 @@ void Control::setConnSaver(bool enabled) {
   // Apply outside the mutex. setConnSaverEnabled() on a connected camera
   // enters NimBLE and can block on the HCI transport for up to two seconds,
   // and this runs on the caller's task (the LVGL task for the UI toggle).
-  for (auto *camera : cameras) {
+  for (const auto &camera : cameras) {
     camera->setConnSaverEnabled(enabled);
   }
 }

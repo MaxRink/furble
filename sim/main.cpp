@@ -34,8 +34,8 @@ int runSimulator(bool *) {
 
   if (Sim::scenarioSettingIsTrue("autoconnect")) {
     CameraList::addFauxNY();
-    auto *camera = CameraList::last();
-    CameraList::save(camera);
+    auto camera = CameraList::last();
+    CameraList::save(camera.get());
     camera->setActive(true);
   }
 

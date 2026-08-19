@@ -15,7 +15,7 @@ uint32_t connectStart = 0;
 
 }  // namespace
 
-Control::Target::Target(Camera *camera) : m_Camera {camera} {}
+Control::Target::Target(std::shared_ptr<Camera> camera) : m_Camera {camera} {}
 
 Control::Target::~Target() {
   if (m_Camera != nullptr) {
@@ -24,7 +24,7 @@ Control::Target::~Target() {
   m_Camera = nullptr;
 }
 
-Camera *Control::Target::getCamera(void) const {
+std::shared_ptr<Camera> Control::Target::getCamera(void) const {
   return m_Camera;
 }
 
@@ -160,13 +160,13 @@ bool Control::disconnectComplete(void) {
   return true;
 }
 
-void Control::addActive(Camera *camera) {
+void Control::addActive(std::shared_ptr<Camera> camera) {
   if (camera != nullptr) {
     m_Targets.push_back(std::make_unique<Control::Target>(camera));
   }
 }
 
-Camera *Control::getConnectingCamera(void) const {
+std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
   (void)getState();
   return m_ConnectCamera;
 }
