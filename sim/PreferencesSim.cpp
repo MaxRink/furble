@@ -211,6 +211,11 @@ size_t Preferences::put(const char *key, uint32_t value) {
 }
 
 template <>
+size_t Preferences::put(const char *key, uint16_t value) {
+  return putValue(_handle, key, value);
+}
+
+template <>
 size_t Preferences::put(const char *key, std::string value) {
   return put(key, value.c_str());
 }
@@ -255,6 +260,11 @@ bool Preferences::get(const char *key, bool defaultValue) {
 
 template <>
 uint32_t Preferences::get(const char *key, uint32_t defaultValue) {
+  return getValue(_handle, key, defaultValue);
+}
+
+template <>
+uint16_t Preferences::get(const char *key, uint16_t defaultValue) {
   return getValue(_handle, key, defaultValue);
 }
 
