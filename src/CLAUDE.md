@@ -34,6 +34,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
+  Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:
+  never hardcode a Montserrat font in a widget, and Large may only grow the
+  icon menu font, never below its montserrat 16 default.
+- `FurbleUIAudit`: layout audit walker (`FURBLE_SIM`/`FURBLE_CONSOLE` only),
+  reached via `ui audit` on the console. Reports clipped labels and label
+  overlaps as JSON Lines, see tools/ui-audit.md.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
   and a wake press is swallowed until every input source reports released.

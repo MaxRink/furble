@@ -41,6 +41,7 @@ class UI {
     FEEDBACK_RELOAD, /**< arg: unused */
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
     PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
+    AUDIT,           /**< arg: unused */
   };
 
   /**
@@ -378,6 +379,7 @@ class UI {
   static constexpr const char *m_DisplayStr = "Display";
   static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on";
   static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
+  static constexpr const char *m_TextSizeStr = "Text size";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
@@ -607,7 +609,7 @@ class UI {
 
   void initInputDevices(void);
 
-  static void setTheme(std::string name);
+  static void setTheme(std::string name, uint8_t textSize);
 
   void prepareShutterControl(void);
 
@@ -708,6 +710,8 @@ class UI {
   void addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::Spinner &spinner);
 
   void addDisplayMenu(const menu_t &parent);
+
+  void addTextSizeMenu(const menu_t &parent);
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);

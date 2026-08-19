@@ -384,10 +384,22 @@ std::string settingBoolValue(const std::string &name) {
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
-    std::cerr << "Unknown setting for assert: " << name << '\n';
-    std::exit(2);
+    return "";
   }
   return Settings::load<bool>(found->second) ? "1" : "0";
+}
+
+// Report a byte setting as its unsigned decimal value so scenarios can assert
+// persistence of multi-choice settings such as the UI text size.
+std::string settingByteValue(const std::string &name) {
+  static const std::map<std::string, Settings::type_t> bytes = {
+      {"text_size", Settings::TEXT_SIZE},
+  };
+  const auto found = bytes.find(name);
+  if (found == bytes.end()) {
+    return "";
+  }
+  return std::to_string(static_cast<unsigned>(Settings::load<uint8_t>(found->second)));
 }
 
 // Resolve an assertable state key to a string. UI keys run on the UI task, so
@@ -428,7 +440,16 @@ std::string queryValue(const std::string &key) {
     }
   }
   if (prefixed("setting.")) {
-    return settingBoolValue(key.substr(std::char_traits<char>::length("setting.")));
+    const std::string name = key.substr(std::char_traits<char>::length("setting."));
+    std::string value = settingByteValue(name);
+    if (value.empty()) {
+      value = settingBoolValue(name);
+    }
+    if (value.empty()) {
+      std::cerr << "Unknown setting for assert: " << name << '\n';
+      std::exit(2);
+    }
+    return value;
   }
 
   std::cerr << "Unknown assert key: " << key << '\n';
@@ -458,6 +479,7 @@ void applyScenarioSettings(void) {
   saveByte("cpu_freq", Settings::CPU_FREQ);
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
+  saveByte("text_size", Settings::TEXT_SIZE);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("fauxny", Settings::FAUXNY);

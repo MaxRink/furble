@@ -18,6 +18,7 @@ class Settings {
     INACTIVITY,
     DISPLAY_OFF,
     THEME,
+    TEXT_SIZE,
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
@@ -93,6 +94,13 @@ class Settings {
     BATT_STYLE_BOTH = 2,
   } batt_style_t;
 
+  /** UI text size choices. */
+  typedef enum {
+    TEXT_SIZE_SMALL = 0,
+    TEXT_SIZE_NORMAL = 1,
+    TEXT_SIZE_LARGE = 2,
+  } text_size_t;
+
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
@@ -157,6 +165,10 @@ struct Settings::storage_type<Settings::DISPLAY_OFF> {
 template <>
 struct Settings::storage_type<Settings::THEME> {
   using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::TEXT_SIZE> {
+  using type = uint8_t;
 };
 template <>
 struct Settings::storage_type<Settings::TX_POWER> {

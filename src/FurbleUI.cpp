@@ -49,6 +49,9 @@ std::unordered_map<int, lv_obj_t *> g_simSettingSwitches;
 #else
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #endif
+#if defined(FURBLE_CONSOLE)
+#include "FurbleUIAudit.h"
+#endif
 
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
@@ -115,6 +118,44 @@ void setLabelIfChangedFmt(lv_obj_t *label, const char *format, Args... args) {
   std::snprintf(text, sizeof(text), format, args...);
   setLabelIfChanged(label, text);
 }
+const lv_font_t *fontForTextSize(uint8_t textSize) {
+  switch (textSize) {
+    case Settings::TEXT_SIZE_SMALL:
+#if defined(FURBLE_M5STICKC)
+      return &lv_font_montserrat_10;
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+      return &lv_font_montserrat_12;
+#else
+      return &lv_font_montserrat_16;
+#endif
+
+    case Settings::TEXT_SIZE_LARGE:
+#if defined(FURBLE_M5STICKC)
+      return &lv_font_montserrat_14;
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+      return &lv_font_montserrat_22;
+#else
+      return &lv_font_montserrat_28;
+#endif
+
+    case Settings::TEXT_SIZE_NORMAL:
+    default:
+      return LV_FONT_DEFAULT;
+  }
+}
+
+const lv_font_t *fontForIconMenu(uint8_t textSize) {
+  // Large may only grow the icon menu font, never shrink it below the default.
+  const lv_font_t *base = &lv_font_montserrat_16;
+  if (textSize == Settings::TEXT_SIZE_LARGE) {
+    const lv_font_t *large = fontForTextSize(textSize);
+    if (lv_font_get_line_height(large) > lv_font_get_line_height(base)) {
+      return large;
+    }
+  }
+  return base;
+}
+
 }  // namespace
 
 std::mutex UI::m_Mutex;
@@ -163,6 +204,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IRSettingsStr,        {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_TextSizeStr,          {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
     {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
@@ -302,7 +344,7 @@ UI::UI(const interval_t &interval)
 
   initInputDevices();
 
-  setTheme(Settings::load<Settings::THEME>());
+  setTheme(Settings::load<Settings::THEME>(), Settings::load<Settings::TEXT_SIZE>());
 
   m_Screen = lv_screen_active();
 
@@ -974,7 +1016,7 @@ void UI::initInputDevices(void) {
   }
 }
 
-void UI::setTheme(std::string name) {
+void UI::setTheme(std::string name, uint8_t textSize) {
   lv_display_t *display = lv_display_get_default();
   lv_color_t primary = lv_palette_main(LV_PALETTE_BLUE);
   lv_color_t secondary = lv_color_black();
@@ -1033,7 +1075,7 @@ void UI::setTheme(std::string name) {
   }
 
   lv_theme_t *theme_default =
-      lv_theme_default_init(display, primary, secondary, dark, LV_FONT_DEFAULT);
+      lv_theme_default_init(display, primary, secondary, dark, fontForTextSize(textSize));
   theme = *theme_default;
   lv_theme_set_parent(&theme, theme_default);
   lv_theme_set_apply_cb(&theme, [](lv_theme_t *th, lv_obj_t *obj) {
@@ -1270,7 +1312,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_label_set_text(label, text);
     if (icon) {
 #if defined(FURBLE_M5COREX)
-      lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
 #endif
     } else {
       lv_obj_set_width(label, LV_PCT(100));
@@ -1902,6 +1944,7 @@ void UI::simScenarioAction(const char *action) {
         {"nmea",        m_GPSNMEAStr       },
         {"timer",       m_IntervalometerStr},
         {"theme",       m_ThemeStr         },
+        {"text_size",   m_TextSizeStr      },
         {"bluetooth",   m_BluetoothStr     },
         {"about",       m_AboutStr         },
         {"power",       m_PowerStr         },
@@ -1949,6 +1992,8 @@ void UI::simScenarioAction(const char *action) {
     page = m_Menu.at(m_IntervalometerStr).page;
   } else if (page_name == "theme") {
     page = m_Menu.at(m_ThemeStr).page;
+  } else if (page_name == "text_size") {
+    page = m_Menu.at(m_TextSizeStr).page;
   } else if (page_name == "bluetooth") {
     page = m_Menu.at(m_BluetoothStr).page;
   } else if (page_name == "about") {
@@ -1995,7 +2040,7 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 20> pages = {
+    const std::array<std::pair<const char *, const char *>, 21> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -2008,6 +2053,7 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
          {m_DisplayStr, "display"},
+         {m_TextSizeStr, "text_size"},
          {m_GPSStr, "gps"},
          {m_GPSDataStr, "gps_data"},
          {m_GPSNMEAStr, "nmea"},
@@ -2134,6 +2180,31 @@ std::string UI::simQueryState(const char *key) {
     const int32_t below = lv_obj_get_scroll_bottom(page);
     const int32_t above = lv_obj_get_scroll_top(page);
     return (below > 0 || above > 0) ? "yes" : "no";
+  }
+
+  // Report the Text size roller's current selection so scenarios can assert the
+  // saved TEXT_SIZE setting was loaded and reflected in the widget on boot.
+  if (query == "text_size") {
+    const auto entry = m_Menu.find(m_TextSizeStr);
+    if (entry == m_Menu.end() || entry->second.page == nullptr) {
+      return "unknown";
+    }
+    std::function<lv_obj_t *(lv_obj_t *)> findRoller = [&](lv_obj_t *obj) -> lv_obj_t * {
+      if (lv_obj_check_type(obj, &lv_roller_class)) {
+        return obj;
+      }
+      for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        if (lv_obj_t *found = findRoller(lv_obj_get_child(obj, i))) {
+          return found;
+        }
+      }
+      return nullptr;
+    };
+    lv_obj_t *roller = findRoller(entry->second.page);
+    if (roller == nullptr) {
+      return "unknown";
+    }
+    return std::to_string(lv_roller_get_selected(roller));
   }
 
   // Report the intervalometer run state so scenarios can assert a clean reset
@@ -2612,6 +2683,9 @@ void UI::serviceRequests(void) {
         printf("error: LVGL performance monitor is not enabled\n");
         break;
 #endif
+      case Request::AUDIT:
+        UIAudit::dump(lv_screen_active());
+        break;
     }
   }
 }
@@ -2732,7 +2806,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
       lv_obj_t *label = lv_label_create(buttonCont);
       lv_label_set_text(label, std::get<2>(i));
-      lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
       lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     }
 
@@ -3998,6 +4072,45 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addTextSizeMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *roller = lv_roller_create(cont);
+#if !defined(FURBLE_M5COREX)
+  lv_obj_set_width(roller, LV_PCT(90));
+#endif
+  lv_roller_set_options(roller, "Small\nNormal\nLarge", LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_visible_row_count(roller, 2);
+  uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
+  if (textSize > Settings::TEXT_SIZE_LARGE) {
+    textSize = Settings::TEXT_SIZE_NORMAL;
+  }
+  lv_roller_set_selected(roller, textSize, LV_ANIM_OFF);
+
+  lv_obj_t *restart = lv_button_create(cont);
+  lv_obj_t *restartLabel = lv_label_create(restart);
+  lv_label_set_text(restartLabel, "Restart");
+  lv_obj_add_event_cb(
+      restart,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+        Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
+#if defined(FURBLE_M5STICKS3)
+        Platform::getInstance().watchdogEnable(false);
+#endif
+        esp_restart();
+      },
+      LV_EVENT_CLICKED, roller);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::setBatteryStyle(uint8_t style) {
   if (style == Settings::BATT_STYLE_PERCENT) {
     lv_obj_add_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
@@ -4891,6 +5004,7 @@ void UI::addSettingsMenu(void) {
   addGPSMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);
+  addTextSizeMenu(menu);
   addBluetoothMenu(menu);
   addAboutMenu(menu);
   addPowerMenu(menu);

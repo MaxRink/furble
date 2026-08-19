@@ -1,0 +1,21 @@
+# The UI text size setting persists across a boot and its page fits the panel.
+#
+# Seed a non-default choice (Large = 2), boot, and confirm both the stored
+# setting and the roller reflect it, proving the saved value is loaded on
+# startup. Then open the Text size page and confirm the audit walker reports no
+# content overflow, so the page fits without scrolling.
+seed text_size 2
+wait 300
+assert ui.page main
+# The stored setting survived boot.
+assert setting.text_size 2
+# The roller widget reflects the persisted value.
+assert ui.text_size 2
+action nav text_size
+wait 200
+assert ui.page text_size
+assert ui.overflow no
+action page settings
+wait 200
+assert ui.page settings
+exit

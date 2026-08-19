@@ -187,6 +187,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::TX_POWER:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
+    case Settings::TEXT_SIZE:
     case Settings::SCAN_MODE:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
@@ -277,6 +278,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::TX_POWER:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
+    case Settings::TEXT_SIZE:
     case Settings::SCAN_MODE:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
@@ -328,6 +330,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::TX_POWER:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
+    case Settings::TEXT_SIZE:
     case Settings::SCAN_MODE:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
@@ -340,6 +343,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > UINT8_MAX)) {
         return fail("expected 0-255");
+      }
+      if ((setting.type == Settings::TEXT_SIZE) && (value > Settings::TEXT_SIZE_LARGE)) {
+        return fail("expected 0 (small), 1 (normal) or 2 (large)");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -487,6 +493,14 @@ int cmdSettings(int argc, char **argv) {
   }
 
   return fail("expected list, get or set");
+}
+
+int cmdUI(int argc, char **argv) {
+  if ((argc != 2) || strcmp(argv[1], "audit")) {
+    return fail("usage: ui audit");
+  }
+
+  return sendPrintingRequest(UI::Request::AUDIT, 0);
 }
 
 /*
@@ -1343,6 +1357,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw on|off|send <body>|power on|off]", cmdGPS),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
+    command("ui", "ui audit", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
