@@ -54,6 +54,11 @@ struct Entry {
 // namespace is either the FURBLE_STR macro or a quoted literal. The outer map
 // wraps every row as {SYMBOL, {row}}, but the inner brace is the only place a
 // symbol is followed by a number, so the pattern locks onto it.
+//
+// The pattern only matches a decimal literal wire id and a FURBLE_STR or quoted
+// namespace, so a future row using a macro or hex wire id, or a macro
+// namespace, is silently skipped. The row count floor below guards against
+// wholesale breakage, not a single dropped row.
 std::vector<Entry> parseTable(const std::string &source) {
   const std::regex pattern(
       "\\{\\s*([A-Z0-9_]+)\\s*,\\s*([0-9]+)\\s*,\\s*\"[^\"]*\"\\s*,\\s*\"([^\"]*)\"\\s*,\\s*"
