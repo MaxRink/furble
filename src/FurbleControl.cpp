@@ -537,13 +537,24 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
 
   // Deduplicate: never stack a second target on a camera that is already active.
   // Repeated connect requests (the console `connect <index>` path, a double tap)
-  // otherwise add a duplicate Target for the same Camera. That stacks another
-  // per-target task and queue until the device runs out of memory and reboots,
-  // and it would run resetConnectionState() below on a live link, clearing the
-  // connected guard so connectAll() re-runs connect() and orphans the still-live
-  // NimBLE client. Skip both by returning here.
+  // otherwise add a duplicate Target for the same physical camera. That stacks
+  // another per-target task and queue until the device runs out of memory and
+  // reboots, and it would run resetConnectionState() below on a live link,
+  // clearing the connected guard so connectAll() re-runs connect() and orphans
+  // the still-live NimBLE client. Skip both by returning here.
+  //
+  // Key on the BLE address, not the Camera pointer. Every connect runs
+  // CameraList::load(), which rebuilds the saved cameras as fresh shared_ptrs, so
+  // the same physical camera has a different pointer on each connect and a
+  // pointer compare never matches across reloads (the duplicate would slip
+  // through). The address comes from the saved index entry and is stable across
+  // the reload. getAddress() returns the cached m_Address member and never
+  // touches m_Client, so there is no deref of a freed client. A legitimate
+  // reconnect still works: disconnect() clears m_Targets, so the address is no
+  // longer present and the connect is allowed. Distinct cameras in a multi-select
+  // have distinct addresses and are all added.
   for (const auto &target : m_Targets) {
-    if (target->getCamera().get() == camera.get()) {
+    if (target->getCamera()->getAddress() == camera->getAddress()) {
       ESP_LOGW(LOG_TAG, "Camera '%s' already active, ignoring duplicate connect.",
                camera->getName().c_str());
       return;

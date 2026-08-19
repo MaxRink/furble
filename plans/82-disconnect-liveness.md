@@ -188,10 +188,18 @@ reconnects a dropped one.
 
 ### addActive deduplication (task #51 and the resetConnectionState safety claim)
 
-`Control::addActive` gained a dedup guard: if the camera is already an active
-target (pointer identity against `m_Targets`), it logs and returns without
-adding a second target and without calling `resetConnectionState`. This closes
-two things at the root, in the file the BUG C fix already touches:
+`Control::addActive` gained a dedup guard: if a target with the same BLE address
+is already active, it logs and returns without adding a second target and without
+calling `resetConnectionState`. This closes two things at the root, in the file
+the BUG C fix already touches:
+
+The guard keys on the BLE address, not the `Camera` pointer. An earlier
+pointer-identity version was verified on hardware to not dedup at all: every
+connect runs `CameraList::load()`, which rebuilds the saved cameras as fresh
+`shared_ptr`s, so the same physical camera has a different pointer on each connect
+and the pointer compare never matched. `getAddress()` returns the cached
+`m_Address` member (from the saved index entry, stable across the reload) and
+never touches `m_Client`, so there is no deref of a freed client.
 
 - task #51: repeated connect requests (the console `connect <index>` path, a
   double tap) stacked duplicate `Target` objects on one `Camera`, each with its
