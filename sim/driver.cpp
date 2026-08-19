@@ -438,6 +438,12 @@ std::string queryValue(const std::string &key) {
     if (sub == "shutter_releases") {
       return std::to_string(cameraShutterReleases());
     }
+    if (sub == "focus_presses") {
+      return std::to_string(cameraFocusPresses());
+    }
+    if (sub == "focus_releases") {
+      return std::to_string(cameraFocusReleases());
+    }
   }
   if (prefixed("setting.")) {
     const std::string name = key.substr(std::char_traits<char>::length("setting."));

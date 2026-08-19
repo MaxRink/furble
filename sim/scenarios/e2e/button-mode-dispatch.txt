@@ -1,0 +1,39 @@
+# One-button mode dispatch. Verify the new BUTTON_MODE routing: the default
+# two-button mode fires the shutter on a main-button press, one-button mode
+# dispatches focus on a single press and a shutter press+release on a double
+# click. The SDL sim models discrete button events, not LVGL's 400 ms
+# streak-timing window, so the double-click step injects the streak the dispatch
+# classifies. Timing feel stays a hardware concern; this asserts the dispatch
+# decision only.
+seed fauxny true
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+
+# Default two-button mode: the main button fires the shutter, never focus.
+assert camera.shutter_presses 0
+assert camera.focus_presses 0
+action shutter
+wait 200
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+assert camera.focus_presses 0
+
+# One-button mode: a single main-button press dispatches focus, not shutter.
+action button-mode one-button
+wait 100
+action main-press
+wait 200
+assert camera.focus_presses 1
+assert camera.focus_releases 1
+assert camera.shutter_presses 1
+
+# One-button mode: a double click dispatches a shutter press and release, and
+# does not add another focus command.
+action main-double-click
+wait 200
+assert camera.shutter_presses 2
+assert camera.shutter_releases 2
+assert camera.focus_presses 1
+exit

@@ -1180,7 +1180,15 @@ void UI::handleButtonMode(lv_event_t *e) {
   auto &control = Control::getInstance();
   const lv_event_code_t code = lv_event_get_code(e);
   auto *indev = lv_indev_active();
-  const uint8_t streak = indev == nullptr ? 0 : lv_indev_get_short_click_streak(indev);
+  uint8_t streak = indev == nullptr ? 0 : lv_indev_get_short_click_streak(indev);
+#if defined(FURBLE_SIM)
+  // Headless scenarios cannot drive LVGL's real click-streak timing, so they
+  // inject the streak the dispatch should classify. The 400 ms window itself
+  // stays a hardware concern; this only feeds the classification input.
+  if (ui->m_SimClickStreakActive) {
+    streak = ui->m_SimClickStreak;
+  }
+#endif
 
   switch (code) {
     case LV_EVENT_PRESSED:
@@ -1911,6 +1919,40 @@ void UI::simScenarioAction(const char *action) {
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    return;
+  }
+
+  // Select the main-button behavior mode. BUTTON_MODE is a string roller, not a
+  // boolean switch, so it has no toggle entry. handleButtonMode reads the stored
+  // value live on each event, so a later gesture picks up the change.
+  if (command == "button-mode one-button") {
+    Settings::save<std::string>(Settings::BUTTON_MODE, Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
+    return;
+  }
+  if (command == "button-mode two-button") {
+    Settings::save<std::string>(Settings::BUTTON_MODE, Settings::BUTTON_MODE_TWO_BUTTON_VALUE);
+    return;
+  }
+
+  // Single press and release of the main button. In one-button mode the press
+  // classifies as a single click (streak zero) and dispatches focus.
+  if (command == "main-press") {
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    return;
+  }
+
+  // Double click of the main button. The sim cannot reproduce LVGL's real
+  // click-streak timing, so this injects the streak the dispatch classifies:
+  // the first short click primes the streak, the second (streak two, within the
+  // window) drives handleButtonMode's real shutter press and release branch.
+  if (command == "main-double-click") {
+    m_SimClickStreakActive = true;
+    m_SimClickStreak = 1;
+    lv_obj_send_event(m_OK, LV_EVENT_SHORT_CLICKED, this);
+    m_SimClickStreak = 2;
+    lv_obj_send_event(m_OK, LV_EVENT_SHORT_CLICKED, this);
+    m_SimClickStreakActive = false;
     return;
   }
 

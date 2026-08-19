@@ -541,6 +541,13 @@ class UI {
   bool m_ButtonModeDoubleClick = false;
   uint8_t m_ButtonModeClickStreak = 0;
   uint32_t m_ButtonModeLastClick = 0;
+#if defined(FURBLE_SIM)
+  // The SDL sim cannot reproduce LVGL's real short-click streak timing, so a
+  // scenario injects the streak the one-button dispatch should classify. Only
+  // the sim build reads these; the firmware still uses the live LVGL streak.
+  bool m_SimClickStreakActive = false;
+  uint8_t m_SimClickStreak = 0;
+#endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
   DisplayState m_DisplayState = DisplayState::ACTIVE;
