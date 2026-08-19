@@ -1,0 +1,20 @@
+# End-to-end regression for the intervalometer back trap. Starting a run loads
+# the run page and starts the timer, exactly as the on-device Start button does.
+# The run page Back button must be disabled so the run cannot be orphaned while
+# the timer keeps firing headless. 'Stop' remains the only way out.
+seed fauxny true
+seed interval_count 8
+seed interval_wait 1
+seed interval_shutter 100
+seed interval_delay 0
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+action nav timer
+wait 200
+action intervalometer
+wait 400
+assert ui.page timer_run
+assert ui.back disabled
+exit

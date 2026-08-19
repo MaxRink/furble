@@ -1605,8 +1605,9 @@ void UI::addMainMenu(void) {
           // always display 'Back' in intervalometer
           lv_obj_remove_state(back, LV_STATE_DISABLED);
         } else if (page == m_Menu.at(m_IntervalometerRunStr).page) {
-          // disable 'Back' when intervalometer is running
-          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          // disable 'Back' while the intervalometer is running so the run cannot
+          // be orphaned by navigating away; 'Stop' is the only way out
+          lv_obj_add_state(back, LV_STATE_DISABLED);
         } else if (page == m_Menu.at(m_GPSDataStr).page) {
           // 'GPS Data' is reachable from the connected page, always display 'Back'
           lv_obj_remove_state(back, LV_STATE_DISABLED);
@@ -1763,10 +1764,18 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Drive the real Start button so the run page loads and the interval timer
+  // starts exactly as an on-device press does, including the run page Back
+  // handling.
   if (command == "intervalometer") {
-    m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
-    lv_timer_reset(m_IntervalTimer);
-    lv_timer_resume(m_IntervalTimer);
+    lv_obj_send_event(m_IntervalStart, LV_EVENT_CLICKED, nullptr);
+    return;
+  }
+
+  // Drive the real Stop button so the run state reset and back navigation run
+  // exactly as an on-device press does.
+  if (command == "stop") {
+    lv_obj_send_event(m_IntervalStop, LV_EVENT_CLICKED, nullptr);
     return;
   }
 
@@ -2039,6 +2048,24 @@ std::string UI::simQueryState(const char *key) {
     const int32_t below = lv_obj_get_scroll_bottom(page);
     const int32_t above = lv_obj_get_scroll_top(page);
     return (below > 0 || above > 0) ? "yes" : "no";
+  }
+
+  // Report the intervalometer run state so scenarios can assert a clean reset
+  // after Stop.
+  if (query == "interval_state") {
+    switch (m_Intervalometer.m_State) {
+      case Intervalometer::STATE_IDLE:
+        return "idle";
+      case Intervalometer::STATE_WAIT:
+        return "wait";
+      case Intervalometer::STATE_SHUTTER_OPEN:
+        return "shutter";
+      case Intervalometer::STATE_DELAY:
+        return "delay";
+      case Intervalometer::STATE_FINISHED:
+        return "finished";
+    }
+    return "unknown";
   }
 
   return "";
@@ -3376,15 +3403,16 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   m_Intervalometer.m_CountLabel = lv_label_create(cont);
   m_Intervalometer.m_RemainingLabel = lv_label_create(cont);
 
-  lv_obj_t *stop = lv_button_create(cont);
-  lv_obj_t *stopLabel = lv_label_create(stop);
+  m_IntervalStop = lv_button_create(cont);
+  lv_obj_t *stopLabel = lv_label_create(m_IntervalStop);
   lv_label_set_text(stopLabel, "Stop");
-  lv_obj_add_flag(stop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, stop);
+  lv_obj_add_flag(m_IntervalStop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, m_IntervalStop);
   lv_obj_add_event_cb(
-      stop,
+      m_IntervalStop,
       [](lv_event_t *e) {
         auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+        auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
         auto &control = Control::getInstance();
 
         // pause all interval timers
@@ -3392,6 +3420,12 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         lv_timer_pause(m_IntervalPageRefresh);
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
+
+        // reset the run state so a subsequent start begins a fresh run, and
+        // mirror it to the atomic the console status query reads
+        interval->m_State = Intervalometer::STATE_IDLE;
+        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
+        lv_timer_set_period(timer, 100);
 
         // release shutter and exit
         control.sendCommand(Control::CMD_SHUTTER_RELEASE);
