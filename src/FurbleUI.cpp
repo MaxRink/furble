@@ -2082,6 +2082,34 @@ std::string UI::simQueryState(const char *key) {
     return "unknown";
   }
 
+  // Read the rendered GPS Data page labels so scenarios can assert the speed
+  // line and the five decimal place coordinates. The values come from the
+  // actual label text, so a precision or missing line regression fails here.
+  // Speed is returned without its "km/h" unit and coordinates without the
+  // degree sign, keeping each result a single whitespace free token.
+  if (query == "gps_speed" || query == "gps_lat" || query == "gps_lon") {
+    lv_obj_t *page = m_Menu.at(m_GPSDataStr).page;
+    std::string speed, lat, lon;
+    int coordinates = 0;
+    for (uint32_t i = 0; page != nullptr && i < lv_obj_get_child_count(page); i++) {
+      lv_obj_t *child = lv_obj_get_child(page, i);
+      if (!lv_obj_check_type(child, &lv_label_class)) {
+        continue;
+      }
+      const std::string text = lv_label_get_text(child);
+      const size_t degree = text.find("°");
+      if (text.find("km/h") != std::string::npos) {
+        speed = text.substr(0, text.find(' '));
+      } else if (degree != std::string::npos) {
+        (coordinates++ == 0 ? lat : lon) = text.substr(0, degree);
+      }
+    }
+    if (query == "gps_speed") {
+      return speed;
+    }
+    return query == "gps_lat" ? lat : lon;
+  }
+
   return "";
 }
 #endif
