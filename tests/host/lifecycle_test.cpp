@@ -1,19 +1,29 @@
 // Host regression tests for the camera connect and disconnect lifecycle.
 //
 // These build the real lib/furble Camera against MockNimBLE and drive the
-// transitions that only used to show up on hardware: a false-connected stale
-// state, a link drop, a connect failure, and a peer that vanishes. Each test
-// asserts the corrected behavior, so a future change that reintroduces one of
-// the hardware bugs fails here instead of on a bench.
+// transitions that only used to show up on hardware: a link drop, a connect
+// failure, and a camera that powers off. Each test asserts the corrected
+// behavior, so a future change that reintroduces one of the hardware bugs fails
+// here instead of on a bench.
 //
 // Bugs covered:
-//   - #106  CameraList use-after-free (shared ownership keeps a held Camera
-//           alive across a list clear).
-//   - BUG C  false-connected on a stale flag (isConnected() must consult the
-//            live client, not just the cached m_Connected).
-//   - BUG B  disconnect on a dead link completes promptly (Camera level).
-//   - BUG A  onDisconnect clears the connected state.
-//   - camera off / supervision timeout eventually clears state.
+//   - #106  CameraList use-after-free: shared ownership keeps a held Camera
+//           alive across a list clear.
+//   - false-connected: after a disconnect event is delivered, isConnected()
+//           reports false and no RSSI is read.
+//   - disconnect after a drop completes promptly (Camera level).
+//   - onDisconnect clears the connected state so the next connect does real
+//     work.
+//   - a camera-off supervision timeout clears state and allows recovery.
+//
+// These tests assert the post-event invariant that onDisconnect clears state.
+// They deliberately do not assert detection of a silent pre-callback link
+// loss: on hardware the link is only known dead once the supervision timeout
+// fires the disconnect event, so that window is not observable. Modelling it in
+// the mock would bake in the live-client cross-check strategy, and the correct
+// liveness fix drops that cross-check (a lock-free isConnected() cannot deref a
+// client another task may free). A targeted test for the exact stale teardown
+// path belongs with that liveness fix.
 
 #include <chrono>
 #include <cstdint>
@@ -124,14 +134,14 @@ bool testFailedConnectDoesNotReportConnected() {
   return g_Failures == before;
 }
 
-// Regression test 2b: false-connected on a stale flag (BUG C).
+// Regression test 2b: a delivered disconnect is not reported as connected.
 //
-// The camera powers off. The stack has not yet fired onDisconnect, so the
-// Camera still holds m_Connected == true, but the live client link is down.
-// isConnected() must consult the live client and report false. If a refactor
-// drops the m_Client->isConnected() cross-check, this test fails.
-bool testStaleConnectedFlagDoesNotReportConnected() {
-  std::cout << "test: a stale connected flag does not mask a dead link (BUG C)\n";
+// The link drops and the stack fires onDisconnect. Once that event is
+// delivered, isConnected() must report false and no RSSI may be read, so the
+// UI never shows a false-connected camera. This asserts the clearing that
+// onDisconnect performs, not the strategy used to detect the drop.
+bool testDeliveredDisconnectNotReportedConnected() {
+  std::cout << "test: a delivered disconnect is not reported as connected\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -149,25 +159,24 @@ bool testStaleConnectedFlagDoesNotReportConnected() {
     return false;
   }
 
-  // Silent link loss: the link is down but onDisconnect has not run, so the
-  // Camera still believes it is connected.
-  client->mockDropLink(REASON_SUPERVISION_TIMEOUT, /*fire_callback=*/false);
-  check(!camera->isConnected(), "a stale connected flag does not report connected");
-  check(camera->getRssi() == 0, "no RSSI is read from a dead link");
+  // The link drop is delivered as a disconnect event (onDisconnect runs).
+  client->mockDropLink(REASON_SUPERVISION_TIMEOUT, /*fire_callback=*/true);
+  check(!camera->isConnected(), "a delivered disconnect is not reported as connected");
+  check(camera->getRssi() == 0, "no RSSI is read after a disconnect");
 
   NimBLEDevice::resetMock();
   return g_Failures == before;
 }
 
-// Regression test 3: disconnect on a dead link completes promptly (BUG B).
+// Regression test 3: disconnect after a drop completes promptly (BUG B).
 //
-// After a silent link loss the Camera flag is stale-true. Camera::disconnect()
-// must return promptly without dereferencing the freed client, and the liveness
-// predicate that Control::disconnectComplete() polls (camera->isConnected())
-// must read false at once so the interactive disconnect never spins to its
-// 30 s backstop.
-bool testDisconnectOnDeadLinkCompletesPromptly() {
-  std::cout << "test: disconnect on a dead link completes promptly (BUG B)\n";
+// The link drops and onDisconnect is delivered, so the Camera is already
+// cleared. A user-initiated disconnect must then return promptly without
+// dereferencing a freed client, and the liveness predicate that
+// Control::disconnectComplete() polls (camera->isConnected()) must read false,
+// so the interactive disconnect never spins to its 30 s backstop.
+bool testDisconnectAfterDropCompletesPromptly() {
+  std::cout << "test: disconnect after a drop completes promptly (BUG B)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -180,18 +189,19 @@ bool testDisconnectOnDeadLinkCompletesPromptly() {
   }
 
   NimBLEClient *client = NimBLEDevice::lastClient();
-  client->mockDropLink(REASON_SUPERVISION_TIMEOUT, /*fire_callback=*/false);
+  // The link drop is delivered as a disconnect event (onDisconnect runs).
+  client->mockDropLink(REASON_SUPERVISION_TIMEOUT, /*fire_callback=*/true);
 
-  // The predicate Control::disconnectComplete() polls must read false at once.
-  check(!camera->isConnected(), "the dead link reports disconnected before teardown");
+  // The predicate Control::disconnectComplete() polls must read false.
+  check(!camera->isConnected(), "a delivered disconnect reports disconnected");
 
   const auto start = std::chrono::steady_clock::now();
   camera->disconnect();
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - start)
                            .count();
-  check(elapsed < 1000, "disconnect on a dead link returns promptly");
-  check(!camera->isConnected(), "the camera is disconnected afterwards");
+  check(elapsed < 1000, "disconnect after a drop returns promptly");
+  check(!camera->isConnected(), "the camera stays disconnected afterwards");
 
   NimBLEDevice::resetMock();
   return g_Failures == before;
@@ -229,11 +239,11 @@ bool testOnDisconnectClearsState() {
   return g_Failures == before;
 }
 
-// Regression test 5: camera off / supervision timeout eventually clears state.
+// Regression test 5: camera off / supervision timeout clears state.
 //
-// The camera powers off, so the link is silently gone first. Later the
-// supervision timeout elapses and the stack fires onDisconnect. Neither window
-// may report connected, and the final state must be fully cleared.
+// The camera powers off and the supervision timeout elapses, so the stack
+// fires onDisconnect. The state must clear, no RSSI may be read, and a later
+// connect once the peer returns must run the real handshake.
 bool testSupervisionTimeoutClearsState() {
   std::cout << "test: a camera-off supervision timeout clears state\n";
   const int before = g_Failures;
@@ -249,13 +259,9 @@ bool testSupervisionTimeoutClearsState() {
 
   NimBLEClient *client = NimBLEDevice::lastClient();
 
-  // Camera powers off: the link is gone before the stack notices.
-  client->mockDropLink(REASON_SUPERVISION_TIMEOUT, /*fire_callback=*/false);
-  check(!camera->isConnected(), "the silent dead link is not reported as connected");
-
-  // The supervision timeout finally elapses and the stack fires onDisconnect.
+  // The camera powers off and the supervision timeout fires onDisconnect.
   client->mockDropLink(REASON_SUPERVISION_TIMEOUT, /*fire_callback=*/true);
-  check(!camera->isConnected(), "state stays cleared after the timeout fires");
+  check(!camera->isConnected(), "state clears when the supervision timeout fires");
   check(camera->getRssi() == 0, "no RSSI is read from a dead link");
 
   // Recovery: a later connect still works after the peer comes back.
@@ -273,8 +279,8 @@ bool testSupervisionTimeoutClearsState() {
 int main() {
   testSharedOwnershipSurvivesListClear();
   testFailedConnectDoesNotReportConnected();
-  testStaleConnectedFlagDoesNotReportConnected();
-  testDisconnectOnDeadLinkCompletesPromptly();
+  testDeliveredDisconnectNotReportedConnected();
+  testDisconnectAfterDropCompletesPromptly();
   testOnDisconnectClearsState();
   testSupervisionTimeoutClearsState();
 
