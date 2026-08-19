@@ -1190,6 +1190,11 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   lv_obj_set_style_pad_top(cont, 6, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, 6, LV_STATE_DEFAULT);
+#elif defined(FURBLE_M5STICKC)
+  // 80x160 is the shortest panel. Trim the per-row padding so the home menu
+  // (Connect, Scan, Delete, Settings, Power off) fits without scrolling.
+  lv_obj_set_style_pad_top(cont, 1, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, 1, LV_STATE_DEFAULT);
 #endif
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -1809,7 +1814,15 @@ void UI::simScenarioAction(const char *action) {
     if (found == buttons.end()) {
       return;
     }
-    lv_obj_t *button = m_Menu.at(found->second).button;
+    // Some pages are not registered on every board panel (for example the
+    // StickC 80x160 build omits several diagnostics pages). Look the entry up
+    // rather than indexing, so a nav to an absent page is a graceful no-op
+    // instead of aborting the sim.
+    const auto entry = m_Menu.find(found->second);
+    if (entry == m_Menu.end()) {
+      return;
+    }
+    lv_obj_t *button = entry->second.button;
     if (button != nullptr) {
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
     }
@@ -3112,6 +3125,12 @@ void UI::addIRMenu(void) {
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
   spinner.m_Button = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
+#if defined(FURBLE_M5STICKC)
+  // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
+  // Shutter and Wait rows fit without scrolling the timer page.
+  lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+#endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
   lv_label_set_text(spinner.m_Label, item);
