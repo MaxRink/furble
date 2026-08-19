@@ -40,6 +40,12 @@
 #if defined(FURBLE_SIM)
 #include "power_profiler.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
+
+namespace {
+// Registry of settings switches keyed by Settings::type_t. Scripted scenarios
+// toggle a setting through its real widget and persistence callback.
+std::unordered_map<int, lv_obj_t *> g_simSettingSwitches;
+}  // namespace
 #else
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #endif
@@ -1247,6 +1253,9 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   lv_obj_t *sw = lv_switch_create(obj);
   lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
   addToInputGroup(m_Group, sw);
+#if defined(FURBLE_SIM)
+  g_simSettingSwitches[static_cast<int>(setting)] = sw;
+#endif
   bool enable = Settings::load<bool>(setting);
   lv_obj_add_state(sw, enable ? LV_STATE_CHECKED : LV_STATE_DEFAULT);
   lv_obj_add_event_cb(
@@ -1677,6 +1686,72 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Drive the real connect flow the Scan and Connect buttons trigger. The
+  // connect timer then advances the state machine and reveals the connected
+  // page, exactly as it does for an on-device button press.
+  if (command == "connect") {
+    if (CameraList::size() == 0) {
+      CameraList::addFauxNY();
+    }
+    auto camera = CameraList::last();
+    if (camera != nullptr) {
+      camera->setActive(true);
+    }
+    doConnect(nullptr);
+    return;
+  }
+
+  // Mirror the on-device disconnect button.
+  if (command == "disconnect") {
+    doDisconnect();
+    return;
+  }
+
+  // Fire the shutter through the real shutter button handler.
+  if (command == "shutter") {
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    return;
+  }
+
+  // Toggle a boolean setting through its real switch widget so the switch's
+  // value-changed callback persists the new value, exactly as a button press
+  // on that switch would.
+  constexpr const char *TOGGLE_PREFIX = "toggle ";
+  if (command.compare(0, std::char_traits<char>::length(TOGGLE_PREFIX), TOGGLE_PREFIX) == 0) {
+    const std::string name = command.substr(std::char_traits<char>::length(TOGGLE_PREFIX));
+    static const std::unordered_map<std::string, Settings::type_t> settings = {
+        {"gps",           Settings::GPS          },
+        {"gps_nmea",      Settings::GPS_NMEA     },
+        {"autoconnect",   Settings::AUTOCONNECT  },
+        {"reconnect",     Settings::RECONNECT    },
+        {"multiconnect",  Settings::MULTICONNECT },
+        {"companion",     Settings::COMPANION    },
+        {"watchdog",      Settings::WATCHDOG     },
+        {"ir",            Settings::IR           },
+        {"show_title",    Settings::SHOW_TITLE   },
+        {"tx_adaptive",   Settings::TX_ADAPTIVE  },
+        {"conn_saver",    Settings::CONN_SAVER   },
+        {"recon_backoff", Settings::RECON_BACKOFF},
+    };
+    const auto found = settings.find(name);
+    if (found == settings.end()) {
+      return;
+    }
+    const auto entry = g_simSettingSwitches.find(static_cast<int>(found->second));
+    if (entry == g_simSettingSwitches.end() || entry->second == nullptr) {
+      return;
+    }
+    lv_obj_t *widget = entry->second;
+    if (lv_obj_has_state(widget, LV_STATE_CHECKED)) {
+      lv_obj_remove_state(widget, LV_STATE_CHECKED);
+    } else {
+      lv_obj_add_state(widget, LV_STATE_CHECKED);
+    }
+    lv_obj_send_event(widget, LV_EVENT_VALUE_CHANGED, nullptr);
+    return;
+  }
+
   if (command == "intervalometer") {
     m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
     lv_timer_reset(m_IntervalTimer);
@@ -1713,6 +1788,55 @@ void UI::simScenarioAction(const char *action) {
     page = m_Menu.at(m_DiagnosticsStr).page;
   }
   lv_menu_set_page(m_MainMenu.main, page);
+}
+
+std::string UI::simQueryState(const char *key) {
+  const std::string query = key == nullptr ? "" : key;
+
+  if (query == "connect_box") {
+    const bool hidden = m_ConnectContext.messageBox == nullptr
+                        || lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
+    return hidden ? "hidden" : "visible";
+  }
+
+  if (query == "connected") {
+    // The UI only presents a connected camera once the progress box is gone,
+    // the connected page is showing, and control reports an active link. A
+    // stale-connected regression would fail at least one of these checks.
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    const bool onConnectedPage = (page == m_Menu.at(m_ConnectedStr).page);
+    const bool boxHidden = m_ConnectContext.messageBox == nullptr
+                           || lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
+    const bool active = Control::getInstance().getState() == Control::STATE_ACTIVE;
+    return (onConnectedPage && boxHidden && active) ? "yes" : "no";
+  }
+
+  if (query == "page") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == m_MainMenu.page) {
+      return "main";
+    }
+    const std::array<std::pair<const char *, const char *>, 8> pages = {
+        {
+         {m_ConnectStr, "connect"},
+         {m_ConnectedStr, "connected"},
+         {m_ScanStr, "scan"},
+         {m_SettingsStr, "settings"},
+         {m_RemoteShutter, "shutter"},
+         {m_FeaturesStr, "features"},
+         {m_DisplayStr, "display"},
+         {m_GPSStr, "gps"},
+         }
+    };
+    for (const auto &entry : pages) {
+      if (page == m_Menu.at(entry.first).page) {
+        return entry.second;
+      }
+    }
+    return "other";
+  }
+
+  return "";
 }
 #endif
 

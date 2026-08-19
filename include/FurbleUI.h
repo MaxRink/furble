@@ -92,6 +92,9 @@ class UI {
 #if defined(FURBLE_SIM)
   /** Apply one deterministic scenario action without changing firmware builds. */
   void simScenarioAction(const char *action);
+
+  /** Report an assertable UI state value for scripted end-to-end scenarios. */
+  std::string simQueryState(const char *key);
 #endif
 
   /** Current intervalometer state for the companion status record. */

@@ -17,6 +17,7 @@
 #include <driver/uart.h>
 
 #include "CameraList.h"
+#include "FurbleControl.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "capture.h"
@@ -36,6 +37,8 @@ enum class StepType {
   BACK,
   REPORT,
   ACTION,
+  ASSERT,
+  PRINT,
   EXIT,
 };
 
@@ -44,6 +47,7 @@ struct Step {
   uint32_t milliseconds = 0;
   SDL_Keycode key = SDLK_UNKNOWN;
   std::string name;
+  std::string expected;
 };
 
 std::vector<Step> steps;
@@ -211,6 +215,25 @@ void readScript(const std::string &path) {
         std::exit(2);
       }
       steps.push_back(step);
+    } else if (command == "print") {
+      Step step;
+      step.type = StepType::PRINT;
+      input >> step.name;
+      if (step.name.empty()) {
+        std::cerr << "print requires a key\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "assert") {
+      Step step;
+      step.type = StepType::ASSERT;
+      input >> step.name;
+      input >> step.expected;
+      if (step.name.empty() || step.expected.empty()) {
+        std::cerr << "assert requires a key and an expected value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
     } else if (command == "exit") {
       Step step;
       step.type = StepType::EXIT;
@@ -265,6 +288,94 @@ void saveByte(const std::string &name, Settings::type_t type) {
   if (found != scenarioSettings.end()) {
     Settings::save<uint8_t>(type, static_cast<uint8_t>(parseUnsigned(found->second)));
   }
+}
+
+const char *controlStateName(Control::state_t state) {
+  switch (state) {
+    case Control::STATE_IDLE:
+      return "idle";
+    case Control::STATE_CONNECT:
+      return "connect";
+    case Control::STATE_CONNECTING:
+      return "connecting";
+    case Control::STATE_CONNECT_FAILED:
+      return "connect_failed";
+    case Control::STATE_ACTIVE:
+      return "active";
+    case Control::STATE_DISCONNECTING:
+      return "disconnecting";
+  }
+  return "unknown";
+}
+
+// Report a boolean setting as "1" or "0" so scenarios can assert persistence.
+std::string settingBoolValue(const std::string &name) {
+  static const std::map<std::string, Settings::type_t> booleans = {
+      {"fauxny",        Settings::FAUXNY       },
+      {"autoconnect",   Settings::AUTOCONNECT  },
+      {"reconnect",     Settings::RECONNECT    },
+      {"multiconnect",  Settings::MULTICONNECT },
+      {"companion",     Settings::COMPANION    },
+      {"watchdog",      Settings::WATCHDOG     },
+      {"gps",           Settings::GPS          },
+      {"gps_nmea",      Settings::GPS_NMEA     },
+      {"ir",            Settings::IR           },
+      {"conn_saver",    Settings::CONN_SAVER   },
+      {"show_title",    Settings::SHOW_TITLE   },
+      {"tx_adaptive",   Settings::TX_ADAPTIVE  },
+      {"recon_backoff", Settings::RECON_BACKOFF},
+  };
+  const auto found = booleans.find(name);
+  if (found == booleans.end()) {
+    std::cerr << "Unknown setting for assert: " << name << '\n';
+    std::exit(2);
+  }
+  return Settings::load<bool>(found->second) ? "1" : "0";
+}
+
+// Resolve an assertable state key to a string. UI keys run on the UI task, so
+// LVGL reads stay single threaded. Control and camera keys read the shared
+// state the real app maintains.
+std::string queryValue(const std::string &key) {
+  const auto prefixed = [&key](const char *prefix) {
+    const size_t length = std::char_traits<char>::length(prefix);
+    return key.size() >= length && key.compare(0, length, prefix) == 0;
+  };
+
+  if (prefixed("ui.")) {
+    if (scenarioUi == nullptr) {
+      return "";
+    }
+    return scenarioUi->simQueryState(key.substr(3).c_str());
+  }
+  if (prefixed("control.")) {
+    auto &control = Control::getInstance();
+    const std::string sub = key.substr(std::char_traits<char>::length("control."));
+    if (sub == "state") {
+      return controlStateName(control.getState());
+    }
+    if (sub == "connected") {
+      return std::to_string(control.getConnectedTargetCount());
+    }
+    if (sub == "targets") {
+      return std::to_string(control.getTargetCount());
+    }
+  }
+  if (prefixed("camera.")) {
+    const std::string sub = key.substr(std::char_traits<char>::length("camera."));
+    if (sub == "shutter_presses") {
+      return std::to_string(cameraShutterPresses());
+    }
+    if (sub == "shutter_releases") {
+      return std::to_string(cameraShutterReleases());
+    }
+  }
+  if (prefixed("setting.")) {
+    return settingBoolValue(key.substr(std::char_traits<char>::length("setting.")));
+  }
+
+  std::cerr << "Unknown assert key: " << key << '\n';
+  std::exit(2);
 }
 
 }  // namespace
@@ -477,9 +588,37 @@ void driverTick(void) {
       ++stepIndex;
       break;
 
+    case StepType::ASSERT:
+    {
+      const std::string actual = queryValue(step.name);
+      if (actual != step.expected) {
+        std::cerr << "ASSERT FAILED: " << step.name << " expected '" << step.expected << "' got '"
+                  << actual << "'\n";
+        std::cout.flush();
+        // Skip host teardown so the assertion exit code is not masked by an
+        // abort from background sim threads unwinding their mutexes.
+        std::_Exit(1);
+      }
+      std::cout << "assert ok: " << step.name << " = " << actual << '\n';
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::PRINT:
+      std::cout << "state " << step.name << " = " << queryValue(step.name) << '\n';
+      ++stepIndex;
+      break;
+
     case StepType::EXIT:
+      // Flush before the teardown-free exit so buffered assert and print lines
+      // reach the log when stdout is a pipe rather than a terminal.
+      std::cout.flush();
       std::_Exit(0);
   }
+}
+
+bool connectShouldFail(void) {
+  return scenarioSettingIsTrue("connect_fail");
 }
 
 }  // namespace Furble::Sim
