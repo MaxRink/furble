@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <tuple>
@@ -1341,45 +1343,64 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   }
 }
 
-lv_obj_t *UI::addCameraItem(Camera *camera, const menu_t &menu, const CameraListMode_t mode) {
+lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
   bool checkbox = (mode == MODE_MULTICONNECT);
 
+  auto camera = CameraList::get(index);
   lv_obj_t *item = addMenuItem(menu, NULL, camera->getName().c_str(), checkbox);
+
+  // Stash the CameraList index, not a raw Camera pointer. A raw pointer would
+  // dangle once CameraList::load() frees and rebuilds the list, so a stale menu
+  // item click would be a use-after-free. The event callbacks resolve the index
+  // back to a Camera fresh from CameraList, so a stale entry resolves to nothing
+  // (out of range) instead of a freed pointer.
+  void *ctx = reinterpret_cast<void *>(static_cast<uintptr_t>(index));
 
   switch (mode) {
     case MODE_DELETE:
       lv_obj_add_event_cb(
           item,
           [](lv_event_t *e) {
-            auto *camera = static_cast<Camera *>(lv_event_get_user_data(e));
-
-            CameraList::remove(camera);
+            size_t index =
+                static_cast<size_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+            if (index >= CameraList::size()) {
+              return;
+            }
+            CameraList::remove(CameraList::get(index).get());
             refreshDelete();
           },
-          LV_EVENT_CLICKED, camera);
+          LV_EVENT_CLICKED, ctx);
       break;
     case MODE_SCAN:
     case MODE_CONNECT:
       lv_obj_add_event_cb(
           item,
           [](lv_event_t *e) {
-            auto *camera = static_cast<Camera *>(lv_event_get_user_data(e));
-            camera->setActive(true);
+            size_t index =
+                static_cast<size_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+            if (index >= CameraList::size()) {
+              return;
+            }
+            CameraList::get(index)->setActive(true);
 
             doConnect(e);
           },
-          LV_EVENT_CLICKED, camera);
+          LV_EVENT_CLICKED, ctx);
       break;
     case MODE_MULTICONNECT:
       lv_obj_add_event_cb(
           item,
           [](lv_event_t *e) {
-            auto *camera = static_cast<Camera *>(lv_event_get_user_data(e));
+            size_t index =
+                static_cast<size_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+            if (index >= CameraList::size()) {
+              return;
+            }
             auto *check = static_cast<lv_obj_t *>(lv_event_get_target(e));
 
-            camera->setActive(lv_obj_has_state(check, LV_STATE_CHECKED));
+            CameraList::get(index)->setActive(lv_obj_has_state(check, LV_STATE_CHECKED));
           },
-          LV_EVENT_VALUE_CHANGED, camera);
+          LV_EVENT_VALUE_CHANGED, ctx);
       break;
   }
 
@@ -1520,7 +1541,7 @@ void UI::addMainMenu(void) {
           if ((saveCount > 0) && (ui->m_MainCount == 1)
               && Settings::load<Settings::AUTOCONNECT>()) {
             CameraList::load();
-            auto *camera = CameraList::get(0);
+            auto camera = CameraList::get(0);
             camera->setActive(true);
             doConnect(e);
           }
@@ -1764,7 +1785,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("connect_timer");
   auto *ctx = static_cast<ConnectContext_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
-  Camera *camera = nullptr;
+  std::shared_ptr<Camera> camera;
   auto state = control.getState();
 
   // A drop out of the active state is a disconnect no matter which state
@@ -1813,7 +1834,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         // if from scan, save the connection
         if (ctx->menuName == m_ScanStr) {
           for (const auto &target : control.getTargets()) {
-            CameraList::save(target->getCamera());
+            CameraList::save(target->getCamera().get());
           }
           ctx->menuName = NULL;
         }
@@ -2035,7 +2056,7 @@ void UI::serviceRequests(void) {
         printf("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
         printf("count: %u\n", static_cast<unsigned>(CameraList::size()));
         for (size_t n = 0; n < CameraList::size(); n++) {
-          const auto *camera = CameraList::get(n);
+          const auto camera = CameraList::get(n);
           printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
           printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
                  static_cast<unsigned long>(camera->getType()));
@@ -2104,7 +2125,7 @@ void UI::doConnect(lv_event_t *e) {
 
   // activate selected cameras
   for (auto n = 0; n < CameraList::size(); n++) {
-    auto *camera = CameraList::get(n);
+    auto camera = CameraList::get(n);
     if (camera->isActive()) {
       control.addActive(camera);
     }
@@ -2339,8 +2360,7 @@ void UI::addConnectMenu(void) {
 
         CameraList::load();
         for (size_t n = 0; n < CameraList::size(); n++) {
-          auto *camera = CameraList::get(n);
-          addCameraItem(camera, menu, multiconnect ? MODE_MULTICONNECT : MODE_CONNECT);
+          addCameraItem(n, menu, multiconnect ? MODE_MULTICONNECT : MODE_CONNECT);
         }
 
         if (multiconnect) {
@@ -2456,8 +2476,7 @@ void UI::refreshDelete(void) {
 
   CameraList::load();
   for (size_t n = 0; n < CameraList::size(); n++) {
-    auto *camera = CameraList::get(n);
-    addCameraItem(camera, menu, MODE_DELETE);
+    addCameraItem(n, menu, MODE_DELETE);
   }
 }
 
@@ -3974,7 +3993,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
   if (diagnostics->ble != nullptr) {
     std::string text;
     for (const auto &target : Control::getInstance().getTargets()) {
-      auto *camera = target->getCamera();
+      auto camera = target->getCamera();
       if (!camera->isConnected()) {
         continue;
       }
@@ -4295,9 +4314,11 @@ void UI::addSettingsMenu(void) {
 }
 
 void UI::updateItems(const menu_t &menu) {
-  auto *camera = CameraList::last();
+  if (CameraList::size() == 0) {
+    return;
+  }
 
-  addCameraItem(camera, menu, MODE_SCAN);
+  addCameraItem(CameraList::size() - 1, menu, MODE_SCAN);
 }
 
 void UI::setInactivityTimeout(uint8_t timeout) {

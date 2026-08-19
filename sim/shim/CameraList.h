@@ -2,6 +2,7 @@
 #define FURBLE_SIM_CAMERA_LIST_H
 
 #include <cstddef>
+#include <memory>
 
 #include "Camera.h"
 
@@ -15,8 +16,8 @@ class CameraList {
   static size_t getSaveCount(void);
   static size_t size(void);
   static void clear(void);
-  static Camera *last(void);
-  static Camera *get(size_t n);
+  static std::shared_ptr<Camera> last(void);
+  static std::shared_ptr<Camera> get(size_t n);
   static void addFauxNY(void);
 };
 

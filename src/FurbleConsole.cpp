@@ -886,7 +886,7 @@ int cmdCameras(int argc, char **argv) {
     const auto &targets = Control::getInstance().getTargets();
     printf("targets: %u\n", static_cast<unsigned>(targets.size()));
     for (size_t n = 0; n < targets.size(); n++) {
-      const auto *camera = targets[n]->getCamera();
+      const auto camera = targets[n]->getCamera();
       printf("target%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
       printf("target%u.connected: %s\n", static_cast<unsigned>(n), boolStr(camera->isConnected()));
     }

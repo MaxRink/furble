@@ -7,7 +7,7 @@
 namespace Furble {
 namespace {
 
-std::vector<std::unique_ptr<Camera>> cameras;
+std::vector<std::shared_ptr<Camera>> cameras;
 bool saved = false;
 
 bool hasCamera(void) {
@@ -55,17 +55,17 @@ void CameraList::clear(void) {
   cameras.clear();
 }
 
-Camera *CameraList::last(void) {
-  return hasCamera() ? cameras.back().get() : nullptr;
+std::shared_ptr<Camera> CameraList::last(void) {
+  return hasCamera() ? cameras.back() : nullptr;
 }
 
-Camera *CameraList::get(size_t n) {
-  return cameras.at(n).get();
+std::shared_ptr<Camera> CameraList::get(size_t n) {
+  return cameras.at(n);
 }
 
 void CameraList::addFauxNY(void) {
   if (!hasCamera()) {
-    cameras.push_back(std::make_unique<Camera>("FauxNY Camera"));
+    cameras.push_back(std::make_shared<Camera>("FauxNY Camera"));
   }
 }
 

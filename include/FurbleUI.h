@@ -581,7 +581,7 @@ class UI {
   void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
 
   /** Add camera menu item. */
-  static lv_obj_t *addCameraItem(Camera *camera, const menu_t &menu, const CameraListMode_t mode);
+  static lv_obj_t *addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode);
 
   /** Create a menu entry. */
   menu_t &addMenu(const char *entry,

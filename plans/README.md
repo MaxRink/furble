@@ -111,6 +111,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [75-false-connected.md](75-false-connected.md) | False Connected when the camera is not in pairing mode. Promotion to ACTIVE is gated on GATT plumbing, not on the camera-side registration confirmation |
+| [80-camera-lifetime.md](80-camera-lifetime.md) | Use after free: CameraList owns Cameras by unique_ptr and load()/clear() free them while Control holds raw pointers across an in-flight connect. Own Cameras by shared_ptr so a connecting or active Camera outlives the list |
 
 ## Tooling and web installer
 
