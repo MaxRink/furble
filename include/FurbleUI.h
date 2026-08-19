@@ -477,6 +477,7 @@ class UI {
   enum class DisplayState { ACTIVE, DIM, OFF };
 
   lv_obj_t *m_IntervalStart = nullptr;
+  lv_obj_t *m_IntervalStop = nullptr;
   Intervalometer m_Intervalometer;
 
   lv_obj_t *m_BulbStart = nullptr;

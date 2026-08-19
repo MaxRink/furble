@@ -1,0 +1,21 @@
+# End-to-end regression for the intervalometer Stop reset. After a run is
+# stopped mid-flight the run state must return to idle and navigate back to the
+# timer menu, so a subsequent start behaves like a fresh run.
+seed fauxny true
+seed interval_count 8
+seed interval_wait 1
+seed interval_shutter 100
+seed interval_delay 0
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+action nav timer
+wait 200
+action intervalometer
+wait 1500
+action stop
+wait 300
+assert ui.interval_state idle
+assert ui.page timer
+exit
