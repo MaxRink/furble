@@ -98,18 +98,32 @@ jobs:
           FURBLE_SIM_M5GFX_BOARD: board_M5StickC
         run: sh sim/build.sh
 
-      # Assert the compact pages fit the panel. The sweep asserts ui.overflow is
-      # no on the home menu, the display page and the timer page. Run it on the
-      # 135x240 binary from above and on the 80x160 binary. Both must pass, and
-      # the 80x160 run is the one with teeth: it fails if the narrow-panel
-      # layout regresses so the home menu or timer page overflows again.
+      # Assert the compact pages fit the panel. overflow-sweep.txt runs at the
+      # default Normal font; text-size-overflow-large.txt and
+      # text-size-overflow-small.txt repeat the compact-page fit assertions with
+      # the global Text size setting seeded to Large and Small, so the theme font
+      # scaling is layout-verified too. Run all three on the 135x240 binary from
+      # above and on the 80x160 binary. Both panels must pass, and the 80x160 run
+      # is the one with teeth: it fails if the narrow-panel layout regresses so
+      # the home menu or timer page overflows again at any font size. The
+      # text-size scenarios are scoped to these two narrow non-touch panels on
+      # purpose. On the 320x240 M5Stack Core, which packs a larger font into the
+      # same 240 px height, some settings pages already scroll by design at
+      # Normal, so a compact-fit assertion does not hold there.
       - name: Assert narrow-panel layout fits (135x240 and 80x160)
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
-          SWEEP: ${{ github.workspace }}/sim/scenarios/bughunt/overflow-sweep.txt
         run: |
-          echo '=== 135x240 (M5StickS3) ==='
-          "${{ github.workspace }}/sim/build/furble-sim" --script "$SWEEP"
-          echo '=== 80x160 (M5StickC) ==='
-          "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$SWEEP"
+          SCENARIOS="
+          ${{ github.workspace }}/sim/scenarios/bughunt/overflow-sweep.txt
+          ${{ github.workspace }}/sim/scenarios/bughunt/text-size-overflow-large.txt
+          ${{ github.workspace }}/sim/scenarios/bughunt/text-size-overflow-small.txt
+          "
+          for scenario in $SCENARIOS; do
+            name=$(basename "$scenario" .txt)
+            echo "=== 135x240 (M5StickS3): $name ==="
+            "${{ github.workspace }}/sim/build/furble-sim" --script "$scenario"
+            echo "=== 80x160 (M5StickC): $name ==="
+            "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$scenario"
+          done

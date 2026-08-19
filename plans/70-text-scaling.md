@@ -110,10 +110,41 @@ Implemented on `feat/ui-text-scaling`.
   and asserts the stored setting, the roller selection and no page overflow.
   The `overflow-sweep` bughunt scenario covers the Display page fit across all
   three panel classes.
+- `sim/scenarios/bughunt/text-size-overflow-large.txt` and
+  `text-size-overflow-small.txt` seed the global Text size to Large and Small,
+  then walk the same pages `overflow-sweep` walks and assert `ui.overflow no`
+  on every compact page that must always fit: the home menu, the Display page,
+  the Timer settings list, the Remote shutter page and the Connected page. The
+  `sim-e2e` workflow runs both on the 135x240 and 80x160 binaries, so the
+  compact-page fit is now machine-checked at Large and Small, not just Normal.
 - Review fixes applied: S3 watchdog disarm before restart, the
   `fontForIconMenu` clamp, the audit walker long-mode and wrap rules,
   content-width comparisons, `int32_t` coordinates, the icon and title-label
   cleanup on the Text size page, and the roller width guard.
+
+## Simulator verified
+
+The SDL simulator drives the real UI, so full-page content overflow is
+identical to the device and is checked in `sim-e2e` CI without hardware:
+
+- Large and Small global fonts fit every compact page on the 80x160 M5StickC
+  and the 135x240 boards: the home menu, the Display page, the Timer settings
+  list, the Remote shutter page and the Connected page all report
+  `ui.overflow no`. The `text-size-overflow-large` and
+  `text-size-overflow-small` scenarios assert this on both panel binaries.
+- The long settings lists (Features, GPS, Bluetooth, About, Power, the
+  Diagnostics sub-pages) scroll by design at every font size and are not
+  asserted, matching `overflow-sweep`.
+- 320x240 M5Stack Core and Core2 note: this panel shares the 240 px height of
+  the 135x240 boards but uses the largest fonts (16/22/28). At Large the Timer
+  settings list and the Connected page cross the viewport and scroll; both fit
+  at Normal and Small. The Diagnostics page already scrolls at Normal on this
+  panel. Scrolling is native on these touch boards, so this is treated as a
+  by-design consequence of the larger font, not a layout regression, and the
+  compact-fit scenarios are scoped to the two narrow non-touch panels. Running
+  `text-size-overflow-large` against the 320x240 binary fails on the Timer
+  assertion, which is the scenario's teeth: the `ui.overflow no` assertion
+  really catches a page that overflows.
 
 ## Hardware pending
 
@@ -127,5 +158,7 @@ Verified on M5StickS3 hardware before merge:
   Settings pages at all three sizes.
 
 Not hardware verified (no device available): M5StickC, M5StickC Plus,
-M5Stack Core, Core2. Those five-board font mappings are covered by code
-review and the release builds only.
+M5Stack Core, Core2. Their font mappings are covered by code review, the
+release builds, and the simulator overflow scenarios above. If the 320x240
+Timer and Connected scroll at Large is judged undesirable on hardware, tighten
+those two pages' row spacing on the Core font set as a follow-up.

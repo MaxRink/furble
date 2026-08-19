@@ -1,0 +1,82 @@
+# Content-overflow regression for the global Small text size (text_size 0).
+#
+# Companion to overflow-sweep.txt, which only exercises the default Normal font.
+# The Text size setting scales the LVGL theme font. Small shrinks it, so no page
+# should ever gain overflow it did not already have, but the smallest font is
+# still walked here for symmetry with the Large sweep. This scenario seeds Small,
+# then walks the same pages overflow-sweep walks and asserts the compact pages
+# fit. Run it on the same panels overflow-sweep runs on: the 80x160 M5StickC and
+# the 135x240 boards. Small lowers the theme font 12 -> 10 on the 80x160 StickC
+# and 16 -> 12 on the 135x240 boards.
+#
+# The compact pages carry an "assert ui.overflow no": the home menu, the Display
+# page, the Timer settings list, the Remote shutter page and the Connected page.
+# The long settings lists (features, gps, bluetooth, about, power, diagnostics)
+# hold more rows than a short panel can show, so they scroll by design and only
+# print their overflow state.
+seed text_size 0
+seed fauxny true
+seed gps true
+wait 300
+# The seeded Small size was loaded on boot.
+assert setting.text_size 0
+# Home menu: must fit on the narrow panels.
+assert ui.page main
+assert ui.overflow no
+action page settings
+wait 100
+print ui.page
+print ui.overflow
+action nav display
+wait 100
+# Display page: short, must fit on the narrow panels.
+assert ui.page display
+assert ui.overflow no
+action page settings
+action nav features
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav gps
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav timer
+wait 100
+# Timer settings list (Count, Delay, Shutter, Wait): must fit on the narrow panels.
+assert ui.page timer
+assert ui.overflow no
+action page settings
+action nav bluetooth
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav about
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav power
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav diagnostics
+wait 100
+print ui.page
+print ui.overflow
+# Remote shutter page: compact, must fit on the narrow panels.
+action blind
+wait 200
+assert ui.page shutter
+assert ui.overflow no
+# Connected page: compact, must fit on the narrow panels.
+action connect
+wait 1500
+assert ui.connected yes
+assert ui.page connected
+assert ui.overflow no
+exit
