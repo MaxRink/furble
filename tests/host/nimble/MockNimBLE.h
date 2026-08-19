@@ -233,6 +233,15 @@ class NimBLEClient {
 
   NimBLEMockPeer *getPeer() const;
 
+  // Host test hook. Model a spontaneous BLE link loss such as a supervision
+  // timeout or the peer powering off. It severs the peer link and clears the
+  // client connected flag. When fire_callback is true the disconnect callback
+  // also runs, mirroring the stack detecting the drop and notifying the app.
+  // When fire_callback is false the link is down but no callback fires, which
+  // models the window where the peer is gone yet the app still holds a stale
+  // connected flag because onDisconnect has not run.
+  void mockDropLink(int reason, bool fire_callback);
+
  private:
   NimBLEClientCallbacks *m_Callbacks = nullptr;
   NimBLEMockPeer *m_Peer = nullptr;
@@ -296,6 +305,14 @@ class NimBLEDevice {
   static void setMockPeer(NimBLEMockPeer *peer);
   static NimBLEMockPeer *getMockPeer();
   static void resetMock();
+
+  // Host test hooks.
+  // The most recently created client, so a test can drive link loss on the
+  // client a Camera created internally.
+  static NimBLEClient *lastClient();
+  // Force the next NimBLEClient::connect() to fail, modelling a connect that
+  // never establishes (advertisement gone, peer busy, security rejected).
+  static void setConnectShouldFail(bool fail);
 };
 
 #endif

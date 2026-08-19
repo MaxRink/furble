@@ -48,9 +48,15 @@ target_link_libraries(corpus_replay_test PRIVATE furble_host_camera)
 target_compile_options(corpus_replay_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                     -Wno-unused-parameter)
 
+add_executable(lifecycle_test lifecycle_test.cpp)
+target_link_libraries(lifecycle_test PRIVATE furble_host_camera)
+target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                              -Wno-unused-parameter)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
            COMMAND corpus_replay_test
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
+  add_test(NAME camera-lifecycle COMMAND lifecycle_test)
 endif()

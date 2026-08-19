@@ -76,6 +76,7 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
 
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
+bool g_ConnectShouldFail = false;
 
 }  // namespace
 
@@ -330,6 +331,11 @@ void NimBLEClient::setConnectionParams(uint16_t min_interval,
 }
 
 bool NimBLEClient::connect(const NimBLEAddress &address) {
+  if (g_ConnectShouldFail) {
+    // Model a connect that never establishes. The link stays down and no
+    // callback fires, matching NimBLE returning false from connect().
+    return false;
+  }
   if ((g_Peer == nullptr) || !g_Peer->acceptConnection(*this, address)) {
     return false;
   }
@@ -359,6 +365,16 @@ void NimBLEClient::disconnect() {
 
 bool NimBLEClient::isConnected() const {
   return m_Connected;
+}
+
+void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
+  if (m_Peer != nullptr) {
+    m_Peer->disconnect(*this, reason);
+  }
+  m_Connected = false;
+  if (fire_callback && (m_Callbacks != nullptr)) {
+    m_Callbacks->onDisconnect(this, reason);
+  }
 }
 
 NimBLERemoteService *NimBLEClient::getService(const NimBLEUUID &service) {
@@ -532,6 +548,15 @@ NimBLEMockPeer *NimBLEDevice::getMockPeer() {
 void NimBLEDevice::resetMock() {
   g_Clients.clear();
   g_Peer = nullptr;
+  g_ConnectShouldFail = false;
+}
+
+NimBLEClient *NimBLEDevice::lastClient() {
+  return g_Clients.empty() ? nullptr : g_Clients.back().get();
+}
+
+void NimBLEDevice::setConnectShouldFail(bool fail) {
+  g_ConnectShouldFail = fail;
 }
 
 extern "C" int64_t esp_timer_get_time(void) {
