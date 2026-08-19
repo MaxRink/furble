@@ -85,3 +85,31 @@ jobs:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-e2e.sh
+
+      # The layout overflow the sweep asserts against only happens on the
+      # shortest panel, so build a second simulator for the M5StickC 80x160
+      # panel. Its own build dir keeps the 135x240 binary above intact.
+      - name: Build 80x160 (M5StickC) simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-stickc
+          FURBLE_SIM_FURBLE_BOARD: FURBLE_M5STICKC
+          FURBLE_SIM_M5GFX_BOARD: board_M5StickC
+        run: sh sim/build.sh
+
+      # Assert the compact pages fit the panel. The sweep asserts ui.overflow is
+      # no on the home menu, the display page and the timer page. Run it on the
+      # 135x240 binary from above and on the 80x160 binary. Both must pass, and
+      # the 80x160 run is the one with teeth: it fails if the narrow-panel
+      # layout regresses so the home menu or timer page overflows again.
+      - name: Assert narrow-panel layout fits (135x240 and 80x160)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          SWEEP: ${{ github.workspace }}/sim/scenarios/bughunt/overflow-sweep.txt
+        run: |
+          echo '=== 135x240 (M5StickS3) ==='
+          "${{ github.workspace }}/sim/build/furble-sim" --script "$SWEEP"
+          echo '=== 80x160 (M5StickC) ==='
+          "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$SWEEP"

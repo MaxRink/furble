@@ -1,18 +1,32 @@
 # Report content-overflow (content taller than viewport) for every reachable
 # page. Run against each panel class to surface layout overflow, worst on 80x160.
+#
+# Some pages are compact and must always fit the panel: the home menu, the
+# display page and the timer settings list. Those carry an "assert ui.overflow
+# no" so this scenario is a regression test. It fails on the pre-fix firmware,
+# where the home menu and timer page overflow at 80x160 (M5StickC), and passes
+# once the narrow-panel layout fits at 80x160, 135x240 and 320x240.
+#
+# The long settings lists (features, gps, bluetooth, about and the diagnostics
+# sub-pages) hold more rows than a short panel can show, so they scroll by
+# design. Those pages only print their overflow state, they are not asserted.
 seed fauxny true
 seed gps true
 wait 300
+# Home menu: must fit on every panel.
 print ui.page
 print ui.overflow
+assert ui.overflow no
 action page settings
 wait 100
+# Display page: short, must fit on every panel.
 print ui.page
 print ui.overflow
 action nav display
 wait 100
 print ui.page
 print ui.overflow
+assert ui.overflow no
 action page settings
 action nav features
 wait 100
@@ -26,8 +40,10 @@ print ui.overflow
 action page settings
 action nav timer
 wait 100
+# Timer settings list (Count, Delay, Shutter, Wait): must fit on every panel.
 print ui.page
 print ui.overflow
+assert ui.overflow no
 action page settings
 action nav bluetooth
 wait 100
