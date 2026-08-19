@@ -95,6 +95,17 @@ class UI {
 
   /** Report an assertable UI state value for scripted end-to-end scenarios. */
   std::string simQueryState(const char *key);
+
+  /**
+   * Drive a physical button through the board's real input-device wiring.
+   *
+   * name is the silk-screen button (a/b/c/pwr); hold selects the left-button
+   * long-press escape. Returns false when the board does not expose that
+   * button, so a scenario that presses an absent button fails loudly. This
+   * lets headless scenarios exercise the same per-board button->navigation
+   * path furble runs on hardware, which the touch-only sim was blind to.
+   */
+  bool simPressButton(const char *name, bool hold);
 #endif
 
   /** Current intervalometer state for the companion status record. */
