@@ -3351,8 +3351,10 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
 
-        // reset the run state so a subsequent start begins a fresh run
+        // reset the run state so a subsequent start begins a fresh run, and
+        // mirror it to the atomic the console status query reads
         interval->m_State = Intervalometer::STATE_IDLE;
+        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
         lv_timer_set_period(timer, 100);
 
         // release shutter and exit
