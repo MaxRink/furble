@@ -773,12 +773,18 @@ int8_t Camera::getRssi(void) const {
 }
 
 bool Camera::isConnected(void) const {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  if (m_Type == Type::FAUXNY) {
-    return m_Connected;
-  }
-
-  return m_Connected && m_Client && m_Client->isConnected();
+  // Lock-free status read. Return the cached connection flag with no m_Mutex and
+  // no m_Client dereference. The UI task calls this on every status render. When
+  // it took m_Mutex it blocked for the whole duration of a connect attempt,
+  // which holds m_Mutex across the secure scan and connect timeout. On a slow
+  // first connect that froze the screen and buttons and, worse, starved the
+  // M5PM1 watchdog fed from the UI task until the device watchdog-reset.
+  //
+  // Reading only m_Connected is safe under the setSelfDelete model. NimBLE frees
+  // the self-deleting client synchronously inside the disconnect callback and on
+  // a failed connect, and m_Connected is cleared before that free, so this read
+  // never touches a freed client. isConnected() must never dereference m_Client.
+  return m_Connected.load();
 }
 
 }  // namespace Furble

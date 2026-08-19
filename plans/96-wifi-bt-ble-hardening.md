@@ -186,6 +186,16 @@ medium, low.
   (std::atomic<bool> m_Connected, drop the client double-check), and serve
   companion status from a cached snapshot refreshed by the companion task,
   never computed on the host task.
+  - B1 status. The lock-free half is landed standalone (branch
+    fix/lock-free-isconnected, PR "Lock-free Camera::isConnected so the UI
+    stays responsive during connect"). Camera::m_Connected and m_Active are
+    now std::atomic<bool>, and Camera::isConnected() returns
+    m_Connected.load() with no m_Mutex and no m_Client double-check. The UI,
+    console and control tasks no longer block on Camera::m_Mutex while a
+    connect holds it, so the UI keeps feeding the PM1 watchdog through a slow
+    first connect. This removes the UI-starves-watchdog reset path. The
+    cached companion status snapshot (host-task path) is still open and stays
+    with the rest of the WiFi/BT hardening batch.
 - B2. Disconnect can spin forever and CMD_DISCONNECT can be dropped. HIGH,
   CONFIRMED on fork/master. Target::sendCommand uses xQueueSend with zero
   timeout and logs on failure (src/FurbleControl.cpp:53-58, queue depth 8).

@@ -264,7 +264,10 @@ class Camera: public NimBLEClientCallbacks {
   NimBLEAddress m_Address = NimBLEAddress {};
   NimBLEClient *m_Client = nullptr;
   std::string m_Name;
-  bool m_Connected = false;
+  // Read lock-free by isConnected() from the UI task on every render, so it must
+  // be atomic. Written by the NimBLE onConnect/onDisconnect callbacks and the
+  // destructor without holding m_Mutex, so the atomic also removes a latent race.
+  std::atomic<bool> m_Connected = false;
   bool m_Paired = false;
 
  private:
@@ -314,7 +317,9 @@ class Camera: public NimBLEClientCallbacks {
 
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
   bool m_FromScan = false;
-  bool m_Active = false;
+  // Read lock-free by isActive() and written by setActive()/disconnect() without
+  // a shared lock discipline, so keep it atomic to remove the latent race.
+  std::atomic<bool> m_Active = false;
 
   static constexpr uint32_t m_ConnSaverIdleMs = 10 * 1000;
   static constexpr uint32_t m_ConnParamsUpdateGuardMs = 3 * 1000;
