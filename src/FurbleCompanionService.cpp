@@ -234,6 +234,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SCAN_TIMEOUT:
       return SETTING_U32;
     case Settings::THEME:
+    case Settings::BUTTON_MODE:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -299,6 +300,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       return true;
     }
     case Settings::THEME:
+    case Settings::BUTTON_MODE:
     {
       const std::string v = Settings::load<std::string>(type);
       value.assign(v.begin(), v.end());
@@ -344,8 +346,15 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       return true;
     }
     case SETTING_STRING:
-      Settings::save<std::string>(type, std::string(reinterpret_cast<const char *>(value), length));
+    {
+      const std::string v(reinterpret_cast<const char *>(value), length);
+      if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
+          && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
+        return false;
+      }
+      Settings::save<std::string>(type, v);
       return true;
+    }
     case SETTING_BLOB:
       if (type != Settings::INTERVAL || length != sizeof(interval_t)) {
         return false;
