@@ -19,8 +19,11 @@ bool gpsEventQueued = false;
 uint32_t gpsNextEventMillis = 0;
 std::mutex gpsMutex;
 
+// The RMC ground speed of 22.678 knots is 42.0 km/h, a known non-zero value so
+// scenarios can assert the GPS Data page speed line. The position resolves to
+// 48.11730 N, 11.51667 E, exercising the five decimal place coordinate render.
 constexpr char gpsData[] =
-    "$GPRMC,123519.00,A,4807.038,N,01131.000,E,0.0,0.0,230394,,,A*5E\r\n"
+    "$GPRMC,123519.00,A,4807.038,N,01131.000,E,22.678,0.0,230394,,,A*67\r\n"
     "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*69\r\n";
 
 uint32_t gpsRatePeriodMillis(void) {

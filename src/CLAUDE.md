@@ -38,5 +38,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
   independent of `Camera`, NVS, and `CameraList`; pairing input is console
   passthrough and passive third-party sniffing is not supported by NimBLE.
+- The GPS Data and Raw NMEA pages show TinyGPSPlus speed in km/h. Format
+  user-visible coordinates to five decimal places without narrowing the double.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.

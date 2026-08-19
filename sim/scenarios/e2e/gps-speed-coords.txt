@@ -1,0 +1,17 @@
+# Verify the GPS Data page renders a speed line in km/h and coordinates at five
+# decimal places. The fake receiver streams a fix at 42.0 km/h, 48.11730 N,
+# 11.51667 E (see sim/fake_uart.cpp). Navigating through the real GPS Data menu
+# button starts the page update timer, then the rendered labels are asserted.
+seed gps true
+wait 300
+assert ui.page main
+action nav gps_data
+wait 300
+assert ui.page gps_data
+# Let the GPS task consume the NMEA burst and the 1 Hz page timer refresh the
+# labels from it.
+wait 2000
+assert ui.gps_speed 42.0
+assert ui.gps_lat 48.11730
+assert ui.gps_lon 11.51667
+exit

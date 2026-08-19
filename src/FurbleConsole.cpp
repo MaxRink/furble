@@ -535,8 +535,8 @@ int gpsStatus(void) {
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
   printf("fix: %s\n", boolStr(fix));
   printf("satellites: %lu\n", tiny.satellites.value());
-  printf("lat: %.6f\n", tiny.location.lat());
-  printf("lon: %.6f\n", tiny.location.lng());
+  printf("lat: %.5f\n", tiny.location.lat());
+  printf("lon: %.5f\n", tiny.location.lng());
   printf("alt: %.2f\n", tiny.altitude.meters());
   printf("age: %lu\n", tiny.location.age());
   printf("date: %04u-%02u-%02u\n", tiny.date.year(), tiny.date.month(), tiny.date.day());

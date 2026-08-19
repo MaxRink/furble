@@ -119,6 +119,11 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
   is open. Show it with satellite count, HDOP, fix age and the TinyGPS++
   counters `charsProcessed()`, `passedChecksum()` and `failedChecksum()`. Those
   counters are what PR15 needs to tune its sleep window.
+- The GPS Data and Raw NMEA pages also show the current TinyGPS++ speed in km/h.
+- The GPS Data page displays latitude and longitude to five decimal places.
+- The `gps-speed-coords` sim end-to-end scenario asserts the rendered speed and
+  five decimal place coordinates against a known fake fix (42.0 km/h, 48.11730 N,
+  11.51667 E).
 - Keep it board neutral. Nothing here is S3 specific.
 
 ## Dependencies
