@@ -54,6 +54,56 @@ Every ESP32-S3 row above is a board profile. The M1 is a rewrite. The Core2 and
 CoreS3 are already furble-adjacent M5Unified boards and are the lowest effort of
 all.
 
+## Exhaustive input inventory
+
+This is the canonical input catalog for every device studied across plans 40, 41
+and 88. It enumerates every input method on each board, not a summary. Plans 40
+and 41 point here rather than duplicating it.
+
+Two facts are true of every device below, so they are stated once instead of
+filling a column. First, all ESP32 and nRF52 candidates expose a USB serial
+console, so scripted input over USB is universal. On furble that surface is the
+plan 27 USB console. Second, none of these devices ship a physical D-pad,
+thumb-joystick, or a bank of dedicated capacitive touch keys. The only capacitive
+touch keys in the set are the three programmable touch zones on the M5Stack Core2
+and CoreS3, and those are regions of the main touch panel, not separate keys.
+
+Legend. MT means multitouch. "IMU input" lists the onboard motion sensor and
+whether it can serve as a tap, shake or tilt input, which depends on firmware
+enabling it. "None stated" means the vendor does not document the part.
+
+| Device | MCU | Push-buttons (count, placement) | QWERTY keyboard | Trackball | Rotary / encoder | Touchscreen (IC, type, MT) | IMU input | Microphone | Source |
+|---|---|---|---|---|---|---|---|---|---|
+| Elecrow ThinkNode M1 | nRF52840 | 1 function/power button, front | No | No | Yes, rotary dial (brightness + navigation) | No (e-paper) | Accelerometer, tap/tilt capable | No | espboards, Elecrow M1 review |
+| Elecrow ThinkNode M2 | ESP32-S3 | Function button + reset/boot; exact count unverified | No | No | No | No (1.3" OLED) | None stated | No | Elecrow M2 page |
+| Elecrow ThinkNode M5 | ESP32-S3 | 4: function, page-turn, GPS switch, reset | No | No | Yes, knob switch | No (1.54" e-paper SSD1681) | None stated | No | plan 41, Elecrow M5 |
+| Elecrow ThinkNode M9 | ESP32-S3R8 | Power/reset + 37-key keyboard block | Yes, 37 keys | No | No | No (2.4" TN, non-touch) | Magnetometer/compass; no 6-axis stated | No (buzzer only) | CNX, Elecrow M9 |
+| LilyGO T-Deck | ESP32-S3 | 1 trackball centre-click + reset | Yes, ~35-key I2C (ESP32-C3 controller) | Yes, 5-way with click | No | No (trackball nav) | None | Yes, mic | LilyGO wiki, espboards |
+| LilyGO T-Deck Plus | ESP32-S3 | 1 trackball centre-click + reset | Yes, ~35-key I2C (ESP32-C3 controller) | Yes, 5-way with click | No | Yes, GT911 capacitive, MT | None | Yes, mic array | LilyGO wiki, Meshtastic disc 5606 |
+| LilyGO T-Watch S3 | ESP32-S3 | 1 side button | No | No | No | Yes, capacitive (CST/FT-class, verify), single/MT | BMA423 accel, activity/tap engine | Yes, PDM mic | OpenELAB, igeekphone |
+| LilyGO T-Beam Supreme | ESP32-S3 | 3: Power (left), Reset (right), Boot/IO0 | No | No | No | No (1.3" SH1106 OLED) | QMI8658 6-axis + QMC6310 mag, tap/tilt capable | No | Meshtastic T-Beam buttons, espboards |
+| M5Stack Cardputer | ESP32-S3 | 56-key keyboard + StampS3 G0 button | Yes, 56 keys | No | No | No (1.14" ST7789V) | Adv only: BMI270, tap capable | Yes, PDM mic (IR out too) | CNX, Make: |
+| M5Stack Core2 | ESP32 | Physical power + RST; 3 programmable touch zones | No | No | No | Yes, FT6336U capacitive, MT | MPU6886 (BMI270 on v1.3), tap/tilt | Yes, SPM1423 PDM | M5 docs Core2 |
+| M5Stack CoreS3 | ESP32-S3 | Power via AXP2101; programmable touch zones; no physical nav buttons | No | No | No | Yes, FT6336U capacitive, MT | BMI270 + BMM150 | Yes, dual mic (ES7210); GC0308 camera + LTR-553 proximity | M5 docs CoreS3 |
+| Heltec Wireless Tracker (V1.1/V2) | ESP32-S3 | 2: PRG (user) + RST | No | No | No | No (0.96" TFT, output only) | None onboard | No | Heltec, espboards |
+| Heltec WiFi LoRa 32 V3 | ESP32-S3 | 2: PRG (user) + RST | No | No | No | No (0.96" OLED, output only) | None onboard | No | Heltec, espboards |
+| RAK WisBlock (RAK19007 + RAK4631) | nRF52840 | 1 reset; nav button not built in, add on AIN1 (pin 31) | No | No | No | No (optional OLED module, output only) | Optional WisBlock sensor module | Optional module | RAK datasheet, Meshtastic peripherals, Rokland |
+
+Notes on the harder-to-verify rows:
+
+- T-Deck keyboard key count. LilyGO does not publish an exact number. The
+  physical layout is roughly 35 keys on a secondary ESP32-C3 exposed over I2C.
+  Treat the count as approximate until a device is in hand.
+- T-Watch S3 touch controller. The vendor pages confirm capacitive touch but do
+  not consistently name the controller. The classic T-Watch used an FT6336, and
+  the S3 generation is reported as a CST816-class part. Verify on hardware before
+  a board profile.
+- ThinkNode M2 buttons. The Elecrow listing shows a function button and the usual
+  reset and boot, but does not give a definitive nav-button count. Confirm on
+  hardware.
+- RAK and the M1 are nRF52840, not ESP32. They are plan 40 rewrite targets and
+  are in this table only so the input catalog is complete.
+
 ## Per-device feedback and reviews
 
 ### LilyGO T-Deck and T-Deck Plus
@@ -417,6 +467,27 @@ M5Stack Cardputer
   https://makezine.com/article/technology/microcontrollers/review-m5stack-cardputer-adv-version-esp32-s3/
 - Cardputer review, screen and keyboard criticism, Raspberry Pi magazine:
   https://magazine.raspberrypi.com/articles/m5stack-card-computer-review
+
+Input inventory sources
+
+- LilyGO T-Beam Supreme buttons, Meshtastic:
+  https://meshtastic.org/docs/hardware/devices/lilygo/tbeam/buttons/
+- T-Beam Supreme pinout, buttons, QMI8658 IMU, espboards:
+  https://www.espboards.dev/esp32/lilygo-t-beam-supreme/
+- Heltec WiFi LoRa 32 V3, PRG and RST buttons, no touchscreen:
+  https://www.espboards.dev/esp32/heltec-wifi-lora-32-v3/
+- Heltec Wireless Tracker, UC6580, TFT, buttons:
+  https://heltec.org/project/wireless-tracker/
+- RAK19007 base board, reset button, no built-in nav button:
+  https://docs.rakwireless.com/product-categories/wisblock/rak19007/datasheet/
+- RAK WisBlock user button on AIN1 pin 31, Meshtastic peripherals:
+  https://meshtastic.org/docs/hardware/devices/rak-wireless/wisblock/peripherals/
+- RAK WisBlock adding a user button, Rokland:
+  https://store.rokland.com/pages/adding-a-user-button-rak19007
+- M5Stack Core2, FT6336U touch, MPU6886/BMI270 IMU, SPM1423 mic:
+  https://docs.m5stack.com/en/core/core2
+- M5Stack CoreS3, FT6336U multitouch, BMI270 + BMM150, dual mic:
+  https://docs.m5stack.com/en/core/CoreS3
 
 Meshtastic coexistence and flash
 
