@@ -32,6 +32,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   recomputed per transaction. The output selection is frozen at boot (it
   decides `cfg.internal_spk`), only the event mask and volume reload live.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
+  the bulb Duration page uses the exposure preset picker.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
   and a wake press is swallowed until every input source reports released.

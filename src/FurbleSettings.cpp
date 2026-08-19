@@ -43,6 +43,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FB_OUTPUT,         {FB_OUTPUT, 33, "Feedback", "fb_output", FURBLE_STR}                 },
     {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
     {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
+    {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -302,6 +303,7 @@ void Settings::init(void) {
         case TX_ADAPTIVE:
         case CONN_SAVER:
         case IR:
+        case PRESET_PICKER:
         case RECON_BACKOFF:
         case FAUXNY:
         case AUTOCONNECT:

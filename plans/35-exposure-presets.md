@@ -26,9 +26,12 @@ One PR.
 - A preset stepping mode for duration selection using the standard series:
   1, 1.3, 1.6, 2, 2.5, 3.2, 4, 5, 6, 8, 10, 13, 15, 20, 25, 30, 40, 50,
   60, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000 seconds.
-- Applies to the bulb duration picker (plans/04) and the intervalometer
-  Shutter spinner. Count, Delay and Wait keep the digit spinner, they are
-  not exposure values.
+- Applies to the bulb duration picker (plans/04) only. Review narrowed the
+  scope: the intervalometer Shutter is a button-press duration, not an
+  exposure time, so it keeps the digit spinner along with Count, Delay and
+  Wait. The original enable-time snap also rewrote and persisted the stored
+  Shutter value (default 30 ms became 1 s) on every boot, which the
+  bulb-only scope and lazy snapping remove.
 - Toggle between digit entry and preset stepping so arbitrary values stay
   possible. Default stays digit entry, current behavior.
 - Preset stepping UI: the value shown large, plus and minus step one series
@@ -50,8 +53,13 @@ implementation time.
 - Store the selected value in the existing interval_t and BULB nvs_t
   representations, seconds with the fractional values 1.3, 1.6, 2.5, 3.2
   stored as milliseconds. No storage format change.
-- When entering preset mode with a value not in the series, snap to the
-  nearest series entry and show it.
+- Never snap and save on enable or at boot. Entering preset mode with a
+  value not in the series shows the stored value unchanged and only tracks
+  the nearest series entry; the first step in the picker snaps onto the
+  series and saves. Switching the picker off snaps a non-representable
+  value (fractional seconds, 1000 s) to the nearest digit-editor value
+  before the rollers render, without persisting until the user changes
+  something.
 - The series is a static constexpr array. No allocation.
 
 ## Risks
@@ -79,27 +87,72 @@ implementation time.
 - https://github.com/gkoh/furble/issues/244
 - https://github.com/gkoh/furble/pull/292
 
-## Hardware verification, pass 3, 2026-08-18
+## Implementation status
 
-Verdict: PARTIAL. Tested on the combined image (version `hwv3`, app
-`v3.9.1-159-g138dd80`) on the M5StickS3 over USB.
+Implemented the preset picker for the bulb Duration field only. Review
+narrowed the scope from the original bulb-plus-shutter plan: the
+intervalometer Shutter is a button-press duration, not an exposure time,
+and the enable-time snap-and-save destroyed its stored value on every
+boot. The Shutter field keeps the plain digit spinner.
 
-Console evidence:
+Rebase notes:
 
-- `settings set preset_picker true` then reboot then `settings get preset_picker`
-  returns `value: true`, name `Preset Picker`, `type: bool`,
-  `applies: on reboot`. The setting saves, persists across a power cycle, and is
-  wired at wire id 30.
-- `settings set preset_picker false` also round trips. Default is off, current
-  behaviour, as designed.
+- `PRESET_PICKER` is assigned wire_id 30, continuing after `CONN_SAVER` (29)
+  from PR 24.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover
+  `PRESET_PICKER` as SETTING_BOOL.
+- Console `appliesImmediately` stays false: the UI applies its own toggle
+  live, a console or companion write applies on reboot, matching the
+  console "applies: on reboot" output.
 
-Still on the user checklist, needs eyes and fingers on the device:
+- Added the 31-entry 1/3-stop series in milliseconds.
+- Added the `PRESET_PICKER` bool setting with the `preset_picker` NVS key and
+  a false default. The setting is available under Features (appended last)
+  and through the debug settings console.
+- Digit rollers remain the default. Enabling preset mode never modifies or
+  saves the stored value; the picker shows the stored value and the first
+  step snaps onto the series and saves. Disabling the picker snaps
+  non-digit-representable values (fractional seconds, 1000 s) to the
+  nearest whole-unit value before the rollers render, unsaved until the
+  next user edit, so the rollers never receive an out-of-range index.
+- The digit rollers stay in their input group while hidden. LVGL 9 group
+  navigation skips objects with a hidden ancestor, so toggling the picker
+  does not scramble the traversal order.
+- Touch boards get plus and minus buttons, added to the input group so the
+  synthesized A/B/C buttons can reach them. Stick boards hide the buttons
+  and use the outer keys for minus and plus, the middle key confirms.
+  Pressed and long-press-repeat events provide one-step and hold-to-repeat
+  behavior.
+- Preset values use the existing packed NVS representation. Whole seconds use
+  the seconds unit. Fractional entries use milliseconds. No storage format
+  changed.
 
-- Open the bulb page and step the 1/3 stop preset roller. Confirm the value
-  displays, plus and minus step one series entry, the value never sticks at 0,
-  boundaries hold at 1 s and 1000 s, and Cancel leaves the picker without
-  changing the stored duration.
-- Confirm digit entry is unchanged when the toggle is off.
+The plan called for the full five-environment release build matrix. The
+m5stick-s3 build was verified with `FURBLE_VERSION=dev FURBLE_TEST=0`. It
+passes. The remaining environments build in CI.
 
-There is no console command to drive the picker, so the roller behaviour cannot
-be exercised over USB.
+Sim and host verification (no hardware required):
+
+- The protocol golden corpus covers the new `PRESET_PICKER` setting at wire
+  id 30. `make generate` is deterministic (regenerating leaves the goldens
+  unchanged) and `make test` passes, so the get, set, list, and response
+  TLV encodings are pinned.
+- `sim/scenarios/e2e/exposure-preset.txt` drives the real Features switch to
+  enable the picker, asserts the `PRESET_PICKER` setting persisted, then
+  opens the Bulb Duration page and steps the picker one 1/3-stop entry. The
+  step snaps and saves the stored bulb duration, so the persisted
+  `Settings::BULB` value (30 s default stepping up to 40 s) proves the picker
+  selection survived. Teeth confirmed by mutation: dropping the stepped-value
+  apply in `stepPreset` fails the scenario at the bulb-duration assertion.
+- The sim assertion surface additions (`preset_picker` in the toggle and
+  boolean-assert maps, the `bulb_ms` query, the `preset-step` action) are all
+  inside `#if defined(FURBLE_SIM)`, so the production binary is unchanged.
+
+The sim covers the UI, the setting persistence, and the setting TLV encoding.
+The on-camera exposure change still cannot be verified without hardware.
+
+Hardware verification is still pending, including X100VI bulb exposures at
+stepped values. Also verify on hardware that the middle-key confirm firing
+on LV_EVENT_RELEASED (the other menu back paths use LV_EVENT_CLICKED)
+behaves correctly, in particular that no stray release event after a
+long-press repeat exits the page.

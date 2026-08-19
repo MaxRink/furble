@@ -215,6 +215,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+    case Settings::PRESET_PICKER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -307,6 +308,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::PRESET_PICKER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -408,6 +410,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::PRESET_PICKER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

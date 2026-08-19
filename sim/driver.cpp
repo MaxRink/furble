@@ -377,6 +377,7 @@ std::string settingBoolValue(const std::string &name) {
       {"gps_nmea",      Settings::GPS_NMEA     },
       {"ir",            Settings::IR           },
       {"conn_saver",    Settings::CONN_SAVER   },
+      {"preset_picker", Settings::PRESET_PICKER},
       {"show_title",    Settings::SHOW_TITLE   },
       {"tx_adaptive",   Settings::TX_ADAPTIVE  },
       {"recon_backoff", Settings::RECON_BACKOFF},

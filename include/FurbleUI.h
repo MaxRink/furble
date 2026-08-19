@@ -26,7 +26,7 @@ class UI {
    *
    * Modifies button/navigation operation.
    */
-  enum class ControlMode { MENU, SHUTTER, SLIDER, REVERT };
+  enum class ControlMode { MENU, SHUTTER, SLIDER, PRESET, REVERT };
 
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the UI task to carry out on its behalf. */
@@ -79,6 +79,9 @@ class UI {
 
   /** Configure input control mode. */
   void configureControl(ControlMode mode, bool set = true);
+
+  /** Apply the exposure preset setting to the bulb duration spinner. */
+  void setPresetPicker(bool enabled);
 
   /** Display shutter intervalometer menu .*/
   void showShutterIntervalometer(bool show);
@@ -197,14 +200,29 @@ class UI {
    public:
     class Spinner {
      public:
-      Spinner(SpinnerOwner *owner, SpinValue::nvs_t nvs, bool infinite = false)
-          : m_Owner {owner}, m_SpinValue {nvs}, m_Infinite {infinite} {};
+      Spinner(SpinnerOwner *owner,
+              SpinValue::nvs_t nvs,
+              bool infinite = false,
+              bool presetSupported = false)
+          : m_Owner {owner},
+            m_SpinValue {nvs},
+            m_Infinite {infinite},
+            m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
+      static constexpr std::array<uint32_t, 31> m_ExposurePresetMilliseconds = {
+          1000,   1300,   1600,   2000,   2500,   3200,   4000,   5000,   6000,    8000,   10000,
+          13000,  15000,  20000,  25000,  30000,  40000,  50000,  60000,  80000,   100000, 125000,
+          160000, 200000, 250000, 320000, 400000, 500000, 640000, 800000, 1000000,
+      };
 
       void update(void);
       void updateLabels(void);
+      void setPresetPicker(bool enabled);
+      void stepPreset(int direction);
+      bool supportsPresetPicker(void) const { return m_PresetSupported; }
+      bool usesPresetPicker(void) const { return m_PresetPicker; }
 
       SpinnerOwner *m_Owner;
       SpinValue m_SpinValue;
@@ -215,10 +233,25 @@ class UI {
       lv_obj_t *m_RowInfinite;
       lv_obj_t *m_SwitchInfinite;
 
-      lv_obj_t *m_RowSpinners;
+      lv_obj_t *m_RowSpinners = nullptr;
       // array of rollers, 0 = hundred, 1 = ten, 2 = one
       std::array<lv_obj_t *, 3> m_Roller = {nullptr, nullptr, nullptr};
       lv_obj_t *m_RollerUnit = nullptr;
+
+      lv_obj_t *m_PresetRow = nullptr;
+      lv_obj_t *m_PresetMinus = nullptr;
+      lv_obj_t *m_PresetValue = nullptr;
+      lv_obj_t *m_PresetPlus = nullptr;
+
+     private:
+      static size_t nearestPreset(uint32_t milliseconds);
+      static SpinValue::nvs_t presetNVS(size_t index);
+      void updatePresetPickerVisibility(void);
+      void snapToDigits(void);
+
+      const bool m_PresetSupported;
+      bool m_PresetPicker = false;
+      size_t m_PresetIndex = 0;
     };
 
     typedef enum {
@@ -795,6 +828,15 @@ class UI {
 
   /** Configure slider control. */
   void configSliderControl(void);
+
+  /** Configure preset picker controls. */
+  void configPresetControl(void);
+
+  /** Step the active exposure preset picker. */
+  void presetStep(int direction);
+
+  /** Confirm the active exposure preset picker. */
+  void presetConfirm(void);
 
   /** Check lock screen activity. */
   void handleLockScreen(void);

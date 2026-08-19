@@ -48,6 +48,7 @@ class Settings {
     FB_OUTPUT,
     FB_EVENTS,
     FB_VOLUME,
+    PRESET_PICKER,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -276,6 +277,10 @@ struct Settings::storage_type<Settings::FB_EVENTS> {
 template <>
 struct Settings::storage_type<Settings::FB_VOLUME> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::PRESET_PICKER> {
+  using type = bool;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>
