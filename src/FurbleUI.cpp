@@ -2253,6 +2253,16 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(g_simDisconnectCalls);
   }
 
+  // Whether the connect liveness timer is parked. It must pause once the link is
+  // fully down so it does not spin forever on a torn-down connection, and keep
+  // running while active or reconnecting so a drop is observed.
+  if (query == "connect_timer") {
+    if (m_ConnectTimer == nullptr) {
+      return "none";
+    }
+    return lv_timer_get_paused(m_ConnectTimer) ? "paused" : "running";
+  }
+
   if (query == "connected") {
     // The UI only presents a connected camera once the progress box is gone,
     // the connected page is showing, and control reports an active link. A
@@ -2673,6 +2683,11 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
     case Control::STATE_IDLE:
     case Control::STATE_DISCONNECTING:
       // The disconnect feedback fired above on leaving the active state.
+      // Defensive: doDisconnect() already pauses on the interactive path, and a
+      // legitimate reconnect passes through STATE_CONNECT/CONNECTING, not idle.
+      // If Control ever drops straight from active to idle, pause here too so
+      // the liveness poll self-heals instead of spinning on a torn-down link.
+      lv_timer_pause(m_ConnectTimer);
       break;
   }
 }
