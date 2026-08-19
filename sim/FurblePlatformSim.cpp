@@ -25,6 +25,15 @@ Platform &Platform::getInstance(void) {
     config.internal_mic = false;
     config.pmic_button = true;
     M5.begin(config);
+
+    // The SDL panel always attaches a mouse-driven touch device, so the sim
+    // defaults to a touch board. A scenario can request the buttons-only path
+    // the M5Stick* devices take with `seed no_touch true`, which disables touch
+    // before the UI is built so it constructs the non-touch navigation.
+    if (Sim::scenarioSettingIsTrue("no_touch")) {
+      M5.Touch.begin(nullptr);
+    }
+
     instance.m_Init = true;
   }
 

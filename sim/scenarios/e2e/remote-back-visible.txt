@@ -1,0 +1,22 @@
+# Remote shutter page must expose a working Back on non-touch devices. The
+# 'no_touch' seed builds the UI as a buttons-only M5Stick* device, the class of
+# devices this bug traps. Connect the FauxNY camera, enter the remote shutter
+# page the way the Connected page's 'Remote' button does, and confirm the header
+# back button is visible and enabled, then that pressing it returns to the
+# Connected page. Before the fix the non-touch branch hid Back, leaving the
+# remote page a navigation dead end.
+seed fauxny true
+seed no_touch true
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+assert ui.page connected
+action blind
+wait 200
+assert ui.page shutter
+assert ui.back visible
+back
+wait 200
+assert ui.page connected
+exit

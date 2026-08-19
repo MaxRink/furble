@@ -1580,13 +1580,11 @@ void UI::addMainMenu(void) {
           lv_obj_add_state(back, LV_STATE_DISABLED);
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
         } else if (page == m_Menu.at(m_RemoteShutter).page) {
-          if (M5.Touch.isEnabled()) {
-            // if touch screen, enable back
-            lv_obj_remove_state(back, LV_STATE_DISABLED);
-          } else {
-            // hide the back button
-            lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
-          }
+          // 'Remote' is reachable from the connected page, always display 'Back'.
+          // Hiding it on non-touch devices left the header back unreachable and
+          // stranded the user on the remote page.
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
         } else if ((page == m_Menu.at(m_RemoteBulb).page)
                    || (page == m_Menu.at(m_BulbRunStr).page)) {
           // bulb is reachable from the connected page, always display 'Back'
