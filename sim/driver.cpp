@@ -316,7 +316,9 @@ std::string settingBoolValue(const std::string &name) {
       {"reconnect",     Settings::RECONNECT    },
       {"multiconnect",  Settings::MULTICONNECT },
       {"companion",     Settings::COMPANION    },
+#if defined(FURBLE_M5STICKS3)
       {"watchdog",      Settings::WATCHDOG     },
+#endif
       {"gps",           Settings::GPS          },
       {"gps_nmea",      Settings::GPS_NMEA     },
       {"ir",            Settings::IR           },

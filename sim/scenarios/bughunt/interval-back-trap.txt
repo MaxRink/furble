@@ -1,0 +1,23 @@
+# #4c class: starting a multi-frame intervalometer then navigating away must not
+# leave the timer firing shutter commands with no visible page or stop control.
+seed fauxny true
+seed interval_count 8
+seed interval_wait 1
+seed interval_shutter 100
+seed interval_delay 0
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+action intervalometer
+wait 1200
+print camera.shutter_presses
+action page connected
+wait 200
+print ui.page
+action page main
+wait 200
+print ui.page
+wait 4000
+print camera.shutter_presses
+exit
