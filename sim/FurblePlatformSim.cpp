@@ -1,6 +1,8 @@
 #include <cstdlib>
 
+#include <M5GFX.h>
 #include <M5Unified.h>
+#include <SDL2/SDL.h>
 
 #include <driver/uart.h>
 
@@ -25,6 +27,20 @@ Platform &Platform::getInstance(void) {
     config.internal_mic = false;
     config.pmic_button = true;
     M5.begin(config);
+
+    // Map keyboard letters to the same emulated button GPIOs M5Unified's PC
+    // build reads (BtnA=39, BtnB=38, BtnC=37, BtnPWR=36), so an interactive
+    // session with a visible SDL window can drive the physical buttons furble
+    // handles on hardware. The M5GFX SDL panel already maps the arrow keys to
+    // these pins; the letters just make the button identity explicit. This path
+    // needs the SDL event pump, so it only works interactively: headless
+    // scenarios drive the buttons through the `btn` command, which injects on
+    // the UI task via UI::simPressButton instead of toggling pins.
+    lgfx::Panel_sdl::addKeyCodeMapping(SDLK_a, 39);  // BtnA
+    lgfx::Panel_sdl::addKeyCodeMapping(SDLK_b, 38);  // BtnB
+    lgfx::Panel_sdl::addKeyCodeMapping(SDLK_c, 37);  // BtnC (Core only)
+    lgfx::Panel_sdl::addKeyCodeMapping(SDLK_p, 36);  // BtnPWR (Stick only)
+
     instance.m_Init = true;
   }
 

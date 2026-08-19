@@ -4848,5 +4848,63 @@ bool UI::simulatorBack(void) {
   lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
   return true;
 }
+
+bool UI::simPressButton(const char *name, bool hold) {
+  const std::string button = name == nullptr ? "" : name;
+
+  // Resolve the silk-screen button to its LVGL input-device role using the same
+  // per-board wiring as initInputDevices(). Each board only exposes the buttons
+  // the physical device has: the Sticks carry BtnA, BtnB and the side BtnPWR,
+  // the Cores carry BtnA/BtnB/BtnC. Pressing a button the board lacks returns
+  // false so the scenario fails loudly rather than silently doing nothing.
+  lv_indev_t *indev = nullptr;
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+    case m5::board_t::board_M5StickCPlus:
+    case m5::board_t::board_M5StickCPlus2:
+    case m5::board_t::board_M5StickS3:
+      if (button == "pwr") {
+        indev = m_ButtonL;
+      } else if (button == "a") {
+        indev = m_ButtonO;
+      } else if (button == "b") {
+        indev = m_ButtonR;
+      }
+      break;
+
+    case m5::board_t::board_M5Tough:
+    case m5::board_t::board_M5StackCore2:
+    case m5::board_t::board_M5Stack:
+      if (button == "a") {
+        indev = m_ButtonL;
+      } else if (button == "b") {
+        indev = m_ButtonO;
+      } else if (button == "c") {
+        indev = m_ButtonR;
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  if (indev == nullptr) {
+    return false;
+  }
+
+  // A long press of the left button is furble's universal back escape. This is
+  // the exact path buttonPWRRead/buttonARead take through handleLeftLongPress,
+  // and it works even on the Remote and blind pages that hide the header back
+  // arrow, the F6 case the touch-only sim could not see.
+  if (indev == m_ButtonL && hold) {
+    navigateBack();
+    return true;
+  }
+
+  // A short tap feeds the encoder key the read callback reports: the left and
+  // right buttons scroll the focus group, the OK button activates the focus.
+  lv_group_send_data(m_Group, inputKey(indev));
+  return true;
+}
 #endif
 }  // namespace Furble

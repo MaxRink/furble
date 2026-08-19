@@ -1,0 +1,23 @@
+# End-to-end regression for the physical Back button on the Remote page.
+#
+# The sim board is the M5StickS3, a non-touch device whose left/back button is
+# the side BtnPWR. Finding F6 flagged the Remote shutter page as a navigation
+# trap because the touch-only sim could not see that a long press of that
+# physical button already returns to the Connected page (handleLeftLongPress ->
+# navigateBack, which force-shows the header back arrow even on pages that hide
+# it). Hardware verification confirmed there was no real trap, so PR #113 was
+# closed. This scenario models the physical button so the sim stops reporting
+# F6-class false positives: open the Remote page, hold the physical Back button,
+# and assert the UI returns to Connected.
+seed fauxny true
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+action blind
+wait 300
+assert ui.page shutter
+btn pwr hold
+wait 400
+assert ui.page connected
+exit

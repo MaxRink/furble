@@ -31,6 +31,7 @@ namespace {
 enum class StepType {
   WAIT,
   KEY,
+  BTN,
   CAPTURE,
   UART_DUMP,
   HOME,
@@ -46,6 +47,7 @@ struct Step {
   StepType type;
   uint32_t milliseconds = 0;
   SDL_Keycode key = SDLK_UNKNOWN;
+  bool hold = false;
   std::string name;
   std::string expected;
 };
@@ -131,6 +133,32 @@ void pushKey(SDL_Keycode key, bool pressed) {
   }
 }
 
+// Physical button set per simulated board, used to reject at parse time a
+// scenario that presses a button the board does not carry. The Sticks expose
+// front BtnA, top BtnB and the side BtnPWR; the Cores expose front BtnA/BtnB/
+// BtnC. The press itself runs through UI::simPressButton, which maps each
+// silk-screen button to the same per-board input device furble wires up in
+// initInputDevices, so the UI reacts exactly as it does to a hardware press.
+// Headless runs cannot drive input through the SDL panel's emulated GPIOs
+// (that path needs a display-backed event pump), so the button is injected on
+// the UI task rather than by toggling pins.
+#if defined(FURBLE_M5COREX)
+// M5Stack Core / Core2: three front buttons A/B/C, no dedicated power button.
+constexpr const char *kSimButtons[] = {"a", "b", "c"};
+#else
+// M5StickC / M5StickC-Plus / M5StickS3: front BtnA, top BtnB, side BtnPWR.
+constexpr const char *kSimButtons[] = {"a", "b", "pwr"};
+#endif
+
+bool buttonKnown(const std::string &name) {
+  for (const char *button : kSimButtons) {
+    if (name == button) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void readScript(const std::string &path) {
   std::ifstream file(path);
   if (!file) {
@@ -176,6 +204,32 @@ void readScript(const std::string &path) {
       step.key = keyCode(name);
       if (step.key == SDLK_UNKNOWN) {
         std::cerr << "Unknown simulator key: " << name << '\n';
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "btn" || command == "button") {
+      // Press a physical button by name: a, b, c or pwr. An optional second
+      // token "hold"/"long" selects the left-button long-press escape. Absent
+      // it, the button taps. The name is validated against the board's button
+      // set here so pressing an absent button (BtnC on a Stick, BtnPWR on a
+      // Core) fails at parse time.
+      std::string name;
+      input >> name;
+      std::transform(name.begin(), name.end(), name.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      if (!buttonKnown(name)) {
+        std::cerr << "Unknown or unavailable simulator button for this board: " << name << '\n';
+        std::exit(2);
+      }
+      Step step;
+      step.type = StepType::BTN;
+      step.name = name;
+      std::string hold;
+      input >> hold;
+      if (hold == "hold" || hold == "long") {
+        step.hold = true;
+      } else if (!hold.empty()) {
+        std::cerr << "Unknown simulator button modifier: " << hold << '\n';
         std::exit(2);
       }
       steps.push_back(step);
@@ -513,7 +567,6 @@ void driverTick(void) {
     ++stepIndex;
     return;
   }
-
   Step &step = steps[stepIndex];
   switch (step.type) {
     case StepType::WAIT:
@@ -530,6 +583,21 @@ void driverTick(void) {
       pushKey(step.key, true);
       pressedKey = step.key;
       releaseAt = now + 80;
+      break;
+
+    case StepType::BTN:
+      // Route the press through the UI so it runs the board's real button->nav
+      // path (the same handlers furble uses on hardware), not the SDL panel's
+      // emulated GPIOs, which do not reach the UI in a headless run.
+      if (scenarioUi == nullptr) {
+        std::cerr << "Scenario button ran before the UI was ready: " << step.name << '\n';
+        std::exit(1);
+      }
+      if (!scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
+        std::cerr << "Simulator button not available on this board: " << step.name << '\n';
+        std::exit(1);
+      }
+      ++stepIndex;
       break;
 
     case StepType::CAPTURE:
