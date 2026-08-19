@@ -549,6 +549,9 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
 
   lv_obj_t *accept = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Accept");
+  // Add the button to the encoder group so it is focusable and operable on
+  // non-touch devices. Without this, lv_group_focus_obj below is a no-op.
+  addToInputGroup(ui->m_Group, accept);
   lv_obj_add_event_cb(
       accept,
       [](lv_event_t *event) {
@@ -559,6 +562,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       LV_EVENT_CLICKED, ui);
 
   lv_obj_t *reject = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Reject");
+  addToInputGroup(ui->m_Group, reject);
   lv_obj_add_event_cb(
       reject,
       [](lv_event_t *event) {
