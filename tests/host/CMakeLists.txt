@@ -79,6 +79,10 @@ target_compile_options(fujifilm_protocol_test PRIVATE -Wall -Wextra -Werror -Wno
 add_executable(settings_table_test settings_table_test.cpp)
 target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                    -Wno-unused-parameter)
+add_executable(stale_connect_test stale_connect_test.cpp)
+target_link_libraries(stale_connect_test PRIVATE furble_host_camera)
+target_compile_options(stale_connect_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter)
 
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
@@ -89,4 +93,5 @@ if(BUILD_TESTING)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+  add_test(NAME stale-connect COMMAND stale_connect_test)
 endif()
