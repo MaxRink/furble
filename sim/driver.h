@@ -18,6 +18,14 @@ void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);
 
+// End-to-end scenario support. connectShouldFail() lets a scenario model a
+// camera that never establishes a link, mirroring the stale-connected hardware
+// bug at the UI layer. The shutter counters expose how many shutter commands
+// the fake camera received so scenarios can assert the control path fired.
+bool connectShouldFail(void);
+uint32_t cameraShutterPresses(void);
+uint32_t cameraShutterReleases(void);
+
 void rigConfigure(bool requested,
                   uint16_t port,
                   bool ignoreUuidMismatch,

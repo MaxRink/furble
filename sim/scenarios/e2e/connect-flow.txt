@@ -1,0 +1,16 @@
+# End-to-end connect flow. Boot with the FauxNY test camera available, drive the
+# connect that the Scan and Connect buttons trigger, and confirm the UI and
+# Control both reach the connected state.
+seed fauxny true
+wait 300
+assert control.state idle
+assert ui.page main
+action connect
+wait 200
+assert control.state connecting
+assert ui.connect_box visible
+wait 1500
+assert control.state active
+assert control.connected 1
+assert ui.connected yes
+exit

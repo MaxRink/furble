@@ -1,0 +1,19 @@
+# Open Settings, change a setting through its real switch widget, back out, and
+# confirm the change persisted and navigation returned to the main menu.
+seed reconnect false
+wait 300
+assert ui.page main
+assert setting.reconnect 0
+action page settings
+wait 200
+assert ui.page settings
+action page features
+wait 200
+assert ui.page features
+action toggle reconnect
+wait 200
+assert setting.reconnect 1
+action page menu
+wait 200
+assert ui.page main
+exit

@@ -179,9 +179,10 @@ Control::state_t Control::getState(void) const {
         static_cast<uint8_t>(std::min<uint32_t>(100, elapsed * 100 / CONNECT_DURATION_MS));
     control->m_ConnectCamera->setConnectProgress(progress);
     if (elapsed >= CONNECT_DURATION_MS) {
-      control->m_ConnectCamera->connect(control->m_Power, CONNECT_DURATION_MS);
+      const bool connected =
+          control->m_ConnectCamera->connect(control->m_Power, CONNECT_DURATION_MS);
       control->m_ConnectCamera = nullptr;
-      control->setState(STATE_ACTIVE);
+      control->setState(connected ? STATE_ACTIVE : STATE_CONNECT_FAILED);
     }
   }
   return m_State;

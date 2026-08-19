@@ -1,0 +1,13 @@
+# Connect, fire the shutter through the real shutter button handler, and confirm
+# the shutter command reached the camera over the Control path.
+seed fauxny true
+wait 300
+action connect
+wait 1500
+assert ui.connected yes
+assert camera.shutter_presses 0
+action shutter
+wait 200
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+exit

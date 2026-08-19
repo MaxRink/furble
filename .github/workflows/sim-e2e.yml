@@ -1,0 +1,87 @@
+name: Simulator end-to-end
+
+# Drive the real UI and Control against the fake camera through scripted
+# scenarios and assert app-state outcomes. This job stays separate from the
+# ui-screenshots job on purpose: it asserts control-flow state, never reads back
+# pixels, so it avoids the software-GL readback path that makes screenshots
+# flaky. The SDL dummy video driver is enough, so no Xvfb is required.
+'on':
+  pull_request:
+    paths:
+      - 'src/FurbleUI*'
+      - 'src/FurbleGPS.cpp'
+      - 'src/FurbleSettings.cpp'
+      - 'src/FurbleSpinValue.cpp'
+      - 'src/FurbleCalibrate.cpp'
+      - 'src/FurblePower.cpp'
+      - 'src/FurbleCompanionService.cpp'
+      - 'include/FurbleUI.h'
+      - 'include/FurbleControl.h'
+      - 'include/FurbleSettings.h'
+      - 'components/icons/**'
+      - 'sim/**'
+      - 'sdkconfig.*'
+      - 'tools/gen_lv_conf.py'
+      - '.github/workflows/sim-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sim-e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # No restore-keys on purpose: the fetch step below skips a dependency
+      # when its directory exists, so a stale prefix match could pin an old
+      # version. An exact key miss just re-clones, which takes seconds.
+      - uses: actions/cache@v5
+        with:
+          path: sim/.pio
+          key: ${{ runner.os }}-sim-e2e-${{ hashFiles('sim/platformio.ini', '.github/workflows/sim-e2e.yml') }}
+
+      - name: Install SDL2 and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang libsdl2-dev
+
+      # build.sh never invokes PlatformIO; it only needs the four source trees.
+      # Pinned shallow git clones are faster and fail loudly when a pin is
+      # wrong. Keep these pins in sync with sim/platformio.ini and
+      # src/idf_component.yml and the ui-screenshots workflow.
+      - name: Fetch simulator dependencies
+        env:
+          DEPS: ${{ github.workspace }}/sim/.pio/libdeps/sim
+        run: |
+          clone_tag() {
+            test -d "$DEPS/$3" || \
+              git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
+          }
+          mkdir -p "$DEPS"
+          clone_tag m5stack/M5GFX 0.2.19 M5GFX
+          clone_tag m5stack/M5Unified 0.2.13 M5Unified
+          clone_tag lvgl/lvgl v9.4.0 lvgl
+          if [ ! -d "$DEPS/TinyGPSPlus" ]; then
+            git init "$DEPS/TinyGPSPlus"
+            git -C "$DEPS/TinyGPSPlus" fetch --depth 1 \
+              https://github.com/gkoh/TinyGPSPlus \
+              92ac8c21b8179201c2c8c534e46af3320b76d3e7
+            git -C "$DEPS/TinyGPSPlus" checkout --detach FETCH_HEAD
+          fi
+
+      - name: Generate LVGL configuration
+        run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+
+      - name: Build simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+        run: sh sim/build.sh
+
+      - name: Run end-to-end scenarios
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: sh sim/scripts/run-e2e.sh

@@ -1,0 +1,15 @@
+# End-to-end mirror of the stale-connected hardware bug at the UI layer. A camera
+# that never establishes a link must not present as connected. Drive the same
+# connect flow with a camera that fails to connect and confirm the UI never
+# shows the connected page and Control never reports an active link.
+seed fauxny true
+seed connect_fail true
+wait 300
+action connect
+wait 200
+assert ui.connect_box visible
+wait 2500
+assert control.state idle
+assert control.connected 0
+assert ui.connected no
+exit

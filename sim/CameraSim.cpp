@@ -1,11 +1,28 @@
 #include <algorithm>
+#include <atomic>
 
 #include "Camera.h"
+#include "driver.h"
 #include "power_profiler.h"
 
 namespace Furble {
+namespace {
+
+std::atomic<uint32_t> shutterPresses {0};
+std::atomic<uint32_t> shutterReleases {0};
+
+}  // namespace
 
 bool Camera::connect(esp_power_level_t, uint32_t) {
+  // A scenario can request a camera that never establishes a link. The connect
+  // reports failure and leaves the camera disconnected, mirroring the
+  // stale-connected hardware bug at the UI layer.
+  if (Sim::connectShouldFail()) {
+    m_Connected = false;
+    m_Progress = 0;
+    Sim::profilerSetRadioConnected(false);
+    return false;
+  }
   m_Progress = 100;
   m_Connected = true;
   Sim::profilerSetRadioConnected(true);
@@ -47,10 +64,12 @@ void Camera::setConnectProgress(uint8_t progress) {
 }
 
 void Camera::shutterPress(void) {
+  shutterPresses.fetch_add(1);
   Sim::profilerRadioEvent("shutter_press");
 }
 
 void Camera::shutterRelease(void) {
+  shutterReleases.fetch_add(1);
   Sim::profilerRadioEvent("shutter_release");
 }
 
@@ -65,5 +84,17 @@ void Camera::focusRelease(void) {
 void Camera::updateGeoData(const gps_t &, const timesync_t &) {
   Sim::profilerRadioEvent("gps_update");
 }
+
+namespace Sim {
+
+uint32_t cameraShutterPresses(void) {
+  return shutterPresses.load();
+}
+
+uint32_t cameraShutterReleases(void) {
+  return shutterReleases.load();
+}
+
+}  // namespace Sim
 
 }  // namespace Furble
