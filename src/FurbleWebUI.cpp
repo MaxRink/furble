@@ -509,7 +509,7 @@ std::string WebUI::buildCamerasJSON(void) const {
   if (control.getState() == Control::STATE_IDLE) {
     CameraList::load();
     for (size_t n = 0; n < CameraList::size(); n++) {
-      Camera *camera = CameraList::get(n);
+      const auto camera = CameraList::get(n);
       const std::string id = Control::getCameraID(*camera);
       cJSON *item = cJSON_CreateObject();
       cJSON_AddStringToObject(item, "id", id.c_str());
