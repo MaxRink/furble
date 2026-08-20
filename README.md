@@ -209,6 +209,13 @@ status                              state, targets, uptime, heap, battery, reset
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
+wifi status                         WiFi state, access point and IP information
+wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
+wifi enable|disable                 enable or disable station reconnects
+wifi connect|disconnect|forget      control the saved station credentials
+ntp status                          NTP state, server, sync time and offset
+ntp set server <host>               save the NTP server
+ntp enable|disable|sync             control or request an NTP synchronization
 settings list | get | set           read and write every setting
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
