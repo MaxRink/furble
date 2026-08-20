@@ -1146,11 +1146,11 @@ int cmdPair(int argc, char **argv) {
   }
 
   auto &control = Control::getInstance();
-  Camera *camera = control.getConnectingCamera();
+  auto camera = control.getConnectingCamera();
   if ((camera == nullptr) || !camera->hasPendingPairing()) {
-    camera = nullptr;
+    camera.reset();
     for (const auto &target : control.getTargets()) {
-      Camera *candidate = target->getCamera();
+      auto candidate = target->getCamera();
       if ((candidate != nullptr) && candidate->hasPendingPairing()) {
         camera = candidate;
         break;

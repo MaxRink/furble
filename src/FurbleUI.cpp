@@ -769,14 +769,16 @@ void UI::pairingTimer(lv_timer_t *timer) {
     return;
   }
 
-  Camera *camera = Control::getInstance().getConnectingCamera();
+  auto connectingCamera = Control::getInstance().getConnectingCamera();
+  Camera *camera = connectingCamera.get();
   if ((camera != nullptr) && camera->hasPendingPairing()) {
     ui->showCameraPairing(camera);
     return;
   }
 
   for (const auto &target : Control::getInstance().getTargets()) {
-    camera = target->getCamera();
+    auto targetCamera = target->getCamera();
+    camera = targetCamera.get();
     if ((camera != nullptr) && camera->hasPendingPairing()) {
       ui->showCameraPairing(camera);
       return;
