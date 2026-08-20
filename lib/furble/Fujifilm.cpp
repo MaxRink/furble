@@ -3,6 +3,7 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+#include <freertos/FreeRTOS.h>
 
 #include "Device.h"
 #include "Fujifilm.h"
