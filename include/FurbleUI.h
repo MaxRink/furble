@@ -32,6 +32,8 @@ class UI {
     IR_RELOAD,       /**< arg: unused */
     FEEDBACK_RELOAD, /**< arg: unused */
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
+    PERF,            /**< unavailable in the headless build */
+    AUDIT,           /**< unavailable in the headless build */
   };
 
   /** Create the request queue used by the headless main loop. */
