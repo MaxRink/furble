@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include <Camera.h>
 
@@ -47,7 +49,7 @@ class Control {
 
     std::shared_ptr<Camera> getCamera(void) const;
     cmd_t getCommand(void);
-    void sendCommand(cmd_t cmd);
+    BaseType_t sendCommand(cmd_t cmd);
     void updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync);
 
     void task(void);
@@ -119,6 +121,24 @@ class Control {
    * disconnect() clears it. The pointers stay owned by Control.
    */
   std::vector<Control::Target *> getTargets(void);
+
+  /** Snapshot connected target state for non-UI services. */
+  typedef struct {
+    std::string id;
+    std::string name;
+    Camera::Type type;
+    bool connected;
+    uint8_t progress;
+    int16_t rssi;
+  } target_status_t;
+
+  std::vector<target_status_t> getTargetStatus(void);
+
+  /** Send a command to one connected target. */
+  BaseType_t sendTargetCommand(const std::string &id, cmd_t cmd);
+
+  /** Return the stable MQTT identifier for a saved camera. */
+  static std::string getCameraID(const Camera &camera);
 
   /**
    * Connect to all active cameras.

@@ -209,6 +209,8 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::COMPANION:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -237,6 +239,10 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SCAN_TIMEOUT:
       return SETTING_U32;
     case Settings::THEME:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -263,6 +269,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::COMPANION:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -305,6 +313,10 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       return true;
     }
     case Settings::THEME:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
     {
       const std::string v = Settings::load<std::string>(type);
       value.assign(v.begin(), v.end());

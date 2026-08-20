@@ -32,9 +32,9 @@ Control::cmd_t Control::Target::getCommand(void) {
   return CMD_ERROR;
 }
 
-void Control::Target::sendCommand(cmd_t cmd) {
+BaseType_t Control::Target::sendCommand(cmd_t cmd) {
   if (m_Camera == nullptr) {
-    return;
+    return pdFALSE;
   }
   switch (cmd) {
     case CMD_SHUTTER_PRESS:
@@ -55,6 +55,7 @@ void Control::Target::sendCommand(cmd_t cmd) {
     default:
       break;
   }
+  return pdTRUE;
 }
 
 void Control::Target::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {
