@@ -51,6 +51,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {MQTT_PASS,         {MQTT_PASS, 59, "MQTT Password", "mqtt_pass", FURBLE_STR}            },
     {MQTT_BASE,         {MQTT_BASE, 60, "MQTT Base", "mqtt_base", FURBLE_STR}                },
     {MQTT_HA,           {MQTT_HA, 61, "MQTT Home Assistant", "mqtt_ha", FURBLE_STR}          },
+    {WEB_UI,            {WEB_UI, 62, "Web UI", "web_ui", FURBLE_STR}                         },
 #if !defined(FURBLE_NO_DISPLAY)
     {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
@@ -344,6 +345,7 @@ void Settings::init(void) {
           break;
         case MQTT:
         case MQTT_HA:
+        case WEB_UI:
           save<bool>(setting.type, false);
           break;
         case MQTT_URI:

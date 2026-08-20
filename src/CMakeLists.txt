@@ -11,6 +11,7 @@ set(furble_sources
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleSettings.cpp
+    FurbleWebUI.cpp
     main.cpp)
 
 # PlatformIO passes the displayless profile as a CMake cache variable. It is
@@ -33,5 +34,5 @@ endif()
 # them out and the release binaries are unchanged.
 idf_component_register(SRCS ${furble_sources}
                        PRIV_REQUIRES console esp_driver_rmt esp_driver_usb_serial_jtag esp_pm
-                                     mqtt json esp_netif
+                                     mqtt json esp_netif esp_http_server esp_wifi
                        REQUIRES icons)
