@@ -226,6 +226,11 @@ void UI::serviceRequests(void) {
       case Request::FEEDBACK_TEST:
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
+
+      case Request::PERF:
+      case Request::AUDIT:
+        printf("error: not supported in headless build\n");
+        break;
     }
   }
 }

@@ -701,8 +701,7 @@ int cmdUI(int argc, char **argv) {
   }
 
 #if defined(FURBLE_NO_DISPLAY)
-  // The UI audit inspects the LVGL widget tree, which the headless build has no.
-  return fail("not supported in this build");
+  return fail("not supported in headless build");
 #else
   return sendPrintingRequest(UI::Request::AUDIT, 0);
 #endif
@@ -1035,6 +1034,7 @@ int cmdPower(int argc, char **argv) {
   return fail("expected stats or log");
 }
 
+#if !defined(FURBLE_NO_DISPLAY)
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
 
 int cmdPerfTasks(void) {
@@ -1152,6 +1152,13 @@ int cmdPerf(int argc, char **argv) {
 
   return fail("expected tasks, heap or lvgl");
 }
+#else
+int cmdPerf(int argc, char **argv) {
+  (void)argc;
+  (void)argv;
+  return fail("not supported in headless build");
+}
+#endif
 
 const char *wifiStateStr(WiFi::state_t state) {
   switch (state) {
