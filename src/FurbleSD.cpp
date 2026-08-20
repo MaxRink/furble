@@ -176,6 +176,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS_DUTY:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
+    case Settings::TEXT_SIZE:
     case Settings::SCAN_MODE:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
@@ -207,6 +208,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::IR:
     case Settings::CONN_SAVER:
@@ -305,6 +307,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::TEXT_SIZE:
+      if (!parseUnsigned(text, Settings::TEXT_SIZE_LARGE, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::SCAN_MODE:
       if (!parseUnsigned(text, 2, value)) {
         return false;
@@ -369,6 +378,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::IR:
     case Settings::CONN_SAVER:
