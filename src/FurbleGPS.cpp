@@ -4,12 +4,15 @@
 #include <M5Unified.h>
 #include <TinyGPS++.h>
 #include <esp_timer.h>
-#include <lvgl.h>
 
 #include <algorithm>
 #include <cmath>
 
+#if !defined(FURBLE_NO_DISPLAY)
+#include <lvgl.h>
+
 #include "icons.h"
+#endif
 
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
@@ -120,7 +123,11 @@ void GPS::init(void) {
 }
 
 void GPS::setIcon(lv_obj_t *icon) {
+#if !defined(FURBLE_NO_DISPLAY)
   m_Icon = icon;
+#else
+  (void)icon;
+#endif
 }
 
 void GPS::reset(void) {
@@ -718,6 +725,7 @@ bool GPS::isEnabled(void) const {
 
 /** Start timer event to service/update GPS. */
 void GPS::startService(void) {
+#if !defined(FURBLE_NO_DISPLAY)
   if (m_Timer != NULL) {
     return;
   }
@@ -729,6 +737,7 @@ void GPS::startService(void) {
         gps->update();
       },
       SERVICE_MS, this);
+#endif
 }
 
 bool GPS::setExternalFix(const external_fix_t &fix) {
@@ -823,6 +832,7 @@ void GPS::update(void) {
     }
   }
 
+#if !defined(FURBLE_NO_DISPLAY)
   // setting the source invalidates the image and forces a decode, only do it
   // when the icon actually changes
   const lv_image_dsc_t *symbol = &icon_location_disabled;
@@ -835,6 +845,7 @@ void GPS::update(void) {
     m_IconSymbol = symbol;
     lv_image_set_src(m_Icon, symbol);
   }
+#endif
 }
 
 bool GPS::wiredFixIsFresh(void) {
