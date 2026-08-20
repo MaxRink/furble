@@ -669,6 +669,8 @@ void UI::showCompanionPairing(void) {
         ui->closePairingDialog();
       },
       LV_EVENT_CLICKED, this);
+
+  lv_group_focus_obj(accept);
 }
 
 void UI::showCameraPairing(Camera *camera) {
@@ -2287,7 +2289,7 @@ void UI::simScenarioAction(const char *action) {
   // is fixed so captures stay deterministic.
   if (command == "companion-pair-request") {
     Sim::rigInjectPendingPairing(123456);
-    startCompanionPairingTimer();
+    startPairingTimer();
     return;
   }
 
@@ -2295,10 +2297,10 @@ void UI::simScenarioAction(const char *action) {
   // handler an on-device button press would. Footer child 0 is Accept, 1 is
   // Reject. Used to reproduce the input-after-approve regression (task #32).
   if (command == "companion-accept" || command == "companion-reject") {
-    if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
+    if (m_PairingDialog == nullptr || !lv_obj_is_valid(m_PairingDialog)) {
       return;
     }
-    lv_obj_t *footer = lv_msgbox_get_footer(m_CompanionPairingDialog);
+    lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
     if (footer == nullptr) {
       return;
     }
@@ -2509,8 +2511,7 @@ std::string UI::simQueryState(const char *key) {
   // Companion pairing modal presence, for the input-after-approve regression
   // (task #32).
   if (query == "modal") {
-    const bool open =
-        m_CompanionPairingDialog != nullptr && lv_obj_is_valid(m_CompanionPairingDialog);
+    const bool open = m_PairingDialog != nullptr && lv_obj_is_valid(m_PairingDialog);
     return open ? "open" : "closed";
   }
 
@@ -2530,10 +2531,10 @@ std::string UI::simQueryState(const char *key) {
   // auto-added to the default group, so this alone does not go red against the
   // pre-fix code.
   if (query == "modal_focus") {
-    if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
+    if (m_PairingDialog == nullptr || !lv_obj_is_valid(m_PairingDialog)) {
       return "closed";
     }
-    lv_obj_t *footer = lv_msgbox_get_footer(m_CompanionPairingDialog);
+    lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
     lv_obj_t *accept = footer == nullptr ? nullptr : lv_obj_get_child(footer, 0);
     if (accept == nullptr) {
       return "no";
