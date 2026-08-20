@@ -78,6 +78,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp"
+    "${FURBLE_ROOT}/src/FurbleIMU.cpp"
     "${FURBLE_ROOT}/src/FurblePower.cpp"
     "${FURBLE_ROOT}/src/FurbleProvision.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
