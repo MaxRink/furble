@@ -18,6 +18,7 @@ set(furble_sources
     FurbleUI.cpp
     FurbleUIAudit.cpp
     FurbleUIBulb.cpp
+    FurbleUIGesture.cpp
     FurbleUIIntervalometer.cpp
     main.cpp)
 
