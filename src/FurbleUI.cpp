@@ -1427,13 +1427,18 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  lv_obj_set_style_pad_top(cont, 6, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, 6, LV_STATE_DEFAULT);
+  const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
+  lv_obj_set_style_pad_top(cont, connectedPage ? 0 : 6, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, connectedPage ? 0 : 6, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
-  // (Connect, Scan, Delete, Settings, Power off) fits without scrolling.
-  lv_obj_set_style_pad_top(cont, 1, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, 1, LV_STATE_DEFAULT);
+  // (Connect, Scan, Delete, Settings, Power off) fits without scrolling. The
+  // Connected page carries the most rows now that it also holds the Cameras
+  // entry, so it drops to zero padding to keep the extra row on-panel, matching
+  // the large narrow panels above.
+  const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
+  lv_obj_set_style_pad_top(cont, connectedPage ? 0 : 1, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, connectedPage ? 0 : 1, LV_STATE_DEFAULT);
 #endif
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);

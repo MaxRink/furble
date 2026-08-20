@@ -526,6 +526,18 @@ the render path. That cache is the one sanctioned RSSI source:
   `-e m5stick-s3-debug` pass after the review fixes.
 - Hardware tested: none. StickS3 pending.
 
+### Narrow-panel connected-page fit
+
+The Cameras entry adds a row to the Connected page. On the three narrow panels
+the per-row padding is trimmed so the extra row stays on screen. The 135x240
+M5StickC Plus and M5StickS3 drop the Connected page rows from 6 to 0 padding.
+The 80x160 M5StickC, the shortest panel, already ran its rows at 1 padding for
+the home menu; its Connected page now drops to 0 as well, matching the larger
+narrow panels. All other menus on the M5StickC keep 1 padding. Core and Core2
+lay the Connected page out as a grid and are unaffected. The
+`sim/scenarios/bughunt/text-size-overflow-large.txt` scenario asserts the
+Connected page reports no overflow on the 80x160 and 135x240 panels.
+
 ## References
 
 - LVGL 9.4, Menu widget, `lv_menu_page_create`, `lv_menu_set_load_page_event`,
