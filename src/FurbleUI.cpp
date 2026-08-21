@@ -614,7 +614,8 @@ void UI::closePairingDialog(void) {
     lv_msgbox_close_async(m_PairingDialog);
     m_PairingDialog = nullptr;
   }
-  m_PairingCamera = nullptr;
+  m_PairingCamera.reset();
+  m_PairingIsCamera = false;
 
   // Restore the encoder group focus captured before the modal footer buttons
   // took it. Without this every close path leaves focus on a deleted button and
@@ -626,7 +627,7 @@ void UI::closePairingDialog(void) {
 }
 
 void UI::closeCompanionPairingDialog(void) {
-  if (m_PairingCamera == nullptr) {
+  if (!m_PairingIsCamera) {
     closePairingDialog();
   }
 }
@@ -637,7 +638,8 @@ void UI::showCompanionPairing(void) {
     return;
   }
 
-  m_PairingCamera = nullptr;
+  m_PairingCamera.reset();
+  m_PairingIsCamera = false;
   m_PairingPrevFocus = lv_group_get_focused(m_Group);
   m_PairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(m_PairingDialog, "Pair companion");
@@ -692,7 +694,22 @@ void UI::showCameraPairing(Camera *camera) {
   const bool confirm = type == Camera::PairingType::NUMERIC_COMPARISON;
   const lv_font_t *codeFont = (m_Width < 100) ? &lv_font_montserrat_16 : &lv_font_montserrat_22;
 
-  m_PairingCamera = camera;
+  // Hold a weak reference to the owning shared_ptr so a disconnect that frees
+  // the Camera while the modal is open cannot leave the footer callbacks with a
+  // dangling pointer. Resolve the raw pointer against the cameras Control owns.
+  std::shared_ptr<Camera> owner = Control::getInstance().getConnectingCamera();
+  if (owner.get() != camera) {
+    owner.reset();
+    for (const auto &target : Control::getInstance().getTargets()) {
+      auto targetCamera = target->getCamera();
+      if (targetCamera.get() == camera) {
+        owner = targetCamera;
+        break;
+      }
+    }
+  }
+  m_PairingCamera = owner;
+  m_PairingIsCamera = true;
   m_PairingPrevFocus = lv_group_get_focused(m_Group);
   m_PairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(m_PairingDialog, "Pair camera");
@@ -719,14 +736,19 @@ void UI::showCameraPairing(Camera *camera) {
   lv_obj_set_style_text_font(codeLabel, codeFont, 0);
   lv_obj_set_style_text_align(codeLabel, LV_TEXT_ALIGN_CENTER, 0);
 
+  lv_obj_t *accept = nullptr;
   if (confirm) {
-    lv_obj_t *accept = lv_msgbox_add_footer_button(m_PairingDialog, "Confirm");
+    accept = lv_msgbox_add_footer_button(m_PairingDialog, "Confirm");
+    // Add the button to the encoder group so it is focusable and operable on
+    // non-touch devices, mirroring showCompanionPairing. Without this the modal
+    // takes no encoder input and the page below is left unfocusable after close.
+    addToInputGroup(m_Group, accept);
     lv_obj_add_event_cb(
         accept,
         [](lv_event_t *event) {
           auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
-          Camera *camera = ui->m_PairingCamera;
-          if (camera != nullptr) {
+          auto camera = ui->m_PairingCamera.lock();
+          if (camera) {
             camera->answerPairing(true);
           }
           ui->closePairingDialog();
@@ -735,29 +757,36 @@ void UI::showCameraPairing(Camera *camera) {
   }
 
   lv_obj_t *cancel = lv_msgbox_add_footer_button(m_PairingDialog, "Cancel");
+  addToInputGroup(m_Group, cancel);
   lv_obj_add_event_cb(
       cancel,
       [](lv_event_t *event) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
-        Camera *camera = ui->m_PairingCamera;
-        if (camera != nullptr) {
+        auto camera = ui->m_PairingCamera.lock();
+        if (camera) {
           camera->cancelPairing();
         }
         ui->closePairingDialog();
       },
       LV_EVENT_CLICKED, this);
+
+  // Focus the primary action: Confirm when the user must compare a number,
+  // otherwise the only button, Cancel.
+  lv_group_focus_obj(accept != nullptr ? accept : cancel);
 }
 
 void UI::pairingTimer(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("pairing_timer");
   auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
   auto &companion = Companion::getInstance();
 
   if (ui->m_PairingDialog != nullptr) {
-    if (ui->m_PairingCamera != nullptr) {
-      if (!ui->m_PairingCamera->hasPendingPairing()) {
+    if (ui->m_PairingIsCamera) {
+      auto camera = ui->m_PairingCamera.lock();
+      if (!camera || !camera->hasPendingPairing()) {
         ui->closePairingDialog();
-      } else if (ui->m_PairingCamera->pairingTimedOut()) {
-        ui->m_PairingCamera->cancelPairing();
+      } else if (camera->pairingTimedOut()) {
+        camera->cancelPairing();
         ui->closePairingDialog();
       }
     } else if (!companion.isEnabled() || !companion.hasPendingPairing()) {

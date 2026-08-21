@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -537,7 +538,15 @@ class UI {
   uint32_t m_StorageGeneration = 0;
   lv_timer_t *m_PairingTimer = nullptr;
   lv_obj_t *m_PairingDialog = nullptr;
-  Camera *m_PairingCamera = nullptr;
+  // Weak reference to the camera behind the current camera pairing modal. A
+  // disconnect can free the Camera while the modal is still up, so the footer
+  // callbacks and the pairing timer lock() this before touching the camera and
+  // treat an expired reference as gone.
+  std::weak_ptr<Camera> m_PairingCamera;
+  // True while the open modal is a camera pairing prompt. Kept separate from
+  // m_PairingCamera because an expired weak reference cannot distinguish a
+  // camera modal whose camera was freed from a companion modal.
+  bool m_PairingIsCamera = false;
   lv_obj_t *m_PairingPrevFocus = nullptr;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
