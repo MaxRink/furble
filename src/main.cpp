@@ -3,6 +3,7 @@
 
 #if defined(FURBLE_NO_DISPLAY)
 #include <M5Unified.h>
+#include <esp_timer.h>
 #endif
 
 #include "Device.h"
@@ -43,7 +44,7 @@ void printCameras(bool reload) {
   printf("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
   printf("count: %u\n", static_cast<unsigned>(CameraList::size()));
   for (size_t n = 0; n < CameraList::size(); n++) {
-    const auto *camera = CameraList::get(n);
+    const auto camera = CameraList::get(n);
     printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
     printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
            static_cast<unsigned long>(camera->getType()));
@@ -66,7 +67,7 @@ void connectCamera(int32_t index) {
 
   auto &control = Control::getInstance();
   for (size_t n = 0; n < CameraList::size(); n++) {
-    auto *camera = CameraList::get(n);
+    auto camera = CameraList::get(n);
     if (camera->isActive()) {
       control.addActive(camera);
     }
@@ -167,12 +168,22 @@ static void vUITask(void *param) {
   (void)param;
   using namespace Furble;
 #if defined(FURBLE_NO_DISPLAY)
+  // The display build ticks GPS::update() from an LVGL timer (GPS::SERVICE_MS).
+  // Headless has no LVGL, so drive the same one second service cadence here so
+  // geotag fixes still push to the camera.
+  constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
+  int64_t nextGPSService = esp_timer_get_time();
   while (true) {
     Platform::getInstance().update();
 #if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
 #endif
+    const int64_t now = esp_timer_get_time();
+    if (now >= nextGPSService) {
+      GPS::getInstance().update();
+      nextGPSService = now + GPS_SERVICE_US;
+    }
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 #else
@@ -228,6 +239,13 @@ void app_main() {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");
     abort();
   }
+
+#if defined(FURBLE_NO_DISPLAY)
+  // The display build starts GPS when the UI constructs. Headless has no UI, so
+  // bring GPS up here: this starts the UART task and applies the stored enable
+  // state, then vUITask() ticks GPS::update() to push geotag fixes.
+  Furble::GPS::init();
+#endif
 
 #if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
   Furble::UI::init();

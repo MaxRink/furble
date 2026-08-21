@@ -78,6 +78,15 @@ class GPS {
   /** Refresh the cached GPX logging settings from NVS. */
   void reloadLogSettings(void);
   void startService(void);
+
+  /**
+   * Run one service pass: refresh the fix and push geotag data to the camera.
+   *
+   * The display build calls this from an LVGL timer. The headless main loop
+   * calls it directly on the same cadence, since it has no LVGL.
+   */
+  void update(void);
+
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
 
@@ -216,7 +225,6 @@ class GPS {
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
-  void update(void);
   bool wiredFixIsFresh(void);
 
   void acquirePowerLock(void);
