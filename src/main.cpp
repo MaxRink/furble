@@ -31,6 +31,7 @@ void app_main() {
 
   // Settings must come up before Platform: Platform reads FB_OUTPUT to
   // decide cfg.internal_spk ahead of M5.begin()
+  Furble::Settings::init();
   Furble::Platform::init();
   Furble::IR::init();
   Furble::Feedback::init();

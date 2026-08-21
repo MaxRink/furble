@@ -464,3 +464,31 @@ all hardware verification must happen AFTER this rework:
 - Card-pull recovery and the three-failure auto-disable path.
 - Battery impact with a mounted card.
 - Storage page mount, "Mounting..." rendering, and page-leave unmount.
+
+### Post-review fixes
+
+The first cut of this branch had two regressions that this fix corrects. Both
+were caught in review, not on hardware, because they are board-independent.
+
+- `app_main` had dropped the `Furble::Settings::init()` call. That call brings
+  up NVS, so every setting on every board reverted to its default on each boot.
+  It is restored, placed before `Platform::init()` because Platform now reads
+  `FB_OUTPUT` from settings before `M5.begin()`.
+- The `Storage` menu tile landed on `{1,2}`, the same Settings grid cell as
+  `Feedback`. It moves to the free cell `{2,2}` so the two tiles no longer
+  collide.
+- The settings export and import switches in `src/FurbleSD.cpp` are exhaustive
+  over the settings enum and had not been updated for `BUTTON_MODE`, which
+  landed on master after this branch's last build. That broke the `-Werror`
+  switch check and the firmware build. `BUTTON_MODE` is a string setting like
+  `THEME`, so it joins the string serialize case and gets an import case that
+  validates the two accepted values through a new `validButtonMode` helper.
+
+A GPX writer host test is added at `tests/host/gpx_writer_test.cpp` and wired
+into the ctest suite as `gpx-writer`. It compiles the production
+`src/FurbleGPX.cpp` and redirects the mount point to a build sandbox through the
+new `FURBLE_GPX_DIRECTORY` compile-time override, which defaults to `/sd/furble`
+on device. The test covers schema element order, the rewound-closer invariant
+that keeps the file valid at rest, altitude omission, segment breaks on a time
+gap or a backwards step, and a clean single close. It passes and was confirmed
+load-bearing by mutation.

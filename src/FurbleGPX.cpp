@@ -13,7 +13,12 @@
 namespace Furble {
 namespace {
 
-constexpr const char *GPX_DIRECTORY = "/sd/furble";
+// The mount point is fixed on device. The host test overrides it to a writable
+// sandbox so the writer logic can run without an SD card.
+#ifndef FURBLE_GPX_DIRECTORY
+#define FURBLE_GPX_DIRECTORY "/sd/furble"
+#endif
+constexpr const char *GPX_DIRECTORY = FURBLE_GPX_DIRECTORY;
 constexpr const char *GPX_HEADER =
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
     "<gpx version=\"1.1\" creator=\"furble\"\n"

@@ -138,6 +138,11 @@ bool validTheme(const std::string &value) {
   return (value == "Dark") || (value == "Default") || (value == "Mono Furble");
 }
 
+bool validButtonMode(const std::string &value) {
+  return (value == Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
+         || (value == Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
+}
+
 bool validSpinValue(const SpinValue::nvs_t &value, bool allowInfinite) {
   const uint8_t unit = static_cast<uint8_t>(value.unit);
   if ((value.value > 999) || (unit > SpinValue::UNIT_MIN)) {
@@ -195,6 +200,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       return true;
 
     case Settings::THEME:
+    case Settings::BUTTON_MODE:
       value = Settings::load<std::string>(setting.type);
       return true;
 
@@ -363,6 +369,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::THEME:
       if (!validTheme(text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
+    case Settings::BUTTON_MODE:
+      if (!validButtonMode(text)) {
         return false;
       }
       Settings::save<std::string>(setting.type, text);

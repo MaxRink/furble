@@ -218,7 +218,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
     {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
-    {m_StorageStr,           {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_StorageStr,           {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
     {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeedbackEventsStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeedbackVolumeStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},

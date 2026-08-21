@@ -92,6 +92,21 @@ target_link_libraries(reconnect_stuck_test PRIVATE furble_host_camera)
 target_compile_options(reconnect_stuck_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                     -Wno-unused-parameter)
 
+# The GPX writer suite compiles the production writer directly. It has no BLE or
+# NVS dependency, only C file I/O, so it redirects the mount point to a build
+# sandbox with FURBLE_GPX_DIRECTORY and needs the host esp_log shim.
+add_executable(gpx_writer_test
+               gpx_writer_test.cpp
+               ${FURBLE_ROOT}/src/FurbleGPX.cpp)
+target_include_directories(gpx_writer_test PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble
+                           ${HOST_NIMBLE_DIR})
+target_compile_definitions(gpx_writer_test PRIVATE
+                           FURBLE_GPX_DIRECTORY="${CMAKE_CURRENT_BINARY_DIR}/gpx_sandbox")
+target_compile_options(gpx_writer_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                               -Wno-unused-parameter)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -104,4 +119,5 @@ if(BUILD_TESTING)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)
   add_test(NAME reconnect-stuck COMMAND reconnect_stuck_test)
+  add_test(NAME gpx-writer COMMAND gpx_writer_test)
 endif()
