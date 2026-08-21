@@ -312,8 +312,17 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   the retry helper. The PM1 watchdog is disarmed before the timed shutdown.
 - Added the StickC Plus2 BM8563 timer and GPIO4 HOLD path. The RTC IRQ remains
   available long enough to identify a timed wake during boot.
-- Resume reconnects through the existing connection path with bounded retries. A
-  failed reconnect clears the resume state and leaves an error on screen.
+- Resume reconnects through the existing connection path with bounded retries. The
+  resume drives `connectAll(false)`, so `Control::connectAll(void)` runs its
+  non-infinite branch: it retries while `failcount < 2` and now waits
+  `CONNECT_RETRY_GAP_MS` (3 s) in interruptible slices before each retry. A wake
+  that misses the camera gets two spaced retries rather than hammering the radio
+  or failing on the first miss. After the bounded retries a still-failed reconnect
+  clears the resume state and leaves an error on screen.
+- PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
+  genuine deep-sleep wake that fails the first reconnect must show two spaced
+  retries in the serial log and then either recover or land on the resume error.
+  Deep sleep only exercises on hardware, so this cannot be confirmed on host.
 - The base tree has no GPS motion-policy hook, so no separate GPS policy change was
   made.
 - The sandboxed worktree could not run PlatformIO. The
