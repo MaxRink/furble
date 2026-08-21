@@ -3,6 +3,7 @@
 
 #include <array>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "MockNimBLE.h"
@@ -61,6 +62,25 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // stand in for the block. An unacknowledged subscribe write (response = false)
   // is accepted, which is the bounded path the fix uses.
   void setStaleSubscribeSession(bool stale);
+
+  // Fault injection for adversarial connect and command error paths.
+  //
+  // suppressService models a camera that does not expose a GATT service at all,
+  // so m_Client->getService() returns nullptr. This stands in for an out-of-spec
+  // or firmware-variant peer, or a partial GATT discovery. A vendor connect that
+  // only logs a null service and then dereferences it crashes here.
+  //
+  // suppressCharacteristic models a service that is present but missing one
+  // characteristic, so getCharacteristic() returns nullptr. A vendor connect
+  // that tolerates the null instead of failing reports a connected camera whose
+  // command path is silently dead.
+  //
+  // failWrite models an ATT write that the peer rejects (returns an error
+  // status). A handshake write that fails must abort the connect and reclaim the
+  // client without leaking it from the fixed-size pool.
+  void suppressService(const NimBLEUUID &service);
+  void suppressCharacteristic(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+  void failWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic);
 
   const Config &config() const;
   const std::vector<Write> &writes() const;
@@ -126,10 +146,18 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     bool notification = false;
   };
 
+  bool isServiceSuppressed(const NimBLEUUID &service) const;
+  bool isCharacteristicSuppressed(const NimBLEUUID &service,
+                                  const NimBLEUUID &characteristic) const;
+  bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
   bool m_StaleSubscribeSession = false;
+  std::vector<NimBLEUUID> m_SuppressedServices;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;
