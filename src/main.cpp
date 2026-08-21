@@ -3,6 +3,7 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleBootScreen.h"
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
@@ -33,9 +34,18 @@ void app_main() {
   // decide cfg.internal_spk ahead of M5.begin()
   Furble::Settings::init();
   Furble::Platform::init();
+
+  // The display is up now, so the boot splash can cover the rest of init. It
+  // reads its own enable, draws through M5GFX, and every hook self-gates. The
+  // stage count below must match the number of step() calls before finish().
+  Furble::BootScreen::begin(6);
+
   Furble::IR::init();
+  Furble::BootScreen::step("Infrared");
   Furble::Feedback::init();
+  Furble::BootScreen::step("Feedback");
   Furble::SD::init();
+  Furble::BootScreen::step("Storage");
 
   // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
@@ -46,9 +56,12 @@ void app_main() {
   Furble::Platform::getInstance().watchdogEnable(
       Furble::Settings::load<Furble::Settings::WATCHDOG>());
 #endif
+  Furble::BootScreen::step("Power");
 
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
+  Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
+  Furble::BootScreen::step("Companion");
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);
@@ -59,6 +72,9 @@ void app_main() {
 
   // Developer only, compiled out unless FURBLE_CONSOLE is defined
   Furble::Console::init();
+
+  // Hold "Ready" briefly, then the UI constructor takes the screen with LVGL.
+  Furble::BootScreen::finish();
 
   // Run UI in host task (here)
   vUITask(NULL);

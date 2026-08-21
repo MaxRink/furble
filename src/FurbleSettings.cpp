@@ -51,6 +51,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
     {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
     {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
+    {BOOT_SPLASH,       {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -125,6 +126,8 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_OUTPUT:
     case PRESET_PICKER:
     case BUTTON_MODE:
+    // The boot screen is only read at startup, so a save takes effect next boot.
+    case BOOT_SPLASH:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
@@ -178,6 +181,7 @@ bool Settings::isDangerous(type_t type) {
     case LOW_BATT:
     case SD_GPX:
     case GPX_PERIOD:
+    case BOOT_SPLASH:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
@@ -424,6 +428,11 @@ void Settings::init(void) {
         } break;
         case BULB:
           save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
+          break;
+        // The user asked for the boot screen, so ship it on by default. The
+        // toggle restores the old no-splash boot.
+        case BOOT_SPLASH:
+          save<bool>(setting.type, true);
           break;
 #if defined(FURBLE_M5STICKS3)
         case WATCHDOG:

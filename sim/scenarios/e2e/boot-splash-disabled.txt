@@ -1,0 +1,11 @@
+# End-to-end regression for the boot splash toggle set off (plan 101).
+#
+# Seeding the boot_splash setting off must restore the old no-splash boot: the
+# BootScreen hooks self-gate to no-ops, nothing draws, and boot still lands on
+# the main menu. "boot_splash off" proves the splash was suppressed; "page main"
+# proves the disabled path boots normally.
+seed boot_splash false
+wait 300
+assert ui.boot_splash off
+assert ui.page main
+exit

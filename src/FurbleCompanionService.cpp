@@ -269,6 +269,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
+    case Settings::BOOT_SPLASH:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -326,6 +327,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
+    case Settings::BOOT_SPLASH:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

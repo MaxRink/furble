@@ -25,6 +25,7 @@
 
 #include "icons.h"
 
+#include "FurbleBootScreen.h"
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
@@ -2263,6 +2264,16 @@ std::string UI::simQueryState(const char *key) {
     return open ? "open" : "closed";
   }
 
+  // Boot splash outcome. "shown" once the splash drew and advanced every stage
+  // during boot; "off" when the toggle disabled it. Lets a scenario assert the
+  // splash ran and then the main menu was reached.
+  if (query == "boot_splash") {
+    if (!BootScreen::wasShown()) {
+      return "off";
+    }
+    return (BootScreen::stepsShown() >= 6) ? "shown" : "partial";
+  }
+
   // Whether the companion pairing modal's Accept button is in the encoder group
   // and currently focused. This locks in the focus contract the modal relies on
   // (task #32 class). Note: in this LVGL build the msgbox footer buttons are
@@ -3641,6 +3652,7 @@ void UI::addFeaturesMenu(const menu_t &parent) {
   addSettingItem(menu.page, NULL, Settings::WATCHDOG);
 #endif
   addSettingItem(menu.page, NULL, Settings::PRESET_PICKER);
+  addSettingItem(menu.page, NULL, Settings::BOOT_SPLASH);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }

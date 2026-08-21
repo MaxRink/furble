@@ -492,6 +492,7 @@ void applyScenarioSettings(void) {
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
+  saveBoolean("boot_splash", Settings::BOOT_SPLASH);
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;

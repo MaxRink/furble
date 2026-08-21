@@ -1,4 +1,5 @@
 set(furble_sources
+    FurbleBootScreen.cpp
     FurbleBtDebug.cpp
     FurbleCalibrate.cpp
     FurbleCompanion.cpp
