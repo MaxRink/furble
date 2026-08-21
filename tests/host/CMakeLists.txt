@@ -107,6 +107,13 @@ target_compile_definitions(gpx_writer_test PRIVATE
 target_compile_options(gpx_writer_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
+# Pure backoff arithmetic from include/FurbleReconnectBackoff.h. No BLE or NVS
+# dependency, so it needs no furble sources on its link line.
+add_executable(reconnect_backoff_test reconnect_backoff_test.cpp)
+target_include_directories(reconnect_backoff_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(reconnect_backoff_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                      -Wno-unused-parameter)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -120,4 +127,5 @@ if(BUILD_TESTING)
   add_test(NAME client-leak COMMAND client_leak_test)
   add_test(NAME reconnect-stuck COMMAND reconnect_stuck_test)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
+  add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
 endif()

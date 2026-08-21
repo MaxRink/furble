@@ -228,26 +228,14 @@ Control::state_t Control::connectAll(void) {
 
   if (m_InfiniteReconnect || (failcount < 2)) {
     if (m_InfiniteReconnect) {
-      uint32_t delay = SLEEP_INFINITE_MS;
-      if (m_ReconnectBackoff) {
-        const uint32_t shift = m_ReconnectAttempt < 5 ? m_ReconnectAttempt : 5;
-        delay = SLEEP_INFINITE_MS << shift;
-        if (delay > BACKOFF_MAX_MS) {
-          delay = BACKOFF_MAX_MS;
-        }
-      }
+      const uint32_t delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
 
-      if (m_ReconnectAttempt == 0) {
-        if (!m_ReconnectHintLogged) {
-          ESP_LOGW(LOG_TAG,
-                   "Reconnect failed; camera may still hold the previous session. Waiting "
-                   "%lu ms before the first retry.",
-                   RECONNECT_STALE_SESSION_MS);
-          m_ReconnectHintLogged = true;
-        }
-        if (delay < RECONNECT_STALE_SESSION_MS) {
-          delay = RECONNECT_STALE_SESSION_MS;
-        }
+      if (m_ReconnectAttempt == 0 && !m_ReconnectHintLogged) {
+        ESP_LOGW(LOG_TAG,
+                 "Reconnect failed; camera may still hold the previous session. Retrying in "
+                 "%lu ms.",
+                 delay);
+        m_ReconnectHintLogged = true;
       }
 
       ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.", m_ReconnectAttempt + 1, delay);

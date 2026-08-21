@@ -8,6 +8,8 @@
 
 #include <Camera.h>
 
+#include "FurbleReconnectBackoff.h"
+
 namespace Furble {
 
 class Control {
@@ -77,11 +79,11 @@ class Control {
 
   const uint32_t TIMEOUT_DEFAULT_MS = (30 * 1000);
   const uint32_t TIMEOUT_INFINITE_MS = (5 * 1000);
-  const uint32_t SLEEP_INFINITE_MS = (5 * 1000);
-  const uint32_t BACKOFF_MAX_MS = (120 * 1000);
+  // Granularity of the interruptible reconnect wait. Short enough that a
+  // disconnect request cancels the wait promptly. The wait length itself comes
+  // from ReconnectBackoff::delayMs().
   const uint32_t BACKOFF_SLICE_MS = 100;
   static constexpr uint32_t DISCONNECT_TIMEOUT_MS = (1 * 1000);
-  static constexpr uint32_t RECONNECT_STALE_SESSION_MS = (17 * 1000);
   // Interactive disconnect safety cap. The interactive path waits for the
   // teardown to actually complete instead of force-completing, so this is only
   // a backstop against a genuinely stuck NimBLE teardown, never the normal
