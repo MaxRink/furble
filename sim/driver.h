@@ -60,6 +60,26 @@ void notePowerOff(void);
 // (task #32) can be reproduced headlessly. rigConfirmPairing clears it.
 void rigInjectPendingPairing(uint32_t pin);
 
+// Injected IMU state for the host build. The firmware reads the sensor through
+// M5.Imu, which the simulator has no hardware for, so these mirror the same
+// read surface (enabled, update, getAccel, getGyro). A scenario drives the
+// device flat, tilted or on its side, and the firmware level, gesture and
+// motion code paths read it exactly as they read the real IMU. General enough
+// for the spirit level today and the motion features (gestures #45, wake on
+// motion #48, gps motion #65) later.
+void imuSetEnabled(bool enabled);
+bool imuEnabled(void);
+void imuUpdate(void);
+void imuSetAccel(float x, float y, float z);
+bool imuGetAccel(float *x, float *y, float *z);
+void imuSetGyro(float x, float y, float z);
+bool imuGetGyro(float *x, float *y, float *z);
+
+// Set the gravity vector from a roll and pitch orientation in degrees, using
+// the same convention the spirit level derives from the accelerometer
+// (roll = atan2(ay, az), pitch = atan2(-ax, hypot(ay, az))).
+void imuSetOrientation(float rollDeg, float pitchDeg);
+
 }  // namespace Furble::Sim
 
 #endif

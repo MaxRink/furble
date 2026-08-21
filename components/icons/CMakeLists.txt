@@ -1,6 +1,8 @@
 set(COMPONENT_SRCS
     icon_add_a_photo.c
     icon_add_a_photo_24.c
+    icon_adjust.c
+    icon_adjust_24.c
     icon_all_inclusive.c
     icon_arrow_back_24.c
     icon_arrow_downward_24.c

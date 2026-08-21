@@ -264,6 +264,10 @@ class UI {
   typedef struct {
     lv_obj_t *surface;
     lv_obj_t *bubble;
+    // Fixed reference ring at the exact centre of the circle. The moving bubble
+    // nests inside it when the device is level, so the target is distinct from
+    // the bubble and never moves.
+    lv_obj_t *target;
     lv_obj_t *roll;
     lv_obj_t *pitch;
     lv_obj_t *sideTube;
