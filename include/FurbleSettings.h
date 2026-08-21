@@ -23,6 +23,7 @@ class Settings {
     TX_ADAPTIVE,
     GPS,
     IMU,
+    HW_MOTION,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -102,6 +103,13 @@ class Settings {
     TEXT_SIZE_LARGE = 2,
   } text_size_t;
 
+  /** Motion engine selection. */
+  typedef enum {
+    HW_MOTION_AUTO = 0,
+    HW_MOTION_SOFTWARE = 1,
+    HW_MOTION_HARDWARE = 2,
+  } hw_motion_t;
+
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
@@ -123,13 +131,13 @@ class Settings {
   template <type_t S>
   struct storage_type;
 
-  /** Load a setting — type deduced from the setting. */
+  /** Load a setting. The type is deduced from the setting. */
   template <type_t S>
   static typename storage_type<S>::type load() {
     return load<typename storage_type<S>::type>(S);
   }
 
-  /** Save a setting — type deduced from the setting. */
+  /** Save a setting. The type is deduced from the setting. */
   template <type_t S>
   static void save(const typename storage_type<S>::type &value) {
     save<typename storage_type<S>::type>(S, value);
@@ -186,6 +194,10 @@ struct Settings::storage_type<Settings::GPS> {
 template <>
 struct Settings::storage_type<Settings::IMU> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::HW_MOTION> {
+  using type = uint8_t;
 };
 template <>
 struct Settings::storage_type<Settings::GPS_BAUD> {

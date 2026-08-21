@@ -3,8 +3,11 @@
 
 #include <esp_system.h>
 
-#include <M5PM1.h>
 #include <M5Unified.h>
+#include <driver/gpio.h>
+#include <esp_sleep.h>
+
+#include <M5PM1.h>
 
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
@@ -263,6 +266,103 @@ void Platform::setDisplayOff(bool off) {
   (void)off;
 }
 #endif
+
+bool Platform::armMotionWake(void) {
+  if (m_MotionWakeArmed) {
+    return true;
+  }
+
+  gpio_num_t gpio = GPIO_NUM_NC;
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+    case m5::board_t::board_M5StickCPlus:
+      gpio = GPIO_NUM_35;
+      break;
+
+#if defined(FURBLE_M5STICKS3)
+    case m5::board_t::board_M5StickS3:
+    {
+      if (!m5pm1Access([this]() {
+            return m_M5PM1.gpioSet(M5PM1_GPIO_NUM_4, M5PM1_GPIO_MODE_INPUT, 0, M5PM1_GPIO_PULL_UP,
+                                   M5PM1_GPIO_DRIVE_PUSHPULL);
+          })
+          || !m5pm1Access(
+              [this]() { return m_M5PM1.gpioSetFunc(M5PM1_GPIO_NUM_4, M5PM1_GPIO_FUNC_IRQ); })
+          || !m5pm1Access([this]() { return m_M5PM1.irqClearGpioAll(); }) || !m5pm1Access([this]() {
+               return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_DISABLE);
+             })
+          || !m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, true); })
+          || !m5pm1Access([this]() {
+               return m_M5PM1.gpioSetWakeEdge(M5PM1_GPIO_NUM_4, M5PM1_GPIO_WAKE_FALLING);
+             })) {
+        return false;
+      }
+
+      gpio = GPIO_NUM_13;
+      break;
+    }
+#endif
+
+    default:
+      return false;
+  }
+
+  if (gpio == GPIO_NUM_NC) {
+    return false;
+  }
+
+  gpio_config_t config = {};
+  config.pin_bit_mask = 1ULL << static_cast<uint32_t>(gpio);
+  config.mode = GPIO_MODE_INPUT;
+  config.pull_up_en = GPIO_PULLUP_DISABLE;
+  config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  config.intr_type = GPIO_INTR_DISABLE;
+  if ((gpio_config(&config) == ESP_OK) && (gpio_wakeup_enable(gpio, GPIO_INTR_LOW_LEVEL) == ESP_OK)
+      && (esp_sleep_enable_gpio_wakeup() == ESP_OK)) {
+    m_MotionWakeArmed = true;
+    return true;
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
+    m5pm1Access(
+        [this]() { return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_ENABLE); });
+  }
+#endif
+  return false;
+}
+
+void Platform::disarmMotionWake(void) {
+  if (!m_MotionWakeArmed) {
+    return;
+  }
+
+  gpio_num_t gpio = GPIO_NUM_NC;
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+    case m5::board_t::board_M5StickCPlus:
+      gpio = GPIO_NUM_35;
+      break;
+#if defined(FURBLE_M5STICKS3)
+    case m5::board_t::board_M5StickS3:
+      gpio = GPIO_NUM_13;
+      m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
+      m5pm1Access(
+          [this]() { return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_ENABLE); });
+      m5pm1Access([this]() { return m_M5PM1.irqClearGpioAll(); });
+      break;
+#endif
+    default:
+      break;
+  }
+
+  if (gpio != GPIO_NUM_NC) {
+    gpio_wakeup_disable(gpio);
+  }
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+  m_MotionWakeArmed = false;
+}
 
 void Platform::initBattery(void) {
   // capabilities follow the PMIC, capacities are from the vendor product pages

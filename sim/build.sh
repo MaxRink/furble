@@ -141,6 +141,7 @@ for source in \
   "$ROOT/src/FurbleCalibrate.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
+  "$ROOT/src/FurbleIMU.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \
   "$ROOT/src/FurbleSpinValue.cpp" \

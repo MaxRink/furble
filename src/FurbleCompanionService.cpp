@@ -230,6 +230,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
       return SETTING_U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -287,6 +288,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
     {
       const uint8_t v = Settings::load<uint8_t>(type);
       value.assign(1, v);
@@ -330,7 +332,8 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       Settings::save<bool>(type, value[0] != 0);
       return true;
     case SETTING_U8:
-      if (length != 1) {
+      if ((length != 1)
+          || ((type == Settings::HW_MOTION) && (value[0] > Settings::HW_MOTION_HARDWARE))) {
         return false;
       }
       Settings::save<uint8_t>(type, value[0]);
@@ -361,7 +364,7 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
 }
 
 bool CompanionService::settingNeedsRestart(Settings::type_t type) {
-  return type == Settings::THEME;
+  return (type == Settings::THEME) || (type == Settings::HW_MOTION);
 }
 
 void CompanionService::appendResponse(std::vector<uint8_t> &response,

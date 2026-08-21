@@ -18,6 +18,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
     {IMU,               {IMU, 27, "IMU", "imu", FURBLE_STR}                                  },
+    {HW_MOTION,         {HW_MOTION, 47, "Motion Engine", "hw_motion", FURBLE_STR}            },
     {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
     {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
     {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
@@ -316,6 +317,9 @@ void Settings::init(void) {
         case SLEEP_CONN:
         case COMPANION:
           save<bool>(setting.type, false);
+          break;
+        case HW_MOTION:
+          save<uint8_t>(setting.type, HW_MOTION_AUTO);
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);
