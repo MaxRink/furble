@@ -206,11 +206,14 @@ class UI {
     lv_obj_t *bubble;
     lv_obj_t *roll;
     lv_obj_t *pitch;
+    lv_obj_t *sideTube;
+    lv_obj_t *sideBubble;
     float accel[3];
     float displayRoll;
     float displayPitch;
     int32_t bubbleX;
     int32_t bubbleY;
+    int32_t sideBubbleX;
     bool filterReady;
     bool displayReady;
   } level_t;
@@ -928,6 +931,14 @@ class UI {
 
   /** Refresh the spirit level page. */
   static void levelUpdate(lv_timer_t *timer);
+
+  /**
+   * Map a filtered accelerometer sample to the spirit level widgets.
+   *
+   * Shared by the live IMU timer and the simulator tilt injection seam so both
+   * exercise the same sensitivity curve and bubble placement.
+   */
+  static void applyLevelSample(level_t *level, const float accel[3]);
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);

@@ -88,4 +88,13 @@ action nav battery
 wait 100
 print ui.page
 print ui.overflow
+# Spirit level page (PR #28): circle, side tube and stacked value labels. A
+# compact fixed layout that must fit every panel with no overlap or scroll.
+home
+wait 100
+action nav level
+wait 150
+print ui.page
+print ui.overflow
+assert ui.overflow no
 exit
