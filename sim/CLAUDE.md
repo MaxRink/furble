@@ -46,3 +46,17 @@ which only the sim build defines, so firmware builds compile identical code.
 - `sim/scripts/ui-screenshots.txt` captures every modeled page for the
   screenshot CI workflow. Menu routes are position-sensitive: adding or
   removing a settings entry changes the `key down` counts in the scripts.
+
+## Seeded UI fuzzer
+
+- `--fuzz --seed N --fuzz-steps N [--fuzz-verbose]` (or `FURBLE_FUZZ_SEED` /
+  `FURBLE_FUZZ_STEPS`) runs `sim/fuzz.cpp` instead of a script: a deterministic
+  randomized stream of button, navigation, settings and modal events into the
+  real UI, with crash, stale-focus, stacked-modal, must-fit-overflow, timer-leak
+  and navigation-trap invariants checked after every event. Same seed and board
+  reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+- `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
+  `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail.
+- `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented
+  binary for the deeper memory hunt. Off by default so the plain build and CI
+  stay fast.

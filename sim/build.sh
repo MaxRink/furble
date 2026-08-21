@@ -83,13 +83,24 @@ DEFINES="\
 -DLV_KCONFIG_IGNORE \
 -D_THREAD_SAFE"
 
-CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $INCLUDES $DEFINES"
+# Optional sanitizers for the UI fuzzer's deeper memory hunt. Off by default so
+# the plain build and CI stay fast; set FURBLE_SIM_SANITIZE to a clang sanitizer
+# list, for example FURBLE_SIM_SANITIZE=address or address,undefined. Use a
+# separate FURBLE_SIM_BUILD_DIR so the instrumented objects never overwrite the
+# release-config build.
+SANITIZE=${FURBLE_SIM_SANITIZE:-}
+SANITIZE_FLAGS=
+if [ -n "$SANITIZE" ]; then
+  SANITIZE_FLAGS="-fsanitize=$SANITIZE -fno-omit-frame-pointer"
+fi
+
+CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"
 # glibc hides strnlen and other POSIX names under strict -std=c11, which
 # breaks the LVGL clib build on Linux. _DEFAULT_SOURCE restores them and is
 # inert on macOS.
-CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $INCLUDES $DEFINES"
+CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $SANITIZE_FLAGS $INCLUDES $DEFINES"
 
 OBJECTS=
 
