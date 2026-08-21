@@ -199,6 +199,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSHoldStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -371,6 +372,7 @@ UI::UI(const interval_t &interval)
   m_Status.batteryCurrent = nullptr;
   m_Status.batteryCharging = nullptr;
   m_Status.batteryRuntime = nullptr;
+  m_Status.gpsExtrapolate = nullptr;
   m_Status.screenLocked = false;
 
   // prime the battery cache before anything renders it
@@ -1332,7 +1334,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   return cont;
 }
 
-void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
+lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
   lv_obj_t *obj = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW_WRAP);
 
@@ -1344,7 +1346,7 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   auto &s = Settings::get(setting);
 
   lv_obj_t *label = lv_label_create(obj);
-  lv_label_set_text(label, s.name);
+  lv_label_set_text(label, setting == Settings::GPS_EXTRAP ? m_GPSExtrapolateStr : s.name);
   lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_flex_grow(label, 1);
 
@@ -1387,6 +1389,17 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
           ui->setPresetPicker(lv_obj_has_state(sw, LV_STATE_CHECKED));
         },
         LV_EVENT_VALUE_CHANGED, this);
+  }
+
+  if (setting == Settings::GPS_EXTRAP) {
+    m_Status.gpsWidgets.push_back(obj);
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+          status->gps->reloadSetting();
+        },
+        LV_EVENT_VALUE_CHANGED, &m_Status);
   }
 
   if (setting == Settings::GPS) {
@@ -1459,6 +1472,8 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         },
         LV_EVENT_VALUE_CHANGED, this);
   }
+
+  return sw;
 }
 
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
@@ -2748,6 +2763,14 @@ void UI::serviceRequests(void) {
 
       case Request::GPS_RELOAD:
         GPS::getInstance().reloadSetting();
+        if (m_Status.gpsExtrapolate != nullptr) {
+          const uint8_t hold = Settings::load<Settings::GPS_HOLD>();
+          if ((hold == 0) || (hold > GPS::HOLD_MAX)) {
+            lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+          } else {
+            lv_obj_remove_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+          }
+        }
         break;
 
       case Request::GPS_POWER:
@@ -3426,6 +3449,30 @@ void UI::addGPSMenu(const menu_t &parent) {
       });
 
   addGPSPowerMenu(menu);
+
+  const uint8_t savedHold = Settings::load<Settings::GPS_HOLD>();
+  addGPSOptionMenu(menu, m_GPSHoldStr, m_GPSHoldOptions, savedHold <= GPS::HOLD_MAX ? savedHold : 0,
+                   [](lv_event_t *e) {
+                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+                     const uint8_t hold = static_cast<uint8_t>(lv_roller_get_selected(roller));
+
+                     Settings::save<Settings::GPS_HOLD>(hold);
+                     status->gps->reloadSetting();
+                     if (status->gpsExtrapolate != nullptr) {
+                       if (hold == 0) {
+                         lv_obj_add_state(status->gpsExtrapolate, LV_STATE_DISABLED);
+                       } else {
+                         lv_obj_remove_state(status->gpsExtrapolate, LV_STATE_DISABLED);
+                       }
+                     }
+                   });
+
+  m_Status.gpsExtrapolate = addSettingItem(menu.page, NULL, Settings::GPS_EXTRAP);
+  if ((savedHold == 0) || (savedHold > GPS::HOLD_MAX)) {
+    lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+  }
+
   addGPSDataMenu(menu);
   addGPSNMEAMenu(menu);
 
@@ -3546,6 +3593,30 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         FURBLE_SIM_TIMER_FIRE("gps_data_timer");
         auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
         auto &gps = GPS::getInstance().get();
+
+        static lv_obj_t *fixState = lv_label_create(gpsData->page);
+        static GPS::Fix lastFix = GPS::Fix::NONE;
+        static uint32_t lastRemainingSeconds = UINT32_MAX;
+        const GPS::Fix currentFix = GPS::getInstance().getFix();
+        const uint32_t remainingMs = GPS::getInstance().getHoldRemainingMs();
+        const uint32_t remainingSeconds =
+            (remainingMs / 1000) + ((remainingMs % 1000) != 0 ? 1 : 0);
+        if ((currentFix != lastFix) || (remainingSeconds != lastRemainingSeconds)) {
+          switch (currentFix) {
+            case GPS::Fix::LIVE:
+              lv_label_set_text(fixState, "fix: live");
+              break;
+            case GPS::Fix::HELD:
+              lv_label_set_text_fmt(fixState, "fix: held, %lus left",
+                                    static_cast<unsigned long>(remainingSeconds));
+              break;
+            case GPS::Fix::NONE:
+              lv_label_set_text(fixState, "fix: none");
+              break;
+          }
+          lastFix = currentFix;
+          lastRemainingSeconds = remainingSeconds;
+        }
 
         static lv_obj_t *age = lv_label_create(gpsData->page);
         setLabelTextFmtIfChanged(age, "%lus ago", gps.location.age() / 1000);

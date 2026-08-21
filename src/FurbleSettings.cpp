@@ -24,6 +24,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {GPS_CONSTEL,       {GPS_CONSTEL, 15, "GPS Constellation", "gps_constel", FURBLE_STR}    },
     {GPS_POWER,         {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
     {GPS_DUTY,          {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
+    {GPS_HOLD,          {GPS_HOLD, 49, "Fix Hold", "gps_hold", FURBLE_STR}                   },
+    {GPS_EXTRAP,        {GPS_EXTRAP, 50, "Extrapolate", "gps_extrap", FURBLE_STR}            },
     {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
     {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
     {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
@@ -275,6 +277,7 @@ void Settings::init(void) {
         case GPS_POWER:
         case GPS_DUTY:
         case IR_PROTO:
+        case GPS_HOLD:
           save<uint8_t>(setting.type, 0);
           break;
         case BATT_STYLE:
@@ -304,6 +307,7 @@ void Settings::init(void) {
         case GPS:
         case IMU:
         case GPS_NMEA:
+        case GPS_EXTRAP:
         case MULTICONNECT:
         case RECONNECT:
         case TX_ADAPTIVE:

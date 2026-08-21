@@ -153,6 +153,7 @@ class UI {
     lv_obj_t *batteryCurrent;
     lv_obj_t *batteryCharging;
     lv_obj_t *batteryRuntime;
+    lv_obj_t *gpsExtrapolate;
     /** Widgets which are only useful while GPS is enabled. */
     std::vector<lv_obj_t *> gpsWidgets;
     bool screenLocked;
@@ -453,6 +454,8 @@ class UI {
   static constexpr const char *m_GPSSentencesStr = "Sentences";
   static constexpr const char *m_GPSConstellationStr = "Constellation";
   static constexpr const char *m_GPSPowerStr = "Power saving";
+  static constexpr const char *m_GPSHoldStr = "Fix Hold";
+  static constexpr const char *m_GPSExtrapolateStr = "Extrapolate (experimental)";
   static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
 
   // settings->gps rollers
@@ -462,6 +465,7 @@ class UI {
       "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
   static constexpr const char *m_GPSPowerOptions = "Always on\nStandby (PCAS12)\nRail cycling";
   static constexpr const char *m_GPSDutyOptions = "No standby\n5 s\n10 s\n15 s";
+  static constexpr const char *m_GPSHoldOptions = "Off\n30 s\n2 min\n10 min\n60 min";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";
@@ -657,7 +661,7 @@ class UI {
                                const int32_t row_pos = 0);
 
   /** Add a menu switch item. */
-  void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
+  lv_obj_t *addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
 
   /** Add camera menu item. */
   static lv_obj_t *addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode);
