@@ -6,8 +6,12 @@
 #include <esp_timer.h>
 #include <lvgl.h>
 
+#include <sys/time.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <ctime>
+#include <utility>
 
 #include "icons.h"
 
@@ -17,6 +21,50 @@
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleTypes.h"
+#include "Preferences.h"
+
+namespace {
+
+constexpr size_t BINARY_HEADER_SIZE = 6;
+constexpr size_t BINARY_CHECKSUM_SIZE = 4;
+constexpr size_t BINARY_FRAME_OVERHEAD = BINARY_HEADER_SIZE + BINARY_CHECKSUM_SIZE;
+constexpr uint8_t BINARY_SYNC_0 = 0xBA;
+constexpr uint8_t BINARY_SYNC_1 = 0xCE;
+constexpr uint32_t NAVX_MASK_NAV_SYSTEM = 1 << 8;
+constexpr uint8_t NAVX_NAV_SYSTEM_OFFSET = 6;
+
+uint16_t readU16(const uint8_t *data) {
+  return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+}
+
+uint32_t readU32(const uint8_t *data) {
+  return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8)
+         | (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+}
+
+void writeU16(uint8_t *data, uint16_t value) {
+  data[0] = static_cast<uint8_t>(value & 0xff);
+  data[1] = static_cast<uint8_t>((value >> 8) & 0xff);
+}
+
+void writeU32(uint8_t *data, uint32_t value) {
+  data[0] = static_cast<uint8_t>(value & 0xff);
+  data[1] = static_cast<uint8_t>((value >> 8) & 0xff);
+  data[2] = static_cast<uint8_t>((value >> 16) & 0xff);
+  data[3] = static_cast<uint8_t>((value >> 24) & 0xff);
+}
+
+template <typename T>
+void writeValue(std::vector<uint8_t> &data, size_t offset, const T &value) {
+  std::memcpy(data.data() + offset, &value, sizeof(value));
+}
+
+bool validCoordinate(double value, double min, double max) {
+  return std::isfinite(value) && (value >= min) && (value <= max);
+}
+
+}  // namespace
 
 #if defined(FURBLE_SIM)
 #include "power_profiler.h"
@@ -126,6 +174,7 @@ void GPS::setIcon(lv_obj_t *icon) {
 void GPS::reset(void) {
   uart_flush(m_UART);
   xQueueReset(m_Queue);
+  m_RxBuffer.clear();
 }
 
 void GPS::task(void) {
@@ -143,6 +192,7 @@ void GPS::task(void) {
     if (xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick()))) {
       switch (event.type) {
         case UART_DATA:
+          serviceSerial();
           break;
         case UART_FIFO_OVF:
           ESP_LOGW(LOG_TAG, "GPS HW FIFO overflow");
@@ -182,6 +232,18 @@ void GPS::enable(void) {
 
   // park the GPS task first, m_Enabled gates every cycle entry point
   m_Enabled = false;
+
+  m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
+  loadAidCache();
+  m_ConfigQueue.clear();
+  m_ConfigInFlight.reset();
+  m_ConfigFallbackUsed = false;
+  m_ConfigNavxAcked = false;
+  m_NavxPayloadValid = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+    m_ConfigStatusCount = 0;
+  }
 
   uart_set_baudrate(m_UART, baud);
   reset();
@@ -626,8 +688,77 @@ void GPS::sendCommand(const std::string &payload) {
 
   ESP_LOGI(LOG_TAG, "GPS command: %s", payload.c_str());
 
+  const std::lock_guard<std::mutex> lock(m_TxMutex);
   uart_write_bytes(m_UART, command.data(), command.size());
   uart_wait_tx_done(m_UART, pdMS_TO_TICKS(TX_MS));
+}
+
+/**
+ * Build the CASIC checksum from little endian four byte words.
+ *
+ * The CASIC specification puts the class before the message id in its formula.
+ * The L76K formula and all recorded frames use the message id first.
+ */
+uint32_t GPS::casicChecksum(uint8_t class_id,
+                            uint8_t message_id,
+                            uint16_t length,
+                            const uint8_t *payload) {
+  uint32_t sum =
+      (static_cast<uint32_t>(message_id) << 24) | (static_cast<uint32_t>(class_id) << 16) | length;
+
+  for (uint16_t offset = 0; offset < length; offset += 4) {
+    uint32_t word = 0;
+    for (uint16_t byte = 0; (byte < 4) && ((offset + byte) < length); byte++) {
+      word |= static_cast<uint32_t>(payload[offset + byte]) << (byte * 8);
+    }
+    sum += word;
+  }
+
+  return sum;
+}
+
+/** Frame and send one CASIC binary message. */
+bool GPS::sendBinaryFrame(uint8_t class_id,
+                          uint8_t message_id,
+                          const std::vector<uint8_t> &payload) {
+  if ((payload.size() > MAX_BINARY_PAYLOAD) || ((payload.size() % 4) != 0)) {
+    ESP_LOGE(LOG_TAG, "GPS binary payload has invalid length: %u",
+             static_cast<unsigned>(payload.size()));
+    return false;
+  }
+
+  const uint16_t length = static_cast<uint16_t>(payload.size());
+  std::vector<uint8_t> frame;
+  frame.reserve(BINARY_FRAME_OVERHEAD + length);
+  frame.push_back(BINARY_SYNC_0);
+  frame.push_back(BINARY_SYNC_1);
+  frame.push_back(static_cast<uint8_t>(length & 0xff));
+  frame.push_back(static_cast<uint8_t>((length >> 8) & 0xff));
+  frame.push_back(class_id);
+  frame.push_back(message_id);
+  frame.insert(frame.end(), payload.begin(), payload.end());
+
+  const uint32_t sum = casicChecksum(class_id, message_id, length, payload.data());
+  frame.push_back(static_cast<uint8_t>(sum & 0xff));
+  frame.push_back(static_cast<uint8_t>((sum >> 8) & 0xff));
+  frame.push_back(static_cast<uint8_t>((sum >> 16) & 0xff));
+  frame.push_back(static_cast<uint8_t>((sum >> 24) & 0xff));
+
+  const std::lock_guard<std::mutex> lock(m_TxMutex);
+  const int written = uart_write_bytes(m_UART, frame.data(), frame.size());
+  uart_wait_tx_done(m_UART, pdMS_TO_TICKS(TX_MS));
+  if (written != static_cast<int>(frame.size())) {
+    ESP_LOGE(LOG_TAG, "GPS binary write failed: %d of %u", written,
+             static_cast<unsigned>(frame.size()));
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "GPS binary: %02X %02X payload %u", class_id, message_id, length);
+  return true;
+}
+
+bool GPS::sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload) {
+  return sendBinaryFrame(class_id, message_id, payload);
 }
 
 /** Restart the receiver, 0 hot, 1 warm, 2 cold. */
@@ -639,53 +770,442 @@ void GPS::restart(uint8_t mode) {
   sendCommand("PCAS10," + std::to_string(mode));
 }
 
+const char *GPS::configStateName(config_state_t state) {
+  switch (state) {
+    case CONFIG_QUEUED:
+      return "QUEUED";
+    case CONFIG_SENT:
+      return "SENT";
+    case CONFIG_ACKED:
+      return "ACKED";
+    case CONFIG_NACKED:
+      return "NACKED";
+    case CONFIG_TIMEOUT:
+      return "TIMEOUT";
+    case CONFIG_FALLBACK:
+      return "FALLBACK";
+  }
+  return "UNKNOWN";
+}
+
+std::vector<GPS::config_status_t> GPS::getConfigStatus(void) const {
+  std::vector<config_status_t> status;
+  const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+  status.reserve(m_ConfigStatusCount);
+  for (size_t i = 0; i < m_ConfigStatusCount; i++) {
+    status.push_back(m_ConfigStatus[i]);
+  }
+  return status;
+}
+
+void GPS::enqueueConfig(uint8_t class_id,
+                        uint8_t message_id,
+                        const std::vector<uint8_t> &payload,
+                        const std::string &fallback,
+                        bool navx_query,
+                        bool front) {
+  size_t status_index;
+  {
+    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+    if (m_ConfigStatusCount >= MAX_CONFIG_COMMANDS) {
+      ESP_LOGE(LOG_TAG, "GPS configuration queue is full");
+      return;
+    }
+    status_index = m_ConfigStatusCount++;
+    m_ConfigStatus[status_index] = {
+        class_id,
+        message_id,
+        CONFIG_QUEUED,
+        0,
+    };
+  }
+
+  binary_command_t command = {
+      class_id, message_id, payload, fallback, navx_query, status_index,
+  };
+  if (front) {
+    m_ConfigQueue.push_front(std::move(command));
+  } else {
+    m_ConfigQueue.push_back(std::move(command));
+  }
+}
+
+void GPS::startConfigCommand(void) {
+  if (m_ConfigInFlight.has_value() || m_ConfigQueue.empty()) {
+    return;
+  }
+
+  m_ConfigInFlight = std::move(m_ConfigQueue.front());
+  m_ConfigQueue.pop_front();
+  m_ConfigAttempts = 1;
+  m_ConfigSent = Platform::getInstance().tick();
+  m_ConfigNavxAcked = false;
+  m_NavxPayloadValid = false;
+
+  {
+    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+    auto &status = m_ConfigStatus[m_ConfigInFlight->status_index];
+    status.state = CONFIG_SENT;
+    status.attempts = m_ConfigAttempts;
+    m_ConfigInFlightStatus = m_ConfigInFlight->status_index;
+  }
+
+  if (!sendBinaryFrame(m_ConfigInFlight->class_id, m_ConfigInFlight->message_id,
+                       m_ConfigInFlight->payload)) {
+    ESP_LOGW(LOG_TAG, "GPS binary command write failed");
+  }
+}
+
+void GPS::finishConfigCommand(config_state_t state) {
+  if (!m_ConfigInFlight.has_value()) {
+    return;
+  }
+
+  binary_command_t command = std::move(m_ConfigInFlight.value());
+  m_ConfigInFlight.reset();
+  m_ConfigAttempts = 0;
+  m_ConfigNavxAcked = false;
+  m_NavxPayloadValid = false;
+
+  bool sendFallback = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+    auto &status = m_ConfigStatus[command.status_index];
+    status.state = state;
+    status.attempts =
+        (state == CONFIG_ACKED || state == CONFIG_NACKED) ? status.attempts : BINARY_ATTEMPTS;
+    sendFallback = (state != CONFIG_ACKED) && !command.fallback.empty() && !m_ConfigFallbackUsed;
+  }
+
+  if (sendFallback) {
+    m_ConfigFallbackUsed = true;
+    sendCommand(command.fallback);
+    if (state == CONFIG_TIMEOUT) {
+      const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+      m_ConfigStatus[command.status_index].state = CONFIG_FALLBACK;
+    }
+  }
+}
+
 /**
- * Send the $PCAS configuration commands.
+ * Build the acknowledged configuration queue.
  *
- * Every setting defaults to 'do not send', so a device which has never been
- * configured leaves the receiver at its own defaults.
+ * A fresh install has all PR14 settings disabled, so this queue stays empty.
  */
 void GPS::configure(void) {
   const uint8_t rate = Settings::load<Settings::GPS_RATE>();
   const bool prune = Settings::load<Settings::GPS_NMEA>();
   const uint8_t constellation = Settings::load<Settings::GPS_CONSTEL>();
 
-  // prune first, the receiver cannot sustain the fast rates while it still
-  // emits every sentence
+  m_ConfigQueue.clear();
+  m_ConfigInFlight.reset();
+  m_ConfigFallbackUsed = false;
+  m_ConfigNavxAcked = false;
+  m_NavxPayloadValid = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+    m_ConfigStatusCount = 0;
+  }
+
   if (prune) {
-    // GGA for altitude, satellites and fix quality, RMC for date, time and
-    // position, nothing else is used
-    sendCommand("PCAS03,1,0,0,0,1,0,0,0");
+    const std::array<uint8_t, 8> messages = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x11};
+    const std::array<uint8_t, 8> rates = {1, 0, 0, 0, 1, 0, 0, 0};
+    for (size_t i = 0; i < messages.size(); i++) {
+      const std::vector<uint8_t> payload = {0x4E, messages[i], rates[i], 0};
+      enqueueConfig(CFG_CLASS, CFG_MSG_ID, payload, "PCAS03,1,0,0,0,1,0,0,0");
+    }
   }
 
   if ((rate > 0) && (rate < RATE_MS.size())) {
-    sendCommand("PCAS02," + std::to_string(RATE_MS[rate]));
+    std::vector<uint8_t> payload(4, 0);
+    writeU16(payload.data(), RATE_MS[rate]);
+    enqueueConfig(CFG_CLASS, 0x04, payload, "PCAS02," + std::to_string(RATE_MS[rate]));
   }
 
   if ((constellation > 0) && (constellation <= CONSTELLATION_MAX)) {
-    sendCommand("PCAS04," + std::to_string(constellation));
+    const std::vector<uint8_t> query;
+    enqueueConfig(CFG_CLASS, CFG_NAVX_ID, query, "PCAS04," + std::to_string(constellation), true);
   }
 }
 
-/** Configure the receiver once it is awake, or give up and try anyway. */
+/** Configure the receiver once it is awake, then service one binary command. */
 void GPS::serviceConfig(void) {
-  if (!m_Enabled || !m_ConfigPending) {
+  if (!m_Enabled) {
     return;
   }
 
-  const bool awake = m_GPS.charsProcessed() > m_ConfigChars;
-  const bool expired = (Platform::getInstance().tick() - m_ConfigStart) > SETTLE_MS;
-  if (!awake && !expired) {
+  if (m_ConfigPending) {
+    const bool awake = m_GPS.charsProcessed() > m_ConfigChars;
+    const bool expired = (Platform::getInstance().tick() - m_ConfigStart) > SETTLE_MS;
+    if (!awake && !expired) {
+      return;
+    }
+
+    m_ConfigPending = false;
+    if (m_AidMode.load() != 0) {
+      sendAidIni();
+    }
+    configure();
+  }
+
+  if (m_ConfigInFlight.has_value()) {
+    const uint32_t now = Platform::getInstance().tick();
+    if ((now - m_ConfigSent) < BINARY_ACK_TIMEOUT_MS) {
+      return;
+    }
+
+    if (m_ConfigAttempts < BINARY_ATTEMPTS) {
+      m_ConfigAttempts++;
+      m_ConfigSent = now;
+      m_ConfigNavxAcked = false;
+      m_NavxPayloadValid = false;
+      {
+        const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+        auto &status = m_ConfigStatus[m_ConfigInFlightStatus];
+        status.state = CONFIG_SENT;
+        status.attempts = m_ConfigAttempts;
+      }
+      if (!sendBinaryFrame(m_ConfigInFlight->class_id, m_ConfigInFlight->message_id,
+                           m_ConfigInFlight->payload)) {
+        ESP_LOGW(LOG_TAG, "GPS binary retry write failed");
+      }
+    } else {
+      finishConfigCommand(CONFIG_TIMEOUT);
+    }
     return;
   }
 
-  m_ConfigPending = false;
-  configure();
+  startConfigCommand();
+}
+
+int64_t GPS::toUnixSeconds(const Camera::timesync_t &timesync) {
+  if ((timesync.year < 1970) || (timesync.month < 1) || (timesync.month > 12) || (timesync.day < 1)
+      || (timesync.day > 31) || (timesync.hour > 23) || (timesync.minute > 59)
+      || (timesync.second > 59)) {
+    return -1;
+  }
+
+  static constexpr std::array<uint8_t, 12> DAYS = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  int64_t days = 0;
+  for (uint32_t year = 1970; year < timesync.year; year++) {
+    const bool leap = ((year % 4) == 0) && (((year % 100) != 0) || ((year % 400) == 0));
+    days += leap ? 366 : 365;
+  }
+  for (uint8_t month = 1; month < timesync.month; month++) {
+    days += DAYS[month - 1];
+    if ((month == 2) && ((timesync.year % 4) == 0)
+        && (((timesync.year % 100) != 0) || ((timesync.year % 400) == 0))) {
+      days++;
+    }
+  }
+  days += timesync.day - 1;
+
+  return (days * 24 * 60 * 60) + (timesync.hour * 60 * 60) + (timesync.minute * 60)
+         + timesync.second;
+}
+
+void GPS::loadAidCache(void) {
+  std::lock_guard<std::mutex> lock(m_AidMutex);
+  if (m_AidCacheLoaded) {
+    return;
+  }
+
+  aid_cache_t cache = {};
+  Preferences prefs;
+  bool valid = false;
+  if (prefs.begin(FURBLE_STR, true)) {
+    if (prefs.isKey("gps_fix") && (prefs.get("gps_fix", &cache, sizeof(cache)) == sizeof(cache))) {
+      const Camera::timesync_t timesync = {
+          cache.year,   cache.month,  cache.day,         cache.hour,
+          cache.minute, cache.second, cache.centisecond,
+      };
+      valid = (cache.magic == AID_CACHE_MAGIC) && (cache.version == AID_CACHE_VERSION)
+              && validCoordinate(cache.latitude, -90.0, 90.0)
+              && validCoordinate(cache.longitude, -180.0, 180.0)
+              && (toUnixSeconds(timesync) == cache.utc_seconds);
+    }
+    prefs.end();
+  }
+
+  m_AidCacheLoaded = true;
+  m_AidCacheValid = valid;
+  m_AidCacheTickValid = false;
+  m_AidCacheWriteValid = false;
+  if (valid) {
+    m_AidCache = cache;
+  }
+}
+
+void GPS::updateAidCache(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {
+  if (m_AidMode.load() == 0) {
+    return;
+  }
+
+  const int64_t utc_seconds = toUnixSeconds(timesync);
+  if ((utc_seconds < GPS_EPOCH_UNIX) || !validCoordinate(gps.latitude, -90.0, 90.0)
+      || !validCoordinate(gps.longitude, -180.0, 180.0)) {
+    return;
+  }
+
+  const uint32_t now = Platform::getInstance().tick();
+  aid_cache_t cache = {
+      AID_CACHE_MAGIC,
+      AID_CACHE_VERSION,
+      {0, 0, 0},
+      gps.latitude,
+      gps.longitude,
+      std::isfinite(gps.altitude) ? gps.altitude : 0.0,
+      utc_seconds,
+      now,
+      static_cast<uint16_t>(timesync.year),
+      static_cast<uint8_t>(timesync.month),
+      static_cast<uint8_t>(timesync.day),
+      static_cast<uint8_t>(timesync.hour),
+      static_cast<uint8_t>(timesync.minute),
+      static_cast<uint8_t>(timesync.second),
+      static_cast<uint8_t>(timesync.centisecond),
+      static_cast<uint8_t>(std::isfinite(gps.altitude) ? 1 : 0),
+      {0, 0, 0},
+  };
+
+  bool write = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_AidMutex);
+    write = !m_AidCacheWriteValid || ((now - m_AidCacheLastWrite) >= AID_CACHE_WRITE_MS);
+    m_AidCache = cache;
+    m_AidCacheValid = true;
+    m_AidCacheTickValid = true;
+    m_AidCacheWriteValid = m_AidCacheWriteValid || write;
+    m_AidCacheTick = now;
+    if (write) {
+      m_AidCacheLastWrite = now;
+    }
+  }
+
+  if (write) {
+    Preferences prefs;
+    bool saved = false;
+    if (prefs.begin(FURBLE_STR, false)) {
+      saved = prefs.put("gps_fix", &cache, sizeof(cache)) == sizeof(cache);
+      prefs.end();
+    }
+    if (!saved) {
+      const std::lock_guard<std::mutex> lock(m_AidMutex);
+      m_AidCacheWriteValid = false;
+    }
+  }
+
+  struct timeval tv = {
+      .tv_sec = static_cast<time_t>(utc_seconds),
+      .tv_usec = static_cast<suseconds_t>(timesync.centisecond * 10000),
+  };
+  settimeofday(&tv, nullptr);
+}
+
+bool GPS::sendAidIni(void) {
+  if (m_AidMode.load() == 0) {
+    return false;
+  }
+
+  loadAidCache();
+
+  aid_cache_t cache;
+  bool tickValid;
+  uint32_t captureTick;
+  {
+    const std::lock_guard<std::mutex> lock(m_AidMutex);
+    if (!m_AidCacheValid) {
+      return false;
+    }
+    cache = m_AidCache;
+    tickValid = m_AidCacheTickValid;
+    captureTick = m_AidCacheTick;
+  }
+
+  const uint32_t nowTick = Platform::getInstance().tick();
+  uint32_t age = 0;
+  int64_t utc_seconds = cache.utc_seconds;
+  float pAcc = 50000.0f;
+  float tAcc = 3600.0f;
+  bool timeValid = true;
+  if (tickValid) {
+    age = nowTick - captureTick;
+    if (age > AID_CACHE_MAX_AGE_MS) {
+      return false;
+    }
+    utc_seconds += age / 1000;
+    pAcc = std::max(10.0f, std::min(50000.0f, (age / 1000.0f) * 13.8889f));
+    tAcc = 2.0f;
+  } else {
+    const int64_t wall = static_cast<int64_t>(time(nullptr));
+    if (wall >= cache.utc_seconds) {
+      const int64_t wall_age = wall - cache.utc_seconds;
+      if (wall_age > (AID_CACHE_MAX_AGE_MS / 1000)) {
+        return false;
+      }
+      age = static_cast<uint32_t>(wall_age) * 1000;
+      utc_seconds = wall;
+      pAcc = std::max(10.0f, std::min(50000.0f, (age / 1000.0f) * 13.8889f));
+      tAcc = 3600.0f;
+    } else {
+      // A no-backup-rail cold reboot leaves the ESP32 clock unset (~1970), so
+      // wall time trails the cached fix and the cache age is unknown. Do not
+      // assert a valid time of unknown age: that would feed the receiver an
+      // over-confident wrong time and hurt TTFF. Send position-only assist
+      // instead. The cached location still narrows the search safely.
+      timeValid = false;
+      pAcc = 50000.0f;
+      tAcc = 3600.0f;
+    }
+  }
+
+  if (utc_seconds < GPS_EPOCH_UNIX) {
+    return false;
+  }
+
+  const int64_t gps_seconds = utc_seconds - GPS_EPOCH_UNIX + GPS_LEAP_SECONDS;
+  const uint16_t week = static_cast<uint16_t>(gps_seconds / (7 * 24 * 60 * 60));
+  const double tow = static_cast<double>(gps_seconds % (7 * 24 * 60 * 60));
+  const bool altitudeValid = (cache.flags & 1) != 0;
+  uint8_t flags = static_cast<uint8_t>(0x23 | (altitudeValid ? 0 : 0x40));
+  if (!timeValid) {
+    // Clear B1 time valid so the receiver ignores tow and wn. The cached time
+    // is of unknown age after a rail-cut reboot, so we send position-only
+    // aiding rather than an over-confident wrong time.
+    flags &= static_cast<uint8_t>(~0x02);
+  }
+
+  std::vector<uint8_t> payload(56, 0);
+  writeValue(payload, 0, cache.latitude);
+  writeValue(payload, 8, cache.longitude);
+  writeValue(payload, 16, cache.altitude);
+  writeValue(payload, 24, tow);
+  const float zero = 0.0f;
+  writeValue(payload, 32, zero);
+  writeValue(payload, 36, pAcc);
+  writeValue(payload, 40, tAcc);
+  writeValue(payload, 44, zero);
+  writeU32(payload.data() + 48, 0);
+  writeU16(payload.data() + 52, week);
+  payload[54] = 0;
+  payload[55] = flags;
+
+  const bool sent = sendBinaryFrame(AID_CLASS, AID_INI_ID, payload);
+  if (sent) {
+    ESP_LOGI(LOG_TAG, "GPS AID-INI sent, cache age %lu ms", static_cast<unsigned long>(age));
+  }
+  return sent;
 }
 
 void GPS::disable(void) {
   m_Enabled = false;
   FURBLE_SIM_GPS_STATE("off");
+  m_ConfigPending = false;
+  m_ConfigQueue.clear();
+  m_ConfigInFlight.reset();
+  m_ConfigNavxAcked = false;
+  m_NavxPayloadValid = false;
+  m_RxBuffer.clear();
 
   {
     // serialise against a cycle pass still running on the GPS task
@@ -704,7 +1224,9 @@ void GPS::disable(void) {
 
 /** Refresh the setting from NVS. */
 void GPS::reloadSetting(void) {
-  if (Settings::load<Settings::GPS>()) {
+  m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
+  m_Enabled = Settings::load<Settings::GPS>();
+  if (m_Enabled) {
     enable();
   } else {
     disable();
@@ -781,6 +1303,7 @@ void GPS::update(void) {
         m_GPS.date.year(),   m_GPS.date.month(),  m_GPS.date.day(),         m_GPS.time.hour(),
         m_GPS.time.minute(), m_GPS.time.second(), m_GPS.time.centisecond(),
     };
+    updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
   } else {
@@ -852,6 +1375,151 @@ uint8_t GPS::getSatellites(void) const {
   return m_Satellites.load();
 }
 
+void GPS::completeNavxQuery(void) {
+  if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->navx_query || !m_NavxPayloadValid
+      || !m_ConfigNavxAcked) {
+    return;
+  }
+
+  const size_t queryStatus = m_ConfigInFlight->status_index;
+  std::vector<uint8_t> write(m_NavxPayload.begin(), m_NavxPayload.end());
+  m_ConfigInFlight.reset();
+  m_ConfigAttempts = 0;
+  m_ConfigNavxAcked = false;
+  m_NavxPayloadValid = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+    m_ConfigStatus[queryStatus].state = CONFIG_ACKED;
+  }
+
+  const uint8_t constellation = Settings::load<Settings::GPS_CONSTEL>();
+  writeU32(write.data(), NAVX_MASK_NAV_SYSTEM);
+  write[NAVX_NAV_SYSTEM_OFFSET] = constellation;
+  enqueueConfig(CFG_CLASS, CFG_NAVX_ID, write, "PCAS04," + std::to_string(constellation), false,
+                true);
+}
+
+void GPS::handleNavxResponse(const uint8_t *payload, size_t length) {
+  if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->navx_query
+      || (m_ConfigInFlight->class_id != CFG_CLASS) || (m_ConfigInFlight->message_id != CFG_NAVX_ID)
+      || (length != NAVX_PAYLOAD_SIZE)) {
+    return;
+  }
+
+  std::copy(payload, payload + length, m_NavxPayload.begin());
+  m_NavxPayloadValid = true;
+  completeNavxQuery();
+}
+
+void GPS::serviceBinary(const uint8_t *frame, size_t length) {
+  if (length < BINARY_FRAME_OVERHEAD) {
+    return;
+  }
+
+  const uint16_t payloadLength = readU16(frame + 2);
+  if (length != (BINARY_FRAME_OVERHEAD + payloadLength)) {
+    return;
+  }
+
+  const uint8_t class_id = frame[4];
+  const uint8_t message_id = frame[5];
+  const uint8_t *payload = frame + BINARY_HEADER_SIZE;
+
+  if ((class_id == ACK_CLASS) && ((message_id == ACK_ACK_ID) || (message_id == ACK_NACK_ID))
+      && (payloadLength >= 2)) {
+    if (m_ConfigInFlight.has_value() && (payload[0] == m_ConfigInFlight->class_id)
+        && (payload[1] == m_ConfigInFlight->message_id)) {
+      if ((message_id == ACK_ACK_ID) && m_ConfigInFlight->navx_query) {
+        m_ConfigNavxAcked = true;
+        {
+          const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+          auto &status = m_ConfigStatus[m_ConfigInFlight->status_index];
+          status.state = CONFIG_ACKED;
+          status.attempts = m_ConfigAttempts;
+        }
+        completeNavxQuery();
+      } else {
+        finishConfigCommand(message_id == ACK_ACK_ID ? CONFIG_ACKED : CONFIG_NACKED);
+      }
+    }
+    return;
+  }
+
+  if ((class_id == CFG_CLASS) && (message_id == CFG_NAVX_ID)
+      && (payloadLength == NAVX_PAYLOAD_SIZE)) {
+    handleNavxResponse(payload, payloadLength);
+  }
+}
+
+void GPS::processNmea(uint8_t *data, size_t length) {
+  if (length == 0) {
+    return;
+  }
+
+  Console::gpsRaw(reinterpret_cast<const char *>(data), length);
+  m_GPS.encode(reinterpret_cast<char *>(data), length);
+  captureSentences(reinterpret_cast<const char *>(data), length);
+}
+
+void GPS::processSerial(const uint8_t *data, size_t length) {
+  m_RxBuffer.insert(m_RxBuffer.end(), data, data + length);
+
+  while (!m_RxBuffer.empty()) {
+    size_t header = m_RxBuffer.size();
+    for (size_t i = 0; i + 1 < m_RxBuffer.size(); i++) {
+      if ((m_RxBuffer[i] == BINARY_SYNC_0) && (m_RxBuffer[i + 1] == BINARY_SYNC_1)) {
+        header = i;
+        break;
+      }
+    }
+
+    if (header == m_RxBuffer.size()) {
+      const size_t keep = (m_RxBuffer.back() == BINARY_SYNC_0) ? 1 : 0;
+      const size_t nmea = m_RxBuffer.size() - keep;
+      if (nmea > 0) {
+        processNmea(m_RxBuffer.data(), nmea);
+        m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + nmea);
+      }
+      break;
+    }
+
+    if (header > 0) {
+      processNmea(m_RxBuffer.data(), header);
+      m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + header);
+      continue;
+    }
+
+    if (m_RxBuffer.size() < BINARY_HEADER_SIZE) {
+      break;
+    }
+
+    const uint16_t payloadLength = readU16(m_RxBuffer.data() + 2);
+    if ((payloadLength > MAX_BINARY_PAYLOAD) || ((payloadLength % 4) != 0)) {
+      m_RxBuffer.erase(m_RxBuffer.begin());
+      continue;
+    }
+
+    const size_t frameLength = BINARY_FRAME_OVERHEAD + payloadLength;
+    if (m_RxBuffer.size() < frameLength) {
+      break;
+    }
+
+    const uint8_t class_id = m_RxBuffer[4];
+    const uint8_t message_id = m_RxBuffer[5];
+    const uint32_t expected =
+        casicChecksum(class_id, message_id, payloadLength, m_RxBuffer.data() + BINARY_HEADER_SIZE);
+    const uint32_t received = readU32(m_RxBuffer.data() + BINARY_HEADER_SIZE + payloadLength);
+    if (expected != received) {
+      m_RxBuffer.erase(m_RxBuffer.begin());
+      continue;
+    }
+
+    Console::gpsBinary(m_RxBuffer.data(), frameLength);
+    serviceBinary(m_RxBuffer.data(), frameLength);
+    m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + frameLength);
+  }
+}
+
 /** Read and decode the GPS data from serial port. */
 void GPS::serviceSerial(void) {
   std::array<uint8_t, BUFFER_SIZE> buffer;
@@ -865,8 +1533,12 @@ void GPS::serviceSerial(void) {
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
     beginBurst(Platform::getInstance().tick());
-    Console::gpsRaw(reinterpret_cast<const char *>(buffer.data()), bytes);
-    m_GPS.encode(reinterpret_cast<char *>(buffer.data()), bytes);
+
+    // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route
+    // through processNmea, which does the console echo, TinyGPSPlus encode and
+    // sentence capture. Burst and fix sequence tracking stay here so they run
+    // once per read pass.
+    processSerial(buffer.data(), bytes);
 
     const uint32_t locationAge = m_GPS.location.age();
     if (m_GPS.location.isValid() && (locationAge < m_LastLocationAge)) {
@@ -875,7 +1547,6 @@ void GPS::serviceSerial(void) {
     m_LastLocationAge = locationAge;
 
     m_LastSentence = Platform::getInstance().tick();
-    captureSentences(reinterpret_cast<char *>(buffer.data()), bytes);
   }
 }
 

@@ -201,6 +201,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSAssistStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -3284,6 +3285,16 @@ void UI::addGPSMenu(const menu_t &parent) {
       });
 
   addGPSPowerMenu(menu);
+  addGPSOptionMenu(
+      menu, m_GPSAssistStr, m_GPSAssistOptions, Settings::load<Settings::GPS_ASSIST>(),
+      [](lv_event_t *e) {
+        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+        Settings::save<Settings::GPS_ASSIST>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+        status->gps->reloadSetting();
+      });
+
   addGPSDataMenu(menu);
   addGPSNMEAMenu(menu);
 
@@ -3453,8 +3464,8 @@ void UI::gpsDataStop(lv_event_t *e) {
 /**
  * Raw NMEA and satellite debug page.
  *
- * Sentence capture only runs while the page is open, it is the only way to
- * observe whether a $PCAS command was accepted.
+ * Sentence capture only runs while the page is open. Binary configuration
+ * status is shown alongside the captured sentences.
  */
 void UI::addGPSNMEAMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_GPSNMEAStr, NULL, true, parent);
@@ -3472,6 +3483,10 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
   m_NMEA.counters = lv_label_create(cont);
   lv_obj_set_width(m_NMEA.counters, LV_PCT(100));
   lv_label_set_long_mode(m_NMEA.counters, LV_LABEL_LONG_WRAP);
+
+  m_NMEA.config = lv_label_create(cont);
+  lv_obj_set_width(m_NMEA.config, LV_PCT(100));
+  lv_label_set_long_mode(m_NMEA.config, LV_LABEL_LONG_WRAP);
 
   m_NMEA.sentences = lv_label_create(cont);
   lv_obj_set_width(m_NMEA.sentences, LV_PCT(100));
@@ -3500,6 +3515,24 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         setLabelTextFmtIfChanged(
             ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)tinygps.charsProcessed(),
             (unsigned long)tinygps.passedChecksum(), (unsigned long)tinygps.failedChecksum());
+
+        std::string config;
+        for (const auto &entry : gps.getConfigStatus()) {
+          char line[48];
+          snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
+                   GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
+          if (!config.empty()) {
+            config += "\n";
+          }
+          config += line;
+        }
+        if (config.empty()) {
+          config = "cfg empty";
+        }
+        if (config != ui->m_NMEA.configText) {
+          ui->m_NMEA.configText = config;
+          lv_label_set_text(ui->m_NMEA.config, config.c_str());
+        }
 
         std::string text;
         for (const auto &sentence : gps.getSentences()) {

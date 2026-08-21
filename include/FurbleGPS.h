@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <deque>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -30,6 +31,22 @@ class GPS {
     SOURCE_UART,
     SOURCE_COMPANION,
   };
+
+  enum config_state_t {
+    CONFIG_QUEUED,
+    CONFIG_SENT,
+    CONFIG_ACKED,
+    CONFIG_NACKED,
+    CONFIG_TIMEOUT,
+    CONFIG_FALLBACK,
+  };
+
+  typedef struct {
+    uint8_t class_id;
+    uint8_t message_id;
+    config_state_t state;
+    uint8_t attempts;
+  } config_status_t;
 
   typedef struct {
     Camera::gps_t gps;
@@ -86,6 +103,18 @@ class GPS {
   /** Get the captured NMEA sentences, oldest first. */
   std::vector<std::string> getSentences(void);
 
+  /** Send a raw CASIC binary frame. */
+  bool sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
+
+  /** Inject the cached position and time as AID-INI. */
+  bool sendAidIni(void);
+
+  /** Get the most recent binary configuration status list. */
+  std::vector<config_status_t> getConfigStatus(void) const;
+
+  /** Get the printable name of a binary configuration state. */
+  static const char *configStateName(config_state_t state);
+
  private:
   GPS() {};
 
@@ -94,6 +123,26 @@ class GPS {
   static constexpr const uint16_t SERVICE_MS = 1000;
   static constexpr const uint32_t MAX_AGE_MS = 30 * 1000;
   static constexpr const char *POWER_LOCK_OWNER = "gps";
+
+  static constexpr uint8_t CFG_CLASS = 0x06;
+  static constexpr uint8_t CFG_MSG_ID = 0x01;
+  static constexpr uint8_t CFG_NAVX_ID = 0x07;
+  static constexpr uint8_t ACK_CLASS = 0x05;
+  static constexpr uint8_t ACK_NACK_ID = 0x00;
+  static constexpr uint8_t ACK_ACK_ID = 0x01;
+  static constexpr uint8_t AID_CLASS = 0x0B;
+  static constexpr uint8_t AID_INI_ID = 0x01;
+  static constexpr uint16_t MAX_BINARY_PAYLOAD = 2048;
+  static constexpr uint32_t BINARY_ACK_TIMEOUT_MS = 300;
+  static constexpr uint8_t BINARY_ATTEMPTS = 3;
+  static constexpr size_t MAX_CONFIG_COMMANDS = 16;
+  static constexpr size_t NAVX_PAYLOAD_SIZE = 44;
+  static constexpr uint32_t AID_CACHE_MAGIC = 0x46524149;
+  static constexpr uint8_t AID_CACHE_VERSION = 1;
+  static constexpr uint32_t AID_CACHE_WRITE_MS = 10 * 60 * 1000;
+  static constexpr uint32_t AID_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  static constexpr int64_t GPS_EPOCH_UNIX = 315964800;
+  static constexpr int GPS_LEAP_SECONDS = 18;
 
   /** How long to wait for the receiver before sending the configuration. */
   static constexpr const uint32_t SETTLE_MS = 3000;
@@ -120,11 +169,45 @@ class GPS {
     PERMANENT_LOCK,
   };
 
+  typedef struct {
+    uint32_t magic;
+    uint8_t version;
+    uint8_t reserved[3];
+    double latitude;
+    double longitude;
+    double altitude;
+    int64_t utc_seconds;
+    uint32_t capture_tick_ms;
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint8_t centisecond;
+    uint8_t flags;
+    uint8_t reserved_tail[3];
+  } aid_cache_t;
+
+  typedef struct {
+    uint8_t class_id;
+    uint8_t message_id;
+    std::vector<uint8_t> payload;
+    std::string fallback;
+    bool navx_query;
+    size_t status_index;
+  } binary_command_t;
+
+  static_assert(sizeof(aid_cache_t) == 56, "AID cache layout changed");
+
   void enable(void);
   void disable(void);
   void serviceSerial(void);
   void serviceConfig(void);
   void serviceCycle(void);
+  void processSerial(const uint8_t *data, size_t length);
+  void processNmea(uint8_t *data, size_t length);
+  void serviceBinary(const uint8_t *frame, size_t length);
   void update(void);
   bool wiredFixIsFresh(void);
 
@@ -148,11 +231,35 @@ class GPS {
   /** XOR checksum of every character between '$' and '*'. */
   static uint8_t checksum(const std::string &payload);
 
+  /** CASIC binary checksum. The checksum is the sum of little endian words. */
+  static uint32_t casicChecksum(uint8_t class_id,
+                                uint8_t message_id,
+                                uint16_t length,
+                                const uint8_t *payload);
+
   /** Frame the payload as NMEA and write it to the receiver. */
   void sendCommand(const std::string &payload);
 
+  /** Frame and write one CASIC binary message. */
+  bool sendBinaryFrame(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
+
   /** Send the $PCAS configuration commands for the current settings. */
   void configure(void);
+
+  void enqueueConfig(uint8_t class_id,
+                     uint8_t message_id,
+                     const std::vector<uint8_t> &payload,
+                     const std::string &fallback,
+                     bool navx_query = false,
+                     bool front = false);
+  void startConfigCommand(void);
+  void finishConfigCommand(config_state_t state);
+  void handleNavxResponse(const uint8_t *payload, size_t length);
+  void completeNavxQuery(void);
+
+  void loadAidCache(void);
+  void updateAidCache(const Camera::gps_t &gps, const Camera::timesync_t &timesync);
+  static int64_t toUnixSeconds(const Camera::timesync_t &timesync);
 
   /** Store raw NMEA sentences while the debug page is open. */
   void captureSentences(const char *data, size_t length);
@@ -215,6 +322,31 @@ class GPS {
   std::atomic<bool> m_ConfigPending = false;
   uint32_t m_ConfigStart = 0;
   uint32_t m_ConfigChars = 0;
+  std::deque<binary_command_t> m_ConfigQueue;
+  std::optional<binary_command_t> m_ConfigInFlight;
+  std::array<config_status_t, MAX_CONFIG_COMMANDS> m_ConfigStatus = {};
+  size_t m_ConfigStatusCount = 0;
+  size_t m_ConfigInFlightStatus = 0;
+  uint8_t m_ConfigAttempts = 0;
+  uint32_t m_ConfigSent = 0;
+  bool m_ConfigFallbackUsed = false;
+  bool m_ConfigNavxAcked = false;
+  std::array<uint8_t, NAVX_PAYLOAD_SIZE> m_NavxPayload = {};
+  bool m_NavxPayloadValid = false;
+  mutable std::mutex m_ConfigMutex;
+  std::mutex m_TxMutex;
+
+  std::vector<uint8_t> m_RxBuffer;
+
+  std::atomic<uint8_t> m_AidMode = 0;
+  aid_cache_t m_AidCache = {};
+  bool m_AidCacheLoaded = false;
+  bool m_AidCacheValid = false;
+  bool m_AidCacheTickValid = false;
+  bool m_AidCacheWriteValid = false;
+  uint32_t m_AidCacheTick = 0;
+  uint32_t m_AidCacheLastWrite = 0;
+  mutable std::mutex m_AidMutex;
 
   std::atomic<bool> m_Capture = false;
   std::mutex m_CaptureMutex;

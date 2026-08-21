@@ -31,6 +31,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   unset so pads hold through light sleep. Vibration is I2C, whose divider is
   recomputed per transaction. The output selection is frozen at boot (it
   decides `cfg.internal_spk`), only the event mask and volume reload live.
+- `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
+  acknowledged configuration command at a time and keeps the fallback path.
+- Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
+  every new `Settings::type_t` case.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.

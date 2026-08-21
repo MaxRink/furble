@@ -194,7 +194,9 @@ class UI {
   typedef struct {
     lv_obj_t *fix;
     lv_obj_t *counters;
+    lv_obj_t *config;
     lv_obj_t *sentences;
+    std::string configText;
   } nmea_t;
 
   class Intervalometer: public SpinnerOwner {
@@ -426,6 +428,7 @@ class UI {
   static constexpr const char *m_GPSSentencesStr = "Sentences";
   static constexpr const char *m_GPSConstellationStr = "Constellation";
   static constexpr const char *m_GPSPowerStr = "Power saving";
+  static constexpr const char *m_GPSAssistStr = "Assisted start";
   static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
 
   // settings->gps rollers
@@ -435,6 +438,7 @@ class UI {
       "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
   static constexpr const char *m_GPSPowerOptions = "Always on\nStandby (PCAS12)\nRail cycling";
   static constexpr const char *m_GPSDutyOptions = "No standby\n5 s\n10 s\n15 s";
+  static constexpr const char *m_GPSAssistOptions = "Off\nPosition and time";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";

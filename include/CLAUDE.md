@@ -10,3 +10,5 @@ Public headers for the app layer in src/, one header per module
 - Doxygen-style comments on public members, matching the existing files.
 - `FurbleControl::setPower` is the user-selected maximum for Bluetooth transmit
   power. Adaptive runtime changes must stay at or below that cap.
+- `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
+  documented public methods. Keep their wire format comments next to the API.
