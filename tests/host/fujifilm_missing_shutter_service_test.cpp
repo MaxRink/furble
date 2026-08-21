@@ -1,32 +1,16 @@
-// KNOWN-FAILING regression test (registered WILL_FAIL in CMakeLists).
+// Regression guard: FujifilmBasic::_connect() must not crash when the camera
+// does not expose the shutter GATT service.
 //
-// Finding: FujifilmBasic::_connect() null-dereferences when the camera does not
-// expose the shutter GATT service.
+// The original bug: getService(SVC_SHUTTER_UUID) returning nullptr was only
+// logged, then the next line dereferenced the null pointer via
+// pSvc->getCharacteristic(CHR_SHUTTER_UUID), a hard fault on device.
+// FujifilmBasic::_connect now `return false` when the shutter service is null,
+// matching FujifilmSecure and Nikon.
 //
-// FujifilmBasic.cpp getService(SVC_SHUTTER_UUID) returning nullptr is only
-// logged, then the very next line calls pSvc->getCharacteristic(CHR_SHUTTER_UUID)
-// on that null pointer:
-//
-//     pSvc = m_Client->getService(SVC_SHUTTER_UUID);
-//     if (pSvc == nullptr) {
-//       ESP_LOGI(LOG_TAG, "Failed to get shutter service");   // logs, does not return
-//     }
-//     ...
-//     m_Shutter = pSvc->getCharacteristic(CHR_SHUTTER_UUID);  // null dereference
-//
-// The sibling vendors guard this. FujifilmSecure.cpp and Nikon.cpp both
-// `return false` when the shutter or primary service is missing. FujifilmBasic
-// does not, so a camera that completes pairing and configuration but exposes no
-// shutter service crashes furble during the connect. On device this is a hard
-// fault, not a clean failed connect.
-//
-// The connect runs in a forked child so the crash cannot take down the harness
+// The connect runs in a forked child so any crash cannot take down the harness
 // process. The correct contract is: connect() returns false and the child exits
-// cleanly. This test returns 0 only when that contract holds. Today the child
-// crashes with SIGSEGV, so the test returns non-zero and CI stays green through
-// the WILL_FAIL marker. When FujifilmBasic gains the missing `return false`, the
-// child exits cleanly, this test returns 0, and the WILL_FAIL marker flips the
-// job red, prompting removal of the marker.
+// cleanly. This test returns 0 only when that contract holds. With the guard the
+// child exits cleanly and this test passes as a normal test.
 
 #include <sys/wait.h>
 #include <unistd.h>

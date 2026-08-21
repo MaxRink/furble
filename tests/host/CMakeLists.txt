@@ -100,10 +100,9 @@ target_link_libraries(fault_tooling_test PRIVATE furble_host_camera)
 target_compile_options(fault_tooling_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
 
-# Adversarial bug-hunt findings. Both are KNOWN-FAILING against current master and
-# are registered WILL_FAIL below so CI stays green while the finding is tracked.
-# When FujifilmBasic::_connect gains the missing shutter guard, each test passes,
-# and WILL_FAIL flips the job red so the marker gets removed with the fix.
+# Adversarial bug-hunt findings, now real regression guards. FujifilmBasic::_connect
+# returns false when the shutter service or characteristic is missing, so both
+# tests pass as normal tests below: no null deref crash, no silent success.
 add_executable(fujifilm_missing_shutter_service_test fujifilm_missing_shutter_service_test.cpp)
 target_link_libraries(fujifilm_missing_shutter_service_test PRIVATE furble_host_camera)
 target_compile_options(fujifilm_missing_shutter_service_test PRIVATE -Wall -Wextra -Werror
@@ -251,12 +250,11 @@ if(BUILD_TESTING)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
   endforeach()
 
-  # Known-failing findings. WILL_FAIL keeps CI green while the finding is tracked:
-  # CTest inverts the pass/fail flag, so the crashing/failing run counts as a pass
-  # today, and once FujifilmBasic::_connect is fixed the run turns clean and the
-  # inverted flag turns the test red, forcing the marker off with the fix.
+  # Regression guards for the FujifilmBasic missing-shutter connect faults.
+  # FujifilmBasic::_connect now returns false when the shutter service or
+  # characteristic is missing, so each test connects cleanly: no null deref
+  # crash on a missing service, no silent success with a null shutter on a
+  # missing characteristic. Both run as normal passing tests.
   add_test(NAME fujifilm-missing-shutter-service COMMAND fujifilm_missing_shutter_service_test)
-  set_tests_properties(fujifilm-missing-shutter-service PROPERTIES WILL_FAIL TRUE)
   add_test(NAME fujifilm-missing-shutter-char COMMAND fujifilm_missing_shutter_char_test)
-  set_tests_properties(fujifilm-missing-shutter-char PROPERTIES WILL_FAIL TRUE)
 endif()

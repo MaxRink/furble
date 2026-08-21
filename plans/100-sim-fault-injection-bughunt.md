@@ -99,16 +99,25 @@ element is absent, unlike the FujifilmSecure and Nikon siblings.
 `host_camera` CI job runs them with no workflow change.
 
 - `fault-tooling` runs normally and must stay green.
-- `fujifilm-missing-shutter-service` and `fujifilm-missing-shutter-char` are
-  registered `WILL_FAIL TRUE`. CTest inverts the pass or fail flag, so the
-  crashing or failing run counts as a pass today and CI stays green while the
-  finding is tracked. When `FujifilmBasic::_connect` gains the missing guard,
-  each test returns clean, the inverted flag turns the test red, and the marker
-  gets removed with the fix.
+- `fujifilm-missing-shutter-service` and `fujifilm-missing-shutter-char` are now
+  registered as normal passing tests. They were originally `WILL_FAIL TRUE`
+  while the finding was tracked, so the crashing or failing run counted as a
+  pass and CI stayed green. The follow up fix added the missing guards to
+  `FujifilmBasic::_connect`, so both tests return clean and run as real guards.
 
-A mutation check confirmed both known failing tests are load bearing: adding the
-two `return false` guards to `FujifilmBasic::_connect` flipped both to red, and
-reverting the guards returned the suite to 14 of 14 green.
+A mutation check confirmed both tests are load bearing: reverting the two
+`return false` guards in `FujifilmBasic::_connect` flips both tests red, and
+restoring the guards returns the suite to green.
+
+## Fix landed (follow up PR)
+
+Findings 1 and 2 are fixed. `FujifilmBasic::_connect` now `return false` when the
+shutter service is null and when the shutter characteristic is null, mirroring
+`FujifilmSecure::_connect`. No other vendor changed. The two regression tests are
+flipped from `WILL_FAIL` to normal passing tests, so they now guard against the
+crash and the silent dead remote regressing. This is a device behavior change on
+the Fujifilm connect path and needs a code review plus an on device Fujifilm
+connect sanity check before merge.
 
 ## Scope notes
 

@@ -151,6 +151,7 @@ bool FujifilmBasic::_connect(void) {
   pSvc = m_Client->getService(SVC_SHUTTER_UUID);
   if (pSvc == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter service");
+    return false;
   }
 
   m_Progress = 90;
@@ -159,6 +160,7 @@ bool FujifilmBasic::_connect(void) {
   m_Shutter = pSvc->getCharacteristic(CHR_SHUTTER_UUID);
   if (m_Shutter == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter characteristic");
+    return false;
   }
 
   m_Progress = 100;

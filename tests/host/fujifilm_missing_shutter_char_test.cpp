@@ -1,26 +1,18 @@
-// KNOWN-FAILING regression test (registered WILL_FAIL in CMakeLists).
+// Regression guard: FujifilmBasic::_connect() must not report a successful
+// connect when the shutter characteristic is missing.
 //
-// Finding: FujifilmBasic::_connect() reports a successful connect when the
-// shutter characteristic is missing, so furble shows a connected camera whose
-// shutter and focus do nothing, with no error surfaced.
-//
-// When the shutter service is present but the shutter characteristic is absent,
-// getCharacteristic(CHR_SHUTTER_UUID) returns nullptr. FujifilmBasic.cpp only
-// logs it and falls through to `return true`, leaving m_Shutter null. Later
-// shutter and focus commands short-circuit in sendShutterCommand() because
-// m_Shutter is null, so nothing is sent. The camera looks connected and active
-// while every command is silently dropped.
-//
-// FujifilmSecure.cpp handles the same case correctly: it `return false` when the
-// shutter characteristic is null, so the connect fails visibly instead of
-// stranding the user on a dead remote. FujifilmBasic should match.
+// The original bug: when the shutter service was present but the shutter
+// characteristic absent, getCharacteristic(CHR_SHUTTER_UUID) returned nullptr,
+// which was only logged before `return true`, leaving m_Shutter null. Shutter
+// and focus commands then short-circuited on the null m_Shutter, so the camera
+// looked connected and active while every command was silently dropped.
+// FujifilmBasic::_connect now `return false` when the shutter characteristic is
+// null, matching FujifilmSecure.
 //
 // Correct contract: a camera that reports connected must be able to fire the
-// shutter, or the connect must fail. This test asserts that contract. Today the
-// connect returns true and zero shutter writes reach the peer, so the assertion
-// fails and CI stays green through the WILL_FAIL marker. When FujifilmBasic
-// gains the missing `return false`, connect() returns false, the contract holds,
-// the test passes, and the WILL_FAIL marker flips the job red.
+// shutter, or the connect must fail. This test asserts that contract. With the
+// guard connect() returns false, the contract holds, and the test passes as a
+// normal test.
 
 #include <cstdint>
 #include <iostream>
