@@ -20,11 +20,14 @@ void driverTick(void);
 
 // End-to-end scenario support. connectShouldFail() lets a scenario model a
 // camera that never establishes a link, mirroring the stale-connected hardware
-// bug at the UI layer. The shutter counters expose how many shutter commands
-// the fake camera received so scenarios can assert the control path fired.
+// bug at the UI layer. The shutter and focus counters expose how many of each
+// command the fake camera received so scenarios can assert the control path
+// fired, including which one the one-button dispatch chose.
 bool connectShouldFail(void);
 uint32_t cameraShutterPresses(void);
 uint32_t cameraShutterReleases(void);
+uint32_t cameraFocusPresses(void);
+uint32_t cameraFocusReleases(void);
 
 void rigConfigure(bool requested,
                   uint16_t port,

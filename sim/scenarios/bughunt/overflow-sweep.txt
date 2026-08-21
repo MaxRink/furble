@@ -30,6 +30,11 @@ assert ui.overflow no
 action page settings
 action nav features
 wait 100
+# Features carries the Button Mode roller plus its static one-button gesture
+# hint. This long list scrolls by design on every panel, so its overflow is
+# printed, not asserted. The compact must-fit pages above (home, display) and
+# below (timer) keep their "assert ui.overflow no", so this sweep still catches
+# any regression where the hint leaks overflow into a page that must fit.
 print ui.page
 print ui.overflow
 action page settings

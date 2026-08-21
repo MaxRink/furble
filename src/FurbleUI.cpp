@@ -156,7 +156,12 @@ const lv_font_t *fontForIconMenu(uint8_t textSize) {
   return base;
 }
 
+// LVGL 9.4 has no public long press time getter. This is its default.
+constexpr uint32_t BUTTON_MODE_CLICK_WINDOW_MS = 400;
+
 }  // namespace
+
+static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options);
 
 std::mutex UI::m_Mutex;
 
@@ -1165,6 +1170,87 @@ void UI::handleShutter(lv_event_t *e) {
   }
 }
 
+void UI::handleButtonMode(lv_event_t *e) {
+  auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+  if (Settings::load<Settings::BUTTON_MODE>() != Settings::BUTTON_MODE_ONE_BUTTON_VALUE) {
+    handleShutter(e);
+    return;
+  }
+
+  auto &control = Control::getInstance();
+  const lv_event_code_t code = lv_event_get_code(e);
+  auto *indev = lv_indev_active();
+  uint8_t streak = indev == nullptr ? 0 : lv_indev_get_short_click_streak(indev);
+#if defined(FURBLE_SIM)
+  // Headless scenarios cannot drive LVGL's real click-streak timing, so they
+  // inject the streak the dispatch should classify. The 400 ms window itself
+  // stays a hardware concern; this only feeds the classification input.
+  if (ui->m_SimClickStreakActive) {
+    streak = ui->m_SimClickStreak;
+  }
+#endif
+
+  switch (code) {
+    case LV_EVENT_PRESSED:
+    {
+      if (ui->m_ShutterLock || ui->m_ButtonModeFocusPressed || ui->m_ButtonModeShutterPressed) {
+        break;
+      }
+      ui->m_ButtonModeLongPressed = false;
+      // Defer the single-click focus action. Firing focus eagerly on the first
+      // press leaked a stray focus tap before every double click and
+      // click-then-hold. Instead, focus only engages when this first press is
+      // held (LONG_PRESSED). A press that follows a recent short click is the
+      // second half of a multi-click gesture (double click or click-then-hold),
+      // so it drives the shutter directly with no leading focus. A quick release
+      // makes the shutter tap; a held release makes a sustained shutter press.
+      const bool followsClick = (ui->m_ButtonModeClickStreak >= 1)
+                                && (lv_tick_diff(lv_tick_get(), ui->m_ButtonModeLastClick)
+                                    <= BUTTON_MODE_CLICK_WINDOW_MS);
+      if (followsClick) {
+        control.sendCommand(Control::CMD_SHUTTER_PRESS);
+        ui->m_ButtonModeShutterPressed = true;
+        // Consume the click so the release does not re-arm another shutter.
+        ui->m_ButtonModeClickStreak = 0;
+      }
+      break;
+    }
+    case LV_EVENT_LONG_PRESSED:
+      // LVGL can send the initial long press twice. Require release first.
+      if (ui->m_ButtonModeLongPressed) {
+        break;
+      }
+      ui->m_ButtonModeLongPressed = true;
+      // A held first press with no shutter already in flight is the single
+      // press-and-hold focus gesture.
+      if (!ui->m_ButtonModeShutterPressed && !ui->m_ButtonModeFocusPressed) {
+        control.sendCommand(Control::CMD_FOCUS_PRESS);
+        ui->m_ButtonModeFocusPressed = true;
+      }
+      break;
+    case LV_EVENT_RELEASED:
+      if (ui->m_ButtonModeShutterPressed) {
+        control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+        ui->m_ButtonModeShutterPressed = false;
+      }
+      if (ui->m_ButtonModeFocusPressed) {
+        control.sendCommand(Control::CMD_FOCUS_RELEASE);
+        ui->m_ButtonModeFocusPressed = false;
+      }
+      ui->m_ButtonModeLongPressed = false;
+      break;
+    case LV_EVENT_SHORT_CLICKED:
+      // Record the short click so a press within the streak window is treated
+      // as the second half of a multi-click gesture. A lone short click does
+      // nothing on its own.
+      ui->m_ButtonModeClickStreak = streak;
+      ui->m_ButtonModeLastClick = lv_tick_get();
+      break;
+    default:
+      break;
+  }
+}
+
 void UI::handleFocus(lv_event_t *e) {
   auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
   auto &control = Control::getInstance();
@@ -1246,7 +1332,7 @@ void UI::prepareShutterControl(void) {
       },
       LV_EVENT_ALL, this);
 
-  lv_obj_add_event_cb(m_OK, handleShutter, LV_EVENT_ALL, this);
+  lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
 
   lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
 }
@@ -1830,6 +1916,64 @@ void UI::simScenarioAction(const char *action) {
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    return;
+  }
+
+  // Select the main-button behavior mode. BUTTON_MODE is a string roller, not a
+  // boolean switch, so it has no toggle entry. handleButtonMode reads the stored
+  // value live on each event, so a later gesture picks up the change.
+  if (command == "button-mode one-button") {
+    Settings::save<std::string>(Settings::BUTTON_MODE, Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
+    return;
+  }
+  if (command == "button-mode two-button") {
+    Settings::save<std::string>(Settings::BUTTON_MODE, Settings::BUTTON_MODE_TWO_BUTTON_VALUE);
+    return;
+  }
+
+  // Single press and hold of the main button (gesture 1). The press is held
+  // past the long-press threshold, so one-button mode dispatches focus, held
+  // until release. A quick tap alone is a no-op by design.
+  if (command == "main-press-hold") {
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_LONG_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    return;
+  }
+
+  // Double click of the main button (gesture 2). This replays the full real
+  // event stream so the dispatch's focus-leak path is exercised: the first
+  // click is a genuine press, release and short click (streak one), then the
+  // second press and release drive the shutter tap. The fixed handler must
+  // dispatch exactly one shutter press and release and leak no focus. The sim
+  // cannot reproduce LVGL's real streak timing, so it injects the streak the
+  // short-click classification records.
+  if (command == "main-double-click") {
+    m_SimClickStreakActive = true;
+    m_SimClickStreak = 1;
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_SHORT_CLICKED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    m_SimClickStreakActive = false;
+    return;
+  }
+
+  // Click then hold of the main button (gesture 3). The first click primes the
+  // streak, then the second press is held past the long-press threshold. The
+  // fixed handler must dispatch a single sustained shutter press and release,
+  // and leak no focus.
+  if (command == "main-click-hold") {
+    m_SimClickStreakActive = true;
+    m_SimClickStreak = 1;
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_SHORT_CLICKED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_LONG_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    m_SimClickStreakActive = false;
     return;
   }
 
@@ -2814,7 +2958,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
     m_Right = std::get<1>(buttons[1]);
     m_ShutterLockIcon = std::get<1>(buttons[2]);
 
-    lv_obj_add_event_cb(m_OK, handleShutter, LV_EVENT_ALL, this);
+    lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
     lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
     lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
   } else {
@@ -3390,6 +3534,39 @@ void UI::gpsNMEAStop(lv_event_t *e) {
 
 void UI::addFeaturesMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_FeaturesStr, &icon_wand_stars, true, parent);
+
+  lv_obj_t *buttonMode =
+      addRollerItem(menu.page, Settings::get(Settings::BUTTON_MODE).name, "Two-button\nOne-button");
+  const std::string mode = Settings::load<Settings::BUTTON_MODE>();
+  const uint32_t selected = mode == Settings::BUTTON_MODE_ONE_BUTTON_VALUE
+                                ? Settings::BUTTON_MODE_ONE_BUTTON
+                                : Settings::BUTTON_MODE_TWO_BUTTON;
+  lv_roller_set_selected(buttonMode, selected, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      buttonMode,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        const uint32_t selected = lv_roller_get_selected(roller);
+        if (selected > Settings::BUTTON_MODE_ONE_BUTTON) {
+          return;
+        }
+        const char *mode = selected == Settings::BUTTON_MODE_ONE_BUTTON
+                               ? Settings::BUTTON_MODE_ONE_BUTTON_VALUE
+                               : Settings::BUTTON_MODE_TWO_BUTTON_VALUE;
+        Settings::save<std::string>(Settings::BUTTON_MODE, mode);
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  // Static, non-focusable hint under the roller. The one-button gestures are
+  // not obvious, so describe them where the user picks the mode. It is a plain
+  // label, never added to an input group and never clickable, so it does not
+  // take encoder focus or draw a focus ring. Always shown so the gestures are
+  // discoverable before one-button mode is enabled.
+  lv_obj_t *buttonModeHint = lv_label_create(menu.page);
+  lv_obj_set_width(buttonModeHint, LV_PCT(100));
+  lv_label_set_long_mode(buttonModeHint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(buttonModeHint,
+                    "One-button: hold=focus, double-click=shoot, click+hold=hold shutter");
 
   addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
   addSettingItem(menu.page, NULL, Settings::FAUXNY);

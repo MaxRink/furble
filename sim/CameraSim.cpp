@@ -10,6 +10,8 @@ namespace {
 
 std::atomic<uint32_t> shutterPresses {0};
 std::atomic<uint32_t> shutterReleases {0};
+std::atomic<uint32_t> focusPresses {0};
+std::atomic<uint32_t> focusReleases {0};
 
 }  // namespace
 
@@ -74,10 +76,12 @@ void Camera::shutterRelease(void) {
 }
 
 void Camera::focusPress(void) {
+  focusPresses.fetch_add(1);
   Sim::profilerRadioEvent("focus_press");
 }
 
 void Camera::focusRelease(void) {
+  focusReleases.fetch_add(1);
   Sim::profilerRadioEvent("focus_release");
 }
 
@@ -93,6 +97,14 @@ uint32_t cameraShutterPresses(void) {
 
 uint32_t cameraShutterReleases(void) {
   return shutterReleases.load();
+}
+
+uint32_t cameraFocusPresses(void) {
+  return focusPresses.load();
+}
+
+uint32_t cameraFocusReleases(void) {
+  return focusReleases.load();
 }
 
 }  // namespace Sim
