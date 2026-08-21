@@ -138,6 +138,7 @@ for source in "$ROOT"/sim/*.cpp; do
 done
 
 for source in \
+  "$ROOT/src/FurbleBootScreen.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \

@@ -222,6 +222,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::IR:
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
+    case Settings::BOOT_SPLASH:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -414,6 +415,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::IR:
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
+    case Settings::BOOT_SPLASH:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

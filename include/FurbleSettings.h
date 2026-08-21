@@ -56,6 +56,7 @@ class Settings {
     LOW_BATT,
     SD_GPX,
     GPX_PERIOD,
+    BOOT_SPLASH,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -348,6 +349,10 @@ struct Settings::storage_type<Settings::SD_GPX> {
 template <>
 struct Settings::storage_type<Settings::GPX_PERIOD> {
   using type = uint16_t;
+};
+template <>
+struct Settings::storage_type<Settings::BOOT_SPLASH> {
+  using type = bool;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>

@@ -7,6 +7,7 @@
 
 #include "CameraList.h"
 #include "Device.h"
+#include "FurbleBootScreen.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
@@ -28,6 +29,14 @@ int runSimulator(bool *) {
   Sim::applyScenarioSettings();
   Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
 
+  // Mirror the firmware boot splash so scenarios exercise the same path. A
+  // scenario can seed "boot_splash false" to cover the disabled boot too.
+  BootScreen::begin(6);
+  BootScreen::step("Infrared");
+  BootScreen::step("Feedback");
+  BootScreen::step("Storage");
+  BootScreen::step("Power");
+
   // The companion service mirrors the rig request so the rig transport can
   // attach. Scenarios drive every other setting through their seed lines.
   Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
@@ -46,11 +55,15 @@ int runSimulator(bool *) {
   }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+  BootScreen::step("Bluetooth");
+  BootScreen::step("Companion");
 
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
 
   Sim::startRig();
+
+  BootScreen::finish();
 
   const auto interval = Settings::load<Settings::INTERVAL>();
   UI ui(interval);

@@ -1,0 +1,14 @@
+# End-to-end regression for the power-on boot splash (plan 101).
+#
+# The sim mirrors the firmware boot in runSimulator: BootScreen::begin() draws
+# the splash through M5GFX, step() advances it after each init stage, and
+# finish() fills the bar before the UI constructor takes the screen with LVGL.
+#
+# With the toggle on (the shipped default), the splash must draw and advance
+# every stage, then boot must land on the main menu. "boot_splash shown" proves
+# the splash rendered its full progress; "page main" proves the transition to
+# the live UI completed.
+wait 300
+assert ui.boot_splash shown
+assert ui.page main
+exit
