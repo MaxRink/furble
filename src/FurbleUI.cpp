@@ -270,6 +270,7 @@ UI::UI(const interval_t &interval)
 #if defined(FURBLE_SIM)
   Sim::profilerSetDisplayState("on");
 #endif
+  reloadPowerPolicies();
 
   // set minimum, ensure this is a multiple of m_BrightnessSteps so the slider steps work
   switch (M5.getBoard()) {
@@ -288,12 +289,15 @@ UI::UI(const interval_t &interval)
       m_MinimumBrightness = 32;
   }
 
-  // start inactivity timer
+  // start the one-second housekeeping timer, the power policies run
+  // independently of the inactivity decision
   m_InactivityTimer = lv_timer_create(
       [](lv_timer_t *t) {
         FURBLE_SIM_TIMER_FIRE("inactivity_timer");
         auto *ui = static_cast<Furble::UI *>(lv_timer_get_user_data(t));
         ui->processInactivity();
+        ui->processAutoOff();
+        ui->processLowBattery();
       },
       1000, this);
 
@@ -381,6 +385,7 @@ UI::UI(const interval_t &interval)
   m_Status.meanVoltage = sample.meanVoltage;
   m_Status.meanCurrent = sample.meanCurrent;
   m_Status.displayLevel = sample.displayLevel;
+  m_Status.sampleCount = 0;
   lv_label_set_text_fmt(m_Status.batteryLabel, "%u%%", m_Status.displayLevel);
   setBatteryStyle(Settings::load<Settings::BATT_STYLE>());
   setShowTitle(Settings::load<Settings::SHOW_TITLE>());
@@ -791,6 +796,8 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
   }
 
   wakeDisplay();
+  // the swallowed press never reaches LVGL, so record the activity here
+  lv_display_trigger_activity(m_Display);
   data->state = LV_INDEV_STATE_RELEASED;
   if (releaseExpected) {
     m_SwallowInput = true;
@@ -934,7 +941,9 @@ void UI::wakeDisplay(void) {
   Sim::profilerSetDisplayState("on");
 #endif
   lv_timer_resume(m_IconTimer);
-  lv_display_trigger_activity(m_Display);
+  // Deliberately no lv_display_trigger_activity() here. A wake is not user
+  // activity, the input path that saw a real press triggers it itself. The
+  // low battery warning also wakes the panel and must not postpone auto off.
 }
 
 size_t UI::inactivityIndex(uint8_t value) {
@@ -1674,12 +1683,10 @@ void UI::addMainMenu(void) {
   lv_obj_add_event_cb(
       off.button,
       [](lv_event_t *e) {
-#if defined(FURBLE_M5STACK_CORE)
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-#endif
-        Platform::getInstance().powerOff();
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        ui->doPowerOff();
       },
-      LV_EVENT_CLICKED, NULL);
+      LV_EVENT_CLICKED, this);
 
   lv_obj_add_event_cb(
       m_MainMenu.main,
@@ -2830,6 +2837,10 @@ void UI::serviceRequests(void) {
 #endif
       case Request::AUDIT:
         UIAudit::dump(lv_screen_active());
+        break;
+
+      case Request::POWER_RELOAD:
+        m_ConnectContext.ui->reloadPowerPolicies();
         break;
     }
   }
@@ -4364,6 +4375,7 @@ void UI::batteryUpdate(lv_timer_t *timer) {
   status->meanVoltage = sample.meanVoltage;
   status->meanCurrent = sample.meanCurrent;
   status->displayLevel = sample.displayLevel;
+  status->sampleCount++;
 
   if (caps.level) {
     // feed the smoothed level, the raw reading jitters across the threshold
@@ -4468,12 +4480,31 @@ void UI::addPowerMenu(const menu_t &parent) {
     addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
   }
 
+  // IP5306 boards do not have a reliable software power-off path.
+  const bool policies = (M5.getBoard() != m5::board_t::board_M5Stack);
+
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  // share the page with the switch, otherwise keep the roller centred
-  lv_obj_set_height(cont, sleepConn ? LV_SIZE_CONTENT : LV_PCT(100));
+  lv_obj_set_width(cont, LV_PCT(100));
+  // share the page when other rows are present, otherwise keep the rollers
+  // centred
+  lv_obj_set_height(cont, (sleepConn || policies) ? LV_SIZE_CONTENT : LV_PCT(100));
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
+
+  auto addPowerRoller = [cont](const char *text, const char *options) {
+    lv_obj_t *label = lv_label_create(cont);
+    lv_label_set_text(label, text);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    lv_obj_t *roller = lv_roller_create(cont);
+    lv_obj_set_width(roller, LV_PCT(90));
+    lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    return roller;
+  };
 
   // Add CPU maximum frequency control
   lv_obj_t *label = lv_label_create(cont);
@@ -4496,6 +4527,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
 
   // The roller index is not the frequency, map it explicitly
   // getCPUMaxFreq() only ever returns a listed frequency, so the find succeeds
@@ -4533,6 +4565,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, "Icon\nPercent\nBoth", LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
   lv_roller_set_selected(roller, Settings::load<Settings::BATT_STYLE>(), LV_ANIM_OFF);
 
   lv_obj_add_event_cb(
@@ -4546,6 +4579,55 @@ void UI::addPowerMenu(const menu_t &parent) {
         ui->setBatteryStyle(style);
       },
       LV_EVENT_VALUE_CHANGED, this);
+
+  if (policies) {
+    lv_obj_t *autoOff = addPowerRoller("Auto off", "Never\n5 mins\n10 mins\n30 mins\n60 mins");
+    uint8_t minutes = Settings::load<Settings::AUTO_OFF>();
+    auto autoOffIt = std::find(m_AutoOffMinutes.begin(), m_AutoOffMinutes.end(), minutes);
+    uint32_t autoOffIndex =
+        (autoOffIt == m_AutoOffMinutes.end())
+            ? 0
+            : static_cast<uint32_t>(std::distance(m_AutoOffMinutes.begin(), autoOffIt));
+    lv_roller_set_selected(autoOff, autoOffIndex, LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        autoOff,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint32_t index = lv_roller_get_selected(roller);
+          if (index < UI::m_AutoOffMinutes.size()) {
+            Settings::save<Settings::AUTO_OFF>(UI::m_AutoOffMinutes[index]);
+            ui->reloadPowerPolicies();
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    lv_obj_t *lowBattery = addPowerRoller("Low battery", "None\nWarn\nWarn then off");
+    uint8_t policy = Settings::load<Settings::LOW_BATT>();
+    lv_roller_set_selected(lowBattery, (policy <= 2) ? policy : 0, LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        lowBattery,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint32_t index = lv_roller_get_selected(roller);
+          if (index <= 2) {
+            Settings::save<Settings::LOW_BATT>(static_cast<uint8_t>(index));
+            ui->reloadPowerPolicies();
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    lv_obj_t *help = lv_label_create(cont);
+    lv_label_set_text(
+        help,
+        "Auto off needs no camera connection. Infinite Re-Connect keeps reconnecting.\n"
+        "Power off is final. Press the power button to wake.");
+    lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(help, LV_PCT(100));
+  }
 
   // Add the battery page entry below the controls
   addBatteryMenu(menu);
@@ -5238,8 +5320,13 @@ void UI::setInactivityTimeout(uint8_t timeout) {
 }
 
 void UI::processInactivity(void) {
-  bool timedOut =
-      (m_InactivityTimeout > 0) && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
+  // Only a pending power-off countdown holds the panel awake through this
+  // state machine. The plain warning rides the normal dim and sleep path, a
+  // battery at 10 percent must not pin the backlight until it is flat. The
+  // idle clock keeps running either way, so auto off is not postponed.
+  const bool holdAwake = m_LowBatteryPowerOffPending;
+  bool timedOut = !holdAwake && (m_InactivityTimeout > 0)
+                  && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
 
   if (!timedOut) {
     if (m_DisplayState == DisplayState::DIM) {
@@ -5285,6 +5372,249 @@ void UI::processInactivity(void) {
     default:
       m_DisplayOffMode = 0;
       break;
+  }
+}
+
+void UI::reloadPowerPolicies(void) {
+  m_AutoOffSetting = Settings::load<Settings::AUTO_OFF>();
+  m_LowBattSetting = Settings::load<Settings::LOW_BATT>();
+
+  // a policy change restarts the whole evaluation, including the warn latch
+  m_LowBatteryWarned = false;
+  m_LowBatteryWarnCount = 0;
+  m_LowBatteryOffCount = 0;
+  m_LowBatteryPowerOffPending = false;
+  closeLowBatteryWarning();
+}
+
+void UI::processAutoOff(void) {
+  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+    return;
+  }
+
+  // STATE_IDLE also covers an active discovery scan, do not cut it short
+  if ((m_AutoOffSetting == 0) || (Control::getInstance().getState() != Control::STATE_IDLE)
+      || Scan::getInstance().isActive()) {
+    return;
+  }
+
+  uint32_t timeout = static_cast<uint32_t>(m_AutoOffSetting) * 60000;
+  if (lv_disp_get_inactive_time(m_Display) >= timeout) {
+    ESP_LOGI("ui", "Auto power off after %u minutes idle.", m_AutoOffSetting);
+    doPowerOff();
+  }
+}
+
+void UI::showLowBatteryWarning(bool powerOff) {
+  // Wake through the display state machine so the SLPIN/SLPOUT dwell, the APB
+  // lock and the icon timer stay consistent. processInactivity holds the panel
+  // awake only while a power-off countdown is pending, the plain warning lets
+  // the display dim and sleep again. The idle clock is never touched.
+  wakeDisplay();
+  if (m_DisplayState == DisplayState::DIM) {
+    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+    m_DisplayState = DisplayState::ACTIVE;
+  }
+
+  if (m_LowBatteryMessageBox == nullptr) {
+    m_LowBatteryMessageBox = lv_msgbox_create(m_Screen);
+    lv_msgbox_add_title(m_LowBatteryMessageBox, "Low battery");
+    lv_obj_set_width(m_LowBatteryMessageBox, LV_PCT(100));
+
+    lv_obj_t *content = lv_msgbox_get_content(m_LowBatteryMessageBox);
+    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    m_LowBatteryMessage = lv_label_create(content);
+    lv_label_set_long_mode(m_LowBatteryMessage, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(m_LowBatteryMessage, LV_PCT(80));
+
+    // Dismissing closes the box. It also cancels a pending power off, the
+    // press proves a user is present and the policy re-arms after another
+    // qualifying 30 seconds.
+    lv_obj_t *dismiss = lv_msgbox_add_footer_button(m_LowBatteryMessageBox, "OK");
+    lv_obj_add_event_cb(
+        dismiss,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->m_LowBatteryOffCount = 0;
+          ui->m_LowBatteryPowerOffPending = false;
+          ui->closeLowBatteryWarning();
+        },
+        LV_EVENT_CLICKED, this);
+
+    // remember where the user was so dismissing puts them back there
+    m_LowBatteryPrevFocus = lv_group_get_focused(m_Group);
+    lv_group_focus_obj(dismiss);
+  }
+
+  lv_label_set_text(m_LowBatteryMessage, powerOff ? m_LowBattCriticalText : m_LowBattWarnText);
+}
+
+void UI::closeLowBatteryWarning(void) {
+  if (m_LowBatteryMessageBox != nullptr) {
+    lv_msgbox_close_async(m_LowBatteryMessageBox);
+    m_LowBatteryMessageBox = nullptr;
+    m_LowBatteryMessage = nullptr;
+
+    // Put the focus back where it was before the box stole it. The object
+    // may have been deleted while the box was open, lv_obj_is_valid walks
+    // the tree comparing pointers and never dereferences a stale one.
+    if ((m_LowBatteryPrevFocus != nullptr) && lv_obj_is_valid(m_LowBatteryPrevFocus)) {
+      lv_group_focus_obj(m_LowBatteryPrevFocus);
+    }
+    m_LowBatteryPrevFocus = nullptr;
+  }
+}
+
+void UI::processLowBattery(void) {
+  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+    return;
+  }
+
+  const uint8_t policy = m_LowBattSetting;
+  if ((policy == 0) || (policy > 2)) {
+    m_LowBatteryWarnCount = 0;
+    m_LowBatteryOffCount = 0;
+    m_LowBatteryPowerOffPending = false;
+    closeLowBatteryWarning();
+    return;
+  }
+
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  if (!caps.level) {
+    return;
+  }
+
+  // The battery sample already includes the PMIC charging read. Do not wake
+  // the PMIC again from this one-second policy check.
+  if (caps.charging && m_Status.battery.charging) {
+    m_LowBatteryWarnCount = 0;
+    m_LowBatteryOffCount = 0;
+    m_LowBatteryWarned = false;
+    m_LowBatteryPowerOffPending = false;
+    closeLowBatteryWarning();
+    return;
+  }
+
+  // Boards without a charging measurement leave the guard above inert, the
+  // device could be sitting on USB power. Warn only, never power off there.
+  const bool canPowerOff = (policy == 2) && caps.charging;
+  if (!canPowerOff) {
+    m_LowBatteryOffCount = 0;
+    m_LowBatteryPowerOffPending = false;
+  }
+
+  // Hysteresis counts consecutive qualifying battery samples, not wall clock.
+  // The battery refreshes every 5 s, six samples in a row is 30 s.
+  if (m_Status.sampleCount != m_LowBatterySampleSeen) {
+    m_LowBatterySampleSeen = m_Status.sampleCount;
+
+    // A failed M5PM1 read clamps the level to zero, and a total failure also
+    // reports zero millivolts, which is no reading rather than an empty pack.
+    // Only trust a zero level when a plausible low pack voltage confirms it.
+    const bool badRead = (m_Status.battery.level == 0)
+                         && (!caps.voltage || (m_Status.battery.voltage == 0)
+                             || (m_Status.battery.voltage >= LOW_BATT_VALID_READ_MV));
+    if (badRead) {
+      m_LowBatteryWarnCount = 0;
+      m_LowBatteryOffCount = 0;
+    } else {
+      // compare the smoothed level, the raw samples jitter under BLE TX bursts
+      const uint8_t level = m_Status.displayLevel;
+
+      if (level < LOW_BATT_WARN_LEVEL) {
+        if (m_LowBatteryWarnCount < LOW_BATT_QUALIFY_SAMPLES) {
+          m_LowBatteryWarnCount++;
+        }
+        if (!m_LowBatteryWarned && (m_LowBatteryWarnCount >= LOW_BATT_QUALIFY_SAMPLES)) {
+          m_LowBatteryWarned = true;
+          showLowBatteryWarning(false);
+        }
+      } else {
+        m_LowBatteryWarnCount = 0;
+        // recovered above the warn level, retire a lingering warning
+        if (!m_LowBatteryPowerOffPending) {
+          closeLowBatteryWarning();
+        }
+      }
+
+      if (canPowerOff) {
+        if (level < LOW_BATT_OFF_LEVEL) {
+          if (m_LowBatteryOffCount < LOW_BATT_QUALIFY_SAMPLES) {
+            m_LowBatteryOffCount++;
+          }
+          if (!m_LowBatteryPowerOffPending && (m_LowBatteryOffCount >= LOW_BATT_QUALIFY_SAMPLES)) {
+            m_LowBatteryPowerOffPending = true;
+            m_LowBatteryPowerOffSince = Platform::getInstance().tick();
+            m_LowBatteryWarned = true;
+            showLowBatteryWarning(true);
+          }
+        } else {
+          m_LowBatteryOffCount = 0;
+          if (m_LowBatteryPowerOffPending) {
+            // recovered mid countdown, downgrade the box or retire it
+            m_LowBatteryPowerOffPending = false;
+            if ((level < LOW_BATT_WARN_LEVEL) && (m_LowBatteryMessage != nullptr)) {
+              lv_label_set_text(m_LowBatteryMessage, m_LowBattWarnText);
+            } else {
+              closeLowBatteryWarning();
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // the countdown runs on the one-second path so the deadline holds
+  if (m_LowBatteryPowerOffPending
+      && ((Platform::getInstance().tick() - m_LowBatteryPowerOffSince)
+          >= LOW_BATT_POWER_OFF_DELAY_MS)) {
+    doPowerOff();
+  }
+}
+
+void UI::doPowerOff(void) {
+  if (m_PoweringOff) {
+    return;
+  }
+
+  m_PoweringOff = true;
+  closeLowBatteryWarning();
+
+  // TODO(plans/68): prepareRestart on feat/68 needs this same quiesce
+  // ordering, a future shared helper should absorb both paths.
+#if defined(FURBLE_M5STICKS3)
+  // Stop the watchdog first, the BLE teardown below can outlast a feed period.
+  Platform::getInstance().watchdogEnable(false);
+#endif
+
+  // Quiesce the intervalometer before the link drops. The shutter is held
+  // open between the SHUTTER_OPEN and DELAY handlers, release it properly.
+  lv_timer_pause(m_IntervalTimer);
+  if (m_Intervalometer.m_State == Intervalometer::STATE_DELAY) {
+    Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
+  }
+  m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
+  m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
+
+  if (m_ShutterLock) {
+    shutterUnlock(Control::getInstance());
+  }
+
+  doDisconnect();
+
+#if defined(FURBLE_M5STACK_CORE)
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+#endif
+  if (!Platform::getInstance().powerOff()) {
+    // The PMIC refused. Stay alive rather than latching a half-off state
+    // with a dead UI, and put the watchdog back the way the user set it.
+    ESP_LOGW("ui", "Power off failed, resuming.");
+#if defined(FURBLE_M5STICKS3)
+    Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
+#endif
+    m_PoweringOff = false;
   }
 }
 

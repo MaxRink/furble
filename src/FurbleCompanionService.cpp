@@ -226,6 +226,8 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
@@ -284,6 +286,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:

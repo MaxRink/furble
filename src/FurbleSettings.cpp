@@ -47,6 +47,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
     {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
     {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
+    {AUTO_OFF,          {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
+    {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -280,6 +282,8 @@ void Settings::init(void) {
         case GPS_DUTY:
         case GPS_ASSIST:
         case IR_PROTO:
+        case AUTO_OFF:
+        case LOW_BATT:
           save<uint8_t>(setting.type, 0);
           break;
         case BATT_STYLE:

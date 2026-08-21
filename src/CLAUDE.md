@@ -47,10 +47,24 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The display off state machine lives here: `processInactivity` dims or sleeps
   the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
   and a wake press is swallowed until every input source reports released.
+  Only a pending low battery power-off countdown holds the panel awake
+  through that state machine, the plain warning rides the normal dim/sleep
+  path, and the LVGL idle clock is never touched. `wakeDisplay` does not count
+  as activity, only a real input press triggers `lv_display_trigger_activity`.
+  Modal boxes that steal focus must capture and restore the previous focus,
+  the group is flat.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
   independent of `Camera`, NVS, and `CameraList`; pairing input is console
   passthrough and passive third-party sniffing is not supported by NimBLE.
 - The GPS Data and Raw NMEA pages show TinyGPSPlus speed in km/h. Format
   user-visible coordinates to five decimal places without narrowing the double.
+- Power policies: the one-second timer drives `processAutoOff` (disconnected
+  idle power off, skipped while scanning) and `processLowBattery` (warn or
+  warn-then-off, consecutive-sample hysteresis on the smoothed level, power
+  off gated on a real charging measurement). Both settings are cached in
+  members, refreshed by the rollers and `Request::POWER_RELOAD`. All power
+  off paths go through `UI::doPowerOff`: watchdog off, intervalometer
+  quiesced with a proper shutter release, disconnect, then
+  `Platform::powerOff`, which reports failure so the UI can resume.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.

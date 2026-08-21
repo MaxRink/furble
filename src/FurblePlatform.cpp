@@ -245,12 +245,25 @@ bool Platform::hasTicklessIdle(void) {
 #endif
 }
 
-void Platform::powerOff(void) {
+bool Platform::powerOff(void) {
 #if defined(FURBLE_M5STICKS3)
+  const bool wasArmed = m_WatchdogEnabled;
   watchdogEnable(false);
-  m_M5PM1.shutdown();
+
+  // The first M5PM1 access after its idle sleep fails and only wakes it, so
+  // go through the retry helper. On success the rail drops mid-call.
+  if (m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
+    return true;
+  }
+
+  ESP_LOGW(LOG_TAG, "M5PM1 shutdown refused, staying alive");
+  if (wasArmed) {
+    watchdogEnable(true);
+  }
+  return false;
 #else
   M5.Power.powerOff();
+  return true;
 #endif
 }
 

@@ -1,5 +1,109 @@
 # PR13 - Auto power off and low battery policy
 
+## Implementation status
+
+State: Implemented on `feat/13-auto-off-low-batt`.
+
+Rebase notes:
+
+- `AUTO_OFF` is assigned wire_id 37 and `LOW_BATT` wire_id 38, continuing
+  after `DISPLAY_MODE` (36) from PR 31.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover both as
+  SETTING_U8.
+- The branch's console coverage (uint8 in all four switches, both apply
+  immediately) merged onto master's GPS_POWER/GPS_DUTY lists as unions.
+
+AUTO_OFF and LOW_BATT use the planned settings and NVS paths. The Power page
+has both rollers on boards with a reliable software power-off path. The M5Stack
+Core hides both policy rollers because its IP5306 cannot provide true software
+power off. Manual Off and both automatic paths share `UI::doPowerOff()`.
+
+Evaluation model:
+
+- The one-second housekeeping timer calls `processAutoOff` and
+  `processLowBattery` directly, independent of the `processInactivity`
+  early-return paths. INACTIVITY defaults to never, so the policies must not
+  hang off the inactivity decision.
+- Both settings are cached in UI members. The rollers and the console (via
+  `Request::POWER_RELOAD`) refresh the cache, and any policy change resets the
+  warn latch and all hysteresis counters. The `serviceRequests` switch handles
+  `POWER_RELOAD` as its own case. The `AUDIT` case above it needs an explicit
+  `break;` so an audit request does not fall through and trigger an unintended
+  policy reload.
+- Auto off compares the LVGL idle clock against the setting while
+  `Control::STATE_IDLE` holds and no discovery scan is active. `STATE_IDLE`
+  also covers an active scan, so the scan check keeps auto off from cutting a
+  scan short.
+- Low battery hysteresis counts consecutive qualifying battery samples, six
+  samples at the 5 s refresh is 30 s. Any non-qualifying or dropped sample
+  resets the count. The comparison uses the smoothed `displayLevel`. A raw
+  level of zero is only trusted when a plausible low pack voltage confirms
+  it: no voltage capability, zero millivolts (a total M5PM1 failure returns
+  no reading, not 0 mV), or a voltage above 3300 mV all mark the sample as a
+  failed-read clamp and drop it.
+- Power off (policy 2) is gated on `caps.charging`. Boards without a charging
+  measurement (StickC Plus2, fallback boards) cannot distinguish USB power
+  from discharge, so they warn but never power off.
+
+Warning surface:
+
+- The warning is an LVGL message box with an OK button. A passive header-only
+  treatment was rejected because the battery style setting can hide the
+  header label, and a dismissible box is the cheapest honest surface.
+- The box wakes the panel through the display state machine (`wakeDisplay`
+  plus the DIM brightness restore), never through raw M5GFX calls.
+  `processInactivity` holds the panel awake only while a power-off countdown
+  is pending. The warn-only box rides the normal dim/sleep path, otherwise a
+  battery stuck at 10 percent would pin the backlight until flat and invert
+  the feature. The LVGL idle clock is not touched, so a warning does not
+  postpone auto off and does not stall the power-off countdown.
+- Dismissing closes the box and cancels a pending power off, the press proves
+  a user is present. The policy re-arms after another qualifying 30 seconds.
+  The box captures the focused object before focusing its OK button and
+  restores it on close, the flat input group has no other modal restore.
+- On recovery (charging seen, or the level rising back over a threshold) the
+  box downgrades from the countdown text to the warn text, or closes.
+
+Power off ordering in `UI::doPowerOff`:
+
+1. Disable the S3 watchdog, the BLE teardown can outlast a feed period.
+2. Quiesce the intervalometer, releasing a mid-exposure shutter with a real
+   `CMD_SHUTTER_RELEASE`.
+3. Release the shutter lock, disconnect.
+4. `Platform::powerOff()`, which retries the M5PM1 shutdown through the
+   standard retry helper and returns false if the PMIC refused. On failure
+   the UI logs a warning, re-arms the watchdog from the setting, and clears
+   the power-off latch so the device keeps working.
+
+`prepareRestart` on feat/68 wants the same quiesce ordering. A future shared
+helper should absorb both, marked with a TODO in `doPowerOff`.
+
+Verification completed:
+
+- clang-format 21 passes for all changed C++ and header files.
+- `git diff --check` passes.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
+  `-e m5stick-s3-debug` pass.
+- Hardware testing is pending. No boards have been tested. The hardware run
+  must also confirm:
+  - dismissing the warning returns focus to the page the user was on, not an
+    arbitrary object in the flat group.
+  - the warn-only box lets the screen dim and sleep normally, only the
+    power-off countdown holds the panel awake.
+
+Deviations:
+
+- This branch already has PR02 battery instrumentation with a 5-second cached
+  sample. The low battery policy uses `m_Status.battery` instead of adding a
+  second I2C reader.
+- Fork master does carry the PR12/#26 display state machine. An earlier
+  revision claimed otherwise and bypassed it with raw M5GFX calls, which broke
+  the SLPIN/SLPOUT dwell and desynced the APB lock. The warning now goes
+  through `wakeDisplay()`.
+- `lv_display_trigger_activity` moved out of `wakeDisplay` to the input path
+  that saw the real press, so programmatic wakes are not counted as user
+  activity.
+
 ## Goal
 
 Stop the device draining a flat battery when it is left on by accident. Add an

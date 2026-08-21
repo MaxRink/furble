@@ -42,6 +42,7 @@ class UI {
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
     PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
     AUDIT,           /**< arg: unused */
+    POWER_RELOAD,    /**< arg: unused */
   };
 
   /**
@@ -72,6 +73,15 @@ class UI {
 
   /** Check and/or handle inactivity. */
   void processInactivity(void);
+
+  /** Check the disconnected idle auto-off policy, runs every second. */
+  void processAutoOff(void);
+
+  /** Check the low battery policy, runs every second. */
+  void processLowBattery(void);
+
+  /** Re-read the cached auto-off and low battery settings. */
+  void reloadPowerPolicies(void);
 
   /**
    * Display/hide navigation bar.
@@ -162,6 +172,8 @@ class UI {
     float meanVoltage;
     float meanCurrent;
     uint8_t displayLevel;
+    // bumped on every battery refresh so consumers can spot a new sample
+    uint32_t sampleCount;
   } status_t;
 
   typedef struct {
@@ -422,6 +434,20 @@ class UI {
   static constexpr std::array<uint32_t, 6> m_InactivityTimeouts = {0,      30000,  60000,
                                                                    120000, 300000, 600000};
 
+  /** Auto-off roller values, in minutes, zero is no timeout. */
+  static constexpr std::array<uint8_t, 5> m_AutoOffMinutes = {0, 5, 10, 30, 60};
+
+  static constexpr uint8_t LOW_BATT_WARN_LEVEL = 10;
+  static constexpr uint8_t LOW_BATT_OFF_LEVEL = 5;
+  /** Battery samples arrive every 5 s, six in a row is 30 s of hysteresis. */
+  static constexpr uint8_t LOW_BATT_QUALIFY_SAMPLES = 6;
+  /** A pack above this voltage cannot be empty, treat level 0 as a bad read. */
+  static constexpr uint16_t LOW_BATT_VALID_READ_MV = 3300;
+  static constexpr uint32_t LOW_BATT_POWER_OFF_DELAY_MS = 30000;
+  static constexpr const char *m_LowBattWarnText = "Battery low.\nPlease charge soon.";
+  static constexpr const char *m_LowBattCriticalText =
+      "Battery critical.\nPowering off in 30 seconds.";
+
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
   static constexpr const char *m_GPSRateStr = "Update rate";
@@ -568,6 +594,22 @@ class UI {
   /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
   uint32_t m_MainCount = 0;
+
+  // cached policy settings, refreshed by the rollers and the console
+  uint8_t m_AutoOffSetting = 0;
+  uint8_t m_LowBattSetting = 0;
+
+  uint32_t m_LowBatterySampleSeen = 0;
+  uint8_t m_LowBatteryWarnCount = 0;
+  uint8_t m_LowBatteryOffCount = 0;
+  bool m_LowBatteryWarned = false;
+  bool m_LowBatteryPowerOffPending = false;
+  uint32_t m_LowBatteryPowerOffSince = 0;
+  lv_obj_t *m_LowBatteryMessageBox = nullptr;
+  lv_obj_t *m_LowBatteryMessage = nullptr;
+  /** Focused object before the warning stole the focus, restored on close. */
+  lv_obj_t *m_LowBatteryPrevFocus = nullptr;
+  bool m_PoweringOff = false;
 
   static menu_t m_MainMenu;
 
@@ -809,6 +851,15 @@ class UI {
 
   /** Handle disconnection. */
   static void doDisconnect(void);
+
+  /** Show the low battery warning. */
+  void showLowBatteryWarning(bool powerOff);
+
+  /** Close the low battery warning. */
+  void closeLowBatteryWarning(void);
+
+  /** Release the shutter and power off through the platform layer. */
+  void doPowerOff(void);
 
   /** Refresh deletion items. */
   static void refreshDelete(void);

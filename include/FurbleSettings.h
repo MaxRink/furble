@@ -52,6 +52,8 @@ class Settings {
     FB_VOLUME,
     PRESET_PICKER,
     BUTTON_MODE,
+    AUTO_OFF,
+    LOW_BATT,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -312,6 +314,14 @@ struct Settings::storage_type<Settings::PRESET_PICKER> {
 template <>
 struct Settings::storage_type<Settings::BUTTON_MODE> {
   using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::AUTO_OFF> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::LOW_BATT> {
+  using type = uint8_t;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>
