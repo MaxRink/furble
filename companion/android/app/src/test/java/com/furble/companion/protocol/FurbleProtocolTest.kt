@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -97,6 +98,104 @@ class FurbleProtocolTest {
         assertEquals(FurbleProtocol.SettingType.UINT8, response?.type)
         assertArrayEquals(byteArrayOf(0xFE.toByte()), response?.value)
         assertEquals(1, response?.flags)
+        assertTrue(response?.isListRecord == true)
+
+        val getResponse = FurbleProtocol.parseSettingsResponse(
+            byteArrayOf(0, 6, FurbleProtocol.SettingType.UINT32.toByte(), 4, 3, 0, 0, 0),
+        )
+        assertNotNull(getResponse)
+        assertArrayEquals(byteArrayOf(3, 0, 0, 0), getResponse?.value)
+        assertFalse(getResponse?.isListRecord == true)
+
+        val listRecord = FurbleProtocol.parseSettingsResponse(
+            byteArrayOf(0, 4, FurbleProtocol.SettingType.UINT8.toByte(), 1, 0x01, 0x82.toByte()),
+        )
+        assertNotNull(listRecord)
+        assertArrayEquals(byteArrayOf(0x01), listRecord?.value)
+        assertEquals(0x82, listRecord?.flags)
+        assertTrue(listRecord?.isListRecord == true)
+        val dangerousRecord = FurbleProtocol.SettingRecord(
+            id = listRecord!!.id,
+            type = listRecord!!.type,
+            value = listRecord!!.value,
+            flags = listRecord!!.flags,
+        )
+        assertTrue(dangerousRecord.isDangerous)
+    }
+
+    @Test
+    fun trailingFlagsEnabledBoolDecodesAsEnabledWithoutDangerousFlag() {
+        // Canonical firmware list record for an enabled bool: status, id, type,
+        // length, value, flags. GPS (wire id 5) is a plain bool with value 0x01
+        // and no flags. The retired flags-before-length parse used to read the
+        // length byte as flags and the value byte as length, decoding this as
+        // Disabled with a spurious restart-required flag.
+        val record = FurbleProtocol.parseSettingsResponse(
+            byteArrayOf(0, 5, FurbleProtocol.SettingType.BOOL.toByte(), 1, 0x01, 0x00),
+        )
+
+        assertNotNull(record)
+        assertEquals(5, record?.id)
+        assertEquals(FurbleProtocol.SettingType.BOOL, record?.type)
+        assertArrayEquals(byteArrayOf(0x01), record?.value)
+        assertEquals(0, record?.flags)
+        assertTrue(record?.isListRecord == true)
+
+        val setting = FurbleProtocol.SettingRecord(
+            id = record!!.id,
+            type = record.type,
+            value = record.value,
+            flags = record.flags,
+        )
+        assertEquals("Enabled", setting.displayValue())
+        assertFalse(setting.needsRestart)
+        assertFalse(setting.isDangerous)
+        assertTrue(setting.appliesImmediately)
+    }
+
+    @Test
+    fun capabilityReadEnablesOnlySettingsV2() {
+        val bytes = ByteBuffer.allocate(FurbleProtocol.CAPABILITY_PACKET_SIZE)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(1)
+            .put(FurbleProtocol.SETTINGS_CAPABILITY_WIRE_VERSION.toByte())
+            .putInt(1)
+            .array()
+
+        val capability = FurbleProtocol.parseCapability(bytes)
+
+        assertNotNull(capability)
+        assertTrue(capability?.supportsSettings == true)
+        assertFalse(
+            FurbleProtocol.CapabilitySnapshot(1, 1, 1).supportsSettings,
+        )
+    }
+
+    @Test
+    fun intervalBlobUsesFourPackedLittleEndianParts() {
+        val interval = FurbleProtocol.IntervalSetting(
+            count = FurbleProtocol.IntervalPart(10, 0),
+            delay = FurbleProtocol.IntervalPart(15, 3),
+            shutter = FurbleProtocol.IntervalPart(30, 2),
+            wait = FurbleProtocol.IntervalPart(0, 1),
+        )
+
+        val bytes = FurbleProtocol.encodeInterval(interval)
+
+        assertEquals(12, bytes.size)
+        assertArrayEquals(byteArrayOf(10, 0, 0, 15, 0, 3), bytes.copyOfRange(0, 6))
+        assertEquals(interval, FurbleProtocol.decodeInterval(bytes))
+    }
+
+    @Test
+    fun metadataCoversEveryCurrentWireIdAndUnknownRowsStayReadOnly() {
+        assertEquals(33, FurbleSettingMetadata.byWireId.size)
+        assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
+        assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
+        assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
+        assertFalse(
+            FurbleProtocol.SettingRecord(27, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
+        )
     }
 
     @Test

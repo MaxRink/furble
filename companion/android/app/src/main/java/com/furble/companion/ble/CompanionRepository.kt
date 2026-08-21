@@ -62,6 +62,7 @@ class CompanionRepository(context: Context) {
     private var devicePresent = false
     private var gattConnection: GattConnection? = null
     private var pendingSettingId: Int? = null
+    private val pendingSettingValues = mutableMapOf<Int, ByteArray>()
     private var locationProvider: FusedLocationProvider? = null
 
     private val triggerController = DeadManTriggerController(
@@ -318,23 +319,69 @@ class CompanionRepository(context: Context) {
     }
 
     fun requestSettings() {
-        _state.update { it.copy(settingsLoading = true) }
-        gattConnection?.requestSettingsList()
+        handler.post {
+            if (!_state.value.settingsSupported) return@post
+            if (_state.value.connection != ConnectionState.READY) return@post
+            _state.update { it.copy(settings = emptyList(), settingsLoading = true) }
+            gattConnection?.requestSettingsList()
+        }
     }
 
     fun setBooleanSetting(record: FurbleProtocol.SettingRecord, value: Boolean) {
-        if (record.type != FurbleProtocol.SettingType.BOOL) return
-        pendingSettingId = record.id
-        gattConnection?.setSetting(record.id, byteArrayOf(if (value) 1 else 0))
+        requestSettingChange(record, byteArrayOf(if (value) 1 else 0))
     }
 
     fun setUint8Setting(record: FurbleProtocol.SettingRecord, value: Int) {
-        if (record.type != FurbleProtocol.SettingType.UINT8 || value !in 0..255) {
-            setError("A uint8 setting must be between 0 and 255")
+        requestSettingChange(record, byteArrayOf(value.toByte()))
+    }
+
+    fun requestSettingChange(record: FurbleProtocol.SettingRecord, value: ByteArray) {
+        handler.post {
+            if (!_state.value.settingsSupported || _state.value.connection != ConnectionState.READY) {
+                setError("Settings are unavailable until a compatible furble is connected")
+                return@post
+            }
+            if (!record.editable || record.metadata?.wireType != record.type) {
+                setError("${record.name} cannot be edited by this app")
+                return@post
+            }
+            if (!FurbleProtocol.isSettingValueValid(record.id, record.type, value)) {
+                setError("The value for ${record.name} is outside the firmware range")
+                return@post
+            }
+            if (record.isDangerous) {
+                _state.update {
+                    it.copy(
+                        pendingSettingConfirmation = PendingSettingConfirmation(record, value.copyOf()),
+                    )
+                }
+            } else {
+                sendSetting(record.id, value)
+            }
+        }
+    }
+
+    fun confirmPendingSetting() {
+        handler.post {
+            val pending = _state.value.pendingSettingConfirmation ?: return@post
+            _state.update { it.copy(pendingSettingConfirmation = null) }
+            sendSetting(pending.record.id, pending.value)
+        }
+    }
+
+    fun cancelPendingSetting() {
+        _state.update { it.copy(pendingSettingConfirmation = null) }
+    }
+
+    private fun sendSetting(id: Int, value: ByteArray) {
+        val connection = gattConnection
+        if (connection == null) {
+            setError("The furble link is not ready")
             return
         }
-        pendingSettingId = record.id
-        gattConnection?.setSetting(record.id, byteArrayOf(value.toByte()))
+        pendingSettingId = id
+        pendingSettingValues[id] = value.copyOf()
+        connection.setSetting(id, value)
     }
 
     fun pressShutter() = triggerController.pressShutter()
@@ -381,12 +428,17 @@ class CompanionRepository(context: Context) {
             runCatching { bluetoothAdapter?.getRemoteDevice(address) }.getOrNull()
         } ?: return
         gattConnection?.close()
+        pendingSettingId = null
+        pendingSettingValues.clear()
         _state.update {
             it.copy(
                 connection = ConnectionState.CONNECTING,
                 status = null,
+                capability = null,
+                settingsSupported = false,
                 settings = emptyList(),
                 settingsLoading = false,
+                pendingSettingConfirmation = null,
                 error = null,
             )
         }
@@ -409,6 +461,15 @@ class CompanionRepository(context: Context) {
                     if (gattConnection === session) _state.update { it.copy(status = snapshot) }
                 }
 
+                override fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?) {
+                    if (gattConnection !== session) return
+                    val supportsSettings = capability?.supportsSettings == true
+                    _state.update {
+                        it.copy(capability = capability, settingsSupported = supportsSettings)
+                    }
+                    if (supportsSettings) requestSettings()
+                }
+
                 override fun onSettings(response: FurbleProtocol.SettingsResponse) {
                     if (gattConnection !== session) return
                     handleSettingsResponse(response)
@@ -417,14 +478,19 @@ class CompanionRepository(context: Context) {
                 override fun onDisconnected() {
                     if (gattConnection !== session) return
                     gattConnection = null
+                    pendingSettingId = null
+                    pendingSettingValues.clear()
                     triggerController.onLinkLost()
                     locationProvider?.stop()
                     _state.update {
                         it.copy(
                             connection = if (devicePresent) ConnectionState.ASSOCIATED else ConnectionState.OUT_OF_RANGE,
                             status = null,
+                            capability = null,
+                            settingsSupported = false,
                             settings = emptyList(),
                             settingsLoading = false,
+                            pendingSettingConfirmation = null,
                         )
                     }
                 }
@@ -445,23 +511,29 @@ class CompanionRepository(context: Context) {
         }
         if (response.status != FurbleProtocol.SettingsStatus.OK) {
             setError("furble rejected setting ${response.id}: status ${response.status}")
-            _state.update { it.copy(settingsLoading = false) }
+            pendingSettingValues.remove(response.id)
+            if (pendingSettingId == response.id) pendingSettingId = null
             return
         }
+        val pendingValue = pendingSettingValues.remove(response.id)
         val record = FurbleProtocol.SettingRecord(
             id = response.id,
             type = response.type,
-            value = response.value,
+            value = if (pendingValue != null && response.value.isEmpty()) pendingValue else response.value,
             flags = response.flags,
         )
         _state.update { current ->
-            val existing = current.settings.indexOfFirst { it.id == record.id }
-            val updated = if (existing >= 0) {
-                current.settings.toMutableList().also { it[existing] = record }
+            val existingIndex = current.settings.indexOfFirst { it.id == record.id }
+            val existing = current.settings.getOrNull(existingIndex)
+            val merged = record.copy(
+                flags = if (response.isListRecord || existing == null) record.flags else existing.flags,
+            )
+            val updated = if (existingIndex >= 0) {
+                current.settings.toMutableList().also { it[existingIndex] = merged }
             } else {
-                current.settings + record
+                current.settings + merged
             }
-            current.copy(settings = updated)
+            current.copy(settings = updated.sortedBy { it.id })
         }
         if (pendingSettingId == response.id) pendingSettingId = null
     }
@@ -491,9 +563,20 @@ class CompanionRepository(context: Context) {
         locationProvider?.stop()
         gattConnection?.close()
         gattConnection = null
+        pendingSettingId = null
+        pendingSettingValues.clear()
         triggerController.onLinkLost()
         if (clearData) {
-            _state.update { it.copy(status = null, settings = emptyList(), settingsLoading = false) }
+            _state.update {
+                it.copy(
+                    status = null,
+                    capability = null,
+                    settingsSupported = false,
+                    settings = emptyList(),
+                    settingsLoading = false,
+                    pendingSettingConfirmation = null,
+                )
+            }
         }
     }
 

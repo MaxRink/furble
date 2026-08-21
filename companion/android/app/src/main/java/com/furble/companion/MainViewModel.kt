@@ -25,6 +25,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.setBooleanSetting(record, value)
     fun setUint8Setting(record: FurbleProtocol.SettingRecord, value: Int) =
         repository.setUint8Setting(record, value)
+    fun requestSettingChange(record: FurbleProtocol.SettingRecord, value: ByteArray) =
+        repository.requestSettingChange(record, value)
+    fun confirmPendingSetting() = repository.confirmPendingSetting()
+    fun cancelPendingSetting() = repository.cancelPendingSetting()
     fun pressShutter() = repository.pressShutter()
     fun releaseShutter() = repository.releaseShutter()
     fun pressFocus() = repository.pressFocus()
