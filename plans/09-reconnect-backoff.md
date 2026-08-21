@@ -183,3 +183,35 @@ Implemented in PR #19 on the fork. Deviations from the plan:
 - Verified: builds for m5stick-s3. The deadlock was reproduced on the StickS3
   before the fix. The fix walk, cancel during connecting with the camera off,
   is still pending on hardware.
+
+## Follow-up: shorten the first retry (2026-08-21)
+
+Hardware evidence after #121 landed: a stale-session reconnect still felt slow,
+about 45 seconds. The first connect attempt fast-fails, then furble waited a full
+17 seconds before the first retry. That 17 second floor came from the earlier
+stale-session hint, which assumed the camera holds its previous BLE session for
+a long time. In practice the camera usually releases the session within a couple
+of seconds, so the long first wait just stalls the reconnect for no benefit.
+
+Change: the first retry now waits a short fixed 2.5 seconds instead of 17 seconds.
+Later retries keep the existing exponential backoff (5, 10, 20, 40, 80, 120
+seconds) and its cap unchanged, so a persistently unreachable camera still backs
+off exactly as before. Rationale: match the retry cadence to how quickly the
+camera actually clears its session, so a session it releases in a few seconds
+reconnects in a few seconds.
+
+The backoff arithmetic moved into `include/FurbleReconnectBackoff.h`
+(`ReconnectBackoff::delayMs`), a header with no BLE, FreeRTOS or NVS dependency.
+`Control::connectAll()` calls it, and a host unit test,
+`tests/host/reconnect_backoff_test.cpp` (ctest `reconnect-backoff`), pins the
+curve: the first retry is quick, backoff-disabled retries hold a flat base wait,
+and backoff-enabled retries grow exponentially to the cap. The test bound on the
+first retry (at most 3 seconds) fails if the value is restored to 17 seconds,
+which was confirmed by mutation.
+
+No new UI toggle. The existing `RECON_BACKOFF` setting still gates the
+exponential curve for later retries.
+
+PENDING HARDWARE RETEST: the 2.5 second first retry is chosen for feel and needs
+on-device confirmation that a stale-session reconnect now recovers in a few
+seconds without spinning the radio.
