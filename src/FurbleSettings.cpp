@@ -76,6 +76,110 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> &Settings::all(v
   return m_Setting;
 }
 
+bool Settings::appliesImmediately(type_t type) {
+  switch (type) {
+    case GPS:
+    case GPS_BAUD:
+    case GPS_RATE:
+    case GPS_NMEA:
+    case GPS_CONSTEL:
+    case MULTICONNECT:
+    case RECONNECT:
+    case RECON_BACKOFF:
+    case FAUXNY:
+    case AUTOCONNECT:
+    case CPU_FREQ:
+    case BATT_STYLE:
+    case SLEEP_CONN:
+    case SCAN_MODE:
+    case SCAN_TIMEOUT:
+    case TX_ADAPTIVE:
+    // TX_POWER takes effect live: the companion and console reload paths call
+    // Control::setPower on save, so no restart is required to apply it.
+    case TX_POWER:
+    case GPS_POWER:
+    case GPS_DUTY:
+    case GPS_ASSIST:
+    case IR:
+    case IR_PROTO:
+    case FB_EVENTS:
+    case FB_VOLUME:
+    case AUTO_OFF:
+    case LOW_BATT:
+      return true;
+    case BRIGHTNESS:
+    case INACTIVITY:
+    case DISPLAY_OFF:
+    case THEME:
+    case TEXT_SIZE:
+    case INTERVAL:
+    case TOUCH_CALIBRATION:
+    case SHOW_TITLE:
+    case BULB:
+    case COMPANION:
+    case CONN_SAVER:
+    case FB_OUTPUT:
+    case PRESET_PICKER:
+    case BUTTON_MODE:
+#if defined(FURBLE_M5STICKS3)
+    case WATCHDOG:
+#endif
+      return false;
+  }
+  return false;
+}
+
+bool Settings::isDangerous(type_t type) {
+  switch (type) {
+    case TX_POWER:
+    case TX_ADAPTIVE:
+    case CPU_FREQ:
+    case SLEEP_CONN:
+    case COMPANION:
+      return true;
+    case BRIGHTNESS:
+    case INACTIVITY:
+    case DISPLAY_OFF:
+    case THEME:
+    case TEXT_SIZE:
+    case PRESET_PICKER:
+    case GPS:
+    case GPS_BAUD:
+    case GPS_RATE:
+    case GPS_NMEA:
+    case GPS_CONSTEL:
+    case GPS_POWER:
+    case GPS_DUTY:
+    case GPS_ASSIST:
+    case INTERVAL:
+    case MULTICONNECT:
+    case RECONNECT:
+    case RECON_BACKOFF:
+    case FAUXNY:
+    case TOUCH_CALIBRATION:
+    case AUTOCONNECT:
+    case BATT_STYLE:
+    case SHOW_TITLE:
+    case BULB:
+    case SCAN_MODE:
+    case SCAN_TIMEOUT:
+    case CONN_SAVER:
+    case IR:
+    case IR_PROTO:
+    case FB_OUTPUT:
+    case FB_EVENTS:
+    case FB_VOLUME:
+    case BUTTON_MODE:
+    case AUTO_OFF:
+    case LOW_BATT:
+#if defined(FURBLE_M5STICKS3)
+    case WATCHDOG:
+#endif
+      return false;
+  }
+  return false;
+}
+
 template <typename T>
 T Settings::loadValue(type_t type) {
   const auto &setting = get(type);

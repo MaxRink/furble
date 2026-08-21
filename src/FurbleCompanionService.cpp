@@ -12,6 +12,65 @@
 
 namespace Furble {
 
+namespace {
+
+// Stable companion wire form for the interval setting.
+//
+// The NVS interval_t stores each field as SpinValue::nvs_t. Its unit_t enum is
+// an unscoped enum that the compiler sizes as 4 bytes, so nvs_t is 6 bytes and
+// interval_t is 24 bytes. That layout is a firmware storage detail and must not
+// leak onto the companion characteristic. The companion instead uses this
+// packed 12-byte form: four {uint16 value little endian, uint8 unit} fields in
+// count, delay, shutter, wait order. The static_assert locks the wire size so a
+// future field change cannot silently shift the Android companion decoder.
+struct __attribute__((packed)) interval_wire_field_t {
+  uint16_t value;
+  uint8_t unit;
+};
+
+struct __attribute__((packed)) interval_wire_t {
+  interval_wire_field_t count;
+  interval_wire_field_t delay;
+  interval_wire_field_t shutter;
+  interval_wire_field_t wait;
+};
+
+static_assert(sizeof(interval_wire_t) == 12, "companion interval wire must stay 12 bytes");
+
+interval_wire_field_t packField(const SpinValue::nvs_t &nvs) {
+  return {nvs.value, static_cast<uint8_t>(nvs.unit)};
+}
+
+SpinValue::nvs_t unpackField(const interval_wire_field_t &field) {
+  return {field.value, static_cast<SpinValue::unit_t>(field.unit)};
+}
+
+interval_wire_t packInterval(const interval_t &interval) {
+  return {packField(interval.count), packField(interval.delay), packField(interval.shutter),
+          packField(interval.wait)};
+}
+
+bool unpackInterval(const uint8_t *data, size_t length, interval_t &interval) {
+  if (length != sizeof(interval_wire_t)) {
+    return false;
+  }
+  interval_wire_t wire;
+  std::memcpy(&wire, data, sizeof(wire));
+  // Reject unit codes the firmware does not understand.
+  for (const auto &field : {wire.count, wire.delay, wire.shutter, wire.wait}) {
+    if (field.unit > SpinValue::UNIT_MIN) {
+      return false;
+    }
+  }
+  interval.count = unpackField(wire.count);
+  interval.delay = unpackField(wire.delay);
+  interval.shutter = unpackField(wire.shutter);
+  interval.wait = unpackField(wire.wait);
+  return true;
+}
+
+}  // namespace
+
 CompanionService::CompanionService(CompanionTransport &transport) : m_Transport {transport} {}
 
 uint64_t CompanionService::nowMs(void) {
@@ -87,7 +146,7 @@ void CompanionService::setSettingReloadCallback(std::function<void(bool)> callba
 
 CompanionService::companion_status_t CompanionService::getStatus(void) const {
   companion_status_t status = {};
-  status.version = WIRE_VERSION;
+  status.version = PACKET_VERSION;
 
   const int32_t batteryLevel = UI::getBatteryLevel();
   status.battery_percent =
@@ -315,8 +374,9 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::INTERVAL:
     {
       const interval_t v = Settings::load<interval_t>(type);
-      value.resize(sizeof(v));
-      std::memcpy(value.data(), &v, sizeof(v));
+      const interval_wire_t wire = packInterval(v);
+      value.resize(sizeof(wire));
+      std::memcpy(value.data(), &wire, sizeof(wire));
       return true;
     }
     case Settings::BULB:
@@ -365,19 +425,16 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       return true;
     }
     case SETTING_BLOB:
-      if (type != Settings::INTERVAL || length != sizeof(interval_t)) {
+    {
+      interval_t interval;
+      if (type != Settings::INTERVAL || !unpackInterval(value, length, interval)) {
         return false;
       }
-      interval_t interval;
-      std::memcpy(&interval, value, sizeof(interval));
       Settings::save<interval_t>(type, interval);
       return true;
+    }
   }
   return false;
-}
-
-bool CompanionService::settingNeedsRestart(Settings::type_t type) {
-  return type == Settings::THEME;
 }
 
 void CompanionService::appendResponse(std::vector<uint8_t> &response,
@@ -393,11 +450,12 @@ void CompanionService::appendResponse(std::vector<uint8_t> &response,
   response.push_back(static_cast<uint8_t>(status));
   response.push_back(id);
   response.push_back(static_cast<uint8_t>(type));
-  if (listRecord) {
-    response.push_back(flags);
-  }
   response.push_back(static_cast<uint8_t>(value.size()));
   response.insert(response.end(), value.begin(), value.end());
+  if (listRecord) {
+    // Keep the flags trailing. The v1 app parses them after the value.
+    response.push_back(flags);
+  }
 }
 
 void CompanionService::notifySettings(const std::vector<uint8_t> &value) {
@@ -438,8 +496,12 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       std::vector<uint8_t> current;
       if (settingValue(entry->type, current)) {
         std::vector<uint8_t> response;
-        appendResponse(response, SETTING_OK, entry->wire_id, settingType(entry->type),
-                       settingNeedsRestart(entry->type) ? 1 : 0, current, true);
+        uint8_t flags = Settings::appliesImmediately(entry->type) ? 0 : SETTING_NEEDS_RESTART;
+        if (Settings::isDangerous(entry->type)) {
+          flags |= SETTING_DANGEROUS;
+        }
+        appendResponse(response, SETTING_OK, entry->wire_id, settingType(entry->type), flags,
+                       current, true);
         notifySettings(response);
       }
     }
@@ -471,7 +533,7 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       (type == SETTING_BOOL || type == SETTING_U8)
           ? 1
           : (type == SETTING_U32 ? sizeof(uint32_t)
-                                 : (type == SETTING_STRING ? length : sizeof(interval_t)));
+                                 : (type == SETTING_STRING ? length : sizeof(interval_wire_t)));
   const bool saved = (type == SETTING_STRING || length == expected)
                      && saveSetting(setting->type, data + 3, length);
   std::vector<uint8_t> response;
@@ -488,6 +550,8 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_RATE:
     case Settings::GPS_NMEA:
     case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
       GPS::getInstance().reloadSetting();
       break;

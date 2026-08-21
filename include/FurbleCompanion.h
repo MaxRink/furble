@@ -28,15 +28,19 @@ class CompanionGatt: public NimBLEServerCallbacks,
   static constexpr const char *STATUS_UUID = "b57f4f60-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
+  static constexpr const char *CAPABILITY_UUID = "b57f4f64-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *OTA_CONTROL_UUID = "b57f4f6d-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *OTA_DATA_UUID = "b57f4f6e-087b-4740-b71d-8262cf26ebbc";
 
   static constexpr uint8_t WIRE_VERSION = CompanionService::WIRE_VERSION;
+  static constexpr uint8_t CAPABILITY_VERSION = CompanionService::CAPABILITY_VERSION;
+  static constexpr uint32_t FEATURE_SETTINGS_V2 = CompanionService::FEATURE_SETTINGS_V2;
   static constexpr uint32_t PAIRING_WINDOW_MS = CompanionService::PAIRING_WINDOW_MS;
   static constexpr uint32_t MAX_BONDS = 15;
 
   using companion_fix_t = CompanionService::companion_fix_t;
   using companion_status_t = CompanionService::companion_status_t;
+  using companion_capability_t = CompanionService::companion_capability_t;
 
   static CompanionGatt &getInstance(void);
 
@@ -79,9 +83,12 @@ class CompanionGatt: public NimBLEServerCallbacks,
   CompanionGatt();
 
   static constexpr uint16_t INVALID_CONN_HANDLE = BLE_HS_CONN_HANDLE_NONE;
+  static constexpr uint32_t COMPANION_DISABLE_GRACE_MS = 1000;
 
   void enable(bool pairingWindow);
   void disable(void);
+  void scheduleDisable(void);
+  static void delayedDisable(void *param);
   void createGatt(void);
   void startPairingWindow(void);
   void startReconnectAdvertising(void);
@@ -105,11 +112,13 @@ class CompanionGatt: public NimBLEServerCallbacks,
   NimBLECharacteristic *m_Status = nullptr;
   NimBLECharacteristic *m_Settings = nullptr;
   NimBLECharacteristic *m_Trigger = nullptr;
+  NimBLECharacteristic *m_Capability = nullptr;
   NimBLECharacteristic *m_Firmware = nullptr;
   NimBLECharacteristic *m_Manufacturer = nullptr;
   NimBLEAdvertising *m_Advertising = nullptr;
 
   TaskHandle_t m_Task = nullptr;
+  esp_timer_handle_t m_DisableTimer = nullptr;
 
   mutable std::mutex m_Mutex;
   bool m_Enabled = false;

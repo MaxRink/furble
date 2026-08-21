@@ -33,7 +33,7 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
   if (Settings::load<Settings::COMPANION>()) {
     enable(pairingWindow);
   } else {
-    disable();
+    scheduleDisable();
   }
 }
 
@@ -71,6 +71,10 @@ void CompanionGatt::confirmPairing(bool accept) {
 }
 
 void CompanionGatt::enable(bool pairingWindow) {
+  if ((m_DisableTimer != nullptr) && esp_timer_is_active(m_DisableTimer)) {
+    esp_timer_stop(m_DisableTimer);
+  }
+
   bool startPairing = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -101,6 +105,19 @@ void CompanionGatt::enable(bool pairingWindow) {
       loadBond();
       m_Service.init();
 
+      if (m_DisableTimer == nullptr) {
+        const esp_timer_create_args_t args = {
+            .callback = delayedDisable,
+            .arg = this,
+            .dispatch_method = ESP_TIMER_TASK,
+            .name = "companion disable",
+            .skip_unhandled_events = false,
+        };
+        if (esp_timer_create(&args, &m_DisableTimer) != ESP_OK) {
+          ESP_LOGE(LOG_TAG, "Failed to create companion disable timer");
+        }
+      }
+
       if (m_Task == nullptr) {
         const BaseType_t result =
             xTaskCreate(serviceTaskEntry, "companion", 4096, this, 2, &m_Task);
@@ -125,6 +142,7 @@ void CompanionGatt::enable(bool pairingWindow) {
 void CompanionGatt::disable(void) {
   NimBLEServer *server = nullptr;
   TaskHandle_t task = nullptr;
+  esp_timer_handle_t disableTimer = nullptr;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (!m_Enabled) {
@@ -137,11 +155,15 @@ void CompanionGatt::disable(void) {
     m_PendingPairingHandle = INVALID_CONN_HANDLE;
     server = m_Server;
     task = m_Task;
+    disableTimer = m_DisableTimer;
   }
 
   stopAdvertising();
   m_Service.releaseHeldCommands();
   GPS::getInstance().clearExternalFix();
+  if ((disableTimer != nullptr) && esp_timer_is_active(disableTimer)) {
+    esp_timer_stop(disableTimer);
+  }
   if ((server != nullptr) && m_CompanionConnected) {
     server->disconnect(m_CompanionConnHandle);
   }
@@ -167,6 +189,7 @@ void CompanionGatt::disable(void) {
     m_Status = nullptr;
     m_Settings = nullptr;
     m_Trigger = nullptr;
+    m_Capability = nullptr;
     m_Firmware = nullptr;
     m_Manufacturer = nullptr;
     m_Server->setCallbacks(nullptr, false);
@@ -175,6 +198,31 @@ void CompanionGatt::disable(void) {
   m_CompanionEncrypted = false;
   m_CompanionAuthenticated = false;
   m_CompanionConnHandle = INVALID_CONN_HANDLE;
+}
+
+void CompanionGatt::scheduleDisable(void) {
+  if (!m_Enabled) {
+    return;
+  }
+  if (m_DisableTimer == nullptr) {
+    ESP_LOGW(LOG_TAG, "Companion disable grace timer is unavailable");
+    disable();
+    return;
+  }
+  if (esp_timer_is_active(m_DisableTimer)) {
+    esp_timer_stop(m_DisableTimer);
+  }
+  if (esp_timer_start_once(m_DisableTimer, COMPANION_DISABLE_GRACE_MS * 1000) != ESP_OK) {
+    ESP_LOGW(LOG_TAG, "Companion disable grace timer could not start");
+    disable();
+  }
+}
+
+void CompanionGatt::delayedDisable(void *param) {
+  auto *companion = static_cast<CompanionGatt *>(param);
+  if (!Settings::load<Settings::COMPANION>()) {
+    companion->disable();
+  }
 }
 
 void CompanionGatt::createGatt(void) {
@@ -198,6 +246,16 @@ void CompanionGatt::createGatt(void) {
       SETTINGS_UUID,
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_AUTHEN, 512);
   m_Settings->setCallbacks(this);
+
+  m_Capability = m_GattService->createCharacteristic(
+      CAPABILITY_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC,
+      sizeof(companion_capability_t));
+  const companion_capability_t capability = {
+      CAPABILITY_VERSION,
+      WIRE_VERSION,
+      FEATURE_SETTINGS_V2,
+  };
+  m_Capability->setValue(reinterpret_cast<const uint8_t *>(&capability), sizeof(capability));
 
   m_Trigger = m_GattService->createCharacteristic(
       TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN, 4);
