@@ -1,49 +1,70 @@
-# End-to-end regression for the spirit level page (PR #28 rework).
+# End-to-end regression for the spirit level page (PR #28 v3 rework).
 #
 # The device IMU is disabled in the simulator, so the level page is reached with
 # the FURBLE_SIM nav hook and fed synthetic accelerometer vectors with the
 # level_accel action. Vectors are (x, y, z) in G, the same as M5.Imu.getAccel().
 #
 # What this locks in:
-#  - Fit: the page does not overflow the 135x240 panel (no colliding, no scroll).
-#  - Sensitivity: a small 6 degree tilt drives the bubble a large, clearly
+#  - Fit: the page does not overflow the panel, flat or flipped (no colliding,
+#    no scroll).
+#  - Flat page: the circle bubble is the primary readout and the side tube is
+#    hidden. A small 6 degree tilt drives the circle bubble a large, clearly
 #    visible distance. The old +/-45 degree linear mapping moved it only a few
 #    pixels for the same tilt, so a revert to that mapping fails these asserts.
-#  - Side tube: a classic linear bubble level tracks roll only. Pitch leaves it
-#    centred; roll moves it.
-#  - Saturation: a 30 degree tilt pins both bubbles to the rim.
+#  - Auto-rotate: laying the device on its side past 60 degrees flips the page
+#    to landscape (90 for a right roll, 270 for a left roll) and shows the side
+#    tube. Returning near flat rotates back to portrait and hides the tube.
+#  - Side tube: it tracks roll only, and only appears in the flipped orientation.
 seed fauxny true
 wait 300
 action nav level
 wait 200
 assert ui.page level
 assert ui.overflow no
-assert ui.level_has_side yes
+# The flat page opens in portrait with the side tube hidden.
+assert ui.level_rotation 0
+assert ui.level_side_visible no
 
-# Flat: both bubbles centred.
+# Flat: the circle bubble is centred.
 action level_accel 0 0 1
 wait 20
 assert ui.level_bubble_x 0
 assert ui.level_bubble_y 0
-assert ui.level_side_x 0
+assert ui.level_rotation 0
 
-# Small 6 degree roll: the circle bubble and the side tube both move a lot.
+# Small 6 degree roll: the circle bubble moves a lot, still portrait, no tube.
 action level_accel 0 0.105 0.994
 wait 20
-assert ui.level_bubble_x 16
+assert ui.level_bubble_x 19
 assert ui.level_bubble_y 0
-assert ui.level_side_x 25
+assert ui.level_rotation 0
+assert ui.level_side_visible no
 
-# Small 6 degree pitch: only the vertical axis moves, the side tube stays put.
+# Small 6 degree pitch: only the vertical axis moves.
 action level_accel 0.105 0 0.994
 wait 20
 assert ui.level_bubble_x 0
-assert ui.level_bubble_y -16
-assert ui.level_side_x 0
+assert ui.level_bubble_y -19
+assert ui.level_rotation 0
 
-# A 30 degree roll saturates both bubbles at the rim.
-action level_accel 0 0.5 0.866
+# Lay on the right side, 70 degree roll: the page flips to landscape, the tube
+# shows and pins near the rim, and the layout still fits.
+action level_accel 0 0.94 0.342
 wait 20
-assert ui.level_bubble_x 28
-assert ui.level_side_x 44
+assert ui.level_rotation 90
+assert ui.level_side_visible yes
+assert ui.level_side_x 97
+assert ui.overflow no
+
+# Lay on the left side, -70 degree roll: the page flips the other way.
+action level_accel 0 -0.94 0.342
+wait 20
+assert ui.level_rotation 270
+assert ui.level_side_x -97
+
+# Back near flat: return to portrait and hide the tube.
+action level_accel 0 0 1
+wait 20
+assert ui.level_rotation 0
+assert ui.level_side_visible no
 exit
