@@ -332,6 +332,9 @@ class NimBLEDevice {
   // Number of NimBLE clients currently live (created minus deleted). A leak
   // shows up as this count growing across failed connect attempts.
   static size_t liveClientCount();
+  // Mirror of the real NimBLEDevice::getCreatedClientCount(). Camera::connect()
+  // logs this for the pool accounting, so the mock must offer the same name.
+  static size_t getCreatedClientCount();
   // Cap the pool the way NimBLE caps it at CONFIG_BT_NIMBLE_MAX_CONNECTIONS.
   // Once the live count reaches the cap, createClient() returns nullptr, exactly
   // as the controller does with "Unable to create client; already at max". Zero

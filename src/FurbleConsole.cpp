@@ -523,16 +523,21 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   return 0;
 }
 
+/** Print every setting as 'key: value', shared by 'settings list' and 'debug settings'. */
+void printAllSettings(void) {
+  for (const auto &entry : Settings::getAll()) {
+    std::string prefix = std::string(entry.second.key) + ": ";
+    printValue(prefix.c_str(), entry.second.type);
+  }
+}
+
 int cmdSettings(int argc, char **argv) {
   if (argc < 2) {
     return fail("usage: settings list | get <name> | set <name> <value>");
   }
 
   if (!strcmp(argv[1], "list")) {
-    for (const auto &entry : Settings::getAll()) {
-      std::string prefix = std::string(entry.second.key) + ": ";
-      printValue(prefix.c_str(), entry.second.type);
-    }
+    printAllSettings();
     return 0;
   }
 
@@ -1014,6 +1019,36 @@ int cmdPerf(int argc, char **argv) {
  * Status, cameras and camera control.
  */
 
+/** Human readable last reset cause, for boot loop and crash diagnosis. */
+const char *resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_UNKNOWN:
+      return "unknown";
+    case ESP_RST_POWERON:
+      return "poweron";
+    case ESP_RST_EXT:
+      return "external";
+    case ESP_RST_SW:
+      return "software";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "int_wdt";
+    case ESP_RST_TASK_WDT:
+      return "task_wdt";
+    case ESP_RST_WDT:
+      return "other_wdt";
+    case ESP_RST_DEEPSLEEP:
+      return "deepsleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    default:
+      return "other";
+  }
+}
+
 int cmdStatus(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -1023,6 +1058,7 @@ int cmdStatus(int argc, char **argv) {
   printf("version: %s\n", FURBLE_VERSION);
   printf("state: %s\n", stateStr(control.getState()));
   printf("targets: %u\n", static_cast<unsigned>(control.getTargets().size()));
+  printf("reset: %s\n", resetReasonName(esp_reset_reason()));
   printf("uptime: %llu\n", esp_timer_get_time() / 1000000ULL);
   printf("heap: %lu\n", esp_get_free_heap_size());
   printf("heap_min: %lu\n", esp_get_minimum_free_heap_size());
@@ -1467,6 +1503,197 @@ int cmdFeedback(int argc, char **argv) {
   return fail("expected shutter, countdown, connect, disconnect or battery");
 }
 
+/*
+ * Debug dump family.
+ *
+ * A single 'debug' command that dumps structured state a developer otherwise
+ * cannot see from the console: the full Control state machine, per-camera BLE
+ * detail, and the NimBLE client pool. The heap, tasks, power, gps and settings
+ * subcommands are thin aliases onto the existing dumps so 'debug all' collects
+ * every diagnostic in one paste. Everything here is behind FURBLE_CONSOLE, so
+ * release builds never see it.
+ */
+
+const char *cameraTypeName(Camera::Type type) {
+  switch (type) {
+    case Camera::Type::FUJIFILM_BASIC:
+      return "fujifilm-basic";
+    case Camera::Type::CANON_EOS_SMART:
+      return "canon-eos-smart";
+    case Camera::Type::CANON_EOS_REMOTE:
+      return "canon-eos-remote";
+    case Camera::Type::MOBILE_DEVICE:
+      return "mobile-device";
+    case Camera::Type::FAUXNY:
+      return "fauxny";
+    case Camera::Type::NIKON:
+      return "nikon";
+    case Camera::Type::SONY:
+      return "sony";
+    case Camera::Type::FUJIFILM_SECURE:
+      return "fujifilm-secure";
+    case Camera::Type::RICOH:
+      return "ricoh";
+  }
+  return "unknown";
+}
+
+int debugControl(void) {
+  const auto s = Control::getInstance().getDebugState();
+
+  printf("control.state: %s\n", stateStr(s.state));
+  printf("control.targets: %u\n", static_cast<unsigned>(s.targetCount));
+  printf("control.connected: %u\n", static_cast<unsigned>(s.connectedCount));
+  printf("control.zombies: %u\n", static_cast<unsigned>(s.zombieCount));
+  printf("control.connect_in_progress: %s\n", boolStr(s.connectInProgress));
+  printf("control.connect_abort: %s\n", boolStr(s.connectAbort));
+  printf("control.sleep_lock_held: %s\n", boolStr(s.sleepLockHeld));
+  printf("control.infinite_reconnect: %s\n", boolStr(s.infiniteReconnect));
+  printf("control.reconnect_backoff: %s\n", boolStr(s.reconnectBackoff));
+  printf("control.reconnect_attempt: %lu\n", static_cast<unsigned long>(s.reconnectAttempt));
+  printf("control.adaptive_active: %s\n", boolStr(s.adaptiveActive));
+  printf("control.power_level: %d\n", s.userPowerLevel);
+  printf("control.adaptive_power_level: %d\n", s.adaptivePowerLevel);
+  printf("control.rssi_strong_samples: %u\n", static_cast<unsigned>(s.rssiStrongSamples));
+  printf("control.rssi_weak_samples: %u\n", static_cast<unsigned>(s.rssiWeakSamples));
+  printf("control.connecting: %s\n",
+         s.connectingCamera.empty() ? "none" : s.connectingCamera.c_str());
+  return 0;
+}
+
+/** Print the deep BLE detail for one live target. */
+void debugCameraDetail(unsigned index, Camera *camera) {
+  printf("camera%u.name: %s\n", index, camera->getName().c_str());
+  printf("camera%u.address: %s\n", index, camera->getAddress().toString().c_str());
+  printf("camera%u.type: %s\n", index, cameraTypeName(camera->getType()));
+  printf("camera%u.connected: %s\n", index, boolStr(camera->isConnected()));
+  printf("camera%u.active: %s\n", index, boolStr(camera->isActive()));
+  printf("camera%u.progress: %u\n", index, static_cast<unsigned>(camera->getConnectProgress()));
+  printf("camera%u.profile: %s\n", index, Camera::connProfileName(camera->getConnProfile()));
+
+  // Cached snapshot only, so this never blocks on the HCI transport from the
+  // console task, matching 'cameras status'.
+  uint16_t interval = 0;
+  uint16_t latency = 0;
+  uint16_t timeout = 0;
+  int rssi = 0;
+  if (camera->getConnParams(interval, latency, timeout, rssi)) {
+    printf("camera%u.interval: %u\n", index, interval);
+    printf("camera%u.latency: %u\n", index, latency);
+    printf("camera%u.timeout: %u\n", index, timeout);
+    printf("camera%u.rssi: %d\n", index, rssi);
+  } else {
+    printf("camera%u.conn: no cached parameters\n", index);
+  }
+}
+
+int debugCamera(int argc, char **argv) {
+  const auto targets = Control::getInstance().getTargets();
+  printf("cameras.targets: %u\n", static_cast<unsigned>(targets.size()));
+
+  // No index dumps every target.
+  if (argc < 3) {
+    for (size_t n = 0; n < targets.size(); n++) {
+      debugCameraDetail(static_cast<unsigned>(n), targets[n]->getCamera().get());
+    }
+    return 0;
+  }
+
+  char *end = nullptr;
+  long index = strtol(argv[2], &end, 0);
+  if ((end == argv[2]) || (*end != '\0') || (index < 0)
+      || (static_cast<size_t>(index) >= targets.size())) {
+    return fail("expected a target index from 'debug camera'");
+  }
+
+  debugCameraDetail(static_cast<unsigned>(index),
+                    targets[static_cast<size_t>(index)]->getCamera().get());
+  return 0;
+}
+
+int debugBle(void) {
+  const bool initialised = NimBLEDevice::isInitialized();
+  printf("ble.initialized: %s\n", boolStr(initialised));
+  if (initialised) {
+    printf("ble.address: %s\n", NimBLEDevice::getAddress().toString().c_str());
+    printf("ble.tx_power_dbm: %d\n", NimBLEDevice::getPower());
+  }
+
+  // The pool is fixed size. A created count that climbs across failed connects
+  // and never falls is the client leak that exhausts the pool and breaks every
+  // later connect until reboot.
+  printf("ble.clients_created: %u\n", static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
+#if defined(CONFIG_BT_NIMBLE_MAX_CONNECTIONS)
+  printf("ble.clients_max: %d\n", CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
+#endif
+
+  // Cross-reference each control target against the live NimBLE client list.
+  const auto targets = Control::getInstance().getTargets();
+  for (size_t n = 0; n < targets.size(); n++) {
+    auto camera = targets[n]->getCamera();
+    const bool live = NimBLEDevice::getClientByPeerAddress(camera->getAddress()) != nullptr;
+    printf("ble.target%u: %s client=%s\n", static_cast<unsigned>(n),
+           camera->getAddress().toString().c_str(), boolStr(live));
+  }
+  return 0;
+}
+
+int cmdDebug(int argc, char **argv) {
+  if (argc < 2) {
+    return fail(
+        "usage: debug control | camera [idx] | ble | heap | tasks | power | gps | "
+        "settings | all");
+  }
+
+  if (!strcmp(argv[1], "control")) {
+    return debugControl();
+  }
+  if (!strcmp(argv[1], "camera")) {
+    return debugCamera(argc, argv);
+  }
+  if (!strcmp(argv[1], "ble")) {
+    return debugBle();
+  }
+  if (!strcmp(argv[1], "heap")) {
+    return cmdPerfHeap();
+  }
+  if (!strcmp(argv[1], "tasks")) {
+    return cmdPerfTasks();
+  }
+  if (!strcmp(argv[1], "power")) {
+    cmdPowerStats();
+    return 0;
+  }
+  if (!strcmp(argv[1], "gps")) {
+    return gpsStatus();
+  }
+  if (!strcmp(argv[1], "settings")) {
+    printAllSettings();
+    return 0;
+  }
+  if (!strcmp(argv[1], "all")) {
+    printf("== status ==\n");
+    cmdStatus(0, nullptr);
+    printf("== control ==\n");
+    debugControl();
+    printf("== cameras ==\n");
+    debugCamera(2, argv);
+    printf("== ble ==\n");
+    debugBle();
+    printf("== power ==\n");
+    cmdPowerStats();
+    printf("== heap ==\n");
+    cmdPerfHeap();
+    printf("== gps ==\n");
+    gpsStatus();
+    printf("== settings ==\n");
+    printAllSettings();
+    return 0;
+  }
+
+  return fail("expected control, camera, ble, heap, tasks, power, gps, settings or all");
+}
+
 int cmdReboot(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -1516,6 +1743,9 @@ const esp_console_cmd_t COMMANDS[] = {
             "feedback test <shutter|countdown|connect|disconnect|battery>",
             cmdFeedback),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
+    command("debug",
+            "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
+            cmdDebug),
     command("reboot", "Restart the device", cmdReboot),
 };
 

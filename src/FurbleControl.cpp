@@ -35,6 +35,24 @@ int powerIndex(esp_power_level_t power) {
   return -1;
 }
 
+const char *stateName(Control::state_t state) {
+  switch (state) {
+    case Control::STATE_IDLE:
+      return "idle";
+    case Control::STATE_CONNECT:
+      return "connect";
+    case Control::STATE_CONNECTING:
+      return "connecting";
+    case Control::STATE_CONNECT_FAILED:
+      return "connect_failed";
+    case Control::STATE_ACTIVE:
+      return "active";
+    case Control::STATE_DISCONNECTING:
+      return "disconnecting";
+  }
+  return "unknown";
+}
+
 }  // namespace
 
 Control::Target::Target(std::shared_ptr<Camera> camera) : m_Camera(std::move(camera)) {
@@ -188,6 +206,11 @@ Control::state_t Control::connectAll(void) {
     }
     m_ConnectInProgress = true;
   }
+
+  ESP_LOGD(LOG_TAG,
+           "connectAll: %u target(s), %u to connect, reconnect attempt %lu, timeout %lu ms",
+           static_cast<unsigned>(all.size()), static_cast<unsigned>(cameras.size()),
+           static_cast<unsigned long>(m_ReconnectAttempt), static_cast<unsigned long>(timeout));
 
   // Apply the setting outside the mutex. On an already connected camera this
   // enters NimBLE and can block on the HCI transport.
@@ -514,10 +537,16 @@ void Control::reapZombieTargets(void) {
   // Once m_Stopped reads true the task can no longer touch `this`, so the object
   // is safe to free, and ~Target() skips its radio call because m_Stopped is
   // set. Leave any zombie still tearing down for a later sweep.
+  const size_t before = m_ZombieTargets.size();
   m_ZombieTargets.erase(
       std::remove_if(m_ZombieTargets.begin(), m_ZombieTargets.end(),
                      [](const std::unique_ptr<Target> &target) { return target->m_Stopped; }),
       m_ZombieTargets.end());
+  const size_t reaped = before - m_ZombieTargets.size();
+  if (reaped > 0) {
+    ESP_LOGD(LOG_TAG, "Reaped %u zombie target(s), %u still draining.",
+             static_cast<unsigned>(reaped), static_cast<unsigned>(m_ZombieTargets.size()));
+  }
 }
 
 void Control::addActive(std::shared_ptr<Camera> camera) {
@@ -583,6 +612,46 @@ Control::state_t Control::getState(void) const {
   return m_State;
 }
 
+#if defined(FURBLE_CONSOLE)
+Control::debug_state_t Control::getDebugState(void) const {
+  debug_state_t snapshot = {};
+
+  // m_State and the volatile abort/progress flags are read without m_StateMutex,
+  // mirroring getState(): a debug snapshot tolerates a benign torn read and
+  // taking m_StateMutex here would risk a lock ordering hazard against setState().
+  snapshot.state = m_State;
+  snapshot.connectInProgress = m_ConnectInProgress;
+  snapshot.connectAbort = m_ConnectAbort;
+  snapshot.sleepLockHeld = m_SleepLockHeld;
+  snapshot.infiniteReconnect = m_InfiniteReconnect;
+  snapshot.reconnectBackoff = m_ReconnectBackoff;
+  snapshot.reconnectAttempt = m_ReconnectAttempt;
+
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  snapshot.targetCount = m_Targets.size();
+  snapshot.zombieCount = m_ZombieTargets.size();
+  snapshot.adaptiveActive = m_AdaptiveActive;
+  snapshot.userPowerLevel = static_cast<int>(m_Power);
+  snapshot.adaptivePowerLevel = static_cast<int>(m_AdaptivePower);
+  snapshot.rssiStrongSamples = m_RssiStrongSamples;
+  snapshot.rssiWeakSamples = m_RssiWeakSamples;
+
+  size_t connected = 0;
+  for (const auto &target : m_Targets) {
+    if (target->getCamera()->isConnected()) {
+      connected++;
+    }
+  }
+  snapshot.connectedCount = connected;
+
+  if (m_ConnectCamera != nullptr) {
+    snapshot.connectingCamera = m_ConnectCamera->getName();
+  }
+
+  return snapshot;
+}
+#endif
+
 size_t Control::getTargetCount(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_Targets.size();
@@ -605,6 +674,10 @@ void Control::setState(state_t state) {
   if (state == m_State) {
     return;
   }
+
+  // State transitions are the backbone of a connect/disconnect trace. Logged at
+  // DEBUG so a release build compiles the line out and never spams the monitor.
+  ESP_LOGD(LOG_TAG, "state %s -> %s", stateName(m_State), stateName(state));
 
   m_State = state;
 

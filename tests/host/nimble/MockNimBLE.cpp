@@ -568,6 +568,10 @@ size_t NimBLEDevice::liveClientCount() {
   return g_Clients.size();
 }
 
+size_t NimBLEDevice::getCreatedClientCount() {
+  return g_Clients.size();
+}
+
 void NimBLEDevice::setMaxClients(size_t max) {
   g_MaxClients = max;
 }

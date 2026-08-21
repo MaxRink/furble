@@ -212,6 +212,12 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     return false;
   }
 
+  // Pool accounting for the NimBLE client leak hunt. The pool is fixed size
+  // (CONFIG_BT_NIMBLE_MAX_CONNECTIONS), so a count that climbs across failed
+  // connects is the leak signature. DEBUG level, compiled out of release.
+  ESP_LOGD(LOG_TAG, "createClient(%s), pool now %u", m_Name.c_str(),
+           static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
+
   m_Client->setClientCallbacks(this, false);
   m_Client->setSelfDelete(true, true);  // self-delete on any connection failure
 
@@ -267,6 +273,8 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     // m_Connected, which is false here.
     NimBLEDevice::deleteClient(m_Client);
     m_Client = nullptr;
+    ESP_LOGD(LOG_TAG, "deleteClient(%s) after failed connect, pool now %u", m_Name.c_str(),
+             static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
   }
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(m_SecurityModeDefault));
 
