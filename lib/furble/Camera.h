@@ -275,16 +275,18 @@ class Camera: public NimBLEClientCallbacks {
   /**
    * Subscribe through the single vendor notification journal seam.
    *
-   * The CCCD descriptor write defaults to unacknowledged (response = false). An
-   * unacknowledged write cannot block waiting for an ATT write response that a
-   * camera holding a stale session never sends, so a subscribe can never hang
-   * the connect. The notify callback is registered locally before the write, so
+   * The CCCD descriptor write defaults to acknowledged (response = true), the
+   * proven behaviour every vendor relies on. Only Fujifilm passes
+   * response = false to request an unacknowledged write. An unacknowledged
+   * write cannot block waiting for an ATT write response that a camera holding
+   * a stale session never sends, so a Fujifilm subscribe can never hang the
+   * connect. The notify callback is registered locally before the write, so
    * notifications still arrive even without the write response.
    */
   bool gattSubscribe(NimBLERemoteCharacteristic *characteristic,
                      gatt_notify_cb callback,
                      bool indicate = false,
-                     bool response = false);
+                     bool response = true);
 
   const PairType m_PairType;
   NimBLEAddress m_Address = NimBLEAddress {};

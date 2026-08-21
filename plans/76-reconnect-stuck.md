@@ -264,19 +264,33 @@ Two small, coupled changes. No new setting. No mutex is held across a delay
 lock-free. The connect failure and client-reclaim paths are untouched, so the
 #120 leak fix is preserved.
 
-1. Bound the CCCD subscribe writes by making them unacknowledged.
-   - `Camera::gattSubscribe` gains a `response` parameter (default `false`) and
-     passes it to `NimBLERemoteCharacteristic::subscribe`
-     (`lib/furble/Camera.cpp`, `lib/furble/Camera.h`).
-   - `Fujifilm::subscribe` gains a matching `response` parameter (default
-     `false`) and forwards it (`lib/furble/Fujifilm.cpp`, `lib/furble/Fujifilm.h`).
+1. Bound the CCCD subscribe writes by making them unacknowledged, scoped to
+   Fujifilm only.
+   - `Camera::gattSubscribe` gains a `response` parameter that defaults to
+     `true`, the proven acknowledged behaviour every vendor relies on
+     (`lib/furble/Camera.cpp`, `lib/furble/Camera.h`). It passes the value to
+     `NimBLERemoteCharacteristic::subscribe`. This shared seam is used by all
+     vendors (Canon EOS smart, Nikon base/smart/remote, Ricoh), so the default
+     must stay `true` to leave their pairing and connect subscribe writes
+     acknowledged and unchanged. None of those callers pass a `response`
+     argument, so they all resolve to `true`.
+   - `Fujifilm::subscribe` carries its own `response` parameter that defaults to
+     `false` and forwards it explicitly into `gattSubscribe`
+     (`lib/furble/Fujifilm.cpp`, `lib/furble/Fujifilm.h`). Only the Fujifilm
+     path therefore issues the unacknowledged CCCD write.
    - An unacknowledged CCCD write takes the library `ble_gattc_write_no_rsp_flat`
      fast path with no `taskWait`, so it can never block on a write response the
      stale-session camera withholds. The notify callback is registered locally
      before the descriptor write, so notifications still arrive, and the write is
-     delivered reliably at the link layer. This applies to both the Secure and
-     Basic subscribe loops, since they share the helper; the Basic path is
-     unaffected functionally and is retested on-device.
+     delivered reliably at the link layer. Both the Fujifilm Secure and Fujifilm
+     Basic subscribe loops go through `Fujifilm::subscribe`, so both now issue
+     unacknowledged CCCD writes. This is a deliberate behaviour change on the
+     Basic path too (an earlier note that "Basic is unaffected" was wrong: Basic
+     shares `Fujifilm::subscribe`, so its CCCD writes did change to
+     unacknowledged); it is covered by the Fujifilm Basic hardware retest below.
+     Canon, Nikon, and Ricoh are unchanged: they keep acknowledged CCCD writes
+     via the restored `true` default and have no coverage or behaviour delta
+     from this PR.
 
 2. Make every subscribe failure non-fatal in `FujifilmSecure::_connect`
    (`lib/furble/FujifilmSecure.cpp`).
@@ -307,11 +321,14 @@ hook, then reconnects and asserts the reconnect completes within a bounded wall
 clock, reaches connected, and can fire the shutter. A second case guards the
 fresh first connect.
 
-Mutation result: reverting `Camera::gattSubscribe` to an acknowledged CCCD write
-(the pre-fix behaviour) makes the stale-session peer reject the write, the Basic
-handshake aborts, `connect()` returns false, and the `reconnect-stuck` test fails
-on exactly the stale-session assertions while the fresh-connect case still
-passes. With the fix the whole suite is green (9/9).
+Mutation result: reverting the Fujifilm subscribe `response` to acknowledged
+(setting `Fujifilm::subscribe`'s default back to `true`, the pre-fix behaviour)
+makes the stale-session peer reject the write, the Basic handshake aborts,
+`connect()` returns false, and the `reconnect-stuck` test fails on exactly the
+stale-session assertions while the fresh-connect case still passes. Restoring the
+`false` default returns the suite to green (9/9). Note the mutation is on the
+Fujifilm path specifically: the `Camera::gattSubscribe` base default is `true`,
+so the mutation that exercises the tooth is the Fujifilm-scoped one.
 
 The Secure `_connect` scan path pulls in `Scan` and FreeRTOS, which the host
 harness does not stub, so the test exercises the shared
@@ -328,3 +345,10 @@ non-fatal loop change is covered by code review and the on-device retest below.
    intermittent stale-session block; every cycle must reach `active`.
 3. Fresh boot, first `connect 1` still reaches `active` and fires.
 4. Fujifilm Basic camera: connect and fast reconnect still work.
+5. Geotag notification after reconnect. Because the CCCD subscribe write is now
+   unacknowledged on the Fujifilm path, confirm the geotag subscription still
+   delivers notifications after a fast reconnect: with GPS enabled (or a fixed
+   test fix), reconnect and confirm the camera's geotag request notification is
+   received and furble writes geotag data back. The notify callback is
+   registered locally before the unacknowledged write, so notifications must
+   still arrive; this step proves that end to end on the stale-session path.
