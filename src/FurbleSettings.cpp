@@ -108,6 +108,8 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_VOLUME:
     case AUTO_OFF:
     case LOW_BATT:
+    case SD_GPX:
+    case GPX_PERIOD:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
@@ -174,6 +176,8 @@ bool Settings::isDangerous(type_t type) {
     case BUTTON_MODE:
     case AUTO_OFF:
     case LOW_BATT:
+    case SD_GPX:
+    case GPX_PERIOD:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
