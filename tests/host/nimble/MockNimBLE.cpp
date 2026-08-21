@@ -77,7 +77,8 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
 bool g_ConnectShouldFail = false;
-size_t g_MaxClients = 0;  // 0 means unlimited
+size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
+size_t g_MaxClients = 0;        // 0 means unlimited
 
 }  // namespace
 
@@ -337,6 +338,11 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
     // callback fires, matching NimBLE returning false from connect().
     return false;
   }
+  if (g_ConnectFailCount > 0) {
+    // A transient failure that drains: fail now, let a later attempt succeed.
+    g_ConnectFailCount--;
+    return false;
+  }
   if ((g_Peer == nullptr) || !g_Peer->acceptConnection(*this, address)) {
     return false;
   }
@@ -578,6 +584,7 @@ void NimBLEDevice::resetMock() {
   g_Clients.clear();
   g_Peer = nullptr;
   g_ConnectShouldFail = false;
+  g_ConnectFailCount = 0;
   g_MaxClients = 0;
 }
 
@@ -587,6 +594,10 @@ NimBLEClient *NimBLEDevice::lastClient() {
 
 void NimBLEDevice::setConnectShouldFail(bool fail) {
   g_ConnectShouldFail = fail;
+}
+
+void NimBLEDevice::setConnectFailCount(size_t count) {
+  g_ConnectFailCount = count;
 }
 
 extern "C" int64_t esp_timer_get_time(void) {

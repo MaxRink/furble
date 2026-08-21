@@ -92,6 +92,29 @@ target_link_libraries(reconnect_stuck_test PRIVATE furble_host_camera)
 target_compile_options(reconnect_stuck_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                     -Wno-unused-parameter)
 
+# Fault-injection tooling demonstration. Green: proves the expanded MockNimBLE
+# and FujifilmVirtualCamera fault hooks work and guards the reclaim and abort
+# paths they reach.
+add_executable(fault_tooling_test fault_tooling_test.cpp)
+target_link_libraries(fault_tooling_test PRIVATE furble_host_camera)
+target_compile_options(fault_tooling_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter)
+
+# Adversarial bug-hunt findings. Both are KNOWN-FAILING against current master and
+# are registered WILL_FAIL below so CI stays green while the finding is tracked.
+# When FujifilmBasic::_connect gains the missing shutter guard, each test passes,
+# and WILL_FAIL flips the job red so the marker gets removed with the fix.
+add_executable(fujifilm_missing_shutter_service_test fujifilm_missing_shutter_service_test.cpp)
+target_link_libraries(fujifilm_missing_shutter_service_test PRIVATE furble_host_camera)
+target_compile_options(fujifilm_missing_shutter_service_test PRIVATE -Wall -Wextra -Werror
+                                                                     -Wno-format
+                                                                     -Wno-unused-parameter)
+add_executable(fujifilm_missing_shutter_char_test fujifilm_missing_shutter_char_test.cpp)
+target_link_libraries(fujifilm_missing_shutter_char_test PRIVATE furble_host_camera)
+target_compile_options(fujifilm_missing_shutter_char_test PRIVATE -Wall -Wextra -Werror
+                                                                  -Wno-format
+                                                                  -Wno-unused-parameter)
+
 # The GPX writer suite compiles the production writer directly. It has no BLE or
 # NVS dependency, only C file I/O, so it redirects the mount point to a build
 # sandbox with FURBLE_GPX_DIRECTORY and needs the host esp_log shim.
@@ -128,4 +151,14 @@ if(BUILD_TESTING)
   add_test(NAME reconnect-stuck COMMAND reconnect_stuck_test)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
+  add_test(NAME fault-tooling COMMAND fault_tooling_test)
+
+  # Known-failing findings. WILL_FAIL keeps CI green while the finding is tracked:
+  # CTest inverts the pass/fail flag, so the crashing/failing run counts as a pass
+  # today, and once FujifilmBasic::_connect is fixed the run turns clean and the
+  # inverted flag turns the test red, forcing the marker off with the fix.
+  add_test(NAME fujifilm-missing-shutter-service COMMAND fujifilm_missing_shutter_service_test)
+  set_tests_properties(fujifilm-missing-shutter-service PROPERTIES WILL_FAIL TRUE)
+  add_test(NAME fujifilm-missing-shutter-char COMMAND fujifilm_missing_shutter_char_test)
+  set_tests_properties(fujifilm-missing-shutter-char PROPERTIES WILL_FAIL TRUE)
 endif()

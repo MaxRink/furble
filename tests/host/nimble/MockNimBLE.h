@@ -323,6 +323,12 @@ class NimBLEDevice {
   // not self-delete on this path; only Camera::connect() reclaiming the client
   // keeps the pool from leaking.
   static void setConnectShouldFail(bool fail);
+  // Fail the next `count` NimBLEClient::connect() calls, then let connects
+  // succeed. Models a transient link that establishes only after a few failed
+  // attempts, such as a reconnect that misses while the camera still holds its
+  // previous session. Unlike setConnectShouldFail this drains, so a test can
+  // drive reconnect churn and then confirm recovery. resetMock clears it.
+  static void setConnectFailCount(size_t count);
   // Number of NimBLE clients currently live (created minus deleted). A leak
   // shows up as this count growing across failed connect attempts.
   static size_t liveClientCount();

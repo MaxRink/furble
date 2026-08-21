@@ -129,6 +129,48 @@ void FujifilmVirtualCamera::setStaleSubscribeSession(bool stale) {
   m_StaleSubscribeSession = stale;
 }
 
+void FujifilmVirtualCamera::suppressService(const NimBLEUUID &service) {
+  m_SuppressedServices.push_back(service);
+}
+
+void FujifilmVirtualCamera::suppressCharacteristic(const NimBLEUUID &service,
+                                                   const NimBLEUUID &characteristic) {
+  m_SuppressedCharacteristics.emplace_back(service, characteristic);
+}
+
+void FujifilmVirtualCamera::failWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) {
+  m_FailedWrites.emplace_back(service, characteristic);
+}
+
+bool FujifilmVirtualCamera::isServiceSuppressed(const NimBLEUUID &service) const {
+  for (const auto &suppressed : m_SuppressedServices) {
+    if (matches(suppressed, service)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool FujifilmVirtualCamera::isCharacteristicSuppressed(const NimBLEUUID &service,
+                                                       const NimBLEUUID &characteristic) const {
+  for (const auto &suppressed : m_SuppressedCharacteristics) {
+    if (matches(suppressed.first, service) && matches(suppressed.second, characteristic)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool FujifilmVirtualCamera::isWriteFailed(const NimBLEUUID &service,
+                                          const NimBLEUUID &characteristic) const {
+  for (const auto &failed : m_FailedWrites) {
+    if (matches(failed.first, service) && matches(failed.second, characteristic)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void FujifilmVirtualCamera::clearEvents() {
   m_Writes.clear();
   m_Notifications.clear();
@@ -160,12 +202,18 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
 }
 
 bool FujifilmVirtualCamera::hasService(const NimBLEUUID &service) const {
+  if (isServiceSuppressed(service)) {
+    return false;
+  }
   return matches(service, pairServiceUUID()) || matches(service, configurationServiceUUID())
          || matches(service, shutterServiceUUID()) || matches(service, geotagServiceUUID());
 }
 
 bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
                                               const NimBLEUUID &characteristic) const {
+  if (isServiceSuppressed(service) || isCharacteristicSuppressed(service, characteristic)) {
+    return false;
+  }
   if (matches(service, pairServiceUUID())) {
     return matches(characteristic, pairCharacteristicUUID())
            || matches(characteristic, identifierCharacteristicUUID());
@@ -203,6 +251,13 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
                                   const std::vector<uint8_t> &value,
                                   bool response) {
   if (!m_Connected || (m_Client != &client) || !canWrite(service, characteristic)) {
+    return false;
+  }
+
+  // Fault injection: the peer accepts the GATT write at the ATT layer but
+  // returns an error status, so the central sees the write fail. A handshake
+  // write that fails this way must abort the connect and reclaim the client.
+  if (isWriteFailed(service, characteristic)) {
     return false;
   }
 
