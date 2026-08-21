@@ -165,6 +165,37 @@ builds. Do not measure.
 Camera coverage: Fujifilm only, and only as a smoke test that the debug build
 still connects. No BLE code changes here.
 
+## S3 post-flash auto-boot (watchdog_reset)
+
+Symptom on macOS: a PlatformIO flash of the M5StickS3 completes to 100%, then
+the post-write reset prints an errno-6 line and the device parks in the ROM
+download stub. The screen stays black with the green LED lit and the app never
+starts. A power cycle was the only way out.
+
+Root cause: the StickS3 talks to the host over the built-in USB-Serial/JTAG
+peripheral, not a USB-UART bridge. esptool's default `hard_reset` over
+USB-Serial/JTAG only issues a core reset, which does not re-sample the boot
+straps. The chip therefore stays in download mode after the write.
+
+Fix: set esptool's reset mode to `watchdog_reset` for the S3 only. A watchdog
+reset is a full chip reset that re-samples the straps, so the app boots. This
+mode was added in esptool 4.9.0, which is the version PlatformIO already
+bundles. PlatformIO passes `board_upload.after_reset` straight to esptool's
+`--after`, so the fix is a single line in `platformio.ini`:
+
+```
+[env:m5stick-s3]
+board_upload.after_reset = watchdog_reset
+```
+
+Scope: the S3 release env only. `m5stick-s3-debug` extends it and inherits the
+setting. The four UART-bridge boards (`m5stick-c`, `m5stick-c-plus`,
+`m5stack-core`, `m5stack-core2`) reset correctly with the default `hard_reset`
+and stay unchanged. Do not put this in the shared `[env]` block.
+
+Residual: a cosmetic errno-6 line may still print at the end of the upload on
+macOS, but the app now boots without a manual power cycle.
+
 ## References
 
 - ESP-IDF, JTAG debugging with the built-in USB-Serial/JTAG, ESP32-S3, GPIO19 and
