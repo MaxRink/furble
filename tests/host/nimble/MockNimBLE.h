@@ -45,6 +45,19 @@ struct ble_gap_upd_params {
   uint16_t supervision_timeout = 0;
 };
 
+// Transmit power target selector. The real Control requests the shared
+// connection transmit power with the two-argument NimBLEDevice::setPower below.
+enum class NimBLETxPowerType {
+  Advertising = 0,
+  Scan = 1,
+  Connection = 2,
+};
+
+// Cancel any in-flight GAP connection attempt. Control::disconnect() calls this
+// to force an aborting connect to unwind. The mock has no asynchronous connect,
+// so this is a no-op that reports success.
+extern "C" int ble_gap_conn_cancel(void);
+
 class NimBLEUUID {
  public:
   NimBLEUUID();
@@ -295,6 +308,7 @@ class NimBLEDevice {
  public:
   static void init(const std::string &name);
   static bool setPower(int8_t power);
+  static bool setPower(int8_t power, NimBLETxPowerType type);
   static void setSecurityAuth(bool bonding, bool mitm, bool secure_connections);
   static void setSecurityIOCap(uint8_t capability);
   static void setSecurityInitKey(uint8_t key_distribution);
