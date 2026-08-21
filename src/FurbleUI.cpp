@@ -598,6 +598,14 @@ UI::UI(const interval_t &interval)
 
         lv_obj_add_flag(m_Right, LV_OBJ_FLAG_FLOATING);
         lv_obj_align(m_Right, LV_ALIGN_RIGHT_MID, 0, m_RightYOffset);
+
+        // These indicators float against the screen edges, so the level page
+        // must re-anchor them whenever it rotates the panel. Hand their handles
+        // to the level state for that reflow.
+        m_Level.navLeft = m_Left;
+        m_Level.navOK = m_OK;
+        m_Level.navRight = m_Right;
+        m_Level.navRightYOffset = m_RightYOffset;
         break;
 
       default:
@@ -4693,10 +4701,14 @@ int32_t UI::levelDiameter(int32_t width, int32_t height) {
 
 void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   lv_display_t *display = lv_display_get_default();
+  // Capture this before the widget reflow below overwrites level->rotation. The
+  // panel rotation and the forced full repaint only run when the orientation
+  // actually changes.
+  const bool orientationChanged = (rotation != level->rotation);
 #if defined(FURBLE_SIM)
   // SDL has no DMA controller, so LVGL software rotation is safe here and lets a
   // scenario verify the orientation state machine and the relayout.
-  if (display != nullptr) {
+  if (display != nullptr && orientationChanged) {
     lv_display_rotation_t target = LV_DISPLAY_ROTATION_0;
     if (rotation == 90) {
       target = LV_DISPLAY_ROTATION_90;
@@ -4711,13 +4723,20 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   // flush, so a rotated frame tears against the old stride and only recovers when
   // the device is held flat again. Rotate the panel controller instead and swap
   // the LVGL logical resolution, which keeps the DMA engine writing a
-  // consistently oriented framebuffer. Drain any in-flight flush first, then full
-  // invalidate and refresh synchronously so the whole screen is repainted in one
-  // pass in the new geometry.
+  // consistently oriented framebuffer. Drain any in-flight flush first.
+  //
+  // The full invalidate and synchronous repaint do NOT happen here. They run at
+  // the end of this function, after the widgets and the button overlay have been
+  // reflowed to the new geometry. Repainting here (the earlier bug) forced the
+  // one guaranteed full-screen pass while the level container and the screen
+  // children were still laid out at the portrait width, so only the left ~135 px
+  // of the 240 px landscape panel was ever written and the far side kept its
+  // pre-rotation pixels. The periodic bubble updates that follow only invalidate
+  // small regions, so the right half never recovered.
   //
   // PENDING HARDWARE RETEST: the rotated flush cannot be exercised in the SDL
   // simulator, only on device.
-  if (display != nullptr && rotation != level->rotation) {
+  if (display != nullptr && orientationChanged) {
     // Captured once at build time while the panel is in its portrait default.
     static const uint8_t baseRotation = M5.Display.getRotation();
     M5.Display.waitDMA();
@@ -4729,9 +4748,6 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
       M5.Display.setRotation((baseRotation + step) & 0x03);
       lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
     }
-    lv_obj_invalidate(lv_screen_active());
-    lv_refr_now(display);
-    M5.Display.waitDMA();
   }
 #endif
 
@@ -4761,14 +4777,47 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
 
   level->rotation = rotation;
 
-  // Settle the whole page so the next sample reads real bubble geometry. The
-  // circle sits inside the growing middle container, so reflow from the outer
-  // menu container (the middle's parent) to size every level widget.
+  // Settle the whole screen to the new geometry before any repaint. The panel
+  // rotation swapped the LVGL resolution, which resized the active screen, but
+  // the descendant layout is only recomputed on demand. Force it now so every
+  // widget, the menu header and the level container describe the rotated width
+  // when the forced repaint below runs.
+  lv_obj_t *screen = lv_screen_active();
+  if (screen != nullptr) {
+    lv_obj_update_layout(screen);
+  }
+
+  // Re-anchor the floating physical-button indicators to the rotated screen
+  // edges. They align against the screen, whose size just changed, so without a
+  // fresh align they stay pinned to the old portrait corners and sit in the
+  // wrong place in landscape. Re-applying the alignment reads the live rotated
+  // resolution and lands them on the correct edges.
+  if (level->navLeft != nullptr) {
+    lv_obj_align(level->navLeft, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_align(level->navOK, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(level->navRight, LV_ALIGN_RIGHT_MID, 0, level->navRightYOffset);
+  }
+
+  // Settle the level page container so the next sample reads real bubble
+  // geometry. The circle sits inside the growing middle container, so reflow
+  // from the outer menu container (the middle's parent) to size every widget.
   lv_obj_t *middle = lv_obj_get_parent(level->surface);
   lv_obj_t *cont = (middle != nullptr) ? lv_obj_get_parent(middle) : nullptr;
   if (cont != nullptr) {
     lv_obj_update_layout(cont);
   }
+
+#if !defined(FURBLE_SIM)
+  // The panel, the LVGL resolution, every widget and the button overlay now all
+  // describe the new orientation. Force one synchronous full repaint so the
+  // entire rotated width is written in a single pass, then drain the DMA so the
+  // resynchronised framebuffer is fully out before the page continues.
+  if (display != nullptr && orientationChanged) {
+    lv_obj_invalidate(screen);
+    lv_refr_now(display);
+    M5.Display.waitDMA();
+  }
+#endif
 }
 
 void UI::applyLevelSample(level_t *level, const float accel[3]) {

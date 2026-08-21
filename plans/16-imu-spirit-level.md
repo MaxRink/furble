@@ -505,11 +505,13 @@ that rotates pixels in the draw buffer but does not coordinate with the panel DM
 flush, so a rotated frame tears against the old stride and only recovers when the
 device is held flat again. The firmware path now rotates the panel controller
 instead: it drains any in-flight flush with `M5.Display.waitDMA()`, calls
-`M5.Display.setRotation()` for the new orientation, swaps the LVGL logical
-resolution with `lv_display_set_resolution()`, then full-invalidates and calls
-`lv_refr_now()` so the whole screen is repainted in one pass in the new geometry,
-and drains the DMA again. The DMA engine therefore always writes a consistently
-oriented framebuffer. The base panel rotation is captured once at build time while
+`M5.Display.setRotation()` for the new orientation, and swaps the LVGL logical
+resolution with `lv_display_set_resolution()`. It then reflows every widget to the
+new geometry, and only after that full-invalidates and calls `lv_refr_now()` so the
+whole screen is repainted in one pass in the new geometry, and drains the DMA
+again. The reflow-before-repaint order is load bearing: see the half-width fix in
+v3.2 below. The DMA engine therefore always writes a consistently oriented
+framebuffer. The base panel rotation is captured once at build time while
 the panel is in its portrait default. The hysteresis thresholds (enter a side at
 60 degrees, return to flat below 45) and the relayout are unchanged. The simulator
 has no DMA, so under FURBLE_SIM the page still uses `lv_display_set_rotation`,
@@ -582,3 +584,48 @@ below the header with margin, the DMA-safe rotation flips cleanly with no
 corruption and returns to portrait leaving the rest of the UI upright, and the
 Level menu icon renders. The roll-to-rotation sign flagged in v3 still needs the
 on-device check.
+
+### v3.2 landscape geometry fix
+
+The v3.1 on-device test on the M5StickS3 confirmed the layout is good: the one-row
+text does not clip, and the bullseye and centre target sit below the header with
+margin. These are HARDWARE-CONFIRMED. The DMA-safe rotation no longer fully
+corrupts the screen, but two landscape geometry defects remained.
+
+Half-width landscape render. In landscape the panel is 240 wide but only the left
+135 px (the portrait width) was painted, and the far side kept its pre-rotation
+pixels. Root cause: `applyLevelRotation` forced its one guaranteed full-screen
+repaint (`lv_obj_invalidate` plus `lv_refr_now`) right after the panel rotation and
+the `lv_display_set_resolution` swap, but BEFORE the widget reflow. The resolution
+swap resizes the active screen, yet the descendant layout is only recomputed on
+demand, so at repaint time the level container and the screen children were still
+laid out at the portrait width. The single forced pass therefore drew only the
+portrait-width content, and the periodic bubble updates that follow invalidate only
+small regions, so the right half never recovered. The fix reorders the function:
+rotate the panel and swap the resolution, then reflow the whole screen with
+`lv_obj_update_layout(lv_screen_active())`, then re-anchor the button overlay, and
+only then full-invalidate and `lv_refr_now`. The one forced repaint now covers the
+full rotated width.
+
+Button indicator anchoring. On the StickC and StickS3 family the physical-button
+indicators float and are aligned to the screen edges rather than living in a flex
+navbar. They were pinned to the portrait corners and did not move when the page
+rotated, so they landed in the wrong place in landscape. The fix stores their
+handles on the level state and re-anchors them against the live rotated resolution
+inside `applyLevelRotation` (bottom-left, bottom-mid, right-mid), so they reflow to
+the rotated edges and return to portrait on exit.
+
+The sim uses software rotation and repaints the whole SDL frame each cycle, so it
+cannot reproduce either defect. The level e2e and overflow sweep pass unchanged
+(the rotation STATE logic is untouched, only the hardware flush geometry and the
+overlay anchoring changed). The branch was also rebased onto current fork/master to
+pick up the reconnect fixes (#120 NimBLE client leak, #121 fast-reconnect stall)
+that the v3.1 build predated.
+
+### PENDING HARDWARE RETEST (v3.2)
+
+Sim and host build verified only. The on-device pass on the M5StickS3 must confirm
+the landscape frame now fills the full 240 px width with no stale right half, and
+that the physical-button indicators land on the correct rotated edges in both
+landscape orientations and return to their portrait corners on exit. The
+roll-to-rotation sign flagged in v3 still needs the on-device check.

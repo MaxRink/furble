@@ -286,6 +286,15 @@ class UI {
     // Active LVGL rotation for the page, one of 0, 90 or 270 degrees. The rest
     // of the UI always runs at 0, this is scoped to the level page.
     int32_t rotation;
+    // On the compact StickC and StickS3 panels the physical-button indicators
+    // float and are aligned to the screen edges rather than living in a flex
+    // navbar. When the level page rotates the panel those indicators have to be
+    // re-anchored to the rotated edges, so keep their handles here. They stay
+    // null on boards whose indicators reflow on their own and need no fix-up.
+    lv_obj_t *navLeft;
+    lv_obj_t *navOK;
+    lv_obj_t *navRight;
+    int32_t navRightYOffset;
     bool filterReady;
     bool displayReady;
   } level_t;
