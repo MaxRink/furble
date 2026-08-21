@@ -272,10 +272,19 @@ class Camera: public NimBLEClientCallbacks {
   /** Read a characteristic addressed by service and characteristic UUID. */
   bool gattRead(const NimBLEUUID &service, const NimBLEUUID &characteristic, NimBLEAttValue &value);
 
-  /** Subscribe through the single vendor notification journal seam. */
+  /**
+   * Subscribe through the single vendor notification journal seam.
+   *
+   * The CCCD descriptor write defaults to unacknowledged (response = false). An
+   * unacknowledged write cannot block waiting for an ATT write response that a
+   * camera holding a stale session never sends, so a subscribe can never hang
+   * the connect. The notify callback is registered locally before the write, so
+   * notifications still arrive even without the write response.
+   */
   bool gattSubscribe(NimBLERemoteCharacteristic *characteristic,
                      gatt_notify_cb callback,
-                     bool indicate = false);
+                     bool indicate = false,
+                     bool response = false);
 
   const PairType m_PairType;
   NimBLEAddress m_Address = NimBLEAddress {};

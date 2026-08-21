@@ -30,7 +30,10 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr, uint8_t *pData, size_t leng
   }
 }
 
-bool Fujifilm::subscribe(const NimBLEUUID &svc, const NimBLEUUID &chr, bool notification) {
+bool Fujifilm::subscribe(const NimBLEUUID &svc,
+                         const NimBLEUUID &chr,
+                         bool notification,
+                         bool response) {
   auto pSvc = m_Client->getService(svc);
   if (pSvc == nullptr) {
     return false;
@@ -41,12 +44,16 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc, const NimBLEUUID &chr, bool noti
     return false;
   }
 
+  // response defaults to false: the CCCD descriptor write is unacknowledged so a
+  // stale-session reconnect, where the camera still holds the prior CCCD
+  // subscriptions, cannot block the connect waiting for a write response that
+  // never comes.
   return gattSubscribe(
       pChr,
       [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
         this->notify(pChr, pData, length, isNotify);
       },
-      !notification);
+      !notification, response);
 }
 
 /**

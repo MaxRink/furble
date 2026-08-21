@@ -603,7 +603,8 @@ bool Camera::gattRead(const NimBLEUUID &service,
 
 bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
                            gatt_notify_cb callback,
-                           bool indicate) {
+                           bool indicate,
+                           bool response) {
   if (characteristic == nullptr) {
     return false;
   }
@@ -623,7 +624,7 @@ bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
           callback(remoteCharacteristic, data, length, isNotify);
         }
       },
-      true);
+      response);
 }
 
 #if defined(FURBLE_CONSOLE)

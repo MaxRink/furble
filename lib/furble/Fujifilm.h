@@ -62,7 +62,10 @@ class Fujifilm: public Camera {
   const uint16_t GEOTAG_SYNC_INTERVAL = 10;
 
   void _disconnect(void) override final;
-  bool subscribe(const NimBLEUUID &svc, const NimBLEUUID &chr, bool notification);
+  bool subscribe(const NimBLEUUID &svc,
+                 const NimBLEUUID &chr,
+                 bool notification,
+                 bool response = false);
 
   bool m_Configured = false;
   NimBLERemoteCharacteristic *m_Shutter = nullptr;

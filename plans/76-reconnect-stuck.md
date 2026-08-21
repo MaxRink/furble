@@ -2,9 +2,14 @@
 
 ## Status
 
-Diagnosis and fix plan only. No firmware change is made here. The exact failing
-step needs one on-device serial capture to pick between the fix options, and the
-board was not available to this work. Do not guess-implement.
+Fix implemented. The on-device serial capture that was pending has been taken
+(see "Hardware evidence" below) and confirms the root cause is the CCCD
+re-subscribe writes on a stale-session reconnect. The fix bounds those writes so
+they cannot block and makes every subscribe failure non-fatal. A host regression
+test reproduces the stall and mutation-verifies the fix. Firmware and Basic-path
+retest on the M5StickS3 is the remaining gate before merge.
+
+This is a bug fix, not a feature, so it adds no new opt-in setting or toggle.
 
 All line anchors below were read at commit `44404da` on `master` (includes the
 #120 NimBLE client leak fix).
@@ -219,3 +224,107 @@ to guard against regressions in those paths.
   subsequent `shutter` fires.
 - Normal first-connect after a fresh boot still reaches `active` and fires.
 - Fujifilm Basic connect and reconnect still work.
+
+## Hardware evidence (captured 2026-08-21, M5StickS3 + X100VI Secure, serial)
+
+The pending on-device capture was taken. On a fast disconnect then reconnect the
+second connect ran the full Secure registration handshake after the link was up:
+
+    Securing -> Secured! -> Requesting status -> Responding status ->
+    Identifying -> Identified! ->
+    Subscribing to indication 1, 2 ->
+    Subscribing to notification 1, 2, 4, 5, 6, 7, 8, 9, 10, 11 ->
+    Configuring geotag sync interval -> Getting shutter service / characteristic
+
+Two failure shapes appeared, both in the CCCD subscribe phase, because the camera
+still held the previous session and thus the previous CCCD subscriptions:
+
+- Non-fatal but slow: `Failed to subscribe to notification 8` and
+  `Failed to subscribe to notification 10` were logged mid-handshake. Those two
+  are in the second subscribe loop, which already tolerated a failure, so the
+  handshake still finished, just slowly.
+- Fatal stall (the reported bug): intermittently one CCCD subscribe write
+  blocked. The write is an acknowledged CCCD descriptor write that waits for an
+  ATT write response the stale-session camera never sends. The library wait is
+  unbounded (`NimBLERemoteValueAttribute::writeValue` ->
+  `NimBLEUtils::taskWait(taskData, BLE_NPL_TIME_FOREVER)`), so `_connect()` never
+  returned and the state stayed `connecting` for 90 s and longer. Promotion to
+  active is link-state only, so nothing else could rescue it while the control
+  task sat inside the blocked write.
+
+This selects fix option (b) plus the "already-subscribed is non-fatal" half of
+(a). Option (c), a clean bond teardown, was rejected: Secure re-pairing needs the
+camera in pairing mode, so forcing a fresh pair would break the normal reconnect
+that the user expects to be automatic.
+
+## Implemented fix
+
+Two small, coupled changes. No new setting. No mutex is held across a delay
+(the bounded write runs where `_connect()` already runs). `isConnected()` stays
+lock-free. The connect failure and client-reclaim paths are untouched, so the
+#120 leak fix is preserved.
+
+1. Bound the CCCD subscribe writes by making them unacknowledged.
+   - `Camera::gattSubscribe` gains a `response` parameter (default `false`) and
+     passes it to `NimBLERemoteCharacteristic::subscribe`
+     (`lib/furble/Camera.cpp`, `lib/furble/Camera.h`).
+   - `Fujifilm::subscribe` gains a matching `response` parameter (default
+     `false`) and forwards it (`lib/furble/Fujifilm.cpp`, `lib/furble/Fujifilm.h`).
+   - An unacknowledged CCCD write takes the library `ble_gattc_write_no_rsp_flat`
+     fast path with no `taskWait`, so it can never block on a write response the
+     stale-session camera withholds. The notify callback is registered locally
+     before the descriptor write, so notifications still arrive, and the write is
+     delivered reliably at the link layer. This applies to both the Secure and
+     Basic subscribe loops, since they share the helper; the Basic path is
+     unaffected functionally and is retested on-device.
+
+2. Make every subscribe failure non-fatal in `FujifilmSecure::_connect`
+   (`lib/furble/FujifilmSecure.cpp`).
+   - The first subscribe loop previously did `return false` on any failure. It
+     now logs and continues, matching the second loop.
+   - The second loop previously hard-failed the geotag subscription. That
+     hard-fail is removed; geotag sync is best-effort and does not gate the
+     shutter. On a stale-session reconnect where a CCCD is already subscribed the
+     handshake now always reaches the shutter characteristic and returns true.
+
+The status read, the status ack write, the identify write, and the geotag sync
+interval write are left acknowledged and unchanged. The capture showed those
+steps completing on the stale session, so widening the change to them would only
+add first-connect risk. If a future capture shows one of them blocking, it needs
+the same unacknowledged treatment.
+
+## Host regression test
+
+`tests/host/reconnect_stuck_test.cpp` (registered as `reconnect-stuck` in
+`tests/host/CMakeLists.txt`). It uses the MockNimBLE harness and the
+`FujifilmVirtualCamera` peer, which gained a `setStaleSubscribeSession(bool)`
+hook: when enabled the peer rejects an acknowledged CCCD subscribe write
+(response = true), modelling the stale-session block, and accepts an
+unacknowledged one (response = false), the bounded path the fix uses.
+
+The test connects once (fresh session), disconnects, enables the stale-session
+hook, then reconnects and asserts the reconnect completes within a bounded wall
+clock, reaches connected, and can fire the shutter. A second case guards the
+fresh first connect.
+
+Mutation result: reverting `Camera::gattSubscribe` to an acknowledged CCCD write
+(the pre-fix behaviour) makes the stale-session peer reject the write, the Basic
+handshake aborts, `connect()` returns false, and the `reconnect-stuck` test fails
+on exactly the stale-session assertions while the fresh-connect case still
+passes. With the fix the whole suite is green (9/9).
+
+The Secure `_connect` scan path pulls in `Scan` and FreeRTOS, which the host
+harness does not stub, so the test exercises the shared
+`Fujifilm::subscribe` -> `Camera::gattSubscribe` seam through the Basic peer.
+That seam is where the load-bearing bounded-write fix lives. The Secure-only
+non-fatal loop change is covered by code review and the on-device retest below.
+
+## On-device retest (M5StickS3 + X100VI Secure, over the USB console)
+
+1. `connect 1`, wait for `active`, `shutter` (confirm it fires), `disconnect`,
+   then within one to two seconds `connect 1` again. The reconnect must reach
+   `active` and a `shutter` must fire, with no 90 s hang.
+2. Repeat the fast disconnect/reconnect several times to exercise the
+   intermittent stale-session block; every cycle must reach `active`.
+3. Fresh boot, first `connect 1` still reaches `active` and fires.
+4. Fujifilm Basic camera: connect and fast reconnect still work.

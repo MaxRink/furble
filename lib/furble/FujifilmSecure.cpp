@@ -173,10 +173,16 @@ bool FujifilmSecure::_connect(void) {
        }
   };
 
+  // A subscribe failure is never fatal. Promotion to active is link-state only,
+  // no notification gates it, and on a stale-session reconnect the camera still
+  // holds the prior CCCD subscriptions so a re-subscribe can fail or be a no-op
+  // without stopping the handshake. The CCCD writes are unacknowledged (see
+  // Fujifilm::subscribe), so they cannot block the connect either. Log and
+  // continue so the handshake always reaches the shutter characteristic.
   for (const auto &sub : subscription0) {
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
     if (!subscribe(sub.service, sub.uuid, sub.notification)) {
-      return false;
+      ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
     m_Progress += 5;
   }
@@ -195,11 +201,11 @@ bool FujifilmSecure::_connect(void) {
   for (const auto &sub : subscription1) {
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
     if (!subscribe(sub.service, sub.uuid, sub.notification)) {
+      // Non-fatal, as above. The geotag subscription used to hard-fail here,
+      // which turned a single flaky CCCD write on a stale-session reconnect into
+      // a stuck connect. Geotag sync is best-effort and does not gate the
+      // shutter, so log and continue.
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
-      if (sub.uuid == GEOTAG_SYNC_INTERVAL_UUID) {
-        // Geotag subscription must succeed
-        return false;
-      }
     }
     m_Progress += 5;
   }
