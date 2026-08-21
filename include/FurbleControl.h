@@ -224,8 +224,12 @@ class Control {
    * as the control task does on device when the supervision timeout fires.
    * Reconnect mode re-enters connecting, otherwise the link goes idle. Lets the
    * host harness drive the post-active path (task #54 / F3).
+   *
+   * With index < 0 every active link drops. With index >= 0 only that target's
+   * link drops, so a multi-connect session can lose one camera while the rest
+   * stay connected and the trigger stays live.
    */
-  void simDropActiveLink(void);
+  void simDropActiveLink(int index = -1);
 #endif
 
  private:

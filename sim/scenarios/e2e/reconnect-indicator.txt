@@ -1,10 +1,11 @@
-# F3 / task #54: a mid-session BLE link drop must update the UI.
+# F3 / task #54: a mid-session BLE link drop must surface without a takeover.
 #
-# The connect timer used to park on STATE_ACTIVE and only re-arm on a fresh
-# connect, so a drop after a good connect was never observed: the screen kept
-# showing connected while control dropped and retried. Connect the FauxNY camera
-# with reconnect on, drop the link, and confirm the reconnecting box reappears,
-# then confirm the connected view returns once the link is back.
+# Once a session is established the connected/trigger view must stay up. A drop
+# no longer reloads the connecting/progress page over the trigger; instead a
+# non-blocking indicator appears in the status row while control retries, and
+# clears once the link is back. Connect the FauxNY camera with reconnect on,
+# drop the link, and confirm the connected page stays, the progress box stays
+# hidden, and the reconnecting indicator reflects the retry.
 seed fauxny true
 seed reconnect true
 wait 300
@@ -13,14 +14,20 @@ wait 1000
 assert control.state active
 assert ui.connected yes
 assert ui.connect_box hidden
-# Drop the active link. The liveness poll must notice and show the box.
+assert ui.reconnecting no
+# Drop the active link. The liveness poll must notice and show the indicator
+# without taking over the screen.
 action drop
-wait 650
+wait 700
 assert control.state connecting
-assert ui.connect_box visible
-# The reconnect completes and the connected view is restored.
+# The connected view stays up: no progress-box takeover, still on the page.
+assert ui.connect_box hidden
+assert ui.page connected
+assert ui.reconnecting yes
+# The reconnect completes and the indicator clears.
 wait 1000
 assert control.state active
 assert ui.connected yes
 assert ui.connect_box hidden
+assert ui.reconnecting no
 exit

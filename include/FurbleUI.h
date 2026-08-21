@@ -157,6 +157,10 @@ class UI {
     lv_obj_t *batteryIcon;
     lv_obj_t *batteryLabel;
     lv_obj_t *reconnectIcon;
+    // Non-blocking indicator shown in the status row while a mid-session drop is
+    // being reconnected. Distinct from reconnectIcon, which only reflects that
+    // the reconnect setting is enabled.
+    lv_obj_t *reconnectingIcon;
     lv_obj_t *reconnectBackoff;
     // battery page rows, NULL where the board cannot measure them
     lv_obj_t *batteryLevel;
@@ -328,6 +332,10 @@ class UI {
     lv_obj_t *cancel;
     const char *menuName;
     bool feedbackConnected;
+    // Set once a link has gone fully active. A later drop is then a mid-session
+    // reconnect: the connected view stays up and only the status indicator
+    // reflects it, instead of taking over the screen with the progress box.
+    bool sessionEstablished;
   } ConnectContext_t;
 
   static std::mutex m_Mutex;

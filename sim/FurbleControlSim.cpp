@@ -181,6 +181,19 @@ Control::state_t Control::getState(void) const {
     if (elapsed >= CONNECT_DURATION_MS) {
       const bool connected =
           control->m_ConnectCamera->connect(control->m_Power, CONNECT_DURATION_MS);
+      if (connected) {
+        // Bring up every other selected target too, so multi-connect scenarios
+        // finish with all cameras live, mirroring the on-device sequential
+        // connect. Cameras already connected (e.g. the survivors of a one-link
+        // drop) are left untouched.
+        for (const auto &target : control->m_Targets) {
+          auto camera = target->getCamera();
+          if (camera != nullptr && camera != control->m_ConnectCamera && camera->isActive()
+              && !camera->isConnected()) {
+            camera->connect(control->m_Power, CONNECT_DURATION_MS);
+          }
+        }
+      }
       control->m_ConnectCamera = nullptr;
       control->setState(connected ? STATE_ACTIVE : STATE_CONNECT_FAILED);
     }
@@ -213,30 +226,57 @@ void Control::setPower(esp_power_level_t power) {
 }
 
 #if defined(FURBLE_SIM)
-void Control::simDropActiveLink(void) {
+void Control::simDropActiveLink(int index) {
   if (getState() != STATE_ACTIVE) {
     return;
   }
 
-  // Drop the link on every active camera, mirroring a supervision timeout.
+  // Drop the selected link(s), mirroring a supervision timeout. index < 0 drops
+  // every active camera; index >= 0 drops only that target so a multi-connect
+  // session can lose a single camera.
   std::shared_ptr<Camera> dropped;
+  int i = 0;
   for (const auto &target : m_Targets) {
-    if (target->getCamera() != nullptr) {
-      target->getCamera()->disconnect();
+    auto camera = target->getCamera();
+    if (camera != nullptr && (index < 0 || index == i)) {
+      camera->disconnect();
       if (dropped == nullptr) {
-        dropped = target->getCamera();
+        dropped = camera;
       }
+    }
+    i++;
+  }
+
+  if (dropped == nullptr) {
+    return;
+  }
+
+  // A still-connected camera keeps the session live: dropping one link in a
+  // multi-connect session must not tear down the others.
+  bool othersConnected = false;
+  for (const auto &target : m_Targets) {
+    auto camera = target->getCamera();
+    if (camera != nullptr && camera->isConnected()) {
+      othersConnected = true;
+      break;
     }
   }
 
-  if (m_InfiniteReconnect && dropped != nullptr) {
+  if (m_InfiniteReconnect) {
     // Reconnect mode re-enters connecting without passing through idle, exactly
-    // like the on-device control task after a dropped supervision timeout.
+    // like the on-device control task after a dropped supervision timeout. Any
+    // camera still connected keeps its link through the reconnect window.
     connectStart = Sim::clockMillis();
     dropped->setActive(true);
     dropped->setConnectProgress(0);
     m_ConnectCamera = dropped;
     setState(STATE_CONNECTING);
+    return;
+  }
+
+  if (othersConnected) {
+    // Reconnect is off but other links remain: stay active to keep serving them.
+    m_ConnectCamera = nullptr;
     return;
   }
 
