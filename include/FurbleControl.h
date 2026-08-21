@@ -84,6 +84,11 @@ class Control {
   // disconnect request cancels the wait promptly. The wait length itself comes
   // from ReconnectBackoff::delayMs().
   const uint32_t BACKOFF_SLICE_MS = 100;
+  // Gap between the bounded, non-infinite connect retries. A deep-sleep
+  // intervalometer resume reconnects with this policy, so a wake that misses
+  // the camera waits this long before each of its two retries rather than
+  // hammering the radio or giving up on the first miss.
+  const uint32_t CONNECT_RETRY_GAP_MS = (3 * 1000);
   static constexpr uint32_t DISCONNECT_TIMEOUT_MS = (1 * 1000);
   // Interactive disconnect safety cap. The interactive path waits for the
   // teardown to actually complete instead of force-completing, so this is only
