@@ -538,7 +538,6 @@ class UI {
   bool m_ButtonModeFocusPressed = false;
   bool m_ButtonModeShutterPressed = false;
   bool m_ButtonModeLongPressed = false;
-  bool m_ButtonModeDoubleClick = false;
   uint8_t m_ButtonModeClickStreak = 0;
   uint32_t m_ButtonModeLastClick = 0;
 #if defined(FURBLE_SIM)

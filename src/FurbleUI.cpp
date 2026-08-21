@@ -1192,35 +1192,40 @@ void UI::handleButtonMode(lv_event_t *e) {
 
   switch (code) {
     case LV_EVENT_PRESSED:
+    {
       if (ui->m_ShutterLock || ui->m_ButtonModeFocusPressed || ui->m_ButtonModeShutterPressed) {
         break;
       }
       ui->m_ButtonModeLongPressed = false;
-      ui->m_ButtonModeDoubleClick = (streak == 1) && (ui->m_ButtonModeClickStreak == 1)
-                                    && (lv_tick_diff(lv_tick_get(), ui->m_ButtonModeLastClick)
-                                        <= BUTTON_MODE_CLICK_WINDOW_MS);
-      if (ui->m_ButtonModeDoubleClick) {
+      // Defer the single-click focus action. Firing focus eagerly on the first
+      // press leaked a stray focus tap before every double click and
+      // click-then-hold. Instead, focus only engages when this first press is
+      // held (LONG_PRESSED). A press that follows a recent short click is the
+      // second half of a multi-click gesture (double click or click-then-hold),
+      // so it drives the shutter directly with no leading focus. A quick release
+      // makes the shutter tap; a held release makes a sustained shutter press.
+      const bool followsClick = (ui->m_ButtonModeClickStreak >= 1)
+                                && (lv_tick_diff(lv_tick_get(), ui->m_ButtonModeLastClick)
+                                    <= BUTTON_MODE_CLICK_WINDOW_MS);
+      if (followsClick) {
         control.sendCommand(Control::CMD_SHUTTER_PRESS);
         ui->m_ButtonModeShutterPressed = true;
-      } else {
-        control.sendCommand(Control::CMD_FOCUS_PRESS);
-        ui->m_ButtonModeFocusPressed = true;
+        // Consume the click so the release does not re-arm another shutter.
+        ui->m_ButtonModeClickStreak = 0;
       }
       break;
+    }
     case LV_EVENT_LONG_PRESSED:
       // LVGL can send the initial long press twice. Require release first.
       if (ui->m_ButtonModeLongPressed) {
         break;
       }
       ui->m_ButtonModeLongPressed = true;
-      if (ui->m_ButtonModeFocusPressed && (ui->m_ButtonModeClickStreak == 1)
-          && (lv_tick_diff(lv_tick_get(), ui->m_ButtonModeLastClick)
-              <= BUTTON_MODE_CLICK_WINDOW_MS)) {
-        control.sendCommand(Control::CMD_FOCUS_RELEASE);
-        ui->m_ButtonModeFocusPressed = false;
-        control.sendCommand(Control::CMD_SHUTTER_PRESS);
-        ui->m_ButtonModeShutterPressed = true;
-        ui->m_ButtonModeDoubleClick = true;
+      // A held first press with no shutter already in flight is the single
+      // press-and-hold focus gesture.
+      if (!ui->m_ButtonModeShutterPressed && !ui->m_ButtonModeFocusPressed) {
+        control.sendCommand(Control::CMD_FOCUS_PRESS);
+        ui->m_ButtonModeFocusPressed = true;
       }
       break;
     case LV_EVENT_RELEASED:
@@ -1235,20 +1240,12 @@ void UI::handleButtonMode(lv_event_t *e) {
       ui->m_ButtonModeLongPressed = false;
       break;
     case LV_EVENT_SHORT_CLICKED:
-    {
-      const uint32_t now = lv_tick_get();
-      const bool doubleClick =
-          (streak >= 2) && (ui->m_ButtonModeClickStreak == 1)
-          && (lv_tick_diff(now, ui->m_ButtonModeLastClick) <= BUTTON_MODE_CLICK_WINDOW_MS);
+      // Record the short click so a press within the streak window is treated
+      // as the second half of a multi-click gesture. A lone short click does
+      // nothing on its own.
       ui->m_ButtonModeClickStreak = streak;
-      ui->m_ButtonModeLastClick = now;
-      if (doubleClick && !ui->m_ButtonModeDoubleClick) {
-        control.sendCommand(Control::CMD_SHUTTER_PRESS);
-        control.sendCommand(Control::CMD_SHUTTER_RELEASE);
-      }
-      ui->m_ButtonModeDoubleClick = false;
+      ui->m_ButtonModeLastClick = lv_tick_get();
       break;
-    }
     default:
       break;
   }
@@ -1934,24 +1931,48 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
-  // Single press and release of the main button. In one-button mode the press
-  // classifies as a single click (streak zero) and dispatches focus.
-  if (command == "main-press") {
+  // Single press and hold of the main button (gesture 1). The press is held
+  // past the long-press threshold, so one-button mode dispatches focus, held
+  // until release. A quick tap alone is a no-op by design.
+  if (command == "main-press-hold") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_LONG_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
     return;
   }
 
-  // Double click of the main button. The sim cannot reproduce LVGL's real
-  // click-streak timing, so this injects the streak the dispatch classifies:
-  // the first short click primes the streak, the second (streak two, within the
-  // window) drives handleButtonMode's real shutter press and release branch.
+  // Double click of the main button (gesture 2). This replays the full real
+  // event stream so the dispatch's focus-leak path is exercised: the first
+  // click is a genuine press, release and short click (streak one), then the
+  // second press and release drive the shutter tap. The fixed handler must
+  // dispatch exactly one shutter press and release and leak no focus. The sim
+  // cannot reproduce LVGL's real streak timing, so it injects the streak the
+  // short-click classification records.
   if (command == "main-double-click") {
     m_SimClickStreakActive = true;
     m_SimClickStreak = 1;
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
     lv_obj_send_event(m_OK, LV_EVENT_SHORT_CLICKED, this);
-    m_SimClickStreak = 2;
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    m_SimClickStreakActive = false;
+    return;
+  }
+
+  // Click then hold of the main button (gesture 3). The first click primes the
+  // streak, then the second press is held past the long-press threshold. The
+  // fixed handler must dispatch a single sustained shutter press and release,
+  // and leak no focus.
+  if (command == "main-click-hold") {
+    m_SimClickStreakActive = true;
+    m_SimClickStreak = 1;
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
     lv_obj_send_event(m_OK, LV_EVENT_SHORT_CLICKED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_LONG_PRESSED, this);
+    lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
     m_SimClickStreakActive = false;
     return;
   }
