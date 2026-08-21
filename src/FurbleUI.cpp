@@ -610,10 +610,10 @@ void UI::startPairingTimer(void) {
 }
 
 void UI::closePairingDialog(void) {
-  if (m_PairingDialog != nullptr) {
+  if ((m_PairingDialog != nullptr) && lv_obj_is_valid(m_PairingDialog)) {
     lv_msgbox_close_async(m_PairingDialog);
-    m_PairingDialog = nullptr;
   }
+  m_PairingDialog = nullptr;
   m_PairingCamera.reset();
   m_PairingIsCamera = false;
 
@@ -676,27 +676,15 @@ void UI::showCompanionPairing(void) {
 }
 
 void UI::showCameraPairing(Camera *camera) {
-  if ((camera == nullptr) || (m_PairingDialog != nullptr) || !camera->hasPendingPairing()) {
+  if ((camera == nullptr) || (m_PairingDialog != nullptr)) {
     return;
   }
 
-  if (camera->pairingTimedOut()) {
-    camera->cancelPairing();
-    return;
-  }
-
-  const Camera::PairingType type = camera->getPairingType();
-  if (type == Camera::PairingType::NONE) {
-    return;
-  }
-
-  const uint32_t code = camera->getPairingCode();
-  const bool confirm = type == Camera::PairingType::NUMERIC_COMPARISON;
-  const lv_font_t *codeFont = (m_Width < 100) ? &lv_font_montserrat_16 : &lv_font_montserrat_22;
-
-  // Hold a weak reference to the owning shared_ptr so a disconnect that frees
-  // the Camera while the modal is open cannot leave the footer callbacks with a
-  // dangling pointer. Resolve the raw pointer against the cameras Control owns.
+  // The raw pointer was captured on the NimBLE host task. A disconnect that
+  // frees the Camera between the callback enqueue and this UI drain would make
+  // any dereference a use after free. Resolve it against the cameras Control
+  // owns first, hold the owning shared_ptr, and dereference only through it. If
+  // it is no longer owned the camera is gone, so there is nothing to show.
   std::shared_ptr<Camera> owner = Control::getInstance().getConnectingCamera();
   if (owner.get() != camera) {
     owner.reset();
@@ -708,6 +696,24 @@ void UI::showCameraPairing(Camera *camera) {
       }
     }
   }
+  if (!owner || !owner->hasPendingPairing()) {
+    return;
+  }
+
+  if (owner->pairingTimedOut()) {
+    owner->cancelPairing();
+    return;
+  }
+
+  const Camera::PairingType type = owner->getPairingType();
+  if (type == Camera::PairingType::NONE) {
+    return;
+  }
+
+  const uint32_t code = owner->getPairingCode();
+  const bool confirm = type == Camera::PairingType::NUMERIC_COMPARISON;
+  const lv_font_t *codeFont = (m_Width < 100) ? &lv_font_montserrat_16 : &lv_font_montserrat_22;
+
   m_PairingCamera = owner;
   m_PairingIsCamera = true;
   m_PairingPrevFocus = lv_group_get_focused(m_Group);
@@ -719,7 +725,7 @@ void UI::showCameraPairing(Camera *camera) {
   lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *name = lv_label_create(content);
-  lv_label_set_text(name, camera->getName().c_str());
+  lv_label_set_text(name, owner->getName().c_str());
   lv_obj_set_width(name, LV_PCT(100));
   lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
