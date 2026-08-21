@@ -1814,11 +1814,17 @@ void UI::addMainMenu(void) {
         if (page == m_Menu.at(m_LevelStr).page) {
           ui->m_Level.filterReady = false;
           ui->m_Level.displayReady = false;
-          // settle the layout so the first frame reads real geometry
-          lv_obj_update_layout(ui->m_Level.surface);
+          // Always enter the page flat in portrait. The auto-rotate then flips
+          // it to landscape from the live tilt while the page stays open.
+          applyLevelRotation(&ui->m_Level, 0);
           lv_timer_resume(m_LevelTimer);
         } else {
           lv_timer_pause(m_LevelTimer);
+          // Leaving the page must restore portrait so the rest of the UI is
+          // upright. Only touch the display when the page actually rotated it.
+          if (ui->m_Level.rotation != 0) {
+            applyLevelRotation(&ui->m_Level, 0);
+          }
         }
 
         bool presetPage =
@@ -2717,6 +2723,17 @@ std::string UI::simQueryState(const char *key) {
   if (query == "level_has_side") {
     return m_Level.sideTube != nullptr ? "yes" : "no";
   }
+  // Whether the side tube is currently shown. It only appears when the page is
+  // flipped onto its side, so this reflects the auto-rotate state.
+  if (query == "level_side_visible") {
+    return (m_Level.sideTube != nullptr && !lv_obj_has_flag(m_Level.sideTube, LV_OBJ_FLAG_HIDDEN))
+               ? "yes"
+               : "no";
+  }
+  // Active LVGL rotation for the level page in degrees, one of 0, 90 or 270.
+  if (query == "level_rotation") {
+    return std::to_string(m_Level.rotation);
+  }
 
   // Whether the encoder focus is on the header back button. A label-only page
   // that leaves focus elsewhere traps the short-press select, so this is the
@@ -3277,13 +3294,14 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_set_style_pad_row(cont, 4, LV_PART_MAIN);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  // Reserve vertical room for the side tube and the two stacked value labels so
-  // nothing overlaps on the narrow 135x240 and 80x160 panels. The circle stays
-  // square and centred.
-  int32_t diameter = std::min(m_Width - 16, m_Height - 130);
-  diameter = std::max<int32_t>(40, diameter);
+  // Base panel size, portrait. applyLevelRotation reflows the widgets from these.
+  m_Level.baseWidth = m_Width;
+  m_Level.baseHeight = m_Height;
+  m_Level.rotation = 0;
+
+  // The circle bubble is the primary flat readout. Its diameter is settled by
+  // applyLevelRotation, which reserves vertical room for the labels and hint.
   m_Level.surface = lv_obj_create(cont);
-  lv_obj_set_size(m_Level.surface, diameter, diameter);
   lv_obj_clear_flag(m_Level.surface, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_radius(m_Level.surface, LV_RADIUS_CIRCLE, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(m_Level.surface, LV_OPA_10, LV_PART_MAIN);
@@ -3298,10 +3316,10 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_center(m_Level.bubble);
 
   // Side view bubble tube: a classic linear spirit level held against a wall.
-  // The bubble slides left and right with roll only.
-  int32_t tubeWidth = std::max<int32_t>(48, std::min<int32_t>(diameter, m_Width - 24));
+  // The bubble slides left and right with roll only. It is only shown when the
+  // page is flipped onto its side, so it stays hidden in the flat portrait view.
   m_Level.sideTube = lv_obj_create(cont);
-  lv_obj_set_size(m_Level.sideTube, tubeWidth, 20);
+  lv_obj_set_size(m_Level.sideTube, 48, 20);
   lv_obj_clear_flag(m_Level.sideTube, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_radius(m_Level.sideTube, 10, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(m_Level.sideTube, LV_OPA_10, LV_PART_MAIN);
@@ -3317,6 +3335,8 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_center(m_Level.sideBubble);
 
   // Stack the numeric readouts so the two lines never collide on a narrow panel.
+  // A compact "R:"/"P:" format in the smaller font keeps each line inside the
+  // 80x160 panel, where "Roll: -12.3 deg" in the default font was clipped.
   lv_obj_t *values = lv_obj_create(cont);
   lv_obj_set_width(values, LV_PCT(100));
   lv_obj_set_height(values, LV_SIZE_CONTENT);
@@ -3327,9 +3347,29 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
 
   m_Level.roll = lv_label_create(values);
-  lv_label_set_text(m_Level.roll, "Roll: --");
+  lv_obj_set_width(m_Level.roll, LV_PCT(100));
+  lv_obj_set_style_text_font(m_Level.roll, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.roll, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.roll, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.roll, "R: --");
   m_Level.pitch = lv_label_create(values);
-  lv_label_set_text(m_Level.pitch, "Pitch: --");
+  lv_obj_set_width(m_Level.pitch, LV_PCT(100));
+  lv_obj_set_style_text_font(m_Level.pitch, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.pitch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.pitch, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.pitch, "P: --");
+
+  // Gesture hint for the auto-rotate behaviour. It is not focusable, so the
+  // encoder never lands on it. It is only shown in the flat portrait view.
+  m_Level.hint = lv_label_create(cont);
+  lv_obj_set_width(m_Level.hint, LV_PCT(100));
+  lv_obj_set_style_text_font(m_Level.hint, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.hint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.hint, "Tilt on side to rotate");
+
+  // Settle the portrait layout: size the circle, hide the side tube, show hint.
+  applyLevelRotation(&m_Level, 0);
 
   // the main menu page dispatch resumes and pauses this timer
   m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
@@ -3342,6 +3382,13 @@ void UI::addLevelMenu(const menu_t &parent) {
 
 void UI::levelUpdate(lv_timer_t *timer) {
   auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
+
+  // Keep the display awake while the level page is open. The inactivity dim is
+  // gated on LVGL activity, so resetting it every tick holds the screen on. The
+  // level timer only runs while the page is shown, so leaving the page stops the
+  // resets and normal dim resumes with no extra bookkeeping.
+  lv_display_trigger_activity(NULL);
+
   if (!M5.Imu.isEnabled()) {
     return;
   }
@@ -3353,6 +3400,59 @@ void UI::levelUpdate(lv_timer_t *timer) {
   }
 
   applyLevelSample(level, accel);
+}
+
+int32_t UI::levelDiameter(int32_t width, int32_t height) {
+  // Reserve vertical room for the two stacked value labels and the gesture hint
+  // so the circle never pushes them off a narrow panel. The circle stays square.
+  constexpr int32_t verticalReserve = 96;
+  int32_t diameter = std::min(width - 16, height - verticalReserve);
+  return std::max<int32_t>(40, diameter);
+}
+
+void UI::applyLevelRotation(level_t *level, int32_t rotation) {
+  lv_display_t *display = lv_display_get_default();
+  if (display != nullptr) {
+    lv_display_rotation_t target = LV_DISPLAY_ROTATION_0;
+    if (rotation == 90) {
+      target = LV_DISPLAY_ROTATION_90;
+    } else if (rotation == 270) {
+      target = LV_DISPLAY_ROTATION_270;
+    }
+    lv_display_set_rotation(display, target);
+  }
+
+  // Landscape swaps the panel width and height. The value labels stay on both
+  // orientations, the circle is the flat readout, the tube is the side readout.
+  const bool landscape = (rotation != 0);
+  const int32_t effWidth = landscape ? level->baseHeight : level->baseWidth;
+  const int32_t effHeight = landscape ? level->baseWidth : level->baseHeight;
+
+  if (landscape) {
+    lv_obj_add_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
+    if (level->hint != nullptr) {
+      lv_obj_add_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_remove_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
+    int32_t tubeWidth = std::clamp<int32_t>(effWidth - 24, 48, effWidth);
+    lv_obj_set_size(level->sideTube, tubeWidth, 20);
+  } else {
+    lv_obj_remove_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
+    if (level->hint != nullptr) {
+      lv_obj_remove_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_add_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
+    int32_t diameter = levelDiameter(effWidth, effHeight);
+    lv_obj_set_size(level->surface, diameter, diameter);
+  }
+
+  level->rotation = rotation;
+
+  // Settle the container so the next sample reads real bubble geometry.
+  lv_obj_t *cont = lv_obj_get_parent(level->surface);
+  if (cont != nullptr) {
+    lv_obj_update_layout(cont);
+  }
 }
 
 void UI::applyLevelSample(level_t *level, const float accel[3]) {
@@ -3386,6 +3486,24 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
   float rollShaped = shape(roll);
   float pitchShaped = shape(pitch);
 
+  // Auto-rotate. When the device is laid on its side the page flips to landscape
+  // and shows the linear tube instead of the circle. Hysteresis stops it flapping
+  // at the boundary: enter a side past 60 deg, return to flat below 45 deg, hold
+  // the current orientation in the band between. The sign of the roll picks the
+  // side. The rotation is scoped to this page and reset to 0 on page exit.
+  constexpr float rotateEnter = 60.0f;
+  constexpr float rotateExit = 45.0f;
+  float rollMagnitude = std::fabs(roll);
+  int32_t desiredRotation = level->rotation;
+  if (rollMagnitude >= rotateEnter) {
+    desiredRotation = (roll > 0.0f) ? 90 : 270;
+  } else if (rollMagnitude < rotateExit) {
+    desiredRotation = 0;
+  }
+  if (desiredRotation != level->rotation) {
+    applyLevelRotation(level, desiredRotation);
+  }
+
   // content width excludes the surface border and padding
   int32_t contentDiameter = lv_obj_get_content_width(level->surface);
   int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
@@ -3414,11 +3532,11 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
 
   if (!level->displayReady || std::fabs(level->displayRoll - roll) >= 0.1f) {
     level->displayRoll = roll;
-    lv_label_set_text_fmt(level->roll, "Roll: %.1f deg", roll);
+    lv_label_set_text_fmt(level->roll, "R: %.1f\xC2\xB0", roll);
   }
   if (!level->displayReady || std::fabs(level->displayPitch - pitch) >= 0.1f) {
     level->displayPitch = pitch;
-    lv_label_set_text_fmt(level->pitch, "Pitch: %.1f deg", pitch);
+    lv_label_set_text_fmt(level->pitch, "P: %.1f\xC2\xB0", pitch);
   }
   level->displayReady = true;
 }

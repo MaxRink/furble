@@ -221,7 +221,7 @@ Known cost, accepted for now:
 Hardware verification is still pending on all boards: IMU detection, level axis orientation per board, and bubble centring have not been checked on device. The StickS3 walk is owed before merge.
 
 Rebase notes:
-- `IMU` is assigned wire_id 27, continuing after `GPS_DUTY` (26) from PR 27.
+- `IMU` is assigned wire_id 36 in the current settings table.
 - Console settingType, printValue and setValue treat `IMU` as a bool setting.
   `appliesImmediately` stays false because the setting is read once before
   `M5.begin()` and the UI offers an explicit restart.
@@ -268,7 +268,7 @@ Console evidence:
 
 - `settings set imu true` then reboot then `settings get imu` returns
   `value: true`, `applies: on reboot`. The setting saves, persists across a
-  power cycle, and is wired at wire id 27.
+  power cycle, and is wired at wire id 36.
 - Boot with `imu true` completes and the device runs. No crash attributable to
   the IMU. Toggling `imu false` and rebooting also boots clean.
 
@@ -354,8 +354,113 @@ activates the focused object (models a short OK press), and `simQueryState` keys
   per-panel fit sweep. It fits on 80x160, 135x240 and 320x240.
 
 All 13 end-to-end scenarios pass. The firmware `m5stick-s3-debug` build is clean
-and clang-format 21 is clean. Wire id 27 (IMU) is unchanged.
+and clang-format 21 is clean. Wire id 36 (IMU) is unchanged.
 
 On-device retest owed before merge: level page responsiveness, no overlapping
 text, the side bubble tracking roll, and the Diagnostics IMU live short-press
 back returning to the submenu.
+
+## UX rework v3 after hardware testing, 2026-08-21
+
+The v2 level page was retested on the M5StickS3 and four more points came back:
+text still clipped, the display slept on the level page, no auto-rotate when the
+device was laid on its side, and the side bubble tube was wanted only on the
+flipped view. All four are addressed on this branch. On-device retest of the
+level page is still owed before merge. The simulator cannot see the physical
+screen, the real IMU, or the hardware display rotation path.
+
+### 1. Cut-off text fixed for real
+
+The v2 stacked labels still clipped because each line read "Roll: -12.3 deg" in
+the default 16 px font, wider than the 80x160 panel and close to the 135x240
+edge. The labels now read "R:"/"P:" with a degree glyph in the 12 px font, set to
+100 percent width, centre aligned and wrapping. The worst case in portrait is
+"P: -90.0" which fits 80 px. Removing the side tube from the portrait page (see
+point 4) also frees vertical room, so the circle diameter reserve dropped from
+`m_Height - 130` to a shared `levelDiameter` helper reserving 96 px for the label
+and hint stack.
+
+### 2. Keep the screen awake on the level page
+
+furble dims and sleeps the display from `processInactivity`, which is gated on
+`lv_disp_get_inactive_time`. The level timer now calls
+`lv_display_trigger_activity(NULL)` every tick, so the inactivity clock never
+elapses while the page is open. This is self restoring: the timer only runs while
+the page is shown, so leaving the page stops the activity resets and the normal
+dim and sleep behaviour resumes with no extra bookkeeping. There is no separate
+hardware backlight timer to hold off, the backlight follows the same inactivity
+path.
+
+### 3. Auto-rotate onto the side
+
+The page rotates the LVGL display from the smoothed roll while it is open.
+`applyLevelRotation` calls `lv_display_set_rotation` and reflows the widgets for
+the new resolution. Hysteresis stops it flapping at the boundary: it enters a
+side past 60 degrees and returns to flat below 45 degrees, holding the current
+orientation in the band between. A positive roll rotates to
+`LV_DISPLAY_ROTATION_90`, a negative roll to `LV_DISPLAY_ROTATION_270`. The
+rotation is scoped to the level page. The page dispatch forces
+`LV_DISPLAY_ROTATION_0` on entry and restores it on exit, so the rest of the UI
+is never rotated. A non-focusable hint label on the flat page reads "Tilt on side
+to rotate".
+
+The sign of the side-to-rotation mapping is a guess until hardware confirms which
+way the panel physically reads. Flag for the on-device pass: correct the 90 and
+270 assignment if a right roll rotates the wrong way.
+
+### 4. Bubble tube only when flipped
+
+The default flat portrait page shows the circle bubble, the numeric readout and
+the hint, with the side tube hidden. When the page flips to a side orientation it
+hides the circle and hint and shows the linear tube plus the numeric readout. The
+numeric tilt readout stays on both. This matches the request to keep the tube off
+the default page and only show it on the flipped side view, and it is what frees
+the vertical room that fixes the portrait clipping.
+
+### Rotation hysteresis thresholds
+
+- Enter landscape: smoothed `|roll| >= 60` degrees.
+- Return to portrait: smoothed `|roll| < 45` degrees.
+- Hold current orientation in the 45 to 60 degree band.
+
+### Hardware verification risk: S3 DMA display rotation
+
+LVGL software rotation via `lv_display_set_rotation` is straightforward in the
+SDL simulator and is verified there. On the real StickS3 it interacts with the
+DMA display buffers, which must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`, and
+with the M5GFX flush. The rotated flush path is the key hardware risk for this
+change and has not been exercised off the simulator. The on-device pass must
+confirm the rotated frames render correctly, without tearing or a wrong stride,
+and that returning to portrait leaves the rest of the UI upright.
+
+### Simulator verification v3
+
+New `simQueryState` keys: `level_rotation` reports the active page rotation in
+degrees, and `level_side_visible` reports whether the side tube is currently
+shown. `level_has_side` still reports whether the tube widget exists.
+
+- `sim/scenarios/e2e/level-spirit.txt` was rewritten for v3. It asserts the flat
+  page opens in portrait with the tube hidden, a 6 degree roll drives the circle
+  bubble 19 px while staying portrait, a 70 degree right roll flips to rotation
+  90 and shows the tube pinned near the rim, a 70 degree left roll flips to
+  rotation 270, and returning near flat restores portrait and hides the tube.
+  Overflow stays no in both orientations. Reverting the sensitivity mapping to
+  the old linear curve fails the 19 px assert.
+- `sim/scenarios/bughunt/overflow-sweep.txt` still asserts the flat level page
+  fits. Verified no overflow on 80x160, 135x240 and 320x240, and a landscape
+  probe confirmed the flipped page also fits on all three.
+
+What the simulator cannot exercise, owed on hardware:
+
+- Keep-awake: the sim has no inactivity dim, so the activity reset is not
+  observable. Confirm on device that the level page stays lit.
+- The DMA rotation flush path above.
+- The physical roll-to-rotation sign.
+
+### PENDING HARDWARE RETEST
+
+This v3 rework is verified in the simulator and host build only. A full on-device
+pass on the M5StickS3 is required before merge: no clipped text flat or flipped,
+the screen staying awake on the level page, the display rotating the correct way
+when laid on its side and returning to portrait when held flat, the tube showing
+only when flipped, and the rest of the UI staying upright after leaving the page.

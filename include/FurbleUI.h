@@ -208,12 +208,20 @@ class UI {
     lv_obj_t *pitch;
     lv_obj_t *sideTube;
     lv_obj_t *sideBubble;
+    lv_obj_t *hint;
     float accel[3];
     float displayRoll;
     float displayPitch;
     int32_t bubbleX;
     int32_t bubbleY;
     int32_t sideBubbleX;
+    // Panel size at build time, portrait orientation. The reflow swaps these
+    // when the page rotates to landscape.
+    int32_t baseWidth;
+    int32_t baseHeight;
+    // Active LVGL rotation for the page, one of 0, 90 or 270 degrees. The rest
+    // of the UI always runs at 0, this is scoped to the level page.
+    int32_t rotation;
     bool filterReady;
     bool displayReady;
   } level_t;
@@ -939,6 +947,19 @@ class UI {
    * exercise the same sensitivity curve and bubble placement.
    */
   static void applyLevelSample(level_t *level, const float accel[3]);
+
+  /**
+   * Rotate the level page and reflow its widgets for the new orientation.
+   *
+   * Portrait (0 degrees) shows the circle bubble plus the gesture hint. A side
+   * orientation (90 or 270 degrees) swaps the panel to landscape and shows the
+   * linear bubble tube instead. The numeric readout stays on both. The display
+   * rotation is scoped to the level page and restored to 0 on page exit.
+   */
+  static void applyLevelRotation(level_t *level, int32_t rotation);
+
+  /** Clamp a level circle diameter to the panel content for the given size. */
+  static int32_t levelDiameter(int32_t width, int32_t height);
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);
