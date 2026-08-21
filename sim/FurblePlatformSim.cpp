@@ -28,6 +28,15 @@ Platform &Platform::getInstance(void) {
     config.pmic_button = true;
     M5.begin(config);
 
+    // The SDL panel always attaches a mouse-driven touch device, so
+    // M5.Touch.isEnabled() is true regardless of the simulated board. A scenario
+    // can seed "no_touch true" to detach it and exercise the physical-button
+    // (non-touch) UI branch that boards like the M5StickS3 use, including the
+    // floating on-screen button indicators.
+    if (Sim::scenarioSettingIsTrue("no_touch")) {
+      M5.Touch.begin(nullptr);
+    }
+
     // Map keyboard letters to the same emulated button GPIOs M5Unified's PC
     // build reads (BtnA=39, BtnB=38, BtnC=37, BtnPWR=36), so an interactive
     // session with a visible SDL window can drive the physical buttons furble
