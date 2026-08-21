@@ -137,6 +137,31 @@ target_include_directories(reconnect_backoff_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(reconnect_backoff_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                       -Wno-unused-parameter)
 
+# Real-Control end-to-end harness. Compiles the production src/FurbleControl.cpp
+# and runs it on real threads against the shared MockNimBLE peer, so the full
+# connect/disconnect/reconnect state machine is exercised here, not only in the
+# per-Camera tests above. Slim Platform/Power/Settings doubles stand in for the
+# hardware singletons the real Control links against, and a small real-thread
+# FreeRTOS shim provides the task and queue primitives. The freertos shim header
+# is force-included so FurbleControl.h sees the queue and task types.
+set(CONTROL_E2E_DIR ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e)
+add_executable(control_e2e_test
+               ${CONTROL_E2E_DIR}/control_e2e.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp)
+target_include_directories(control_e2e_test
+                           BEFORE PRIVATE
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -152,6 +177,20 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
+
+  # Real-Control end-to-end scenarios. Each runs the production control state
+  # machine end to end against the mock peer and is registered individually so a
+  # failure names the scenario.
+  foreach(scenario
+          fresh-connect
+          dead-camera-disconnect-no-freeze
+          connect-after-dead-disconnect
+          stale-session-reconnect
+          false-connected-guard
+          transient-connect-recovers
+          client-pool-exhaustion)
+    add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
+  endforeach()
 
   # Known-failing findings. WILL_FAIL keeps CI green while the finding is tracked:
   # CTest inverts the pass/fail flag, so the crashing/failing run counts as a pass

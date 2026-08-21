@@ -517,6 +517,16 @@ bool NimBLEDevice::setPower(int8_t power) {
   return true;
 }
 
+bool NimBLEDevice::setPower(int8_t power, NimBLETxPowerType type) {
+  (void)power;
+  (void)type;
+  return true;
+}
+
+extern "C" int ble_gap_conn_cancel(void) {
+  return 0;
+}
+
 void NimBLEDevice::setSecurityAuth(bool bonding, bool mitm, bool secure_connections) {
   (void)bonding;
   (void)mitm;

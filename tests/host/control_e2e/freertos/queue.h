@@ -1,0 +1,6 @@
+#ifndef FURBLE_CONTROL_E2E_FREERTOS_QUEUE_H
+#define FURBLE_CONTROL_E2E_FREERTOS_QUEUE_H
+
+#include "FreeRTOS.h"
+
+#endif
