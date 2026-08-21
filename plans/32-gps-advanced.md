@@ -34,6 +34,12 @@ Phase 1 is implemented on `feat/32-gps-advanced`.
   choices.
 - Live fixes update the `gps_fix` cache at most every 10 minutes. AID-INI uses
   the session tick for fresh cache age and coarse wall time after reboot.
+- Stale-time guard. When the session tick is unavailable and the wall clock has
+  not been set, cache age cannot be bounded, so AID-INI clears the B1 time valid
+  flag and sends position-only aiding. A no-backup-rail cold reboot leaves the
+  ESP32 clock at the 1970 epoch, and asserting a valid time of unknown age would
+  feed the receiver an over-confident wrong time and hurt time to first fix. The
+  cached position still narrows the search safely.
 - PR32a autobaud, PR32c dynamic platform, tier 2 ephemeris, companion-fed
   assistance and the satellite detail page remain out of scope.
 - Hardware verification is pending. The sandboxed worktree could not run
@@ -633,6 +639,9 @@ B6 altitude invalid, B7 reserved.
 
 So for tier 1 the flags byte is B0 | B1 | B5 = 0x23, or 0x63 if the cached
 altitude is not trusted. Frame header is `BA CE 38 00 0B 01`, since 56 is 0x0038.
+When the time cannot be bounded, clear B1 and send 0x21 or 0x61 so the receiver
+uses the cached position but ignores tow and wn. See the stale-time guard in the
+phase 1 status above.
 
 `AID` is class 0x0B, not class 0x06, so by the specification's own rule it is
 not acknowledged. In practice the ATGM336H investigation saw ACK and NACK

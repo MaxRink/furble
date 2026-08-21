@@ -1127,6 +1127,7 @@ bool GPS::sendAidIni(void) {
   int64_t utc_seconds = cache.utc_seconds;
   float pAcc = 50000.0f;
   float tAcc = 3600.0f;
+  bool timeValid = true;
   if (tickValid) {
     age = nowTick - captureTick;
     if (age > AID_CACHE_MAX_AGE_MS) {
@@ -1146,6 +1147,15 @@ bool GPS::sendAidIni(void) {
       utc_seconds = wall;
       pAcc = std::max(10.0f, std::min(50000.0f, (age / 1000.0f) * 13.8889f));
       tAcc = 3600.0f;
+    } else {
+      // A no-backup-rail cold reboot leaves the ESP32 clock unset (~1970), so
+      // wall time trails the cached fix and the cache age is unknown. Do not
+      // assert a valid time of unknown age: that would feed the receiver an
+      // over-confident wrong time and hurt TTFF. Send position-only assist
+      // instead. The cached location still narrows the search safely.
+      timeValid = false;
+      pAcc = 50000.0f;
+      tAcc = 3600.0f;
     }
   }
 
@@ -1157,7 +1167,13 @@ bool GPS::sendAidIni(void) {
   const uint16_t week = static_cast<uint16_t>(gps_seconds / (7 * 24 * 60 * 60));
   const double tow = static_cast<double>(gps_seconds % (7 * 24 * 60 * 60));
   const bool altitudeValid = (cache.flags & 1) != 0;
-  const uint8_t flags = static_cast<uint8_t>(0x23 | (altitudeValid ? 0 : 0x40));
+  uint8_t flags = static_cast<uint8_t>(0x23 | (altitudeValid ? 0 : 0x40));
+  if (!timeValid) {
+    // Clear B1 time valid so the receiver ignores tow and wn. The cached time
+    // is of unknown age after a rail-cut reboot, so we send position-only
+    // aiding rather than an over-confident wrong time.
+    flags &= static_cast<uint8_t>(~0x02);
+  }
 
   std::vector<uint8_t> payload(56, 0);
   writeValue(payload, 0, cache.latitude);
