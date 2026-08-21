@@ -77,6 +77,7 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
 bool g_ConnectShouldFail = false;
+size_t g_MaxClients = 0;  // 0 means unlimited
 
 }  // namespace
 
@@ -533,8 +534,36 @@ void NimBLEDevice::setOwnAddrType(uint8_t address_type) {
 }
 
 NimBLEClient *NimBLEDevice::createClient() {
+  if ((g_MaxClients != 0) && (g_Clients.size() >= g_MaxClients)) {
+    // Pool exhausted, exactly as NimBLE reports "Unable to create client;
+    // already at max". Camera::connect() handles the null return.
+    return nullptr;
+  }
   g_Clients.push_back(std::make_unique<NimBLEClient>());
   return g_Clients.back().get();
+}
+
+bool NimBLEDevice::deleteClient(NimBLEClient *client) {
+  if (client == nullptr) {
+    return false;
+  }
+  for (auto it = g_Clients.begin(); it != g_Clients.end(); ++it) {
+    if (it->get() == client) {
+      g_Clients.erase(it);
+      return true;
+    }
+  }
+  // Not in the live list: it already self-deleted or was already reclaimed.
+  // Return false without touching the pointer, so a double delete is safe.
+  return false;
+}
+
+size_t NimBLEDevice::liveClientCount() {
+  return g_Clients.size();
+}
+
+void NimBLEDevice::setMaxClients(size_t max) {
+  g_MaxClients = max;
 }
 
 void NimBLEDevice::setMockPeer(NimBLEMockPeer *peer) {
@@ -549,6 +578,7 @@ void NimBLEDevice::resetMock() {
   g_Clients.clear();
   g_Peer = nullptr;
   g_ConnectShouldFail = false;
+  g_MaxClients = 0;
 }
 
 NimBLEClient *NimBLEDevice::lastClient() {
