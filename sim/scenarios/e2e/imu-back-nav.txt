@@ -1,0 +1,30 @@
+# End-to-end regression for the diagnostics back-navigation trap (PR #28 rework,
+# task #34 class). The IMU live page under Settings > Diagnostics holds only
+# read-only info rows. Each row is a clickable label so button boards can scroll,
+# and lv_menu lands the encoder focus on the first row when the page opens. A
+# short OK press then hits a dead label, so before the fix only the universal
+# long-press escape leaves the page.
+#
+# The fix moves the focus onto the header back button on page entry. This
+# scenario walks to the IMU live page and confirms:
+#  - the back button holds the focus (back_focused yes), and
+#  - a normal short-press select (action select clicks the focused object)
+#    returns to the Diagnostics submenu.
+#
+# Teeth: with the focus fix reverted, back_focused reads no and select stays on
+# the imu page, so both asserts fail.
+seed fauxny true
+wait 300
+action nav settings
+wait 150
+action nav diagnostics
+wait 150
+action nav imu
+wait 200
+assert ui.page imu
+assert ui.back visible
+assert ui.back_focused yes
+action select
+wait 200
+assert ui.page diagnostics
+exit
