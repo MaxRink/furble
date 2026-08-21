@@ -424,6 +424,24 @@ bool Control::disconnectComplete(void) {
   return true;
 }
 
+bool Control::targetTasksStopped(void) {
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto &target : m_Targets) {
+      if (!target->m_Stopped) {
+        return false;
+      }
+    }
+  }
+
+  // A connect in progress runs on the control task and dereferences the same
+  // Camera and its link, so it must also have unwound before we return. This is
+  // disconnectComplete() minus the isConnected() check, so it settles as soon as
+  // the teardown tasks finish, never waiting out a dead peer's supervision
+  // timeout.
+  return !m_ConnectInProgress;
+}
+
 bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   m_ConnectAbort = true;
   setState(STATE_DISCONNECTING);
@@ -444,32 +462,63 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     }
   }
 
-  // Interactive callers wait for the teardown to actually complete. The old
-  // force-complete-on-timeout design returned while NimBLE was still tearing
-  // down, so a later connect raced the still-freeing client and crashed with a
-  // use-after-free. Waiting here closes that race by completing the teardown,
-  // not by force-freeing. The wait bound is large (DISCONNECT_WAIT_MAX_MS) and
-  // acts only as a backstop against a genuinely stuck teardown; a normal
-  // teardown finishes in well under a second once the aborting connect unwinds.
-  //
-  // Fast path: disconnectComplete() returns true as soon as the link is really
-  // down (every target task stopped, no connect in progress, isConnected()
-  // false for all), so a healthy disconnect or an already-dead link exits the
-  // first check with zero delay slices. We cannot declare completion any earlier
-  // than isConnected() clearing: that flag drops in onDisconnect, right before
-  // NimBLE frees the client, so a shorter wait would reopen the connect-side
-  // use-after-free above. When the camera is simply powered off, the host issued
-  // ble_gap_terminate (Fujifilm::_disconnect) completes only at the link
-  // supervision timeout, so this wait, and the interactive screen, is bounded by
-  // Camera::m_IdleTimeout (now ~5 s, was ~16 s). Removing the residual freeze
-  // entirely needs the wait moved off the LVGL task, which is a separate change
-  // so it does not disturb this teardown lifecycle.
-  //
-  // The restart caller passes forRestart == true and a short timeout. It may
-  // force-complete because esp_restart() runs immediately after and kills the
-  // in-flight teardown, so no later connect can race it.
+  if (!forRestart) {
+    // Interactive disconnect. Do not spin on the caller (the LVGL/UI task) for
+    // the link to actually go down: a powered-off camera clears isConnected()
+    // only when onDisconnect fires at the supervision timeout, seconds away or
+    // never within the interactive window, which is the old ~30 s freeze.
+    //
+    // Wait only for the per-target teardown tasks to stop. Each target task runs
+    // Camera::disconnect(), which just issues the asynchronous ble_gap_terminate
+    // and returns, so it stops in a few ms even for a dead peer. This bounded
+    // wait, not the isConnected() spin, is what guarantees no target task is
+    // still inside Camera::disconnect() dereferencing the link when we return, so
+    // a caller that tears down BLE state right after (on device the peer just
+    // persists; in host tests the virtual peer is freed) never races the
+    // teardown. The watchdog is fed each slice and no mutex is held across it.
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t timeout = pdMS_TO_TICKS(DISCONNECT_WAIT_MAX_MS);
+    while (!targetTasksStopped()) {
+      if (xTaskGetTickCount() - start >= timeout) {
+        break;
+      }
+      Platform::getInstance().watchdogFeed();
+      vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
+    }
+
+    // Hand the stopped targets to the drain set and return at once: getState() is
+    // idle and getTargets() is empty the moment this returns. The control task's
+    // reapZombieTargets() frees a drained target only once the link is really
+    // down (isConnected() false, so the self-deleting NimBLE client has been
+    // freed), or, for a dead peer whose terminate stalls, once it reclaims the
+    // orphaned client at m_ZombieDeadline. teardownDraining() gates STATE_CONNECT
+    // until then, so a follow-up connect never races a client still being freed:
+    // the reconnect use-after-free guard, now off the UI task and with no freeze.
+    //
+    // This is deliberately a separate path from the restart force-complete below:
+    // sharing one force-complete for both is the pattern that crashed hardware.
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      m_ZombieDeadline = xTaskGetTickCount() + pdMS_TO_TICKS(DISCONNECT_DRAIN_RECLAIM_MS);
+      // Move every target into the drain set (no destructor runs, so a task still
+      // inside Camera::disconnect() keeps writing m_Stopped through a live
+      // `this`), then clear the moved-from slots.
+      for (auto &target : m_Targets) {
+        m_ZombieTargets.push_back(std::move(target));
+      }
+      m_Targets.clear();
+      m_ConnectCamera = nullptr;
+    }
+    setState(STATE_IDLE);
+    return true;
+  }
+
+  // Restart path. esp_restart() runs immediately after, killing any in-flight
+  // teardown, so this may force-complete on the timeout without a later connect
+  // racing the force-freed client. It stays synchronous because the caller
+  // wants the teardown attempted before it resets the device.
   const TickType_t start = xTaskGetTickCount();
-  const uint32_t waitMs = forRestart ? timeout_ms : DISCONNECT_WAIT_MAX_MS;
+  const uint32_t waitMs = timeout_ms;
   const TickType_t timeout = pdMS_TO_TICKS(waitMs);
   bool completed = true;
   while (!disconnectComplete()) {
@@ -478,9 +527,6 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       completed = false;
       break;
     }
-    // The interactive wait runs on the LVGL task, which also feeds the M5PM1
-    // watchdog. A slow teardown can outlast the feed period, so feed it here.
-    // No mutex is held across this slice.
     Platform::getInstance().watchdogFeed();
     vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
   }
@@ -488,25 +534,15 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
 
-    // Reaching here without completion means the restart force-complete fired,
-    // or the interactive backstop expired on a stuck teardown. Control must not
-    // stay wedged in STATE_DISCONNECTING, so end in a recoverable state, but the
-    // underlying BLE teardown may still be in flight. Two independent lifetimes
-    // must be respected here:
-    //
-    // Object lifetime: a target with m_Stopped == false has not finished. Its
-    // task dequeued the undroppable CMD_DISCONNECT and is still inside
-    // Camera::disconnect(), and it will write m_Stopped = true through its own
-    // `this` when it returns, so freeing the object now is a use-after-free.
-    // Move those targets to m_ZombieTargets (no destructor runs) and reap them
-    // from the control task once m_Stopped flips, at which point the task has
-    // called vTaskDelete(NULL) and can never touch the object again.
-    //
-    // Radio-call lifetime: ~Target() calls m_Camera->disconnect() only when
-    // m_Stopped is false. We never destroy an m_Stopped == false target here
-    // (it is quarantined instead), so no destructor run here or by the reaper
-    // makes a radio call, which also keeps radio calls off m_Mutex.
+    // A target with m_Stopped == false has not finished: its task dequeued the
+    // undroppable CMD_DISCONNECT and is still inside Camera::disconnect(), and it
+    // will write m_Stopped = true through its own `this` when it returns, so
+    // freeing the object now is a use-after-free. Move those to m_ZombieTargets
+    // (no destructor runs). ~Target() calls m_Camera->disconnect() only when
+    // m_Stopped is false, and we never destroy such a target here, so no
+    // destructor makes a radio call under m_Mutex.
     if (!completed) {
+      m_ZombieDeadline = xTaskGetTickCount() + pdMS_TO_TICKS(DISCONNECT_DRAIN_RECLAIM_MS);
       for (auto &target : m_Targets) {
         if (!target->m_Stopped) {
           m_ZombieTargets.push_back(std::move(target));
@@ -514,8 +550,6 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       }
     }
 
-    // Destroys the stopped targets and drops the moved-from slots. On the clean
-    // path every target is stopped, so this frees them all and quarantines none.
     m_Targets.clear();
     m_ConnectCamera = nullptr;
   }
@@ -531,17 +565,45 @@ bool Control::teardownDraining(void) {
 void Control::reapZombieTargets(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
-  // A zombie's task was blocked inside Camera::disconnect() when we force
-  // completed. task_exit writes m_Stopped = true and then only calls
+  // A drained target's task writes m_Stopped = true on exit and then only calls
   // vTaskDelete(NULL), which touches the task handle, not the Target object.
   // Once m_Stopped reads true the task can no longer touch `this`, so the object
-  // is safe to free, and ~Target() skips its radio call because m_Stopped is
-  // set. Leave any zombie still tearing down for a later sweep.
+  // is safe to free and ~Target() skips its radio call because m_Stopped is set.
+  // A target still tearing down (m_Stopped false) is never freed here.
+  //
+  // A stopped target is held in the drain, and STATE_CONNECT stays gated by
+  // teardownDraining(), until the link is really down (isConnected() false, so
+  // the self-deleting NimBLE client has been freed). That is what keeps a
+  // reconnect from allocating a fresh client while NimBLE is still freeing the
+  // old one. A gone peer whose ble_gap_terminate stalls never fires onDisconnect,
+  // so the link would never read down; past the drain bound the client is
+  // reclaimed here so the gate still releases promptly.
+  const bool pastDeadline = static_cast<int32_t>(xTaskGetTickCount() - m_ZombieDeadline) >= 0;
   const size_t before = m_ZombieTargets.size();
-  m_ZombieTargets.erase(
-      std::remove_if(m_ZombieTargets.begin(), m_ZombieTargets.end(),
-                     [](const std::unique_ptr<Target> &target) { return target->m_Stopped; }),
-      m_ZombieTargets.end());
+  m_ZombieTargets.erase(std::remove_if(m_ZombieTargets.begin(), m_ZombieTargets.end(),
+                                       [pastDeadline](const std::unique_ptr<Target> &target) {
+                                         if (!target->m_Stopped) {
+                                           return false;
+                                         }
+                                         auto camera = target->getCamera();
+                                         if (!camera->isConnected()) {
+                                           // Link really down, client freed. Reap.
+                                           return true;
+                                         }
+                                         if (pastDeadline) {
+                                           // Gone peer: reclaim the orphaned
+                                           // client (no-op if it already
+                                           // self-deleted) so the gate releases
+                                           // in a couple of seconds, not 30 s.
+                                           // The task has stopped, so no one else
+                                           // touches the client and a following
+                                           // connect races no free in flight.
+                                           camera->reclaimClient();
+                                           return true;
+                                         }
+                                         return false;
+                                       }),
+                        m_ZombieTargets.end());
   const size_t reaped = before - m_ZombieTargets.size();
   if (reaped > 0) {
     ESP_LOGD(LOG_TAG, "Reaped %u zombie target(s), %u still draining.",

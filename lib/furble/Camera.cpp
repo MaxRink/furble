@@ -800,6 +800,37 @@ void Camera::resetConnectionState(void) {
   m_StatsValid = false;
 }
 
+void Camera::reclaimClient(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  // A gone peer whose ble_gap_terminate stalled: the link is still locally
+  // connected, so onDisconnect has not fired and will not until the supervision
+  // timeout finally resolves it, seconds later. Reclaim the client here so the
+  // teardown completes and it does not leak from the fixed NimBLE pool
+  // (CONFIG_BT_NIMBLE_MAX_CONNECTIONS).
+  //
+  // Detach this Camera from the client first. NimBLEDevice::deleteClient() on a
+  // still-connected client does not free synchronously: it sets deleteOnDisconnect
+  // and re-issues the terminate, so the client outlives this Camera while still
+  // holding the raw callback pointer set at connect (setClientCallbacks(this)).
+  // This Camera is freed as soon as the drained target is reaped and the next
+  // connect rebuilds the CameraList, so the late onDisconnect fired when the
+  // stalled terminate finally resolves would call through a dangling pointer.
+  // setClientCallbacks(nullptr) points the client at NimBLE's default no-op
+  // callbacks, so that late event is harmless. deleteClient() then frees the
+  // client now if it is already down or on the deferred disconnect otherwise, and
+  // is a no-op (no double free) if it already self-deleted. m_Connected guards
+  // every live-link m_Client dereference and we clear it here, so freeing cannot
+  // race a reader.
+  if (m_Client != nullptr) {
+    m_Client->setClientCallbacks(nullptr, false);
+    NimBLEDevice::deleteClient(m_Client);
+    m_Client = nullptr;
+  }
+  m_Connected = false;
+  m_Progress = 0;
+}
+
 bool Camera::isActive(void) const {
   return m_Active;
 }

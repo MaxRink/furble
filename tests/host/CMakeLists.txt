@@ -137,13 +137,13 @@ target_include_directories(reconnect_backoff_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(reconnect_backoff_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                       -Wno-unused-parameter)
 
-# Real-Control end-to-end harness. Compiles the production src/FurbleControl.cpp
-# and runs it on real threads against the shared MockNimBLE peer, so the full
-# connect/disconnect/reconnect state machine is exercised here, not only in the
-# per-Camera tests above. Slim Platform/Power/Settings doubles stand in for the
-# hardware singletons the real Control links against, and a small real-thread
-# FreeRTOS shim provides the task and queue primitives. The freertos shim header
-# is force-included so FurbleControl.h sees the queue and task types.
+# Real-Control end-to-end harness (PR #131). Compiles the production
+# src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
+# peer, so the full connect/disconnect/reconnect state machine is exercised here,
+# not only in the per-Camera tests above. Slim Platform/Power/Settings doubles
+# stand in for the hardware singletons the real Control links against, and a small
+# real-thread FreeRTOS shim provides the task and queue primitives. The freertos
+# shim header is force-included so FurbleControl.h sees the queue and task types.
 set(CONTROL_E2E_DIR ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e)
 add_executable(control_e2e_test
                ${CONTROL_E2E_DIR}/control_e2e.cpp
@@ -162,6 +162,63 @@ target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-u
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
 
+# End-to-end Control disconnect regression. Compiles the real
+# src/FurbleControl.cpp against MockNimBLE, the real Camera and the host
+# FreeRTOS shim under control/, to lock in the non-blocking interactive
+# disconnect fix. The control/ shim dir is first on the include path so it
+# shadows the hardware-only FurblePlatform/FurblePower/FurbleSettings headers;
+# freertos/FreeRTOS.h is force-included so the FreeRTOS types Control uses are
+# defined before FurbleControl.h is parsed. Camera, Device and the mock come
+# from the shared furble_host_camera library, not from a stub.
+set(HOST_CONTROL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/control)
+add_executable(control_disconnect_test
+               control_disconnect_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(control_disconnect_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(control_disconnect_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
+
+# AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
+# It cannot link the shared furble_host_camera library, because the late
+# onDisconnect writes through the freed Camera inside lib/furble/Camera.cpp, so
+# that translation unit must be compiled with ASan for the access to be
+# instrumented. This target therefore compiles the furble sources directly with
+# -fsanitize=address. The mock models NimBLE's deferred deleteClient on a still
+# connected client, so removing the reclaimClient() callback detach makes the
+# late onDisconnect land on the freed Camera and ASan aborts.
+add_executable(control_reclaim_uaf_test
+               control_reclaim_uaf_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+target_include_directories(control_reclaim_uaf_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${HOST_CORPUS_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(control_reclaim_uaf_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -fsanitize=address -g -O1
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_options(control_reclaim_uaf_test PRIVATE -fsanitize=address)
+target_link_libraries(control_reclaim_uaf_test PRIVATE Threads::Threads)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -177,6 +234,8 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
+  add_test(NAME control-disconnect COMMAND control_disconnect_test)
+  add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
 
   # Real-Control end-to-end scenarios. Each runs the production control state
   # machine end to end against the mock peer and is registered individually so a
