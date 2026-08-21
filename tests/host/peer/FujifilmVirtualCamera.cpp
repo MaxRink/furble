@@ -125,6 +125,10 @@ bool FujifilmVirtualCamera::geotagRequested() const {
   return m_GeotagRequested;
 }
 
+void FujifilmVirtualCamera::setStaleSubscribeSession(bool stale) {
+  m_StaleSubscribeSession = stale;
+}
+
 void FujifilmVirtualCamera::clearEvents() {
   m_Writes.clear();
   m_Notifications.clear();
@@ -251,9 +255,18 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
                                       NimBLERemoteCharacteristic *remote,
                                       const NimBLENotifyCallback &callback,
                                       bool response) {
-  (void)response;
   if (!m_Connected || (m_Client != &client) || !hasCharacteristic(service, characteristic)
       || (callback == nullptr)) {
+    return false;
+  }
+
+  // Stale-session reconnect: the camera still holds the CCCD subscription from
+  // the previous session. An acknowledged CCCD write never gets its ATT write
+  // response, which blocks the connect forever on hardware. Model that block as
+  // a write failure. An unacknowledged write (response = false) does not wait
+  // for a response, so it still succeeds, which is the bounded path the fix
+  // takes.
+  if (m_StaleSubscribeSession && response) {
     return false;
   }
 

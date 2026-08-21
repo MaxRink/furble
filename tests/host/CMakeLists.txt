@@ -87,6 +87,10 @@ add_executable(client_leak_test client_leak_test.cpp)
 target_link_libraries(client_leak_test PRIVATE furble_host_camera)
 target_compile_options(client_leak_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                 -Wno-unused-parameter)
+add_executable(reconnect_stuck_test reconnect_stuck_test.cpp)
+target_link_libraries(reconnect_stuck_test PRIVATE furble_host_camera)
+target_compile_options(reconnect_stuck_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
 
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
@@ -99,4 +103,5 @@ if(BUILD_TESTING)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)
+  add_test(NAME reconnect-stuck COMMAND reconnect_stuck_test)
 endif()

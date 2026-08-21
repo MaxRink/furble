@@ -54,6 +54,14 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
                         const std::vector<uint8_t> &payload,
                         bool indication = false);
 
+  // Model a stale-session reconnect. When enabled the camera still holds the
+  // CCCD subscriptions from the previous session, so an acknowledged CCCD
+  // subscribe write (response = true) never gets its ATT write response and, on
+  // real hardware, blocks the connect. The mock returns false for that write to
+  // stand in for the block. An unacknowledged subscribe write (response = false)
+  // is accepted, which is the bounded path the fix uses.
+  void setStaleSubscribeSession(bool stale);
+
   const Config &config() const;
   const std::vector<Write> &writes() const;
   const std::vector<Notification> &notifications() const;
@@ -121,6 +129,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
+  bool m_StaleSubscribeSession = false;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;
