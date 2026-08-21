@@ -86,6 +86,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [25-multiconnect-ui.md](25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
 | [26-pm1-watchdog.md](26-pm1-watchdog.md) | M5PM1 hardware watchdog, StickS3 lockup recovery |
 | [27-usb-console.md](27-usb-console.md) | USB serial command console for testing |
+| [76-reconnect-stuck.md](76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix plan |
 | [28-emulator.md](28-emulator.md) | Host SDL simulator for the furble UI |
 | [29-virtual-test-rig.md](29-virtual-test-rig.md) | Sim to Android app test rig over TCP, no radio |
 | [31-s3-psram.md](31-s3-psram.md) | Enable PSRAM on the M5StickS3 |
