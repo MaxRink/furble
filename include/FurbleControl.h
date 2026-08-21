@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 
 #include <Camera.h>
 
@@ -161,6 +162,38 @@ class Control {
 
   /** Retrieve current control state. */
   state_t getState(void) const;
+
+#if defined(FURBLE_CONSOLE)
+  /**
+   * Full control state machine snapshot for the debug console.
+   *
+   * Best-effort read of the internals a developer cannot otherwise observe:
+   * the state, target and zombie counts, the reconnect and abort flags, the
+   * light sleep lock, and the adaptive transmit power tracker. Debug builds
+   * only, never called on any hot path.
+   */
+  struct debug_state_t {
+    state_t state;
+    size_t targetCount;
+    size_t connectedCount;
+    size_t zombieCount;
+    bool connectInProgress;
+    bool connectAbort;
+    bool sleepLockHeld;
+    bool infiniteReconnect;
+    bool reconnectBackoff;
+    uint32_t reconnectAttempt;
+    bool adaptiveActive;
+    int userPowerLevel;
+    int adaptivePowerLevel;
+    uint8_t rssiStrongSamples;
+    uint8_t rssiWeakSamples;
+    std::string connectingCamera;
+  };
+
+  /** Capture the control state snapshot under m_Mutex. */
+  debug_state_t getDebugState(void) const;
+#endif
 
   /** Retrieve the number of active camera targets. */
   size_t getTargetCount(void) const;
