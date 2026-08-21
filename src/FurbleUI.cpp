@@ -33,6 +33,7 @@
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "interval.h"
@@ -217,6 +218,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
     {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
+    {m_StorageStr,           {nullptr, nullptr, nullptr, nullptr, {3, 2}}},
     {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeedbackEventsStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeedbackVolumeStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -1489,6 +1491,18 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
           showGPSWidgets(status, status->gps->isEnabled());
         },
         LV_EVENT_VALUE_CHANGED, &m_Status);
+  }
+
+  if (setting == Settings::SD_GPX) {
+    m_StorageGPXSwitch = sw;
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *) {
+          // the SD writer task applies the change, never mount from the UI task
+          GPS::getInstance().reloadLogSettings();
+          SD::getInstance().request(SD::request_t::RELOAD);
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
   }
 
   if (setting == Settings::SHOW_TITLE) {
@@ -2787,6 +2801,11 @@ void UI::serviceRequests(void) {
 
       case Request::GPS_RELOAD:
         GPS::getInstance().reloadSetting();
+        break;
+
+      case Request::SD_RELOAD:
+        GPS::getInstance().reloadLogSettings();
+        SD::getInstance().request(SD::request_t::RELOAD);
         break;
 
       case Request::GPS_POWER:
@@ -5278,6 +5297,196 @@ void UI::addDiagnosticsMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::updateStorageInfo(lv_obj_t *label) {
+  auto &sd = SD::getInstance();
+
+  switch (sd.cardState()) {
+    case SD::card_state_t::MOUNTED:
+      lv_label_set_text_fmt(label, "%s\nMounted\nCapacity: %lu MB\nFree: %lu MB", m_CardInfoStr,
+                            static_cast<unsigned long>(sd.capacityMB()),
+                            static_cast<unsigned long>(sd.freeMB()));
+      break;
+    case SD::card_state_t::FAILED:
+      lv_label_set_text_fmt(label, "%s\nMount failed", m_CardInfoStr);
+      break;
+    case SD::card_state_t::UNMOUNTED:
+      lv_label_set_text_fmt(label, "%s\nNot mounted", m_CardInfoStr);
+      break;
+  }
+}
+
+void UI::serviceStorage(void) {
+  auto &sd = SD::getInstance();
+  if (!sd.isSupported() || (m_StoragePage == nullptr)) {
+    return;
+  }
+
+  // request a mount on page entry, release the mount hold on page leave
+  const bool visible = lv_menu_get_cur_main_page(m_StorageMenuMain) == m_StoragePage;
+  if (visible != m_StorageVisible) {
+    m_StorageVisible = visible;
+    if (visible) {
+      sd.request(SD::request_t::MOUNT);
+      if (sd.cardState() != SD::card_state_t::MOUNTED) {
+        lv_label_set_text_fmt(m_StorageInfoLabel, "%s\nMounting...", m_CardInfoStr);
+      } else {
+        updateStorageInfo(m_StorageInfoLabel);
+      }
+    } else {
+      sd.request(SD::request_t::PAGE_LEAVE);
+    }
+  }
+
+  // refresh the storage widgets when the writer task publishes a new state
+  const uint32_t generation = sd.generation();
+  if (generation != m_StorageGeneration) {
+    m_StorageGeneration = generation;
+    GPS::getInstance().reloadLogSettings();
+
+    if (m_StorageVisible) {
+      updateStorageInfo(m_StorageInfoLabel);
+    }
+
+    // reflect an auto-disable after repeated SD failures in the switch
+    const bool enabled = Settings::load<Settings::SD_GPX>();
+    if ((m_StorageGPXSwitch != nullptr)
+        && (lv_obj_has_state(m_StorageGPXSwitch, LV_STATE_CHECKED) != enabled)) {
+      if (enabled) {
+        lv_obj_add_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+      } else {
+        lv_obj_remove_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+      }
+    }
+  }
+}
+
+void UI::addStorageMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_StorageStr, &icon_save_24, true, parent);
+  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+
+  addSettingItem(menu.page, NULL, Settings::SD_GPX);
+
+  static constexpr std::array<uint16_t, 6> periods = {1, 2, 5, 10, 30, 60};
+  lv_obj_t *periodRoller =
+      addRollerItem(menu.page, Settings::get(Settings::GPX_PERIOD).name, "1\n2\n5\n10\n30\n60");
+  uint32_t selected = 2;
+  const uint16_t period = Settings::load<Settings::GPX_PERIOD>();
+  for (size_t i = 0; i < periods.size(); i++) {
+    if (period == periods[i]) {
+      selected = i;
+      break;
+    }
+  }
+  lv_roller_set_selected(periodRoller, selected, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      periodRoller,
+      [](lv_event_t *e) {
+        const auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        static constexpr uint16_t values[] = {1, 2, 5, 10, 30, 60};
+        const uint32_t selected = lv_roller_get_selected(roller);
+        if (selected < (sizeof(values) / sizeof(values[0]))) {
+          Settings::save<Settings::GPX_PERIOD>(values[selected]);
+          GPS::getInstance().reloadLogSettings();
+          SD::getInstance().request(SD::request_t::RELOAD);
+        }
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_obj_t *exportButton = lv_button_create(menu.page);
+  lv_obj_t *exportLabel = lv_label_create(exportButton);
+  lv_label_set_text(exportLabel, m_ExportSettingsStr);
+  lv_obj_center(exportLabel);
+  lv_obj_add_flag(exportButton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_group_add_obj(m_Group, exportButton);
+  lv_obj_add_event_cb(
+      exportButton,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        ui->showStorageConfirm(false);
+      },
+      LV_EVENT_CLICKED, this);
+
+  lv_obj_t *importButton = lv_button_create(menu.page);
+  lv_obj_t *importLabel = lv_label_create(importButton);
+  lv_label_set_text(importLabel, m_ImportSettingsStr);
+  lv_obj_center(importLabel);
+  lv_obj_add_flag(importButton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_group_add_obj(m_Group, importButton);
+  lv_obj_add_event_cb(
+      importButton,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        ui->showStorageConfirm(true);
+      },
+      LV_EVENT_CLICKED, this);
+
+  lv_obj_t *cardInfo = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cardInfo, LV_PCT(100));
+  lv_obj_t *cardInfoLabel = lv_label_create(cardInfo);
+  lv_label_set_text_fmt(cardInfoLabel, "%s\nNot mounted", m_CardInfoStr);
+  lv_label_set_long_mode(cardInfoLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(cardInfoLabel, LV_PCT(100));
+
+  // serviceStorage() requests the mount on page entry and refreshes the label
+  m_StorageMenuMain = menu.main;
+  m_StoragePage = menu.page;
+  m_StorageInfoLabel = cardInfoLabel;
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::showStorageConfirm(bool import) {
+  if (m_StorageMessageBox != nullptr) {
+    return;
+  }
+
+  m_StorageImport = import;
+  m_StorageMessageBox = lv_msgbox_create(m_Screen);
+  lv_msgbox_add_title(m_StorageMessageBox, import ? "Import Settings" : "Export Settings");
+  lv_msgbox_add_text(m_StorageMessageBox,
+                     import ? "Overwrite all settings and restart?" : "Write all settings to SD?");
+  lv_obj_set_width(m_StorageMessageBox, LV_PCT(100));
+  lv_obj_center(m_StorageMessageBox);
+
+  lv_obj_t *cancel = lv_msgbox_add_footer_button(m_StorageMessageBox, "Cancel");
+  lv_obj_t *confirm = lv_msgbox_add_footer_button(m_StorageMessageBox, "Confirm");
+  lv_group_add_obj(m_Group, cancel);
+  lv_group_add_obj(m_Group, confirm);
+  lv_obj_add_event_cb(
+      cancel,
+      [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->cancelStorageAction(); },
+      LV_EVENT_CLICKED, this);
+  lv_obj_add_event_cb(
+      confirm,
+      [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->confirmStorageAction(); },
+      LV_EVENT_CLICKED, this);
+  lv_group_focus_obj(confirm);
+}
+
+void UI::cancelStorageAction(void) {
+  if (m_StorageMessageBox == nullptr) {
+    return;
+  }
+
+  lv_msgbox_close_async(m_StorageMessageBox);
+  m_StorageMessageBox = nullptr;
+}
+
+void UI::confirmStorageAction(void) {
+  if (m_StorageMessageBox == nullptr) {
+    return;
+  }
+
+  const bool import = m_StorageImport;
+  lv_obj_t *messageBox = m_StorageMessageBox;
+  m_StorageMessageBox = nullptr;
+  lv_msgbox_close_async(messageBox);
+
+  // the SD writer task closes a running track, runs the transfer, and
+  // restarts the device after a successful import
+  SD::getInstance().request(import ? SD::request_t::IMPORT : SD::request_t::EXPORT);
+}
+
 void UI::addSettingsMenu(void) {
   menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
 
@@ -5303,6 +5512,9 @@ void UI::addSettingsMenu(void) {
   addFeedbackMenu(menu);
   // after 'Power', the battery page it builds is linked from diagnostics
   addDiagnosticsMenu(menu);
+  if (SD::getInstance().isSupported()) {
+    addStorageMenu(menu);
+  }
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -5640,6 +5852,7 @@ void UI::task(void) {
 #if defined(FURBLE_SIM)
     Sim::profilerBeginUiCycle();
 #endif
+    serviceStorage();
     lv_task_handler();
 #if defined(FURBLE_SIM)
     Sim::profilerEndUiCycle();

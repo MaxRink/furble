@@ -10,6 +10,7 @@
 #include "FurbleFeedback.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
@@ -246,6 +247,9 @@ bool Platform::hasTicklessIdle(void) {
 }
 
 bool Platform::powerOff(void) {
+  // the SD writer task closes the track and unmounts, wait for it to finish
+  SD::getInstance().powerOff();
+
 #if defined(FURBLE_M5STICKS3)
   const bool wasArmed = m_WatchdogEnabled;
   watchdogEnable(false);

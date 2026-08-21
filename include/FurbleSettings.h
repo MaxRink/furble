@@ -54,6 +54,8 @@ class Settings {
     BUTTON_MODE,
     AUTO_OFF,
     LOW_BATT,
+    SD_GPX,
+    GPX_PERIOD,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
@@ -121,6 +123,16 @@ class Settings {
 
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
+
+  static constexpr uint16_t GPX_PERIOD_MIN = 1;
+  static constexpr uint16_t GPX_PERIOD_MAX = 60;
+  static constexpr uint16_t GPX_PERIOD_DEFAULT = 5;
+
+  /** Clamp a GPX period to the valid range, falling back to the default. */
+  static constexpr uint16_t clampGPXPeriod(uint16_t seconds) {
+    return ((seconds >= GPX_PERIOD_MIN) && (seconds <= GPX_PERIOD_MAX)) ? seconds
+                                                                        : GPX_PERIOD_DEFAULT;
+  }
 
   static void init(void);
 
@@ -328,6 +340,14 @@ struct Settings::storage_type<Settings::AUTO_OFF> {
 template <>
 struct Settings::storage_type<Settings::LOW_BATT> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::SD_GPX> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::GPX_PERIOD> {
+  using type = uint16_t;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>

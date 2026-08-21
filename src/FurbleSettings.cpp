@@ -49,6 +49,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
     {AUTO_OFF,          {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
     {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
+    {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
+    {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -213,6 +215,11 @@ uint32_t Settings::load<uint32_t>(type_t type) {
 }
 
 template <>
+uint16_t Settings::load<uint16_t>(type_t type) {
+  return loadValue<uint16_t>(type);
+}
+
+template <>
 std::string Settings::load<std::string>(type_t type) {
   return loadValue<std::string>(type);
 }
@@ -313,6 +320,11 @@ void Settings::save<uint8_t>(const type_t type, const uint8_t &value) {
 template <>
 void Settings::save<uint32_t>(const type_t type, const uint32_t &value) {
   saveValue<uint32_t>(type, value);
+}
+
+template <>
+void Settings::save<uint16_t>(const type_t type, const uint16_t &value) {
+  saveValue<uint16_t>(type, value);
 }
 
 template <>
@@ -427,6 +439,7 @@ void Settings::init(void) {
         case AUTOCONNECT:
         case SLEEP_CONN:
         case COMPANION:
+        case SD_GPX:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:
@@ -434,6 +447,9 @@ void Settings::init(void) {
           break;
         case SCAN_TIMEOUT:
           save<uint32_t>(setting.type, 0);
+          break;
+        case GPX_PERIOD:
+          save<uint16_t>(setting.type, GPX_PERIOD_DEFAULT);
           break;
         case CPU_FREQ:
           save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);

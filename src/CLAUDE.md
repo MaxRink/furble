@@ -18,7 +18,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
-- `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap.
+- `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap. GPX
+  logging only builds a point and queues it via `SD::logPoint()`, never does
+  file I/O.
 - `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
   IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
@@ -35,6 +37,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   acknowledged configuration command at a time and keeps the fallback path.
 - Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
   every new `Settings::type_t` case.
+- `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
+  owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
+  interacts only through `SD::request()` / `SD::logPoint()` and the atomic
+  state accessors. Never mount, unmount or touch files under `/sd` from
+  another task.
+- `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
+  knowledge; every method runs on the SD writer task.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.

@@ -39,6 +39,7 @@
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -203,6 +204,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
       return "uint8";
+    case Settings::GPX_PERIOD:
+      return "uint16";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       return "uint32";
@@ -223,6 +226,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
+    case Settings::SD_GPX:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -269,6 +273,8 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::BUTTON_MODE:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::SD_GPX:
+    case Settings::GPX_PERIOD:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -303,6 +309,9 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::LOW_BATT:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
+    case Settings::GPX_PERIOD:
+      printf("%s%u\n", prefix, Settings::load<uint16_t>(type));
+      break;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
@@ -325,6 +334,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
     case Settings::PRESET_PICKER:
+    case Settings::SD_GPX:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -399,6 +409,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
 
+    case Settings::GPX_PERIOD:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value < 1) || (value > 60)) {
+        return fail("expected 1-60 seconds");
+      }
+      Settings::save<uint16_t>(setting.type, static_cast<uint16_t>(value));
+    } break;
+
     case Settings::SCAN_TIMEOUT:
     {
       char *end = nullptr;
@@ -448,10 +468,15 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
     case Settings::PRESET_PICKER:
+    case Settings::SD_GPX:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
     {
+      if ((setting.type == Settings::SD_GPX) && !SD::getInstance().isSupported()) {
+        return fail("no SD card slot on this board");
+      }
+
       bool value = false;
       if (!parseBool(text, value)) {
         return fail("expected on or off");
@@ -469,6 +494,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
+  }
+  if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
+    UI::sendRequest(UI::Request::SD_RELOAD, 0);
   }
 
   // The UI caches the IR menu visibility, so it has to be told as well.
