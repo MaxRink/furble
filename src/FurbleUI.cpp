@@ -3557,6 +3557,17 @@ void UI::addFeaturesMenu(const menu_t &parent) {
       },
       LV_EVENT_VALUE_CHANGED, NULL);
 
+  // Static, non-focusable hint under the roller. The one-button gestures are
+  // not obvious, so describe them where the user picks the mode. It is a plain
+  // label, never added to an input group and never clickable, so it does not
+  // take encoder focus or draw a focus ring. Always shown so the gestures are
+  // discoverable before one-button mode is enabled.
+  lv_obj_t *buttonModeHint = lv_label_create(menu.page);
+  lv_obj_set_width(buttonModeHint, LV_PCT(100));
+  lv_label_set_long_mode(buttonModeHint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(buttonModeHint,
+                    "One-button: hold=focus, double-click=shoot, click+hold=hold shutter");
+
   addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
   addSettingItem(menu.page, NULL, Settings::FAUXNY);
   addSettingItem(menu.page, NULL, Settings::RECONNECT);
