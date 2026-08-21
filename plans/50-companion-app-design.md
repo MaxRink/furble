@@ -768,9 +768,20 @@ the integrated master:
   yet. This table and the structs in this plan remain the contract until it is
   written.
 - The settings parity v2 changes are implemented in `feat/51-settings-v2`.
-  The requested M5StickS3 build is pending because the sandbox cannot write
-  PlatformIO's global lock and cache. End to end BLE testing against the
-  Android app has not happened yet.
+  The M5StickS3 firmware build now passes: `FURBLE_VERSION=dev FURBLE_TEST=0
+  pio run -e m5stick-s3` links cleanly (Flash 65.9%, RAM 11.3%). End to end BLE
+  testing against the Android app has not happened yet.
+- The C++ protocol golden corpus, its generator and the conformance test were
+  brought to the v2 wire. The list record is now
+  `status, id, type, length, value, trailing flags`, the flags byte is derived
+  from `Settings::appliesImmediately` and `Settings::isDangerous` (bit0 needs
+  restart, bit1 dangerous), and the INTERVAL blob is the packed 12-byte
+  `interval_wire_t`. `make -C tests/protocol generate` now produces a real diff
+  and `make -C tests/protocol test` passes against the regenerated corpus, so
+  the golden bytes match the firmware and the Android parser.
+- Note for #75: when it rebases onto post-#55 master it must drop its duplicate
+  capability characteristic definitions and keep only the Cameras
+  characteristic, since #55 already lands the capability characteristic.
 
 ## Implementation state, Android app
 

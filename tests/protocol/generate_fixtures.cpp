@@ -132,11 +132,13 @@ Bytes makeSettingsResponse(uint8_t status,
     throw std::runtime_error("settings sample is too large");
   }
   Bytes response = {status, id, FurbleProtocolTest::wireTypeCode(type)};
-  if (listRecord) {
-    response.push_back(flags);
-  }
   response.push_back(static_cast<uint8_t>(value.size()));
   response.insert(response.end(), value.begin(), value.end());
+  if (listRecord) {
+    // Keep the flags trailing. Firmware appendResponse and the v1 companion app
+    // both parse them after the value.
+    response.push_back(flags);
+  }
   return response;
 }
 
@@ -251,7 +253,7 @@ void generateSettings(const std::string &root,
       continue;
     }
     const Bytes value = FurbleProtocolTest::sampleValue(setting);
-    const uint8_t flags = setting.symbol == "THEME" ? 1 : 0;
+    const uint8_t flags = FurbleProtocolTest::settingListFlags(setting);
     addFixture(golden, manifest, settingFile("request-get", setting.wire_id), "settings-request",
                makeSettingsRequest(1, setting.wire_id, {}), true,
                "get setting " + setting.symbol + " by stable wire id");

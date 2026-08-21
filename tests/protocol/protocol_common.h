@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -41,10 +42,18 @@ enum class WireType : uint8_t {
   BLOB = 4,
 };
 
+// Mirror CompanionService::SETTING_* list-record flag bits from
+// include/FurbleCompanionService.h. bit0 marks a setting that needs a restart
+// (does not apply immediately); bit1 marks a dangerous over-the-air write.
+static constexpr uint8_t kSettingNeedsRestart = 1 << 0;
+static constexpr uint8_t kSettingDangerous = 1 << 1;
+
 struct SettingInfo {
   std::string symbol;
   uint8_t wire_id;
   WireType type;
+  bool appliesImmediately;
+  bool dangerous;
 };
 
 template <typename T>
@@ -134,6 +143,45 @@ inline std::unordered_map<std::string, WireType> parseSettingTypes(const std::st
   return types;
 }
 
+// Parse a Settings boolean switch table (appliesImmediately or isDangerous)
+// from src/FurbleSettings.cpp and return the set of setting symbols that fall
+// under a `return true;` arm. This mirrors the firmware so the golden corpus
+// tracks the real flag derivation instead of a hardcoded guess.
+inline std::set<std::string> parseSettingFlagTable(const std::string &source,
+                                                   const std::string &signature) {
+  const size_t begin = source.find(signature);
+  if (begin == std::string::npos) {
+    throw std::runtime_error("cannot find " + signature + " in source");
+  }
+  const size_t end = source.find("\n}", begin);
+  if ((end == std::string::npos) || (begin >= end)) {
+    throw std::runtime_error("cannot find end of " + signature + " in source");
+  }
+
+  const std::string function = source.substr(begin, end - begin);
+  const std::regex case_pattern(R"(case\s+(?:Settings::)?([A-Za-z0-9_]+)\s*:)");
+  const std::regex return_pattern(R"(return\s+(true|false)\s*;)");
+  std::set<std::string> trueSymbols;
+  std::vector<std::string> pending;
+  std::istringstream lines(function);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::smatch match;
+    if (std::regex_search(line, match, case_pattern)) {
+      pending.push_back(match[1].str());
+    }
+    if (std::regex_search(line, match, return_pattern)) {
+      if (match[1].str() == "true") {
+        for (const auto &symbol : pending) {
+          trueSymbols.insert(symbol);
+        }
+      }
+      pending.clear();
+    }
+  }
+  return trueSymbols;
+}
+
 inline std::vector<SettingInfo> parseSettings(const std::string &root) {
   const std::string source = readText(root + "/src/FurbleSettings.cpp");
   const size_t begin = source.find("Settings::m_Setting = {");
@@ -145,6 +193,9 @@ inline std::vector<SettingInfo> parseSettings(const std::string &root) {
   const std::string table = source.substr(begin, end - begin);
   const std::regex row_pattern(R"(\{\s*([A-Za-z0-9_]+)\s*,\s*([0-9]+)\s*,)");
   const auto types = parseSettingTypes(root);
+  const auto appliesImmediately =
+      parseSettingFlagTable(source, "bool Settings::appliesImmediately(type_t type)");
+  const auto dangerous = parseSettingFlagTable(source, "bool Settings::isDangerous(type_t type)");
   std::vector<SettingInfo> settings;
   for (std::sregex_iterator it(table.begin(), table.end(), row_pattern), end_it; it != end_it;
        ++it) {
@@ -157,12 +208,24 @@ inline std::vector<SettingInfo> parseSettings(const std::string &root) {
     if (type == types.end()) {
       throw std::runtime_error("no wire type for setting " + symbol);
     }
-    settings.push_back({symbol, static_cast<uint8_t>(id), type->second});
+    settings.push_back({symbol, static_cast<uint8_t>(id), type->second,
+                        appliesImmediately.count(symbol) != 0, dangerous.count(symbol) != 0});
   }
   if (settings.empty()) {
     throw std::runtime_error("settings table is empty");
   }
   return settings;
+}
+
+// Derive the list-record flags byte exactly as the firmware does in
+// CompanionService::handleSettings: bit0 set when the setting needs a restart
+// (does not apply immediately), bit1 set for a dangerous write.
+inline uint8_t settingListFlags(const SettingInfo &setting) {
+  uint8_t flags = setting.appliesImmediately ? 0 : kSettingNeedsRestart;
+  if (setting.dangerous) {
+    flags |= kSettingDangerous;
+  }
+  return flags;
 }
 
 inline Bytes appendUint32LittleEndian(uint32_t value) {
@@ -189,16 +252,21 @@ inline Bytes sampleValue(const SettingInfo &setting) {
       return {'D', 'e', 'f', 'a', 'u', 'l', 't'};
     case WireType::BLOB:
     {
-      Furble::interval_t interval = {};
-      interval.count.value = 10;
-      interval.count.unit = Furble::SpinValue::UNIT_NIL;
-      interval.delay.value = 15;
-      interval.delay.unit = Furble::SpinValue::UNIT_SEC;
-      interval.shutter.value = 30;
-      interval.shutter.unit = Furble::SpinValue::UNIT_MS;
-      interval.wait.value = 0;
-      interval.wait.unit = Furble::SpinValue::UNIT_SEC;
-      return bytesOf(interval);
+      // Companion interval wire: four {uint16 value little endian, uint8 unit}
+      // fields in count, delay, shutter, wait order. This mirrors packInterval
+      // in src/FurbleCompanionService.cpp (packed 12-byte interval_wire_t), not
+      // the 24-byte NVS interval_t. Values match include/interval.h defaults.
+      Bytes wire;
+      const auto field = [&wire](uint16_t value, uint8_t unit) {
+        wire.push_back(static_cast<uint8_t>(value & 0xff));
+        wire.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+        wire.push_back(unit);
+      };
+      field(10, Furble::SpinValue::UNIT_NIL);
+      field(15, Furble::SpinValue::UNIT_SEC);
+      field(30, Furble::SpinValue::UNIT_MS);
+      field(0, Furble::SpinValue::UNIT_SEC);
+      return wire;
     }
   }
   throw std::runtime_error("invalid setting type");

@@ -235,7 +235,9 @@ bool isValidStandardResponse(const Bytes &response) {
 }
 
 bool isValidListResponse(const Bytes &response) {
-  return response.size() >= 5 && response.size() >= static_cast<size_t>(5 + response[4]);
+  // List records carry the standard status,id,type,length,value header plus one
+  // trailing flags byte: minimum size is 4 header bytes + length + 1 flags.
+  return response.size() >= 4 && response.size() >= static_cast<size_t>(5 + response[3]);
 }
 
 void checkSettings(const std::string &root, const fs::path &golden) {
@@ -249,7 +251,7 @@ void checkSettings(const std::string &root, const fs::path &golden) {
             "duplicate wire id in src/FurbleSettings.cpp");
     const auto value = FurbleProtocolTest::sampleValue(setting);
     const uint8_t type = FurbleProtocolTest::wireTypeCode(setting.type);
-    const uint8_t flags = setting.symbol == "THEME" ? 1 : 0;
+    const uint8_t flags = FurbleProtocolTest::settingListFlags(setting);
 
     expectBytes(fixture(golden, settingFile("request-get", setting.wire_id)),
                 settingsRequest(1, setting.wire_id, {}), setting.symbol + " get request");
@@ -264,11 +266,14 @@ void checkSettings(const std::string &root, const fs::path &golden) {
 
     const auto list = fixture(golden, settingFile("response-list", setting.wire_id));
     require(isValidListResponse(list), setting.symbol + " list response is not a list TLV");
-    require(list[0] == 0 && list[1] == setting.wire_id && list[2] == type && list[3] == flags
-                && list[4] == value.size(),
-            setting.symbol + " list response header changed");
-    expectBytes(Bytes(list.begin() + 5, list.end()), value,
+    require(
+        list[0] == 0 && list[1] == setting.wire_id && list[2] == type && list[3] == value.size(),
+        setting.symbol + " list response header changed");
+    expectBytes(Bytes(list.begin() + 4, list.begin() + 4 + value.size()), value,
                 setting.symbol + " list response value");
+    require(
+        list.size() == static_cast<size_t>(4 + value.size() + 1) && list[4 + value.size()] == flags,
+        setting.symbol + " list response trailing flags changed");
 
     expectBytes(fixture(golden, settingFile("response-set", setting.wire_id)),
                 {0, setting.wire_id, type, 0}, setting.symbol + " set response");
