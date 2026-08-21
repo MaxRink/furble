@@ -284,3 +284,78 @@ Not console observable, still on the user checklist:
 Combined image caveat: this build tripped a one shot boot task watchdog. See the
 cross cutting note in plans/25. The watchdog is independent of the `imu` setting,
 it reproduced with `imu false`, so it is not attributed to this PR.
+
+## UX rework after hardware testing, 2026-08-21
+
+Hardware testing on the M5StickS3 found the level page usable but not merge
+ready. Four defects were fixed on this branch as new commits. On-device retest of
+the level page is required before merge, the simulator cannot see the physical
+screen or the real IMU.
+
+### 1. Overlapping text on the level page
+
+The old layout put the roll and pitch labels side by side in a row. On the narrow
+135x240 and 80x160 panels the two "Roll/Pitch: -12.3 deg" strings did not fit and
+collided. `addLevelMenu` now stacks the value labels in a column, drops the circle
+diameter reserve to `m_Height - 130` to make room, and turns off scrolling on the
+containers. Nothing overlaps.
+
+### 2. Spirit level not responsive enough
+
+The bubble mapping was linear over +/-45 deg, so a large tilt was needed to move
+it. The circle is for finding exact level, so small tilts near flat must be
+clearly visible. `applyLevelSample` (factored out of `levelUpdate`) now maps
++/-15 deg to full deflection and applies a sub unity gain curve
+(`pow(|tilt/15|, 0.6)`) that adds extra gain close to centre. A 6 degree tilt now
+moves the circle bubble 16 px instead of the old 4 px, four times more sensitive.
+The EWMA filter (alpha 0.2) is kept so a still device does not jitter. Every
+`lv_obj_set_pos` and `lv_label_set_text` stays behind its changed check.
+
+### 3. Side view bubble level
+
+Added a classic linear bubble tube under the circle. It carries roll only, like a
+spirit level held against a wall, with the same sensitivity curve as the circle.
+`level_t` gains `sideTube`, `sideBubble` and `sideBubbleX`.
+
+### 4. Diagnostics IMU live back navigation trap
+
+The IMU live page (and the other read-only diagnostics pages) hold only info-row
+labels. `addInfoRow` makes each label clickable and adds it to the encoder group
+so button boards can scroll, and `lv_menu` lands the focus on the first row when
+the page opens. A short select then hits a dead label, so only the universal
+long-press back left the page. The page dispatch now queues an `lv_async_call`
+that moves the focus onto the existing header back button after the page load, so
+a normal select returns to the parent. It reuses the header arrow, it adds no new
+focusable widget (no focus-outline regression). The trap is broader than IMU
+live, it is the same class for About, Device info and BLE, which are all fixed
+here. Power state also uses info rows but already carries an actionable Dump
+button, so it was left alone.
+
+### Simulator verification
+
+The device IMU is disabled in the simulator, so a FURBLE_SIM seam was added:
+`action nav level` / `nav imu`, a `level_accel x y z` injection that feeds a
+synthetic accel vector through `applyLevelSample`, an `action select` that
+activates the focused object (models a short OK press), and `simQueryState` keys
+`level_bubble_x`, `level_bubble_y`, `level_side_x`, `level_has_side` and
+`back_focused`.
+
+- `sim/scenarios/e2e/level-spirit.txt`: reaches the level page, asserts it does
+  not overflow the panel, that a 6 deg tilt drives the circle bubble 16 px and
+  the side tube 25 px, that pitch moves only the vertical axis and leaves the
+  side tube centred, and that a 30 deg tilt pins both bubbles to the rim. Mutation
+  test: reverting the mapping to +/-45 deg linear drops the 6 deg value to 4 px
+  and the scenario fails.
+- `sim/scenarios/e2e/imu-back-nav.txt`: walks to the IMU live page, asserts the
+  header back button holds the focus, and that a normal select returns to
+  Diagnostics. Mutation test: disabling the focus fix leaves `back_focused` at no
+  and the scenario fails.
+- `sim/scenarios/bughunt/overflow-sweep.txt`: adds the level page to the
+  per-panel fit sweep. It fits on 80x160, 135x240 and 320x240.
+
+All 13 end-to-end scenarios pass. The firmware `m5stick-s3-debug` build is clean
+and clang-format 21 is clean. Wire id 27 (IMU) is unchanged.
+
+On-device retest owed before merge: level page responsiveness, no overlapping
+text, the side bubble tracking roll, and the Diagnostics IMU live short-press
+back returning to the submenu.

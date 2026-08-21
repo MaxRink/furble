@@ -1623,6 +1623,27 @@ void UI::addMainMenu(void) {
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
         }
 
+        // The diagnostics pages hold only read-only info rows. Each row is a
+        // clickable label so button boards can scroll, but a click does nothing,
+        // and lv_menu lands the focus on the first row when the page opens. A
+        // short-press select then hits a dead label and only the universal
+        // long-press escape leaves the page. Move the focus onto the header back
+        // button so a normal select returns to the parent, the same as any other
+        // sub-page. This reuses the existing header arrow, it adds no new widget.
+        // The focus is queued so it runs after lv_menu's own page-load focus,
+        // which would otherwise put it straight back on the first row.
+        if ((page == m_Menu.at(m_IMUDataStr).page) || (page == m_Menu.at(m_BLEStr).page)
+            || (page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)) {
+          lv_async_call(
+              [](void *arg) {
+                auto *button = static_cast<lv_obj_t *>(arg);
+                if (button != nullptr && lv_obj_is_valid(button)) {
+                  lv_group_focus_obj(button);
+                }
+              },
+              back);
+        }
+
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
             || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)
@@ -1853,10 +1874,46 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Inject a synthetic accelerometer vector into the spirit level. The device
+  // IMU is disabled in the simulator, so this is the only way to exercise the
+  // level page. The filter is reset first so the reading settles to the exact
+  // injected tilt, which lets a scenario assert the bubble travel for a known
+  // small angle. Units are G, x y z, the same as M5.Imu.getAccel().
+  constexpr const char *ACCEL_PREFIX = "level_accel ";
+  if (command.compare(0, std::char_traits<char>::length(ACCEL_PREFIX), ACCEL_PREFIX) == 0) {
+    float accel[3] = {0.0f, 0.0f, 1.0f};
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(ACCEL_PREFIX), "%f %f %f",
+                    &accel[0], &accel[1], &accel[2])
+        == 3) {
+      if (m_Level.surface != nullptr) {
+        lv_obj_update_layout(m_Level.surface);
+      }
+      if (m_Level.sideTube != nullptr) {
+        lv_obj_update_layout(m_Level.sideTube);
+      }
+      m_Level.filterReady = false;
+      applyLevelSample(&m_Level, accel);
+    }
+    return;
+  }
+
   // Fire the shutter through the real shutter button handler.
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
+    return;
+  }
+
+  // Activate whatever the encoder group currently has focused, the same result
+  // a short OK press produces on device. Menu navigation and the header back
+  // button are driven by clicking the focused object, so this models the normal
+  // (non long-press) back: it only returns from a page when the back arrow is
+  // reachable and focused there.
+  if (command == "select") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused != nullptr && lv_obj_is_valid(focused)) {
+      lv_obj_send_event(focused, LV_EVENT_CLICKED, this);
+    }
     return;
   }
 
@@ -1980,6 +2037,8 @@ void UI::simScenarioAction(const char *action) {
         {"power_state", m_PowerStateStr    },
         {"ble",         m_BLEStr           },
         {"battery",     m_BatteryStr       },
+        {"imu",         m_IMUDataStr       },
+        {"level",       m_LevelStr         },
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {
@@ -2067,7 +2126,7 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 21> pages = {
+    const std::array<std::pair<const char *, const char *>, 23> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -2090,6 +2149,8 @@ std::string UI::simQueryState(const char *key) {
          {m_DeviceInfoStr, "device_info"},
          {m_PowerStateStr, "power_state"},
          {m_BLEStr, "ble"},
+         {m_LevelStr, "level"},
+         {m_IMUDataStr, "imu"},
          }
     };
     for (const auto &entry : pages) {
@@ -2278,6 +2339,31 @@ std::string UI::simQueryState(const char *key) {
       return speed;
     }
     return query == "gps_lat" ? lat : lon;
+  }
+
+  // Spirit level bubble geometry, driven by the level_accel injection action.
+  // The circle bubble carries roll on X and pitch on Y, the side tube carries
+  // roll only. A scenario asserts a small tilt produces a visible offset, so a
+  // regression to the coarse sensitivity fails here.
+  if (query == "level_bubble_x") {
+    return std::to_string(m_Level.bubbleX);
+  }
+  if (query == "level_bubble_y") {
+    return std::to_string(m_Level.bubbleY);
+  }
+  if (query == "level_side_x") {
+    return std::to_string(m_Level.sideBubbleX);
+  }
+  if (query == "level_has_side") {
+    return m_Level.sideTube != nullptr ? "yes" : "no";
+  }
+
+  // Whether the encoder focus is on the header back button. A label-only page
+  // that leaves focus elsewhere traps the short-press select, so this is the
+  // teeth for the diagnostics back-navigation fix.
+  if (query == "back_focused") {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    return (back != nullptr && lv_group_get_focused(m_Group) == back) ? "yes" : "no";
   }
 
   return "";
@@ -2776,8 +2862,13 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(cont, 4, LV_PART_MAIN);
+  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  int32_t diameter = std::min(m_Width - 16, m_Height - 80);
+  // Reserve vertical room for the side tube and the two stacked value labels so
+  // nothing overlaps on the narrow 135x240 and 80x160 panels. The circle stays
+  // square and centred.
+  int32_t diameter = std::min(m_Width - 16, m_Height - 130);
   diameter = std::max<int32_t>(40, diameter);
   m_Level.surface = lv_obj_create(cont);
   lv_obj_set_size(m_Level.surface, diameter, diameter);
@@ -2794,13 +2885,33 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_set_style_border_width(m_Level.bubble, 0, LV_PART_MAIN);
   lv_obj_center(m_Level.bubble);
 
+  // Side view bubble tube: a classic linear spirit level held against a wall.
+  // The bubble slides left and right with roll only.
+  int32_t tubeWidth = std::max<int32_t>(48, std::min<int32_t>(diameter, m_Width - 24));
+  m_Level.sideTube = lv_obj_create(cont);
+  lv_obj_set_size(m_Level.sideTube, tubeWidth, 20);
+  lv_obj_clear_flag(m_Level.sideTube, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(m_Level.sideTube, 10, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(m_Level.sideTube, LV_OPA_10, LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.sideTube, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(m_Level.sideTube, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
+  lv_obj_set_style_pad_all(m_Level.sideTube, 0, LV_PART_MAIN);
+
+  m_Level.sideBubble = lv_obj_create(m_Level.sideTube);
+  lv_obj_set_size(m_Level.sideBubble, 14, 14);
+  lv_obj_set_style_radius(m_Level.sideBubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(m_Level.sideBubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.sideBubble, 0, LV_PART_MAIN);
+  lv_obj_center(m_Level.sideBubble);
+
+  // Stack the numeric readouts so the two lines never collide on a narrow panel.
   lv_obj_t *values = lv_obj_create(cont);
   lv_obj_set_width(values, LV_PCT(100));
   lv_obj_set_height(values, LV_SIZE_CONTENT);
   lv_obj_set_layout(values, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(values, 2, LV_PART_MAIN);
   lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
 
   m_Level.roll = lv_label_create(values);
@@ -2829,9 +2940,13 @@ void UI::levelUpdate(lv_timer_t *timer) {
     return;
   }
 
+  applyLevelSample(level, accel);
+}
+
+void UI::applyLevelSample(level_t *level, const float accel[3]) {
   constexpr float alpha = 0.2f;
   if (!level->filterReady) {
-    std::copy(std::begin(accel), std::end(accel), std::begin(level->accel));
+    std::copy(accel, accel + 3, std::begin(level->accel));
     level->filterReady = true;
   } else {
     for (size_t index = 0; index < 3; index++) {
@@ -2845,21 +2960,44 @@ void UI::levelUpdate(lv_timer_t *timer) {
                                                        + (level->accel[2] * level->accel[2])))
                 * radiansToDegrees;
 
+  // Sensitivity. The circle is for finding exact level, so a small tilt must
+  // move the bubble a lot. A tilt of +/-fullScaleTilt reaches the rim, far
+  // tighter than the old +/-45 deg, and a sub-unity exponent adds extra gain
+  // close to centre so tiny deviations from level stay clearly visible.
+  constexpr float fullScaleTilt = 15.0f;
+  constexpr float responseExponent = 0.6f;
+  auto shape = [](float degrees) -> float {
+    float normalized = std::clamp(degrees / fullScaleTilt, -1.0f, 1.0f);
+    float magnitude = std::pow(std::fabs(normalized), responseExponent);
+    return std::copysign(magnitude, normalized);
+  };
+  float rollShaped = shape(roll);
+  float pitchShaped = shape(pitch);
+
   // content width excludes the surface border and padding
   int32_t contentDiameter = lv_obj_get_content_width(level->surface);
   int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
   int32_t maxOffset = std::max<int32_t>(0, ((contentDiameter - bubbleDiameter) / 2) - 4);
-  constexpr float maximumDisplayedTilt = 45.0f;
-  float rollOffset = std::clamp(roll / maximumDisplayedTilt, -1.0f, 1.0f);
-  float pitchOffset = std::clamp(pitch / maximumDisplayedTilt, -1.0f, 1.0f);
   // the bubble keeps its centre alignment, the position is a delta from centre
-  int32_t bubbleX = static_cast<int32_t>(std::round(rollOffset * maxOffset));
-  int32_t bubbleY = static_cast<int32_t>(std::round(pitchOffset * maxOffset));
+  int32_t bubbleX = static_cast<int32_t>(std::round(rollShaped * maxOffset));
+  int32_t bubbleY = static_cast<int32_t>(std::round(pitchShaped * maxOffset));
 
   if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
     level->bubbleX = bubbleX;
     level->bubbleY = bubbleY;
     lv_obj_set_pos(level->bubble, bubbleX, bubbleY);
+  }
+
+  // Side view tube tracks roll only, with the same sensitivity curve.
+  if (level->sideTube != nullptr) {
+    int32_t tubeWidth = lv_obj_get_content_width(level->sideTube);
+    int32_t sideBubbleWidth = lv_obj_get_width(level->sideBubble);
+    int32_t sideMax = std::max<int32_t>(0, ((tubeWidth - sideBubbleWidth) / 2) - 2);
+    int32_t sideX = static_cast<int32_t>(std::round(rollShaped * sideMax));
+    if (level->sideBubbleX != sideX) {
+      level->sideBubbleX = sideX;
+      lv_obj_set_pos(level->sideBubble, sideX, 0);
+    }
   }
 
   if (!level->displayReady || std::fabs(level->displayRoll - roll) >= 0.1f) {

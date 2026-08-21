@@ -1,0 +1,49 @@
+# End-to-end regression for the spirit level page (PR #28 rework).
+#
+# The device IMU is disabled in the simulator, so the level page is reached with
+# the FURBLE_SIM nav hook and fed synthetic accelerometer vectors with the
+# level_accel action. Vectors are (x, y, z) in G, the same as M5.Imu.getAccel().
+#
+# What this locks in:
+#  - Fit: the page does not overflow the 135x240 panel (no colliding, no scroll).
+#  - Sensitivity: a small 6 degree tilt drives the bubble a large, clearly
+#    visible distance. The old +/-45 degree linear mapping moved it only a few
+#    pixels for the same tilt, so a revert to that mapping fails these asserts.
+#  - Side tube: a classic linear bubble level tracks roll only. Pitch leaves it
+#    centred; roll moves it.
+#  - Saturation: a 30 degree tilt pins both bubbles to the rim.
+seed fauxny true
+wait 300
+action nav level
+wait 200
+assert ui.page level
+assert ui.overflow no
+assert ui.level_has_side yes
+
+# Flat: both bubbles centred.
+action level_accel 0 0 1
+wait 20
+assert ui.level_bubble_x 0
+assert ui.level_bubble_y 0
+assert ui.level_side_x 0
+
+# Small 6 degree roll: the circle bubble and the side tube both move a lot.
+action level_accel 0 0.105 0.994
+wait 20
+assert ui.level_bubble_x 16
+assert ui.level_bubble_y 0
+assert ui.level_side_x 25
+
+# Small 6 degree pitch: only the vertical axis moves, the side tube stays put.
+action level_accel 0.105 0 0.994
+wait 20
+assert ui.level_bubble_x 0
+assert ui.level_bubble_y -16
+assert ui.level_side_x 0
+
+# A 30 degree roll saturates both bubbles at the rim.
+action level_accel 0 0.5 0.866
+wait 20
+assert ui.level_bubble_x 28
+assert ui.level_side_x 44
+exit
