@@ -302,6 +302,11 @@ class NimBLEDevice {
   static void setOwnAddrType(uint8_t address_type);
 
   static NimBLEClient *createClient();
+  // Return a client to the pool. Mirrors NimBLEDevice::deleteClient(): it only
+  // deletes a client that is still in the live client list, so calling it on a
+  // client that already self-deleted (or was already reclaimed) is a safe no-op
+  // that returns false. This is what makes the leak fix double-free safe.
+  static bool deleteClient(NimBLEClient *client);
   static void setMockPeer(NimBLEMockPeer *peer);
   static NimBLEMockPeer *getMockPeer();
   static void resetMock();
@@ -311,8 +316,21 @@ class NimBLEDevice {
   // client a Camera created internally.
   static NimBLEClient *lastClient();
   // Force the next NimBLEClient::connect() to fail, modelling a connect that
-  // never establishes (advertisement gone, peer busy, security rejected).
+  // never establishes. This stands in for the failure class that actually leaks
+  // on hardware: a reconnect whose pairing scan times out because the camera
+  // still holds its previous session, so NimBLEClient::connect() is never even
+  // reached and setSelfDelete never frees the client. The mock therefore does
+  // not self-delete on this path; only Camera::connect() reclaiming the client
+  // keeps the pool from leaking.
   static void setConnectShouldFail(bool fail);
+  // Number of NimBLE clients currently live (created minus deleted). A leak
+  // shows up as this count growing across failed connect attempts.
+  static size_t liveClientCount();
+  // Cap the pool the way NimBLE caps it at CONFIG_BT_NIMBLE_MAX_CONNECTIONS.
+  // Once the live count reaches the cap, createClient() returns nullptr, exactly
+  // as the controller does with "Unable to create client; already at max". Zero
+  // means unlimited. resetMock() restores unlimited.
+  static void setMaxClients(size_t max);
 };
 
 #endif
