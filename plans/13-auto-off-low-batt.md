@@ -26,7 +26,10 @@ Evaluation model:
   hang off the inactivity decision.
 - Both settings are cached in UI members. The rollers and the console (via
   `Request::POWER_RELOAD`) refresh the cache, and any policy change resets the
-  warn latch and all hysteresis counters.
+  warn latch and all hysteresis counters. The `serviceRequests` switch handles
+  `POWER_RELOAD` as its own case. The `AUDIT` case above it needs an explicit
+  `break;` so an audit request does not fall through and trigger an unintended
+  policy reload.
 - Auto off compares the LVGL idle clock against the setting while
   `Control::STATE_IDLE` holds and no discovery scan is active. `STATE_IDLE`
   also covers an active scan, so the scan check keeps auto off from cutting a

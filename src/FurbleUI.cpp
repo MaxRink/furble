@@ -2836,6 +2836,7 @@ void UI::serviceRequests(void) {
 #endif
       case Request::AUDIT:
         UIAudit::dump(lv_screen_active());
+        break;
 
       case Request::POWER_RELOAD:
         m_ConnectContext.ui->reloadPowerPolicies();
