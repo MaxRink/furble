@@ -5,6 +5,8 @@
 
 LV_IMG_DECLARE(icon_add_a_photo);
 LV_IMG_DECLARE(icon_add_a_photo_24);
+LV_IMG_DECLARE(icon_adjust);
+LV_IMG_DECLARE(icon_adjust_24);
 LV_IMG_DECLARE(icon_all_inclusive);
 LV_IMG_DECLARE(icon_arrow_back_24);
 LV_IMG_DECLARE(icon_arrow_downward_24);

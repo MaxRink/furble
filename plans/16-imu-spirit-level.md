@@ -464,3 +464,121 @@ pass on the M5StickS3 is required before merge: no clipped text flat or flipped,
 the screen staying awake on the level page, the display rotating the correct way
 when laid on its side and returning to portrait when held flat, the tube showing
 only when flipped, and the rest of the UI staying upright after leaving the page.
+
+## UX rework v3.1 after hardware testing, 2026-08-21
+
+The v3 level page was retested on the M5StickS3. Keep-awake held and the text no
+longer clipped, but two defects came back: the bullseye sat at the top jammed
+under the header and was cut off, and the side-rotate auto-flip corrupted the
+display until the device was held flat again. The Level entry in the Connected
+menu was also the only item without an icon. All are addressed on this branch.
+On-device retest of the rotation flush is still owed before merge.
+
+### 1. One row of readout text, split left and right
+
+The v3 page stacked the roll and pitch labels in a column above the circle, which
+ate vertical room and pushed the circle up. The two labels are now a single row
+at the very top, roll in the left half and pitch in the right half, each 50 percent
+wide, centre aligned, in montserrat_12 with the degree glyph and wrapping on. One
+line height frees the rest of the panel for the bullseye. Worst case "R: -90.0" and
+"P: -90.0" fit their halves on 135x240 and wrap without clipping on 80x160.
+
+### 2. Bullseye repositioned and centred with margin
+
+The circle and the side tube now live in a middle container that flex-grows to
+fill the space under the readout row. The visible readout is centred in that
+container, so the bullseye keeps a symmetric top and bottom margin and is never
+jammed under the header. On the StickS3 the circle top sits at y=50, well clear of
+the menu header, with the diameter unchanged from v3.
+
+### 3. Centre target ring
+
+A fixed hollow ring (green, 22 px) is drawn at the exact centre of the bullseye as
+the "level" mark. It never moves. The moving blue bubble nests inside it when the
+device is level, so the target and the bubble are always distinct. Neither is
+focusable, so no focus outline appears.
+
+### 4. DMA-safe auto-rotate
+
+v3 rotated with LVGL software rotation (`lv_display_set_rotation`). On the StickS3
+that rotates pixels in the draw buffer but does not coordinate with the panel DMA
+flush, so a rotated frame tears against the old stride and only recovers when the
+device is held flat again. The firmware path now rotates the panel controller
+instead: it drains any in-flight flush with `M5.Display.waitDMA()`, calls
+`M5.Display.setRotation()` for the new orientation, swaps the LVGL logical
+resolution with `lv_display_set_resolution()`, then full-invalidates and calls
+`lv_refr_now()` so the whole screen is repainted in one pass in the new geometry,
+and drains the DMA again. The DMA engine therefore always writes a consistently
+oriented framebuffer. The base panel rotation is captured once at build time while
+the panel is in its portrait default. The hysteresis thresholds (enter a side at
+60 degrees, return to flat below 45) and the relayout are unchanged. The simulator
+has no DMA, so under FURBLE_SIM the page still uses `lv_display_set_rotation`,
+which lets a scenario verify the orientation state machine and the relayout but
+not the flush. PENDING HARDWARE RETEST: the rotated DMA flush can only be
+confirmed on device.
+
+### 5. Level menu icon
+
+The Connected menu Level entry was iconless while every sibling had an icon. A new
+bullseye icon (`icon_adjust`, an outer ring with a centre dot, matching the level's
+centre target) was generated from `components/icons/svg/adjust.svg` through the
+standard Material Symbols pipeline (rsvg-convert to 48 and 24 px PNGs, then
+LVGLImage.py to RGB565A8 LZ4 C arrays). It is wired in `icons.h`, the icons
+`CMakeLists.txt`, the `#define icon_adjust icon_adjust_24` size alias, and
+`addLevelMenu`.
+
+### Full SDL sim IMU support
+
+The simulator now injects general IMU state, not just a level-widget poke. A new
+`sim/ImuSim.cpp` holds a settable accel, gyro and enabled flag in `Furble::Sim`,
+declared in `sim/driver.h`. Under FURBLE_SIM the firmware reads it through the same
+`isEnabled`, `update`, `getAccel` and `getGyro` surface it uses for M5.Imu, in both
+the level timer and the diagnostics live page, so a scenario drives the real read
+path. The production binary is byte-identical: every new read is inside
+`#if defined(FURBLE_SIM)` with the original M5.Imu code in the `#else`. This infra
+is general enough to later exercise gestures (#45), wake on motion (#48) and gps
+motion (#65), not just the level page.
+
+New sim actions (all FURBLE_SIM only):
+
+- `imu.accel <x> <y> <z>`: set the accelerometer vector in G and enable the IMU.
+- `imu.roll <deg>` / `imu.pitch <deg>`: set a gravity vector for a pure roll or
+  pitch orientation.
+- `imu.gyro <x> <y> <z>`: set the gyroscope rate.
+- `imu.enable` / `imu.disable`: toggle the injected IMU enabled flag.
+
+Each level injection resets the level filter so the next timer tick settles to the
+exact injected orientation, keeping the bubble geometry deterministic. The older
+`level_accel` widget-level poke is kept as a low-level primitive.
+
+New `simQueryState` observers: `level_bubble_visible` and `level_target_visible`
+(the bullseye and its target ring show only in portrait), `level_diameter` (the
+bullseye content diameter) and `level_surface_top` (its absolute top edge, which
+proves it clears the header).
+
+### Simulator verification v3.1
+
+- `sim/scenarios/e2e/level-spirit.txt` was rewritten to drive the general
+  `imu.roll` / `imu.pitch` / `imu.accel` injection through the firmware read path.
+  It asserts the one-row layout (diameter 89, surface top 50), the bullseye and
+  target visible only in portrait, a 6 degree tilt driving the circle bubble 18 px,
+  the side tube only in the flipped orientation, and the rotation hysteresis both
+  ways (50 degrees holds the current orientation, 60 enters a side, below 45
+  returns to flat, right roll 90, left roll 270). Mutation test: reverting the
+  sensitivity mapping to the old +/-45 degree linear curve drops the 6 degree
+  value and the scenario fails.
+- `sim/scenarios/bughunt/overflow-sweep.txt` still asserts the flat level page
+  fits. Verified `ui.overflow no` on the fixed-height level page at 135x240 and
+  80x160.
+
+All 14 end-to-end scenarios pass. The firmware `m5stick-s3-debug` build is clean
+and clang-format 21 is clean. Wire id 36 (IMU) is unchanged.
+
+### PENDING HARDWARE RETEST (v3.1)
+
+Sim and host build verified only. The on-device pass on the M5StickS3 must confirm:
+the one-row text does not clip flat or flipped, the bullseye and centre target sit
+below the header with margin, the DMA-safe rotation flips cleanly with no
+corruption and returns to portrait leaving the rest of the UI upright, and the
+Level menu icon renders. The roll-to-rotation sign flagged in v3 still needs the
+on-device check.

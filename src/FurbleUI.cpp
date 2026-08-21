@@ -41,6 +41,7 @@
 #include "interval.h"
 
 #if defined(FURBLE_SIM)
+#include "driver.h"
 #include "power_profiler.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 
@@ -63,6 +64,7 @@ uint32_t g_simDisconnectCalls = 0;
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
 #define icon_add_a_photo icon_add_a_photo_24
+#define icon_adjust icon_adjust_24
 #define icon_bluetooth icon_bluetooth_24
 #define icon_cell_tower icon_cell_tower_24
 #define icon_delete icon_delete_24
@@ -2122,6 +2124,77 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // General IMU injection. Unlike level_accel, which pokes the level widget
+  // directly, these set the shared sim IMU state that the firmware reads through
+  // the same M5.Imu surface. The level timer, the diagnostics live page and the
+  // later motion features all pick it up. The level filter is reset so the next
+  // timer tick settles to the exact injected orientation, which keeps the bubble
+  // geometry deterministic for a scenario assert.
+  auto resetLevelFilter = [this]() {
+    if (m_Level.surface != nullptr) {
+      lv_obj_update_layout(m_Level.surface);
+    }
+    if (m_Level.sideTube != nullptr) {
+      lv_obj_update_layout(m_Level.sideTube);
+    }
+    m_Level.filterReady = false;
+  };
+
+  constexpr const char *IMU_ACCEL_PREFIX = "imu.accel ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_ACCEL_PREFIX), IMU_ACCEL_PREFIX) == 0) {
+    float accel[3] = {0.0f, 0.0f, 1.0f};
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ACCEL_PREFIX), "%f %f %f",
+                    &accel[0], &accel[1], &accel[2])
+        == 3) {
+      Furble::Sim::imuSetEnabled(true);
+      Furble::Sim::imuSetAccel(accel[0], accel[1], accel[2]);
+      resetLevelFilter();
+    }
+    return;
+  }
+
+  constexpr const char *IMU_ROLL_PREFIX = "imu.roll ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_ROLL_PREFIX), IMU_ROLL_PREFIX) == 0) {
+    float roll = 0.0f;
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ROLL_PREFIX), "%f", &roll)
+        == 1) {
+      Furble::Sim::imuSetEnabled(true);
+      Furble::Sim::imuSetOrientation(roll, 0.0f);
+      resetLevelFilter();
+    }
+    return;
+  }
+
+  constexpr const char *IMU_PITCH_PREFIX = "imu.pitch ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_PITCH_PREFIX), IMU_PITCH_PREFIX) == 0) {
+    float pitch = 0.0f;
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_PITCH_PREFIX), "%f",
+                    &pitch)
+        == 1) {
+      Furble::Sim::imuSetEnabled(true);
+      Furble::Sim::imuSetOrientation(0.0f, pitch);
+      resetLevelFilter();
+    }
+    return;
+  }
+
+  constexpr const char *IMU_GYRO_PREFIX = "imu.gyro ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_GYRO_PREFIX), IMU_GYRO_PREFIX) == 0) {
+    float gyro[3] = {0.0f, 0.0f, 0.0f};
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_GYRO_PREFIX), "%f %f %f",
+                    &gyro[0], &gyro[1], &gyro[2])
+        == 3) {
+      Furble::Sim::imuSetEnabled(true);
+      Furble::Sim::imuSetGyro(gyro[0], gyro[1], gyro[2]);
+    }
+    return;
+  }
+
+  if (command == "imu.enable" || command == "imu.disable") {
+    Furble::Sim::imuSetEnabled(command == "imu.enable");
+    return;
+  }
+
   // Fire the shutter through the real shutter button handler.
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
@@ -2723,6 +2796,21 @@ std::string UI::simQueryState(const char *key) {
   if (query == "level_has_side") {
     return m_Level.sideTube != nullptr ? "yes" : "no";
   }
+  // Whether the circle bullseye is currently shown. It is the flat portrait
+  // readout and hides when the page flips to a side orientation.
+  if (query == "level_bubble_visible") {
+    return (m_Level.surface != nullptr && !lv_obj_has_flag(m_Level.surface, LV_OBJ_FLAG_HIDDEN))
+               ? "yes"
+               : "no";
+  }
+  // Whether the fixed centre target ring is shown. It rides with the bullseye,
+  // so it is only visible in the flat portrait view.
+  if (query == "level_target_visible") {
+    return (m_Level.target != nullptr && !lv_obj_has_flag(m_Level.target, LV_OBJ_FLAG_HIDDEN)
+            && m_Level.surface != nullptr && !lv_obj_has_flag(m_Level.surface, LV_OBJ_FLAG_HIDDEN))
+               ? "yes"
+               : "no";
+  }
   // Whether the side tube is currently shown. It only appears when the page is
   // flipped onto its side, so this reflects the auto-rotate state.
   if (query == "level_side_visible") {
@@ -2733,6 +2821,22 @@ std::string UI::simQueryState(const char *key) {
   // Active LVGL rotation for the level page in degrees, one of 0, 90 or 270.
   if (query == "level_rotation") {
     return std::to_string(m_Level.rotation);
+  }
+  // Bullseye content diameter in pixels. Lets a scenario assert the circle is a
+  // usable size and sits inside the panel.
+  if (query == "level_diameter") {
+    return std::to_string(m_Level.surface != nullptr ? lv_obj_get_content_width(m_Level.surface)
+                                                     : 0);
+  }
+  // Absolute top edge of the bullseye. A positive value below the menu header
+  // proves the circle is not jammed under the header bar.
+  if (query == "level_surface_top") {
+    if (m_Level.surface == nullptr) {
+      return "0";
+    }
+    lv_area_t coords;
+    lv_obj_get_coords(m_Level.surface, &coords);
+    return std::to_string(coords.y1);
   }
 
   // Whether the encoder focus is on the header back button. A label-only page
@@ -3284,7 +3388,9 @@ void UI::doDisconnect(void) {
 }
 
 void UI::addLevelMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_LevelStr, NULL, true, parent);
+  // The bullseye icon matches the spirit level's centre target, so the Level
+  // entry reads at a glance and is no longer the only iconless Connected item.
+  menu_t &menu = addMenu(m_LevelStr, &icon_adjust, true, parent);
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
@@ -3299,14 +3405,68 @@ void UI::addLevelMenu(const menu_t &parent) {
   m_Level.baseHeight = m_Height;
   m_Level.rotation = 0;
 
+  // One row of numeric readouts at the very top, split left and right: roll in
+  // the left half, pitch in the right half, both in the compact 12 px font with
+  // a degree glyph. A single row keeps the text to one line height so the circle
+  // below gets the rest of the panel. The older stacked rows pushed the circle
+  // up under the header where it was clipped.
+  lv_obj_t *values = lv_obj_create(cont);
+  lv_obj_set_width(values, LV_PCT(100));
+  lv_obj_set_height(values, LV_SIZE_CONTENT);
+  lv_obj_set_layout(values, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(values, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_column(values, 2, LV_PART_MAIN);
+  lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
+
+  m_Level.roll = lv_label_create(values);
+  lv_obj_set_width(m_Level.roll, LV_PCT(50));
+  lv_obj_set_style_text_font(m_Level.roll, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.roll, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.roll, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.roll, "R: --");
+  m_Level.pitch = lv_label_create(values);
+  lv_obj_set_width(m_Level.pitch, LV_PCT(50));
+  lv_obj_set_style_text_font(m_Level.pitch, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.pitch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.pitch, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.pitch, "P: --");
+
+  // The circle and the side tube live in a container that grows to fill the
+  // space under the readout row. Centring the visible readout in this container
+  // leaves a symmetric margin, so the bullseye is never jammed under the header.
+  lv_obj_t *middle = lv_obj_create(cont);
+  lv_obj_set_width(middle, LV_PCT(100));
+  lv_obj_set_flex_grow(middle, 1);
+  lv_obj_set_layout(middle, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(middle, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(middle, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(middle, 0, LV_PART_MAIN);
+  lv_obj_set_style_border_width(middle, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(middle, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_clear_flag(middle, LV_OBJ_FLAG_SCROLLABLE);
+
   // The circle bubble is the primary flat readout. Its diameter is settled by
-  // applyLevelRotation, which reserves vertical room for the labels and hint.
-  m_Level.surface = lv_obj_create(cont);
+  // applyLevelRotation, which fits it inside the middle container.
+  m_Level.surface = lv_obj_create(middle);
   lv_obj_clear_flag(m_Level.surface, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_radius(m_Level.surface, LV_RADIUS_CIRCLE, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(m_Level.surface, LV_OPA_10, LV_PART_MAIN);
   lv_obj_set_style_border_width(m_Level.surface, 2, LV_PART_MAIN);
   lv_obj_set_style_border_color(m_Level.surface, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
+
+  // Fixed centre target ring, the "level" mark. It is hollow and never moves, so
+  // the moving bubble is read against it and the two are always distinct. The
+  // filled bubble nests inside the ring when the device is level.
+  m_Level.target = lv_obj_create(m_Level.surface);
+  lv_obj_set_size(m_Level.target, 22, 22);
+  lv_obj_set_style_radius(m_Level.target, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(m_Level.target, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.target, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(m_Level.target, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
+  lv_obj_clear_flag(m_Level.target, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_center(m_Level.target);
 
   m_Level.bubble = lv_obj_create(m_Level.surface);
   lv_obj_set_size(m_Level.bubble, 16, 16);
@@ -3318,7 +3478,7 @@ void UI::addLevelMenu(const menu_t &parent) {
   // Side view bubble tube: a classic linear spirit level held against a wall.
   // The bubble slides left and right with roll only. It is only shown when the
   // page is flipped onto its side, so it stays hidden in the flat portrait view.
-  m_Level.sideTube = lv_obj_create(cont);
+  m_Level.sideTube = lv_obj_create(middle);
   lv_obj_set_size(m_Level.sideTube, 48, 20);
   lv_obj_clear_flag(m_Level.sideTube, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_radius(m_Level.sideTube, 10, LV_PART_MAIN);
@@ -3334,33 +3494,9 @@ void UI::addLevelMenu(const menu_t &parent) {
   lv_obj_set_style_border_width(m_Level.sideBubble, 0, LV_PART_MAIN);
   lv_obj_center(m_Level.sideBubble);
 
-  // Stack the numeric readouts so the two lines never collide on a narrow panel.
-  // A compact "R:"/"P:" format in the smaller font keeps each line inside the
-  // 80x160 panel, where "Roll: -12.3 deg" in the default font was clipped.
-  lv_obj_t *values = lv_obj_create(cont);
-  lv_obj_set_width(values, LV_PCT(100));
-  lv_obj_set_height(values, LV_SIZE_CONTENT);
-  lv_obj_set_layout(values, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(values, 2, LV_PART_MAIN);
-  lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
-
-  m_Level.roll = lv_label_create(values);
-  lv_obj_set_width(m_Level.roll, LV_PCT(100));
-  lv_obj_set_style_text_font(m_Level.roll, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Level.roll, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_label_set_long_mode(m_Level.roll, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(m_Level.roll, "R: --");
-  m_Level.pitch = lv_label_create(values);
-  lv_obj_set_width(m_Level.pitch, LV_PCT(100));
-  lv_obj_set_style_text_font(m_Level.pitch, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Level.pitch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_label_set_long_mode(m_Level.pitch, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(m_Level.pitch, "P: --");
-
-  // Gesture hint for the auto-rotate behaviour. It is not focusable, so the
-  // encoder never lands on it. It is only shown in the flat portrait view.
+  // Gesture hint for the auto-rotate behaviour, pinned at the bottom. It is not
+  // focusable, so the encoder never lands on it. It is only shown in the flat
+  // portrait view.
   m_Level.hint = lv_label_create(cont);
   lv_obj_set_width(m_Level.hint, LV_PCT(100));
   lv_obj_set_style_text_font(m_Level.hint, &lv_font_montserrat_12, LV_PART_MAIN);
@@ -3389,15 +3525,29 @@ void UI::levelUpdate(lv_timer_t *timer) {
   // resets and normal dim resumes with no extra bookkeeping.
   lv_display_trigger_activity(NULL);
 
+  float accel[3];
+#if defined(FURBLE_SIM)
+  // The simulator has no sensor, so read the injected IMU state through the same
+  // enabled, update and getAccel surface the firmware uses. A scenario drives
+  // the orientation and the real filter, sensitivity and rotation logic below
+  // runs unchanged.
+  if (!Furble::Sim::imuEnabled()) {
+    return;
+  }
+  Furble::Sim::imuUpdate();
+  if (!Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2])) {
+    return;
+  }
+#else
   if (!M5.Imu.isEnabled()) {
     return;
   }
 
   M5.Imu.update();
-  float accel[3];
   if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
     return;
   }
+#endif
 
   applyLevelSample(level, accel);
 }
@@ -3412,6 +3562,9 @@ int32_t UI::levelDiameter(int32_t width, int32_t height) {
 
 void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   lv_display_t *display = lv_display_get_default();
+#if defined(FURBLE_SIM)
+  // SDL has no DMA controller, so LVGL software rotation is safe here and lets a
+  // scenario verify the orientation state machine and the relayout.
   if (display != nullptr) {
     lv_display_rotation_t target = LV_DISPLAY_ROTATION_0;
     if (rotation == 90) {
@@ -3421,6 +3574,35 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
     }
     lv_display_set_rotation(display, target);
   }
+#else
+  // On the real StickS3 the LVGL software rotation path corrupts the screen: it
+  // rotates pixels in the draw buffer but does not coordinate with the panel DMA
+  // flush, so a rotated frame tears against the old stride and only recovers when
+  // the device is held flat again. Rotate the panel controller instead and swap
+  // the LVGL logical resolution, which keeps the DMA engine writing a
+  // consistently oriented framebuffer. Drain any in-flight flush first, then full
+  // invalidate and refresh synchronously so the whole screen is repainted in one
+  // pass in the new geometry.
+  //
+  // PENDING HARDWARE RETEST: the rotated flush cannot be exercised in the SDL
+  // simulator, only on device.
+  if (display != nullptr && rotation != level->rotation) {
+    // Captured once at build time while the panel is in its portrait default.
+    static const uint8_t baseRotation = M5.Display.getRotation();
+    M5.Display.waitDMA();
+    if (rotation == 0) {
+      M5.Display.setRotation(baseRotation);
+      lv_display_set_resolution(display, level->baseWidth, level->baseHeight);
+    } else {
+      const uint8_t step = (rotation == 90) ? 1 : 3;
+      M5.Display.setRotation((baseRotation + step) & 0x03);
+      lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
+    }
+    lv_obj_invalidate(lv_screen_active());
+    lv_refr_now(display);
+    M5.Display.waitDMA();
+  }
+#endif
 
   // Landscape swaps the panel width and height. The value labels stay on both
   // orientations, the circle is the flat readout, the tube is the side readout.
@@ -3448,8 +3630,11 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
 
   level->rotation = rotation;
 
-  // Settle the container so the next sample reads real bubble geometry.
-  lv_obj_t *cont = lv_obj_get_parent(level->surface);
+  // Settle the whole page so the next sample reads real bubble geometry. The
+  // circle sits inside the growing middle container, so reflow from the outer
+  // menu container (the middle's parent) to size every level widget.
+  lv_obj_t *middle = lv_obj_get_parent(level->surface);
+  lv_obj_t *cont = (middle != nullptr) ? lv_obj_get_parent(middle) : nullptr;
   if (cont != nullptr) {
     lv_obj_update_layout(cont);
   }
@@ -5719,12 +5904,23 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 
   // only poll the IMU over I2C while its live page is open
   if (diagnostics->imuPageActive) {
+#if defined(FURBLE_SIM)
+    // Read the injected IMU state through the same surface as the firmware, so a
+    // scenario can drive the live diagnostics readout too.
+    if (Furble::Sim::imuEnabled()) {
+      Furble::Sim::imuUpdate();
+      float accel[3];
+      float gyro[3];
+      bool accelRead = Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2]);
+      bool gyroRead = Furble::Sim::imuGetGyro(&gyro[0], &gyro[1], &gyro[2]);
+#else
     if (M5.Imu.isEnabled()) {
       M5.Imu.update();
       float accel[3];
       float gyro[3];
       bool accelRead = M5.Imu.getAccel(&accel[0], &accel[1], &accel[2]);
       bool gyroRead = M5.Imu.getGyro(&gyro[0], &gyro[1], &gyro[2]);
+#endif
 
       if (accelRead && diagnostics->imuAccel != nullptr) {
         bool changed = !diagnostics->imuValuesValid;
