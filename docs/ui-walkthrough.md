@@ -19,6 +19,10 @@ gating), see the companion reference:
   outline (dark theme) marks it.
 - Navigation is described with the three logical inputs: previous, select, next.
   See [Controls](#controls) for how those map to real buttons on each board.
+- Some settings pages are longer than the screen and scroll. For those the tour
+  shows the top of the page and then a strip of the lower rows, so every option
+  is pictured. Narrower boards show fewer rows per screen, so the same page takes
+  more scrolling there.
 
 ## Controls
 
@@ -159,6 +163,13 @@ Features, Infrared, GPS, Timer, Theme, Text size, Bluetooth, About, Power,
 Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear only on
 boards with the matching hardware.
 
+The list is longer than the screen. The image above is the top; scrolling down
+reveals the rest:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/default/settings-2.png) | ![](img/scroll/default/settings-3.png) |
+
 ### Display
 
 ![Display settings](img/settings-display.png)
@@ -180,6 +191,13 @@ camera for development), Infinite-ReConnect, Reconnect Backoff, Multi-Connect,
 Companion (the companion BLE service), Watchdog (M5StickS3 only), Preset Picker
 (the exposure preset stepper on the shutter page), and Boot screen (the startup
 splash).
+
+Features is the longest settings page. The image above is the top; these frames
+scroll down through every switch:
+
+| | | |
+| :--- | :--- | :--- |
+| ![](img/scroll/default/features-2.png) | ![](img/scroll/default/features-3.png) | ![](img/scroll/default/features-4.png) |
 
 ### Companion pairing
 
@@ -208,6 +226,12 @@ The GPS switch is the master control. When it is on, the receiver configuration
 rows appear: baud (9600 or 115200), Update rate, Sentences, Constellation, a
 Power saving submenu, Assisted start, and the two live pages GPS Data and Raw
 NMEA. When GPS is off, only the switch is shown.
+
+With GPS on the list runs past the screen. Scrolling down shows the lower rows:
+
+| |
+| :--- |
+| ![](img/scroll/default/gps-2.png) |
 
 ![Raw NMEA page](img/gps-nmea.png)
 
@@ -256,12 +280,22 @@ M5StickS3 (135x240) Default theme.
 - **Scan mode**: how hard the radio listens during Scan (Full, Balanced, Low).
 - **Scan timeout**: end a scan by itself after a chosen time.
 
+The list runs slightly past the screen. Scrolling down shows the last row:
+
+| |
+| :--- |
+| ![](img/scroll/default/bluetooth-2.png) |
+
 ### About
 
 ![About page](img/settings-about.png)
 
 A read-only page: firmware version, device ID, build date, IDF version, uptime,
-free heap, and reset reason.
+free heap, and reset reason. It scrolls; these frames show the lower rows:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/default/about-2.png) | ![](img/scroll/default/about-3.png) |
 
 ### Power
 
@@ -275,6 +309,13 @@ free heap, and reset reason.
 - **Auto off**: power off after an idle period. Not on M5Stack Core Basic.
 - **Low battery**: what to do on low battery. Not on M5Stack Core Basic.
 - **Battery**: a live battery detail page (below).
+
+Power is a long page. The image above is the top; these frames scroll down
+through the rest of the rows to the Battery entry:
+
+| | | | |
+| :--- | :--- | :--- | :--- |
+| ![](img/scroll/default/power-2.png) | ![](img/scroll/default/power-3.png) | ![](img/scroll/default/power-4.png) | ![](img/scroll/default/power-5.png) |
 
 ![Battery page](img/battery.png)
 
@@ -318,6 +359,12 @@ supported SD card slot. The simulator reports a mounted card (behind a capture
 flag) so the submenu renders; see the
 [settings reference](settings-and-controls.md#storage).
 
+The submenu scrolls; these frames show the lower rows:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/default/storage-2.png) | ![](img/scroll/default/storage-3.png) |
+
 ## Dark theme
 
 The Dark theme swaps the light background for a dark one and marks focus with a
@@ -335,6 +382,45 @@ green outline. Set it under `Settings` > `Theme` > `Dark` and press Restart.
 ![Dark Storage](img/dark-storage.png)
 ![Dark connected menu](img/dark-connected.png)
 ![Dark remote page](img/dark-remote.png)
+
+The same long settings pages scroll in the Dark theme. Each strip below runs from
+just below the top of the page down to its last row:
+
+Settings root:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/dark/settings-2.png) | ![](img/scroll/dark/settings-3.png) |
+
+Features:
+
+| | | |
+| :--- | :--- | :--- |
+| ![](img/scroll/dark/features-2.png) | ![](img/scroll/dark/features-3.png) | ![](img/scroll/dark/features-4.png) |
+
+GPS and Bluetooth:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/dark/gps-2.png) | ![](img/scroll/dark/bluetooth-2.png) |
+
+About:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/dark/about-2.png) | ![](img/scroll/dark/about-3.png) |
+
+Power:
+
+| | | | |
+| :--- | :--- | :--- | :--- |
+| ![](img/scroll/dark/power-2.png) | ![](img/scroll/dark/power-3.png) | ![](img/scroll/dark/power-4.png) | ![](img/scroll/dark/power-5.png) |
+
+Storage:
+
+| | |
+| :--- | :--- |
+| ![](img/scroll/dark/storage-2.png) | ![](img/scroll/dark/storage-3.png) |
 
 ## Panels and themes
 
@@ -407,8 +493,14 @@ the pages that used to be described in words only:
   render. These flags are sim only and never change the on-device hardware
   detection.
 
+- **Scroll strips for long pages**: pages taller than the panel are captured
+  frame by frame with the sim scroll action, so the walkthrough pictures every
+  row and not just the top (`sim/scripts/docs-scroll.txt`, output under
+  `docs/img/scroll/<theme>/`).
+
 To regenerate the whole matrix, build the simulator (see `sim/CLAUDE.md`) and run
 `sim/scripts/docs-capture.sh`, which rebuilds the sim once per panel class and
 drives the capture scenarios for each theme with every optional feature enabled.
 The single-board default and dark sets come from `sim/scripts/docs-screenshots.txt`
-and `sim/scripts/docs-screenshots-dark.txt`.
+and `sim/scripts/docs-screenshots-dark.txt`, and the scroll strips from
+`sim/scripts/docs-scroll.txt`.
