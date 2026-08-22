@@ -108,6 +108,12 @@ done
 run_capture s3 docs-screenshots.txt "$IMG" Default "$IMG/boot-splash.png"
 run_capture s3 docs-screenshots-dark.txt "$IMG" Dark
 
+# Scroll strips for the settings pages that are taller than the StickS3 panel, so
+# the walkthrough pictures every row of a scrolling page and not just its top.
+# The frames land as docs/img/scroll/<theme>/<page>-N.png.
+run_capture s3 docs-scroll.txt "$IMG/scroll/default" Default
+run_capture s3 docs-scroll.txt "$IMG/scroll/dark" Dark
+
 # Text size gallery: StickS3, default theme, each Text size option. run_capture
 # inherits FURBLE_SIM_TEXTSIZE from the environment (env adds to it, it does not
 # clear it), so the same representative pages render at each size under

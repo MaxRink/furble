@@ -2256,6 +2256,52 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Scroll the current menu page so off-screen rows come into view. A settings
+  // page taller than the panel only shows its top rows in one screenshot, so the
+  // docs capture drives this between frames to picture every option. The scroll
+  // runs on the live LVGL page the same way a touch drag or an encoder walk past
+  // the last visible row does, so no shipping layout changes.
+  //   scroll next    one viewport down, minus a small overlap so no row is skipped
+  //   scroll top     back to the first row
+  //   scroll bottom  all the way to the last row
+  //   scroll <n>     n pixels down (negative scrolls up)
+  constexpr const char *SCROLL_PREFIX = "scroll ";
+  if (command.compare(0, std::char_traits<char>::length(SCROLL_PREFIX), SCROLL_PREFIX) == 0) {
+    const std::string arg = command.substr(std::char_traits<char>::length(SCROLL_PREFIX));
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return;
+    }
+    lv_obj_update_layout(page);
+    if (arg == "top") {
+      lv_obj_scroll_to_y(page, 0, LV_ANIM_OFF);
+    } else if (arg == "bottom") {
+      const int32_t below = lv_obj_get_scroll_bottom(page);
+      if (below > 0) {
+        lv_obj_scroll_by(page, 0, -below, LV_ANIM_OFF);
+      }
+    } else if (arg == "next") {
+      // One viewport minus an overlap band keeps a couple of rows shared between
+      // consecutive frames, so a row straddling the fold is never lost.
+      const int32_t viewport = lv_obj_get_height(page);
+      const int32_t overlap = viewport / 6;
+      int32_t delta = viewport - overlap;
+      if (delta < 1) {
+        delta = viewport;
+      }
+      const int32_t below = lv_obj_get_scroll_bottom(page);
+      if (delta > below) {
+        delta = below;
+      }
+      if (delta > 0) {
+        lv_obj_scroll_by(page, 0, -delta, LV_ANIM_OFF);
+      }
+    } else {
+      lv_obj_scroll_by(page, 0, -std::atoi(arg.c_str()), LV_ANIM_OFF);
+    }
+    return;
+  }
+
   constexpr const char *PAGE_PREFIX = "page ";
   if (command.compare(0, std::char_traits<char>::length(PAGE_PREFIX), PAGE_PREFIX) != 0) {
     return;
@@ -2508,6 +2554,32 @@ std::string UI::simQueryState(const char *key) {
     const int32_t below = lv_obj_get_scroll_bottom(page);
     const int32_t above = lv_obj_get_scroll_top(page);
     return (below > 0 || above > 0) ? "yes" : "no";
+  }
+
+  // Pixels of content still below the current viewport, so a scroll scenario can
+  // assert it reached the last row (0) after driving "scroll bottom" or a run of
+  // "scroll next" steps. Clamped at 0 so a fully scrolled page never reads
+  // negative.
+  if (query == "scroll_bottom") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(page);
+    const int32_t below = lv_obj_get_scroll_bottom(page);
+    return std::to_string(below > 0 ? below : 0);
+  }
+
+  // Pixels of content scrolled above the current viewport, so a scenario can
+  // assert "scroll top" returned the page to its first row (0).
+  if (query == "scroll_top") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(page);
+    const int32_t above = lv_obj_get_scroll_top(page);
+    return std::to_string(above > 0 ? above : 0);
   }
 
   // Report the Text size roller's current selection so scenarios can assert the
