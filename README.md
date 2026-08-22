@@ -17,9 +17,12 @@ What this fork adds over upstream right now:
 - GPS data reachable while connected, receiver configuration (update rate,
   sentences, constellations), and a raw NMEA page
 - A bulb timer for long exposures
+- An intervalometer, IR shutter trigger, and audible, visual and haptic feedback
+- SD card GPX track logging and settings backup
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
+- A host SDL simulator for the UI, plus an Android companion app
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or
@@ -108,6 +111,12 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5StickS3
 * M5Core Basic
 * M5Core2
+* M5Tough
+
+furble builds five release firmware images, one per board environment. M5Unified
+detects the exact board at runtime, so one image covers a board family. See
+[docs/supported-hardware.md](docs/supported-hardware.md) for the board to
+environment matrix.
 
 ## Installation
 
@@ -195,24 +204,28 @@ can parse it with a split on the first colon.
 
 ```
 version                             firmware and IDF version
-status                              state, targets, uptime, heap, battery
-gps                                 enabled, fix, satellites, lat, lon, alt, age
-gps on | off                        drive the GPS setting and reload the receiver
-gps raw on | off                    mirror incoming NMEA to the console
-gps send <body>                     send a raw sentence, eg. gps send PCAS12,10
-gps power on | off                  external 5V rail, for rail cut experiments
-settings list                       every setting and its current value
-settings get <name>                 name, type, value, and when it applies
-settings set <name> <value>         save a setting
+status                              state, targets, uptime, heap, battery, reset reason
+power                               power stats, or a CSV power log
+perf                                task, heap, and LVGL performance
+gps                                 GPS status and control, eg. gps send PCAS12,10
+settings list | get | set           read and write every setting
+ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection
 disconnect
 shutter press | release | hold <ms>
 focus press | release
+ir fire [protocol]                  fire the IR emitter
 scan start | stop | list
+bt scan | explore | pair | journal   Bluetooth diagnostics
+feedback test <event>               play a feedback pattern
 log <tag> <level>
+debug <subsystem>                   dump internal state
 reboot
 ```
+
+The full command reference, with every subcommand, is in
+[docs/console-commands.md](docs/console-commands.md).
 
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once, settings the UI caches when it starts do not. `settings get` and
@@ -270,13 +283,20 @@ More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/
 
 ### GPS Location Tagging
 
-For Fujifilm & Sony cameras, location tagging is supported with the M5Stack GPS unit:
-- [GPS/BDS Unit v1.1 (AT6668)](https://shop.m5stack.com/products/gps-bds-unit-v1-1-at6668)
+For Fujifilm & Sony cameras, location tagging is supported with an M5Stack GPS
+unit on Grove Port A. Every unit furble targets is the AT6668/CASIC family, so
+one set of $PCAS and NMEA support covers them all.
 
-The previous unit is now EOL:
-- [Mini GPS/BDS Unit](https://shop.m5stack.com/products/mini-gps-bds-unit)
+| Unit | Antenna | Status |
+| :--- | :--- | :--- |
+| [GPS/BDS Unit v1.1 (AT6668)](https://shop.m5stack.com/products/gps-bds-unit-v1-1-at6668) | Ceramic patch | Supported. Indoor reception is marginal. |
+| Unit-GPS (SMA) | External SMA antenna | Supported. Recommended for weak or indoor reception. |
+| Module GPS v2.1 | SMA | Planned. Not yet in firmware, Core and Core2 only. |
+| [Mini GPS/BDS Unit](https://shop.m5stack.com/products/mini-gps-bds-unit) | Ceramic patch | End of life, 9600 baud. |
 
-GPS support can be enabled in `furble` in `Settings->GPS`, the camera must also be configured to request location data.
+See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
+matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
+must also be configured to request location data.
 
 The default baud rate for the GPS unit is 9600.
 The new v1.1 unit runs at a higher baud rate and must be configured under
