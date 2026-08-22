@@ -32,6 +32,14 @@ class Camera {
     PEER,
   };
 
+  enum class PairingType : uint8_t {
+    NONE,
+    PASSKEY_DISPLAY,
+    NUMERIC_COMPARISON,
+  };
+
+  typedef void (*pairing_request_callback_t)(Camera *camera);
+
   typedef struct _gps_t {
     double latitude;
     double longitude;
@@ -94,6 +102,19 @@ class Camera {
     }
     return "peer";
   }
+
+  // The simulator never drives a real BLE pairing handshake, so the pairing
+  // prompt API is stubbed to a permanently idle state.
+  static void setPairingRequestCallback(pairing_request_callback_t callback) { (void)callback; }
+  bool hasPendingPairing(void) const { return false; }
+  PairingType getPairingType(void) const { return PairingType::NONE; }
+  uint32_t getPairingCode(void) const { return 0; }
+  bool pairingTimedOut(void) const { return false; }
+  bool answerPairing(bool accept) {
+    (void)accept;
+    return false;
+  }
+  void cancelPairing(void) {}
 
  private:
   Type m_Type = Type::FAUXNY;

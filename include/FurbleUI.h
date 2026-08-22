@@ -4,10 +4,13 @@
 #include <array>
 #include <atomic>
 #include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include <lvgl.h>
 
 #include "FurbleCalibrate.h"
@@ -28,9 +31,9 @@ class UI {
    */
   enum class ControlMode { MENU, SHUTTER, SLIDER, PRESET, REVERT };
 
-#if defined(FURBLE_CONSOLE)
-  /** Operations the console asks the UI task to carry out on its behalf. */
+  /** Operations another task asks the UI task to carry out. */
   enum class Request {
+#if defined(FURBLE_CONSOLE)
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
@@ -44,6 +47,8 @@ class UI {
     AUDIT,           /**< arg: unused */
     POWER_RELOAD,    /**< arg: unused */
     SD_RELOAD,       /**< arg: unused */
+#endif
+    CAMERA_PAIRING, /**< camera: camera requesting a pairing prompt */
   };
 
   /**
@@ -54,8 +59,7 @@ class UI {
    *
    * @return true if the request was queued.
    */
-  static bool sendRequest(Request request, int32_t arg);
-#endif
+  static bool sendRequest(Request request, int32_t arg, Camera *camera = nullptr);
 
   UI(const interval_t &interval);
 
@@ -340,19 +344,18 @@ class UI {
 
   static std::mutex m_Mutex;
 
-#if defined(FURBLE_CONSOLE)
   typedef struct {
     Request request;
     int32_t arg;
+    Camera *camera;
   } request_t;
 
   static constexpr UBaseType_t m_RequestQueueLength = 8;
 
   static QueueHandle_t m_RequestQueue;
 
-  /** Drain the console request queue, called on the UI task with m_Mutex held. */
-  void serviceRequests(void);
-#endif
+  /** Drain the UI request queue, called with m_Mutex held. */
+  static void serviceRequests(void);
 
   static ConnectContext_t m_ConnectContext;
 
@@ -533,6 +536,18 @@ class UI {
   lv_obj_t *m_StorageGPXSwitch = nullptr;
   bool m_StorageVisible = false;
   uint32_t m_StorageGeneration = 0;
+  lv_timer_t *m_PairingTimer = nullptr;
+  lv_obj_t *m_PairingDialog = nullptr;
+  // Weak reference to the camera behind the current camera pairing modal. A
+  // disconnect can free the Camera while the modal is still up, so the footer
+  // callbacks and the pairing timer lock() this before touching the camera and
+  // treat an expired reference as gone.
+  std::weak_ptr<Camera> m_PairingCamera;
+  // True while the open modal is a camera pairing prompt. Kept separate from
+  // m_PairingCamera because an expired weak reference cannot distinguish a
+  // camera modal whose camera was freed from a companion modal.
+  bool m_PairingIsCamera = false;
+  lv_obj_t *m_PairingPrevFocus = nullptr;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -915,17 +930,23 @@ class UI {
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);
 
-  /** Poll for a pending companion numeric-comparison request. */
-  static void companionPairingTimer(lv_timer_t *timer);
+  /** Poll for a pending companion or camera pairing request. */
+  static void pairingTimer(lv_timer_t *timer);
 
-  /** Start the companion pairing prompt timer. */
-  void startCompanionPairingTimer(void);
+  /** Start the pairing prompt timer. */
+  void startPairingTimer(void);
 
-  /** Stop the companion pairing prompt timer. */
-  void stopCompanionPairingTimer(void);
+  /** Close the current pairing prompt. */
+  void closePairingDialog(void);
 
-  /** Close the pairing prompt and restore the focus captured before it opened. */
+  /** Close the companion prompt when the companion setting is disabled. */
   void closeCompanionPairingDialog(void);
+
+  /** Show a companion numeric-comparison prompt. */
+  void showCompanionPairing(void);
+
+  /** Show a camera pairing-code prompt. */
+  void showCameraPairing(Camera *camera);
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);
