@@ -1598,6 +1598,8 @@ const char *cameraTypeName(Camera::Type type) {
       return "fujifilm-secure";
     case Camera::Type::RICOH:
       return "ricoh";
+    case Camera::Type::PANASONIC_LUMIX:
+      return "panasonic-lumix";
   }
   return "unknown";
 }
