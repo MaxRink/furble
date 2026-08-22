@@ -13,6 +13,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "capture.h"
 #include "driver.h"
 
 const char *LOG_TAG = FURBLE_STR;
@@ -37,6 +38,14 @@ int runSimulator(bool *) {
   BootScreen::step("Storage");
   BootScreen::step("Power");
 
+  // The boot splash draws straight to the panel before the LVGL UI exists, so
+  // a script cannot reach it. Capturing here, mid progress bar, gives docs a
+  // real splash frame. Set FURBLE_SIM_CAPTURE_SPLASH to the output PNG path.
+  if (const char *splash = std::getenv("FURBLE_SIM_CAPTURE_SPLASH");
+      splash != nullptr && splash[0] != '\0') {
+    Sim::captureFrame(splash);
+  }
+
   // The companion service mirrors the rig request so the rig transport can
   // attach. Scenarios drive every other setting through their seed lines.
   Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
@@ -46,6 +55,14 @@ int runSimulator(bool *) {
     auto camera = CameraList::last();
     CameraList::save(camera.get());
     camera->setActive(true);
+  } else if (Sim::scenarioSettingIsTrue("saved_camera")) {
+    // Seed a saved but inactive camera so the Connect and Delete list pages
+    // render entries and their main-menu buttons are enabled. Unlike
+    // autoconnect this does not mark the camera active, so no connection is
+    // attempted at boot.
+    CameraList::addFauxNY();
+    auto camera = CameraList::last();
+    CameraList::save(camera.get());
   }
 
   // Let capture scripts pick a theme without navigating the roller. The theme

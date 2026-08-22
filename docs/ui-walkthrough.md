@@ -46,13 +46,14 @@ including the one-button gestures and shutter lock, is documented in
 
 ## Boot
 
+![Boot splash](img/boot-splash.png)
+
 On power up furble draws a boot splash with a progress bar while it brings up
 each subsystem (Infrared, Feedback, Storage, Power, Bluetooth, Companion). The
 splash is the shipped default and can be turned off under
 `Settings` > `Features` > `Boot screen`. The splash is drawn directly to the
-display before the LVGL interface takes over, so the simulator renders it during
-boot but it is replaced by the main menu before a script can capture it. It has
-no separate screenshot here.
+display before the LVGL interface takes over. The simulator snapshots it during
+boot through a dedicated capture hook, before the main menu replaces it.
 
 ## Main menu
 
@@ -72,7 +73,13 @@ The header shows the connection state and the battery indicator.
 
 ### Connect, Scan, Delete
 
-These three entries open list pages driven by live Bluetooth activity:
+These three entries open list pages driven by live Bluetooth activity. The
+simulator seeds a saved camera and a fake scan, so each list renders with an
+entry:
+
+![Connect list](img/connect-list.png)
+![Scan list](img/scan-list.png)
+![Delete list](img/delete-list.png)
 
 - **Connect** lists your saved cameras. Selecting one connects to it. With
   Multi-Connect enabled the list also carries a Multi-Connect action to bring up
@@ -82,8 +89,6 @@ These three entries open list pages driven by live Bluetooth activity:
   connects to it.
 - **Delete** lists saved cameras so you can remove one.
 
-These pages are driven by real button presses into a scanning radio, which the
-headless simulator does not exercise, so they have no captured screenshot here.
 The connecting overlay they lead to is shown next.
 
 ## Connecting
@@ -176,12 +181,23 @@ Companion (the companion BLE service), Watchdog (M5StickS3 only), Preset Picker
 (the exposure preset stepper on the shutter page), and Boot screen (the startup
 splash).
 
+### Companion pairing
+
+![Companion pairing](img/companion-pairing.png)
+
+With the Companion service enabled, a companion app that connects raises a pairing
+dialog showing a PIN with Accept and Reject buttons. Confirming pairs the app;
+rejecting dismisses it. The simulator injects a pending pairing so the dialog
+renders without a companion peer.
+
 ### Infrared
+
+![Infrared settings](img/settings-infrared.png)
 
 The Infrared submenu holds the Infrared on/off switch and the IR Protocol roller
 (Nikon, Sony, Canon, Canon 2s). The whole submenu is hidden unless the board has
-an IR LED. The simulator models a board without an active IR LED, so this page
-has no captured screenshot; see the
+an IR LED. The simulator reports an IR LED present (behind a capture flag) so the
+submenu renders; see the
 [settings reference](settings-and-controls.md#infrared) for the values.
 
 ### GPS
@@ -258,12 +274,14 @@ runtime estimate. Rows the board cannot measure are hidden.
 
 ### Feedback
 
+![Feedback settings](img/settings-feedback.png)
+
 The Feedback submenu picks an Output (Off, Sound, Light, Vibrate, or a
 combination, filtered to what the board supports), a per-event mask (Shutter
 fired, Countdown, Connect and disconnect, Low battery), and a Volume slider when
 the chosen output includes sound. The submenu is skipped on boards with no output
-beyond Off. The simulator models such a board, so this page has no captured
-screenshot; see the [settings reference](settings-and-controls.md#feedback).
+beyond Off. The simulator reports the full output set (behind a capture flag) so
+the submenu renders; see the [settings reference](settings-and-controls.md#feedback).
 
 ### Diagnostics
 
@@ -283,10 +301,12 @@ Diagnostics groups read-only status pages.
 
 ### Storage
 
+![Storage settings](img/settings-storage.png)
+
 The Storage submenu holds GPX Logging on/off, a GPX Interval roller, Export and
 Import Settings actions, and a Card Info page. It appears only on boards with a
-supported SD card slot. The simulator models a board without one, so this page
-has no captured screenshot; see the
+supported SD card slot. The simulator reports a mounted card (behind a capture
+flag) so the submenu renders; see the
 [settings reference](settings-and-controls.md#storage).
 
 ## Dark theme
@@ -295,29 +315,91 @@ The Dark theme swaps the light background for a dark one and marks focus with a
 green outline. Set it under `Settings` > `Theme` > `Dark` and press Restart.
 
 ![Dark main menu](img/dark-main.png)
+![Dark connect list](img/dark-connect-list.png)
+![Dark scan list](img/dark-scan-list.png)
 ![Dark settings](img/dark-settings.png)
 ![Dark features](img/dark-features.png)
+![Dark Infrared](img/dark-infrared.png)
 ![Dark GPS settings](img/dark-settings-gps.png)
 ![Dark Bluetooth](img/dark-bluetooth.png)
+![Dark Feedback](img/dark-feedback.png)
+![Dark Storage](img/dark-storage.png)
 ![Dark connected menu](img/dark-connected.png)
 ![Dark remote page](img/dark-remote.png)
 
+## Panels and themes
+
+furble ships three themes (Default, Dark, Mono Furble) and runs on three panel
+classes. The simulator renders each at its native resolution. This gallery is a
+representative sample of the boards x themes matrix; the full per page capture for
+every cell lives under `docs/img/<board>/<theme>/`. The narrow Stick panels use
+the non-touch layout (physical L / OK / R button indicators are always on
+screen); the Core is a touch panel and shows the on-screen touch controls.
+
+### M5StickS3, M5StickC-Plus (135x240)
+
+![Boot splash](img/s3/boot-splash.png)
+
+| Default | Dark | Mono Furble |
+| :--- | :--- | :--- |
+| ![](img/s3/default/main.png) | ![](img/s3/dark/main.png) | ![](img/s3/mono/main.png) |
+| ![](img/s3/default/settings.png) | ![](img/s3/dark/settings.png) | ![](img/s3/mono/settings.png) |
+| ![](img/s3/default/remote.png) | ![](img/s3/dark/remote.png) | ![](img/s3/mono/remote.png) |
+
+### M5StickC (80x160)
+
+![Boot splash](img/stickc/boot-splash.png)
+
+| Default | Dark | Mono Furble |
+| :--- | :--- | :--- |
+| ![](img/stickc/default/main.png) | ![](img/stickc/dark/main.png) | ![](img/stickc/mono/main.png) |
+| ![](img/stickc/default/settings.png) | ![](img/stickc/dark/settings.png) | ![](img/stickc/mono/settings.png) |
+| ![](img/stickc/default/remote.png) | ![](img/stickc/dark/remote.png) | ![](img/stickc/mono/remote.png) |
+
+### M5Stack Core, Core2 (320x240)
+
+![Boot splash](img/core/boot-splash.png)
+
+| Default | Dark | Mono Furble |
+| :--- | :--- | :--- |
+| ![](img/core/default/main.png) | ![](img/core/dark/main.png) | ![](img/core/mono/main.png) |
+| ![](img/core/default/settings.png) | ![](img/core/dark/settings.png) | ![](img/core/mono/settings.png) |
+| ![](img/core/default/remote.png) | ![](img/core/dark/remote.png) | ![](img/core/mono/remote.png) |
+
+## Pending feature (PR #28): IMU spirit level
+
+The IMU spirit level is not on the current firmware. It lands with PR #28. These
+previews are captured from that branch's simulator build, not from this branch,
+and are here so the page is documented ahead of the merge. The landscape (rotated)
+level view has a bench-only DMA issue and is not shown; the portrait and side
+bubble views render correctly.
+
+![Level, portrait](img/pending-28/level-portrait.png)
+![Level, side bubble tube off center](img/pending-28/level-bubble.png)
+![IMU diagnostics](img/pending-28/imu-diag.png)
+
+The level page shows a bubble that tracks the device tilt. Holding the device
+level centers the bubble; tilting moves it off center along the side tube. The
+IMU diagnostics page shows the raw roll, pitch, and acceleration readout.
+
 ## What the simulator models
 
-The screenshots come from the SDL simulator, which runs the real UI code over a
-modeled M5StickS3 panel. A few things it does not model, and why they have no
-screenshot:
+The screenshots come from the SDL simulator, which runs the real UI code over the
+modeled M5StickC, M5StickS3, and M5Stack Core panels. The simulator now models
+the pages that used to be described in words only:
 
-- **Boot splash**: drawn to the display before the LVGL UI starts, so it is
-  replaced by the main menu before capture.
-- **Scan, Connect, and Delete list pages**: driven by real button presses into a
-  live scanning radio, which the headless run does not exercise.
-- **Infrared, Feedback, and Storage submenus**: gated on an IR LED, a real
-  feedback output, and an SD card slot respectively. The modeled board reports
-  none of these, so the submenus are hidden. They are documented from the
-  firmware source in the [settings reference](settings-and-controls.md).
+- **Boot splash**: captured through a dedicated hook that snapshots the splash
+  before the LVGL UI replaces it (`FURBLE_SIM_CAPTURE_SPLASH`).
+- **Scan, Connect, and Delete list pages**: a seeded saved camera and a fake scan
+  populate the lists so they render with entries.
+- **Infrared, Feedback, and Storage submenus**: the sim reports an IR LED, a
+  feedback output, and a mounted SD card (behind the `FURBLE_SIM_IR`,
+  `FURBLE_SIM_FEEDBACK`, and `FURBLE_SIM_SD` capture flags) so the submenus
+  render. These flags are sim only and never change the on-device hardware
+  detection.
 
-To regenerate the screenshots, build the simulator (see `sim/CLAUDE.md`) and run
-`sim/scripts/docs-screenshots.txt` for the default theme and
-`sim/scripts/docs-screenshots-dark.txt` (with `FURBLE_SIM_THEME=Dark`) for the
-dark theme.
+To regenerate the whole matrix, build the simulator (see `sim/CLAUDE.md`) and run
+`sim/scripts/docs-capture.sh`, which rebuilds the sim once per panel class and
+drives the capture scenarios for each theme with every optional feature enabled.
+The single-board default and dark sets come from `sim/scripts/docs-screenshots.txt`
+and `sim/scripts/docs-screenshots-dark.txt`.

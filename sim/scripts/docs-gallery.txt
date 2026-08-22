@@ -1,0 +1,74 @@
+# Board x theme gallery capture. Board is chosen by the build (panel env vars),
+# theme by FURBLE_SIM_THEME, and the optional-hardware submenus by the
+# FURBLE_SIM_IR / FURBLE_SIM_FEEDBACK / FURBLE_SIM_SD capability env vars. The
+# narrow boards set FURBLE_SIM_NO_TOUCH so the Remote page renders the non-touch
+# floating-indicator layout instead of the 320px touch grid. Only pages that
+# exist on every board are captured here, so the same script runs unchanged on
+# the StickC, StickS3 and Core panels. Navigation uses the deterministic nav
+# actions; headless key injection does not drive LVGL menu activation.
+seed fauxny true
+seed gps true
+seed saved_camera true
+wait 500
+
+home
+wait 400
+capture main
+print ui.page
+
+action nav settings
+wait 400
+capture settings
+print ui.page
+
+action nav features
+wait 400
+capture features
+print ui.page
+
+action nav infrared
+wait 400
+capture infrared
+print ui.page
+
+action nav gps
+wait 400
+capture gps
+print ui.page
+
+action nav bluetooth
+wait 400
+capture bluetooth
+print ui.page
+
+action nav feedback
+wait 400
+capture feedback
+print ui.page
+
+action nav storage
+wait 500
+capture storage
+print ui.page
+
+# Connect list, then the live connect flow into the Connected menu and Remote.
+home
+wait 300
+action nav connect
+wait 400
+capture connect-list
+print ui.page
+
+home
+wait 300
+action connect
+wait 1800
+capture connected
+print ui.page
+
+action blind
+wait 500
+capture remote
+print ui.page
+
+exit
