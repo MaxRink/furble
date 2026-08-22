@@ -1,7 +1,8 @@
 # 61: Camera compatibility survey
 
-Status: research, no implementation yet. All cited links were fetched and
-content verified during this survey (August 2026).
+Status: research complete, Lumix implementation ported in plan 72 and
+UNTESTED. All cited links were fetched and content verified during this survey
+(August 2026).
 
 Update 2026-08-21: expanded from a new-vendor feasibility survey into a
 full reference catalog plus a feature-expansion gap analysis for the
@@ -23,6 +24,25 @@ Map BLE camera remote protocols across vendors against current lib/furble
 coverage. Rank the most feasible additions. Identify which can be tested
 with a FauxNY-style fake or an emulated GATT server, and which need real
 hardware.
+
+## Implementation state
+
+Plan 72 ports the Lumix implementation from upstream PR 282 onto the fork's
+current vendor-class API. `Camera::Type::PANASONIC_LUMIX` is value 10, and
+`CameraList` registers the saved-camera and scan paths. The current fork does
+not have the upstream `Camera::toUnixTime()` helper, so the Lumix class keeps
+the equivalent conversion local and leaves the current connection and power
+API unchanged.
+
+The companion wire model has no camera-type field or vendor mapping, so it is
+unchanged. No user setting is needed for Lumix support. The next free settings
+wire ID remains 41.
+
+The S5II first-pair path may still require a WiFi-assisted Lumix Sync handshake
+on the camera. The port only implements the MEI0 path seen in S5II and BGH1
+traces. The G9II-generation XOR login is not implemented. Lumix support is
+UNTESTED because this workspace has no Lumix hardware. Verification is limited
+to code review and the FauxNY-style app review.
 
 ## Current lib/furble coverage
 
