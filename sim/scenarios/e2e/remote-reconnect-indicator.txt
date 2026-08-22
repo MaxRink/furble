@@ -1,0 +1,39 @@
+# task #54: the Remote shutter page must surface a mid-session drop too.
+#
+# PR #149 rewrote the connected-page title to "Reconnecting" during a
+# mid-session drop, but left the full-screen Remote shutter page, where shots
+# are taken, with no indication when a live link drops. A drop must now show a
+# red Bluetooth icon plus "Reconnecting" text overlaid on the shutter page,
+# non-blocking, and clear it on recovery. Connect the FauxNY camera with
+# reconnect on, navigate to the shutter page, drop the link, and confirm the
+# banner tracks the state and the page never changes under it.
+seed fauxny true
+seed reconnect true
+wait 300
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+# Navigate to the full-screen Remote shutter page.
+action blind
+wait 200
+assert ui.page shutter
+# Connected: no banner on the shutter page.
+assert ui.remote_reconnecting no
+assert ui.remote_status hidden
+# Drop the active link. The liveness poll must show the banner without leaving
+# the shutter page.
+action drop
+wait 700
+assert control.state connecting
+assert ui.page shutter
+assert ui.remote_reconnecting yes
+# Single camera: the banner reads the bare word.
+assert ui.remote_status Reconnecting
+# Reconnect completes and the banner clears, still on the shutter page.
+wait 1000
+assert control.state active
+assert ui.page shutter
+assert ui.remote_reconnecting no
+assert ui.remote_status hidden
+exit

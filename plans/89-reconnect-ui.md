@@ -68,6 +68,36 @@ title is now bound to the same state as the icon.
   only re-set when the text actually changes (same redraw discipline as the
   icon).
 
+### Reconnect indicator on the Remote shutter page
+
+The status-row icon and the connected-page title cover the connected menu, but
+hardware testing of #149 surfaced a further gap: the full-screen Remote shutter
+page, where shots are actually taken, showed no sign of a mid-session drop.
+`updateReconnectTitle` deliberately leaves a sub page's own header title alone,
+and the tight shutter layout does not read the small mono status-row icon.
+
+A dedicated non-blocking banner now lives on the shutter page itself
+(`m_RemoteReconnect`, built in `addConnectedMenu` on `menuShutter.page`):
+
+- A red-recolored Bluetooth glyph (the shared `icon_bluetooth`, recolored with
+  `image_recolor` rather than shipping a new compressed asset) stacked over a red
+  "Reconnecting" / "Reconnecting (i/n)" label, in a translucent dark chip anchored
+  top-left. It is `LV_OBJ_FLAG_FLOATING`, so it never joins the page layout or its
+  scroll extent and never obscures the shutter, focus, or lock controls.
+- The badge stacks the icon over the text (column layout) at the board's Small
+  font so "Reconnecting (i/n)" stays inside even the 135 px StickS3 panel instead
+  of clipping off the right edge. The 80 px StickC panel is too narrow for any
+  wording, so it shows the red icon alone (the connected page title still carries
+  the words there).
+- `UI::updateRemoteReconnect(bool)` drives it from the same three
+  `connectTimerHandler` branches and the same per-target counts as
+  `updateReconnectTitle`, reusing the count semantics (i down of n total). Unlike
+  the title helper it runs regardless of the current page: the banner is a child
+  of the shutter page, so it only renders while that page is on screen, which is
+  exactly where the title is not rewritten. Show/hide goes through
+  `showStatusIcon` and the label through the changed-check helpers, so a liveness
+  poll never re-invalidates.
+
 ## Dropping shutter and focus issued while a target is down
 
 Fixing the BLE dead-link detection (the supervision-timeout cap, #143) made a
@@ -162,6 +192,14 @@ Sim regression scenarios under `sim/scenarios/e2e/`:
   a press with both connected adds two, a press with one down adds one (the
   survivor fires, the dropped one is suppressed), the down-time press does not
   replay on reconnect, and a press once both are live again adds two.
+- `remote-reconnect-indicator.txt`: connect one FauxNY camera, navigate to the
+  full-screen Remote shutter page, drop the link, and assert the shutter-page
+  banner shows (`ui.remote_reconnecting yes`, `ui.remote_status Reconnecting`)
+  without leaving the page, then clears on recovery.
+- `remote-reconnect-multiconnect.txt`: two cameras, open the shutter page, drop
+  one, and assert the shutter-page banner shows with the per-device count
+  (`ui.remote_reconnecting yes`, `ui.reconnect_count 1/2`), then clears once both
+  are live again.
 
 Host test additions:
 
@@ -184,6 +222,11 @@ Sim harness additions (all `FURBLE_SIM` gated, release firmware byte-unaffected)
   "Reconnecting" / "Reconnecting (i/n)").
 - `ui.reconnect_count` query: the title's "i/n" count as a single token, tied to
   the same target counts the title formats from.
+- `ui.remote_status` query: the Remote shutter page banner label text, or
+  "hidden" when the banner is not showing.
+- `ui.remote_reconnecting` query: token-safe "yes"/"no" visibility of the shutter
+  page banner, so a multi-connect scenario can assert it without matching the
+  spaced "Reconnecting (i/n)" text (pair with `ui.reconnect_count`).
 - `ui.connect_box`, `ui.page`, `control.connected`, `control.targets`,
   `camera.shutter_presses` / `camera.shutter_releases` queries used above.
 
@@ -223,3 +266,15 @@ PENDING HARDWARE RETEST on the M5StickS3, single and multi camera:
 - Multi-connect: with two cameras, drop one and confirm the surviving camera's
   shutter still fires while the other reconnects, the dropped camera's press is
   suppressed and never replays, and the survivor is never interrupted.
+
+Follow-up on feat/remote-reconnect-indicator (stacks on #149): the same
+mid-session reconnect state now also drives a non-blocking banner on the Remote
+shutter page (`updateRemoteReconnect`), a red Bluetooth icon plus
+"Reconnecting (i/n)" text top-left, so the full-screen shutter view is no longer
+blank when the link drops. clang-format clean. All five release envs plus
+m5stick-s3-debug build. Host ctests pass. Sim e2e scenarios pass on both the
+135x240 and 80x160 panels, including the two new `remote-reconnect-*` scenarios.
+
+PENDING HARDWARE VISUAL CONFIRM on the M5StickS3: on the Remote shutter page,
+drop a live Fujifilm link and confirm the red Bluetooth icon plus "Reconnecting"
+text appears top-left without interrupting the shutter, and clears on reconnect.

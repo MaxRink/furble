@@ -2513,6 +2513,35 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(down) + "/" + std::to_string(total);
   }
 
+  // The Remote shutter page reconnect banner. Reports "hidden" when the banner
+  // is not showing, otherwise its label text ("Reconnecting" or "Reconnecting
+  // (i/n)"), so a scenario can assert the shutter page surfaces a mid-session
+  // drop with the per-device count and clears it on recovery, independently of
+  // the connected-page title. The label text is the full string regardless of
+  // any wrap on the narrow panel, so the assertion holds on every board.
+  if (query == "remote_status") {
+    const bool hidden =
+        m_RemoteReconnect == nullptr || lv_obj_has_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+    if (hidden) {
+      return "hidden";
+    }
+    if (m_RemoteReconnectLabel == nullptr) {
+      return "shown";
+    }
+    const char *text = lv_label_get_text(m_RemoteReconnectLabel);
+    return (text != nullptr) ? std::string(text) : std::string("shown");
+  }
+
+  // Token-safe visibility of the shutter page reconnect banner ("yes"/"no"), so
+  // a multi-connect scenario can assert it is showing without matching the label
+  // text that carries a space in "Reconnecting (i/n)". Pair with reconnect_count
+  // for the per-device count.
+  if (query == "remote_reconnecting") {
+    const bool hidden =
+        m_RemoteReconnect == nullptr || lv_obj_has_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+    return hidden ? "no" : "yes";
+  }
+
   // Whether the connect liveness timer is parked. It must pause once the link is
   // fully down so it does not spin forever on a torn-down connection, and keep
   // running while active or reconnecting so a drop is observed.
@@ -2961,6 +2990,33 @@ void UI::updateReconnectTitle(bool reconnecting) {
   }
 }
 
+void UI::updateRemoteReconnect(bool reconnecting) {
+  if (m_RemoteReconnect == nullptr) {
+    return;
+  }
+
+  if (!reconnecting) {
+    // Guarded inside showStatusIcon: the hidden flag is only toggled when it
+    // actually changes, so a per-tick liveness poll never re-invalidates.
+    showStatusIcon(m_RemoteReconnect, false);
+    return;
+  }
+
+  // Reuse the same per-target connection state that drives updateReconnectTitle
+  // so the shutter-page banner and the connected-page title never disagree.
+  auto &control = Control::getInstance();
+  const size_t total = control.getTargetCount();
+  const size_t connected = control.getConnectedTargetCount();
+  const size_t down = (total > connected) ? (total - connected) : 0;
+  if (total > 1) {
+    setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting (%u/%u)",
+                             static_cast<unsigned>(down), static_cast<unsigned>(total));
+  } else {
+    setLabelTextIfChanged(m_RemoteReconnectLabel, "Reconnecting");
+  }
+  showStatusIcon(m_RemoteReconnect, true);
+}
+
 void UI::connectTimerHandler(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("connect_timer");
   // Fast cadence while a connect is in progress so the progress bar animates
@@ -3000,6 +3056,9 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         // "Reconnecting" (or "Reconnecting (i/n)" for a multi-connect session)
         // instead of still claiming the link is up.
         ctx->ui->updateReconnectTitle(true);
+        // Same state on the Remote shutter page, the other place shots are
+        // taken: a red Bluetooth icon plus the matching "Reconnecting" text.
+        ctx->ui->updateRemoteReconnect(true);
       } else {
         // Initial connect: nothing is on screen yet, so present the progress
         // box that owns the connect flow until the first link goes active.
@@ -3075,6 +3134,8 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       showStatusIcon(ctx->ui->m_Status.reconnectingIcon, false);
       // Link is back: restore the connected page title from "Reconnecting".
       ctx->ui->updateReconnectTitle(false);
+      // Link is back: clear the Remote shutter page banner too.
+      ctx->ui->updateRemoteReconnect(false);
       // Do not pause. A paused timer never observes a mid-session link drop, so
       // the screen would keep showing connected while control drops and retries
       // (task #54). Keep polling liveness at a gentle cadence: a drop re-enters
@@ -3092,6 +3153,8 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       // Session fully down: clear any lingering "Reconnecting" title back to the
       // default so a later connect starts from the normal "Connected" label.
       ctx->ui->updateReconnectTitle(false);
+      // Session fully down: clear the Remote shutter page banner too.
+      ctx->ui->updateRemoteReconnect(false);
       // Defensive: doDisconnect() already pauses on the interactive path, and a
       // legitimate reconnect passes through STATE_CONNECT/CONNECTING, not idle.
       // If Control ever drops straight from active to idle, pause here too so
@@ -3422,6 +3485,7 @@ void UI::doDisconnect(void) {
   // indicator so it never lingers on the next connect.
   m_ConnectContext.sessionEstablished = false;
   showStatusIcon(m_ConnectContext.ui->m_Status.reconnectingIcon, false);
+  m_ConnectContext.ui->updateRemoteReconnect(false);
 
   if (m_ConnectContext.feedbackConnected) {
     Feedback::getInstance().signal(Feedback::DISCONNECTED);
@@ -3681,6 +3745,53 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_style(line, &style, 0);
 
     lv_obj_move_foreground(m_ShutterLockIcon);
+  }
+
+  // Non-blocking reconnect banner overlaid on the Remote shutter page. The
+  // header status row also carries the plain reconnecting icon, but the
+  // full-screen shutter view is where shots are taken, so a mid-session drop is
+  // surfaced here too with a clearer red Bluetooth icon plus "Reconnecting"
+  // (or "Reconnecting (i/n)") text. Floating so it never joins the page layout
+  // or its scroll extent, and hidden until updateRemoteReconnect shows it.
+  m_RemoteReconnect = lv_obj_create(menuShutter.page);
+  lv_obj_remove_style_all(m_RemoteReconnect);
+  lv_obj_set_size(m_RemoteReconnect, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_layout(m_RemoteReconnect, LV_LAYOUT_FLEX);
+  // Stack the icon over the text: the badge width is then the wider of the two
+  // (the text), which keeps "Reconnecting (i/n)" inside the narrow 135 px panel
+  // instead of clipping off the right edge as a single icon+text row would.
+  lv_obj_set_flex_flow(m_RemoteReconnect, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(m_RemoteReconnect, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(m_RemoteReconnect, 2, 0);
+  lv_obj_set_style_pad_row(m_RemoteReconnect, 0, 0);
+  lv_obj_set_style_radius(m_RemoteReconnect, 4, 0);
+  lv_obj_set_style_bg_opa(m_RemoteReconnect, LV_OPA_70, 0);
+  lv_obj_set_style_bg_color(m_RemoteReconnect, lv_color_black(), 0);
+  lv_obj_clear_flag(m_RemoteReconnect, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(m_RemoteReconnect, LV_OBJ_FLAG_FLOATING);
+  lv_obj_align(m_RemoteReconnect, LV_ALIGN_TOP_LEFT, 1, 1);
+  lv_obj_add_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *reconnectIcon = lv_image_create(m_RemoteReconnect);
+  lv_image_set_src(reconnectIcon, &icon_bluetooth);
+  // Recolor the shared Bluetooth glyph red rather than shipping a new
+  // compressed asset, so there is no extra decompress cost.
+  lv_obj_set_style_image_recolor(reconnectIcon, lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_set_style_image_recolor_opa(reconnectIcon, LV_OPA_COVER, 0);
+
+  m_RemoteReconnectLabel = lv_label_create(m_RemoteReconnect);
+  lv_obj_set_style_text_color(m_RemoteReconnectLabel, lv_palette_main(LV_PALETTE_RED), 0);
+  // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
+  // panel width.
+  lv_obj_set_style_text_font(m_RemoteReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL), 0);
+  lv_label_set_text(m_RemoteReconnectLabel, "Reconnecting");
+
+  // The 80 px StickC panel is too narrow to fit the text even at the Small font,
+  // so drop the label there and keep just the red Bluetooth icon (the connected
+  // page title still carries the wording).
+  if (M5.Display.width() < 110) {
+    lv_obj_add_flag(m_RemoteReconnectLabel, LV_OBJ_FLAG_HIDDEN);
   }
 
   // The shutter lock is the only focusable control on the Remote page, so its
