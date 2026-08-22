@@ -636,6 +636,11 @@ strongest protection the stack offers.
   struct before any field is read. Every enum on the wire is range checked
   before it is cast. Rate limits as described in section 3.6.
 
+Screenless boards cannot show a numeric comparison, so a display-less furble
+needs a different trust anchor. See `plans/42-waveshare-eth-node.md` for the
+screenless-pairing variant of this security section: physical-presence TOFU plus
+LE Secure Connections plus an SRP6a proof-of-possession handshake.
+
 Threat model in one sentence: an attacker within radio range who has not
 completed a numeric comparison on the device screen can learn that a furble
 exists and nothing else.
