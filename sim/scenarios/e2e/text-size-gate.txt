@@ -1,0 +1,22 @@
+# Large boards keep the Normal default and all three text sizes.
+#
+# This runs on the default 135x240 (M5StickS3) binary. Nothing seeds the Text
+# size, so Settings::init supplies the board default. On every board except the
+# 80x160 M5StickC that default is Normal (1) and the roller offers all three
+# sizes. The companion small-board scenarios in bughunt/ assert the narrowed
+# set on the 80x160 binary.
+wait 300
+assert ui.page main
+# A fresh device on this board defaults to Normal.
+assert setting.text_size 1
+action nav text_size
+wait 200
+assert ui.page text_size
+# The roller reflects the Normal default and offers all three sizes.
+assert ui.text_size 1
+assert ui.text_size_options 3
+assert ui.overflow no
+action page settings
+wait 200
+assert ui.page settings
+exit

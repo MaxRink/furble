@@ -5,6 +5,7 @@
 
 #include "Preferences.h"
 
+#include "FurbleTextSize.h"
 #include "interval.h"
 
 namespace Furble {
