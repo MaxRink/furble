@@ -1,0 +1,25 @@
+# Regression for the retained green focus outline on the shutter button
+# indicators (fix/button-indicator-highlight).
+#
+# In SHUTTER mode the physical buttons drive the on-screen indicators through a
+# LV_INDEV_TYPE_BUTTON device. LVGL's click focus sends LV_EVENT_FOCUSED to any
+# click focusable object on press and clears it only when another object is
+# pressed, so before the fix the green focus outline lingered after release. The
+# indicators drop LV_OBJ_FLAG_CLICK_FOCUSABLE, so click focus must skip them.
+#
+# "seed no_touch true" detaches the SDL mouse-touch device so the sim builds the
+# non-touch physical-button UI (the floating m_Left/m_OK/m_Right indicators) that
+# the M5StickS3 uses, instead of the touch on-page shutter buttons.
+#
+# "action blind" enters the remote shutter control mode. "indicator-click-focus"
+# replays LVGL's exact click-focus flag gate against all three indicators. With
+# the bug present the flag is still set, LV_EVENT_FOCUSED latches the state and
+# the assert fails; with the fix the flag is gone, no state latches and the
+# indicators stay clean.
+seed no_touch true
+seed fauxny true
+wait 300
+action blind
+action indicator-click-focus
+assert ui.indicators_focused no
+exit

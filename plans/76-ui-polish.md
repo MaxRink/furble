@@ -71,3 +71,47 @@ choice in M5GFX, so each class needs its own build.
 - The five release `sdkconfig.*` files are unchanged.
 - On-device verification on the M5StickS3 is still owed before merge because the
   change is compiled into firmware.
+
+## Follow-up: retained focus outline on the shutter button indicators
+
+### Motivation
+
+Hardware use on the M5StickS3 showed the same chartreuse focus ring leaking onto
+the on-screen physical-button indicators (`m_Left`, `m_OK`, `m_Right`). In
+SHUTTER mode the indicators are pressed, so the green outline appears on press
+and then stays after the button is released. The indicators are pure hints and
+must never carry a focus ring, so the retained highlight reads as a regression.
+
+### Root cause
+
+The indicators are `lv_button` widgets. Every base object is created with
+`LV_OBJ_FLAG_CLICK_FOCUSABLE`. In SHUTTER mode the physical buttons drive the
+indicators through a `LV_INDEV_TYPE_BUTTON` device mapped to each widget centre.
+On press LVGL runs `indev_click_focus`, which for a click-focusable object with
+no group sends it `LV_EVENT_FOCUSED` and only clears that focus on the next
+press of a different object. The indicators were already removed from the
+encoder group, but they kept the click-focus flag, so a press latched
+`LV_STATE_FOCUSED`, the `style_button` chartreuse outline drew, and it lingered
+past release.
+
+### Fix
+
+Drop `LV_OBJ_FLAG_CLICK_FOCUSABLE` from the three indicators right where they are
+already removed from the encoder group. Click focus then skips them entirely, so
+no `LV_EVENT_FOCUSED` is ever sent and no outline latches. No focusable widget or
+focus ring is added; the indicators keep their position and their press, release
+and click handlers unchanged. This is the only firmware change.
+
+### Verification
+
+- New host regression `sim/scenarios/e2e/shutter-indicator-focus.txt` enters
+  SHUTTER mode and replays LVGL's exact click-focus flag gate through the
+  `indicator-click-focus` sim action, then asserts `ui.indicators_focused` is
+  `no`. The scenario fails on the pre-fix code (flag still set, state latches)
+  and passes with the flag dropped. The action and the `indicators_focused`
+  observer are `FURBLE_SIM`-gated, so firmware builds are unchanged.
+- `sh sim/build.sh` green, `run-e2e.sh` green.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug` green.
+- PENDING HARDWARE RETEST: visually confirm on the M5StickS3 that the green
+  outline no longer appears on the shutter indicators, or clears immediately on
+  release.

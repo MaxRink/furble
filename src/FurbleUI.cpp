@@ -543,6 +543,15 @@ UI::UI(const interval_t &interval)
     lv_group_remove_obj(m_OK);
     lv_group_remove_obj(m_Right);
 
+    // In SHUTTER mode the physical buttons drive these indicators through a
+    // LV_INDEV_TYPE_BUTTON device. LVGL click focus sends LV_EVENT_FOCUSED to a
+    // click focusable object on press and only clears it when another object is
+    // pressed, so the green focus outline lingers after release. The indicators
+    // are pure hints and never take focus, so drop the flag to stop it.
+    lv_obj_remove_flag(m_Left, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+    lv_obj_remove_flag(m_OK, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+    lv_obj_remove_flag(m_Right, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+
     lv_obj_set_size(m_Left, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
     lv_obj_set_size(m_OK, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
     lv_obj_set_size(m_Right, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
@@ -1914,6 +1923,22 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Replay LVGL's click-focus decision for the shutter button indicators. On a
+  // real device the physical buttons drive these indicators through a
+  // LV_INDEV_TYPE_BUTTON device; on press LVGL runs indev_click_focus, which
+  // sends LV_EVENT_FOCUSED only to a click focusable object and clears it only
+  // on the next press of another object. Mirroring that exact flag gate here
+  // lets a headless run prove the indicators no longer latch the green focus
+  // outline after a release.
+  if (command == "indicator-click-focus") {
+    for (lv_obj_t *indicator : {m_Left, m_OK, m_Right}) {
+      if (indicator != nullptr && lv_obj_has_flag(indicator, LV_OBJ_FLAG_CLICK_FOCUSABLE)) {
+        lv_obj_send_event(indicator, LV_EVENT_FOCUSED, this);
+      }
+    }
+    return;
+  }
+
   // Drive the real connect flow the Scan and Connect buttons trigger. The
   // connect timer then advances the state machine and reveals the connected
   // page, exactly as it does for an on-device button press.
@@ -2180,6 +2205,18 @@ std::string UI::simQueryState(const char *key) {
     const bool hidden = m_ConnectContext.messageBox == nullptr
                         || lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
     return hidden ? "hidden" : "visible";
+  }
+
+  // Whether any shutter button indicator currently latches LV_STATE_FOCUSED, the
+  // green focus outline that must not survive a button press or release. The
+  // indicators are pure hints, so this must always read "no".
+  if (query == "indicators_focused") {
+    for (lv_obj_t *indicator : {m_Left, m_OK, m_Right}) {
+      if (indicator != nullptr && lv_obj_has_state(indicator, LV_STATE_FOCUSED)) {
+        return "yes";
+      }
+    }
+    return "no";
   }
 
   // Persisted bulb exposure duration in milliseconds. Lets a scenario confirm
