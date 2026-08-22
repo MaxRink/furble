@@ -28,6 +28,7 @@ using lv_obj_t = _lv_obj_t;
 
 #include "FurbleGPSPowerCycle.h"
 #include "FurblePower.h"
+#include "protocol/GpsCasic.h"
 
 namespace Furble {
 class GPS {
@@ -46,6 +47,30 @@ class GPS {
     CONFIG_TIMEOUT,
     CONFIG_FALLBACK,
   };
+
+  /** Receiver detection state, surfaced on the diagnostics pages. */
+  enum class receiver_state_t : uint8_t {
+    UNKNOWN,   /**< detection has not run this session */
+    DETECTING, /**< the autobaud ladder is probing */
+    PRESENT,   /**< a receiver answered, or a fixed baud is configured */
+    ABSENT,    /**< the ladder found nothing */
+  };
+
+  /** Per satellite diagnostics parsed from GSV and GSA. */
+  typedef struct {
+    std::vector<Casic::Satellite> satellites;
+    Casic::DopInfo dop;
+    size_t in_view;
+    size_t used;
+  } satellite_report_t;
+
+  /** MON-HW interference snapshot, hardware-tuning-pending. */
+  typedef struct {
+    Casic::MonHw hw;
+    bool have;
+    std::array<uint8_t, 60> raw;
+    size_t raw_length;
+  } monhw_report_t;
 
   typedef struct {
     uint8_t class_id;
@@ -146,6 +171,27 @@ class GPS {
   /** Get the printable name of a binary configuration state. */
   static const char *configStateName(config_state_t state);
 
+  /** Current receiver detection state. */
+  receiver_state_t getReceiverState(void) const;
+
+  /** Baud the autobaud ladder locked, or the configured fixed baud, 0 if none. */
+  uint32_t getDetectedBaud(void) const;
+
+  /** Printable name of a receiver detection state. */
+  static const char *receiverStateName(receiver_state_t state);
+
+  /** Start or stop GSV and GSA parsing for the satellite detail page. */
+  void setSatelliteCapture(bool capture);
+
+  /** Snapshot the parsed satellite table. */
+  satellite_report_t getSatelliteReport(void);
+
+  /** Queue a MON-HW poll. The response lands in the snapshot below. */
+  void pollMonHw(void);
+
+  /** Snapshot the most recent MON-HW frame. */
+  monhw_report_t getMonHw(void);
+
  private:
   GPS() {};
 
@@ -174,6 +220,23 @@ class GPS {
   static constexpr uint32_t AID_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   static constexpr int64_t GPS_EPOCH_UNIX = 315964800;
   static constexpr int GPS_LEAP_SECONDS = 18;
+
+  static constexpr uint32_t GPS_BAUD_AUTO = 0;
+  static constexpr uint32_t NO_RECEIVER_RETRY_MS = 60 * 1000;
+
+  static constexpr uint8_t MON_CLASS = 0x0A;
+  static constexpr uint8_t MON_HW_ID = 0x09;
+  static constexpr uint16_t CFG_MSG_POLL_RATE = 0xFFFF;
+  static constexpr uint32_t NAVX_MASK_DY_MODEL = 1 << 0;
+  static constexpr size_t NAVX_DY_MODEL_OFFSET = 4;
+
+  static constexpr uint32_t EPH_CACHE_MAGIC = 0x48504547;  // "GEPH"
+  static constexpr uint8_t EPH_CACHE_VERSION = 1;
+  static constexpr uint32_t EPH_CACHE_WRITE_MS = 60 * 60 * 1000;
+  static constexpr uint32_t EPH_CACHE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+  static constexpr uint32_t EPH_POLL_MS = 1500;
+  static constexpr uint32_t EPH_REPLAY_GAP_MS = 30;
+  static constexpr size_t EPH_MAX_BYTES = Casic::EphemerisCollector::MAX_BYTES;
 
   /** How long to wait for the receiver before sending the configuration. */
   static constexpr const uint32_t SETTLE_MS = 3000;
@@ -231,15 +294,40 @@ class GPS {
 
   static_assert(sizeof(aid_cache_t) == 56, "AID cache layout changed");
 
+  typedef struct {
+    uint32_t magic;
+    uint8_t version;
+    uint8_t reserved[3];
+    int64_t capture_utc;
+    uint32_t capture_tick_ms;
+    uint16_t frame_count;
+    uint16_t byte_count;
+  } eph_cache_header_t;
+
   void enable(void);
   void disable(void);
   void serviceSerial(void);
   void serviceConfig(void);
   void serviceCycle(void);
+  void serviceProbe(void);
+  void servicePoll(void);
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
   bool wiredFixIsFresh(void);
+
+  /** Re-initialise the burst-period acquisition state. Holds m_CycleMutex. */
+  void resetAcquisition(uint32_t now);
+  void onProbeLocked(uint32_t now);
+  void onProbeFailed(uint32_t now);
+
+  /** Feed one whole NMEA sentence to the satellite parser. */
+  void feedSatellite(const std::string &sentence);
+
+  /** Poll and replay the CASIC ephemeris for GPS_ASSIST tier 2. */
+  void armEphemerisReplay(void);
+  void storeEphemeris(void);
+  void loadEphemerisCache(void);
 
   void acquirePowerLock(void);
   void releasePowerLock(void);
@@ -398,6 +486,50 @@ class GPS {
   std::array<std::string, SENTENCES> m_Sentences;
   size_t m_SentenceNext = 0;
   std::string m_Partial;
+
+  // receiver detection and autobaud, touched only on the GPS task
+  std::atomic<uint8_t> m_ReceiverState {static_cast<uint8_t>(receiver_state_t::UNKNOWN)};
+  std::atomic<uint32_t> m_DetectedBaud {0};
+  Casic::Autobaud m_Autobaud;
+  std::atomic<bool> m_ProbePending = false;
+  uint32_t m_NoReceiverRetryAt = 0;
+  bool m_NoReceiverRetried = false;
+
+  // satellite detail parsing, armed while the diagnostics page is open
+  std::atomic<bool> m_SatCapture = false;
+  std::mutex m_SatMutex;
+  Casic::NmeaSatellites m_SatTable;
+  std::string m_SatPartial;
+
+  // tier 2 ephemeris cache: poll while a fix is held, replay on the next enable
+  std::atomic<bool> m_EphCapture = false;
+  Casic::EphemerisCollector m_EphCollector;
+  std::mutex m_EphMutex;
+  std::vector<uint8_t> m_EphReplay;
+  std::vector<std::pair<size_t, size_t>> m_EphReplaySpans;
+  size_t m_EphReplayIndex = 0;
+  uint32_t m_EphReplayNext = 0;
+  int64_t m_EphCaptureUtc = 0;
+  uint32_t m_EphCaptureTick = 0;
+  bool m_EphCaptureTickValid = false;
+  bool m_EphPolled = false;
+  bool m_EphPollActive = false;
+  uint32_t m_EphPollDeadline = 0;
+  uint32_t m_EphLastPoll = 0;
+
+  // pending CFG-NAVX masked writes, applied in one query-modify-write
+  bool m_NavxConstelSet = false;
+  uint8_t m_NavxConstelVal = 0;
+  bool m_NavxDyModelSet = false;
+  uint8_t m_NavxDyModelVal = 0;
+
+  // MON-HW interference snapshot, hardware-tuning-pending
+  std::atomic<bool> m_MonHwPending = false;
+  std::mutex m_MonHwMutex;
+  Casic::MonHw m_MonHw = {};
+  bool m_MonHwHave = false;
+  std::array<uint8_t, 60> m_MonHwRaw = {};
+  size_t m_MonHwRawLen = 0;
 };
 }  // namespace Furble
 

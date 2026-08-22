@@ -30,6 +30,7 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_PLATFORM,
     INTERVAL,
     MULTICONNECT,
     RECONNECT,
@@ -126,6 +127,7 @@ class Settings {
     BUTTON_MODE_ONE_BUTTON = 1,
   } button_mode_t;
 
+  static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
@@ -267,6 +269,10 @@ struct Settings::storage_type<Settings::GPS_DUTY> {
 };
 template <>
 struct Settings::storage_type<Settings::GPS_ASSIST> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_PLATFORM> {
   using type = uint8_t;
 };
 template <>

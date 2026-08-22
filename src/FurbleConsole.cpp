@@ -197,6 +197,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -271,6 +272,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -310,6 +312,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -384,6 +387,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
@@ -400,6 +404,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       if ((setting.type == Settings::GPS_ASSIST) && (value > 2)) {
         return fail("expected 0, 1 or 2");
+      }
+      if ((setting.type == Settings::GPS_PLATFORM) && (value > 4)) {
+        return fail("expected 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -472,10 +479,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::GPS_BAUD:
     {
-      char *end = nullptr;
-      unsigned long value = strtoul(text, &end, 0);
-      if ((value != Settings::BAUD_9600) && (value != Settings::BAUD_115200)) {
-        return fail("expected 9600 or 115200");
+      unsigned long value = 0;
+      if (!strcasecmp(text, "auto")) {
+        value = Settings::BAUD_AUTO;
+      } else {
+        char *end = nullptr;
+        value = strtoul(text, &end, 0);
+        if ((value != Settings::BAUD_AUTO) && (value != Settings::BAUD_9600)
+            && (value != Settings::BAUD_115200)) {
+          return fail("expected auto, 0, 9600 or 115200");
+        }
       }
       Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
     } break;
@@ -535,7 +548,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
       || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
-      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
+      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
+      || (setting.type == Settings::GPS_PLATFORM)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
@@ -746,6 +760,8 @@ int gpsStatus(void) {
       tiny.location.isValid() && (tiny.location.FixQuality() != TinyGPSLocation::Quality::Invalid);
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
+  printf("receiver: %s\n", GPS::receiverStateName(gps.getReceiverState()));
+  printf("detected_baud: %lu\n", static_cast<unsigned long>(gps.getDetectedBaud()));
   printf("fix: %s\n", boolStr(fix));
   printf("satellites: %lu\n", tiny.satellites.value());
   printf("lat: %.5f\n", tiny.location.lat());
@@ -760,6 +776,70 @@ int gpsStatus(void) {
   printf("degraded: %s\n", boolStr(gps.isDegraded()));
   printf("retries: %lu\n", static_cast<unsigned long>(gps.degradedRetries()));
   printf("raw: %s\n", boolStr(g_GPSRaw));
+  return 0;
+}
+
+int gpsSats(int argc, char **argv) {
+  auto &gps = GPS::getInstance();
+
+  if (argc >= 2) {
+    bool value = false;
+    if (!parseBool(argv[1], value)) {
+      return fail("usage: gps sats [on | off]");
+    }
+    gps.setSatelliteCapture(value);
+    printf("sats capture: %s\n", boolStr(value));
+    return 0;
+  }
+
+  const auto report = gps.getSatelliteReport();
+  printf("sats in view: %u\n", static_cast<unsigned>(report.in_view));
+  printf("sats used: %u\n", static_cast<unsigned>(report.used));
+  if (report.dop.valid) {
+    printf("fix type: %u\n", report.dop.fix_type);
+    printf("dop: pdop %.1f hdop %.1f vdop %.1f\n", report.dop.pdop, report.dop.hdop,
+           report.dop.vdop);
+  }
+  for (const auto &sat : report.satellites) {
+    printf("sat: sys=%u prn=%u elev=%u az=%u cn0=%u used=%s\n", sat.constellation, sat.prn,
+           sat.elevation, sat.azimuth, sat.snr, boolStr(sat.used));
+  }
+  if (report.satellites.empty()) {
+    printf("sats: none (enable with 'gps sats on')\n");
+  }
+  return 0;
+}
+
+int gpsPlatform(const char *text) {
+  char *end = nullptr;
+  const unsigned long value = strtoul(text, &end, 0);
+  if ((end == text) || (value > 4)) {
+    return fail("usage: gps platform 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
+  }
+  Settings::save<Settings::GPS_PLATFORM>(static_cast<uint8_t>(value));
+  UI::sendRequest(UI::Request::GPS_RELOAD, 0);
+  printf("saved: gps_plat %lu\n", value);
+  printf("note: dyModel effect is unverified on this receiver, hardware-tuning-pending\n");
+  return 0;
+}
+
+int gpsMonHw(void) {
+  auto &gps = GPS::getInstance();
+  gps.pollMonHw();
+
+  const auto report = gps.getMonHw();
+  if (!report.have) {
+    printf("monhw: polled, no response yet, retry 'gps monhw'\n");
+    return 0;
+  }
+  printf("monhw: noise=%lu agc=%u antenna=%u jam=%u\n", static_cast<unsigned long>(report.hw.noise),
+         report.hw.agc, report.hw.antenna_status, report.hw.jam_indicator);
+  printf("monhw raw:");
+  for (size_t i = 0; i < report.raw_length; i++) {
+    printf(" %02X", report.raw[i]);
+  }
+  printf("\n");
+  printf("note: MON-HW layout is unverified, hardware-tuning-pending\n");
   return 0;
 }
 
@@ -803,6 +883,21 @@ int cmdGPS(int argc, char **argv) {
     return gpsAid();
   }
 
+  if (!strcmp(argv[1], "sats")) {
+    return gpsSats(argc - 1, argv + 1);
+  }
+
+  if (!strcmp(argv[1], "platform")) {
+    if (argc < 3) {
+      return fail("usage: gps platform 0..4");
+    }
+    return gpsPlatform(argv[2]);
+  }
+
+  if (!strcmp(argv[1], "monhw")) {
+    return gpsMonHw();
+  }
+
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {
       return fail("usage: gps power on | off");
@@ -810,7 +905,7 @@ int cmdGPS(int argc, char **argv) {
     return sendRequest(UI::Request::GPS_POWER, value, value ? "gps power on" : "gps power off");
   }
 
-  return fail("expected on, off, raw, send, binary, config, aid or power");
+  return fail("expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power");
 }
 
 void cmdPowerStats(void) {

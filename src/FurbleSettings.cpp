@@ -35,6 +35,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {GPS_POWER,         {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
     {GPS_DUTY,          {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
     {GPS_ASSIST,        {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
+    {GPS_PLATFORM,      {GPS_PLATFORM, 42, "GPS Platform", "gps_plat", FURBLE_STR}           },
     {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
     {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
     {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
@@ -118,6 +119,7 @@ bool Settings::appliesImmediately(type_t type) {
     case GPS_POWER:
     case GPS_DUTY:
     case GPS_ASSIST:
+    case GPS_PLATFORM:
     case IR:
     case IR_PROTO:
     case FB_EVENTS:
@@ -183,6 +185,7 @@ bool Settings::isDangerous(type_t type) {
     case GPS_POWER:
     case GPS_DUTY:
     case GPS_ASSIST:
+    case GPS_PLATFORM:
     case INTERVAL:
     case MULTICONNECT:
     case RECONNECT:
@@ -437,6 +440,7 @@ void Settings::init(void) {
         case GPS_POWER:
         case GPS_DUTY:
         case GPS_ASSIST:
+        case GPS_PLATFORM:
         case IR_PROTO:
         case AUTO_OFF:
         case LOW_BATT:

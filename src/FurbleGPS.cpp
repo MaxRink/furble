@@ -199,14 +199,28 @@ void GPS::task(void) {
       continue;
     }
 
-    serviceCycle();
-    serviceConfig();
+    // Autobaud detection and the no-receiver retry run ahead of the power
+    // cycle. While the ladder probes, feed the serial parser so the sentence
+    // counter can climb, but hold the cycle and configuration paths until a
+    // receiver is found. When nothing answers, idle without spinning.
+    serviceProbe();
+    const auto rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
+    const bool absent = (rstate == receiver_state_t::ABSENT);
+    const bool detecting = (rstate == receiver_state_t::DETECTING);
+
+    if (!absent && !detecting) {
+      serviceCycle();
+      serviceConfig();
+      servicePoll();
+    }
 
     uart_event_t event;
     if (xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick()))) {
       switch (event.type) {
         case UART_DATA:
-          serviceSerial();
+          if (!absent) {
+            serviceSerial();
+          }
           break;
         case UART_FIFO_OVF:
           ESP_LOGW(LOG_TAG, "GPS HW FIFO overflow");
@@ -226,7 +240,9 @@ void GPS::task(void) {
           ESP_LOGE(LOG_TAG, "GPS frame error");
           break;
         case UART_PATTERN_DET:
-          serviceSerial();
+          if (!absent) {
+            serviceSerial();
+          }
           break;
         default:
           ESP_LOGW(LOG_TAG, "unknown uart event type: %d", event.type);
@@ -234,32 +250,73 @@ void GPS::task(void) {
       }
     }
 
-    serviceConfig();
-    serviceCycle();
+    if (!absent && !detecting) {
+      serviceConfig();
+      servicePoll();
+      serviceCycle();
+    }
   }
+}
+
+void GPS::resetAcquisition(uint32_t now) {
+  m_CycleState = cycle_state_t::ACQUIRING;
+  m_BurstActive = false;
+  m_DutyWake = false;
+  m_HavePrediction = false;
+  m_BurstStart = 0;
+  m_LastSentence = 0;
+  m_NextBurst = 0;
+  m_WakeDeadline = 0;
+  m_ExpectedInterval = gpsRateInterval();
+  m_Window = WINDOW_DEFAULT_MS;
+  m_BurstFailed = 0;
+  m_MeasureDeadline = 0;
+  m_ResyncDeadline = 0;
+  m_ProbeDeadline = 0;
+  m_Degraded.reset();
+  m_LastBurstStart = 0;
+  m_PeriodSamples.fill(0);
+  m_PeriodCount = 0;
+  m_ConsecutiveBadBursts = 0;
+  m_CleanBursts = 0;
+  m_LastLocationAge = std::numeric_limits<uint32_t>::max();
+  m_BurstSequence = 0;
+  m_FixSequence = 0;
+  m_PushedSequence = 0;
+  m_CycleRequest = false;
+  (void)now;
 }
 
 void GPS::enable(void) {
   const uint32_t baud = Settings::load<Settings::GPS_BAUD>();
   const uint8_t policy = powerPolicy();
   const uint8_t duty = dutySeconds();
+  const bool autobaud = (baud == GPS_BAUD_AUTO);
 
   // park the GPS task first, m_Enabled gates every cycle entry point
   m_Enabled = false;
 
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   loadAidCache();
+  loadEphemerisCache();
   m_ConfigQueue.clear();
   m_ConfigInFlight.reset();
   m_ConfigFallbackUsed = false;
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
+  m_EphPolled = false;
+  m_EphPollActive = false;
+  m_EphCapture = false;
+  m_MonHwPending = false;
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
   }
 
-  uart_set_baudrate(m_UART, baud);
+  // The M5Stack Unit GPS v1.1 ships at 115200, so a fresh Auto boot probes the
+  // fast rate first. A stored fixed baud skips the ladder entirely.
+  const uint32_t initialBaud = autobaud ? Casic::Autobaud::LADDER[0] : baud;
+  uart_set_baudrate(m_UART, initialBaud);
   reset();
 
   // power on, no mutex may be held across the PMIC access
@@ -271,42 +328,118 @@ void GPS::enable(void) {
 
     m_PowerPolicy = policy;
     m_DutySeconds = duty;
-    m_CycleState = cycle_state_t::ACQUIRING;
-    m_BurstActive = false;
-    m_DutyWake = false;
-    m_HavePrediction = false;
-    m_BurstStart = 0;
-    m_LastSentence = 0;
-    m_NextBurst = 0;
-    m_WakeDeadline = 0;
-    m_ExpectedInterval = gpsRateInterval();
-    m_Window = WINDOW_DEFAULT_MS;
-    m_BurstFailed = 0;
-    m_MeasureDeadline = 0;
-    m_ResyncDeadline = 0;
-    m_ProbeDeadline = 0;
-    m_Degraded.reset();
-    m_LastBurstStart = 0;
-    m_PeriodSamples.fill(0);
-    m_PeriodCount = 0;
-    m_ConsecutiveBadBursts = 0;
-    m_CleanBursts = 0;
-    m_LastLocationAge = std::numeric_limits<uint32_t>::max();
-    m_BurstSequence = 0;
-    m_FixSequence = 0;
-    m_PushedSequence = 0;
-    m_CycleRequest = false;
+    resetAcquisition(Platform::getInstance().tick());
 
-    // the receiver is not ready for commands yet, ask the GPS task to
-    // configure it once sentences arrive
-    m_ConfigChars = m_GPS.charsProcessed();
-    m_ConfigStart = Platform::getInstance().tick();
-    m_ConfigPending = true;
+    m_NoReceiverRetried = false;
+    m_NoReceiverRetryAt = 0;
+
+    if (autobaud) {
+      // the ladder runs on the GPS task, arm it and hold configuration until a
+      // receiver is found
+      m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::DETECTING));
+      m_DetectedBaud.store(0);
+      m_ProbePending.store(true);
+      m_ConfigPending = false;
+    } else {
+      m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::PRESENT));
+      m_DetectedBaud.store(baud);
+      m_ProbePending.store(false);
+
+      // the receiver is not ready for commands yet, ask the GPS task to
+      // configure it once sentences arrive
+      m_ConfigChars = m_GPS.charsProcessed();
+      m_ConfigStart = Platform::getInstance().tick();
+      m_ConfigPending = true;
+    }
   }
 
   m_Enabled = true;
   FURBLE_SIM_GPS_STATE("acquiring");
   acquirePowerLock();
+}
+
+void GPS::serviceProbe(void) {
+  if (!m_Enabled) {
+    return;
+  }
+
+  const uint32_t now = Platform::getInstance().tick();
+
+  if (m_ProbePending.exchange(false)) {
+    const Casic::Autobaud::Action action = m_Autobaud.begin(now, m_GPS.passedChecksum());
+    if (action.change) {
+      uart_set_baudrate(m_UART, action.baud);
+      reset();
+    }
+    m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::DETECTING));
+    return;
+  }
+
+  if (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::DETECTING) {
+    const Casic::Autobaud::Action action = m_Autobaud.service(now, m_GPS.passedChecksum());
+    if (action.change) {
+      uart_set_baudrate(m_UART, action.baud);
+      reset();
+    }
+    switch (m_Autobaud.state()) {
+      case Casic::Autobaud::State::LOCKED:
+        onProbeLocked(now);
+        break;
+      case Casic::Autobaud::State::NO_RECEIVER:
+        onProbeFailed(now);
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
+  // one retry after 60 s, then leave an absent unit alone
+  if ((static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)
+      && !m_NoReceiverRetried && tickReached(now, m_NoReceiverRetryAt)) {
+    m_NoReceiverRetried = true;
+    setRailPower(true);
+    uart_set_baudrate(m_UART, Casic::Autobaud::LADDER[0]);
+    reset();
+    m_ProbePending.store(true);
+  }
+}
+
+void GPS::onProbeLocked(uint32_t now) {
+  const uint32_t baud = m_Autobaud.baud();
+  m_DetectedBaud.store(baud);
+  ESP_LOGI(LOG_TAG, "GPS autobaud locked at %lu", static_cast<unsigned long>(baud));
+
+  {
+    std::lock_guard<std::mutex> guard(m_CycleMutex);
+    resetAcquisition(now);
+    m_ConfigChars = m_GPS.charsProcessed();
+    m_ConfigStart = now;
+    m_ConfigPending = true;
+  }
+
+  // publish PRESENT last so the task resumes the cycle only once state is set
+  m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::PRESENT));
+  acquirePowerLock();
+}
+
+void GPS::onProbeFailed(uint32_t now) {
+  ESP_LOGW(LOG_TAG, "GPS autobaud found no receiver");
+  m_DetectedBaud.store(0);
+  m_ConfigPending = false;
+
+  {
+    std::lock_guard<std::mutex> guard(m_CycleMutex);
+    m_CycleState = cycle_state_t::DISABLED;
+    m_BurstActive = false;
+    m_CycleRequest = false;
+  }
+
+  // drop the rail so an absent unit does not hold power on, then idle
+  setRailPower(false);
+  releasePowerLock();
+  m_NoReceiverRetryAt = now + NO_RECEIVER_RETRY_MS;
+  m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
 }
 
 void GPS::acquirePowerLock(void) {
@@ -954,7 +1087,20 @@ void GPS::finishConfigCommand(config_state_t state) {
 
   if (sendFallback) {
     m_ConfigFallbackUsed = true;
-    sendCommand(command.fallback);
+    // a NAVX fallback can carry two sentences, one per masked field
+    size_t start = 0;
+    while (start <= command.fallback.size()) {
+      const size_t nl = command.fallback.find('\n', start);
+      const size_t count = (nl == std::string::npos) ? std::string::npos : (nl - start);
+      const std::string sentence = command.fallback.substr(start, count);
+      if (!sentence.empty()) {
+        sendCommand(sentence);
+      }
+      if (nl == std::string::npos) {
+        break;
+      }
+      start = nl + 1;
+    }
     if (state == CONFIG_TIMEOUT) {
       const std::lock_guard<std::mutex> lock(m_ConfigMutex);
       m_ConfigStatus[command.status_index].state = CONFIG_FALLBACK;
@@ -971,12 +1117,15 @@ void GPS::configure(void) {
   const uint8_t rate = Settings::load<Settings::GPS_RATE>();
   const bool prune = Settings::load<Settings::GPS_NMEA>();
   const uint8_t constellation = Settings::load<Settings::GPS_CONSTEL>();
+  const uint8_t platform = Settings::load<Settings::GPS_PLATFORM>();
 
   m_ConfigQueue.clear();
   m_ConfigInFlight.reset();
   m_ConfigFallbackUsed = false;
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
+  m_NavxConstelSet = false;
+  m_NavxDyModelSet = false;
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
@@ -997,9 +1146,33 @@ void GPS::configure(void) {
     enqueueConfig(CFG_CLASS, 0x04, payload, "PCAS02," + std::to_string(RATE_MS[rate]));
   }
 
+  // CFG-NAVX carries both the constellation mask and the dynamic platform
+  // model. Apply them in one query-modify-write so the 44 byte struct is only
+  // rewritten once and never built from zeros.
   if ((constellation > 0) && (constellation <= CONSTELLATION_MAX)) {
+    m_NavxConstelSet = true;
+    m_NavxConstelVal = constellation;
+  }
+  // roller index 1 Portable, 2 Stationary, 3 Pedestrian, 4 Vehicle maps to the
+  // dyModel wire values 0 Portable, 1 Static, 2 Walking, 3 Car.
+  if ((platform >= 1) && (platform <= 4)) {
+    m_NavxDyModelSet = true;
+    m_NavxDyModelVal = static_cast<uint8_t>(platform - 1);
+  }
+  if (m_NavxConstelSet || m_NavxDyModelSet) {
+    std::string fallback;
+    if (m_NavxConstelSet) {
+      fallback = "PCAS04," + std::to_string(m_NavxConstelVal);
+    }
+    if (m_NavxDyModelSet) {
+      // $PCAS11 platform numbering is third-party attested only, provisional
+      if (!fallback.empty()) {
+        fallback += "\n";
+      }
+      fallback += "PCAS11," + std::to_string(m_NavxDyModelVal);
+    }
     const std::vector<uint8_t> query;
-    enqueueConfig(CFG_CLASS, CFG_NAVX_ID, query, "PCAS04," + std::to_string(constellation), true);
+    enqueueConfig(CFG_CLASS, CFG_NAVX_ID, query, fallback, true);
   }
 }
 
@@ -1018,7 +1191,10 @@ void GPS::serviceConfig(void) {
 
     m_ConfigPending = false;
     if (m_AidMode.load() != 0) {
+      // Assistance goes out before configuration, because a sentence prune
+      // could remove messages the assistance path relies on.
       sendAidIni();
+      armEphemerisReplay();
     }
     configure();
   }
@@ -1272,6 +1448,218 @@ bool GPS::sendAidIni(void) {
   return sent;
 }
 
+void GPS::loadEphemerisCache(void) {
+  m_EphReplay.clear();
+  m_EphReplaySpans.clear();
+  m_EphReplayIndex = 0;
+  m_EphCaptureUtc = 0;
+  m_EphCaptureTick = 0;
+  m_EphCaptureTickValid = false;
+
+  if (Settings::load<Settings::GPS_ASSIST>() != 2) {
+    return;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(FURBLE_STR, true)) {
+    return;
+  }
+
+  std::vector<uint8_t> blob;
+  if (prefs.isKey("gps_eph")) {
+    const size_t length = prefs.getBytesLength("gps_eph");
+    if ((length > sizeof(eph_cache_header_t))
+        && (length <= (sizeof(eph_cache_header_t) + EPH_MAX_BYTES))) {
+      blob.resize(length);
+      if (prefs.get("gps_eph", blob.data(), blob.size()) != blob.size()) {
+        blob.clear();
+      }
+    }
+  }
+  prefs.end();
+
+  if (blob.size() <= sizeof(eph_cache_header_t)) {
+    return;
+  }
+
+  eph_cache_header_t header = {};
+  std::memcpy(&header, blob.data(), sizeof(header));
+  const size_t payloadBytes = blob.size() - sizeof(header);
+  if ((header.magic != EPH_CACHE_MAGIC) || (header.version != EPH_CACHE_VERSION)
+      || (header.byte_count != payloadBytes) || (header.frame_count == 0)) {
+    return;
+  }
+
+  m_EphReplay.assign(blob.begin() + sizeof(header), blob.end());
+  m_EphCaptureUtc = header.capture_utc;
+  // the stored tick is from a previous power session, so it cannot bound age
+  m_EphCaptureTickValid = false;
+}
+
+void GPS::armEphemerisReplay(void) {
+  if ((m_AidMode.load() != 2) || m_EphReplay.empty()) {
+    return;
+  }
+
+  // bound the cache age. GPS ephemeris is valid for roughly four hours. The
+  // capture tick is invalid across a reboot, so fall back to the wall clock.
+  bool fresh = false;
+  if (m_EphCaptureTickValid) {
+    fresh = (Platform::getInstance().tick() - m_EphCaptureTick) <= EPH_CACHE_MAX_AGE_MS;
+  } else {
+    const int64_t wall = static_cast<int64_t>(time(nullptr));
+    if ((wall >= m_EphCaptureUtc) && ((wall - m_EphCaptureUtc) <= (EPH_CACHE_MAX_AGE_MS / 1000))) {
+      fresh = true;
+    }
+  }
+
+  if (!fresh) {
+    ESP_LOGI(LOG_TAG, "GPS ephemeris cache too old to replay");
+    m_EphReplay.clear();
+    return;
+  }
+
+  m_EphReplaySpans = Casic::splitFrames(m_EphReplay.data(), m_EphReplay.size());
+  m_EphReplayIndex = 0;
+  m_EphReplayNext = Platform::getInstance().tick();
+  ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, %u frames",
+           static_cast<unsigned>(m_EphReplaySpans.size()));
+}
+
+void GPS::storeEphemeris(void) {
+  std::vector<uint8_t> data;
+  size_t frameCount = 0;
+  {
+    const std::lock_guard<std::mutex> lock(m_EphMutex);
+    data = m_EphCollector.data();
+    frameCount = m_EphCollector.frameCount();
+    m_EphCollector.clear();
+  }
+  if (data.empty() || (frameCount == 0)) {
+    return;
+  }
+
+  const Camera::timesync_t timesync = {
+      m_GPS.date.year(),   m_GPS.date.month(),  m_GPS.date.day(),         m_GPS.time.hour(),
+      m_GPS.time.minute(), m_GPS.time.second(), m_GPS.time.centisecond(),
+  };
+  const int64_t utc = toUnixSeconds(timesync);
+  if (utc < GPS_EPOCH_UNIX) {
+    return;
+  }
+
+  eph_cache_header_t header = {
+      EPH_CACHE_MAGIC,
+      EPH_CACHE_VERSION,
+      {0, 0, 0},
+      utc,
+      Platform::getInstance().tick(),
+      static_cast<uint16_t>(frameCount),
+      static_cast<uint16_t>(data.size()),
+  };
+
+  std::vector<uint8_t> blob(sizeof(header) + data.size());
+  std::memcpy(blob.data(), &header, sizeof(header));
+  std::memcpy(blob.data() + sizeof(header), data.data(), data.size());
+
+  Preferences prefs;
+  bool saved = false;
+  if (prefs.begin(FURBLE_STR, false)) {
+    saved = prefs.put("gps_eph", blob.data(), blob.size()) == blob.size();
+    prefs.end();
+  }
+  if (saved) {
+    ESP_LOGI(LOG_TAG, "GPS ephemeris cached, %u frames %u bytes", static_cast<unsigned>(frameCount),
+             static_cast<unsigned>(data.size()));
+  }
+}
+
+/**
+ * Tier 2 ephemeris poll and paced replay.
+ *
+ * Replay drains one stored frame per pass, so a 2.6 kB cache does not choke the
+ * receiver's navigation loop. Polling runs once per session on the first stable
+ * fix and at most once an hour after that.
+ */
+void GPS::servicePoll(void) {
+  if (!m_Enabled) {
+    return;
+  }
+
+  const uint32_t now = Platform::getInstance().tick();
+
+  // paced replay takes priority over polling
+  if (!m_EphReplaySpans.empty() && (m_EphReplayIndex < m_EphReplaySpans.size())) {
+    if (tickReached(now, m_EphReplayNext)) {
+      const auto span = m_EphReplaySpans[m_EphReplayIndex];
+      {
+        const std::lock_guard<std::mutex> lock(m_TxMutex);
+        uart_write_bytes(m_UART, m_EphReplay.data() + span.first, span.second);
+        uart_wait_tx_done(m_UART, pdMS_TO_TICKS(TX_MS));
+      }
+      m_EphReplayIndex++;
+      m_EphReplayNext = now + EPH_REPLAY_GAP_MS;
+      if (m_EphReplayIndex >= m_EphReplaySpans.size()) {
+        ESP_LOGI(LOG_TAG, "GPS ephemeris replay sent %u frames",
+                 static_cast<unsigned>(m_EphReplaySpans.size()));
+        m_EphReplaySpans.clear();
+        m_EphReplay.clear();
+        m_EphReplayIndex = 0;
+      }
+    }
+    return;
+  }
+
+  if (m_AidMode.load() != 2) {
+    return;
+  }
+
+  // close the capture window and persist whatever came back
+  if (m_EphPollActive) {
+    if (tickReached(now, m_EphPollDeadline)) {
+      m_EphCapture = false;
+      m_EphPollActive = false;
+      storeEphemeris();
+      m_EphPolled = true;
+      m_EphLastPoll = now;
+    }
+    return;
+  }
+
+  const bool stableFix = m_GPS.location.isValid()
+                         && (m_GPS.location.FixQuality() != TinyGPSLocation::Quality::Invalid)
+                         && (m_GPS.location.age() < MAX_AGE_MS);
+  const bool due = !m_EphPolled || ((now - m_EphLastPoll) >= EPH_CACHE_WRITE_MS);
+  if (!stableFix || !due) {
+    return;
+  }
+  // do not interleave a poll with an outstanding configuration command
+  if (m_ConfigPending || m_ConfigInFlight.has_value() || !m_ConfigQueue.empty()) {
+    return;
+  }
+
+  {
+    const std::lock_guard<std::mutex> lock(m_EphMutex);
+    m_EphCollector.clear();
+  }
+
+  const std::array<uint8_t, 3> ids = {Casic::Eph::EPH_ID, Casic::Eph::ION_ID, Casic::Eph::UTC_ID};
+  for (const uint8_t id : ids) {
+    const std::vector<uint8_t> payload = {
+        Casic::Eph::CLASS,
+        id,
+        static_cast<uint8_t>(CFG_MSG_POLL_RATE & 0xff),
+        static_cast<uint8_t>((CFG_MSG_POLL_RATE >> 8) & 0xff),
+    };
+    sendBinaryFrame(CFG_CLASS, CFG_MSG_ID, payload);
+  }
+
+  m_EphCapture = true;
+  m_EphPollActive = true;
+  m_EphPollDeadline = now + EPH_POLL_MS;
+  ESP_LOGI(LOG_TAG, "GPS ephemeris poll sent");
+}
+
 void GPS::disable(void) {
   m_Enabled = false;
   FURBLE_SIM_GPS_STATE("off");
@@ -1283,6 +1671,12 @@ void GPS::disable(void) {
   m_RxBuffer.clear();
   m_LastLoggedFix = 0;
   m_LastLoggedStamp = 0;
+  m_ProbePending.store(false);
+  m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::UNKNOWN));
+  m_DetectedBaud.store(0);
+  m_EphCapture = false;
+  m_EphPollActive = false;
+  m_MonHwPending = false;
 
   // the SD writer task owns the track file, never touch it from here
   SD::getInstance().request(SD::request_t::CLOSE);
@@ -1556,11 +1950,23 @@ void GPS::completeNavxQuery(void) {
     m_ConfigStatus[queryStatus].state = CONFIG_ACKED;
   }
 
-  const uint8_t constellation = Settings::load<Settings::GPS_CONSTEL>();
-  writeU32(write.data(), NAVX_MASK_NAV_SYSTEM);
-  write[NAVX_NAV_SYSTEM_OFFSET] = constellation;
-  enqueueConfig(CFG_CLASS, CFG_NAVX_ID, write, "PCAS04," + std::to_string(constellation), false,
-                true);
+  uint32_t mask = 0;
+  std::string fallback;
+  if (m_NavxConstelSet) {
+    mask |= NAVX_MASK_NAV_SYSTEM;
+    write[NAVX_NAV_SYSTEM_OFFSET] = m_NavxConstelVal;
+    fallback = "PCAS04," + std::to_string(m_NavxConstelVal);
+  }
+  if (m_NavxDyModelSet) {
+    mask |= NAVX_MASK_DY_MODEL;
+    write[NAVX_DY_MODEL_OFFSET] = m_NavxDyModelVal;
+    if (!fallback.empty()) {
+      fallback += "\n";
+    }
+    fallback += "PCAS11," + std::to_string(m_NavxDyModelVal);
+  }
+  writeU32(write.data(), mask);
+  enqueueConfig(CFG_CLASS, CFG_NAVX_ID, write, fallback, false, true);
 }
 
 void GPS::handleNavxResponse(const uint8_t *payload, size_t length) {
@@ -1588,6 +1994,24 @@ void GPS::serviceBinary(const uint8_t *frame, size_t length) {
   const uint8_t class_id = frame[4];
   const uint8_t message_id = frame[5];
   const uint8_t *payload = frame + BINARY_HEADER_SIZE;
+
+  // tier 2: store polled ephemeris frames verbatim for later replay
+  if (m_EphCapture.load() && Casic::Eph::isEphemerisMessage(class_id, message_id)) {
+    const std::lock_guard<std::mutex> lock(m_EphMutex);
+    m_EphCollector.feed(frame, length);
+    return;
+  }
+
+  // MON-HW interference snapshot, hardware-tuning-pending
+  if (m_MonHwPending.load() && (class_id == MON_CLASS) && (message_id == MON_HW_ID)) {
+    m_MonHwPending.store(false);
+    const std::lock_guard<std::mutex> lock(m_MonHwMutex);
+    m_MonHw = Casic::parseMonHw(payload, payloadLength);
+    m_MonHwHave = true;
+    m_MonHwRawLen = std::min(static_cast<size_t>(payloadLength), m_MonHwRaw.size());
+    std::copy(payload, payload + m_MonHwRawLen, m_MonHwRaw.begin());
+    return;
+  }
 
   if ((class_id == ACK_CLASS) && ((message_id == ACK_ACK_ID) || (message_id == ACK_NACK_ID))
       && (payloadLength >= 2)) {
@@ -1714,9 +2138,11 @@ void GPS::serviceSerial(void) {
   }
 }
 
-/** Split the raw stream into sentences for the debug page. */
+/** Split the raw stream into sentences for the debug and satellite pages. */
 void GPS::captureSentences(const char *data, size_t length) {
-  if (!m_Capture) {
+  const bool ring = m_Capture.load();
+  const bool sats = m_SatCapture.load();
+  if (!ring && !sats) {
     return;
   }
 
@@ -1727,14 +2153,108 @@ void GPS::captureSentences(const char *data, size_t length) {
 
     if ((c == '\r') || (c == '\n')) {
       if (!m_Partial.empty()) {
-        m_Sentences[m_SentenceNext] = m_Partial;
-        m_SentenceNext = (m_SentenceNext + 1) % m_Sentences.size();
+        if (ring) {
+          m_Sentences[m_SentenceNext] = m_Partial;
+          m_SentenceNext = (m_SentenceNext + 1) % m_Sentences.size();
+        }
+        if (sats) {
+          feedSatellite(m_Partial);
+        }
         m_Partial.clear();
       }
     } else if (m_Partial.size() < SENTENCE_LEN) {
       m_Partial += c;
     }
   }
+}
+
+void GPS::feedSatellite(const std::string &sentence) {
+  std::lock_guard<std::mutex> lock(m_SatMutex);
+  m_SatTable.feed(sentence);
+}
+
+void GPS::setSatelliteCapture(bool capture) {
+  {
+    std::lock_guard<std::mutex> lock(m_SatMutex);
+    if (capture) {
+      m_SatTable.clear();
+    }
+  }
+  m_SatCapture.store(capture);
+
+  if (!m_Enabled) {
+    return;
+  }
+
+  if (capture) {
+    // temporarily add GSA and GSV so the page has data to render
+    sendCommand("PCAS03,1,0,1,1,1,0,0,0");
+  } else if (Settings::load<Settings::GPS_NMEA>()) {
+    // restore the user's pruned set
+    sendCommand("PCAS03,1,0,0,0,1,0,0,0");
+  } else {
+    // restore the default full set
+    sendCommand("PCAS03,1,1,1,1,1,1,1,1");
+  }
+}
+
+GPS::satellite_report_t GPS::getSatelliteReport(void) {
+  std::lock_guard<std::mutex> lock(m_SatMutex);
+  satellite_report_t report;
+  report.satellites = m_SatTable.satellites();
+  report.dop = m_SatTable.dop();
+  report.in_view = m_SatTable.inView();
+  report.used = m_SatTable.used();
+  return report;
+}
+
+void GPS::pollMonHw(void) {
+  {
+    std::lock_guard<std::mutex> lock(m_MonHwMutex);
+    m_MonHwHave = false;
+  }
+  m_MonHwPending.store(true);
+
+  // CFG-MSG poll of MON-HW at rate 0xFFFF asks for one copy
+  const std::vector<uint8_t> payload = {
+      MON_CLASS,
+      MON_HW_ID,
+      static_cast<uint8_t>(CFG_MSG_POLL_RATE & 0xff),
+      static_cast<uint8_t>((CFG_MSG_POLL_RATE >> 8) & 0xff),
+  };
+  sendBinaryFrame(CFG_CLASS, CFG_MSG_ID, payload);
+}
+
+GPS::monhw_report_t GPS::getMonHw(void) {
+  std::lock_guard<std::mutex> lock(m_MonHwMutex);
+  monhw_report_t report;
+  report.hw = m_MonHw;
+  report.have = m_MonHwHave;
+  report.raw = m_MonHwRaw;
+  report.raw_length = m_MonHwRawLen;
+  return report;
+}
+
+GPS::receiver_state_t GPS::getReceiverState(void) const {
+  return static_cast<receiver_state_t>(m_ReceiverState.load());
+}
+
+uint32_t GPS::getDetectedBaud(void) const {
+  return m_DetectedBaud.load();
+}
+
+const char *GPS::receiverStateName(receiver_state_t state) {
+  switch (state) {
+    case receiver_state_t::UNKNOWN:
+      return "unknown";
+    case receiver_state_t::DETECTING:
+      return "detecting";
+    case receiver_state_t::PRESENT:
+      return "present";
+    case receiver_state_t::ABSENT:
+      return "absent";
+  }
+  return "unknown";
 }
 
 /** Start or stop raw NMEA sentence capture. */

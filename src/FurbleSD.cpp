@@ -180,6 +180,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::TEXT_SIZE:
@@ -316,6 +317,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::GPS_ASSIST:
       if (!parseUnsigned(text, 2, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::GPS_PLATFORM:
+      if (!parseUnsigned(text, 4, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
