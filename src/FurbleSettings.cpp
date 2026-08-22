@@ -151,9 +151,10 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_OUTPUT:
     case PRESET_PICKER:
     case BUTTON_MODE:
-    // The IMU is brought up during Platform init, so a save takes effect on the
-    // next restart rather than immediately.
-    case IMU:
+    // The deep sleep settings are read when an intervalometer run starts, so a
+    // save takes effect on the next run rather than immediately.
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at
@@ -218,7 +219,8 @@ bool Settings::isDangerous(type_t type) {
     case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
-    case IMU:
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
