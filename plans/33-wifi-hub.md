@@ -334,29 +334,34 @@ Implemented in `feat/33-wifi-hub`:
   33c.
 - Hardware verification on the StickS3 via the console is pending.
 
-Known headless build blockers (pre-existing, outside the sdkconfig and GPS
-tick fixes above; the `esp32-s3-headless` env does not yet compile from a clean
-tree until they are resolved):
+Headless build blockers, all resolved on the current base (the three original
+structural blockers are fixed; the `esp32-s3-headless` env now compiles from a
+clean tree):
 
-- `src/FurbleCompanionService.cpp` calls `UI::getBatteryLevel()`,
-  `getBatteryVoltage()`, `getBatteryCurrent()`, `isBatteryCharging()`,
-  `getBatteryVBUSVoltage()`, `getIntervalometerState()` and
-  `getIntervalometerRemaining()` unconditionally, but the headless `UI` stub in
-  `include/FurbleUI.h` declares none of them, and `FurbleUI.cpp` (their only
-  definition) is excluded from the headless source list. The headless status
-  record needs a display-independent data source (Platform) for these values.
-- `src/FurbleConsole.cpp` references `UI::Request::AUDIT` and `UI::Request::PERF`
-  unconditionally, but the headless `UI::Request` enum omits both. These are
-  LVGL-only operations; the console commands need a headless gate or a no-op
-  handler.
-- `src/FurbleGPS.cpp` selects `UART_SCLK_REF_TICK` in the non-`FURBLE_M5STICKS3`
-  branch, which does not exist on the ESP32-S3 the headless env targets. The
-  headless image runs on the StickS3, so the env likely needs
-  `-DFURBLE_M5STICKS3` (which also restores the `UART_SCLK_XTAL` clock the DFS
-  trap requires), or the `#else` branch needs an S3-valid clock source.
-- `src/main.cpp` console helpers used `auto *` on `CameraList::get()`, which now
-  returns `std::shared_ptr<Camera>` after the PR 106 UAF fix. Fixed here to
-  `auto` alongside the GPS tick, so `main.cpp` itself compiles.
+- Companion service battery and intervalometer status. Blocker 1
+  (`src/FurbleCompanionService.cpp` calling display-only `UI::getBatteryLevel()`
+  and friends) is resolved: the headless `UI` shim in `include/FurbleUI.h`
+  declares the seven status accessors and `src/main.cpp` defines them from
+  `M5.Power` directly, so the companion service reads a display-independent data
+  source. The intervalometer accessors return the disabled state headless.
+- Console references to display-only `UI::Request` values. Blocker 2 is
+  resolved by a hybrid decoupling. Truly LVGL-only requests (`AUDIT`, `PERF`,
+  `POWER_RELOAD`, `SD_RELOAD`, `DISPLAY_MODE`) are omitted from the headless
+  `UI::Request` enum and every console reference to them is behind
+  `#if !defined(FURBLE_NO_DISPLAY)`. The requests that drive hardware present on
+  a headless board (`IR_RELOAD`, `FEEDBACK_RELOAD`, `FEEDBACK_TEST`) stay in the
+  reduced enum and are serviced by the headless loop, because `Feedback::init()`
+  and `IR::init()` run in the headless `app_main` and the buzzer, LED and IR
+  emitter work with no display. `IR_RELOAD` is a documented no-op headless since
+  it only refreshes a UI menu cache.
+- GPS UART clock source on the S3. Blocker 3 is resolved: the `uart_config_t`
+  clock select in `src/FurbleGPS.cpp` is gated
+  `#if defined(FURBLE_M5STICKS3) || defined(CONFIG_IDF_TARGET_ESP32S3)` and uses
+  `UART_SCLK_XTAL` on that branch, so the headless S3 target picks the
+  baud-stable clock the DFS trap requires. `UART_SCLK_REF_TICK` remains only on
+  the non-S3 `#else` branch, where it is valid.
+- `src/main.cpp` console helpers use `auto` on `CameraList::get()`, which
+  returns `std::shared_ptr<Camera>` after the PR 106 UAF fix.
 
 Deviations:
 
@@ -384,6 +389,58 @@ Deviations:
 
 The `m5stick-s3` build passes with `FURBLE_VERSION=dev FURBLE_TEST=0` after
 the revert.
+
+### PR-A rebase, branch feat/33a-headless-rebase
+
+PR-A is the rebase-first headless spine. It moves the displayless profile onto
+the current `fork/master` so PR-B (WiFi), PR-C (MQTT) and PR-D (web UI) rebase
+on a clean base instead of a 178-commit stale branch. The four `feat/33*`
+branches were 71 to 178 commits behind; the dominant problem was staleness, not
+architecture.
+
+What PR-A did:
+
+- Re-applied the seven headless commits from `feat/33-wifi-hub` onto the current
+  `fork/master` tip by cherry-pick, resolving the drift against the settings,
+  console and GPS changes master landed in the gap. No conflicts survived; the
+  one auto-merge was `FurbleUI.cpp`.
+- Confirmed the three original structural blockers are fixed on the new base
+  (companion status accessors, console display-only `UI::Request` gating, GPS
+  UART clock on the S3), as recorded above.
+- Confirmed `DISPLAY_MODE` keeps wire_id 36 with no collision. Master
+  independently assigned 37 to 40 and 44 (`AUTO_OFF`, `LOW_BATT`, `SD_GPX`,
+  `TEXT_SIZE`, `BOOT_SPLASH`); 36 stayed free, so the golden fixtures for wire
+  id 36 carried over unchanged.
+- Confirmed `sdkconfig.esp32-s3-headless` already carries the full
+  `sdkconfig.m5stick-s3` symbol set (the branch reseeded it recently), so no
+  master symbol is missing. The only deltas are the intentional headless debug
+  levers (verbose logging, run-time stats and trace facility, assertions on) and
+  `CONFIG_FURBLE_NO_DISPLAY=y`. A wholesale reseed was therefore not needed and
+  would have reverted those levers.
+- Kept LVGL an unconditional `idf_component.yml` dependency; it linker-drops in
+  the headless image. The conditional-component approach is not reintroduced
+  because it broke every GUI build (see Deviations above).
+- Multi-board discipline: only `esp32-s3-headless` defines `FURBLE_NO_DISPLAY`.
+  The five release envs are behaviorally identical; the console guards remove
+  commands only from the headless build.
+
+Verified for PR-A: `esp32-s3-headless` builds clean, all five release envs
+build clean, host ctests pass and the sim builds, clang-format 21 clean on
+touched files. Owed: the headless-boot smoke test (flash an S3, confirm the
+console boots) is the one hardware-gated item and is not yet run.
+
+What remains for PR-B, PR-C, PR-D to rebase onto this base:
+
+- PR-B (WiFi station provisioning + NTP): rebase the WiFi console commands,
+  station lifecycle and NTP onto this spine. When it enables WiFi or LWIP
+  netif, it must add the same sdkconfig symbols to every committed sdkconfig
+  file including `sdkconfig.esp32-s3-headless`; the headless env is the primary
+  automation surface and must not be left on a loopback netif.
+- PR-C (MQTT client): the `FurbleMQTT.h`/`FurbleMQTT.cpp` scaffolding rebases on
+  PR-B. Home Assistant discovery is the primary target.
+- PR-D (web UI): rebases on PR-C.
+- The intervalometer refactor out of the UI task is still required before the
+  headless build can run intervalometer sequences; PR-C depends on it.
 
 ---
 
