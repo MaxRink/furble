@@ -43,6 +43,26 @@ which only the sim build defines, so firmware builds compile identical code.
 - Script verbs: `wait`/`advance`, `key`/`press`, `capture`, `uart-dump`,
   `home`, `back`, `exit`. `home` resets to the root menu and focuses Scan.
   `back` clicks the LVGL header back button and fails on the root page.
+- `assert <key> <value>` fails the run on a mismatch. `xassert <key> <value>` is
+  an expected-fail assert: it documents a value the app SHOULD produce once a
+  pending product fix lands, prints `XFAIL (WILL_FAIL)` on a mismatch and keeps
+  running, so CI stays green while the gap is on record. When the fix lands the
+  value matches and it prints `XPASS`; promote that line back to `assert` in the
+  fix PR so the guard starts enforcing.
+- Connection-state coverage: `connstate-page-sweep.txt` visits every page
+  reachable during a connected session (connected menu, Remote shutter, Bulb,
+  Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the
+  drop is surfaced there (`ui.link_alert yes`) and clears on recovery.
+  `statusbar-stability.txt` asserts the status row stays stable across the
+  disconnected / connected / reconnecting / GPS matrix. The CI job runs both on
+  all three panel widths. Query seams (all `FURBLE_SIM` only): `ui.link_alert`,
+  `ui.page_banner` (`none` off the full-screen remote pages, `yes`/`no` on them),
+  `ui.bt_icon` (`hidden`/`plain`/`red` status-row reconnect icon), `ui.battery_x`
+  and `ui.battery_drift` (battery icon x, and its shift from the first-read
+  anchor). `action page <shutter|bulb|cameras|remote_timer|remote_gps>` reaches
+  the connected sub-pages. WILL_FAIL (xassert) lines pending product fixes: a
+  bulb-page reconnect banner (`ui.page_banner yes` on Bulb) and the red status-row
+  BT icon (`ui.bt_icon red` during a reconnect).
 - `sim/scripts/ui-screenshots.txt` captures every modeled page for the
   screenshot CI workflow. Menu routes are position-sensitive: adding or
   removing a settings entry changes the `key down` counts in the scripts.

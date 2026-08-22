@@ -40,6 +40,7 @@ enum class StepType {
   REPORT,
   ACTION,
   ASSERT,
+  XASSERT,
   PRINT,
   EXIT,
 };
@@ -286,6 +287,20 @@ void readScript(const std::string &path) {
       input >> step.expected;
       if (step.name.empty() || step.expected.empty()) {
         std::cerr << "assert requires a key and an expected value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "xassert") {
+      // Expected-fail assert. Documents a value the app SHOULD produce once a
+      // pending product fix lands, without failing the run today. A mismatch
+      // prints XFAIL and continues; a match prints XPASS so the follow-up fix PR
+      // knows to promote the line back to a plain "assert". See sim/CLAUDE.md.
+      Step step;
+      step.type = StepType::XASSERT;
+      input >> step.name;
+      input >> step.expected;
+      if (step.name.empty() || step.expected.empty()) {
+        std::cerr << "xassert requires a key and an expected value\n";
         std::exit(2);
       }
       steps.push_back(step);
@@ -737,6 +752,22 @@ void driverTick(void) {
         std::_Exit(1);
       }
       std::cout << "assert ok: " << step.name << " = " << actual << '\n';
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::XASSERT:
+    {
+      // Expected-fail assertion: a known gap awaiting a separate product fix.
+      // Never aborts the run, so CI stays green while the gap is documented.
+      const std::string actual = queryValue(step.name);
+      if (actual != step.expected) {
+        std::cout << "XFAIL (WILL_FAIL): " << step.name << " expected '" << step.expected
+                  << "' got '" << actual << "'\n";
+      } else {
+        std::cout << "XPASS (gap fixed, promote to assert): " << step.name << " = " << actual
+                  << '\n';
+      }
       ++stepIndex;
       break;
     }

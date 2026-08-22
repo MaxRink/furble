@@ -1,0 +1,113 @@
+# Per-page connection-state coverage sweep.
+#
+# A mid-session BLE drop must be visibly surfaced on EVERY page a user can sit on
+# during a connected session, not only the connected menu page. The shutter-page
+# gap that reached hardware (fixed in PR #154) is exactly this class: the drop
+# was surfaced on the menu but the full-screen Remote page showed nothing. This
+# sweep visits each connected-session page, drops the link, asserts the page
+# surfaces the drop (ui.link_alert yes), then asserts it clears on recovery
+# (ui.link_alert no). It also checks the dedicated in-page banner the
+# full-screen pages need (ui.page_banner), which is where the remaining gap is.
+#
+# link_alert is "yes" when the shared status-row reconnecting icon is showing, or
+# when a full-screen page carries its own banner. Every page below reads "yes"
+# during the drop today, so this is a PASS-now regression guard: it would fail
+# the moment a page stopped surfacing a drop. page_banner is the WILL_FAIL part:
+# the shutter page has a dedicated banner (yes) but the equally full-screen Bulb
+# page does not (xassert), so a drop there is only carried by the small shared
+# status icon. That "yes" flips green once a bulb-page reconnect banner lands.
+#
+# gps is seeded on so the connected GPS Data sub-page is reachable and rendered.
+seed fauxny true
+seed reconnect true
+seed gps true
+wait 400
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+
+# --- connected menu (root) -------------------------------------------------
+# Baseline: connected, nothing down, no alert on any surface.
+assert ui.page connected
+assert ui.link_alert no
+action drop
+wait 700
+assert control.state connecting
+assert ui.page connected
+assert ui.link_alert yes
+wait 1000
+assert control.state active
+assert ui.link_alert no
+
+# --- Remote shutter (full screen) ------------------------------------------
+# The page that reached hardware blank. It must surface the drop AND carry its
+# own banner (PR #154).
+action page shutter
+wait 200
+assert ui.page shutter
+assert ui.link_alert no
+assert ui.page_banner no
+action drop
+wait 700
+assert ui.page shutter
+assert ui.link_alert yes
+assert ui.page_banner yes
+wait 1000
+assert ui.link_alert no
+assert ui.page_banner no
+
+# --- Remote bulb (full screen) ---------------------------------------------
+# Equally full screen, equally a place shots are taken, but it has no dedicated
+# banner yet: the drop is only carried by the small shared status icon. The
+# page_banner "yes" is WILL_FAIL until a bulb-page reconnect banner lands.
+action page bulb
+wait 200
+assert ui.page bulb
+assert ui.link_alert no
+action drop
+wait 700
+assert ui.page bulb
+assert ui.link_alert yes
+xassert ui.page_banner yes
+wait 1000
+assert ui.link_alert no
+
+# --- Cameras (multi-camera status) -----------------------------------------
+# A menu page: the shared status row serves, so no dedicated banner is needed.
+action page cameras
+wait 200
+assert ui.page cameras
+assert ui.link_alert no
+assert ui.page_banner none
+action drop
+wait 700
+assert ui.page cameras
+assert ui.link_alert yes
+wait 1000
+assert ui.link_alert no
+
+# --- Intervalometer (connected sub-page) -----------------------------------
+action page remote_timer
+wait 200
+assert ui.page remote_timer
+assert ui.link_alert no
+action drop
+wait 700
+assert ui.page remote_timer
+assert ui.link_alert yes
+wait 1000
+assert ui.link_alert no
+
+# --- GPS Data (connected sub-page) -----------------------------------------
+action page remote_gps
+wait 200
+assert ui.page remote_gps
+assert ui.link_alert no
+action drop
+wait 700
+assert ui.page remote_gps
+assert ui.link_alert yes
+wait 1000
+assert ui.link_alert no
+exit

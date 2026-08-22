@@ -347,4 +347,16 @@ if(BUILD_TESTING)
            COMMAND control_fuzz --repro missing-shutter-service 1)
   add_test(NAME control-fuzz-repro-missing-shutter-char
            COMMAND control_fuzz --repro missing-shutter-char 1)
+
+  # Deterministic guard for the connect-handshake-phase fault sweep. Injects a
+  # peer reset or a rejected write at more than one point across the connect
+  # handshake (the pairing token exchange and the identifier write), so a
+  # mid-connect fault is exercised before the pairing completes as well as during
+  # it, not only after a link is established. The fixed control code aborts each
+  # cleanly and recovers, so this passes; the deeper inline-self-delete point that
+  # reproduces the mid-connect use-after-free crash is owned by PR #155
+  # (fix/connect-crash-mid-drop) via the shared dropLinkDuringConnect hook, which
+  # the guarded opMidConnectSelfDeleteDrop consumes once that lands.
+  add_test(NAME control-fuzz-repro-handshake-phase-drop
+           COMMAND control_fuzz --repro handshake-phase-drop 1)
 endif()

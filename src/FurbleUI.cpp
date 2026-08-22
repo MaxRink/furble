@@ -2421,7 +2421,23 @@ void UI::simScenarioAction(const char *action) {
 
   const std::string page_name = command.substr(std::char_traits<char>::length(PAGE_PREFIX));
   lv_obj_t *page = m_MainMenu.page;
-  if (page_name == "settings") {
+  // Connected-session sub-pages, so the per-page connection-state sweep can land
+  // on each place a user sits during a live session and confirm a drop is
+  // surfaced there. Set through the real lv_menu page load so its per-page
+  // handler runs, exactly as clicking the connected-page tile does.
+  if (page_name == "shutter") {
+    page = m_Menu.at(m_RemoteShutter).page;
+  } else if (page_name == "bulb") {
+    page = m_Menu.at(m_RemoteBulb).page;
+  } else if (page_name == "cameras") {
+    page = m_Menu.at(m_CamerasStr).page;
+  } else if (page_name == "remote_timer") {
+    page = m_Menu.at(m_RemoteInterval).page;
+  } else if (page_name == "remote_gps") {
+    page = m_Menu.at(m_RemoteGPSData).page;
+  } else if (page_name == "connected") {
+    page = m_Menu.at(m_ConnectedStr).page;
+  } else if (page_name == "settings") {
     page = m_Menu.at(m_SettingsStr).page;
   } else if (page_name == "display") {
     page = m_Menu.at(m_DisplayStr).page;
@@ -2569,7 +2585,7 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 21> pages = {
+    const std::array<std::pair<const char *, const char *>, 25> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -2578,6 +2594,10 @@ std::string UI::simQueryState(const char *key) {
          {m_RemoteShutter, "shutter"},
          {m_RemoteBulb, "bulb"},
          {m_BulbRunStr, "bulb_run"},
+         {m_CamerasStr, "cameras"},
+         {m_RemoteInterval, "remote_timer"},
+         {m_RemoteGPSData, "remote_gps"},
+         {m_RemoteDisconnect, "remote_disconnect"},
          {m_IntervalometerStr, "timer"},
          {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
@@ -2856,6 +2876,96 @@ std::string UI::simQueryState(const char *key) {
       return "none";
     }
     return std::to_string(lv_obj_get_style_outline_width(m_ShutterLockIcon, LV_PART_MAIN));
+  }
+
+  // Is a mid-session link loss surfaced ANYWHERE on the page the user is looking
+  // at right now? "yes" when the shared status-row reconnecting icon is showing,
+  // or, on the full-screen Remote shutter page, when its dedicated banner is up.
+  // This is the per-page coverage guard for the connection-state sweep: every
+  // page reachable during a connected session must answer "yes" while a target
+  // is down and "no" once it is back, so a drop is never silently swallowed on
+  // the page in front of the user (the class of bug that left the shutter page
+  // blank before PR #154).
+  if (query == "link_alert") {
+    const bool headerIcon = m_Status.reconnectingIcon != nullptr
+                            && !lv_obj_has_flag(m_Status.reconnectingIcon, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    const bool onShutter = (page == m_Menu.at(m_RemoteShutter).page);
+    const bool banner = onShutter && m_RemoteReconnect != nullptr
+                        && !lv_obj_has_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+    return (headerIcon || banner) ? "yes" : "no";
+  }
+
+  // Whether the CURRENT page carries a dedicated in-page reconnect banner that is
+  // showing. A full-screen page that hides the status row (the Remote shutter and
+  // bulb pages) cannot rely on the shared header icon, so it needs its own banner
+  // overlaid on the page. Reports:
+  //   "none"  the page is not a full-screen remote page, so the header row serves
+  //   "yes"   a dedicated banner is showing on this full-screen page
+  //   "no"    this full-screen page has no dedicated banner showing
+  // The shutter page got its banner in PR #154; the full-screen Bulb and Bulb-run
+  // pages still have none, so the sweep marks their "yes" expectation WILL_FAIL
+  // until a bulb-page reconnect banner lands.
+  if (query == "page_banner") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    const bool onShutter = (page == m_Menu.at(m_RemoteShutter).page);
+    const bool onBulb =
+        (page == m_Menu.at(m_RemoteBulb).page) || (page == m_Menu.at(m_BulbRunStr).page);
+    if (!onShutter && !onBulb) {
+      return "none";
+    }
+    if (onShutter) {
+      const bool shown =
+          m_RemoteReconnect != nullptr && !lv_obj_has_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+      return shown ? "yes" : "no";
+    }
+    // Bulb and Bulb-run have no dedicated banner object yet.
+    return "no";
+  }
+
+  // Recolor state of the shared status-row Bluetooth icon that marks a mid-session
+  // reconnect. Reports "hidden" when it is not showing, "red" when it is showing
+  // recolored red (the on-screen "the link is down" cue), and "plain" when it is
+  // showing in the default icon tint. The reconnect icon appears on a drop but is
+  // not yet recolored red in the status row (only the shutter-page banner is), so
+  // the status-bar matrix marks the "red" expectation WILL_FAIL until the red-BT
+  // fix lands.
+  if (query == "bt_icon") {
+    lv_obj_t *icon = m_Status.reconnectingIcon;
+    if (icon == nullptr || lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN)) {
+      return "hidden";
+    }
+    const lv_color_t recolor = lv_obj_get_style_image_recolor(icon, LV_PART_MAIN);
+    const lv_opa_t opa = lv_obj_get_style_image_recolor_opa(icon, LV_PART_MAIN);
+    const lv_color_t red = lv_palette_main(LV_PALETTE_RED);
+    return (opa >= LV_OPA_50 && lv_color_eq(recolor, red)) ? "red" : "plain";
+  }
+
+  // Header battery icon x position, for the status-bar layout-stability matrix.
+  //   "battery_x"      the icon's current x within the header, absolute
+  //   "battery_drift"  x minus the anchor captured on the FIRST battery_drift
+  //                    read, so a scenario asserts 0 at its baseline state and
+  //                    then 0 again across every connection and GPS state
+  // The battery currently rides a left-packed flex row, so showing or hiding the
+  // reconnect, reconnecting or GPS icon to its left shoves it sideways; the
+  // matrix marks the post-baseline "0" expectations WILL_FAIL until the battery
+  // is anchored so its position no longer depends on the icons beside it. The
+  // anchor is a function-local static: one sim process runs one scenario, so it
+  // is established once per run and is FURBLE_SIM only.
+  if (query == "battery_x" || query == "battery_drift") {
+    if (m_Status.batteryIcon == nullptr) {
+      return "none";
+    }
+    lv_obj_update_layout(m_Header);
+    const int32_t x = lv_obj_get_x(m_Status.batteryIcon);
+    if (query == "battery_x") {
+      return std::to_string(x);
+    }
+    static int32_t anchor = INT32_MIN;
+    if (anchor == INT32_MIN) {
+      anchor = x;
+    }
+    return std::to_string(x - anchor);
   }
 
   return "";

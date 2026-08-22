@@ -468,18 +468,116 @@ void opDeadCameraDisconnect(FuzzContext &ctx) {
   checkIdleInvariants("dead-camera-disconnect/idle");
 }
 
+// A peer that resets (a power-cycle) at a RANDOMISED point across the connect
+// handshake, not the single fixed identify-write point opMidHandshakeDrop uses.
+// The bench crash was a camera power-cycled mid-connect, and where in the
+// handshake the reset lands decides which half-built client state the connect
+// path is holding when the link falls: the seeded PRNG picks the write phase
+// (the pairing token exchange, then the identifier write) and the fault flavour
+// (a supervision-timeout link loss, or an ATT write the peer rejects), so across
+// a fuzz run a fault lands at more than one point in the connect sequence. Each
+// must abort into a terminal non-active state without wedging, crashing or
+// leaking, and a healthy connect after the fault clears must still recover.
+//
+// This uses only the peer fault levers already on master (dropLinkOnWrite,
+// failWrite), so it stays additive and does not touch the shared MockNimBLE or
+// FujifilmVirtualCamera symbols. The deeper mid-connect point, where the reset
+// self-frees the client inline while _connect() is still running (the exact
+// use-after-free crash class), needs the dropLinkDuringConnect /
+// mockDropLinkSelfDelete hook that the fix/connect-crash-mid-drop branch adds to
+// those shared files. When that branch lands, the opMidConnectSelfDeleteDrop
+// stub below (guarded by FURBLE_FUZZ_HAS_DROP_DURING_CONNECT) should be enabled
+// and added to the table; see the note there for the merge reconciliation.
+void opHandshakePhaseDrop(FuzzContext &ctx) {
+  auto &control = Control::getInstance();
+  struct Phase {
+    const char *name;
+    NimBLEUUID service;
+    NimBLEUUID characteristic;
+  };
+  const std::array<Phase, 2> phases = {
+      {{"token", FujifilmVirtualCamera::pairServiceUUID(),
+        FujifilmVirtualCamera::pairCharacteristicUUID()},
+       {"identifier", FujifilmVirtualCamera::pairServiceUUID(),
+        FujifilmVirtualCamera::identifierCharacteristicUUID()}}
+  };
+  const Phase &phase = phases[ctx.rng() % phases.size()];
+  const bool dropFlavour = (ctx.rng() & 1) != 0;
+  if (dropFlavour) {
+    ctx.peer.dropLinkOnWrite(phase.service, phase.characteristic);
+  } else {
+    ctx.peer.failWrite(phase.service, phase.characteristic);
+  }
+  control.addActive(ctx.camera);
+  control.connectAll(false);
+  check(waitForState(Control::STATE_CONNECT_FAILED, CONNECT_TIMEOUT_MS),
+        std::string("handshake fault at ") + phase.name + " did not settle in connect_failed");
+  check(control.getState() != Control::STATE_ACTIVE,
+        std::string("reached active despite a handshake fault at ") + phase.name);
+  ctx.peer.clearFaults();
+  disconnectToIdle(ctx, false);
+  checkNoLeak("handshake-phase-drop/idle");
+
+  control.addActive(ctx.camera);
+  control.connectAll(false);
+  if (check(waitForState(Control::STATE_ACTIVE, CONNECT_TIMEOUT_MS),
+            std::string("healthy connect failed after a handshake fault at ") + phase.name)) {
+    checkActiveInvariants(ctx, "handshake-phase-drop/recovered");
+  }
+  disconnectToIdle(ctx, false);
+  checkIdleInvariants("handshake-phase-drop/idle2");
+}
+
+#if defined(FURBLE_FUZZ_HAS_DROP_DURING_CONNECT)
+// Merge-reconciliation stub. Enabled once fix/connect-crash-mid-drop lands the
+// dropLinkDuringConnect / mockDropLinkSelfDelete hook on the shared peer and mock
+// (define FURBLE_FUZZ_HAS_DROP_DURING_CONNECT then add this to the ops table).
+// Unlike opHandshakePhaseDrop, the write completes and the peer then severs the
+// link with an inline self-deleting client free while _connect() keeps going, so
+// its next m_Client dereference lands on the freed client: the mid-connect
+// use-after-free. Under ASan/UBSan a regression there is a hard finding, and on
+// the fixed code the connect aborts cleanly and recovers.
+void opMidConnectSelfDeleteDrop(FuzzContext &ctx) {
+  auto &control = Control::getInstance();
+  ctx.peer.dropLinkDuringConnect(FujifilmVirtualCamera::pairServiceUUID(),
+                                 FujifilmVirtualCamera::identifierCharacteristicUUID());
+  control.addActive(ctx.camera);
+  control.connectAll(false);
+  check(waitForState(Control::STATE_CONNECT_FAILED, CONNECT_TIMEOUT_MS),
+        "mid-connect self-delete drop did not settle in connect_failed");
+  check(control.getState() != Control::STATE_ACTIVE,
+        "reached active despite a mid-connect self-delete drop");
+  ctx.peer.clearFaults();
+  disconnectToIdle(ctx, false);
+  checkNoLeak("mid-connect-selfdelete/idle");
+
+  control.addActive(ctx.camera);
+  control.connectAll(false);
+  if (check(waitForState(Control::STATE_ACTIVE, CONNECT_TIMEOUT_MS),
+            "healthy connect failed after a mid-connect self-delete drop")) {
+    checkActiveInvariants(ctx, "mid-connect-selfdelete/recovered");
+  }
+  disconnectToIdle(ctx, false);
+  checkIdleInvariants("mid-connect-selfdelete/idle2");
+}
+#endif
+
 using Operation = std::function<void(FuzzContext &)>;
 
 const std::vector<std::pair<const char *, Operation>> &operations() {
   static const std::vector<std::pair<const char *, Operation>> table = {
-      {"connect-clean",           opConnectClean         },
-      {"transient-connect-fail",  opTransientConnectFail },
-      {"pool-exhaustion",         opPoolExhaustion       },
-      {"stale-session-reconnect", opStaleSessionReconnect},
-      {"write-fail-abort",        opWriteFailAbort       },
-      {"mid-handshake-drop",      opMidHandshakeDrop     },
-      {"drop-auto-reconnect",     opDropAutoReconnect    },
-      {"dead-camera-disconnect",  opDeadCameraDisconnect },
+      {"connect-clean",           opConnectClean            },
+      {"transient-connect-fail",  opTransientConnectFail    },
+      {"pool-exhaustion",         opPoolExhaustion          },
+      {"stale-session-reconnect", opStaleSessionReconnect   },
+      {"write-fail-abort",        opWriteFailAbort          },
+      {"mid-handshake-drop",      opMidHandshakeDrop        },
+      {"handshake-phase-drop",    opHandshakePhaseDrop      },
+      {"drop-auto-reconnect",     opDropAutoReconnect       },
+      {"dead-camera-disconnect",  opDeadCameraDisconnect    },
+#if defined(FURBLE_FUZZ_HAS_DROP_DURING_CONNECT)
+      {"mid-connect-selfdelete",  opMidConnectSelfDeleteDrop},
+#endif
   };
   return table;
 }
@@ -587,10 +685,33 @@ int reproMissingShutterChar(uint32_t seed) {
   return g_Failures;
 }
 
+// Deterministic guard for the handshake-phase fault sweep. Runs the operation
+// across a fixed seed span so both handshake write points (token, identifier)
+// and both fault flavours (drop, rejected write) are exercised every run, rather
+// than relying on a random table pick landing on them. On the fixed code every
+// combination aborts cleanly and recovers, so this returns 0; a crash, wedge,
+// leak or a connect that wrongly reports active is a finding.
+int reproHandshakePhaseDrop(uint32_t seed) {
+  freshEnvironment();
+  FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  for (uint32_t i = 0; i < 8; i++) {
+    std::mt19937 rng(seed + i);
+    FuzzContext ctx {rng, peer, camera, seed + i};
+    g_Context = "repro=handshake-phase-drop sub=" + std::to_string(i);
+    opHandshakePhaseDrop(ctx);
+    if (Control::getInstance().getState() != Control::STATE_IDLE) {
+      disconnectToIdle(ctx, true);
+    }
+  }
+  return g_Failures;
+}
+
 int usage(const char *argv0) {
   std::cerr << "usage: " << argv0 << " <seed> [iterations]\n"
             << "       " << argv0
-            << " --repro missing-shutter-service|missing-shutter-char [seed]\n";
+            << " --repro missing-shutter-service|missing-shutter-char|handshake-phase-drop "
+               "[seed]\n";
   return 2;
 }
 
@@ -631,6 +752,15 @@ int main(int argc, char **argv) {
       std::cout << "control-fuzz repro missing-shutter-char seed=" << seed << '\n';
       reproMissingShutterChar(seed);
       std::cout << (g_Failures == 0 ? "repro: clean (finding is fixed)\n" : "repro: reproduced\n");
+      return g_Failures == 0 ? 0 : 1;
+    }
+
+    if (std::strcmp(argv[2], "handshake-phase-drop") == 0) {
+      startControlTask();
+      std::cout << "control-fuzz repro handshake-phase-drop seed=" << seed << '\n';
+      reproHandshakePhaseDrop(seed);
+      std::cout << (g_Failures == 0 ? "repro: clean (survives handshake-phase faults)\n"
+                                    : "repro: reproduced\n");
       return g_Failures == 0 ? 0 : 1;
     }
 
