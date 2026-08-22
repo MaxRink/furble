@@ -1,0 +1,24 @@
+# Note A: an active-to-idle drop (reconnect off) must self-heal the timer.
+#
+# The connect timer no longer pauses on STATE_ACTIVE so it can observe drops.
+# A reconnect passes through connecting, but a drop with reconnect off goes
+# straight to idle, and nothing else pauses the timer there. The STATE_IDLE
+# branch must pause it so it does not spin forever on a torn-down link. Connect
+# the FauxNY camera with reconnect off, drop the link, and confirm the UI no
+# longer presents as connected, the box stays hidden, and the timer is parked.
+seed fauxny true
+wait 300
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+assert ui.connect_box hidden
+assert ui.connect_timer running
+# Drop with reconnect off: control goes straight to idle.
+action drop
+wait 700
+assert control.state idle
+assert ui.connected no
+assert ui.connect_box hidden
+assert ui.connect_timer paused
+exit

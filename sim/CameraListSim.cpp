@@ -64,9 +64,10 @@ std::shared_ptr<Camera> CameraList::get(size_t n) {
 }
 
 void CameraList::addFauxNY(void) {
-  if (!hasCamera()) {
-    cameras.push_back(std::make_shared<Camera>("FauxNY Camera"));
-  }
+  // Append a fresh test camera. Every caller either guards on an empty list or
+  // clears first, except the multi-connect scenario path which deliberately
+  // seeds a second camera.
+  cameras.push_back(std::make_shared<Camera>("FauxNY Camera"));
 }
 
 }  // namespace Furble

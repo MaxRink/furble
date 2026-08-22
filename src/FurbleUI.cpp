@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <numeric>
@@ -47,6 +48,10 @@ namespace {
 // Registry of settings switches keyed by Settings::type_t. Scripted scenarios
 // toggle a setting through its real widget and persistence callback.
 std::unordered_map<int, lv_obj_t *> g_simSettingSwitches;
+
+// Counts doDisconnect() calls so a scenario can prove exactly one disconnect
+// fires per Cancel click regardless of how many connect attempts preceded it.
+uint32_t g_simDisconnectCalls = 0;
 }  // namespace
 #else
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
@@ -111,6 +116,22 @@ void addToInputGroup(lv_group_t *group, lv_obj_t *obj) {
 void setLabelIfChanged(lv_obj_t *label, const char *text) {
   if ((label != nullptr) && std::strcmp(lv_label_get_text(label), text)) {
     lv_label_set_text(label, text);
+  }
+}
+
+// Show or hide a status-row icon, but only when its visibility actually
+// changes. A 64x64 icon costs a decompress on every draw, so toggling the
+// hidden flag every tick would needlessly invalidate and redraw it. The guard
+// keeps periodic callers within the LVGL redraw discipline.
+void showStatusIcon(lv_obj_t *icon, bool show) {
+  if (icon == nullptr) {
+    return;
+  }
+  const bool hidden = lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN);
+  if (show && hidden) {
+    lv_obj_clear_flag(icon, LV_OBJ_FLAG_HIDDEN);
+  } else if (!show && !hidden) {
+    lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -370,6 +391,10 @@ UI::UI(const interval_t &interval)
   m_GPS.init();
   m_Status.gps = &m_GPS;
   m_Status.reconnectIcon = addIcon(&icon_all_inclusive);
+  // Non-blocking indicator for an in-progress mid-session reconnect. Hidden
+  // until a live link drops, so it never competes with the connected view.
+  m_Status.reconnectingIcon = addIcon(&icon_bluetooth);
+  lv_obj_add_flag(m_Status.reconnectingIcon, LV_OBJ_FLAG_HIDDEN);
   m_Status.reconnectBackoff = nullptr;
   m_Status.gpsIcon = addIcon(&icon_location_disabled);
   m_Status.batteryIcon = addIcon(&icon_battery_android_frame_4);
@@ -1954,9 +1979,48 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Connect two cameras so a multi-connect drop can be exercised: one camera
+  // dropping must not blank the trigger for the other. Seeds a second FauxNY
+  // camera, selects both, and drives the same connect flow as the on-device
+  // multi-select screen.
+  if (command == "connect-two") {
+    while (CameraList::size() < 2) {
+      CameraList::addFauxNY();
+    }
+    for (size_t n = 0; n < CameraList::size(); n++) {
+      CameraList::get(n)->setActive(true);
+    }
+    doConnect(nullptr);
+    return;
+  }
+
   // Mirror the on-device disconnect button.
   if (command == "disconnect") {
     doDisconnect();
+    return;
+  }
+
+  // Simulate a mid-session BLE link drop on an active link. Control leaves
+  // STATE_ACTIVE, which the connect timer must observe so the UI reflects the
+  // reconnect (task #54 / F3). "drop" drops every active link; "drop <n>" drops
+  // only target n, so a multi-connect session can lose one camera and keep the
+  // rest live.
+  if (command == "drop" || command.rfind("drop ", 0) == 0) {
+    int index = -1;
+    if (command.size() > 5) {
+      index = std::atoi(command.c_str() + 5);
+    }
+    Control::getInstance().simDropActiveLink(index);
+    return;
+  }
+
+  // Click the real Cancel button on the connect message box, running the same
+  // handler an on-device press would. Used to prove one Cancel click fires
+  // exactly one disconnect regardless of prior connect attempts (F4).
+  if (command == "cancel") {
+    if (m_ConnectContext.cancel != nullptr) {
+      lv_obj_send_event(m_ConnectContext.cancel, LV_EVENT_CLICKED, this);
+    }
     return;
   }
 
@@ -2225,6 +2289,29 @@ std::string UI::simQueryState(const char *key) {
     SpinValue::nvs_t nvs = Settings::load<Settings::BULB>();
     SpinValue value(nvs);
     return std::to_string(value.toMilliseconds());
+  }
+
+  if (query == "disconnect_calls") {
+    return std::to_string(g_simDisconnectCalls);
+  }
+
+  // Whether the non-blocking mid-session reconnect indicator is showing. It must
+  // appear while a live link is being reconnected and clear once it is back, all
+  // without the connect progress box taking over the screen.
+  if (query == "reconnecting") {
+    const bool hidden = m_Status.reconnectingIcon == nullptr
+                        || lv_obj_has_flag(m_Status.reconnectingIcon, LV_OBJ_FLAG_HIDDEN);
+    return hidden ? "no" : "yes";
+  }
+
+  // Whether the connect liveness timer is parked. It must pause once the link is
+  // fully down so it does not spin forever on a torn-down connection, and keep
+  // running while active or reconnecting so a drop is observed.
+  if (query == "connect_timer") {
+    if (m_ConnectTimer == nullptr) {
+      return "none";
+    }
+    return lv_timer_get_paused(m_ConnectTimer) ? "paused" : "running";
   }
 
   if (query == "connected") {
@@ -2567,6 +2654,11 @@ void UI::showShutterIntervalometer(bool show) {
 
 void UI::connectTimerHandler(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("connect_timer");
+  // Fast cadence while a connect is in progress so the progress bar animates
+  // smoothly. Slow liveness cadence once active: the timer keeps running to
+  // observe a mid-session drop, but polls gently instead of busy spinning.
+  static constexpr uint32_t CONNECT_POLL_PERIOD_MS = 50;
+  static constexpr uint32_t LIVENESS_POLL_PERIOD_MS = 500;
   auto *ctx = static_cast<ConnectContext_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
   std::shared_ptr<Camera> camera;
@@ -2585,21 +2677,33 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   switch (state) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
+      lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
       camera = control.getConnectingCamera();
 
-      if (lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
-        // hide menu, unhide message box
-        lv_obj_add_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN);
-        ctx->ui->displayNavigationBar(false);
-        ctx->ui->configureControl(ControlMode::MENU, false);
+      if (ctx->sessionEstablished) {
+        // Mid-session reconnect. A live session already owns the screen, so do
+        // not take it over with the progress box. Surface a non-blocking
+        // indicator in the status row instead, keeping the connected view and
+        // its trigger usable for any cameras still connected (task #54, and the
+        // multi-connect hardware feedback).
+        showStatusIcon(ctx->ui->m_Status.reconnectingIcon, true);
+      } else {
+        // Initial connect: nothing is on screen yet, so present the progress
+        // box that owns the connect flow until the first link goes active.
+        if (lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
+          // hide menu, unhide message box
+          lv_obj_add_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN);
+          ctx->ui->displayNavigationBar(false);
+          ctx->ui->configureControl(ControlMode::MENU, false);
 
-        lv_group_focus_obj(ctx->cancel);
-      }
+          lv_group_focus_obj(ctx->cancel);
+        }
 
-      if (camera != nullptr) {
-        lv_label_set_text(ctx->label, camera->getName().c_str());
-        lv_bar_set_value(ctx->bar, camera->getConnectProgress(), LV_ANIM_ON);
+        if (camera != nullptr) {
+          lv_label_set_text(ctx->label, camera->getName().c_str());
+          lv_bar_set_value(ctx->bar, camera->getConnectProgress(), LV_ANIM_ON);
+        }
       }
       break;
 
@@ -2630,12 +2734,30 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         ctx->ui->configureControl(ControlMode::REVERT);
         lv_group_focus_next(lv_group_get_default());
       }
-      lv_timer_pause(m_ConnectTimer);
+      // The link is live: remember the session so a later drop shows the
+      // non-blocking indicator instead of taking over the screen, and clear
+      // that indicator now the link is back.
+      ctx->sessionEstablished = true;
+      showStatusIcon(ctx->ui->m_Status.reconnectingIcon, false);
+      // Do not pause. A paused timer never observes a mid-session link drop, so
+      // the screen would keep showing connected while control drops and retries
+      // (task #54). Keep polling liveness at a gentle cadence: a drop re-enters
+      // the connecting branch above and shows the reconnecting indicator, and a
+      // successful reconnect restores this connected view.
+      lv_timer_set_period(m_ConnectTimer, LIVENESS_POLL_PERIOD_MS);
       break;
 
     case Control::STATE_IDLE:
     case Control::STATE_DISCONNECTING:
-      // The disconnect feedback fired above on leaving the active state.
+      // The disconnect feedback fired above on leaving the active state. The
+      // session is fully down: forget it and drop the reconnecting indicator.
+      ctx->sessionEstablished = false;
+      showStatusIcon(ctx->ui->m_Status.reconnectingIcon, false);
+      // Defensive: doDisconnect() already pauses on the interactive path, and a
+      // legitimate reconnect passes through STATE_CONNECT/CONNECTING, not idle.
+      // If Control ever drops straight from active to idle, pause here too so
+      // the liveness poll self-heals instead of spinning on a torn-down link.
+      lv_timer_pause(m_ConnectTimer);
       break;
   }
 }
@@ -2918,6 +3040,9 @@ void UI::doConnect(lv_event_t *e) {
   auto &control = Control::getInstance();
 
   m_ConnectContext.feedbackConnected = false;
+  // A fresh connect starts without a session, so the initial progress box owns
+  // the screen until the first link goes active.
+  m_ConnectContext.sessionEstablished = false;
 
   // activate selected cameras
   for (auto n = 0; n < CameraList::size(); n++) {
@@ -2926,9 +3051,6 @@ void UI::doConnect(lv_event_t *e) {
       control.addActive(camera);
     }
   }
-
-  lv_obj_add_event_cb(
-      m_ConnectContext.cancel, [](lv_event_t *e) { doDisconnect(); }, LV_EVENT_CLICKED, NULL);
 
   control.connectAll(Settings::load<Settings::RECONNECT>());
   lv_timer_ready(m_ConnectTimer);
@@ -2939,7 +3061,15 @@ void UI::doConnect(lv_event_t *e) {
 }
 
 void UI::doDisconnect(void) {
+#if defined(FURBLE_SIM)
+  g_simDisconnectCalls++;
+#endif
   lv_timer_pause(m_ConnectTimer);
+
+  // The session is being torn down: forget it and drop the reconnecting
+  // indicator so it never lingers on the next connect.
+  m_ConnectContext.sessionEstablished = false;
+  showStatusIcon(m_ConnectContext.ui->m_Status.reconnectingIcon, false);
 
   if (m_ConnectContext.feedbackConnected) {
     Feedback::getInstance().signal(Feedback::DISCONNECTED);
@@ -3190,6 +3320,11 @@ void UI::addConnectMenu(void) {
   lv_bar_set_value(m_ConnectContext.bar, 0, LV_ANIM_ON);
 
   m_ConnectContext.cancel = lv_msgbox_add_footer_button(m_ConnectContext.messageBox, "Cancel");
+  // Register the Cancel handler once here, not per connect attempt. Adding it in
+  // doConnect stacked one callback per attempt, so after N attempts a single
+  // Cancel click fired N disconnects.
+  lv_obj_add_event_cb(
+      m_ConnectContext.cancel, [](lv_event_t *e) { doDisconnect(); }, LV_EVENT_CLICKED, NULL);
   lv_obj_t *footer = lv_msgbox_get_footer(m_ConnectContext.messageBox);
   lv_obj_update_layout(footer);
   // @todo cancel button bottom is clipped, weird

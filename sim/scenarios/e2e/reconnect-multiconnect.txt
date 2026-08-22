@@ -1,0 +1,42 @@
+# task #54, multi-connect: one camera dropping must not blank the trigger.
+#
+# With several cameras connected, a single mid-session drop must keep the
+# connected/trigger view up and usable for the cameras still connected. Only the
+# non-blocking status indicator reflects the retry; the connecting/progress page
+# never takes over. Connect two FauxNY cameras with reconnect on, drop just one,
+# and confirm the trigger stays on the connected page, one link stays live, and
+# the reconnecting indicator reflects the dropped camera. Then confirm both
+# links are restored.
+seed fauxny true
+seed reconnect true
+wait 300
+action connect-two
+wait 1200
+assert control.state active
+assert control.targets 2
+assert control.connected 2
+assert ui.connected yes
+assert ui.connect_box hidden
+assert ui.reconnecting no
+# Drop only the first camera. The second stays connected, so the session and its
+# trigger survive.
+action drop 0
+wait 700
+assert control.state connecting
+assert control.targets 2
+# One link remains live for the trigger while the other reconnects.
+assert control.connected 1
+# No takeover: still on the connected page with the shutter trigger and the
+# progress box hidden. The trigger view is never blanked, which is the exact
+# regression the rejected page-takeover approach introduced.
+assert ui.connect_box hidden
+assert ui.page connected
+assert ui.reconnecting yes
+# The dropped camera reconnects and both links are live again.
+wait 1000
+assert control.state active
+assert control.connected 2
+assert ui.connected yes
+assert ui.connect_box hidden
+assert ui.reconnecting no
+exit
