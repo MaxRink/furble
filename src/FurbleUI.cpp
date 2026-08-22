@@ -402,6 +402,8 @@ UI::UI(const interval_t &interval)
   // until a live link drops, so it never competes with the connected view.
   m_Status.reconnectingIcon = addIcon(&icon_bluetooth);
   lv_obj_add_flag(m_Status.reconnectingIcon, LV_OBJ_FLAG_HIDDEN);
+  // Captured once the main menu is built (addMainMenu). Left null until then.
+  m_Status.menuTitle = nullptr;
   m_Status.reconnectBackoff = nullptr;
   m_Status.gpsIcon = addIcon(&icon_location_disabled);
   m_Status.batteryIcon = addIcon(&icon_battery_android_frame_4);
@@ -1781,6 +1783,21 @@ void UI::addMainMenu(void) {
   lv_menu_set_mode_root_back_button(m_MainMenu.main, LV_MENU_ROOT_BACK_BUTTON_DISABLED);
   lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
   addToInputGroup(m_Group, back);
+
+  // Cache the menu header title label so a mid-session reconnect can rewrite the
+  // connected page title in place (Connected -> Reconnecting). lv_menu keeps a
+  // single header title label, populated from the current page on load, so we
+  // find it once here by its type rather than a brittle child index.
+  lv_obj_t *header = lv_menu_get_main_header(m_MainMenu.main);
+  if (header != nullptr) {
+    for (uint32_t i = 0; i < lv_obj_get_child_count(header); i++) {
+      lv_obj_t *child = lv_obj_get_child(header, i);
+      if (lv_obj_check_type(child, &lv_label_class)) {
+        m_Status.menuTitle = child;
+        break;
+      }
+    }
+  }
 #if defined(FURBLE_M5COREX) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   // StickC display too narrow for icons
   lv_obj_t *back_img = lv_obj_get_child(back, 0);
@@ -2472,6 +2489,30 @@ std::string UI::simQueryState(const char *key) {
     return hidden ? "no" : "yes";
   }
 
+  // The current menu header title text. On the connected page it reads
+  // "Connected" while active and "Reconnecting" (or "Reconnecting (i/n)") during
+  // a mid-session reconnect, so a scenario can assert the text tracks the drop
+  // and clears on recovery, independently of the reconnecting icon.
+  if (query == "status_text") {
+    if (m_Status.menuTitle == nullptr) {
+      return "none";
+    }
+    const char *text = lv_label_get_text(m_Status.menuTitle);
+    return (text != nullptr) ? std::string(text) : std::string("none");
+  }
+
+  // The reconnect count carried in the "Reconnecting (i/n)" title as a single
+  // token "i/n": i cameras of the n in the session are currently down. Uses the
+  // exact counts the title formats from, so a scenario can assert the per-device
+  // count without matching a string that contains a space.
+  if (query == "reconnect_count") {
+    auto &control = Control::getInstance();
+    const size_t total = control.getTargetCount();
+    const size_t connected = control.getConnectedTargetCount();
+    const size_t down = (total > connected) ? (total - connected) : 0;
+    return std::to_string(down) + "/" + std::to_string(total);
+  }
+
   // Whether the connect liveness timer is parked. It must pause once the link is
   // fully down so it does not spin forever on a torn-down connection, and keep
   // running while active or reconnecting so a drop is observed.
@@ -2886,6 +2927,40 @@ void UI::showShutterIntervalometer(bool show) {
   }
 }
 
+void UI::updateReconnectTitle(bool reconnecting) {
+  lv_obj_t *label = m_Status.menuTitle;
+  if (label == nullptr) {
+    return;
+  }
+
+  // Only rewrite the title while the connected page owns the header. On any sub
+  // page (Shutter, Intervalometer, GPS Data, ...) the header shows that page's
+  // own name and must be left untouched; the reconnecting icon still signals the
+  // retry from the status row regardless of page.
+  lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if (page != m_Menu.at(m_ConnectedStr).page) {
+    return;
+  }
+
+  if (!reconnecting) {
+    setLabelTextIfChanged(label, m_ConnectedStr);
+    return;
+  }
+
+  auto &control = Control::getInstance();
+  const size_t total = control.getTargetCount();
+  const size_t connected = control.getConnectedTargetCount();
+  const size_t down = (total > connected) ? (total - connected) : 0;
+  if (total > 1) {
+    // "Reconnecting (i/n)": i cameras of the n in the session are currently down
+    // and reconnecting. The survivors keep their links and stay usable.
+    setLabelTextFmtIfChanged(label, "Reconnecting (%u/%u)", static_cast<unsigned>(down),
+                             static_cast<unsigned>(total));
+  } else {
+    setLabelTextIfChanged(label, "Reconnecting");
+  }
+}
+
 void UI::connectTimerHandler(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("connect_timer");
   // Fast cadence while a connect is in progress so the progress bar animates
@@ -2921,6 +2996,10 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         // its trigger usable for any cameras still connected (task #54, and the
         // multi-connect hardware feedback).
         showStatusIcon(ctx->ui->m_Status.reconnectingIcon, true);
+        // Match the on-screen text to the icon: the connected page title reads
+        // "Reconnecting" (or "Reconnecting (i/n)" for a multi-connect session)
+        // instead of still claiming the link is up.
+        ctx->ui->updateReconnectTitle(true);
       } else {
         // Initial connect: nothing is on screen yet, so present the progress
         // box that owns the connect flow until the first link goes active.
@@ -2994,6 +3073,8 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       // that indicator now the link is back.
       ctx->sessionEstablished = true;
       showStatusIcon(ctx->ui->m_Status.reconnectingIcon, false);
+      // Link is back: restore the connected page title from "Reconnecting".
+      ctx->ui->updateReconnectTitle(false);
       // Do not pause. A paused timer never observes a mid-session link drop, so
       // the screen would keep showing connected while control drops and retries
       // (task #54). Keep polling liveness at a gentle cadence: a drop re-enters
@@ -3008,6 +3089,9 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       // session is fully down: forget it and drop the reconnecting indicator.
       ctx->sessionEstablished = false;
       showStatusIcon(ctx->ui->m_Status.reconnectingIcon, false);
+      // Session fully down: clear any lingering "Reconnecting" title back to the
+      // default so a later connect starts from the normal "Connected" label.
+      ctx->ui->updateReconnectTitle(false);
       // Defensive: doDisconnect() already pauses on the interactive path, and a
       // legitimate reconnect passes through STATE_CONNECT/CONNECTING, not idle.
       // If Control ever drops straight from active to idle, pause here too so

@@ -1,0 +1,47 @@
+# task #54 / task #55, multi-connect shutter routing: a press while one camera is
+# down must fire on the survivors and must NOT replay on the dropped camera.
+#
+# Two FauxNY cameras are connected. camera.shutter_presses is a global aggregate
+# across all cameras in the sim, so the count DELTA per press encodes the routing:
+# with 2 connected a press adds 2, with 1 down it adds 1 (survivor only), and a
+# press made while a camera is down must never be buffered and replayed when it
+# returns (which would show up as an extra count after reconnect).
+seed fauxny true
+seed reconnect true
+wait 300
+action connect-two
+wait 1200
+assert control.state active
+assert control.connected 2
+assert camera.shutter_presses 0
+assert camera.shutter_releases 0
+# Both connected: one press fans out to both cameras (+2).
+action shutter
+wait 200
+assert camera.shutter_presses 2
+assert camera.shutter_releases 2
+# Drop camera 0. Camera 1 stays connected and the trigger stays live.
+action drop 0
+wait 200
+assert control.state connecting
+assert control.connected 1
+# A press now fires ONLY on the still-connected camera 1 (+1), and is dropped for
+# the down camera 0. Proves per-target gating, not a global block: the survivor
+# still fires while camera 0 reconnects.
+action shutter
+wait 200
+assert camera.shutter_presses 3
+assert camera.shutter_releases 3
+# Camera 0 reconnects. The press made while it was down must NOT replay: the
+# aggregate stays at 3, not 4.
+wait 1000
+assert control.state active
+assert control.connected 2
+assert camera.shutter_presses 3
+assert camera.shutter_releases 3
+# Both live again: a press fans out to both once more (+2 -> 5).
+action shutter
+wait 200
+assert camera.shutter_presses 5
+assert camera.shutter_releases 5
+exit

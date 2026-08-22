@@ -211,6 +211,11 @@ class UI {
     // being reconnected. Distinct from reconnectIcon, which only reflects that
     // the reconnect setting is enabled.
     lv_obj_t *reconnectingIcon;
+    // The lv_menu main-header title label. On the connected page it normally
+    // reads "Connected"; a mid-session reconnect rewrites it to "Reconnecting"
+    // (or "Reconnecting (i/n)" for a multi-connect session) so the on-screen text
+    // matches the reconnecting icon instead of still claiming the link is up.
+    lv_obj_t *menuTitle;
     lv_obj_t *reconnectBackoff;
     // battery page rows, NULL where the board cannot measure them
     lv_obj_t *batteryLevel;
@@ -998,6 +1003,19 @@ class UI {
 
   /** Connection timer handler. */
   static void connectTimerHandler(lv_timer_t *timer);
+
+  /**
+   * Rewrite the connected page header title to reflect a mid-session reconnect.
+   *
+   * On the connected page the header normally reads "Connected". While a live
+   * link is being reconnected this shows "Reconnecting", or "Reconnecting (i/n)"
+   * for a multi-connect session where i is the number of cameras currently down
+   * and n the total in the session. Passing reconnecting == false restores
+   * "Connected". A no-op unless the connected page owns the header, so a sub page
+   * (Shutter, Intervalometer, ...) keeps its own title. Guarded so the label text
+   * is only set when it actually changes.
+   */
+  void updateReconnectTitle(bool reconnecting);
 
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);

@@ -390,6 +390,13 @@ class NimBLEDevice {
   // previous session. Unlike setConnectShouldFail this drains, so a test can
   // drive reconnect churn and then confirm recovery. resetMock clears it.
   static void setConnectFailCount(size_t count);
+  // Block the next NimBLEClient::connect() for `ms` milliseconds before it
+  // proceeds, modelling the seconds-long block a reconnect spends inside connect()
+  // on device. One-shot: consumed by the next connect() call. It lets a test hold
+  // the control task inside connectAll() long enough to prove commands issued
+  // during the outage are dropped, not buffered on the control queue and replayed.
+  // resetMock clears it.
+  static void setConnectDelayMs(uint32_t ms);
   // Number of NimBLE clients currently live (created minus deleted). A leak
   // shows up as this count growing across failed connect attempts.
   static size_t liveClientCount();

@@ -87,6 +87,32 @@ bool waitForState(Control::state_t want, uint32_t timeout_ms) {
   return control.getState() == want;
 }
 
+// Count writes the peer has seen to the shutter characteristic. A shutter press
+// or release is exactly such a write, so this is how many shutter commands
+// actually reached the camera since the last clearEvents().
+size_t shutterWriteCount(const FujifilmVirtualCamera &peer) {
+  size_t count = 0;
+  for (const auto &write : peer.writes()) {
+    if (write.characteristic == FujifilmVirtualCamera::shutterCharacteristicUUID().toString()) {
+      count++;
+    }
+  }
+  return count;
+}
+
+// Poll until the control state is anything other than `avoid` (or times out).
+bool waitForNotState(Control::state_t avoid, uint32_t timeout_ms) {
+  auto &control = Control::getInstance();
+  const uint32_t deadline = nowMs() + timeout_ms;
+  while (nowMs() < deadline) {
+    if (control.getState() != avoid) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return control.getState() != avoid;
+}
+
 // Build a real Fujifilm camera bound to a virtual peer and register the peer.
 std::shared_ptr<Furble::FujifilmBasic> makeCamera(FujifilmVirtualCamera &peer) {
   NimBLEDevice::setMockPeer(&peer);
@@ -415,6 +441,82 @@ bool scenarioClientPoolExhaustion() {
   return g_Failures == 0;
 }
 
+// The reconnect replay guard. A shutter issued while the target is not active
+// must be dropped, never buffered on the control queue and flushed when the link
+// returns. Bring a camera to active, force the link down and hold the reconnect
+// open, fire a shutter while it is down, then let it reconnect and prove no
+// buffered press replayed. Finally a shutter on the live link must still fire, so
+// the drop guard did not wedge the normal path.
+bool scenarioReconnectShutterDrop() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  control.addActive(camera);
+  // Infinite reconnect so a mid-session drop re-enters the reconnect loop exactly
+  // as it does on device.
+  control.connectAll(true);
+  check(waitForState(Control::STATE_ACTIVE, 5000), "reaches active within 5 s");
+  check(control.getConnectedTargetCount() == 1, "one connected target");
+
+  peer.clearEvents();
+  check(shutterWriteCount(peer) == 0, "no shutter writes at baseline");
+
+  // Make the reconnect's connect() block, the way a real reconnect blocks the
+  // control task inside connectAll() for seconds. This is what lets a buffered
+  // command survive on the control queue: while the control task is parked in
+  // connect() it is not draining the queue, so anything enqueued during the
+  // outage waits there and is flushed the instant the link is back. Without this
+  // block a fast mock reconnect would drain and drop the command in a non-active
+  // state, hiding the replay bug.
+  NimBLEDevice::setConnectDelayMs(1200);
+
+  // Silent supervision-timeout drop with the disconnect callback, so control
+  // leaves active and starts reconnecting (and blocks in connect()).
+  NimBLEClient *client = NimBLEDevice::lastClient();
+  check(client != nullptr, "camera created a client");
+  if (client != nullptr) {
+    client->mockDropLink(0x08, /*fire_callback=*/true);
+  }
+
+  check(waitForNotState(Control::STATE_ACTIVE, 3000), "leaves active on the drop");
+  // Let the control task reach and park inside the blocking connect().
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  check(!camera->isConnected(), "target link reads down while reconnecting");
+
+  // Fire a shutter while the target is down and the control task is blocked in
+  // connect(). It must be dropped, not parked on the control queue.
+  control.sendCommand(Control::CMD_SHUTTER_PRESS);
+  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  check(shutterWriteCount(peer) == 0, "shutter while down never reaches the peer");
+
+  // Let the link recover. If the presses had been buffered on the control queue
+  // they would flush here, the moment the state returns to active.
+  check(waitForState(Control::STATE_ACTIVE, 5000), "reconnects to active");
+  check(control.getConnectedTargetCount() == 1, "connected again after reconnect");
+
+  // The crucial assertion: the press made while down must NOT replay now the link
+  // is back. Poll a little to catch a late flush.
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  check(shutterWriteCount(peer) == 0, "the down-time shutter never replays on reconnect");
+
+  // A shutter on the recovered link must still fire, proving the drop guard did
+  // not break the normal path.
+  peer.clearEvents();
+  control.sendCommand(Control::CMD_SHUTTER_PRESS);
+  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  const uint32_t deadline = nowMs() + 2000;
+  while (nowMs() < deadline && shutterWriteCount(peer) == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  check(shutterWriteCount(peer) >= 1, "a shutter on the live link still fires");
+
+  control.disconnect();
+  waitForState(Control::STATE_IDLE, 2000);
+  return g_Failures == 0;
+}
+
 const std::map<std::string, std::function<bool()>> &scenarios() {
   static const std::map<std::string, std::function<bool()>> table = {
       {"fresh-connect",                    scenarioFreshConnect                },
@@ -424,6 +526,7 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"false-connected-guard",            scenarioFalseConnectedGuard         },
       {"transient-connect-recovers",       scenarioTransientConnectRecovers    },
       {"client-pool-exhaustion",           scenarioClientPoolExhaustion        },
+      {"reconnect-shutter-drop",           scenarioReconnectShutterDrop        },
   };
   return table;
 }
