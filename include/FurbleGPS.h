@@ -127,16 +127,6 @@ class GPS {
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
 
-  struct cycle_status_t {
-    bool degraded;
-    uint32_t retries;
-  };
-
-  cycle_status_t getCycleStatusSnapshot(void) const {
-    const std::lock_guard<std::mutex> lock(m_CycleMutex);
-    return {m_CycleState == cycle_state_t::DEGRADED, m_Degraded.failures()};
-  }
-
   /**
    * Is the power cycle in the degraded retry state?
    *
@@ -145,10 +135,10 @@ class GPS {
    * it and retries on a bounded backoff, so this only reports that reception is
    * poor, not that furble is stuck.
    */
-  bool isDegraded(void) const { return getCycleStatusSnapshot().degraded; }
+  bool isDegraded(void) const { return m_CycleState == cycle_state_t::DEGRADED; }
 
   /** Consecutive degraded retry attempts since the last healthy recovery. */
-  uint32_t degradedRetries(void) const { return getCycleStatusSnapshot().retries; }
+  uint32_t degradedRetries(void) const { return m_Degraded.failures(); }
 
   void reset(void);
   void task(void);

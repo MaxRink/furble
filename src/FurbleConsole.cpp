@@ -880,8 +880,9 @@ int gpsStatus(void) {
   printf("time: %02u:%02u:%02u\n", status.hour, status.minute, status.second);
   printf("chars: %lu\n", status.chars_processed);
   printf("sentences: %lu\n", status.sentences_passed);
-  printf("degraded: %s\n", boolStr(cycle.degraded));
-  printf("retries: %lu\n", static_cast<unsigned long>(cycle.retries));
+  printf("failed: %lu\n", status.sentences_failed);
+  printf("degraded: %s\n", boolStr(gps.isDegraded()));
+  printf("retries: %lu\n", static_cast<unsigned long>(gps.degradedRetries()));
   printf("raw: %s\n", boolStr(g_GPSRaw));
   return 0;
 }

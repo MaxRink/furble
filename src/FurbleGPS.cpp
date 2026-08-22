@@ -522,6 +522,7 @@ void GPS::serviceCycle(void) {
       // clean run recovers the duty cycle and drops the lock, a failure re-enters
       // enterDegraded() with a longer backoff, so the lock is never pinned.
       if (m_Degraded.retryDue(now)) {
+        acquirePowerLock();
         reset();
         m_ConfigChars = m_GPS.charsProcessed();
         m_ConfigStart = now;
@@ -532,7 +533,6 @@ void GPS::serviceCycle(void) {
         m_ExpectedInterval = gpsRateInterval();
         m_ProbeDeadline = now + DEGRADED_PROBE_MS;
         m_CycleState = cycle_state_t::ACQUIRING;
-        acquirePowerLock();
         FURBLE_SIM_GPS_STATE("acquiring");
       }
       break;

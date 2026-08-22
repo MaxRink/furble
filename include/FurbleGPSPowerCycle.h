@@ -86,23 +86,6 @@ class GpsDegradedRetry {
   uint32_t m_RetryDeadline = 0;
 };
 
-// Should the on-screen GPS status indicator show the degraded state? The status
-// icon reuses this to layer a warning tint on its glyph so a degraded, self
-// recovering GPS is visible on screen and not just on the console. Gated on
-// enabled so a default off GPS never trips the indicator, and so a resync or a
-// GPS off clears it. Kept here, free of LVGL, so the host test pins the mapping.
-inline bool gpsIndicatorDegraded(bool enabled, bool degraded) {
-  return enabled && degraded;
-}
-
-// A degraded receiver deliberately releases NO_LIGHT_SLEEP. The retry probe
-// moves back to ACQUIRING before it asks for the lock again. Keeping this gate
-// next to the retry policy prevents an unsolicited late UART burst from
-// re-acquiring the lock while the backoff is active.
-inline bool gpsPowerLockRequired(bool enabled, bool degraded) {
-  return enabled && !degraded;
-}
-
 }  // namespace Furble
 
 #endif
