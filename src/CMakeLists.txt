@@ -13,6 +13,7 @@ set(furble_sources
     FurblePower.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
+    FurbleWiFi.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake
