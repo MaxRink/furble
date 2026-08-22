@@ -752,6 +752,24 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
   if (params != nullptr) {
     ESP_LOGI(LOG_TAG, "Peer requested connection parameters (%u-%u, latency %u, timeout %u)",
              params->itvl_min, params->itvl_max, params->latency, params->supervision_timeout);
+
+    // The supervision timeout is also the dead-link detector: it bounds how long
+    // a powered-off or out-of-range camera keeps reporting connected before
+    // onDisconnect fires. furble caps its own timeout at m_IdleTimeout, but a
+    // camera that requests a long timeout to save its own power would otherwise
+    // win here and blunt detection for that whole window, the false-connected
+    // bug where a power-off went unnoticed for tens of seconds and shutter
+    // writes buffered until the camera returned. Reject any peer timeout above
+    // the cap so the current bounded parameters stay in force. Rejecting keeps
+    // the existing link parameters, which already satisfy the timeout margin, so
+    // detection stays prompt. A well-behaved peer accepts the reject; furble
+    // does not counter-request, so there is no renegotiation loop.
+    if (params->supervision_timeout > m_IdleTimeout) {
+      ESP_LOGW(LOG_TAG,
+               "Rejecting peer supervision timeout %u (cap %u) to keep dead-link detection",
+               params->supervision_timeout, m_IdleTimeout);
+      return false;
+    }
   }
 
   const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);

@@ -253,12 +253,83 @@ bool testReconnectAfterDeadDisconnectIsPrompt() {
   return g_Failures == before;
 }
 
+// furble caps its own supervision timeout at m_IdleTimeout (700 units, 7 s), the
+// upper bound on how long a dead link stays reported connected. A peer request
+// above that cap must be rejected so a power-off is still detected promptly
+// instead of stalling for the camera's chosen power-saving timeout.
+constexpr uint16_t CAP_IDLE_TIMEOUT = 700;
+
+// Test D: a camera requests a long supervision timeout to save its own power.
+// This is the false-connected root cause: accepting it would blunt dead-link
+// detection to that whole window, so a power-off went unnoticed for tens of
+// seconds and shutter writes buffered until the camera returned. furble must
+// reject a peer timeout above its cap and keep the current bounded parameters in
+// force, while still accepting a reasonable peer timeout.
+bool testPeerSupervisionTimeoutIsCapped() {
+  std::cout << "test: an over-long peer supervision timeout is rejected (false-connected)\n";
+  const int before = g_Failures;
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  ensureControlTask();
+
+  Furble::Host::FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  auto &control = Control::getInstance();
+
+  control.addActive(camera);
+  if (!check(control.getTargetCount() == 1, "the camera becomes an active target")) {
+    NimBLEDevice::resetMock();
+    return false;
+  }
+  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+    NimBLEDevice::resetMock();
+    return false;
+  }
+
+  NimBLEClient *client = NimBLEDevice::lastClient();
+  if (!check(client != nullptr, "the camera created a client")) {
+    NimBLEDevice::resetMock();
+    return false;
+  }
+
+  const uint16_t connected_timeout = client->getConnInfo().getConnTimeout();
+  check(connected_timeout <= CAP_IDLE_TIMEOUT, "the connect timeout is within the cap");
+
+  // Camera asks for a 32 s (3200 unit) supervision timeout to sleep its radio.
+  ble_gap_upd_params greedy {};
+  greedy.itvl_min = 200;
+  greedy.itvl_max = 240;
+  greedy.latency = 0;
+  greedy.supervision_timeout = 3200;
+  const bool greedy_accepted = client->mockPeerRequestConnParams(greedy);
+  check(!greedy_accepted, "furble rejects an over-long peer supervision timeout");
+  check(client->getConnInfo().getConnTimeout() == connected_timeout,
+        "the rejected request leaves the bounded timeout in force");
+  check(client->getConnInfo().getConnTimeout() <= CAP_IDLE_TIMEOUT,
+        "the live supervision timeout stays within the dead-link cap");
+
+  // A reasonable peer timeout at or below the cap is still honoured.
+  ble_gap_upd_params modest {};
+  modest.itvl_min = 24;
+  modest.itvl_max = 40;
+  modest.latency = 1;
+  modest.supervision_timeout = 500;
+  const bool modest_accepted = client->mockPeerRequestConnParams(modest);
+  check(modest_accepted, "furble accepts a peer timeout within the cap");
+  check(client->getConnInfo().getConnTimeout() == 500, "the accepted peer timeout is applied");
+
+  control.disconnect();
+  NimBLEDevice::resetMock();
+  return g_Failures == before;
+}
+
 }  // namespace
 
 int main() {
   testDeadCameraDisconnectReturnsPromptly();
   testCleanDisconnectLeavesIdle();
   testReconnectAfterDeadDisconnectIsPrompt();
+  testPeerSupervisionTimeoutIsCapped();
 
   const int status = (g_Failures == 0) ? 0 : 1;
   if (status == 0) {
