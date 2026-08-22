@@ -231,6 +231,47 @@ A dedicated UI reason string (a distinct message on the connect-failed screen)
 is a possible follow-up. This PR surfaces the distinct failure through the log
 and a clean teardown.
 
+## What is host-proven vs the residual hardware check
+
+The gate is Control/Camera logic, so it is host-testable end to end with the
+existing MockNimBLE and `FujifilmVirtualCamera`. No camera is needed to prove the
+gate holds.
+
+- Test double: `FujifilmVirtualCamera::withholdRegistration(bool)`
+  (`tests/host/peer/FujifilmVirtualCamera.{h,cpp}`) models a camera that links up
+  and answers GATT discovery and every subscription, but never delivers the
+  configuration notification on `CHR_NOT1_UUID` that confirms registration. The
+  characteristic is present so the subscribe still succeeds; only the
+  notification the firmware waits on is held back. `clearFaults()` resets it for
+  the fuzz harness.
+- Test: `control-e2e-registration-gate`
+  (`tests/host/control_e2e/control_e2e.cpp`, wired in `tests/host/CMakeLists.txt`
+  and the CI `host_camera` job). It drives the real `Control` connect over the
+  virtual camera in two phases. Negative: with registration withheld the connect
+  never promotes to `STATE_ACTIVE`, no target reports connected, the camera reads
+  not connected, and a shutter issued in that state never reaches the peer.
+  Positive: the same connect against the default peer (which answers the
+  registration notification during the handshake) reaches `STATE_ACTIVE` and the
+  shutter then fires at the peer.
+- Note on the host FreeRTOS shim: its `vTaskDelay` does not really sleep, so
+  `waitForRegistration`'s bounded poll returns immediately once its budget is
+  spent. That is why the two outcomes are modelled as two connects (withheld vs
+  answered) rather than releasing the wait mid-flight: the withheld connect
+  correctly settles to `STATE_CONNECT_FAILED` instead of active, which is the
+  behaviour under test.
+- Mutation-proven: deleting the `if (!waitForRegistration(85)) return false;`
+  gate in `FujifilmBasic::_connect` flips all four negative-phase assertions to
+  failure (the withheld camera falsely reports active and connected and the
+  shutter lands), and restoring the gate returns the suite to green. All 35 host
+  ctests pass with the gate in place.
+
+Residual hardware-only check: a single on-device sanity confirm on the real
+X100VI, that a genuine registering camera still reaches Connected and fires the
+shutter, and that a camera left in its settings menu (never registering) now
+settles to connect-failed rather than false-connected. The gate logic itself is
+host-proven, so hardware is only confirming the real camera emits the
+registration notification the golden capture recorded.
+
 ## Plan 96 batch 2 folded in here
 
 This branch was rebased onto master after PR #62 (reconnect lifecycle) landed.

@@ -499,6 +499,7 @@ if(BUILD_TESTING)
           connect-after-dead-disconnect
           stale-session-reconnect
           false-connected-guard
+          registration-gate
           transient-connect-recovers
           client-pool-exhaustion
           multi-connect-fujifilm

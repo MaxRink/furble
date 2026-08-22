@@ -409,6 +409,84 @@ bool scenarioFalseConnectedGuard() {
   return g_Failures == 0;
 }
 
+// Plan 75 / #93: the Fujifilm connect must gate on registration confirmation. A
+// camera that links up and answers GATT discovery and subscription but never
+// delivers the configuration notification is NOT registered. It must not be
+// reported active and a shutter must not reach it. Only a camera that confirms
+// registration may promote to active and fire the shutter. This is the
+// false-connected bug at the registration layer: link-up alone is not a
+// connected camera.
+//
+// The gate blocks the connect in a bounded wait for the notification. The host
+// FreeRTOS shim does not really sleep, so that wait cannot be released out of
+// band mid-flight the way a live notification would arrive on device. The two
+// phases below model the two outcomes deterministically instead: a camera that
+// withholds the registration notification never reaches active, and a camera
+// that delivers it (the default peer) does and its shutter fires.
+bool scenarioRegistrationGate() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  // Phase 1, negative: the link comes up and every subscription succeeds, but
+  // the configuration notification that confirms registration is withheld. The
+  // gate holds the connect back so it never promotes to active. Reverting the
+  // gate lets the connect succeed on link-up alone and reach active, so the
+  // active assertion below is the tooth that catches the false-connected
+  // regression.
+  {
+    FujifilmVirtualCamera peer;
+    auto camera = makeCamera(peer);
+    peer.withholdRegistration(true);
+    control.addActive(camera);
+    control.connectAll(false);
+
+    check(!waitForState(Control::STATE_ACTIVE, 2000),
+          "never active while registration is withheld");
+    check(control.getConnectedTargetCount() == 0, "no connected target without registration");
+    check(!camera->isConnected(), "camera not connected without registration");
+
+    // A shutter issued now must not reach the camera. With the gate reverted the
+    // camera is active here, so the shutter would land: a second tooth directly
+    // on the false shutter.
+    peer.clearEvents();
+    control.sendCommand(Control::CMD_SHUTTER_PRESS);
+    control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    check(shutterWriteCount(peer) == 0, "no shutter reaches an unregistered camera");
+
+    control.disconnect();
+    waitForState(Control::STATE_IDLE, 2000);
+  }
+
+  // Phase 2, positive: the same connect with the registration notification
+  // delivered (the default peer answers it as part of the handshake) reaches
+  // active and the shutter fires. This proves the gate does not wedge a real
+  // camera and that a confirmed registration is what unlocks the shutter.
+  {
+    FujifilmVirtualCamera peer;
+    auto camera = makeCamera(peer);
+    control.addActive(camera);
+    control.connectAll(false);
+
+    check(waitForState(Control::STATE_ACTIVE, 5000), "active once registration is confirmed");
+    check(control.getConnectedTargetCount() == 1, "connected after registration confirmed");
+
+    peer.clearEvents();
+    control.sendCommand(Control::CMD_SHUTTER_PRESS);
+    control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+    const uint32_t deadline = nowMs() + 2000;
+    while (nowMs() < deadline && shutterWriteCount(peer) == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    check(shutterWriteCount(peer) >= 1, "shutter fires after registration is confirmed");
+
+    control.disconnect();
+    waitForState(Control::STATE_IDLE, 2000);
+  }
+
+  return g_Failures == 0;
+}
+
 // A transient link that misses a couple of attempts and then recovers must not
 // leak clients and must eventually reach active under infinite reconnect.
 bool scenarioTransientConnectRecovers() {
@@ -623,6 +701,7 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"connect-after-dead-disconnect",    scenarioConnectAfterDeadDisconnect  },
       {"stale-session-reconnect",          scenarioStaleSessionReconnect       },
       {"false-connected-guard",            scenarioFalseConnectedGuard         },
+      {"registration-gate",                scenarioRegistrationGate            },
       {"transient-connect-recovers",       scenarioTransientConnectRecovers    },
       {"client-pool-exhaustion",           scenarioClientPoolExhaustion        },
       {"multi-connect-fujifilm",           scenarioMultiConnectFujifilm        },

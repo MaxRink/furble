@@ -102,6 +102,15 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // on the freed client, which is the mid-connect use-after-free this guards.
   void dropLinkDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic);
 
+  // withholdRegistration models a camera that links up and answers GATT
+  // discovery and subscription but never delivers the configuration
+  // notification that confirms registration. The characteristic is present so
+  // the subscribe succeeds, but the peer holds back the notification the
+  // firmware waits for. A connect against such a peer must never promote to
+  // active, so a connect that reports success on link-up alone (the
+  // false-connected bug) is caught.
+  void withholdRegistration(bool withhold);
+
   // Clear every injected fault (suppressed services and characteristics, failed
   // writes, mid-handshake drops and the stale-subscribe flag). The fuzz harness
   // reuses one persistent peer across many lifecycle operations and calls this to
@@ -188,6 +197,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnWrite;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropDuringConnect;
+  bool m_WithholdRegistration = false;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;

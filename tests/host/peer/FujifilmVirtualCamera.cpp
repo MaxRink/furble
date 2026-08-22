@@ -152,6 +152,10 @@ void FujifilmVirtualCamera::dropLinkDuringConnect(const NimBLEUUID &service,
   m_DropDuringConnect.emplace_back(service, characteristic);
 }
 
+void FujifilmVirtualCamera::withholdRegistration(bool withhold) {
+  m_WithholdRegistration = withhold;
+}
+
 bool FujifilmVirtualCamera::isServiceSuppressed(const NimBLEUUID &service) const {
   for (const auto &suppressed : m_SuppressedServices) {
     if (matches(suppressed, service)) {
@@ -214,6 +218,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_DropOnWrite.clear();
   m_DropDuringConnect.clear();
   m_StaleSubscribeSession = false;
+  m_WithholdRegistration = false;
 }
 
 bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -384,7 +389,12 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   subscription.notification = notification;
   m_Subscriptions[key(service, characteristic)] = subscription;
 
-  if (matches(characteristic, configurationNotificationUUID())) {
+  // The camera normally answers the configuration-notification subscription
+  // immediately, which is the registration signal the firmware waits for. When
+  // registration is withheld, the subscribe still succeeds but the notification
+  // is held back until completeRegistration delivers it, so a connect that
+  // promotes to active on link-up alone is caught.
+  if (matches(characteristic, configurationNotificationUUID()) && !m_WithholdRegistration) {
     emitNotification(service, characteristic, {0x02, 0x00}, false);
   }
   return true;
