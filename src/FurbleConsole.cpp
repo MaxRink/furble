@@ -20,7 +20,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3)
+#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -206,6 +206,10 @@ const char *settingType(Settings::type_t type) {
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+      return "enum";
+#endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       return "uint32";
@@ -276,6 +280,9 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::LOW_BATT:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+#endif
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -313,6 +320,19 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPX_PERIOD:
       printf("%s%u\n", prefix, Settings::load<uint16_t>(type));
       break;
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+    {
+      const uint8_t mode = Settings::load<uint8_t>(type);
+      const char *name = "unknown";
+      if (mode == Settings::GUI) {
+        name = "gui";
+      } else if (mode == Settings::CONSOLE) {
+        name = "console";
+      }
+      printf("%s%s\n", prefix, name);
+    } break;
+#endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
@@ -420,6 +440,23 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       Settings::save<uint16_t>(setting.type, static_cast<uint16_t>(value));
     } break;
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+    {
+      uint8_t value;
+      if (!strcasecmp(text, "gui")) {
+        value = Settings::GUI;
+      } else if (!strcasecmp(text, "console")) {
+        value = Settings::CONSOLE;
+      } else {
+        return fail("expected gui or console");
+      }
+      Settings::save<uint8_t>(setting.type, value);
+      if (!UI::sendRequest(UI::Request::DISPLAY_MODE, value)) {
+        return fail("ui request queue unavailable");
+      }
+    } break;
+#endif
 
     case Settings::SCAN_TIMEOUT:
     {
@@ -499,7 +536,12 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
+#if defined(FURBLE_NO_DISPLAY)
+    // No UI task headless, reload the GPX log settings in place.
+    GPS::getInstance().reloadLogSettings();
+#else
     UI::sendRequest(UI::Request::SD_RELOAD, 0);
+#endif
   }
 
   // The UI caches the IR menu visibility, so it has to be told as well.
@@ -513,10 +555,14 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::FEEDBACK_RELOAD, 0);
   }
 
-  // The UI caches the power policies, tell it to re-read them.
+  // The UI caches the power policies, tell it to re-read them. The headless
+  // build runs no auto off or low battery policy loop, so there is nothing to
+  // reload there.
+#if !defined(FURBLE_NO_DISPLAY)
   if ((setting.type == Settings::AUTO_OFF) || (setting.type == Settings::LOW_BATT)) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
+#endif
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -544,6 +590,12 @@ int cmdSettings(int argc, char **argv) {
   if (argc < 3) {
     return fail("missing setting name");
   }
+
+#if defined(FURBLE_NO_DISPLAY)
+  if (!strcasecmp(argv[2], "display_mode")) {
+    return fail("not supported in this build");
+  }
+#endif
 
   const auto *setting = findSetting(argv[2]);
   if (setting == nullptr) {
@@ -574,7 +626,12 @@ int cmdUI(int argc, char **argv) {
     return fail("usage: ui audit");
   }
 
+#if defined(FURBLE_NO_DISPLAY)
+  // The UI audit inspects the LVGL widget tree, which the headless build has no.
+  return fail("not supported in this build");
+#else
   return sendPrintingRequest(UI::Request::AUDIT, 0);
+#endif
 }
 
 /*
@@ -977,6 +1034,12 @@ int cmdPerfHeap(void) {
 }
 
 int cmdPerfLVGL(int argc, char **argv) {
+#if defined(FURBLE_NO_DISPLAY)
+  // LVGL stats and the overlay only exist in the display build.
+  (void)argc;
+  (void)argv;
+  return fail("not supported in this build");
+#else
   if (argc == 2) {
     return sendPrintingRequest(UI::Request::PERF, -1);
   }
@@ -991,6 +1054,7 @@ int cmdPerfLVGL(int argc, char **argv) {
   }
 
   return fail("usage: perf lvgl | perf lvgl overlay on | off");
+#endif
 }
 
 int cmdPerf(int argc, char **argv) {
@@ -1771,7 +1835,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3)
+#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -1797,7 +1861,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3)
+#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(100));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(100));

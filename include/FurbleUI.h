@@ -1,6 +1,53 @@
 #ifndef FURBLE_UI_H
 #define FURBLE_UI_H
 
+#if defined(FURBLE_NO_DISPLAY)
+
+#include <cstdint>
+
+namespace Furble {
+class UI {
+ public:
+  // Device status for the companion service. The display build serves these
+  // from the UI task, the headless build reads M5.Power directly and has no
+  // intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
+  // companion service needs them whether or not the console is built in.
+  static int32_t getBatteryLevel(void);
+  static int16_t getBatteryVoltage(void);
+  static int32_t getBatteryCurrent(void);
+  static int16_t getBatteryVBUSVoltage(void);
+  static bool isBatteryCharging(void);
+  static uint8_t getIntervalometerState(void);
+  static uint16_t getIntervalometerRemaining(void);
+
+#if defined(FURBLE_CONSOLE)
+  /** Operations the console asks the headless loop to carry out. */
+  enum class Request {
+    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT,      /**< arg: unused */
+    SCAN,            /**< arg: non-zero to start, zero to stop */
+    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
+    GPS_RELOAD,      /**< arg: unused */
+    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,       /**< arg: unused */
+    FEEDBACK_RELOAD, /**< arg: unused */
+    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
+  };
+
+  /** Create the request queue used by the headless main loop. */
+  static void init(void);
+
+  /** Queue an operation for the headless main loop. */
+  static bool sendRequest(Request request, int32_t arg);
+
+  /** Drain queued console operations in the headless main loop. */
+  static void serviceRequests(void);
+#endif
+};
+}  // namespace Furble
+
+#else
+
 #include <array>
 #include <atomic>
 #include <initializer_list>
@@ -44,6 +91,9 @@ class UI {
     AUDIT,           /**< arg: unused */
     POWER_RELOAD,    /**< arg: unused */
     SD_RELOAD,       /**< arg: unused */
+#if !defined(FURBLE_NO_DISPLAY)
+    DISPLAY_MODE, /**< arg: Settings::display_mode_t */
+#endif
   };
 
   /**
@@ -615,6 +665,7 @@ class UI {
   /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
   uint32_t m_MainCount = 0;
+  bool m_DisplayConsole = false;
 
   // cached policy settings, refreshed by the rollers and the console
   uint8_t m_AutoOffSetting = 0;
@@ -959,7 +1010,12 @@ class UI {
 
   /** Check lock screen activity. */
   void handleLockScreen(void);
+
+  /** Apply the console-only display mode. */
+  void setDisplayMode(uint8_t mode);
 };
 }  // namespace Furble
+
+#endif  // FURBLE_NO_DISPLAY
 
 #endif

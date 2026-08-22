@@ -89,7 +89,7 @@ In scope:
   and the `lvgl` and `icons` components.
 - A headless main loop that replaces `vUITask` and owns the same
   `Platform::update()` cadence.
-- A new PlatformIO environment for a generic ESP32-S3 devkit with no M5 display.
+- A new PlatformIO environment: the M5StickS3 built without its display stack. A truly generic S3 devkit stays out of scope for 33a; the env defines FURBLE_M5STICKS3 and drives the M5PM1, which a bare devkit lacks (upstream issue 249's bare board ask needs a later PMIC-optional pass).
 - A runtime `DISPLAY_MODE` setting with values `GUI` and `CONSOLE`, settable
   from the console, so a StickS3 with a screen can be told to stop using it.
 
@@ -222,7 +222,7 @@ not proven is `M5.begin()` on hardware with no display, no PMIC and no IMU. The
 existing config at `src/FurblePlatform.cpp:16-22` already disables the IMU, the
 speaker and the mic, so the remaining risk is the display and `pmic_button`.
 
-Test this on the actual generic devkit before claiming the environment works.
+Test this on the StickS3 running the headless image. A bare devkit is out of scope for 33a (PMIC dependency, see Scope).
 If `M5.begin()` misbehaves, the fallback is to skip M5Unified entirely under
 `FURBLE_NO_DISPLAY` and call `esp_timer_get_time()` directly for
 `Platform::tick()` at `src/FurblePlatform.cpp:51-53`. That is a bigger change
@@ -288,6 +288,102 @@ Then:
 Camera coverage: Fujifilm on hardware, FauxNY for the rest. No vendor specific
 code is touched, since the console sends the same `Control::cmd_t` values the UI
 sends.
+
+## Implementation status
+
+### PR33a, stage 33a
+
+Rebase notes:
+
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
+  from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
+  `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
+  this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
+  dead-reckoning renumbers its provisional ids at its rebase.
+- `src/FurbleCompanion.cpp` settingType and settingValue cover `DISPLAY_MODE`
+  as SETTING_U8 under the same guard.
+- `src/FurbleGPS.cpp` was rewritten on master by PR 27 (burst-windowed
+  locking). The displayless guards were re-applied on top: the esp_timer
+  include and the three-state icon source logic from master are kept, wrapped
+  in `FURBLE_NO_DISPLAY` where they touch LVGL.
+- `src/CMakeLists.txt` keeps master's `FurbleCompanion.cpp` in the common
+  source list; `FurbleCalibrate.cpp` moves to the display-only list per this
+  branch.
+- `UI::serviceRequests()` became an instance method. It was declared static
+  while calling the non-static `setDisplayMode()`, which fails to compile in
+  console (debug) builds. Its only caller is `UI::task()`.
+
+Implemented in `feat/33-wifi-hub`:
+
+- Added the GUI-only `DISPLAY_MODE` console setting, defaulting to `GUI`.
+  `CONSOLE` sleeps the panel and skips LVGL handling, while `GUI` wakes it
+  and restores the saved brightness.
+- Added `esp32-s3-headless` with `FURBLE_NO_DISPLAY`, a headless 5 ms loop,
+  and USB console request handling. The profile compiles out the UI sources
+  and excludes the `icons` component.
+- The headless GPS geotag path is now driven without LVGL. `app_main` calls
+  `GPS::init()` under `FURBLE_NO_DISPLAY` to start the UART task and apply the
+  stored enable state, and the headless loop in `vUITask` ticks `GPS::update()`
+  on the same one second cadence the display build uses via its LVGL timer
+  (`GPS::SERVICE_MS`), timed from `esp_timer_get_time()`. `GPS::update()` is
+  free of LVGL except for the icon block, which is already guarded out of the
+  headless build, so geotag fixes push to the camera with no display present.
+- The intervalometer remains unavailable in the displayless profile because its
+  state machine still lives in the UI. The planned refactor is required before
+  33c.
+- Hardware verification on the StickS3 via the console is pending.
+
+Known headless build blockers (pre-existing, outside the sdkconfig and GPS
+tick fixes above; the `esp32-s3-headless` env does not yet compile from a clean
+tree until they are resolved):
+
+- `src/FurbleCompanionService.cpp` calls `UI::getBatteryLevel()`,
+  `getBatteryVoltage()`, `getBatteryCurrent()`, `isBatteryCharging()`,
+  `getBatteryVBUSVoltage()`, `getIntervalometerState()` and
+  `getIntervalometerRemaining()` unconditionally, but the headless `UI` stub in
+  `include/FurbleUI.h` declares none of them, and `FurbleUI.cpp` (their only
+  definition) is excluded from the headless source list. The headless status
+  record needs a display-independent data source (Platform) for these values.
+- `src/FurbleConsole.cpp` references `UI::Request::AUDIT` and `UI::Request::PERF`
+  unconditionally, but the headless `UI::Request` enum omits both. These are
+  LVGL-only operations; the console commands need a headless gate or a no-op
+  handler.
+- `src/FurbleGPS.cpp` selects `UART_SCLK_REF_TICK` in the non-`FURBLE_M5STICKS3`
+  branch, which does not exist on the ESP32-S3 the headless env targets. The
+  headless image runs on the StickS3, so the env likely needs
+  `-DFURBLE_M5STICKS3` (which also restores the `UART_SCLK_XTAL` clock the DFS
+  trap requires), or the `#else` branch needs an S3-valid clock source.
+- `src/main.cpp` console helpers used `auto *` on `CameraList::get()`, which now
+  returns `std::shared_ptr<Camera>` after the PR 106 UAF fix. Fixed here to
+  `auto` alongside the GPS tick, so `main.cpp` itself compiles.
+
+Deviations:
+
+- The conditional LVGL dependency rules in the `idf_component.yml` files were
+  reverted during integration. The `CONFIG_FURBLE_NO_DISPLAY` rule made the
+  component manager drop LVGL for the five release envs, because the symbol is
+  undefined at dependency resolution time, which broke every GUI build. LVGL
+  now resolves unconditionally again. Source gating and `EXCLUDE_COMPONENTS`
+  keep the UI and icons out of the headless image. Full LVGL dependency
+  exclusion for the headless profile is follow-up work.
+- The new `Furble` Kconfig menu appends a derived
+  `# CONFIG_FURBLE_NO_DISPLAY is not set` block on regeneration. It was added
+  consistently to all five committed sdkconfig files.
+- `sdkconfig.esp32-s3-headless` is now a fully expanded config, not a one-line
+  stub. `[env:esp32-s3-headless]` sets no explicit `sdkconfig_path`, so
+  PlatformIO reads `sdkconfig.esp32-s3-headless` by default and regenerates any
+  unset symbol from the `esp32-s3-devkitc-1` board defaults. A stub therefore
+  disabled the BLE controller, NimBLE and SPIRAM, leaving the image
+  non-functional. The file is now seeded from the working `sdkconfig.m5stick-s3`
+  with only `# CONFIG_FURBLE_NO_DISPLAY is not set` flipped to
+  `CONFIG_FURBLE_NO_DISPLAY=y`; every other line, including
+  `CONFIG_BT_NIMBLE_ENABLED=y`, `CONFIG_BT_CONTROLLER_ENABLED=y`,
+  `CONFIG_SPIRAM=y`, `CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y` and
+  `CONFIG_FREERTOS_UNICORE=y`, is identical to the StickS3 config.
+
+The `m5stick-s3` build passes with `FURBLE_VERSION=dev FURBLE_TEST=0` after
+the revert.
 
 ---
 
