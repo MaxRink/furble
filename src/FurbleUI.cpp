@@ -6098,6 +6098,7 @@ void UI::setDisplayMode(uint8_t mode) {
   }
 
   m_DisplayConsole = console;
+}
 
 void UI::handleLockScreen(void) {
   // toggle screen lock on power button double click for touch screens

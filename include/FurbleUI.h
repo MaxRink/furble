@@ -8,6 +8,18 @@
 namespace Furble {
 class UI {
  public:
+  // Device status for the companion service. The display build serves these
+  // from the UI task, the headless build reads M5.Power directly and has no
+  // intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
+  // companion service needs them whether or not the console is built in.
+  static int32_t getBatteryLevel(void);
+  static int16_t getBatteryVoltage(void);
+  static int32_t getBatteryCurrent(void);
+  static int16_t getBatteryVBUSVoltage(void);
+  static bool isBatteryCharging(void);
+  static uint8_t getIntervalometerState(void);
+  static uint16_t getIntervalometerRemaining(void);
+
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the headless loop to carry out. */
   enum class Request {
