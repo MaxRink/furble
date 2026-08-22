@@ -3908,10 +3908,20 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         auto &gps = GPS::getInstance();
         auto &tinygps = gps.get();
 
-        setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
-                                 (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
-                                 (unsigned long)(tinygps.location.age() / 1000),
-                                 tinygps.speed.kmph());
+        // a degraded, self recovering cycle is otherwise console only, surface
+        // the retry count here too. The IfChanged setter keeps this guarded.
+        if (gps.isDegraded()) {
+          setLabelTextFmtIfChanged(ui->m_NMEA.fix,
+                                   "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
+                                   (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
+                                   (unsigned long)(tinygps.location.age() / 1000),
+                                   tinygps.speed.kmph(), (unsigned long)gps.degradedRetries());
+        } else {
+          setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
+                                   (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
+                                   (unsigned long)(tinygps.location.age() / 1000),
+                                   tinygps.speed.kmph());
+        }
         setLabelTextFmtIfChanged(
             ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)tinygps.charsProcessed(),
             (unsigned long)tinygps.passedChecksum(), (unsigned long)tinygps.failedChecksum());
