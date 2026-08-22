@@ -10,7 +10,11 @@ furble runs on these M5Stack ESP32 boards:
 - M5StickS3 (135x240)
 - M5Stack Core (320x240)
 - M5Stack Core2 (320x240, touch)
-- M5Tough (320x240, touch)
+- M5Tough (320x240, touch, untested)
+
+furble builds five release images. M5Unified detects the exact board at runtime,
+so one image covers a board family. See [Supported Hardware](Supported-Hardware)
+for the board to environment matrix.
 
 ## Flashing
 
@@ -47,10 +51,14 @@ page and the [Controls](Controls) page for the button map.
 ## GPS location tagging
 
 For cameras that support it (Fujifilm and Sony), furble can tag photos with the
-device location using an M5Stack GPS unit. Enable it under `Settings` > `GPS`,
-and configure the camera to request location data from the remote. The newer
-GPS/BDS Unit v1.1 (AT6668) needs the baud rate set to 115200 under
+device location using an M5Stack GPS unit on Grove Port A. Enable it under
+`Settings` > `GPS`, and configure the camera to request location data from the
+remote. The GPS/BDS Unit v1.1 (AT6668) needs the baud rate set to 115200 under
 `Settings` > `GPS` > `GPS baud 115200`.
+
+The AT6668 units are all supported. For weak or indoor reception, the Unit-GPS
+with the external SMA antenna is the recommended drop in. See
+[Supported Hardware](Supported-Hardware) for the full GPS unit matrix.
 
 ## Next steps
 

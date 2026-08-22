@@ -16,11 +16,15 @@ This wiki is a friendly fork of the upstream furble project.
 - **[Settings Reference](Settings-Reference)**: every setting, with its default,
   values, and when a change applies.
 - **[Controls](Controls)**: the per board button map and both input modes.
+- **[Supported Hardware](Supported-Hardware)**: controllers, cameras, and GPS
+  units.
+- **[Console Commands](Console-Commands)**: the USB serial console in debug
+  builds.
 
 ## At a glance
 
 - **Boards**: M5StickC, M5StickC Plus, M5StickC Plus2, M5StickS3, M5Stack Core,
-  M5Stack Core2, M5Tough.
+  M5Stack Core2, M5Tough (untested).
 - **Cameras**: Fujifilm, Canon, Sony, Nikon, Ricoh, and others. See the project
   README for the current list.
 - **Framework**: ESP-IDF 5.x built with PlatformIO.

@@ -163,7 +163,7 @@ Submenu: `Settings` > `Bluetooth`.
 | :--- | :--- | :--- | :--- | :--- |
 | TX Power > Adaptive | Off | On, Off | Now (dangerous) | Let the radio adapt transmit power. Connection-affecting. |
 | TX Power | Low (P3) | slider 0 to 2 (P3, P6, P9) | Now (dangerous) | Radio transmit power. Higher reaches further and costs battery. |
-| Connection power save | Off | On, Off | Restart (dangerous) | Power save on the active connection. Connection-affecting. |
+| Connection power save | Off | On, Off | Next connection | Power save on the active connection. Read when a connection is made, so set it before connecting. |
 | Scan mode | Full | Full, Balanced, Low | Now | How hard the radio listens during Scan. Full finds a camera fastest. |
 | Scan timeout | Never | Never, 30 secs, 60 secs, 120 secs | Now | Ends a scan by itself. Connect always scans at full duty. |
 
@@ -337,5 +337,6 @@ drives input:
   commands directly and bypass the button-mode dispatch and the shutter-lock
   state. Use them to trigger the camera, not to test the button gestures.
 
-See the Serial console section of the [README](Getting-Started) for the full
-command list.
+See the [Console Commands](Console-Commands) reference for the full command
+list, and [Supported Hardware](Supported-Hardware) for the board, camera, and
+GPS unit matrices.
