@@ -295,9 +295,9 @@ sends.
 
 Rebase notes:
 
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
-  from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback
+  reservations 33 to 35 recorded in plans/23-feedback-outputs.md from PR 30.
+  The table row keeps the `FURBLE_NO_DISPLAY` guard. The
   `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
   this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
   dead-reckoning renumbers its provisional ids at its rebase.
@@ -384,6 +384,41 @@ Deviations:
 
 The `m5stick-s3` build passes with `FURBLE_VERSION=dev FURBLE_TEST=0` after
 the revert.
+
+### PR33b, stage 33b
+
+Implemented in `feat/33b-provisioning`:
+
+- Added `WIFI`, `WIFI_SSID`, `WIFI_PSK`, `NTP` and `NTP_SERVER` settings.
+  WiFi and NTP default to off. Credentials default to empty. The NTP server
+  defaults to `pool.ntp.org`.
+- Added station provisioning over the console. The driver uses modem sleep,
+  stores the last BSSID and channel, retries with jittered exponential
+  backoff, and refuses fallback scans while a camera is connected.
+- Added `wifi` and `ntp` console command groups. Passphrases are never printed
+  by settings or status output. WiFi status includes radio state, link data,
+  battery current and the runtime estimate when the board reports current.
+- Added SNTP startup on the got-IP event and teardown on station disconnect.
+  NTP uses immediate UTC synchronization. GPS geodata uses the synchronized
+  system time when an NTP time is available.
+
+Deviations:
+
+- This base has no `FurbleCompanion.cpp` and no stable wire-id field in
+  `Settings::setting_t`. No provisional wire IDs were added. The WiFi state
+  keys for BSSID and channel are private NVS values, not settings.
+- Hardware verification is pending. The required S3 build was blocked before
+  compilation by the sandbox. The global PlatformIO cache was not writable,
+  and the worktree-local retry could not download the platform.
+- A later local build compiled after replacing `ip4addr_ntoa_r` with
+  `esp_ip4addr_ntoa`, but the `m5stick-s3` release env fails to link.
+  The five committed sdkconfig files select `CONFIG_ESP_NETIF_LOOPBACK`, so
+  the WiFi netstack symbols are absent. Enabling
+  `CONFIG_ESP_NETIF_TCPIP_LWIP` consistently across all five sdkconfig files,
+  or gating WiFi to the headless profile, is required before merge. The
+  `esp32-s3-headless` env has a separate pre-existing failure: its seed
+  sdkconfig regenerates without BT config and NimBLE headers fail on
+  `syscfg/syscfg.h`.
 
 ---
 

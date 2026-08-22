@@ -2,6 +2,8 @@
 
 #if defined(FURBLE_CONSOLE)
 
+#include <time.h>
+
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -20,7 +22,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -33,6 +35,7 @@
 
 #include "Camera.h"
 #include "FurbleBtDebug.h"
+#include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
@@ -43,6 +46,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 namespace Furble {
 
@@ -203,18 +207,20 @@ const char *settingType(Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+#endif
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
-#if !defined(FURBLE_NO_DISPLAY)
-    case Settings::DISPLAY_MODE:
-      return "enum";
-#endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::NTP_SERVER:
+    case Settings::WIFI_PSK:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -235,6 +241,8 @@ const char *settingType(Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       return "bool";
     case Settings::INTERVAL:
     case Settings::TOUCH_CALIBRATION:
@@ -280,6 +288,9 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::LOW_BATT:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
+    case Settings::WIFI:
+    case Settings::NTP:
+    case Settings::NTP_SERVER:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -315,31 +326,26 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+#endif
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPX_PERIOD:
       printf("%s%u\n", prefix, Settings::load<uint16_t>(type));
       break;
-#if !defined(FURBLE_NO_DISPLAY)
-    case Settings::DISPLAY_MODE:
-    {
-      const uint8_t mode = Settings::load<uint8_t>(type);
-      const char *name = "unknown";
-      if (mode == Settings::GUI) {
-        name = "gui";
-      } else if (mode == Settings::CONSOLE) {
-        name = "console";
-      }
-      printf("%s%s\n", prefix, name);
-    } break;
-#endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
       break;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::NTP_SERVER:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
+      break;
+    case Settings::WIFI_PSK:
+      printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
       break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
@@ -360,6 +366,8 @@ void printValue(const char *prefix, Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -444,12 +452,18 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::DISPLAY_MODE:
     {
       uint8_t value;
+      // numeric like every other uint8 setting, gui and console stay accepted
       if (!strcasecmp(text, "gui")) {
         value = Settings::GUI;
       } else if (!strcasecmp(text, "console")) {
         value = Settings::CONSOLE;
       } else {
-        return fail("expected gui or console");
+        char *end = nullptr;
+        unsigned long numeric = strtoul(text, &end, 0);
+        if ((end == text) || (numeric > Settings::CONSOLE)) {
+          return fail("expected 0 (gui) or 1 (console)");
+        }
+        value = static_cast<uint8_t>(numeric);
       }
       Settings::save<uint8_t>(setting.type, value);
       if (!UI::sendRequest(UI::Request::DISPLAY_MODE, value)) {
@@ -493,6 +507,31 @@ int setValue(const Settings::setting_t &setting, const char *text) {
                                       : Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
       break;
 
+    case Settings::WIFI_SSID:
+      if (strlen(text) > 32) {
+        return fail("SSID must be 32 characters or fewer");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      WiFi::clearRememberedAccessPoint();
+      break;
+
+    case Settings::WIFI_PSK:
+      if (strlen(text) > 63) {
+        return fail("passphrase must be 63 characters or fewer");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      break;
+
+    case Settings::NTP_SERVER:
+      if ((strlen(text) == 0) || (strlen(text) > 63)) {
+        return fail("NTP server must be 1 to 63 characters");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      if (!WiFi::reloadNtp()) {
+        return fail("NTP server could not be applied");
+      }
+      break;
+
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
@@ -522,6 +561,38 @@ int setValue(const Settings::setting_t &setting, const char *text) {
         return fail("expected on or off");
       }
       Settings::save<bool>(setting.type, value);
+    } break;
+
+    case Settings::WIFI:
+    {
+      bool value = false;
+      if (!parseBool(text, value)) {
+        return fail("expected on or off");
+      }
+      if (value && Settings::load<Settings::WIFI_SSID>().empty()) {
+        return fail("set wifi_ssid before enabling WiFi");
+      }
+      Settings::save<bool>(setting.type, value);
+      if (!WiFi::setEnabled(value)) {
+        return fail("WiFi needs an enabled setting and a non-empty SSID");
+      }
+#if !defined(FURBLE_NO_DISPLAY)
+      if (value) {
+        printf("warning: WiFi reduces battery runtime\n");
+      }
+#endif
+    } break;
+
+    case Settings::NTP:
+    {
+      bool value = false;
+      if (!parseBool(text, value)) {
+        return fail("expected on or off");
+      }
+      Settings::save<bool>(setting.type, value);
+      if (!WiFi::setNtpEnabled(value)) {
+        return fail("NTP could not be started");
+      }
     } break;
 
     default:
@@ -592,6 +663,9 @@ int cmdSettings(int argc, char **argv) {
   }
 
 #if defined(FURBLE_NO_DISPLAY)
+  // Redundant on purpose: DISPLAY_MODE is not in the settings table of this
+  // build, so findSetting() would miss it anyway. Scripts written against the
+  // GUI build get a clear answer instead of 'no such setting'.
   if (!strcasecmp(argv[2], "display_mode")) {
     return fail("not supported in this build");
   }
@@ -627,8 +701,7 @@ int cmdUI(int argc, char **argv) {
   }
 
 #if defined(FURBLE_NO_DISPLAY)
-  // The UI audit inspects the LVGL widget tree, which the headless build has no.
-  return fail("not supported in this build");
+  return fail("not supported in headless build");
 #else
   return sendPrintingRequest(UI::Request::AUDIT, 0);
 #endif
@@ -961,6 +1034,7 @@ int cmdPower(int argc, char **argv) {
   return fail("expected stats or log");
 }
 
+#if !defined(FURBLE_NO_DISPLAY)
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
 
 int cmdPerfTasks(void) {
@@ -1077,6 +1151,186 @@ int cmdPerf(int argc, char **argv) {
   }
 
   return fail("expected tasks, heap or lvgl");
+}
+#else
+int cmdPerfTasks(void) {
+  return fail("not supported in headless build");
+}
+
+int cmdPerfHeap(void) {
+  return fail("not supported in headless build");
+}
+
+int cmdPerf(int argc, char **argv) {
+  (void)argc;
+  (void)argv;
+  return fail("not supported in headless build");
+}
+#endif
+
+const char *wifiStateStr(WiFi::state_t state) {
+  switch (state) {
+    case WiFi::STATE_DISABLED:
+      return "disabled";
+    case WiFi::STATE_IDLE:
+      return "idle";
+    case WiFi::STATE_CONNECTING:
+      return "connecting";
+    case WiFi::STATE_CONNECTED:
+      return "connected";
+  }
+  return "unknown";
+}
+
+void printBssid(const WiFi::status_t &status) {
+  if (!status.bssid_set) {
+    printf("bssid: none\n");
+    return;
+  }
+
+  printf("bssid: %02x:%02x:%02x:%02x:%02x:%02x\n", static_cast<unsigned>(status.bssid[0]),
+         static_cast<unsigned>(status.bssid[1]), static_cast<unsigned>(status.bssid[2]),
+         static_cast<unsigned>(status.bssid[3]), static_cast<unsigned>(status.bssid[4]),
+         static_cast<unsigned>(status.bssid[5]));
+}
+
+void printTimestamp(const char *prefix, time_t timestamp) {
+  if (timestamp == 0) {
+    printf("%snever\n", prefix);
+    return;
+  }
+
+  tm utc = {};
+  if (gmtime_r(&timestamp, &utc) == nullptr) {
+    printf("%sunknown\n", prefix);
+    return;
+  }
+
+  printf("%s%04d-%02d-%02dT%02d:%02d:%02dZ\n", prefix, utc.tm_year + 1900, utc.tm_mon + 1,
+         utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec);
+}
+
+void printWifiStatus(void) {
+  const auto status = WiFi::getStatus();
+  printf("enabled: %s\n", boolStr(status.enabled));
+  printf("state: %s\n", wifiStateStr(status.state));
+  printf("ssid: %s\n", status.ssid.empty() ? "unset" : status.ssid.c_str());
+  printf("psk: %s\n", Settings::load<Settings::WIFI_PSK>().empty() ? "unset" : "set");
+  printBssid(status);
+  printf("channel: %u\n", static_cast<unsigned>(status.channel));
+  if (status.connected) {
+    printf("rssi: %d\n", status.rssi);
+  } else {
+    printf("rssi: unavailable\n");
+  }
+  printf("ip: %s\n", status.ip.empty() ? "none" : status.ip.c_str());
+
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+  const auto battery = platform.readBattery();
+  if (caps.current) {
+    printf("current: %ld mA\n", static_cast<long>(battery.current));
+  } else {
+    printf("current: unavailable\n");
+  }
+
+  if (battery.charging) {
+    printf("estimated_runtime: charging\n");
+  } else if (caps.current && caps.level && (platform.getBatteryCapacity() > 0)
+             && (battery.current < -1)) {
+    const float remaining = platform.getBatteryCapacity() * (battery.level / 100.0f);
+    const uint32_t minutes = static_cast<uint32_t>((remaining / -battery.current) * 60.0f);
+    printf("estimated_runtime: ~%luh%02lum\n", static_cast<unsigned long>(minutes / 60),
+           static_cast<unsigned long>(minutes % 60));
+  } else {
+    printf("estimated_runtime: unknown\n");
+  }
+}
+
+int cmdWiFi(int argc, char **argv) {
+  if (argc < 2 || !strcasecmp(argv[1], "status")) {
+    printWifiStatus();
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "set")) {
+    if (argc < 4) {
+      return fail("usage: wifi set ssid <ssid> | wifi set psk <psk>");
+    }
+    if (!strcasecmp(argv[2], "ssid")) {
+      return setValue(Settings::get(Settings::WIFI_SSID), argv[3]);
+    }
+    if (!strcasecmp(argv[2], "psk")) {
+      return setValue(Settings::get(Settings::WIFI_PSK), argv[3]);
+    }
+    return fail("expected ssid or psk");
+  }
+
+  if (!strcasecmp(argv[1], "enable") || !strcasecmp(argv[1], "disable")) {
+    const char *value = !strcasecmp(argv[1], "enable") ? "on" : "off";
+    return setValue(Settings::get(Settings::WIFI), value);
+  }
+
+  if (!strcasecmp(argv[1], "connect")) {
+    if (!WiFi::connect()) {
+      return fail("WiFi is disabled or the SSID is empty");
+    }
+    printf("queued: wifi connect\n");
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "disconnect")) {
+    WiFi::disconnect();
+    printf("wifi: disconnected\n");
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "forget")) {
+    WiFi::forget();
+    printf("wifi: credentials forgotten\n");
+    return 0;
+  }
+
+  return fail("expected status, set, enable, disable, connect, disconnect or forget");
+}
+
+void printNtpStatus(void) {
+  const auto status = WiFi::getStatus();
+  printf("enabled: %s\n", boolStr(status.ntp_enabled));
+  printf("server: %s\n", Settings::load<Settings::NTP_SERVER>().c_str());
+  printf("running: %s\n", boolStr(status.ntp_running));
+  printf("synced: %s\n", boolStr(status.ntp_synced));
+  printTimestamp("last_sync: ", status.ntp_last_sync);
+  printf("offset_us: %lld\n", static_cast<long long>(status.ntp_offset_us));
+}
+
+int cmdNtp(int argc, char **argv) {
+  if (argc < 2 || !strcasecmp(argv[1], "status")) {
+    printNtpStatus();
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "set")) {
+    if ((argc < 4) || strcasecmp(argv[2], "server")) {
+      return fail("usage: ntp set server <host>");
+    }
+    return setValue(Settings::get(Settings::NTP_SERVER), argv[3]);
+  }
+
+  if (!strcasecmp(argv[1], "enable") || !strcasecmp(argv[1], "disable")) {
+    const char *value = !strcasecmp(argv[1], "enable") ? "on" : "off";
+    return setValue(Settings::get(Settings::NTP), value);
+  }
+
+  if (!strcasecmp(argv[1], "sync")) {
+    if (!WiFi::syncNtp()) {
+      return fail("NTP needs WiFi, an IP address and an enabled setting");
+    }
+    printf("queued: ntp sync\n");
+    return 0;
+  }
+
+  return fail("expected status, set, enable, disable or sync");
 }
 
 /*
@@ -1506,6 +1760,48 @@ int cmdBt(int argc, char **argv) {
   return fail("expected scan, explore, pair or journal");
 }
 
+/**
+ * Companion numeric-comparison pairing.
+ *
+ * The GUI shows a confirm dialog. The displayless build has no other confirm
+ * path, so pairing is console driven there: the headless loop prints the PIN
+ * when a request arrives and this command answers it. Companion state is
+ * mutex guarded, so calling it from the console task is safe.
+ */
+int cmdPair(int argc, char **argv) {
+  auto &companion = Companion::getInstance();
+
+  if (!companion.isEnabled()) {
+    return fail("companion disabled, settings set companion on");
+  }
+
+  if (argc < 2) {
+    const bool pending = companion.hasPendingPairing();
+    printf("pending: %s\n", boolStr(pending));
+    if (pending) {
+      printf("pin: %06lu\n", static_cast<unsigned long>(companion.getPendingPairingPin()));
+    }
+    return 0;
+  }
+
+  bool accept;
+  if (!strcasecmp(argv[1], "yes")) {
+    accept = true;
+  } else if (!strcasecmp(argv[1], "no")) {
+    accept = false;
+  } else {
+    return fail("usage: pair [yes|no]");
+  }
+
+  if (!companion.hasPendingPairing()) {
+    return fail("no pairing pending");
+  }
+
+  companion.confirmPairing(accept);
+  printf("pairing: %s\n", accept ? "accepted" : "rejected");
+  return 0;
+}
+
 int cmdLog(int argc, char **argv) {
   if (argc < 3) {
     return fail("usage: log <tag> <none|error|warn|info|debug|verbose>");
@@ -1790,6 +2086,10 @@ const esp_console_cmd_t COMMANDS[] = {
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
+    command("wifi",
+            "wifi status | set | enable | disable | connect | disconnect | forget",
+            cmdWiFi),
+    command("ntp", "ntp status | set server | enable | disable | sync", cmdNtp),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
     command("ui", "ui audit", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
@@ -1806,6 +2106,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("feedback",
             "feedback test <shutter|countdown|connect|disconnect|battery>",
             cmdFeedback),
+    command("pair", "pair [yes|no], answer a companion pairing request", cmdPair),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
@@ -1835,7 +2136,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -1861,7 +2162,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(100));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(100));

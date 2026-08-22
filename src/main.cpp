@@ -1,6 +1,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include <esp_event.h>
+#include <esp_netif.h>
+
 #if defined(FURBLE_NO_DISPLAY)
 #include <M5Unified.h>
 #include <esp_timer.h>
@@ -22,6 +25,7 @@
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
@@ -66,6 +70,9 @@ namespace {
 
 constexpr UBaseType_t HEADLESS_REQUEST_QUEUE_LENGTH = 8;
 
+/** 250 ms at the 5 ms loop period, matching the GUI pairing dialog timer. */
+constexpr uint32_t PAIRING_POLL_TICKS = 50;
+
 typedef struct {
   UI::Request request;
   int32_t arg;
@@ -88,6 +95,9 @@ void printCameras(bool reload) {
   }
 }
 
+// TODO: connectCamera() and scanCameras() duplicate the connect and scan logic
+// in FurbleUI.cpp (doConnect(), startScan()). Extract a shared helper below the
+// UI, for example in FurbleControl, once the headless profile settles.
 void connectCamera(int32_t index) {
   CameraList::load();
   if (index >= 0) {
@@ -126,6 +136,29 @@ void scanCameras(void) {
   scan.start(
       [](void *) { printf("scan camera count: %u\n", static_cast<unsigned>(CameraList::size())); },
       NULL, [](void *) { printf("scan finished\n"); });
+}
+
+/**
+ * Announce a companion pairing request on the console.
+ *
+ * The GUI polls the same state from a dialog timer. Without a display the
+ * console is the only confirm path, so print the PIN once per request and
+ * point at the pair command.
+ */
+void pollCompanionPairing(void) {
+  static bool announced = false;
+
+  auto &companion = Companion::getInstance();
+  if (companion.isEnabled() && companion.hasPendingPairing()) {
+    if (!announced) {
+      printf("companion pairing pin: %06lu\n",
+             static_cast<unsigned long>(companion.getPendingPairingPin()));
+      printf("confirm with 'pair yes' or 'pair no'\n");
+      announced = true;
+    }
+  } else {
+    announced = false;
+  }
 }
 
 }  // namespace
@@ -193,6 +226,11 @@ void UI::serviceRequests(void) {
       case Request::FEEDBACK_TEST:
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
+
+      case Request::PERF:
+      case Request::AUDIT:
+        printf("error: not supported in headless build\n");
+        break;
     }
   }
 }
@@ -210,11 +248,17 @@ static void vUITask(void *param) {
   // geotag fixes still push to the camera.
   constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
   int64_t nextGPSService = esp_timer_get_time();
+#if defined(FURBLE_CONSOLE)
+  uint32_t count = 0;
+#endif
   while (true) {
     Platform::getInstance().update();
 #if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
+    if ((count++ % PAIRING_POLL_TICKS) == 0) {
+      pollCompanionPairing();
+    }
 #endif
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
@@ -254,6 +298,9 @@ void app_main() {
   Furble::SD::init();
   Furble::BootScreen::step("Storage");
 
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+
   // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
@@ -283,6 +330,7 @@ void app_main() {
   // state, then vUITask() ticks GPS::update() to push geotag fixes.
   Furble::GPS::init();
 #endif
+  Furble::WiFi::init();
 
 #if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
   Furble::UI::init();

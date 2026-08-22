@@ -138,7 +138,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |
 
- ## Wire ids
+## Wire ids
 
 The frozen setting wire_id ledger lives in
 [50-companion-app-design.md](50-companion-app-design.md) (ids 1 to 23). Later

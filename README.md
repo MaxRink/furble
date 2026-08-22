@@ -201,6 +201,13 @@ gps on | off                        drive the GPS setting and reload the receive
 gps raw on | off                    mirror incoming NMEA to the console
 gps send <body>                     send a raw sentence, eg. gps send PCAS12,10
 gps power on | off                  external 5V rail, for rail cut experiments
+wifi status                         WiFi state, access point and IP information
+wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
+wifi enable|disable                 enable or disable station reconnects
+wifi connect|disconnect|forget      control the saved station credentials
+ntp status                          NTP state, server, sync time and offset
+ntp set server <host>               save the NTP server
+ntp enable|disable|sync             control or request an NTP synchronization
 settings list                       every setting and its current value
 settings get <name>                 name, type, value, and when it applies
 settings set <name> <value>         save a setting
