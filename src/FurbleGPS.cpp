@@ -98,6 +98,9 @@ constexpr uint8_t BAD_BURSTS_TO_RESYNC = 3;
 constexpr uint32_t UNKNOWN_MEASURE_MS = 5000;
 constexpr uint32_t MIN_WAKE_WAIT_MS = 5000;
 constexpr uint32_t MIN_CYCLE_WAIT_MS = 10;
+// how long a degraded retry keeps the lock and looks for a burst before it
+// gives up again, a couple of 1 Hz frames plus slack
+constexpr uint32_t DEGRADED_PROBE_MS = 6000;
 
 /**
  * Switch the Port A 5 V rail through the PMIC.
@@ -284,6 +287,8 @@ void GPS::enable(void) {
     m_BurstFailed = 0;
     m_MeasureDeadline = 0;
     m_ResyncDeadline = 0;
+    m_ProbeDeadline = 0;
+    m_Degraded.reset();
     m_LastBurstStart = 0;
     m_PeriodSamples.fill(0);
     m_PeriodCount = 0;
@@ -387,9 +392,19 @@ TickType_t GPS::cycleWait(uint32_t now) const {
       }
       break;
 
-    case cycle_state_t::DISABLED:
     case cycle_state_t::ACQUIRING:
-    case cycle_state_t::PERMANENT_LOCK:
+      // a degraded retry probe is time bounded, sleep until it expires
+      if (!m_BurstActive && (m_ProbeDeadline != 0)) {
+        wait = std::min(wait, tickUntil(now, m_ProbeDeadline));
+      }
+      break;
+
+    case cycle_state_t::DEGRADED:
+      // the lock is released here, sleep until the next retry is due
+      wait = std::min(wait, tickUntil(now, m_Degraded.retryDeadline()));
+      break;
+
+    case cycle_state_t::DISABLED:
       break;
   }
 
@@ -444,7 +459,7 @@ void GPS::serviceCycle(void) {
 
     case cycle_state_t::BURST:
       if (!m_BurstActive && (m_WakeDeadline != 0) && tickReached(now, m_WakeDeadline)) {
-        enterPermanentLock();
+        enterDegraded();
       }
       break;
 
@@ -452,6 +467,11 @@ void GPS::serviceCycle(void) {
       // re-assert the lock, a release raced by enable() must not leave the
       // receiver deaf under light sleep
       acquirePowerLock();
+      // a degraded retry probe must not latch here when no burst arrives, give
+      // up again on the bounded backoff instead of holding the lock forever
+      if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
+        enterDegraded();
+      }
       break;
 
     case cycle_state_t::MEASURING:
@@ -463,7 +483,7 @@ void GPS::serviceCycle(void) {
     case cycle_state_t::RESYNC:
       if (!m_BurstActive && tickReached(now, m_ResyncDeadline)) {
         if (m_ExpectedInterval == 0) {
-          enterPermanentLock();
+          enterDegraded();
         } else {
           m_NextBurst = m_LastBurstStart + m_ExpectedInterval;
           if (tickReached(now, m_NextBurst)) {
@@ -471,13 +491,34 @@ void GPS::serviceCycle(void) {
           }
           m_HavePrediction = true;
           m_CycleState = cycle_state_t::WAITING;
+          // a healthy resync recovered the prediction, clear the degraded state
+          m_Degraded.reset();
           releasePowerLock();
         }
       }
       break;
 
+    case cycle_state_t::DEGRADED:
+      // the backoff elapsed, wake the receiver and probe for a fresh burst. A
+      // clean run recovers the duty cycle and drops the lock, a failure re-enters
+      // enterDegraded() with a longer backoff, so the lock is never pinned.
+      if (m_Degraded.retryDue(now)) {
+        acquirePowerLock();
+        reset();
+        m_ConfigChars = m_GPS.charsProcessed();
+        m_ConfigStart = now;
+        m_ConfigPending = true;
+        m_BurstActive = false;
+        m_DutyWake = false;
+        m_HavePrediction = false;
+        m_ExpectedInterval = gpsRateInterval();
+        m_ProbeDeadline = now + DEGRADED_PROBE_MS;
+        m_CycleState = cycle_state_t::ACQUIRING;
+        FURBLE_SIM_GPS_STATE("acquiring");
+      }
+      break;
+
     case cycle_state_t::DISABLED:
-    case cycle_state_t::PERMANENT_LOCK:
       break;
   }
 }
@@ -511,6 +552,8 @@ void GPS::beginBurst(uint32_t now) {
   m_LastBurstStart = now;
 
   if (m_CycleState == cycle_state_t::ACQUIRING) {
+    // a burst arrived, the acquisition or degraded retry probe succeeded
+    m_ProbeDeadline = 0;
     if (m_ExpectedInterval == 0) {
       m_CycleState = cycle_state_t::MEASURING;
       m_MeasureDeadline = now + UNKNOWN_MEASURE_MS;
@@ -554,7 +597,7 @@ void GPS::finishBurst(uint32_t now) {
     return;
   }
 
-  if (m_CycleState == cycle_state_t::PERMANENT_LOCK) {
+  if (m_CycleState == cycle_state_t::DEGRADED) {
     return;
   }
 
@@ -563,14 +606,14 @@ void GPS::finishBurst(uint32_t now) {
 
     if ((m_PowerPolicy == POWER_RAIL_CYCLE)
         && (m_PushedSequence.load() != m_BurstSequence.load())) {
-      enterPermanentLock();
+      enterDegraded();
       return;
     }
 
     if (m_PowerPolicy == POWER_STANDBY) {
       m_ExpectedInterval = gpsRateInterval();
       if (m_ExpectedInterval == 0) {
-        enterPermanentLock();
+        enterDegraded();
         return;
       }
     }
@@ -582,7 +625,7 @@ void GPS::finishBurst(uint32_t now) {
   }
 
   if (m_ExpectedInterval == 0) {
-    enterPermanentLock();
+    enterDegraded();
     return;
   }
 
@@ -590,6 +633,8 @@ void GPS::finishBurst(uint32_t now) {
   m_HavePrediction = true;
   m_CycleState = cycle_state_t::WAITING;
   m_WakeDeadline = 0;
+  // a clean predicted burst means reception recovered, clear any degraded state
+  m_Degraded.reset();
   releasePowerLock();
 }
 
@@ -649,7 +694,7 @@ void GPS::beginResync(uint32_t now) {
 
 void GPS::finishMeasurement(void) {
   if (m_PeriodCount < 2) {
-    enterPermanentLock();
+    enterDegraded();
     return;
   }
 
@@ -661,7 +706,7 @@ void GPS::finishMeasurement(void) {
   const uint32_t median = periods[count / 2];
   const uint32_t tolerance = std::max<uint32_t>(50, median / 10);
   if ((periods[count - 1] - periods[0]) > tolerance) {
-    enterPermanentLock();
+    enterDegraded();
     return;
   }
 
@@ -671,15 +716,34 @@ void GPS::finishMeasurement(void) {
   m_HavePrediction = true;
   m_MeasureDeadline = 0;
   m_CycleState = cycle_state_t::WAITING;
+  // a consistent measurement recovered the prediction, clear the degraded state
+  m_Degraded.reset();
   releasePowerLock();
 }
 
-void GPS::enterPermanentLock(void) {
+/**
+ * Enter the degraded retry state.
+ *
+ * The burst windowed power management could not predict the receiver burst
+ * timing, for example after a run of bad checksum bursts or a failed interval
+ * measurement. This used to latch forever and pin the NO_LIGHT_SLEEP lock. It
+ * now releases the lock and schedules a bounded retry, so a spell of poor
+ * reception no longer costs the full lock current with no recovery. The GPS
+ * task sleeps until the retry is due, then serviceCycle() re-acquires and probes
+ * for a fresh burst. The backoff grows on repeated failures but is capped.
+ */
+void GPS::enterDegraded(void) {
+  const uint32_t now = Platform::getInstance().tick();
+  if (m_Degraded.enter(now)) {
+    ESP_LOGW(LOG_TAG, "GPS burst prediction lost, degraded retry in %lu ms",
+             static_cast<unsigned long>(m_Degraded.scheduledBackoff()));
+  }
   m_HavePrediction = false;
   m_WakeDeadline = 0;
-  m_CycleState = cycle_state_t::PERMANENT_LOCK;
-  FURBLE_SIM_GPS_STATE("tracking");
-  acquirePowerLock();
+  m_ProbeDeadline = 0;
+  m_CycleState = cycle_state_t::DEGRADED;
+  FURBLE_SIM_GPS_STATE("degraded");
+  releasePowerLock();
 }
 
 /** XOR of every character between '$' and '*', both excluded. */
@@ -1227,6 +1291,8 @@ void GPS::disable(void) {
     m_ConfigPending = false;
     m_CycleRequest = false;
     m_BurstActive = false;
+    m_ProbeDeadline = 0;
+    m_Degraded.reset();
     m_CycleState = cycle_state_t::DISABLED;
   }
 
