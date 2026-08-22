@@ -1,0 +1,110 @@
+# Scroll continuation capture for the settings pages that are taller than the
+# panel. The walkthrough already shows each page at its top (the flat
+# docs-screenshots.txt capture is frame 1). One screenshot cannot show the rows
+# below the fold, so this scenario scrolls each page down a viewport at a time
+# with the sim scroll action and captures the continuation frames (frame 2
+# onward). Together with the section lead image they picture every option.
+#
+# Each scroll is followed by a wait so LVGL renders the new position before the
+# capture grabs the framebuffer. Frame counts are sized for the M5StickS3
+# (135x240) reference panel the primary walkthrough uses; the last frame of each
+# page reaches its bottom row. The harness (sim/scripts/docs-capture.sh) runs
+# this once per theme with the optional capability env vars set (FURBLE_SIM_IR /
+# FURBLE_SIM_FEEDBACK / FURBLE_SIM_SD) so the Infrared, Feedback and Storage
+# submenus exist, and points --out at docs/img/scroll/<theme>/ so the frames land
+# as <page>-N.png.
+seed fauxny true
+seed gps true
+seed saved_camera true
+wait 500
+home
+wait 300
+
+# Settings root: frame 1 (top) is docs/img/settings.png; 2 more reach the bottom.
+action nav settings
+wait 350
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture settings-2
+action scroll next
+wait 250
+capture settings-3
+
+# Features: frame 1 is settings-features.png; 3 more reach the bottom.
+action nav features
+wait 350
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture features-2
+action scroll next
+wait 250
+capture features-3
+action scroll next
+wait 250
+capture features-4
+
+# GPS (seeded on so the receiver rows show): frame 1 is settings-gps.png.
+action nav gps
+wait 350
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture gps-2
+
+# Bluetooth: frame 1 is settings-bluetooth.png.
+action nav bluetooth
+wait 350
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture bluetooth-2
+
+# About: frame 1 is settings-about.png; 2 more reach the bottom.
+action nav about
+wait 350
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture about-2
+action scroll next
+wait 250
+capture about-3
+
+# Power: frame 1 is settings-power.png; 4 more reach the bottom.
+action nav power
+wait 350
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture power-2
+action scroll next
+wait 250
+capture power-3
+action scroll next
+wait 250
+capture power-4
+action scroll next
+wait 250
+capture power-5
+
+# Storage: frame 1 is settings-storage.png; 2 more reach the bottom.
+action nav storage
+wait 400
+action scroll top
+wait 150
+action scroll next
+wait 250
+capture storage-2
+action scroll next
+wait 250
+capture storage-3
+
+exit
