@@ -35,8 +35,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   decides `cfg.internal_spk`), only the event mask and volume reload live.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
-- Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
-  every new `Settings::type_t` case.
+  Phase 2 adds `GPS_BAUD` Auto with the `Casic::Autobaud` ladder and a
+  no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
+  page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
+  parseable logic lives in `lib/furble/protocol/GpsCasic`.
+- Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
+  `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
+  enforces this with `-Werror=switch`, so build a debug env after adding a
+  setting.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic

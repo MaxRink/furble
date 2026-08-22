@@ -3623,36 +3623,33 @@ void UI::addGPSMenu(const menu_t &parent) {
   addSettingItem(menu.page, NULL, Settings::GPS);
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 
-  // add GPS baud control
-  lv_obj_t *gpsBaud = lv_menu_cont_create(menu.page);
-  lv_obj_set_flex_flow(gpsBaud, LV_FLEX_FLOW_ROW_WRAP);
-  m_Status.gpsWidgets.push_back(gpsBaud);
-  lv_obj_t *label = lv_label_create(gpsBaud);
-  lv_label_set_text(label, "GPS baud 115200");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_flex_grow(label, 1);
-
-  lv_obj_t *baud_sw = lv_switch_create(gpsBaud);
-  lv_obj_add_flag(baud_sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, baud_sw);
-  uint32_t baud = Settings::load<Settings::GPS_BAUD>();
-  lv_obj_add_state(baud_sw, baud == Settings::BAUD_115200 ? LV_STATE_CHECKED : LV_STATE_DEFAULT);
-  lv_obj_add_event_cb(
-      baud_sw,
-      [](lv_event_t *e) {
-        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-        lv_obj_t *baud_sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        uint32_t baud;
-
-        if (lv_obj_has_state(baud_sw, LV_STATE_CHECKED)) {
-          baud = Settings::BAUD_115200;
-        } else {
-          baud = Settings::BAUD_9600;
-        }
-        Settings::save<Settings::GPS_BAUD>(baud);
-        status->gps->reloadSetting();
-      },
-      LV_EVENT_VALUE_CHANGED, &m_Status);
+  // add GPS baud control as a roller: Auto detects the receiver, or pin a rate
+  const uint32_t storedBaud = Settings::load<Settings::GPS_BAUD>();
+  uint32_t baudIndex = 0;
+  if (storedBaud == Settings::BAUD_9600) {
+    baudIndex = 1;
+  } else if (storedBaud == Settings::BAUD_115200) {
+    baudIndex = 2;
+  }
+  addGPSOptionMenu(menu, Settings::get(Settings::GPS_BAUD).name, m_GPSBaudOptions, baudIndex,
+                   [](lv_event_t *e) {
+                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+                     uint32_t baud = Settings::BAUD_AUTO;
+                     switch (lv_roller_get_selected(roller)) {
+                       case 1:
+                         baud = Settings::BAUD_9600;
+                         break;
+                       case 2:
+                         baud = Settings::BAUD_115200;
+                         break;
+                       default:
+                         baud = Settings::BAUD_AUTO;
+                         break;
+                     }
+                     Settings::save<Settings::GPS_BAUD>(baud);
+                     status->gps->reloadSetting();
+                   });
 
   // add the receiver configuration pages
   addGPSOptionMenu(
@@ -3695,8 +3692,19 @@ void UI::addGPSMenu(const menu_t &parent) {
         status->gps->reloadSetting();
       });
 
+  addGPSOptionMenu(menu, m_GPSPlatformStr, m_GPSPlatformOptions,
+                   Settings::load<Settings::GPS_PLATFORM>(), [](lv_event_t *e) {
+                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+                     Settings::save<Settings::GPS_PLATFORM>(
+                         static_cast<uint8_t>(lv_roller_get_selected(roller)));
+                     status->gps->reloadSetting();
+                   });
+
   addGPSDataMenu(menu);
   addGPSNMEAMenu(menu);
+  addGPSSatMenu(menu);
 
   showGPSWidgets(&m_Status, m_Status.gps->isEnabled());
 }
@@ -3908,10 +3916,20 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         auto &gps = GPS::getInstance();
         auto &tinygps = gps.get();
 
-        setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
-                                 (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
-                                 (unsigned long)(tinygps.location.age() / 1000),
-                                 tinygps.speed.kmph());
+        // a degraded, self recovering cycle is otherwise console only, surface
+        // the retry count here too. The IfChanged setter keeps this guarded.
+        if (gps.isDegraded()) {
+          setLabelTextFmtIfChanged(ui->m_NMEA.fix,
+                                   "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
+                                   (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
+                                   (unsigned long)(tinygps.location.age() / 1000),
+                                   tinygps.speed.kmph(), (unsigned long)gps.degradedRetries());
+        } else {
+          setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
+                                   (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
+                                   (unsigned long)(tinygps.location.age() / 1000),
+                                   tinygps.speed.kmph());
+        }
         setLabelTextFmtIfChanged(
             ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)tinygps.charsProcessed(),
             (unsigned long)tinygps.passedChecksum(), (unsigned long)tinygps.failedChecksum());
@@ -3963,6 +3981,97 @@ void UI::gpsNMEAStop(lv_event_t *e) {
   lv_timer_pause(ui->m_NMEATimer);
   GPS::getInstance().setCapture(false);
   lv_obj_remove_event_cb(target, gpsNMEAStop);
+}
+
+/**
+ * Per satellite signal detail page.
+ *
+ * GSV and GSA parsing only runs while the page is open. Opening the page adds
+ * GSA and GSV to the sentence stream and closing it restores the user's set,
+ * so the extra traffic never outlives the page.
+ */
+void UI::addGPSSatMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_GPSSatStr, NULL, true, parent);
+  m_Status.gpsWidgets.push_back(menu.button);
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+
+  m_Satellites.summary = lv_label_create(cont);
+  lv_obj_set_width(m_Satellites.summary, LV_PCT(100));
+  lv_label_set_long_mode(m_Satellites.summary, LV_LABEL_LONG_WRAP);
+
+  m_Satellites.table = lv_label_create(cont);
+  lv_obj_set_width(m_Satellites.table, LV_PCT(100));
+  lv_label_set_long_mode(m_Satellites.table, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_font(m_Satellites.table, &lv_font_montserrat_12, 0);
+
+  lv_obj_t *hint = lv_label_create(menu.page);
+  lv_obj_set_width(hint, LV_PCT(100));
+  lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(hint,
+                    "* used in fix. Under 30 dB on most satellites means blocked, over 40 on four "
+                    "or more means a fix is close.");
+
+  m_SatTimer = lv_timer_create(
+      [](lv_timer_t *t) {
+        FURBLE_SIM_TIMER_FIRE("gps_sat_timer");
+        auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
+        const auto report = GPS::getInstance().getSatelliteReport();
+
+        const char *fixName = "no fix";
+        if (report.dop.fix_type == 2) {
+          fixName = "2D";
+        } else if (report.dop.fix_type == 3) {
+          fixName = "3D";
+        }
+        setLabelTextFmtIfChanged(
+            ui->m_Satellites.summary, "%s  %u/%u used\npdop %.1f hdop %.1f vdop %.1f", fixName,
+            static_cast<unsigned>(report.used), static_cast<unsigned>(report.in_view),
+            report.dop.pdop, report.dop.hdop, report.dop.vdop);
+
+        static const char *const sysName[] = {"?", "GP", "GL", "GA", "BD", "QZ"};
+        std::string text;
+        for (const auto &sat : report.satellites) {
+          const char *sys = (sat.constellation <= 5) ? sysName[sat.constellation] : "?";
+          char line[40];
+          snprintf(line, sizeof(line), "%s%-3u %2u dB %s\n", sys, sat.prn, sat.snr,
+                   sat.used ? "*" : " ");
+          text += line;
+        }
+        if (text.empty()) {
+          text = "no satellites yet";
+        }
+        if (text != ui->m_Satellites.tableText) {
+          ui->m_Satellites.tableText = text;
+          lv_label_set_text(ui->m_Satellites.table, text.c_str());
+        }
+      },
+      1000, this);
+  lv_timer_pause(m_SatTimer);
+
+  // parse GSV and GSA only while the page is open
+  lv_obj_add_event_cb(
+      menu.button,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        GPS::getInstance().setSatelliteCapture(true);
+        lv_timer_resume(ui->m_SatTimer);
+        lv_obj_add_event_cb(m_MainMenu.main, gpsSatStop, LV_EVENT_CLICKED, ui);
+      },
+      LV_EVENT_CLICKED, this);
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::gpsSatStop(lv_event_t *e) {
+  auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+  lv_timer_pause(ui->m_SatTimer);
+  GPS::getInstance().setSatelliteCapture(false);
+  lv_obj_remove_event_cb(target, gpsSatStop);
 }
 
 void UI::addFeaturesMenu(const menu_t &parent) {
