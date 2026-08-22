@@ -250,8 +250,9 @@ Control::state_t Control::connectAll(void) {
   }
 
   if (m_InfiniteReconnect || (failcount < 2)) {
+    uint32_t delay;
     if (m_InfiniteReconnect) {
-      const uint32_t delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
+      delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
 
       if (m_ReconnectAttempt == 0 && !m_ReconnectHintLogged) {
         ESP_LOGW(LOG_TAG,
@@ -263,15 +264,23 @@ Control::state_t Control::connectAll(void) {
 
       ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.", m_ReconnectAttempt + 1, delay);
       m_ReconnectAttempt++;
-
-      // Sleep in short slices so disconnect can interrupt the retry wait.
-      uint32_t remaining = delay;
-      while (remaining > 0 && !m_ConnectAbort && m_State != STATE_DISCONNECTING) {
-        const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
-        vTaskDelay(pdMS_TO_TICKS(slice));
-        remaining -= slice;
-      }
+    } else {
+      // Bounded connect retry, used by the deep-sleep intervalometer resume.
+      // Wait a fixed gap before each of the two retries so a wake that misses
+      // the camera gives the radio time to settle rather than hammering it, and
+      // so a single miss does not fail the resume outright.
+      delay = CONNECT_RETRY_GAP_MS;
+      ESP_LOGI(LOG_TAG, "Connect retry %lu of 2, waiting %lu ms.", failcount, delay);
     }
+
+    // Sleep in short slices so disconnect can interrupt the retry wait.
+    uint32_t remaining = delay;
+    while (remaining > 0 && !m_ConnectAbort && m_State != STATE_DISCONNECTING) {
+      const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
+      vTaskDelay(pdMS_TO_TICKS(slice));
+      remaining -= slice;
+    }
+
     return m_ConnectAbort ? m_State
                           : (m_State == STATE_DISCONNECTING ? STATE_DISCONNECTING : STATE_CONNECT);
   }

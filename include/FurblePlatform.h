@@ -88,7 +88,7 @@ class Platform {
   /**
    * Enable or disable the M5PM1 hardware watchdog.
    */
-  void watchdogEnable(bool enable);
+  bool watchdogEnable(bool enable);
 
   /** Disconnect cameras and disable restart-sensitive hardware before reset. */
   void prepareRestart(void);
@@ -122,6 +122,21 @@ class Platform {
    * shutdown, with the hardware watchdog re-armed if it was armed before.
    */
   bool powerOff(void);
+
+  /**
+   * Is a timed power-on supported by this board?
+   */
+  bool canTimedWake(void);
+
+  /**
+   * Power off and arrange for a timed power-on.
+   */
+  void powerOffUntil(uint32_t seconds);
+
+  /**
+   * Consume the wake marker left by a timed power-on.
+   */
+  bool consumeTimedWake(void);
 
   /**
    * Set the maximum CPU frequency in MHz.

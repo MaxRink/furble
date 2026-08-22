@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -256,6 +257,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BulbRunStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BulbDurationStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalSleepThresholdStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
 };
 
 UI::UI(const interval_t &interval)
@@ -1470,7 +1472,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   return cont;
 }
 
-void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
+lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
   lv_obj_t *obj = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW_WRAP);
 
@@ -1609,6 +1611,26 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         },
         LV_EVENT_VALUE_CHANGED, this);
   }
+
+  if (setting == Settings::IVL_SLEEP) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          if (ui->m_Intervalometer.m_SleepThreshold.m_Button == nullptr) {
+            return;
+          }
+          if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
+            lv_obj_clear_flag(ui->m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(ui->m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+  }
+
+  return obj;
 }
 
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
@@ -1810,14 +1832,38 @@ void UI::addMainMenu(void) {
           // Ensure no active scans
           scan.stop();
 
-          // If enabled and connections exist, auto connect to first camera on first display of main
-          // menu
-          if ((saveCount > 0) && (ui->m_MainCount == 1)
-              && Settings::load<Settings::AUTOCONNECT>()) {
+          // Enable Back button
+          if (lv_obj_has_state(back, LV_STATE_DISABLED)) {
+            lv_obj_remove_state(back, LV_STATE_DISABLED);
+          }
+
+          const bool resume = ui->m_Intervalometer.hasResume();
+          const bool autoConnect = Settings::load<Settings::AUTOCONNECT>();
+          if ((ui->m_MainCount == 1) && (resume || autoConnect)) {
             CameraList::load();
-            auto camera = CameraList::get(0);
-            camera->setActive(true);
-            doConnect(e);
+            std::shared_ptr<Camera> camera;
+
+            if (resume) {
+              const uint16_t index = ui->m_Intervalometer.resumeCameraIndex();
+              if ((index < CameraList::size()) && (index < saveCount)) {
+                camera = CameraList::get(index);
+              } else {
+                ESP_LOGE(LOG_TAG, "Intervalometer resume camera is unavailable");
+                ui->m_Intervalometer.clearResume();
+              }
+            }
+
+            if ((camera == nullptr) && autoConnect && (CameraList::size() > 0)) {
+              camera = CameraList::get(0);
+            }
+
+            if (camera != nullptr) {
+              for (size_t n = 0; n < CameraList::size(); n++) {
+                CameraList::get(n)->setActive(false);
+              }
+              camera->setActive(true);
+              doConnect(e);
+            }
           }
         } else if (page == m_Menu.at(m_DeleteStr).page) {
         } else if (page == m_Menu.at(m_ScanStr).page) {
@@ -2767,9 +2813,15 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       break;
 
     case Control::STATE_CONNECT_FAILED:
+    {
+      const bool resume = ctx->ui->m_Intervalometer.hasResume();
       ESP_LOGE("ui", "Connection failed.");
       doDisconnect();
+      if (resume) {
+        ctx->ui->showIntervalometerResumeError();
+      }
       break;
+    }
 
     case Control::STATE_ACTIVE:
       if (!ctx->feedbackConnected) {
@@ -2792,6 +2844,9 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         ctx->ui->displayNavigationBar(true);
         ctx->ui->configureControl(ControlMode::REVERT);
         lv_group_focus_next(lv_group_get_default());
+        if (ctx->ui->m_Intervalometer.hasResume()) {
+          ctx->ui->startIntervalometerResume();
+        }
       }
       // The link is live: remember the session so a later drop shows the
       // non-blocking indicator instead of taking over the screen, and clear
@@ -2819,6 +2874,28 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       lv_timer_pause(m_ConnectTimer);
       break;
   }
+}
+
+void UI::startIntervalometerResume(void) {
+  if (!m_Intervalometer.startResume()) {
+    return;
+  }
+
+  m_Intervalometer.m_State = Intervalometer::STATE_SHUTTER_OPEN;
+  lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_HIDDEN);
+  lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_IntervalometerRunStr).page);
+  lv_timer_resume(m_IntervalTimer);
+  lv_timer_resume(m_IntervalPageRefresh);
+  lv_timer_ready(m_IntervalPageRefresh);
+  ESP_LOGI(LOG_TAG, "Intervalometer resumed");
+}
+
+void UI::showIntervalometerResumeError(void) {
+  m_Intervalometer.clearResume();
+  m_Intervalometer.m_State = Intervalometer::STATE_FINISHED;
+  lv_label_set_text(m_Intervalometer.m_StateLabel, "RESUME FAILED");
+  lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_IntervalometerRunStr).page);
+  ESP_LOGE(LOG_TAG, "Intervalometer resume stopped after connection failure");
 }
 
 uint8_t UI::getIntervalometerState(void) {
@@ -2869,20 +2946,18 @@ void UI::intervalometer(lv_timer_t *timer) {
   auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
   uint32_t next = 0;
 
-  static uint32_t count = 0;
-
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
   if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu", count);
+    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu", interval->m_CountShots);
   } else {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u", count,
+    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u", interval->m_CountShots,
                           interval->m_Count.m_SpinValue.m_Value);
   }
 
   switch (interval->m_State) {
     case Intervalometer::STATE_IDLE:
-      count = 0;
+      interval->m_CountShots = 0;
       m_IntervalCountdownActive = false;
       lv_label_set_text(interval->m_StateLabel, "IDLE");
       lv_timer_ready(timer);
@@ -2900,7 +2975,7 @@ void UI::intervalometer(lv_timer_t *timer) {
     case Intervalometer::STATE_SHUTTER_OPEN:
       m_IntervalCountdownActive = false;
       m_IntervalLastAnnouncedSecond = 0;
-      count++;
+      interval->m_CountShots++;
       lv_label_set_text(interval->m_StateLabel, "SHUTTER");
       control.sendCommand(Control::CMD_SHUTTER_PRESS);
       Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
@@ -2913,7 +2988,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       control.sendCommand(Control::CMD_SHUTTER_RELEASE);
       next = interval->m_Delay.m_SpinValue.toMilliseconds();
       m_IntervalLastAnnouncedSecond = 0;
-      if (count >= interval->m_Count.m_SpinValue.m_Value) {
+      if (interval->m_CountShots >= interval->m_Count.m_SpinValue.m_Value) {
         m_IntervalCountdownActive = false;
         interval->m_State = Intervalometer::STATE_FINISHED;
       } else {
@@ -2921,12 +2996,53 @@ void UI::intervalometer(lv_timer_t *timer) {
         // before every frame, not only the first.
         m_IntervalCountdownActive = next > 0;
         interval->m_State = Intervalometer::STATE_SHUTTER_OPEN;
+
+        const uint64_t threshold_ms =
+            static_cast<uint64_t>(Settings::load<Settings::IVL_SLEEP_THR>()) * 1000ULL;
+        if (Settings::load<Settings::IVL_SLEEP>() && (static_cast<uint64_t>(next) >= threshold_ms)
+            && Platform::getInstance().canTimedWake()
+            && ((next / 1000) > Intervalometer::RESUME_WAKE_MARGIN_S)
+            && (control.getTargetCount() == 1)) {
+          auto camera = control.getTargets().front()->getCamera();
+          uint16_t camera_index = 0;
+          bool camera_found = false;
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            if (CameraList::get(n) == camera) {
+              camera_index = static_cast<uint16_t>(n);
+              camera_found = true;
+              break;
+            }
+          }
+
+          if (camera_found) {
+            const uint32_t sleep_seconds = (next / 1000) - Intervalometer::RESUME_WAKE_MARGIN_S;
+            if (interval->saveResume(next, camera_index)) {
+              const std::time_t wake_time =
+                  std::time(nullptr) + static_cast<std::time_t>(sleep_seconds);
+              std::tm wake_tm = {};
+              if (localtime_r(&wake_time, &wake_tm) != nullptr) {
+                lv_label_set_text_fmt(interval->m_StateLabel, "SLEEPING UNTIL %02d:%02d:%02d",
+                                      wake_tm.tm_hour, wake_tm.tm_min, wake_tm.tm_sec);
+              } else {
+                lv_label_set_text(interval->m_StateLabel, "SLEEPING");
+              }
+              ESP_LOGI(LOG_TAG, "Intervalometer sleeping for %lu seconds",
+                       static_cast<unsigned long>(sleep_seconds));
+              Platform::getInstance().powerOffUntil(sleep_seconds);
+              interval->clearResume();
+              ESP_LOGW(LOG_TAG, "Timed power off failed, continuing awake");
+            }
+          } else {
+            ESP_LOGW(LOG_TAG, "Intervalometer camera is not in the saved camera list");
+          }
+        }
       }
       break;
 
     case Intervalometer::STATE_FINISHED:
       m_IntervalCountdownActive = false;
       lv_label_set_text(interval->m_StateLabel, "FINISHED");
+      interval->clearResume();
       next = 0;
       lv_timer_pause(timer);
       break;
@@ -2942,7 +3058,8 @@ void UI::intervalometer(lv_timer_t *timer) {
     m_IntervalometerRemaining.store(0xffff);
   } else {
     const uint32_t total = interval->m_Count.m_SpinValue.m_Value;
-    m_IntervalometerRemaining.store(static_cast<uint16_t>(count >= total ? 0 : total - count));
+    m_IntervalometerRemaining.store(static_cast<uint16_t>(
+        interval->m_CountShots >= total ? 0 : total - interval->m_CountShots));
   }
 }
 
@@ -3111,7 +3228,8 @@ void UI::doConnect(lv_event_t *e) {
     }
   }
 
-  control.connectAll(Settings::load<Settings::RECONNECT>());
+  const bool resume = m_ConnectContext.ui->m_Intervalometer.hasResume();
+  control.connectAll(resume ? false : Settings::load<Settings::RECONNECT>());
   lv_timer_ready(m_ConnectTimer);
   lv_timer_resume(m_ConnectTimer);
 
@@ -4028,7 +4146,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   }
 
   if (spinner.supportsPresetPicker()
-      || ((spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
+      || (!spinner.m_FixedUnit && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
           && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF))) {
     spinner.m_RollerUnit = lv_roller_create(spinner.m_RowSpinners);
     lv_obj_add_flag(spinner.m_RollerUnit, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -4155,6 +4273,15 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   addSpinnerPage(menu, m_IntervalDelayStr, m_Intervalometer.m_Delay);
   addSpinnerPage(menu, m_IntervalShutterStr, m_Intervalometer.m_Shutter);
   addSpinnerPage(menu, m_IntervalWaitStr, m_Intervalometer.m_Wait);
+  lv_obj_t *sleepRow = addSettingItem(menu.page, NULL, Settings::IVL_SLEEP);
+  addSpinnerPage(menu, m_IntervalSleepThresholdStr, m_Intervalometer.m_SleepThreshold);
+
+  if (!Platform::getInstance().canTimedWake()) {
+    lv_obj_add_flag(sleepRow, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+  } else if (!Settings::load<Settings::IVL_SLEEP>()) {
+    lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+  }
 
   // Reflect count infinite or not
   m_Intervalometer.m_Count.update();
@@ -4167,6 +4294,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
         auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
 
+        interval->startNewRun();
         interval->m_State = Intervalometer::STATE_IDLE;
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
@@ -4204,6 +4332,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         lv_timer_pause(m_IntervalPageRefresh);
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
+        interval->clearResume();
+        interval->m_CountShots = 0;
 
         // reset the run state so a subsequent start begins a fresh run, and
         // mirror it to the atomic the console status query reads
