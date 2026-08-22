@@ -435,6 +435,22 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
   }
 }
 
+bool NimBLEClient::mockPeerRequestConnParams(const ble_gap_upd_params &params) {
+  // Model a peer-initiated L2CAP connection parameter update request. The real
+  // stack runs the client callback and, on accept, installs the peer's values as
+  // the live parameters; on reject it keeps the current parameters. That reject
+  // path is what bounds dead-link detection when a camera asks for a long
+  // supervision timeout.
+  if (m_Callbacks == nullptr) {
+    return true;
+  }
+  const bool accepted = m_Callbacks->onConnParamsUpdateRequest(this, &params);
+  if (accepted) {
+    m_ConnInfo = NimBLEConnInfo(params.itvl_min, params.latency, params.supervision_timeout);
+  }
+  return accepted;
+}
+
 NimBLERemoteService *NimBLEClient::getService(const NimBLEUUID &service) {
   if (!m_Connected || (m_Peer == nullptr) || !m_Peer->hasService(service)) {
     return nullptr;
