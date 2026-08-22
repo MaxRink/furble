@@ -1,0 +1,35 @@
+# task #54, multi-connect: the Remote shutter page banner must carry the
+# per-device count when one of several cameras drops.
+#
+# Two FauxNY cameras are connected, then the shutter page is opened and camera 0
+# is dropped. The banner must show while camera 0 reconnects, carry the "(i/n)"
+# count (1 of 2 down), and clear once both are live again. The count is read
+# from reconnect_count, which formats from the same target state the banner
+# uses, so the space in "Reconnecting (1/2)" never needs a token match.
+seed fauxny true
+seed reconnect true
+wait 300
+action connect-two
+wait 1200
+assert control.state active
+assert control.connected 2
+# Open the full-screen Remote shutter page. Both live: no banner.
+action blind
+wait 200
+assert ui.page shutter
+assert ui.remote_reconnecting no
+# Drop camera 0. Camera 1 stays connected and the shutter page stays up.
+action drop 0
+wait 700
+assert control.state connecting
+assert control.connected 1
+assert ui.page shutter
+# The banner shows and carries the per-device count: one of two cameras is down.
+assert ui.remote_reconnecting yes
+assert ui.reconnect_count 1/2
+# Camera 0 reconnects. The banner clears once the session is whole again.
+wait 1000
+assert control.state active
+assert control.connected 2
+assert ui.remote_reconnecting no
+exit
