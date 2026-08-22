@@ -229,6 +229,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::GPS_MOTION:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -277,6 +278,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::LOW_BATT:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
+    case Settings::GPS_MOTION:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -339,6 +341,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::GPS_MOTION:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -475,6 +478,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::GPS_MOTION:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -498,7 +502,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
       || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
-      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
+      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
+      || (setting.type == Settings::GPS_MOTION)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {

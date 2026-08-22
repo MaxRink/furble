@@ -259,6 +259,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
+    case Settings::GPS_MOTION:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::TX_ADAPTIVE:
@@ -318,6 +319,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
+    case Settings::GPS_MOTION:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
     case Settings::TX_ADAPTIVE:
@@ -561,6 +563,7 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_MOTION:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
