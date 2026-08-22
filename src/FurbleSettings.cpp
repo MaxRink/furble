@@ -114,6 +114,8 @@ bool Settings::appliesImmediately(type_t type) {
     case LOW_BATT:
     case SD_GPX:
     case GPX_PERIOD:
+    case IMU_WAKE:
+    case IMU_TRIG:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
@@ -185,6 +187,8 @@ bool Settings::isDangerous(type_t type) {
     case SD_GPX:
     case GPX_PERIOD:
     case BOOT_SPLASH:
+    case IMU_WAKE:
+    case IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
