@@ -637,6 +637,11 @@ class UI {
   // there too. Hidden until a live link drops. Built in addConnectedMenu.
   lv_obj_t *m_RemoteReconnect = nullptr;
   lv_obj_t *m_RemoteReconnectLabel = nullptr;
+  // The full-screen Bulb page is the other place shots are taken and, like the
+  // shutter page, hides the header status row, so it carries its own copy of the
+  // reconnect banner. Hidden until a live link drops. Built in addBulbMenu.
+  lv_obj_t *m_BulbReconnect = nullptr;
+  lv_obj_t *m_BulbReconnectLabel = nullptr;
   lv_obj_t *m_IRConnectedButton = nullptr;
   ControlMode m_ControlMode = ControlMode::MENU;
 
@@ -1025,18 +1030,28 @@ class UI {
   void updateReconnectTitle(bool reconnecting);
 
   /**
-   * Update the Remote shutter page reconnect banner for a mid-session drop.
+   * Update the full-screen page reconnect banners for a mid-session drop.
    *
-   * Shows a red Bluetooth icon plus "Reconnecting" (or "Reconnecting (i/n)" for
-   * a multi-connect session, i cameras down of n) overlaid on the shutter page
-   * while a live link is being reconnected, and hides it once recovered.
-   * Unlike updateReconnectTitle this runs regardless of the current page: the
-   * banner is a child of the shutter page, so it only renders while that page is
-   * on screen, which is exactly where the header title is not rewritten. Reuses
-   * the same connection state and count as updateReconnectTitle. Guarded so the
-   * label text and visibility are only touched when they actually change.
+   * Drives both full-screen operational pages that hide the header status row,
+   * the Remote shutter page and the Bulb page, in lockstep: shows a red
+   * Bluetooth icon plus "Reconnecting" (or "Reconnecting (i/n)" for a
+   * multi-connect session, i cameras down of n) overlaid on each while a live
+   * link is being reconnected, and hides them once recovered. Unlike
+   * updateReconnectTitle this runs regardless of the current page: each banner is
+   * a child of its page, so it only renders while that page is on screen, which
+   * is exactly where the header title is not rewritten. Reuses the same
+   * connection state and count as updateReconnectTitle. Guarded so the label text
+   * and visibility are only touched when they actually change.
    */
   void updateRemoteReconnect(bool reconnecting);
+
+  /**
+   * Apply the reconnecting state to one floating page banner (icon plus label).
+   *
+   * Shared by the Remote shutter and Bulb pages so both surface a mid-session
+   * drop identically. See updateRemoteReconnect for the state it reads.
+   */
+  void updatePageReconnectBanner(lv_obj_t *banner, lv_obj_t *label, bool reconnecting);
 
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);

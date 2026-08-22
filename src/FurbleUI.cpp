@@ -2356,6 +2356,7 @@ void UI::simScenarioAction(const char *action) {
         {"connect",     m_ConnectStr       },
         {"scan",        m_ScanStr          },
         {"delete",      m_DeleteStr        },
+        {"bulb",        m_RemoteBulb       },
         {"settings",    m_SettingsStr      },
         {"display",     m_DisplayStr       },
         {"features",    m_FeaturesStr      },
@@ -2630,6 +2631,56 @@ std::string UI::simQueryState(const char *key) {
     const int32_t padRight = lv_obj_get_style_pad_right(m_Header, LV_PART_MAIN);
     const int32_t headerRight = lv_obj_get_width(m_Header) - padRight - 1;
     return (headerRight - elementRight <= 4) ? "yes" : "no";
+  }
+
+  // The Bulb page reconnect banner, the counterpart of remote_status for the
+  // other full-screen page shots are taken on. Reports "hidden" when the banner
+  // is not showing, otherwise its label text, so a scenario can assert the Bulb
+  // page surfaces a mid-session drop and clears it on recovery.
+  if (query == "bulb_status") {
+    const bool hidden =
+        m_BulbReconnect == nullptr || lv_obj_has_flag(m_BulbReconnect, LV_OBJ_FLAG_HIDDEN);
+    if (hidden) {
+      return "hidden";
+    }
+    if (m_BulbReconnectLabel == nullptr) {
+      return "shown";
+    }
+    const char *text = lv_label_get_text(m_BulbReconnectLabel);
+    return (text != nullptr) ? std::string(text) : std::string("shown");
+  }
+
+  // Token-safe visibility of the Bulb page reconnect banner ("yes"/"no"), the
+  // counterpart of remote_reconnecting. Pair with reconnect_count for the
+  // per-device count.
+  if (query == "bulb_reconnecting") {
+    const bool hidden =
+        m_BulbReconnect == nullptr || lv_obj_has_flag(m_BulbReconnect, LV_OBJ_FLAG_HIDDEN);
+    return hidden ? "no" : "yes";
+  }
+
+  // The Bulb page counterpart of remote_named: "yes" when the Bulb banner text
+  // matches the dropped-camera name policy for this panel. The Bulb banner shares
+  // updatePageReconnectBanner with the shutter banner, so it names the dropped
+  // camera under the same rule (exactly one down and the panel at least
+  // RECONNECT_NAME_MIN_WIDTH wide) and omits it otherwise. Lets one scenario
+  // assert the naming on every board width.
+  if (query == "bulb_named") {
+    const bool hidden =
+        m_BulbReconnect == nullptr || lv_obj_has_flag(m_BulbReconnect, LV_OBJ_FLAG_HIDDEN);
+    if (hidden || m_BulbReconnectLabel == nullptr) {
+      return "no";
+    }
+    auto &control = Control::getInstance();
+    const size_t total = control.getTargetCount();
+    const size_t connected = control.getConnectedTargetCount();
+    const size_t down = (total > connected) ? (total - connected) : 0;
+    const std::string name = control.getDisconnectedName();
+    const char *text = lv_label_get_text(m_BulbReconnectLabel);
+    const bool present =
+        text != nullptr && !name.empty() && std::string(text).find(name) != std::string::npos;
+    const bool expected = down == 1 && m_Width >= RECONNECT_NAME_MIN_WIDTH && !name.empty();
+    return (present == expected) ? "yes" : "no";
   }
 
   // Whether the connect liveness timer is parked. It must pause once the link is
@@ -3080,20 +3131,20 @@ void UI::updateReconnectTitle(bool reconnecting) {
   }
 }
 
-void UI::updateRemoteReconnect(bool reconnecting) {
-  if (m_RemoteReconnect == nullptr) {
+void UI::updatePageReconnectBanner(lv_obj_t *banner, lv_obj_t *label, bool reconnecting) {
+  if (banner == nullptr) {
     return;
   }
 
   if (!reconnecting) {
     // Guarded inside showStatusIcon: the hidden flag is only toggled when it
     // actually changes, so a per-tick liveness poll never re-invalidates.
-    showStatusIcon(m_RemoteReconnect, false);
+    showStatusIcon(banner, false);
     return;
   }
 
   // Reuse the same per-target connection state that drives updateReconnectTitle
-  // so the shutter-page banner and the connected-page title never disagree.
+  // so the full-screen page banners and the connected-page title never disagree.
   auto &control = Control::getInstance();
   const size_t total = control.getTargetCount();
   const size_t connected = control.getConnectedTargetCount();
@@ -3108,19 +3159,29 @@ void UI::updateRemoteReconnect(bool reconnecting) {
   }
   if (total > 1) {
     if (name.empty()) {
-      setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting (%u/%u)",
-                               static_cast<unsigned>(down), static_cast<unsigned>(total));
+      setLabelTextFmtIfChanged(label, "Reconnecting (%u/%u)", static_cast<unsigned>(down),
+                               static_cast<unsigned>(total));
     } else {
-      setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting (%u/%u): %s",
-                               static_cast<unsigned>(down), static_cast<unsigned>(total),
-                               name.c_str());
+      setLabelTextFmtIfChanged(label, "Reconnecting (%u/%u): %s", static_cast<unsigned>(down),
+                               static_cast<unsigned>(total), name.c_str());
     }
   } else if (name.empty()) {
-    setLabelTextIfChanged(m_RemoteReconnectLabel, "Reconnecting");
+    setLabelTextIfChanged(label, "Reconnecting");
   } else {
-    setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting %s", name.c_str());
+    setLabelTextFmtIfChanged(label, "Reconnecting %s", name.c_str());
   }
-  showStatusIcon(m_RemoteReconnect, true);
+  showStatusIcon(banner, true);
+}
+
+void UI::updateRemoteReconnect(bool reconnecting) {
+  // Drive the shutter page and the Bulb page from one call so their banners
+  // always agree: both are full-screen operational pages that hide the header
+  // status row, and both read the same connection state. Each helper call is a
+  // no-op when its banner has not been built (for example a board panel that
+  // omits a page), and each floating banner only renders while its page is on
+  // screen.
+  updatePageReconnectBanner(m_RemoteReconnect, m_RemoteReconnectLabel, reconnecting);
+  updatePageReconnectBanner(m_BulbReconnect, m_BulbReconnectLabel, reconnecting);
 }
 
 void UI::connectTimerHandler(lv_timer_t *timer) {
@@ -5011,6 +5072,62 @@ void UI::addBulbMenu(const menu_t &parent) {
         ui->bulbStart();
       },
       LV_EVENT_CLICKED, this);
+
+  // Non-blocking reconnect banner overlaid on the full-screen Bulb page, the
+  // sibling of the Remote shutter banner (see addConnectedMenu). The Bulb page is
+  // equally full screen and equally a place shots are taken, so a mid-session
+  // drop must surface here too rather than only on the small shared status icon.
+  // Same look and rules as the shutter banner: floating so it never joins the
+  // page layout or covers the duration picker and Start button, hidden until
+  // updateRemoteReconnect shows it, red Bluetooth icon over "Reconnecting" (or
+  // "Reconnecting (i/n)") text, icon-only on the narrow StickC panel.
+  m_BulbReconnect = lv_obj_create(menu.page);
+  lv_obj_remove_style_all(m_BulbReconnect);
+  lv_obj_set_size(m_BulbReconnect, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_layout(m_BulbReconnect, LV_LAYOUT_FLEX);
+  // Stack the icon over the text so the badge width is the wider of the two (the
+  // text), keeping "Reconnecting (i/n)" inside the narrow 135 px panel.
+  lv_obj_set_flex_flow(m_BulbReconnect, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(m_BulbReconnect, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(m_BulbReconnect, 2, 0);
+  lv_obj_set_style_pad_row(m_BulbReconnect, 0, 0);
+  lv_obj_set_style_radius(m_BulbReconnect, 4, 0);
+  lv_obj_set_style_bg_opa(m_BulbReconnect, LV_OPA_70, 0);
+  lv_obj_set_style_bg_color(m_BulbReconnect, lv_color_black(), 0);
+  lv_obj_clear_flag(m_BulbReconnect, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(m_BulbReconnect, LV_OBJ_FLAG_FLOATING);
+  lv_obj_align(m_BulbReconnect, LV_ALIGN_TOP_LEFT, 1, 1);
+  lv_obj_add_flag(m_BulbReconnect, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *bulbReconnectIcon = lv_image_create(m_BulbReconnect);
+  lv_image_set_src(bulbReconnectIcon, &icon_bluetooth);
+  // Recolor the shared Bluetooth glyph red rather than shipping a new compressed
+  // asset, so there is no extra decompress cost.
+  lv_obj_set_style_image_recolor(bulbReconnectIcon, lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_set_style_image_recolor_opa(bulbReconnectIcon, LV_OPA_COVER, 0);
+
+  m_BulbReconnectLabel = lv_label_create(m_BulbReconnect);
+  lv_obj_set_style_text_color(m_BulbReconnectLabel, lv_palette_main(LV_PALETTE_RED), 0);
+  // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
+  // panel width.
+  lv_obj_set_style_text_font(m_BulbReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL), 0);
+  // Wrap within a width capped to the panel so a long dropped-camera name (the
+  // shared banner helper appends it when one of several cameras is down) wraps
+  // onto more lines instead of overflowing the right edge, exactly as the
+  // shutter banner does. The chip still hugs the short "Reconnecting" text until
+  // a name widens it, and it stays floating top-left clear of the bulb controls.
+  lv_label_set_long_mode(m_BulbReconnectLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_max_width(m_BulbReconnectLabel, M5.Display.width() - 8, 0);
+  lv_obj_set_style_text_align(m_BulbReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(m_BulbReconnectLabel, "Reconnecting");
+
+  // The 80 px StickC panel is too narrow to fit the text even at the Small font,
+  // so drop the label there and keep just the red Bluetooth icon (the connected
+  // page title still carries the wording).
+  if (M5.Display.width() < 110) {
+    lv_obj_add_flag(m_BulbReconnectLabel, LV_OBJ_FLAG_HIDDEN);
+  }
 
   lv_obj_t *cont = lv_menu_cont_create(menuBulbRun.page);
   lv_obj_set_height(cont, LV_PCT(100));
