@@ -83,6 +83,7 @@ if runtime beats tidiness.
 | M5StickC Plus2 or StickS3 plus GPS unit plus USB power bank | ESP32 or ESP32-S3 | AT6668, `$PCAS` | any USB bank | yes | already owned | none |
 | Elecrow ThinkNode M4, plan 40 baseline | nRF52840 | multi-constellation, unnamed | 7000 mAh 18650 pack | none | 69,90 EUR BerryBase | rewrite |
 | LilyGO T-Echo Plus | nRF52840 | Quectel L76K | 2400 mAh | 1.54" e-paper | 79,90 EUR BerryBase | rewrite |
+| Waveshare ESP32-S3-ETH, wired-network node | ESP32-S3R8, 16 MB, 8 MB octal PSRAM | none | none, mains or PoE | none | wired W5500 Ethernet board, headless MQTT node, see `plans/42-waveshare-eth-node.md` | board profile plus Ethernet |
 
 Port effort scale. None means an existing PlatformIO env already covers it.
 Small means an M5Unified board that M5Unified already knows. Board profile
