@@ -88,4 +88,14 @@ action nav battery
 wait 100
 print ui.page
 print ui.overflow
+# Spirit level page (PR #28 v3.1): one top readout row split roll left, pitch
+# right, then the bullseye and centre target ring centred below. A compact fixed
+# layout that must fit every panel with no overlap or scroll.
+home
+wait 100
+action nav level
+wait 150
+print ui.page
+print ui.overflow
+assert ui.overflow no
 exit
