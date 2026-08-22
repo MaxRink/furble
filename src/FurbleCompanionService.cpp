@@ -289,6 +289,9 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+#endif
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
@@ -352,6 +355,9 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+#endif
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:

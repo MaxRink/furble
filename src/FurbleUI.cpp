@@ -606,6 +606,7 @@ UI::UI(const interval_t &interval)
   setPresetPicker(Settings::load<Settings::PRESET_PICKER>());
 
   m_GPS.startService();
+  setDisplayMode(Settings::load<uint8_t>(Settings::DISPLAY_MODE));
 }
 
 void UI::startCompanionPairingTimer(void) {
@@ -3174,6 +3175,11 @@ void UI::serviceRequests(void) {
       case Request::POWER_RELOAD:
         m_ConnectContext.ui->reloadPowerPolicies();
         break;
+#if !defined(FURBLE_NO_DISPLAY)
+      case Request::DISPLAY_MODE:
+        setDisplayMode(static_cast<uint8_t>(item.arg));
+        break;
+#endif
     }
   }
 }
@@ -6178,6 +6184,25 @@ void UI::doPowerOff(void) {
   }
 }
 
+void UI::setDisplayMode(uint8_t mode) {
+  const bool console = (mode == static_cast<uint8_t>(Settings::CONSOLE));
+  if (console == m_DisplayConsole) {
+    return;
+  }
+
+  if (console) {
+    M5.Display.sleep();
+    Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
+  } else {
+    Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
+    M5.Display.wakeup();
+    M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
+    lv_display_trigger_activity(m_Display);
+  }
+
+  m_DisplayConsole = console;
+}
+
 void UI::handleLockScreen(void) {
   // toggle screen lock on power button double click for touch screens
   if (M5.Touch.isEnabled()) {
@@ -6188,23 +6213,25 @@ void UI::handleLockScreen(void) {
 }
 
 void UI::task(void) {
+  // Keep this loop in step with the headless vUITask() in main.cpp.
   while (true) {
     Platform::getInstance().update();
-
-    handleLockScreen();
 
     m_Mutex.lock();
 #if defined(FURBLE_CONSOLE)
     serviceRequests();
 #endif
+    if (!m_DisplayConsole) {
+      handleLockScreen();
 #if defined(FURBLE_SIM)
-    Sim::profilerBeginUiCycle();
+      Sim::profilerBeginUiCycle();
 #endif
+      lv_task_handler();
+#if defined(FURBLE_SIM)
+      Sim::profilerEndUiCycle();
+#endif
+    }
     serviceStorage();
-    lv_task_handler();
-#if defined(FURBLE_SIM)
-    Sim::profilerEndUiCycle();
-#endif
     m_Mutex.unlock();
 
     vTaskDelay(pdMS_TO_TICKS(5));

@@ -4,7 +4,6 @@
 #include <M5Unified.h>
 #include <TinyGPS++.h>
 #include <esp_timer.h>
-#include <lvgl.h>
 
 #include <sys/time.h>
 #include <algorithm>
@@ -13,7 +12,11 @@
 #include <ctime>
 #include <utility>
 
+#if !defined(FURBLE_NO_DISPLAY)
+#include <lvgl.h>
+
 #include "icons.h"
+#endif
 
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
@@ -139,8 +142,10 @@ GPS &GPS::getInstance() {
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 0,
-#if defined(FURBLE_M5STICKS3)
-        // XTAL keeps the baud stable while DFS scales the APB clock
+#if defined(FURBLE_M5STICKS3) || defined(CONFIG_IDF_TARGET_ESP32S3)
+        // XTAL keeps the baud stable while DFS scales the APB clock. It is also
+        // the only valid choice on the ESP32-S3, which has no REF_TICK source,
+        // so the headless S3 profile lands here too.
         .source_clk = UART_SCLK_XTAL,
 #else
         .source_clk = UART_SCLK_REF_TICK,
@@ -170,7 +175,11 @@ void GPS::init(void) {
 }
 
 void GPS::setIcon(lv_obj_t *icon) {
+#if !defined(FURBLE_NO_DISPLAY)
   m_Icon = icon;
+#else
+  (void)icon;
+#endif
 }
 
 void GPS::reset(void) {
@@ -1257,6 +1266,7 @@ bool GPS::isEnabled(void) const {
 
 /** Start timer event to service/update GPS. */
 void GPS::startService(void) {
+#if !defined(FURBLE_NO_DISPLAY)
   if (m_Timer != NULL) {
     return;
   }
@@ -1268,6 +1278,7 @@ void GPS::startService(void) {
         gps->update();
       },
       SERVICE_MS, this);
+#endif
 }
 
 bool GPS::setExternalFix(const external_fix_t &fix) {
@@ -1409,6 +1420,7 @@ void GPS::update(void) {
     }
   }
 
+#if !defined(FURBLE_NO_DISPLAY)
   // setting the source invalidates the image and forces a decode, only do it
   // when the icon actually changes
   const lv_image_dsc_t *symbol = &icon_location_disabled;
@@ -1421,6 +1433,7 @@ void GPS::update(void) {
     m_IconSymbol = symbol;
     lv_image_set_src(m_Icon, symbol);
   }
+#endif
 }
 
 bool GPS::wiredFixIsFresh(void) {

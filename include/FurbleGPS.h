@@ -12,7 +12,12 @@
 
 #include <driver/uart.h>
 
+#if defined(FURBLE_NO_DISPLAY)
+struct _lv_obj_t;
+using lv_obj_t = _lv_obj_t;
+#else
 #include <lvgl.h>
+#endif
 
 #include <Camera.h>
 #include <TinyGPS++.h>
@@ -73,6 +78,15 @@ class GPS {
   /** Refresh the cached GPX logging settings from NVS. */
   void reloadLogSettings(void);
   void startService(void);
+
+  /**
+   * Run one service pass: refresh the fix and push geotag data to the camera.
+   *
+   * The display build calls this from an LVGL timer. The headless main loop
+   * calls it directly on the same cadence, since it has no LVGL.
+   */
+  void update(void);
+
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
 
@@ -211,7 +225,6 @@ class GPS {
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
-  void update(void);
   bool wiredFixIsFresh(void);
 
   void acquirePowerLock(void);
@@ -269,9 +282,11 @@ class GPS {
 
   uart_port_t m_UART = UART_NUM_2;
 
+#if !defined(FURBLE_NO_DISPLAY)
   lv_obj_t *m_Icon = NULL;
   const lv_image_dsc_t *m_IconSymbol = NULL;
   lv_timer_t *m_Timer = NULL;
+#endif
 
   TaskHandle_t m_Task = NULL;
   QueueHandle_t m_Queue = NULL;
