@@ -94,6 +94,15 @@ class Control {
   // Wait slice for the interactive teardown wait. Short enough to feed the
   // M5PM1 watchdog well inside its window while holding no mutex across it.
   static constexpr uint32_t DISCONNECT_WAIT_SLICE_MS = 20;
+  // Drain bound for the non-blocking interactive disconnect. A live peer clears
+  // isConnected() (via onDisconnect self-deleting the client) in well under this,
+  // so the drained target reaps as soon as the link is really down. A gone peer
+  // whose ble_gap_terminate stalls never fires onDisconnect, so after this bound
+  // the control task reclaims the orphaned client itself, releasing the connect
+  // gate in a couple of seconds instead of the 30 s backstop. Kept comfortably
+  // above a live peer's teardown so a healthy disconnect always reaps on the
+  // real link-down, never on this reclaim.
+  static constexpr uint32_t DISCONNECT_DRAIN_RECLAIM_MS = (2 * 1000);
 
   /**
    * FreeRTOS control task function.
@@ -217,6 +226,19 @@ class Control {
   bool disconnectComplete(void);
 
   /**
+   * Have all per-target teardown tasks stopped and any in-flight connect
+   * unwound?
+   *
+   * True once every target task has left Camera::disconnect() (m_Stopped) and no
+   * connect is in progress. Unlike disconnectComplete() this does not wait for
+   * the link to actually drop (isConnected() clearing), which for a dead peer is
+   * the ~30 s stall. It is the barrier the non-blocking interactive disconnect
+   * waits on so no task is still dereferencing the link when it returns; the
+   * link-down and client-free are then finished off the UI task by the drain.
+   */
+  bool targetTasksStopped(void);
+
+  /**
    * Destroy quarantined targets whose task has finished.
    *
    * Control task only. Takes m_Mutex. A target force-completed while its task
@@ -274,11 +296,20 @@ class Control {
   mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
 
-  // Targets force-completed while their task was still tearing down the camera.
-  // Held here, not freed, until the task sets m_Stopped and stops touching its
-  // object. Reaped by reapZombieTargets() on the control task. Guarded by
+  // Targets whose teardown is still draining: either force-completed while their
+  // task was still tearing down the camera (restart path), or handed off by the
+  // non-blocking interactive disconnect so the wait runs here instead of on the
+  // UI task. Held, not freed, until the task sets m_Stopped and the link is
+  // really down. Reaped by reapZombieTargets() on the control task. Guarded by
   // m_Mutex.
   std::vector<std::unique_ptr<Control::Target>> m_ZombieTargets;
+
+  // Backstop deadline (absolute tick) for the drain set. A drained target is
+  // normally freed once its link is really down (isConnected() false, client
+  // freed), which keeps a reconnect from racing the client free. If a teardown
+  // is genuinely stuck the deadline force-frees the stopped target so a later
+  // connect never wedges behind it. Guarded by m_Mutex.
+  TickType_t m_ZombieDeadline = 0;
 
   bool m_InfiniteReconnect = false;
   bool m_ReconnectBackoff = false;

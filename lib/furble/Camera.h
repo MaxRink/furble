@@ -118,6 +118,25 @@ class Camera: public NimBLEClientCallbacks {
   void resetConnectionState(void);
 
   /**
+   * Reclaim an orphaned NimBLE client whose link never came down.
+   *
+   * disconnect() only issues an asynchronous ble_gap_terminate. For a live peer
+   * the terminate completes and onDisconnect self-deletes the client. For a
+   * powered-off or out-of-range peer the terminate can stall forever, so
+   * onDisconnect never fires: the client is orphaned, isConnected() stays true,
+   * and any teardown that waits on isConnected() clearing never finishes.
+   *
+   * Called from the control task once the target task has stopped and a short
+   * drain bound has elapsed with the link still up. It frees the client through
+   * NimBLEDevice::deleteClient() (a no-op if the client already self-deleted, so
+   * it is safe even if onDisconnect raced in) and clears the connected flag, so
+   * the teardown completes deterministically and a follow-up connect is not
+   * blocked. Every live-link m_Client dereference is guarded by m_Connected,
+   * which this clears, so freeing the client cannot race a reader.
+   */
+  void reclaimClient(void);
+
+  /**
    * Send a shutter button press command.
    */
   virtual void shutterPress(void) = 0;

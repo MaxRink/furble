@@ -361,6 +361,16 @@ void NimBLEClient::disconnect() {
     return;
   }
 
+  if (m_StuckTerminate) {
+    // Gone peer: ble_gap_terminate is issued but never completes, so the link
+    // stays locally connected and no onDisconnect fires until the supervision
+    // timeout resolves it later via mockCompleteStalledTerminate().
+    if (m_Peer != nullptr) {
+      m_Peer->disconnect(*this, 0);
+    }
+    return;
+  }
+
   if (m_Peer != nullptr) {
     m_Peer->disconnect(*this, 0);
   }
@@ -381,6 +391,47 @@ void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
   m_Connected = false;
   if (fire_callback && (m_Callbacks != nullptr)) {
     m_Callbacks->onDisconnect(this, reason);
+  }
+}
+
+void NimBLEClient::mockStallTerminate() {
+  // Model a peer that has gone away mid-session with a stalled ble_gap_terminate:
+  // the client stays locally connected and its next disconnect() will not
+  // complete, so onDisconnect is deferred to the supervision timeout.
+  m_StuckTerminate = true;
+}
+
+bool NimBLEClient::mockRequestDelete() {
+  // Real NimBLEDevice::deleteClient() does not free a still-connected client: it
+  // sets deleteOnDisconnect and defers the free to the eventual onDisconnect.
+  // Model that deferral only for a stalled-terminate client (the gone-peer case
+  // Control reclaims), so the existing synchronous-free path other host tests
+  // rely on is unchanged. This keeps the deferred-delete model purely additive.
+  if (m_Connected && m_StuckTerminate) {
+    m_DeferredDelete = true;
+    return false;
+  }
+  return true;
+}
+
+void NimBLEClient::mockCompleteStalledTerminate(int reason) {
+  // The supervision timeout finally resolves the stalled terminate. NimBLE fires
+  // onDisconnect through whatever callbacks the client currently holds (the
+  // default no-op set if the owner detached in reclaimClient), then self-deletes
+  // a client that was marked for deferred deletion.
+  m_StuckTerminate = false;
+  m_Connected = false;
+  if (m_Peer != nullptr) {
+    m_Peer->disconnect(*this, reason);
+    m_Peer = nullptr;
+  }
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onDisconnect(this, reason);
+  }
+  if (m_DeferredDelete) {
+    // Not connected now, so this frees the client synchronously. Nothing touches
+    // this object afterwards.
+    NimBLEDevice::deleteClient(this);
   }
 }
 
@@ -565,6 +616,12 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
   }
   for (auto it = g_Clients.begin(); it != g_Clients.end(); ++it) {
     if (it->get() == client) {
+      // A still-connected client is not freed now: the real stack defers it to
+      // the eventual onDisconnect (deleteOnDisconnect). Keep it alive and let
+      // mockCompleteStalledTerminate() free it when the link finally drops.
+      if (!client->mockRequestDelete()) {
+        return true;
+      }
       g_Clients.erase(it);
       return true;
     }

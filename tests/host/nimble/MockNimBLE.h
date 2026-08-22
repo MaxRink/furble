@@ -255,6 +255,27 @@ class NimBLEClient {
   // connected flag because onDisconnect has not run.
   void mockDropLink(int reason, bool fire_callback);
 
+  // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
+  //
+  // mockStallTerminate() marks the client so its next disconnect() issues the
+  // terminate but does not complete: the link stays locally connected and no
+  // onDisconnect fires, exactly as a powered-off peer looks until the
+  // supervision timeout. This is the state in which Control reclaims the client.
+  //
+  // mockRequestDelete() models NimBLEDevice::deleteClient() on such a client:
+  // the real stack does not free a still-connected client, it sets
+  // deleteOnDisconnect and defers the free to the eventual onDisconnect. Returns
+  // false (keep alive) when still connected, true (free now) otherwise.
+  //
+  // mockCompleteStalledTerminate() resolves the stalled terminate at last (the
+  // supervision timeout): it fires onDisconnect through whatever callbacks the
+  // client currently holds (the default no-op set if the owner detached) and
+  // then frees a client that was marked for deferred deletion. Used to drive the
+  // late-callback window a reclaim must not leave pointing at a freed owner.
+  void mockStallTerminate();
+  bool mockRequestDelete();
+  void mockCompleteStalledTerminate(int reason);
+
  private:
   NimBLEClientCallbacks *m_Callbacks = nullptr;
   NimBLEMockPeer *m_Peer = nullptr;
@@ -262,6 +283,8 @@ class NimBLEClient {
   NimBLEConnInfo m_ConnInfo;
   uint32_t m_ConnectTimeout = 0;
   bool m_Connected = false;
+  bool m_StuckTerminate = false;
+  bool m_DeferredDelete = false;
   std::map<std::string, std::unique_ptr<NimBLERemoteService>> m_Services;
 };
 
