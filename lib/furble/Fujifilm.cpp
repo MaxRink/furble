@@ -3,6 +3,7 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+#include <freertos/FreeRTOS.h>
 
 #include "Device.h"
 #include "Fujifilm.h"
@@ -18,9 +19,13 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr, uint8_t *pData, size_t leng
   }
 
   if (pChr->getUUID() == CHR_NOT1_UUID) {
-    if (FujifilmProtocol::isConfigurationNotification(pData, length)) {
-      m_Configured = true;
-    }
+    // Registration-accepted confirmation. The camera only pushes this once its
+    // companion-app logic accepts furble as a remote. The golden X100VI capture
+    // records it on service 4c0020fe char f9150137 (payload 0100) about 12 s
+    // into a healthy connect, while a camera that never registered furble stays
+    // silent here. Its arrival, not the payload, is the signal the connect gate
+    // in _connect() waits on before promoting to active.
+    m_Configured = true;
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
     if (FujifilmProtocol::isGeotagRequest(pData, length)) {
       m_GeoRequested = true;
@@ -54,6 +59,36 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc,
         this->notify(pChr, pData, length, isNotify);
       },
       !notification, response);
+}
+
+bool Fujifilm::waitForRegistration(uint8_t progress) {
+  m_Progress = progress;
+
+  const unsigned int iterations = REGISTRATION_TIMEOUT_MS / REGISTRATION_POLL_MS;
+  for (unsigned int i = 0; i < iterations; i++) {
+    // Break as soon as the camera confirms registration, or a disconnect/cancel
+    // is requested, or the link drops. m_Active is cleared lock-free by the
+    // target task's CMD_DISCONNECT handler before that task blocks on the Camera
+    // mutex this connect holds, so polling it makes a cancel during the wait
+    // responsive instead of stalling for the full REGISTRATION_TIMEOUT_MS.
+    // !m_Connected covers a link the camera dropped underneath us. The timeout
+    // stays the backstop for a silent camera that is simply not in pairing mode.
+    if (m_Configured || !m_Connected || !isActive()) {
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(REGISTRATION_POLL_MS));
+  }
+
+  if (m_Configured) {
+    ESP_LOGI(LOG_TAG, "Registration confirmed");
+    return true;
+  }
+
+  ESP_LOGW(LOG_TAG,
+           "Registration not confirmed after %lu ms; the camera never accepted furble. "
+           "Put the camera in pairing mode and reconnect.",
+           static_cast<unsigned long>(REGISTRATION_TIMEOUT_MS));
+  return false;
 }
 
 /**

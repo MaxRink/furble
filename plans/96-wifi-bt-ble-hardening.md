@@ -102,6 +102,12 @@ medium, low.
     abort flag nor m_Connected. Cancel during the wait spins the UI in
     disconnect() and trips the PM1 10 s watchdog on the S3 (see B2). Fix:
     poll m_Connected and a cancel flag each slice, return false fast.
+    IMPLEMENTED in PR #93. waitForRegistration now polls in 20 ms slices and
+    breaks on m_Configured, !m_Connected, or !m_Active (the target task clears
+    m_Active lock-free via setActive before it blocks on the Camera mutex), so a
+    cancel during the wait returns false within one slice. The 25 s timeout
+    stays the backstop. Watchdog stays fed because B1 keeps the UI task
+    unblocked (it is the sole PM1 feeder, see B9).
   - A3b. Mandatory gate for Basic bodies is unverified. MEDIUM, SUSPECTED.
     Upstream disabled the old wait, payloads differ by model (X100VI shows
     0x01 0x00, the old predicate wanted 0x02 0x00), and the plan itself owes
@@ -112,7 +118,8 @@ medium, low.
     SUSPECTED incompleteness, acknowledged in plan 75. Needs a camera-side
     negative capture to tighten.
   - A3d. volatile bool m_Configured crosses tasks. LOW, CONFIRMED. Use
-    std::atomic<bool>.
+    std::atomic<bool>. IMPLEMENTED in PR #93 (m_Configured is now
+    std::atomic<bool>), hardening the same wait loop as A3a.
 - A4. Canon and Sony promote active without app-level confirmation. MEDIUM,
   CONFIRMED structural gap. CanonEOSRemote returns true after link,
   secureConnection, one write-without-response identify, and discovery
@@ -185,7 +192,11 @@ medium, low.
   console task (hang only). Fix: make isConnected lock-free
   (std::atomic<bool> m_Connected, drop the client double-check), and serve
   companion status from a cached snapshot refreshed by the companion task,
-  never computed on the host task.
+  never computed on the host task. PARTIALLY IMPLEMENTED in PR #93: m_Connected
+  is now std::atomic<bool> and Camera::isConnected() reads it lock-free with the
+  client double-check dropped (this also fixes the #93 connect-time UI freeze).
+  getRssi keeps m_Mutex because it derefs m_Client and only runs on the Control
+  task. The companion-status cached-snapshot half is still outstanding.
 - B2. Disconnect can spin forever and CMD_DISCONNECT can be dropped. HIGH,
   CONFIRMED on fork/master. Target::sendCommand uses xQueueSend with zero
   timeout and logs on failure (src/FurbleControl.cpp:53-58, queue depth 8).

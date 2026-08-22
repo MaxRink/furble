@@ -182,6 +182,92 @@ Risk and sequencing:
 
 ## Implementation state
 
-Not started. Diagnosis only. This document is the input for a follow-up
-implementation PR, which needs `false-connected-settings.log` to fix the Secure
-path.
+Implemented. The defensive registration-confirm gate is in place for both the
+Basic and Secure Fujifilm paths.
+
+What landed:
+
+- `Fujifilm::waitForRegistration(progress)` (`lib/furble/Fujifilm.cpp`): a
+  bounded poll on `m_Configured` with `vTaskDelay`, 25 s timeout, 250 ms poll.
+  It runs inside `_connect()`, which the Control layer calls after releasing its
+  mutex (`src/FurbleControl.cpp` snapshots the targets, then drops the lock), so
+  the wait never holds the Control mutex across a delay. On success it returns
+  true; on timeout it logs a distinct warning ("Registration not confirmed ...
+  put the camera in pairing mode") and returns false.
+- `Fujifilm::notify` now sets `m_Configured` on the arrival of any notification
+  on `CHR_NOT1_UUID` (service 4c0020fe char f9150137). The golden X100VI capture
+  records that notification carrying payload `0100`, not the `0x02 0x00` the old
+  `isConfigurationNotification` predicate expected, so gating on the predicate
+  alone would have rejected a healthy connect. The arrival of the dedicated
+  config/registration characteristic is the signal; the payload is not.
+  `m_Configured` is now `volatile` for cross-task visibility and is cleared at
+  the top of each `_connect()` so a stale confirmation cannot pass the gate on a
+  reconnect.
+- FujifilmBasic (`lib/furble/FujifilmBasic.cpp`): the `#if 0` wait loop is
+  removed. It sat at progress 50, before `CHR_NOT1_UUID` was subscribed, so a
+  naive re-enable could never have seen the notification. The gate now runs
+  after the notification subscriptions, at progress 85, before shutter discovery.
+- FujifilmSecure (`lib/furble/FujifilmSecure.cpp`): the same gate is added after
+  the twelve notification subscriptions, before the geotag interval write, which
+  matches the golden capture ordering (config notification at ~12 s, geotag write
+  at ~15 s). Secure previously had no confirmation wait at all.
+
+On timeout `_connect()` returns false, `Camera::connect()` tears the link down,
+and Control settles to `STATE_CONNECT_FAILED` instead of `STATE_ACTIVE`. furble
+no longer reports Connected when the camera never accepted registration.
+
+Note on the settings-menu capture: `false-connected-settings.log` showed a
+connect started from the camera settings menu that was genuine (both furble and
+the camera reported connected), and the two `0100` notifications were not
+observed inside that ~16 s capture window. That window ended at ~14.6 s, before
+the golden capture's ~12 s notification plus margin, so the notifications most
+likely arrived later. The 25 s timeout is deliberately generous to avoid
+rejecting a slow but genuine camera. This is a defensive gate keyed off the
+confirmation notifications; hardware verification on the X100VI is owed to
+confirm it neither regresses a healthy connect nor lets the false-connected case
+through.
+
+A dedicated UI reason string (a distinct message on the connect-failed screen)
+is a possible follow-up. This PR surfaces the distinct failure through the log
+and a clean teardown.
+
+## Plan 96 batch 2 folded in here
+
+This branch was rebased onto master after PR #62 (reconnect lifecycle) landed.
+The rebase was textually clean because #93 only touches the Fujifilm files while
+#62 rewrote Camera.cpp and FurbleControl.cpp, so the two changes never overlap.
+The #62 lifecycle work (m_Connected liveness guards, setSelfDelete, the
+m_Connected-gated _disconnect) and the #93 waitForRegistration gate are both
+preserved.
+
+Two plan 96 batch 2 items were implemented on top of the gate. They share the
+Fujifilm connect files and the same false-connected motivation, so they land
+with this PR. Both are Fujifilm-scoped and both are owed hardware verification
+on the X100VI.
+
+- A1, hard-fail FujifilmBasic discovery (`lib/furble/FujifilmBasic.cpp`).
+  Previously a failed shutter-service discovery only logged, then the next line
+  dereferenced the null service (crash), and a null shutter characteristic still
+  returned true, reporting connected with an inert shutter. That is the
+  confirmed false-connected plus crash bug, also present upstream. Discovery is
+  now a hard failure: a null identify characteristic, a null shutter service, or
+  a null shutter characteristic each return false, so Control settles to
+  STATE_CONNECT_FAILED through the #62 lifecycle instead of a false connect.
+  Every m_Shutter dereference was already guarded (`sendShutterCommand` checks
+  `m_Shutter != nullptr`); the connect path no longer promotes with a null one.
+- A2, stale-bond delete-and-retry (`lib/furble/FujifilmSecure.cpp`). When a
+  saved reconnect fails `secureConnection()` on a camera furble was bonded to,
+  the camera has almost certainly deleted its pairing side while furble kept the
+  local bond, so encrypting with the dead keys fails forever and wedges the
+  reconnect loop. The bond state is snapshotted before connecting; on a security
+  failure for a previously bonded address the local bond is deleted
+  (`NimBLEDevice::deleteBond`) and one fresh pair is attempted. The retry
+  dereference of m_Client is guarded on m_Connected so a security failure that
+  dropped the link (freeing m_Client under setSelfDelete) cannot cause a
+  use-after-free, consistent with the #62 rule. A failed fresh pair returns
+  false cleanly; the deleted bond lets a later reconnect pair afresh once the
+  camera is put back in pairing mode instead of looping on a dead bond.
+
+Deferred plan 96 batch 2 items, not in this PR: A3d (atomic m_Configured, left
+volatile here), A7a (FujifilmSecure address update from the rescan match), and
+A3b (decide the Basic mandatory-gate scope after hardware verification).

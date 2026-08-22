@@ -93,6 +93,11 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool FujifilmSecure::_connect(void) {
   bool success = false;
   m_Progress = 0;
+  // Clear any stale confirmation from a prior connection so the gate below only
+  // passes on a fresh registration-accepted notification. secureConnection()
+  // succeeds on a stale bond, so this flag is the only proof the camera app
+  // actually re-registered furble this session.
+  m_Configured = false;
 
   if (m_PairType == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
@@ -120,6 +125,11 @@ bool FujifilmSecure::_connect(void) {
     }
   }
 
+  // Snapshot the bond before connecting. If security later fails on a camera we
+  // thought we were bonded to, the camera has almost certainly deleted its
+  // pairing side and our stale bond can never re-encrypt.
+  const bool bonded = NimBLEDevice::isBonded(m_Address);
+
   ESP_LOGI(LOG_TAG, "Connecting to %s", m_Address.toString().c_str());
   if (!m_Client->connect(m_Address))
     return false;
@@ -129,7 +139,24 @@ bool FujifilmSecure::_connect(void) {
 
   ESP_LOGI(LOG_TAG, "Securing");
   if (!m_Client->secureConnection()) {
-    return false;
+    // A saved reconnect can fail security when the camera deleted its pairing
+    // side while furble kept the local bond. Encrypting with the dead keys then
+    // fails on every attempt, wedging the reconnect loop forever. Delete the
+    // stale bond and retry one fresh pair so the camera can re-register furble.
+    // Guard the retry deref on m_Connected: a failed secureConnection may drop
+    // the link, and setSelfDelete frees m_Client on disconnect, so an unguarded
+    // m_Client deref here would be a use-after-free (the #62 lifecycle rule).
+    if (!bonded || !m_Connected) {
+      return false;
+    }
+    ESP_LOGW(LOG_TAG,
+             "secureConnection failed on a bonded camera; deleting the stale bond and retrying a "
+             "fresh pair");
+    NimBLEDevice::deleteBond(m_Address);
+    if (!m_Client->secureConnection()) {
+      ESP_LOGW(LOG_TAG, "Fresh pair failed; put the camera in pairing mode and reconnect");
+      return false;
+    }
   }
   ESP_LOGI(LOG_TAG, "Secured!");
   m_Progress += 5;
@@ -208,6 +235,18 @@ bool FujifilmSecure::_connect(void) {
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
     m_Progress += 5;
+  }
+
+  // Gate the connect on the camera confirming registration. All notifications
+  // are subscribed, so CHR_NOT1_UUID can now deliver its confirmation and set
+  // m_Configured. The golden X100VI capture shows this notification about 12 s
+  // in, before the geotag interval write below. secureConnection() and every
+  // GATT write above succeed on a stale bond with a camera that never
+  // re-registered furble, so without this gate the link plumbing alone would
+  // report success and the shutter would be silently inert. Bounded wait, no
+  // Control mutex held.
+  if (!waitForRegistration(85)) {
+    return false;
   }
 
   auto sync_interval = NimBLEAttValue(reinterpret_cast<const uint8_t *>(&GEOTAG_SYNC_INTERVAL),
