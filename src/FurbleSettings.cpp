@@ -184,6 +184,10 @@ bool Settings::appliesImmediately(type_t type) {
     // the source is armed, which is also Platform init, so it follows the IMU.
     case IMU:
     case HW_MOTION:
+    // The deep sleep settings are read when an intervalometer run starts, so a
+    // save takes effect on the next run rather than immediately.
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at
@@ -259,6 +263,8 @@ bool Settings::isDangerous(type_t type) {
     case IMU_TRIG:
     case HW_MOTION:
     case GPS_MOTION:
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:

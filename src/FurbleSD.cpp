@@ -228,6 +228,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
 
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       value = std::to_string(Settings::load<uint32_t>(setting.type));
       return true;
 
@@ -268,6 +269,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU_TRIG:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -462,6 +464,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
       return true;
 
+    case Settings::IVL_SLEEP_THR:
+      if (!parseUnsigned(text, UINT32_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
+      return true;
+
     case Settings::SCAN_TIMEOUT:
       if (!parseUnsigned(text, 120, value)
           || ((value != 0) && (value != 30) && (value != 60) && (value != 120))) {
@@ -535,6 +544,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU_TRIG:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
