@@ -28,18 +28,43 @@ Normal is `LV_FONT_DEFAULT` from the board's sdkconfig.
 
 | Board class | Small | Normal (default) | Large |
 |---|---|---|---|
-| M5StickC (80x160) | montserrat 10 | montserrat 12 | montserrat 14 |
+| M5StickC (80x160) | montserrat 10 | montserrat 12 | not offered |
 | M5StickC Plus, M5StickS3 (135x240) | montserrat 12 | montserrat 16 | montserrat 22 |
 | M5Stack Core, Core2 (320x240) | montserrat 16 | montserrat 22 | montserrat 28 |
 
 `fontForIconMenu` styles the labels under the 64x64 icon grid buttons and the
 Core menu item labels. It uses montserrat 16 and Large may only grow it,
 never shrink it below that default: the Large font is used only where its
-line height exceeds 16. On the M5StickC this clamps Large back to 16, because
-the board's Large text font (14) is smaller than the icon menu default.
+line height exceeds 16.
 
 The three non-default sizes per board are enabled in all five release
 sdkconfig files consistently.
+
+### Small board text size gate
+
+The 80x160 M5StickC is the one panel where the three-size menu does not carry
+its weight. Normal is already dense there, and Large is a poor fit on a screen
+that narrow. So on the M5StickC only, and only there:
+
+- The fresh-device default is Small, not Normal. The primary user wants
+  smaller text and this is the board where the extra legibility margin costs
+  the most. This changes the default only for a fresh NVS or an unset key. An
+  existing M5StickC that already stored a size keeps it, so no device silently
+  reflows on upgrade.
+- The Text size roller offers only Small and Normal. Large is dropped, and a
+  one-line note under the roller, "Large needs a bigger screen", explains the
+  shorter list so it does not read as a bug.
+- `fontForTextSize` clamps the requested size to the board maximum before it
+  maps to a font. A Large value that somehow reaches the M5StickC, carried in
+  from another board's NVS or forced through the console, renders as the Normal
+  font and can never overflow the panel.
+
+The policy lives in one dependency free header, `include/FurbleTextSize.h`, as
+`TextSizePolicy` (`DEFAULT`, `MAX`, `COUNT`, `clamp`). The settings default,
+the roller option set and the font clamp all read it, and the host suite
+compiles it twice, with and without `FURBLE_M5STICKC`, to prove both board
+branches. Every other board keeps the Normal default and all three sizes
+exactly as before.
 
 ### Restart semantics
 
@@ -122,6 +147,28 @@ Implemented on `feat/ui-text-scaling`.
   content-width comparisons, `int32_t` coordinates, the icon and title-label
   cleanup on the Text size page, and the roller width guard.
 
+### Small board gate (fix/textsize-small-board-gate)
+
+Follow-up that adds the 80x160 M5StickC gate described under "Small board text
+size gate".
+
+- `include/FurbleTextSize.h` holds `TextSizePolicy` (`DEFAULT`, `MAX`, `COUNT`,
+  `clamp`), dependency free. `FurbleSettings.cpp` `static_assert`s the policy
+  values against the `text_size_t` enum so they cannot drift.
+- `Settings::init` seeds `TextSizePolicy::DEFAULT` for an unset `TEXT_SIZE`, so
+  the M5StickC starts at Small and every other board at Normal.
+- `addTextSizeMenu` builds the roller options from `TextSizePolicy::MAX`
+  (Small/Normal on the M5StickC, Small/Normal/Large elsewhere), clamps the
+  stored size onto a valid row, and shows the "Large needs a bigger screen"
+  note only where Large is dropped. `fontForTextSize` clamps at render time.
+- `tests/host/text_size_policy_test.cpp` is compiled twice, with and without
+  `FURBLE_M5STICKC`, and `static_assert`s the default, maximum and clamp for
+  each board branch.
+- `sim/scenarios/e2e/text-size-gate.txt` asserts the Normal default and three
+  options on the 135x240 binary. `sim/scenarios/bughunt/text-size-gate-stickc.txt`
+  and `text-size-clamp-stickc.txt` assert the Small default, the two-option set
+  and the stored-Large clamp on the 80x160 binary, wired into `sim-e2e`.
+
 ## Simulator verified
 
 The SDL simulator drives the real UI, so full-page content overflow is
@@ -131,7 +178,10 @@ identical to the device and is checked in `sim-e2e` CI without hardware:
   and the 135x240 boards: the home menu, the Display page, the Timer settings
   list, the Remote shutter page and the Connected page all report
   `ui.overflow no`. The `text-size-overflow-large` and
-  `text-size-overflow-small` scenarios assert this on both panel binaries.
+  `text-size-overflow-small` scenarios assert this on both panel binaries. On
+  the 80x160 M5StickC a seeded Large now clamps to the Normal font (see "Small
+  board text size gate"), so that binary exercises the clamped render there
+  while the 135x240 binary exercises the true Large font.
 - The long settings lists (Features, GPS, Bluetooth, About, Power, the
   Diagnostics sub-pages) scroll by design at every font size and are not
   asserted, matching `overflow-sweep`.
