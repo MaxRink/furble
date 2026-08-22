@@ -1,5 +1,6 @@
 #include <M5GFX.h>
 
+#include <cctype>
 #include <cstdlib>
 #include <string>
 
@@ -69,6 +70,25 @@ int runSimulator(bool *) {
   // is applied once at UI construction, so seed it before the UI exists.
   if (const char *theme = std::getenv("FURBLE_SIM_THEME"); theme != nullptr && theme[0] != '\0') {
     Settings::save<Settings::THEME>(std::string(theme));
+  }
+
+  // Let capture scripts and the UI-collision sweep pick a text size without
+  // navigating the roller and restarting. Like the theme, the font is chosen
+  // once at UI construction from the TEXT_SIZE setting, so seed it here before
+  // the UI exists. Accepts a name (small/normal/large, case insensitive) or the
+  // numeric setting value (0/1/2).
+  if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE"); size != nullptr && size[0] != '\0') {
+    std::string value(size);
+    for (char &c : value) {
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (value == "small" || value == "0") {
+      Settings::save<Settings::TEXT_SIZE>(Settings::TEXT_SIZE_SMALL);
+    } else if (value == "large" || value == "2") {
+      Settings::save<Settings::TEXT_SIZE>(Settings::TEXT_SIZE_LARGE);
+    } else {
+      Settings::save<Settings::TEXT_SIZE>(Settings::TEXT_SIZE_NORMAL);
+    }
   }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));

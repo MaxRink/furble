@@ -235,7 +235,16 @@ apply.
 
 ![Text size settings](img/settings-text-size.png)
 
-Pick Small, Normal, or Large, then press Restart to apply.
+Pick Small, Normal, or Large, then press Restart to apply. The setting swaps the
+UI font, so menu rows, label:value pages, and the connected view all grow or
+shrink together. The gallery below shows the same three pages at each size on the
+M5StickS3 (135x240) Default theme.
+
+| Small | Normal | Large |
+| :--- | :--- | :--- |
+| ![](img/textsize/small/settings.png) | ![](img/textsize/normal/settings.png) | ![](img/textsize/large/settings.png) |
+| ![](img/textsize/small/device-info.png) | ![](img/textsize/normal/device-info.png) | ![](img/textsize/large/device-info.png) |
+| ![](img/textsize/small/connected.png) | ![](img/textsize/normal/connected.png) | ![](img/textsize/large/connected.png) |
 
 ### Bluetooth
 

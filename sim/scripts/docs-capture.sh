@@ -108,4 +108,13 @@ done
 run_capture s3 docs-screenshots.txt "$IMG" Default "$IMG/boot-splash.png"
 run_capture s3 docs-screenshots-dark.txt "$IMG" Dark
 
+# Text size gallery: StickS3, default theme, each Text size option. run_capture
+# inherits FURBLE_SIM_TEXTSIZE from the environment (env adds to it, it does not
+# clear it), so the same representative pages render at each size under
+# docs/img/textsize/<size>/. The s3 build already exists from the loop above.
+for size in small normal large; do
+  FURBLE_SIM_TEXTSIZE="$size" \
+    run_capture s3 docs-textsize.txt "$IMG/textsize/$size" Default
+done
+
 echo "docs screenshots regenerated under $IMG"

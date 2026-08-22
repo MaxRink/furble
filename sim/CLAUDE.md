@@ -68,6 +68,14 @@ which only the sim build defines, so firmware builds compile identical code.
   each of the three themes (Default, Dark, Mono Furble) with every optional
   feature enabled. Output lands in `docs/img/<board>/<theme>/` plus the flat
   default and dark sets from `docs-screenshots.txt` / `docs-screenshots-dark.txt`.
+  It also captures a Text size gallery on the StickS3 Default theme, one set per
+  size, under `docs/img/textsize/<size>/` via `docs-textsize.txt`.
+- `FURBLE_SIM_TEXTSIZE` picks the UI text size at launch the same way
+  `FURBLE_SIM_THEME` picks the theme: the font is chosen once at UI construction
+  from the TEXT_SIZE setting, so main.cpp seeds it before the UI exists. It
+  accepts a name (`small` / `normal` / `large`, case insensitive) or the numeric
+  setting value (`0` / `1` / `2`). Reusable for text-size capture and collision
+  sweeps without navigating the roller and restarting.
 - Optional-hardware presence is sim only and env gated, so the default build and
   the key-count menu routes are unchanged. A capture run sets these to make the
   gated submenus render: `FURBLE_SIM_IR` (Infrared), `FURBLE_SIM_FEEDBACK`
