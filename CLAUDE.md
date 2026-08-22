@@ -40,6 +40,34 @@ CLAUDE.md whose directory it touches.
 - Only Fujifilm cameras are available. Other vendors get code review plus the
   FauxNY test camera and are declared untested in the PR.
 
+## Documentation (keep docs in sync, every PR)
+
+Any PR that changes user-facing behavior, settings, console commands, supported
+hardware, supported cameras or vendors, supported GPS units, boards, or the UI
+MUST update the matching docs in the same PR. A behavior change without its doc
+change is incomplete and should not merge. Verify each claim against the code,
+not against a plan doc.
+
+Doc surface to change-type mapping:
+
+| Change type | Docs to update in the same PR |
+|---|---|
+| User-facing feature or behavior | `README.md`, the matching `docs/` reference, and `docs/wiki/` |
+| Setting added, removed, renamed, or default changed | `docs/settings-and-controls.md`, `docs/wiki/Settings-Reference.md`, and the README settings overview |
+| Console command or subcommand | `docs/console-commands.md`, the README serial console block, and `docs/wiki/` |
+| Supported board added or dropped | `README.md` Supported Controllers, `docs/supported-hardware.md`, and `docs/wiki/Getting-Started.md` |
+| Supported camera or vendor | `README.md` Supported Cameras and the feature table, and `docs/supported-hardware.md` |
+| Supported GPS unit | `README.md` GPS section, `docs/supported-hardware.md`, and `docs/wiki/` |
+| Any UI change (a page, a menu entry, a label) | regenerate `docs/ui-walkthrough.md` screenshots with `sim/scripts/docs-capture.sh`, then apply the rows above that also match |
+| Contributor workflow, build, or CI | `CONTRIBUTING.md`, `CLAUDE.md`, and `AGENTS.md` |
+
+The wiki is in-repo under `docs/wiki/`. The GitHub wiki repo
+(`MaxRink/furble.wiki.git`) is published by hand from those files, so update the
+in-repo copies and note in the PR that the wiki needs a push.
+
+Reviewers confirm the mapped docs were updated for any user-facing, behavior, or
+UI change before approving.
+
 ## Hardware traps (hard-won, do not relearn)
 
 - DFS clock family: with BT modem sleep enabled, esp_pm DFS actually engages,
