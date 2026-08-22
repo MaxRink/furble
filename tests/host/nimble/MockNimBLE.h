@@ -261,6 +261,24 @@ class NimBLEClient {
   // harness reaps the queue at a quiescent point (NimBLEDevice::reapDeferredClients).
   void mockDropLink(int reason, bool fire_callback);
 
+  // Host test hook. Model a spontaneous BLE drop delivered by the NimBLE host
+  // task in the middle of the connect handshake, where the disconnect self-frees
+  // a setSelfDelete client. It severs the peer link, clears the connected flag,
+  // fires onDisconnect through the current callbacks, then, if the client is
+  // armed for delete-on-disconnect, frees it INLINE exactly as NimBLE frees a
+  // self-deleting client on the host task right after its disconnect callback.
+  //
+  // Unlike mockDropLink, which queues a self-deleting client for a later
+  // asynchronous reap (so a fuzz driver thread that still holds the raw pointer
+  // does not race the free), this frees synchronously. It is meant to be driven
+  // from the peer write seam while the control task is still inside _connect(),
+  // so the very next m_Client dereference that _connect() performs lands on the
+  // freed client, which is the mid-connect use-after-free. Freeing the client
+  // frees the NimBLERemoteCharacteristic this call may have been reached through,
+  // so the caller must not touch that characteristic afterwards (the mock write
+  // path returns immediately, delete-this style).
+  void mockDropLinkSelfDelete(int reason);
+
   // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
   //
   // mockStallTerminate() marks the client so its next disconnect() issues the

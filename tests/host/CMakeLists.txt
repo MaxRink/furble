@@ -241,6 +241,33 @@ target_compile_options(control_reclaim_uaf_test PRIVATE
 target_link_options(control_reclaim_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(control_reclaim_uaf_test PRIVATE Threads::Threads)
 
+# AddressSanitizer regression for the mid-connect peer-drop use-after-free. Like
+# the reclaim test it compiles lib/furble/Camera.cpp and the mock directly with
+# -fsanitize=address, so the dereference _connect() performs after a mid-connect
+# self-delete is instrumented. The peer's dropLinkDuringConnect fault frees the
+# self-deleting client during the identify write; on the unfixed code _connect()
+# then touches the freed client and ASan aborts, so restoring the connect-window
+# setSelfDelete(true, true) reproduces the crash.
+add_executable(connect_mid_drop_test
+               connect_mid_drop_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+target_include_directories(connect_mid_drop_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(connect_mid_drop_test PRIVATE
+                       -fsanitize=address -g -O1
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_options(connect_mid_drop_test PRIVATE -fsanitize=address)
+target_link_libraries(connect_mid_drop_test PRIVATE Threads::Threads)
+
 # Seeded BLE lifecycle fuzzer. Drives the real Control state machine through
 # randomised, deterministic (seeded) sequences of connect/disconnect/reconnect
 # operations with injected BLE faults and asserts a battery of invariants after
@@ -304,6 +331,7 @@ if(BUILD_TESTING)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
+  add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
 
   # Real-Control end-to-end scenarios. Each runs the production control state
   # machine end to end against the mock peer and is registered individually so a

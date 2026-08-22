@@ -90,6 +90,18 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // leaking it or dereferencing a torn-down link.
   void dropLinkOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic);
 
+  // dropLinkDuringConnect models the peer resetting (a power-cycle) in the middle
+  // of the connect handshake. When the central writes the named characteristic
+  // the peer completes the write normally, then severs the link with an inline
+  // self-deleting drop (NimBLEClient::mockDropLinkSelfDelete): onDisconnect fires
+  // and, if the client is armed for delete-on-disconnect, the client is freed
+  // right there, exactly as the NimBLE host task frees a setSelfDelete client.
+  // Unlike dropLinkOnWrite the write still reports success, so _connect() keeps
+  // going and performs its next m_Client dereference. If the connect path does
+  // not own the client lifetime for the whole handshake, that dereference lands
+  // on the freed client, which is the mid-connect use-after-free this guards.
+  void dropLinkDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+
   // Clear every injected fault (suppressed services and characteristics, failed
   // writes, mid-handshake drops and the stale-subscribe flag). The fuzz harness
   // reuses one persistent peer across many lifecycle operations and calls this to
@@ -165,6 +177,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
                                   const NimBLEUUID &characteristic) const;
   bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  bool isDropDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
 
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
@@ -174,6 +187,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnWrite;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropDuringConnect;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;
