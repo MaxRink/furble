@@ -23,6 +23,7 @@
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
+#include "fuzz.h"
 #include "power_profiler.h"
 
 namespace Furble::Sim {
@@ -536,10 +537,24 @@ void configure(int argc, char **argv) {
   bool ignoreUuidMismatch = false;
   bool dropNotify = false;
   uint32_t delayMs = 0;
+  bool fuzz = false;
+  uint64_t fuzzSeed = 1;
+  uint32_t fuzzSteps = 500;
+  bool fuzzVerbose = false;
   for (int i = 1; i < argc; ++i) {
     const std::string argument = argv[i];
     if (argument == "--script" && i + 1 < argc) {
       script = argv[++i];
+    } else if (argument == "--fuzz") {
+      fuzz = true;
+    } else if (argument == "--seed" && i + 1 < argc) {
+      fuzz = true;
+      fuzzSeed = std::stoull(argv[++i]);
+    } else if (argument == "--fuzz-steps" && i + 1 < argc) {
+      fuzz = true;
+      fuzzSteps = parseUnsigned(argv[++i], "--fuzz-steps", std::numeric_limits<uint32_t>::max());
+    } else if (argument == "--fuzz-verbose") {
+      fuzzVerbose = true;
     } else if ((argument == "--capture-dir" || argument == "--out") && i + 1 < argc) {
       captureDirectory = argv[++i];
     } else if (argument == "--report-dir" && i + 1 < argc) {
@@ -561,12 +576,29 @@ void configure(int argc, char **argv) {
       delayMs = parseUnsigned(argv[++i], "--delay-ms", std::numeric_limits<uint32_t>::max());
     } else if (argument == "--help") {
       std::cout << "furble-sim [--script FILE] [--out DIR] [--report-dir DIR] [--rig] "
-                   "[--rig-port PORT] [--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS]\n";
+                   "[--rig-port PORT] [--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS] "
+                   "[--fuzz] [--seed N] [--fuzz-steps N] [--fuzz-verbose]\n";
       std::exit(0);
     }
   }
 
   rigConfigure(rig, rigPort, ignoreUuidMismatch, dropNotify, delayMs);
+
+  // Environment fallbacks let CI drive the fuzzer without argv edits.
+  if (const char *env = std::getenv("FURBLE_FUZZ_SEED"); env != nullptr && env[0] != '\0') {
+    fuzz = true;
+    fuzzSeed = std::stoull(env);
+  }
+  if (const char *env = std::getenv("FURBLE_FUZZ_STEPS"); env != nullptr && env[0] != '\0') {
+    fuzz = true;
+    fuzzSteps = static_cast<uint32_t>(std::stoul(env));
+  }
+
+  if (fuzz) {
+    scenarioName = "fuzz";
+    fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
+    return;
+  }
 
   if (!script.empty()) {
     scenarioName = std::filesystem::path(script).stem().string();
@@ -583,6 +615,11 @@ void startProfiler(void) {
 }
 
 void driverTick(void) {
+  if (fuzzActive()) {
+    fuzzTick(scenarioUi);
+    return;
+  }
+
   if (stepIndex >= steps.size()) {
     return;
   }

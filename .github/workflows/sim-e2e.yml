@@ -127,3 +127,24 @@ jobs:
             echo "=== 80x160 (M5StickC): $name ==="
             "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$scenario"
           done
+
+      # Seeded UI fuzzer. Feeds deterministic randomized button, navigation,
+      # settings and modal event streams into the real UI and checks the
+      # crash-free, stale-focus, stacked-modal, narrow-panel-overflow,
+      # timer-leak and navigation-trap invariants after every event. The pinned
+      # seeds keep the same event streams reproducible, so a UI change that
+      # introduces any of those flips the matching seed to a non-zero exit. Run
+      # on both the 135x240 and the narrow 80x160 binary; the 80x160 panel is
+      # where a layout overflow regression bites first. See plans/105-ui-fuzzing.md.
+      - name: Fuzz the UI (135x240 and 80x160)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_FUZZ_STEPS: 600
+        run: |
+          echo "=== 135x240 (M5StickS3) ==="
+          FURBLE_SIM_BIN="${{ github.workspace }}/sim/build/furble-sim" \
+            sh sim/scripts/run-fuzz.sh
+          echo "=== 80x160 (M5StickC) ==="
+          FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-stickc/furble-sim" \
+            sh sim/scripts/run-fuzz.sh

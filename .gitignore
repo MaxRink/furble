@@ -1,6 +1,7 @@
 .pio
 .pio-core
 sim/build
+sim/build-*
 .vscode
 dependencies.lock
 managed_components
