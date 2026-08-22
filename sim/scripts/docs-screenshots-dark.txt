@@ -1,0 +1,35 @@
+# Docs walkthrough capture, dark theme, M5StickS3 135x240.
+seed fauxny true
+seed gps true
+wait 400
+home
+wait 200
+capture dark-main
+print ui.page
+action nav settings
+wait 250
+capture dark-settings
+print ui.page
+action nav features
+wait 250
+capture dark-features
+print ui.page
+action nav gps
+wait 250
+capture dark-settings-gps
+print ui.page
+action nav bluetooth
+wait 250
+capture dark-bluetooth
+print ui.page
+home
+wait 150
+action connect
+wait 1700
+capture dark-connected
+print ui.page
+action blind
+wait 300
+capture dark-remote
+print ui.page
+exit
