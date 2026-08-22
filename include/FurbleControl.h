@@ -210,6 +210,16 @@ class Control {
   /** Retrieve the number of connected camera targets. */
   size_t getConnectedTargetCount(void) const;
 
+  /**
+   * Name of the first target whose link is currently down.
+   *
+   * Returns an empty string when every target is connected. Used by the
+   * reconnect indicators to name the dropped camera when exactly one of a
+   * multi-connect session is down, so the user sees which camera is
+   * reconnecting rather than only a count.
+   */
+  std::string getDisconnectedName(void) const;
+
   /** Set the maximum transmit power and reset the adaptive level. */
   void setPower(esp_power_level_t power);
 

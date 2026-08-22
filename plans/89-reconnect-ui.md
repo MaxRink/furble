@@ -98,6 +98,45 @@ A dedicated non-blocking banner now lives on the shutter page itself
   `showStatusIcon` and the label through the changed-check helpers, so a liveness
   poll never re-invalidates.
 
+### Reconnect UI polish (hardware bench follow-up)
+
+A bench session on the M5StickS3 asked for three refinements on top of the
+menu-title and shutter-page indicators. All three reuse the existing per-target
+reconnect state (`getConnectedTargetCount` < `getTargetCount`); none add a second
+connection-state tracker.
+
+- **Red status-row Bluetooth symbol.** The status row already shows a Bluetooth
+  glyph (`reconnectingIcon`) while a mid-session reconnect runs. It is now
+  recolored red with `image_recolor`, the same red as the shutter-page banner
+  glyph, so the drop is unmistakable in the persistent status row too. The
+  recolor is a one-time local style set at creation: the icon is only ever
+  visible while reconnecting (hidden otherwise), so there is nothing to restore
+  on recovery and no per-tick style work. The existing `showStatusIcon` guard
+  still toggles visibility only on the state transition.
+- **Name the dropped camera.** When exactly one camera is down, the shutter-page
+  banner names it: "Reconnecting X-T5" for a single-camera session, or
+  "Reconnecting (i/n): X-T5" in a multi-connect session. With more than one down
+  the name is ambiguous, so it falls back to the bare count. The name comes from
+  `Control::getDisconnectedName()`, which returns the first target whose link is
+  down under the control mutex. The name only shows where there is width for it:
+  the 135 px StickS3/StickC Plus and the 320 px Core carry it, the 80 px StickC
+  keeps the icon and count only (`RECONNECT_NAME_MIN_WIDTH`). The banner label is
+  `LV_LABEL_LONG_WRAP` with a width capped to the panel, so a long name wraps onto
+  more lines inside the floating chip instead of overflowing the right edge. The
+  connected-page header title stays count-only: the header is height constrained,
+  while the floating banner has room to wrap. The name never widens the layout or
+  covers the shutter, focus or lock controls.
+- **Pin the battery to the top-right.** The header battery block used to pack
+  inline with the other status icons, so it shifted as the GPS icon and the
+  reconnecting Bluetooth symbol showed and hid, and it drifted to the middle when
+  the title was hidden (the sticks drop the title for header width). A zero-width
+  flex-grow spacer between the title and the status icons now pins the whole
+  icon-and-battery block to the header's right edge. The battery is the last
+  child, so its right edge stays fixed no matter which sibling icons come and go.
+  The spacer grows alongside the title when the title is shown, which is inert
+  (the title text is left aligned and the icons stay right), so the visible layout
+  is unchanged on every board while the battery no longer reflows.
+
 ## Dropping shutter and focus issued while a target is down
 
 Fixing the BLE dead-link detection (the supervision-timeout cap, #143) made a
@@ -230,6 +269,27 @@ Sim harness additions (all `FURBLE_SIM` gated, release firmware byte-unaffected)
 - `ui.connect_box`, `ui.page`, `control.connected`, `control.targets`,
   `camera.shutter_presses` / `camera.shutter_releases` queries used above.
 
+Reconnect UI polish additions:
+
+- `Control::getDisconnectedName()`: name of the first target whose link is down,
+  or "" when all are connected. Drives the banner's dropped-camera name.
+- `ui.bt_color` query: "hidden" when the status-row Bluetooth symbol is not
+  showing, "red" when the visible glyph is recolored red, "other" otherwise. The
+  `reconnect-indicator` scenario asserts it is hidden while connected, red during
+  the drop, and hidden again on recovery.
+- `ui.remote_named` query: "yes" when the shutter banner text matches the
+  dropped-camera name policy for the panel (name shown when one camera is down on
+  a wide enough board, omitted on the narrow StickC or when several are down). It
+  compares the actual banner text to the expected policy, so the same assertion
+  holds on every board width and flips to "no" if the name is shown or dropped
+  incorrectly. The `remote-reconnect-indicator` and `remote-reconnect-multiconnect`
+  scenarios assert it.
+- `ui.battery_pinned` query: "yes" when the header battery block sits flush at
+  the status row's right edge. The new `battery-anchor.txt` scenario enables GPS,
+  connects, drops (showing the reconnecting Bluetooth symbol) and recovers,
+  asserting the battery stays pinned the whole time so it never reflows. Board
+  independent, so it holds on both panels.
+
 ## Implementation state
 
 Implemented on fix/connui. Non-blocking top-status indicator, `sessionEstablished`
@@ -278,3 +338,21 @@ m5stick-s3-debug build. Host ctests pass. Sim e2e scenarios pass on both the
 PENDING HARDWARE VISUAL CONFIRM on the M5StickS3: on the Remote shutter page,
 drop a live Fujifilm link and confirm the red Bluetooth icon plus "Reconnecting"
 text appears top-left without interrupting the shutter, and clears on reconnect.
+
+Follow-up on feat/reconnect-ui-polish (stacks on #154): the three bench-session
+refinements above. The status-row Bluetooth symbol is recolored red during a
+drop; the shutter banner names the dropped camera where the panel is wide enough
+(wrapped, never overflowing); and the header battery is pinned to the top-right
+so it no longer reflows when sibling status icons come and go. New sim queries
+`ui.bt_color`, `ui.remote_named` and `ui.battery_pinned`, plus the new
+`battery-anchor.txt` scenario and extended `reconnect-indicator`,
+`remote-reconnect-indicator` and `remote-reconnect-multiconnect` scenarios.
+clang-format clean, no em-dashes. All five release envs plus m5stick-s3-debug
+build. Host ctests pass. All sim e2e scenarios pass on both the 135x240 and
+80x160 panels.
+
+PENDING HARDWARE VISUAL CONFIRM on the M5StickS3: (1) the status-row Bluetooth
+symbol turns red on a mid-session drop and clears on recovery; (2) the shutter
+banner names the dropped camera on the 135 px panel without overflow; (3) the
+battery indicator stays fixed in the top-right corner across connected,
+reconnecting and GPS on/off states.

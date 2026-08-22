@@ -1,0 +1,35 @@
+# UI polish: the header battery indicator must stay anchored to the status
+# row's top-right corner and never reflow when sibling status icons appear or
+# disappear.
+#
+# Before this fix the battery block packed inline with the other status icons,
+# so it shifted left or right as the GPS icon and the mid-session reconnecting
+# Bluetooth symbol showed and hid. A zero-width flex-grow spacer now pins the
+# battery block to the header's right edge. Enable GPS (so its icon occupies the
+# row) and drive a connect, a mid-session drop (which shows the reconnecting
+# Bluetooth symbol), and a recovery, asserting the battery stays pinned right the
+# whole time. battery_pinned is board independent, so this holds on every panel.
+seed fauxny true
+seed reconnect true
+seed gps true
+wait 300
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+# Connected, GPS icon present: the battery sits flush at the right edge.
+assert ui.battery_pinned yes
+# Drop the active link: the reconnecting Bluetooth symbol appears in the status
+# row. The battery must not move to make room for it.
+action drop
+wait 700
+assert control.state connecting
+assert ui.reconnecting yes
+assert ui.battery_pinned yes
+# Reconnect completes and the Bluetooth symbol hides again. The battery is still
+# pinned to the same right edge, having never shifted.
+wait 1000
+assert control.state active
+assert ui.reconnecting no
+assert ui.battery_pinned yes
+exit

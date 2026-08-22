@@ -28,8 +28,11 @@ wait 700
 assert control.state connecting
 assert ui.page shutter
 assert ui.remote_reconnecting yes
-# Single camera: the banner reads the bare word.
-assert ui.remote_status Reconnecting
+# One camera down: on a panel wide enough (the 135 px default here) the banner
+# names the dropped camera, "Reconnecting FauxNY Camera". remote_named checks the
+# banner text against the board's width policy, so it also holds on the 80 px
+# StickC, where the name is omitted and the icon shows alone.
+assert ui.remote_named yes
 # Reconnect completes and the banner clears, still on the shutter page.
 wait 1000
 assert control.state active

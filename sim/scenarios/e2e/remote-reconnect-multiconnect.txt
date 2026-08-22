@@ -27,6 +27,12 @@ assert ui.page shutter
 # The banner shows and carries the per-device count: one of two cameras is down.
 assert ui.remote_reconnecting yes
 assert ui.reconnect_count 1/2
+# Exactly one camera is down, so the banner also names it where the panel is wide
+# enough: "Reconnecting (1/2): FauxNY Camera". remote_named checks the name
+# against the board width policy, so it holds on the 80 px StickC (count only) too.
+assert ui.remote_named yes
+# The status-row Bluetooth symbol is red while any camera is down.
+assert ui.bt_color red
 # Camera 0 reconnects. The banner clears once the session is whole again.
 wait 1000
 assert control.state active
