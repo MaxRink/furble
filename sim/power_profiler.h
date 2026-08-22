@@ -41,6 +41,14 @@ void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *
 void profilerWriteReport(const char *path, const char *scenario);
 void profilerResetWindow(void);
 
+/** Redraw-storm probe. Counts LVGL invalidation events independently of the
+ * report window, so an end-to-end scenario can reset the counter, hold a page
+ * steady and assert the count stays low. A per-tick label or position setter
+ * that redraws every frame (the LVGL invalidation trap) drives this high and
+ * fails the assert. */
+void profilerResetInvalidationProbe(void);
+uint32_t profilerInvalidationProbeCount(void);
+
 }  // namespace Furble::Sim
 
 #endif

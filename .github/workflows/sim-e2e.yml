@@ -145,6 +145,48 @@ jobs:
 
       # Assert the compact pages fit the panel at alternate text sizes.
       # text-size-overflow-large.txt and
+      # The spirit level page auto-rotates and resizes its bullseye per panel, so
+      # its layout must be checked on the widest panel too. Build the 320x240
+      # M5Stack Core simulator in its own build dir, leaving the 135x240 and
+      # 80x160 binaries above intact.
+      - name: Build 320x240 (M5Stack Core) simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-core
+          FURBLE_SIM_FURBLE_BOARD: FURBLE_M5COREX
+          FURBLE_SIM_M5GFX_BOARD: board_M5Stack
+        run: sh sim/build.sh
+
+      # Prove the IMU spirit level page (PR #28) is sim-verified on every panel
+      # class. level-overflow.txt injects a tilt sweep through the sim IMU seam
+      # and asserts the bubble tracks the tilt, the page renders and nothing
+      # overflows at 80x160, 135x240 and 320x240. imu-diagnostics.txt asserts the
+      # live IMU readout renders the injected sample, and redraw-steady.txt holds
+      # the level and connected pages at a fixed state and asserts the
+      # invalidation count stays low, catching a per-tick redraw storm. These also
+      # run on the 135x240 binary through run-e2e.sh above; here they repeat on
+      # the narrow and wide panels where the level layout and rotation differ.
+      - name: Assert IMU level and redraw across panels (80x160 and 320x240)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          SCENARIOS="
+          ${{ github.workspace }}/sim/scenarios/e2e/level-overflow.txt
+          ${{ github.workspace }}/sim/scenarios/e2e/imu-diagnostics.txt
+          ${{ github.workspace }}/sim/scenarios/e2e/redraw-steady.txt
+          "
+          for scenario in $SCENARIOS; do
+            name=$(basename "$scenario" .txt)
+            echo "=== 80x160 (M5StickC): $name ==="
+            "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$scenario"
+            echo "=== 320x240 (M5Stack Core): $name ==="
+            "${{ github.workspace }}/sim/build-core/furble-sim" --script "$scenario"
+          done
+
+      # Assert the compact pages fit the panel. overflow-sweep.txt runs at the
+      # default Normal font; text-size-overflow-large.txt and
       # text-size-overflow-small.txt repeat the compact-page fit assertions with
       # the global Text size setting seeded to Large and Small, so the theme font
       # scaling is layout-verified too. The text-size scenarios stay scoped to

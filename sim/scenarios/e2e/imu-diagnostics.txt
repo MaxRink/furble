@@ -1,0 +1,34 @@
+# IMU live diagnostics render check (PR #28). The Settings > Diagnostics > IMU
+# live page shows the accelerometer sample the firmware reads through M5.Imu.
+# The injected IMU seam feeds that same surface, so a scenario drives a value
+# and asserts the page drew it. The readback parses the live label text, so a
+# missing poll or a broken format fails here, not just the read path.
+#
+# The diagnostics timer polls at 1 Hz, so each injected value needs a wait past
+# one poll before it lands in the label.
+seed fauxny true
+seed imu true
+wait 300
+action nav settings
+wait 150
+action nav diagnostics
+wait 150
+action nav imu
+wait 200
+assert ui.page imu
+assert_min ui.visible_objects 1
+
+# Flat: the readout shows the resting gravity vector on Z.
+action imu.accel 0 0 1
+wait 1200
+assert ui.imu_accel_x 0.000
+assert ui.imu_accel_y 0.000
+assert ui.imu_accel_z 1.000
+
+# A tilted sample renders on all three axes with three decimals.
+action imu.accel -0.100 0.200 0.970
+wait 1200
+assert ui.imu_accel_x -0.100
+assert ui.imu_accel_y 0.200
+assert ui.imu_accel_z 0.970
+exit

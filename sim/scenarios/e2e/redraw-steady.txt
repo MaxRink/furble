@@ -1,0 +1,42 @@
+# Steady-state redraw guard (PR #28, CLAUDE.md "LVGL redraw trap"). A page whose
+# periodic timer calls a setter every tick storms the display with invalidations
+# even when nothing changed. On the M5StickS3 this trap has bricked a page into
+# a watchdog stall (invalidate: 358/s observed on device). These pages use
+# guarded, changed-only setters, so with a fixed injected state the invalidation
+# count stays near zero over a full second. If a setter regresses to firing every
+# tick, the count jumps to the timer rate (the level timer runs at 20 Hz) and
+# assert_max fails.
+#
+# invalidate.reset zeroes the probe; ui.invalidate_count reports events since.
+seed fauxny true
+seed imu true
+wait 400
+
+# Connected page with a live camera: the header battery and GPS status poll must
+# not repaint every tick when the readings hold.
+action connect
+wait 1800
+assert ui.connected yes
+action invalidate.reset
+wait 1500
+assert_max ui.invalidate_count 3
+
+# Level page held flat: the bubble position and the roll and pitch labels must
+# not repaint on every 50 ms level tick.
+action nav level
+wait 200
+action imu.accel 0 0 1
+wait 300
+action invalidate.reset
+wait 1000
+assert_max ui.invalidate_count 3
+
+# Level page held at a fixed non-zero tilt: the low-pass filter settles to the
+# injected orientation, so a steady tilt is steady on screen and does not
+# dribble a fresh bubble move every tick.
+action imu.roll 8
+wait 400
+action invalidate.reset
+wait 1000
+assert_max ui.invalidate_count 3
+exit

@@ -629,3 +629,65 @@ the landscape frame now fills the full 240 px width with no stale right half, an
 that the physical-button indicators land on the correct rotated edges in both
 landscape orientations and return to their portrait corners on exit. The
 roll-to-rotation sign flagged in v3 still needs the on-device check.
+
+## Sim self-verification of the level page and screen redraw, 2026-08-23
+
+The level page and the screen-redraw behaviour are now proven headless, so the
+page is self-verifying in CI and no longer gated on a device for anything the
+simulator can express. The principle: it does not make sense to bench-test a page
+whose layout, bubble tracking or redraw the simulator can already fail on.
+
+### Level page across all three panel widths
+
+The prior level e2e (`level-spirit.txt`) pins the exact 135x240 geometry and runs
+on the default panel only. A width-agnostic companion,
+`sim/scenarios/e2e/level-overflow.txt`, now runs on 80x160, 135x240 and 320x240.
+It injects a tilt sweep (flat, roll left and right, pitch up and down, both side
+flips) through the IMU seam and asserts, on every panel, that the page rendered
+widgets (`ui.visible_objects >= 1`), that the bubble tracks the injected tilt in
+the correct direction (a right roll drives `ui.level_bubble_x` positive, a left
+roll negative, pitch on the y axis the same way), that the page flips to landscape
+past 60 degrees and shows the side tube, and that `ui.overflow` stays `no` flat,
+tilted and flipped. Direction is asserted rather than exact pixels, so the one
+scenario holds on all three panel classes. CI builds the 320x240 M5Stack Core
+simulator alongside the existing 80x160 build and runs this scenario, plus the
+IMU and redraw scenarios below, on both the narrow and wide panels.
+
+### IMU live diagnostics render
+
+`sim/scenarios/e2e/imu-diagnostics.txt` drives the injected accelerometer sample
+and asserts the Diagnostics > IMU live page renders it. New `simQueryState` keys
+`imu_accel_x` / `imu_accel_y` / `imu_accel_z` parse the value back out of the live
+label text, so a missing poll or a broken label format fails the assert, not just
+the read path.
+
+### Screen-redraw storm guard
+
+The level page updates continuously as tilt changes, which is a prime redraw-storm
+risk (see CLAUDE.md "LVGL redraw trap"; a real device stalled a page into the task
+watchdog at 358 invalidations per second). `sim/scenarios/e2e/redraw-steady.txt`
+holds the level page and the connected page at a fixed injected state and asserts
+the invalidation count stays low over a full second. The plumbing: an
+`invalidate.reset` sim action zeroes a probe counter fed by the same LVGL
+`LV_EVENT_INVALIDATE_AREA` hook the sim already uses, and a `ui.invalidate_count`
+query reports the events since the reset. The driver gained numeric `assert_max`
+and `assert_min` commands for the bound checks. With the guarded, changed-only
+setters the level and connected pages hold at 0 invalidations per second in the
+sim. A mutation that reverts the roll/pitch label setters to fire every 50 ms tick
+drives the count to 60 and fails `assert_max`, confirming the guard has teeth.
+
+All of the above is behind `#if defined(FURBLE_SIM)`. The release firmware is
+byte-identical: a per-panel bin comparison against the same source without the
+seam differs only in the ESP-IDF compile-time-date bytes and the derived image
+hash, never in a code byte.
+
+### Reduced hardware scope for #28
+
+The level page layout, bubble tracking, auto-rotate state machine, no-overflow at
+all three widths, the IMU diagnostics render, and the steady-state redraw discipline
+are all now sim-verified. The only residual on-device check for #28 is the
+physically irreducible one: that the real BMI270 / MPU6886 sensor reads through
+`M5.Imu` and the bubble tracks actual device tilt (and, tied to that read, the
+roll-to-rotation sign and the S3 DMA rotation flush filling the full landscape
+width, which the SDL software-rotation path cannot reproduce). Everything the
+simulator can express is green before that bench step.

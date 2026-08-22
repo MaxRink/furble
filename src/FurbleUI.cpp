@@ -2363,6 +2363,14 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Zero the redraw-storm probe. A scenario resets it, holds a page steady over
+  // a wait and asserts ui.invalidate_count stays low, so an unguarded per-tick
+  // setter that redraws every frame is caught headlessly.
+  if (command == "invalidate.reset") {
+    Furble::Sim::profilerResetInvalidationProbe();
+    return;
+  }
+
   // Fire the shutter through the real shutter button handler.
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
@@ -3720,6 +3728,61 @@ std::string UI::simQueryState(const char *key) {
   if (query == "back_focused") {
     lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
     return (back != nullptr && lv_group_get_focused(m_Group) == back) ? "yes" : "no";
+  }
+
+  // Count the shown (not LV_OBJ_FLAG_HIDDEN) objects in the current main page
+  // subtree. A page that failed to build reads 0, so a scenario asserts the
+  // page actually rendered widgets rather than only checking the page name.
+  if (query == "visible_objects") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "0";
+    }
+    std::function<int(lv_obj_t *)> countShown = [&](lv_obj_t *obj) -> int {
+      if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) {
+        return 0;
+      }
+      int count = 1;
+      for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        count += countShown(lv_obj_get_child(obj, i));
+      }
+      return count;
+    };
+    return std::to_string(countShown(page));
+  }
+
+  // Number of LVGL invalidation events since the last invalidate.reset action.
+  // A scenario resets it, holds a page steady over a wait and asserts the count
+  // stays low, so an unguarded per-tick setter that redraws every frame (the
+  // LVGL invalidation trap) is caught headlessly.
+  if (query == "invalidate_count") {
+    return std::to_string(Furble::Sim::profilerInvalidationProbeCount());
+  }
+
+  // Rendered IMU diagnostics accelerometer readout, parsed back from the live
+  // label text so a scenario confirms the page actually drew the injected
+  // sample rather than only that the read path ran. Each axis is one %.3f
+  // token, matching the label format.
+  if (query == "imu_accel_x" || query == "imu_accel_y" || query == "imu_accel_z") {
+    if (m_Diagnostics.imuAccel == nullptr) {
+      return "none";
+    }
+    const char *text = lv_label_get_text(m_Diagnostics.imuAccel);
+    if (text == nullptr) {
+      return "none";
+    }
+    const char axis = query.back() == 'x' ? 'X' : (query.back() == 'y' ? 'Y' : 'Z');
+    const char *at = std::strchr(text, axis);
+    if (at == nullptr) {
+      return "none";
+    }
+    float value = 0.0f;
+    if (std::sscanf(at + 1, "%f", &value) != 1) {
+      return "none";
+    }
+    char formatted[16];
+    std::snprintf(formatted, sizeof(formatted), "%.3f", value);
+    return formatted;
   }
 
   return "";

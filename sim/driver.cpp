@@ -52,6 +52,8 @@ enum class StepType {
   ASSERT,
   ASSERT_EVENTUALLY,
   XASSERT,
+  ASSERT_MAX,
+  ASSERT_MIN,
   PRINT,
   EXIT,
 };
@@ -491,6 +493,33 @@ void readScript(const std::string &path) {
         std::exit(2);
       }
       steps.push_back(step);
+    } else if (command == "assert_max") {
+      // Numeric upper bound: the query value parsed as an integer must be at
+      // most the expected value. Used for the redraw-storm probe, where a steady
+      // page must hold its invalidation count low rather than at an exact value.
+      Step step;
+      step.type = StepType::ASSERT_MAX;
+      input >> step.name;
+      input >> step.expected;
+      if (step.name.empty() || step.expected.empty()) {
+        std::cerr << "assert_max requires a key and a maximum value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "assert_min") {
+      // Numeric lower bound: the query value parsed as an integer must be at
+      // least the expected value. Used to assert a page rendered widgets
+      // (visible_objects >= 1) and that the bubble tracked a tilt in the right
+      // direction without pinning an exact per-panel pixel value.
+      Step step;
+      step.type = StepType::ASSERT_MIN;
+      input >> step.name;
+      input >> step.expected;
+      if (step.name.empty() || step.expected.empty()) {
+        std::cerr << "assert_min requires a key and a minimum value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
     } else if (command == "exit") {
       Step step;
       step.type = StepType::EXIT;
@@ -652,6 +681,7 @@ std::string settingBoolValue(const std::string &name) {
       {"tx_adaptive",       Settings::TX_ADAPTIVE      },
       {"recon_backoff",     Settings::RECON_BACKOFF    },
       {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
+      {"imu",               Settings::IMU              },
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
@@ -907,6 +937,7 @@ void applyScenarioSettings(void) {
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
+  saveBoolean("imu", Settings::IMU);
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;
@@ -1237,6 +1268,58 @@ void driverTick(void) {
         std::cout << "XPASS (gap fixed, promote to assert): " << step.name << " = " << actual
                   << '\n';
       }
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::ASSERT_MAX:
+    {
+      const std::string actual = queryValue(step.name);
+      long actualValue = 0;
+      long maxValue = 0;
+      try {
+        actualValue = std::stol(actual);
+        maxValue = std::stol(step.expected);
+      } catch (const std::exception &) {
+        std::cerr << "ASSERT_MAX FAILED: " << step.name << " non-numeric (got '" << actual
+                  << "', max '" << step.expected << "')\n";
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      if (actualValue > maxValue) {
+        std::cerr << "ASSERT_MAX FAILED: " << step.name << " expected <= " << maxValue << " got "
+                  << actualValue << '\n';
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      std::cout << "assert ok: " << step.name << " = " << actualValue << " (<= " << maxValue
+                << ")\n";
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::ASSERT_MIN:
+    {
+      const std::string actual = queryValue(step.name);
+      long actualValue = 0;
+      long minValue = 0;
+      try {
+        actualValue = std::stol(actual);
+        minValue = std::stol(step.expected);
+      } catch (const std::exception &) {
+        std::cerr << "ASSERT_MIN FAILED: " << step.name << " non-numeric (got '" << actual
+                  << "', min '" << step.expected << "')\n";
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      if (actualValue < minValue) {
+        std::cerr << "ASSERT_MIN FAILED: " << step.name << " expected >= " << minValue << " got "
+                  << actualValue << '\n';
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      std::cout << "assert ok: " << step.name << " = " << actualValue << " (>= " << minValue
+                << ")\n";
       ++stepIndex;
       break;
     }
