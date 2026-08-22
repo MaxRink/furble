@@ -48,6 +48,13 @@ class Settings {
 
   // Harness helpers: seed a boolean setting before a scenario drives Control.
   static void setBool(type_t type, bool value);
+
+  // Battery Saver is not modelled in this harness, so the effective power
+  // accessors the real Control now calls return the seeded stored value. They
+  // are defined in doubles.cpp, after the load<bool> specialization.
+  static bool sleepConnEffective(void);
+  static bool connSaverEffective(void);
+  static bool reconBackoffEffective(void);
 };
 
 template <>
