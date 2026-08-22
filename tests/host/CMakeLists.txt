@@ -307,7 +307,8 @@ if(BUILD_TESTING)
           stale-session-reconnect
           false-connected-guard
           transient-connect-recovers
-          client-pool-exhaustion)
+          client-pool-exhaustion
+          reconnect-shutter-drop)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
   endforeach()
 

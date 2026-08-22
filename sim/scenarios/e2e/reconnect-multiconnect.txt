@@ -1,12 +1,15 @@
-# task #54, multi-connect: one camera dropping must not blank the trigger.
+# task #54, multi-connect: one camera dropping must not blank the trigger, and
+# the status text must name how many cameras are reconnecting.
 #
 # With several cameras connected, a single mid-session drop must keep the
 # connected/trigger view up and usable for the cameras still connected. Only the
 # non-blocking status indicator reflects the retry; the connecting/progress page
-# never takes over. Connect two FauxNY cameras with reconnect on, drop just one,
-# and confirm the trigger stays on the connected page, one link stays live, and
-# the reconnecting indicator reflects the dropped camera. Then confirm both
-# links are restored.
+# never takes over. The connected page title reads "Reconnecting (i/n)" where i
+# is the number of cameras currently down and n the total in the session, so the
+# text names the per-device state instead of a bare icon. Connect two FauxNY
+# cameras with reconnect on, drop just one, and confirm the trigger stays on the
+# connected page, one link stays live, the indicator and count reflect the
+# dropped camera, and both links restore.
 seed fauxny true
 seed reconnect true
 wait 300
@@ -18,6 +21,8 @@ assert control.connected 2
 assert ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
+assert ui.status_text Connected
+assert ui.reconnect_count 0/2
 # Drop only the first camera. The second stays connected, so the session and its
 # trigger survive.
 action drop 0
@@ -32,11 +37,18 @@ assert control.connected 1
 assert ui.connect_box hidden
 assert ui.page connected
 assert ui.reconnecting yes
-# The dropped camera reconnects and both links are live again.
+# The title now names the per-device state: 1 of the 2 cameras is reconnecting.
+# The full string is "Reconnecting (1/2)"; the count is asserted as a single
+# token here and printed for the record.
+print ui.status_text
+assert ui.reconnect_count 1/2
+# The dropped camera reconnects and both links are live again; the count clears.
 wait 1000
 assert control.state active
 assert control.connected 2
 assert ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
+assert ui.status_text Connected
+assert ui.reconnect_count 0/2
 exit

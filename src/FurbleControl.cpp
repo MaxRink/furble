@@ -355,6 +355,42 @@ void Control::task(void) {
 }
 
 BaseType_t Control::sendCommand(cmd_t cmd) {
+  // Camera-action commands (shutter and focus) are routed straight to the
+  // per-target queues here, gated on each target's live link, instead of being
+  // buffered on the control queue. This closes the reconnect replay bug: a press
+  // issued while a target is not active must be dropped for that target, never
+  // parked on the control queue and flushed when the link returns. On device the
+  // reconnect runs synchronously on the control task, so anything left on the
+  // control queue during a drop is dispatched the moment the link is back, which
+  // is exactly the buffered replay the user saw.
+  //
+  // Delivery is per-target, not global: a camera still connected in a
+  // multi-connect session keeps firing even while another target is mid-reconnect
+  // (that survivor's own task drains its queue independently), and the dropped
+  // target's press is discarded rather than replayed once it reconnects.
+  switch (cmd) {
+    case CMD_SHUTTER_PRESS:
+    case CMD_SHUTTER_RELEASE:
+    case CMD_FOCUS_PRESS:
+    case CMD_FOCUS_RELEASE:
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      BaseType_t delivered = pdFALSE;
+      for (const auto &target : m_Targets) {
+        if (target->getCamera()->isConnected()) {
+          target->sendCommand(cmd);
+          delivered = pdTRUE;
+        } else {
+          ESP_LOGD(LOG_TAG, "Dropped camera command %d for '%s': link not active.",
+                   static_cast<int>(cmd), target->getCamera()->getName().c_str());
+        }
+      }
+      return delivered;
+    }
+    default:
+      break;
+  }
+
   return xQueueSend(m_Queue, &cmd, 0);
 }
 

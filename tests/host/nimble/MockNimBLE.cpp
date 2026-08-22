@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <thread>
 
 namespace {
 
@@ -89,6 +90,7 @@ bool g_ConnectShouldFail = false;
 size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
 size_t g_MaxClients = 0;        // 0 means unlimited
 bool g_DeferredDelete = false;  // honour setSelfDelete and defer live deleteClient
+uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
 
 // Erase a client from the live pool, freeing it. Caller must not touch the
 // pointer afterwards. Safe to call on a pointer no longer in the pool. Also
@@ -361,6 +363,15 @@ void NimBLEClient::setConnectionParams(uint16_t min_interval,
 }
 
 bool NimBLEClient::connect(const NimBLEAddress &address) {
+  if (g_ConnectDelayMs > 0) {
+    // Model the seconds-long block a reconnect spends inside NimBLEClient::connect
+    // on device. One-shot: consume it so only the targeted reconnect blocks. This
+    // holds the control task inside connectAll() long enough for a test to prove
+    // that commands issued during the outage are not buffered and replayed.
+    const uint32_t delay = g_ConnectDelayMs;
+    g_ConnectDelayMs = 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+  }
   if (g_ConnectShouldFail) {
     // Model a connect that never establishes. The link stays down and no
     // callback fires, matching NimBLE returning false from connect().
@@ -763,6 +774,7 @@ void NimBLEDevice::resetMock() {
   g_ConnectFailCount = 0;
   g_MaxClients = 0;
   g_DeferredDelete = false;
+  g_ConnectDelayMs = 0;
 }
 
 NimBLEClient *NimBLEDevice::lastClient() {
@@ -776,6 +788,10 @@ void NimBLEDevice::setConnectShouldFail(bool fail) {
 
 void NimBLEDevice::setConnectFailCount(size_t count) {
   g_ConnectFailCount = count;
+}
+
+void NimBLEDevice::setConnectDelayMs(uint32_t ms) {
+  g_ConnectDelayMs = ms;
 }
 
 extern "C" int64_t esp_timer_get_time(void) {

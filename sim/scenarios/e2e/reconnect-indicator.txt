@@ -3,9 +3,12 @@
 # Once a session is established the connected/trigger view must stay up. A drop
 # no longer reloads the connecting/progress page over the trigger; instead a
 # non-blocking indicator appears in the status row while control retries, and
-# clears once the link is back. Connect the FauxNY camera with reconnect on,
-# drop the link, and confirm the connected page stays, the progress box stays
-# hidden, and the reconnecting indicator reflects the retry.
+# clears once the link is back. The connected page title text must track the same
+# state: "Connected" while active, "Reconnecting" during the retry, back to
+# "Connected" on recovery, so the on-screen text never contradicts the icon.
+# Connect the FauxNY camera with reconnect on, drop the link, and confirm the
+# connected page stays, the progress box stays hidden, and both the reconnecting
+# indicator and the title text reflect the retry.
 seed fauxny true
 seed reconnect true
 wait 300
@@ -15,8 +18,9 @@ assert control.state active
 assert ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
-# Drop the active link. The liveness poll must notice and show the indicator
-# without taking over the screen.
+assert ui.status_text Connected
+# Drop the active link. The liveness poll must notice and show the indicator and
+# rewrite the title without taking over the screen.
 action drop
 wait 700
 assert control.state connecting
@@ -24,10 +28,13 @@ assert control.state connecting
 assert ui.connect_box hidden
 assert ui.page connected
 assert ui.reconnecting yes
-# The reconnect completes and the indicator clears.
+# Single camera: no count, just the word.
+assert ui.status_text Reconnecting
+# The reconnect completes and both the indicator and the title clear.
 wait 1000
 assert control.state active
 assert ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
+assert ui.status_text Connected
 exit

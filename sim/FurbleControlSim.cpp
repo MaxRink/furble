@@ -70,6 +70,30 @@ Control &Control::getInstance(void) {
 }
 
 BaseType_t Control::sendCommand(cmd_t cmd) {
+  // Mirror the device: camera-action commands route per-target, gated on the
+  // live link, so a press during a mid-session reconnect fires on the cameras
+  // still connected and is dropped for the one that is down. Nothing is buffered,
+  // so a dropped target never replays the press when it reconnects.
+  switch (cmd) {
+    case CMD_SHUTTER_PRESS:
+    case CMD_SHUTTER_RELEASE:
+    case CMD_FOCUS_PRESS:
+    case CMD_FOCUS_RELEASE:
+    {
+      BaseType_t delivered = pdFALSE;
+      for (const auto &target : m_Targets) {
+        auto camera = target->getCamera();
+        if (camera != nullptr && camera->isConnected()) {
+          target->sendCommand(cmd);
+          delivered = pdTRUE;
+        }
+      }
+      return delivered;
+    }
+    default:
+      break;
+  }
+
   if (getState() != STATE_ACTIVE) {
     return pdFALSE;
   }
