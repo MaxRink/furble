@@ -276,6 +276,15 @@ class NimBLEClient {
   bool mockRequestDelete();
   void mockCompleteStalledTerminate(int reason);
 
+  // Host test hook. Model the peer requesting its own connection parameters, as a
+  // camera does to save its own power. Runs the client's
+  // onConnParamsUpdateRequest callback with these params. When the callback
+  // accepts (returns true) the mock applies them to the live NimBLEConnInfo,
+  // mirroring the controller installing the peer's values; when it rejects
+  // (returns false) the current parameters stay in force. Returns the callback
+  // result so a test can assert the accept or reject decision.
+  bool mockPeerRequestConnParams(const ble_gap_upd_params &params);
+
  private:
   NimBLEClientCallbacks *m_Callbacks = nullptr;
   NimBLEMockPeer *m_Peer = nullptr;
