@@ -1603,6 +1603,8 @@ const char *cameraTypeName(Camera::Type type) {
       return "ricoh";
     case Camera::Type::PANASONIC_LUMIX:
       return "panasonic-lumix";
+    case Camera::Type::DJI_OSMO:
+      return "dji-osmo";
   }
   return "unknown";
 }
