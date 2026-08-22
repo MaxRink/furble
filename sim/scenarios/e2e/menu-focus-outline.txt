@@ -1,0 +1,23 @@
+# Regression guard for the menu focus outline dedup. A focused menu row must
+# show exactly one focus ring, around the whole item container. Menu rows set
+# LV_OBJ_FLAG_STATE_TRICKLE, so the focused row propagates LV_STATE_FOCUSED to
+# its child icon and label. A regression that attaches the outline style to
+# those children draws a second and third ring and this count climbs to three.
+seed fauxny true
+wait 300
+# The home menu boots with Scan focused; it carries an icon and a label.
+assert ui.focus_outline_count 1
+action nav settings
+wait 400
+# The settings menu first row (Display) is focused; it also has an icon and a
+# label, the exact shape that produced the reported triple outline.
+assert ui.focus_outline_count 1
+# The Remote page shutter lock is the only focusable control on that page, so it
+# must not draw a focus ring at all. Open the Remote page, focus the lock, and
+# confirm its outline width is zero.
+action blind
+wait 300
+action focus-lock
+wait 100
+assert ui.lock_outline 0
+exit

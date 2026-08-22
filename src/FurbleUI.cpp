@@ -1131,6 +1131,14 @@ void UI::setTheme(std::string name, uint8_t textSize) {
   theme = *theme_default;
   lv_theme_set_parent(&theme, theme_default);
   lv_theme_set_apply_cb(&theme, [](lv_theme_t *th, lv_obj_t *obj) {
+    // The focus outline belongs on the focusable item container only. Menu rows
+    // set LV_OBJ_FLAG_STATE_TRICKLE, so focusing a row propagates
+    // LV_STATE_FOCUSED to its child icon and label. Attaching style_button (which
+    // carries the outline) to those children draws a second and third ring inside
+    // the row. Keep the outline off image and label widgets so the selected item
+    // shows a single ring around the whole item.
+    const bool outlineTarget =
+        !lv_obj_check_type(obj, &lv_image_class) && !lv_obj_check_type(obj, &lv_label_class);
     if (lv_obj_check_type(obj, &lv_button_class) || lv_obj_check_type(obj, &lv_roller_class)
         || lv_obj_check_type(obj, &lv_slider_class) || lv_obj_check_type(obj, &lv_switch_class)) {
       lv_obj_add_style(obj, &style_button, LV_STATE_FOCUS_KEY);
@@ -1141,7 +1149,9 @@ void UI::setTheme(std::string name, uint8_t textSize) {
 
     lv_obj_add_style(obj, &style_no_shadow, LV_STATE_DEFAULT);
     lv_obj_add_style(obj, &style_img, LV_STATE_DEFAULT);
-    lv_obj_add_style(obj, &style_button, LV_STATE_FOCUSED);
+    if (outlineTarget) {
+      lv_obj_add_style(obj, &style_button, LV_STATE_FOCUSED);
+    }
     lv_obj_add_style(obj, &style_disable, LV_STATE_DISABLED);
   });
   lv_display_set_theme(display, &theme);
@@ -1964,6 +1974,17 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Focus the Remote page shutter lock so a scenario can confirm its focus
+  // outline. The sim always renders the touch remote layout, where key
+  // navigation does not land on this floating button, so focus it directly.
+  if (command == "focus-lock") {
+    if (m_ShutterLockIcon != nullptr) {
+      lv_obj_add_state(m_ShutterLockIcon,
+                       static_cast<lv_state_t>(LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY));
+    }
+    return;
+  }
+
   // Drive the real connect flow the Scan and Connect buttons trigger. The
   // connect timer then advances the state machine and reveals the connected
   // page, exactly as it does for an on-device button press.
@@ -2552,6 +2573,38 @@ std::string UI::simQueryState(const char *key) {
       return speed;
     }
     return query == "gps_lat" ? lat : lon;
+  }
+
+  // Count how many widgets in the focused item's subtree currently render a
+  // focus outline. Menu rows set LV_OBJ_FLAG_STATE_TRICKLE, so a focused row
+  // propagates LV_STATE_FOCUSED to its child icon and label. If the outline
+  // style is attached to those children they each draw their own ring, so an
+  // icon menu row would report three. The selected item must show a single ring
+  // around the whole item, so this is exactly one.
+  if (query == "focus_outline_count") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused == nullptr || !lv_obj_is_valid(focused)) {
+      return "none";
+    }
+    std::function<int(lv_obj_t *)> countOutlined = [&](lv_obj_t *obj) -> int {
+      int count = lv_obj_get_style_outline_width(obj, LV_PART_MAIN) > 0 ? 1 : 0;
+      for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        count += countOutlined(lv_obj_get_child(obj, i));
+      }
+      return count;
+    };
+    return std::to_string(countOutlined(focused));
+  }
+
+  // Effective focus outline width of the Remote page shutter lock, in its
+  // current state. Pair with the focus-lock action to confirm the lock shows no
+  // focus ring: the button is the only focusable control on the page, so the
+  // ring was pure noise.
+  if (query == "lock_outline") {
+    if (m_ShutterLockIcon == nullptr || !lv_obj_is_valid(m_ShutterLockIcon)) {
+      return "none";
+    }
+    return std::to_string(lv_obj_get_style_outline_width(m_ShutterLockIcon, LV_PART_MAIN));
   }
 
   return "";
@@ -3228,6 +3281,14 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
     lv_obj_move_foreground(m_ShutterLockIcon);
   }
+
+  // The shutter lock is the only focusable control on the Remote page, so its
+  // focus is never ambiguous. Suppress the shared focus outline on it: the ring
+  // drew a box around the lock icon that read as noise, the same over-outlining
+  // the menu rows carried. A local style overrides the theme's added style for
+  // these states.
+  lv_obj_set_style_outline_width(m_ShutterLockIcon, 0, LV_STATE_FOCUSED);
+  lv_obj_set_style_outline_width(m_ShutterLockIcon, 0, LV_STATE_FOCUS_KEY);
 
   lv_obj_add_event_cb(
       menuShutter.button,
