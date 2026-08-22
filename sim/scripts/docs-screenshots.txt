@@ -1,0 +1,131 @@
+# Docs walkthrough capture, default theme, M5StickS3 135x240.
+# Navigation uses the deterministic scenario actions. Headless input injection
+# (key/btn) does not drive LVGL menu activation, so pages are reached through
+# the same real menu-button clicks the nav action dispatches.
+seed fauxny true
+seed gps true
+wait 400
+
+# Main menu.
+home
+wait 200
+capture main
+print ui.page
+
+# Settings root and submenus.
+action nav settings
+wait 250
+capture settings
+print ui.page
+
+action nav display
+wait 250
+capture settings-display
+print ui.page
+
+action nav features
+wait 250
+capture settings-features
+print ui.page
+
+# GPS: seeded on, so the full receiver list renders.
+action nav gps
+wait 250
+capture settings-gps
+print ui.page
+
+action nav gps_data
+wait 900
+capture gps-data
+print ui.page
+
+action nav nmea
+wait 600
+capture gps-nmea
+print ui.page
+
+action nav timer
+wait 250
+capture settings-timer
+print ui.page
+
+action nav theme
+wait 250
+capture settings-theme
+print ui.page
+
+action nav text_size
+wait 250
+capture settings-text-size
+print ui.page
+
+action nav bluetooth
+wait 250
+capture settings-bluetooth
+print ui.page
+
+action nav about
+wait 250
+capture settings-about
+print ui.page
+
+action nav power
+wait 250
+capture settings-power
+print ui.page
+
+action nav battery
+wait 400
+capture battery
+print ui.page
+
+action nav diagnostics
+wait 250
+capture settings-diagnostics
+print ui.page
+
+action nav device_info
+wait 300
+capture diag-device-info
+print ui.page
+
+action nav power_state
+wait 300
+capture diag-power-state
+print ui.page
+
+action nav ble
+wait 300
+capture diag-ble
+print ui.page
+
+# Bulb duration page reached through the preset-step action, which opens the
+# Bulb Duration page and snaps the stored duration onto the preset series.
+home
+wait 150
+action preset-step-up
+wait 300
+capture bulb
+print ui.page
+
+# Connect flow. action connect drives the real connect the camera button
+# triggers. Capture the connecting overlay first, then the connected page.
+home
+wait 150
+action connect
+wait 250
+capture connecting
+print ui.page
+print ui.connect_box
+wait 1600
+capture connected
+print ui.page
+print ui.connected
+
+# Remote shutter page while connected.
+action blind
+wait 300
+capture remote
+print ui.page
+
+exit

@@ -242,6 +242,11 @@ If the device is wedged, the screen is dark, and USB is not enumerating:
 
 ## Usage
 
+For a screen by screen tour of the interface with a screenshot of every page,
+see the [UI walkthrough](docs/ui-walkthrough.md). For the exhaustive reference
+of every setting and every button input mode, see
+[settings and controls](docs/settings-and-controls.md).
+
 The top level menu has the following entries:
 - `Connect`
 - `Scan`
