@@ -1693,6 +1693,11 @@ UI::menu_t &UI::addMenu(const char *name,
     menu.button = addMenuItem(parent, icon, name, false, menu.grid.column, menu.grid.row);
   }
 
+  // Every menu and sub page is built here during startup, all on the main task
+  // before the UI loop begins. Yield once per page so the synchronous build
+  // never holds CPU0 long enough to starve IDLE0 and trip the task watchdog.
+  bootYield();
+
   return menu;
 }
 
@@ -1897,6 +1902,15 @@ void UI::addMainMenu(void) {
       LV_EVENT_CLICKED, this);
 
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+}
+
+void UI::bootYield(void) {
+#if !defined(FURBLE_SIM)
+  // The task loop has not started yet, so nothing else touches LVGL here and a
+  // one tick sleep is safe. It hands CPU0 to IDLE0 long enough to reset the
+  // ESP-IDF task watchdog while the menu tree is built.
+  vTaskDelay(1);
+#endif
 }
 
 void UI::displayNavigationBar(bool show) {
@@ -2845,8 +2859,19 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         }
 
         if (camera != nullptr) {
-          lv_label_set_text(ctx->label, camera->getName().c_str());
-          lv_bar_set_value(ctx->bar, camera->getConnectProgress(), LV_ANIM_ON);
+          // This runs every 50 ms while connecting. Only touch the widgets when
+          // their value actually changes: an unconditional set relabels and
+          // redraws the progress box on every tick even when nothing moved.
+          const std::string &name = camera->getName();
+          if (ctx->connectingName != name) {
+            ctx->connectingName = name;
+            lv_label_set_text(ctx->label, name.c_str());
+          }
+          const int32_t progress = camera->getConnectProgress();
+          if (ctx->connectProgress != progress) {
+            ctx->connectProgress = progress;
+            lv_bar_set_value(ctx->bar, progress, LV_ANIM_ON);
+          }
         }
       }
       break;
@@ -3192,6 +3217,11 @@ void UI::doConnect(lv_event_t *e) {
   // A fresh connect starts without a session, so the initial progress box owns
   // the screen until the first link goes active.
   m_ConnectContext.sessionEstablished = false;
+
+  // Force the progress box to relabel on the first tick of this connect: the
+  // widgets are reused across connects, so clear the guard cache.
+  m_ConnectContext.connectingName.clear();
+  m_ConnectContext.connectProgress = -1;
 
   // activate selected cameras
   for (auto n = 0; n < CameraList::size(); n++) {

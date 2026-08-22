@@ -382,6 +382,11 @@ class UI {
     lv_obj_t *cancel;
     const char *menuName;
     bool feedbackConnected;
+    // Last values pushed to the progress box. The connect timer fires every
+    // 50 ms while connecting, so guarding these setters stops an unconditional
+    // relabel and redraw of the box on every tick (LVGL invalidation trap).
+    std::string connectingName;
+    int32_t connectProgress;
     // Set once a link has gone fully active. A later drop is then a mid-session
     // reconnect: the connected view stays up and only the status indicator
     // reflects it, instead of taking over the screen with the progress box.
@@ -771,6 +776,17 @@ class UI {
 
   /** Add the main menu to the root window content. */
   void addMainMenu(void);
+
+  /**
+   * Yield the main task once per page while the menu tree is built at boot.
+   *
+   * The whole tree is created synchronously on the main task before the task
+   * loop starts. On the M5StickS3 that unyielded stretch runs long enough to
+   * starve IDLE0 and trip the ESP-IDF task watchdog (~5 s). Yielding per page
+   * lets the scheduler run IDLE0 so the watchdog stays fed. No-op in the
+   * simulator, which has no task watchdog and a virtual clock.
+   */
+  void bootYield(void);
 
   /** Add the 'Connect' menu entry. */
   void addConnectMenu(void);
