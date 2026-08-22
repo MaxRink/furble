@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <mutex>
 
 namespace {
 
@@ -74,11 +75,38 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
   return bytes;
 }
 
+// The client pool is shared across the real Control task, the per-target tasks
+// and the fuzz driver thread, so its container mutations are serialised. The
+// pointed-to NimBLEClient objects are heap allocated through unique_ptr, so
+// their addresses stay stable across a push_back reallocation; only the vector
+// itself needs the lock. It is a recursive mutex because a client freed inline
+// on a clean teardown erases itself while the caller may already hold it.
+std::recursive_mutex g_ClientsMutex;
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
+std::vector<NimBLEClient *> g_PendingReap;  // clients queued for async reap
 bool g_ConnectShouldFail = false;
 size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
 size_t g_MaxClients = 0;        // 0 means unlimited
+bool g_DeferredDelete = false;  // honour setSelfDelete and defer live deleteClient
+
+// Erase a client from the live pool, freeing it. Caller must not touch the
+// pointer afterwards. Safe to call on a pointer no longer in the pool. Also
+// drops the pointer from the pending-reap queue so a later reap cannot free a
+// different client that reused the same address. Returns true if the client was
+// in the live pool.
+bool eraseClient(NimBLEClient *client) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_PendingReap.erase(std::remove(g_PendingReap.begin(), g_PendingReap.end(), client),
+                      g_PendingReap.end());
+  for (auto it = g_Clients.begin(); it != g_Clients.end(); ++it) {
+    if (it->get() == client) {
+      g_Clients.erase(it);
+      return true;
+    }
+  }
+  return false;
+}
 
 }  // namespace
 
@@ -316,8 +344,8 @@ void NimBLEClient::setClientCallbacks(NimBLEClientCallbacks *callbacks, bool del
 }
 
 void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_connect_failure) {
-  (void)delete_on_disconnect;
-  (void)delete_on_connect_failure;
+  m_DeleteOnDisconnect = delete_on_disconnect;
+  m_DeleteOnConnectFailure = delete_on_connect_failure;
 }
 
 void NimBLEClient::setConnectTimeout(uint32_t timeout) {
@@ -378,6 +406,16 @@ void NimBLEClient::disconnect() {
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
   }
+
+  // Clean Camera-driven teardown. Under the deferred-delete model a self-deleting
+  // client is freed here, right after onDisconnect, exactly as NimBLE frees it on
+  // the host task. This teardown runs single-threaded from the owning target task
+  // (m_Connected guards every other reader), so the inline free is safe and arms
+  // ASan to catch any later dereference of the freed client. Nothing below may
+  // touch a member: the object is gone.
+  if (g_DeferredDelete && m_DeleteOnDisconnect) {
+    eraseClient(this);
+  }
 }
 
 bool NimBLEClient::isConnected() const {
@@ -391,6 +429,17 @@ void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
   m_Connected = false;
   if (fire_callback && (m_Callbacks != nullptr)) {
     m_Callbacks->onDisconnect(this, reason);
+  }
+
+  // A link-loss drop that delivered onDisconnect frees a self-deleting client on
+  // hardware. Here the drop is driven from a helper thread that still holds this
+  // raw pointer, so freeing inline would race that thread. Queue the client for
+  // an asynchronous reap the fuzz harness performs at a quiescent point, and
+  // guard against a second drop queueing the same client twice.
+  if (fire_callback && g_DeferredDelete && m_DeleteOnDisconnect && !m_PendingReap) {
+    m_PendingReap = true;
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_PendingReap.push_back(this);
   }
 }
 
@@ -601,6 +650,7 @@ void NimBLEDevice::setOwnAddrType(uint8_t address_type) {
 }
 
 NimBLEClient *NimBLEDevice::createClient() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   if ((g_MaxClients != 0) && (g_Clients.size() >= g_MaxClients)) {
     // Pool exhausted, exactly as NimBLE reports "Unable to create client;
     // already at max". Camera::connect() handles the null return.
@@ -614,24 +664,36 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
   if (client == nullptr) {
     return false;
   }
-  for (auto it = g_Clients.begin(); it != g_Clients.end(); ++it) {
-    if (it->get() == client) {
-      // A still-connected client is not freed now: the real stack defers it to
-      // the eventual onDisconnect (deleteOnDisconnect). Keep it alive and let
-      // mockCompleteStalledTerminate() free it when the link finally drops.
-      if (!client->mockRequestDelete()) {
-        return true;
-      }
-      g_Clients.erase(it);
-      return true;
-    }
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+
+  // Fuzzer deferred-delete model (NimBLEDevice::setDeferredClientDelete):
+  // deleteClient() on a still-connected client does not free synchronously. It
+  // marks the client for self-delete on its next disconnect and returns, leaving
+  // the live client (and its callback pointer) alive. A caller that reclaims a
+  // still-connected client and then dereferences it after the deferred free is
+  // the reclaim use-after-free class; modelling the deferral here is what lets
+  // ASan see it.
+  if (g_DeferredDelete && client->isConnected()) {
+    client->m_DeleteOnDisconnect = true;
+    return true;
   }
-  // Not in the live list: it already self-deleted or was already reclaimed.
-  // Return false without touching the pointer, so a double delete is safe.
-  return false;
+
+  // Stuck-terminate deferral for the non-fuzzer suites (g_DeferredDelete off):
+  // the real stack does not free a still-connected client, it sets
+  // deleteOnDisconnect and defers the free to the eventual onDisconnect. Keep it
+  // alive and let mockCompleteStalledTerminate() free it when the link drops.
+  if (!client->mockRequestDelete()) {
+    return true;
+  }
+
+  // Not connected: free now (and purge any pending-reap entry so a reused address
+  // is not double freed). Returns false if it already self-deleted or was already
+  // reclaimed, so a double delete is safe.
+  return eraseClient(client);
 }
 
 size_t NimBLEDevice::liveClientCount() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   return g_Clients.size();
 }
 
@@ -643,6 +705,31 @@ void NimBLEDevice::setMaxClients(size_t max) {
   g_MaxClients = max;
 }
 
+void NimBLEDevice::setDeferredClientDelete(bool enabled) {
+  g_DeferredDelete = enabled;
+}
+
+size_t NimBLEDevice::reapDeferredClients() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  size_t reaped = 0;
+  for (NimBLEClient *client : g_PendingReap) {
+    for (auto it = g_Clients.begin(); it != g_Clients.end(); ++it) {
+      if (it->get() == client) {
+        g_Clients.erase(it);
+        reaped++;
+        break;
+      }
+    }
+  }
+  g_PendingReap.clear();
+  return reaped;
+}
+
+size_t NimBLEDevice::pendingReapCount() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_PendingReap.size();
+}
+
 void NimBLEDevice::setMockPeer(NimBLEMockPeer *peer) {
   g_Peer = peer;
 }
@@ -652,14 +739,18 @@ NimBLEMockPeer *NimBLEDevice::getMockPeer() {
 }
 
 void NimBLEDevice::resetMock() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   g_Clients.clear();
+  g_PendingReap.clear();
   g_Peer = nullptr;
   g_ConnectShouldFail = false;
   g_ConnectFailCount = 0;
   g_MaxClients = 0;
+  g_DeferredDelete = false;
 }
 
 NimBLEClient *NimBLEDevice::lastClient() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   return g_Clients.empty() ? nullptr : g_Clients.back().get();
 }
 

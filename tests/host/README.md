@@ -21,3 +21,19 @@ The replay test takes the synthetic capture path from the CMake source
 directory. Real X100VI captures are intentionally not included. Plan 64's BT
 journal work must produce reviewed, normalized vectors before this fixture can
 be replaced with hardware evidence.
+
+## BLE lifecycle fuzzer
+
+`fuzz/control_fuzz.cpp` (plan 104) drives the real `Furble::Control` state
+machine through seeded, randomized sequences of connect/disconnect/reconnect
+operations with injected BLE faults, asserting state, leak, wedge, and handshake
+invariants after each step. It builds under AddressSanitizer and
+UndefinedBehaviorSanitizer. Run a seed directly:
+
+```sh
+./control_fuzz <seed> [iterations]        # e.g. ./control_fuzz 42 20
+./control_fuzz --repro missing-shutter-service
+```
+
+The CI job runs five fixed seeds plus two seed-pinned regression guards for the
+FujifilmBasic missing-shutter findings, both now fixed and passing.

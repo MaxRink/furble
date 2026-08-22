@@ -82,6 +82,20 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   void suppressCharacteristic(const NimBLEUUID &service, const NimBLEUUID &characteristic);
   void failWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic);
 
+  // dropLinkOnWrite models a supervision-timeout link loss that lands in the
+  // middle of the connect handshake: when the central writes the named
+  // characteristic the peer severs the link and delivers onDisconnect inline,
+  // then reports the write as failed. The half-finished _connect must unwind
+  // cleanly, leave the camera disconnected, and reclaim the client rather than
+  // leaking it or dereferencing a torn-down link.
+  void dropLinkOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+
+  // Clear every injected fault (suppressed services and characteristics, failed
+  // writes, mid-handshake drops and the stale-subscribe flag). The fuzz harness
+  // reuses one persistent peer across many lifecycle operations and calls this to
+  // return the peer to a healthy baseline between operations.
+  void clearFaults();
+
   const Config &config() const;
   const std::vector<Write> &writes() const;
   const std::vector<Notification> &notifications() const;
@@ -150,6 +164,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool isCharacteristicSuppressed(const NimBLEUUID &service,
                                   const NimBLEUUID &characteristic) const;
   bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  bool isDropOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
 
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
@@ -158,6 +173,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<NimBLEUUID> m_SuppressedServices;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnWrite;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;

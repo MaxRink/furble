@@ -142,6 +142,11 @@ void FujifilmVirtualCamera::failWrite(const NimBLEUUID &service, const NimBLEUUI
   m_FailedWrites.emplace_back(service, characteristic);
 }
 
+void FujifilmVirtualCamera::dropLinkOnWrite(const NimBLEUUID &service,
+                                            const NimBLEUUID &characteristic) {
+  m_DropOnWrite.emplace_back(service, characteristic);
+}
+
 bool FujifilmVirtualCamera::isServiceSuppressed(const NimBLEUUID &service) const {
   for (const auto &suppressed : m_SuppressedServices) {
     if (matches(suppressed, service)) {
@@ -171,10 +176,28 @@ bool FujifilmVirtualCamera::isWriteFailed(const NimBLEUUID &service,
   return false;
 }
 
+bool FujifilmVirtualCamera::isDropOnWrite(const NimBLEUUID &service,
+                                          const NimBLEUUID &characteristic) const {
+  for (const auto &drop : m_DropOnWrite) {
+    if (matches(drop.first, service) && matches(drop.second, characteristic)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void FujifilmVirtualCamera::clearEvents() {
   m_Writes.clear();
   m_Notifications.clear();
   m_LastGeotag.clear();
+}
+
+void FujifilmVirtualCamera::clearFaults() {
+  m_SuppressedServices.clear();
+  m_SuppressedCharacteristics.clear();
+  m_FailedWrites.clear();
+  m_DropOnWrite.clear();
+  m_StaleSubscribeSession = false;
 }
 
 bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -258,6 +281,14 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   // returns an error status, so the central sees the write fail. A handshake
   // write that fails this way must abort the connect and reclaim the client.
   if (isWriteFailed(service, characteristic)) {
+    return false;
+  }
+
+  // Fault injection: a supervision-timeout link loss lands on this write. Sever
+  // the link and deliver onDisconnect inline (so the central's connected flag
+  // clears mid-handshake), then report the write as failed so _connect unwinds.
+  if (isDropOnWrite(service, characteristic)) {
+    client.mockDropLink(0x08, /*fire_callback=*/true);
     return false;
   }
 
