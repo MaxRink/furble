@@ -26,6 +26,7 @@ using lv_obj_t = _lv_obj_t;
 #include <cstdint>
 #include <mutex>
 
+#include "FurbleGPSPowerCycle.h"
 #include "FurblePower.h"
 
 namespace Furble {
@@ -93,6 +94,19 @@ class GPS {
   TinyGPSPlus &get(void);
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
+
+  /**
+   * Is the power cycle in the degraded retry state?
+   *
+   * The burst windowed power management enters this state when it cannot
+   * predict the receiver burst timing. It no longer pins the lock, it releases
+   * it and retries on a bounded backoff, so this only reports that reception is
+   * poor, not that furble is stuck.
+   */
+  bool isDegraded(void) const { return m_CycleState == cycle_state_t::DEGRADED; }
+
+  /** Consecutive degraded retry attempts since the last healthy recovery. */
+  uint32_t degradedRetries(void) const { return m_Degraded.failures(); }
 
   void reset(void);
   void task(void);
@@ -183,7 +197,7 @@ class GPS {
     STANDBY,
     RAIL_OFF,
     RESYNC,
-    PERMANENT_LOCK,
+    DEGRADED,
   };
 
   typedef struct {
@@ -236,7 +250,7 @@ class GPS {
   void enterRailOff(uint32_t now);
   void beginResync(uint32_t now);
   void finishMeasurement(void);
-  void enterPermanentLock(void);
+  void enterDegraded(void);
   TickType_t cycleWait(uint32_t now) const;
 
   uint8_t powerPolicy(void) const;
@@ -323,6 +337,9 @@ class GPS {
   uint32_t m_BurstFailed = 0;
   uint32_t m_MeasureDeadline = 0;
   uint32_t m_ResyncDeadline = 0;
+  // bounds a degraded retry probe, a stale prediction must not latch ACQUIRING
+  uint32_t m_ProbeDeadline = 0;
+  GpsDegradedRetry m_Degraded;
   uint32_t m_LastBurstStart = 0;
   std::array<uint32_t, 5> m_PeriodSamples = {};
   size_t m_PeriodCount = 0;

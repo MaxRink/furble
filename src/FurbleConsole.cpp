@@ -757,6 +757,8 @@ int gpsStatus(void) {
   printf("chars: %lu\n", tiny.charsProcessed());
   printf("sentences: %lu\n", tiny.passedChecksum());
   printf("failed: %lu\n", tiny.failedChecksum());
+  printf("degraded: %s\n", boolStr(gps.isDegraded()));
+  printf("retries: %lu\n", static_cast<unsigned long>(gps.degradedRetries()));
   printf("raw: %s\n", boolStr(g_GPSRaw));
   return 0;
 }

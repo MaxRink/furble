@@ -159,6 +159,15 @@ target_include_directories(battery_saver_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(battery_saver_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
 
+# Pure GPS degraded retry policy from include/FurbleGPSPowerCycle.h. The GPS task
+# shares this header, so the suite pins the bounded, self recovering behaviour
+# that replaced the permanent lock trap. No hardware dependency, so it needs no
+# furble sources on its link line.
+add_executable(gps_power_cycle_test gps_power_cycle_test.cpp)
+target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
+
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
 # peer, so the full connect/disconnect/reconnect state machine is exercised here,
@@ -301,6 +310,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
