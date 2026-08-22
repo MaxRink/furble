@@ -290,11 +290,11 @@ UI::UI(const interval_t &interval)
   // set display brightness
   auto brightness = Settings::load<Settings::BRIGHTNESS>();
   M5.Display.setBrightness(brightness);
-  m_DisplayOffMode = Settings::load<Settings::DISPLAY_OFF>();
+  m_DisplayOffMode = Settings::displayOffEffective();
   if (m_DisplayOffMode > 2) {
     m_DisplayOffMode = 0;
   }
-  setInactivityTimeout(Settings::load<Settings::INACTIVITY>());
+  setInactivityTimeout(Settings::inactivityEffective());
 #if defined(FURBLE_SIM)
   Sim::profilerSetDisplayState("on");
 #endif
@@ -3565,7 +3565,7 @@ void UI::startScan(void) {
     updateItems(menu);
   }
 
-  scan.setMode(static_cast<Scan::Mode>(Settings::load<Settings::SCAN_MODE>()));
+  scan.setMode(static_cast<Scan::Mode>(Settings::scanModeEffective()));
   scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
 
   scan.clear();
@@ -4876,6 +4876,21 @@ void UI::addBatteryMenu(const menu_t &parent) {
 void UI::addPowerMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
 
+  // Battery Saver is the one-switch low-power profile. It overrides a bundle of
+  // power settings when on and leaves the stored individual settings untouched,
+  // so turning it off restores the user's own choices. Opt-in, default off.
+  addSettingItem(menu.page, NULL, Settings::BATTERY_SAVER);
+
+  // Static, non-focusable hint under the switch, matching the one-button hint
+  // precedent. It is never added to an input group so it takes no encoder focus.
+  lv_obj_t *batterySaverHint = lv_label_create(menu.page);
+  lv_obj_set_width(batterySaverHint, LV_PCT(100));
+  lv_label_set_long_mode(batterySaverHint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(batterySaverHint,
+                    "Battery Saver: one switch for connection saver, 60s screen off, reconnect "
+                    "backoff, balanced scan, and light sleep while connected on StickS3. Applies "
+                    "after a reboot and keeps your own settings.");
+
   // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
   // the switch does nothing on the other boards. Leave it out there.
   bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
@@ -4888,9 +4903,9 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_width(cont, LV_PCT(100));
-  // share the page when other rows are present, otherwise keep the rollers
-  // centred
-  lv_obj_set_height(cont, (sleepConn || policies) ? LV_SIZE_CONTENT : LV_PCT(100));
+  // The Battery Saver switch and hint are always present above this container,
+  // so the rollers always share the page rather than centring on their own.
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);

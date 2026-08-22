@@ -232,6 +232,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -357,6 +358,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -509,6 +511,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
