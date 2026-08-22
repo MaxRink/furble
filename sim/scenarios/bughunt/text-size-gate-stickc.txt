@@ -1,0 +1,24 @@
+# The 80x160 M5StickC defaults to Small and drops Large from the roller.
+#
+# Run this on the 80x160 (M5StickC) binary. Nothing seeds the Text size, so
+# Settings::init supplies the board default. On this tiny panel that default is
+# Small (0), and the roller offers only Small and Normal, not Large, because the
+# Large font does not fit. The Text size page, including the on-device note that
+# explains the missing option, must still fit without scrolling.
+#
+# On the 135x240 binary this same file would fail its first assertion, which is
+# the teeth: the small-board default and narrowed option set are real, not a
+# no-op. It is scoped to the 80x160 binary in the sim-e2e workflow on purpose.
+wait 300
+assert ui.page main
+# A fresh device on the 80x160 panel defaults to Small.
+assert setting.text_size 0
+action nav text_size
+wait 200
+assert ui.page text_size
+# The roller reflects Small and offers only two sizes, Small and Normal.
+assert ui.text_size 0
+assert ui.text_size_options 2
+# The page, note included, fits the short panel.
+assert ui.overflow no
+exit

@@ -128,6 +128,25 @@ jobs:
             "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$scenario"
           done
 
+      # Assert the 80x160 M5StickC text size gate: a fresh device defaults to
+      # Small, the roller drops Large and offers only two sizes, and a Large
+      # value carried in from another board clamps to Normal at render time.
+      # These are scoped to the 80x160 binary because the default and option set
+      # differ from every other board; text-size-gate.txt covers the Normal
+      # default and all three options on the 135x240 binary via run-e2e.sh.
+      - name: Assert 80x160 text size gate (M5StickC)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          for scenario in \
+            text-size-gate-stickc \
+            text-size-clamp-stickc; do
+            echo "=== 80x160 (M5StickC): $scenario ==="
+            "${{ github.workspace }}/sim/build-stickc/furble-sim" \
+              --script "${{ github.workspace }}/sim/scenarios/bughunt/$scenario.txt"
+          done
+
       # Seeded UI fuzzer. Feeds deterministic randomized button, navigation,
       # settings and modal event streams into the real UI and checks the
       # crash-free, stale-focus, stacked-modal, narrow-panel-overflow,

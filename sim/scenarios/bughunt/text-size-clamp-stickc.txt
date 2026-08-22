@@ -1,0 +1,21 @@
+# A Large size stored on the 80x160 M5StickC clamps to Normal at render time.
+#
+# Run this on the 80x160 (M5StickC) binary. A device that carried a Large (2)
+# value in from another board, or had it forced through the console, must never
+# select a font that overflows the tiny panel. Seed Large, boot, and confirm the
+# stored value is left untouched but the roller lands on Normal (1), the board
+# maximum, and still offers only two sizes. The page must fit without scrolling,
+# which proves the clamped font, not the Large font, is in effect.
+seed text_size 2
+wait 300
+assert ui.page main
+# The stored value is preserved, not rewritten.
+assert setting.text_size 2
+action nav text_size
+wait 200
+assert ui.page text_size
+# The roller clamps the out-of-range Large down to Normal, the board maximum.
+assert ui.text_size 1
+assert ui.text_size_options 2
+assert ui.overflow no
+exit
