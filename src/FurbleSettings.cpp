@@ -8,6 +8,16 @@
 namespace Furble {
 Preferences Settings::m_Prefs;
 
+// The board-conditional text size policy in FurbleTextSize.h uses raw values so
+// it stays dependency free for the host tests. Pin those values to the enum so
+// the two cannot drift apart.
+static_assert(TextSizePolicy::SMALL == Settings::TEXT_SIZE_SMALL,
+              "text size policy Small must match the enum");
+static_assert(TextSizePolicy::NORMAL == Settings::TEXT_SIZE_NORMAL,
+              "text size policy Normal must match the enum");
+static_assert(TextSizePolicy::LARGE == Settings::TEXT_SIZE_LARGE,
+              "text size policy Large must match the enum");
+
 const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Setting = {
     {BRIGHTNESS,        {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
     {INACTIVITY,        {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
@@ -402,7 +412,11 @@ void Settings::init(void) {
           save<std::string>(setting.type, "Default");
           break;
         case TEXT_SIZE:
-          save<uint8_t>(setting.type, TEXT_SIZE_NORMAL);
+          // The default is board conditional. Large screens keep Normal, but the
+          // 80x160 M5StickC starts a fresh device at Small because Normal is
+          // already dense on that tiny panel and Large does not fit. This only
+          // seeds an unset key, so an existing device keeps its stored choice.
+          save<uint8_t>(setting.type, TextSizePolicy::DEFAULT);
           break;
         case BUTTON_MODE:
           save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);

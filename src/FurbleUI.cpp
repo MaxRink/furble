@@ -142,6 +142,10 @@ void setLabelIfChangedFmt(lv_obj_t *label, const char *format, Args... args) {
   setLabelIfChanged(label, text);
 }
 const lv_font_t *fontForTextSize(uint8_t textSize) {
+  // Clamp to the board maximum so a value stored past this board's limit (for
+  // example Large carried over from a larger board's NVS, or forced through the
+  // console) can never select a font that overflows the panel.
+  textSize = TextSizePolicy::clamp(textSize);
   switch (textSize) {
     case Settings::TEXT_SIZE_SMALL:
 #if defined(FURBLE_M5STICKC)
@@ -2585,7 +2589,10 @@ std::string UI::simQueryState(const char *key) {
 
   // Report the Text size roller's current selection so scenarios can assert the
   // saved TEXT_SIZE setting was loaded and reflected in the widget on boot.
-  if (query == "text_size") {
+  // "text_size" reports the roller selection; "text_size_options" reports how
+  // many sizes the roller offers, so a scenario can assert the small board drops
+  // Large from the list.
+  if (query == "text_size" || query == "text_size_options") {
     const auto entry = m_Menu.find(m_TextSizeStr);
     if (entry == m_Menu.end() || entry->second.page == nullptr) {
       return "unknown";
@@ -2604,6 +2611,11 @@ std::string UI::simQueryState(const char *key) {
     lv_obj_t *roller = findRoller(entry->second.page);
     if (roller == nullptr) {
       return "unknown";
+    }
+    if (query == "text_size_options") {
+      // The true option count, not the inflated string an infinite-mode roller
+      // repeats internally to fake the wrap-around.
+      return std::to_string(lv_roller_get_option_count(roller));
     }
     return std::to_string(lv_roller_get_selected(roller));
   }
@@ -4654,13 +4666,26 @@ void UI::addTextSizeMenu(const menu_t &parent) {
 #if !defined(FURBLE_M5COREX)
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
-  lv_roller_set_options(roller, "Small\nNormal\nLarge", LV_ROLLER_MODE_INFINITE);
+  // The 80x160 M5StickC cannot fit the Large font, so it drops Large and offers
+  // only Small and Normal. Every other board offers all three.
+  const char *options =
+      (TextSizePolicy::MAX >= Settings::TEXT_SIZE_LARGE) ? "Small\nNormal\nLarge" : "Small\nNormal";
+  lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
-  uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
-  if (textSize > Settings::TEXT_SIZE_LARGE) {
-    textSize = Settings::TEXT_SIZE_NORMAL;
-  }
+  // Clamp the stored size to this board's maximum so a value carried in from a
+  // larger board lands on a valid roller row instead of running off the end.
+  uint8_t textSize = TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>());
   lv_roller_set_selected(roller, textSize, LV_ANIM_OFF);
+
+  // Explain the missing option on the boards that drop Large, so the shorter
+  // list does not look like a bug.
+  if (TextSizePolicy::MAX < Settings::TEXT_SIZE_LARGE) {
+    lv_obj_t *note = lv_label_create(cont);
+    lv_obj_set_width(note, LV_PCT(90));
+    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(note, "Large needs a bigger screen");
+  }
 
   lv_obj_t *restart = lv_button_create(cont);
   lv_obj_t *restartLabel = lv_label_create(restart);

@@ -79,6 +79,22 @@ target_compile_options(fujifilm_protocol_test PRIVATE -Wall -Wextra -Werror -Wno
 add_executable(settings_table_test settings_table_test.cpp)
 target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                    -Wno-unused-parameter)
+
+# Board-conditional text size policy from include/FurbleTextSize.h. The header is
+# dependency free, so each variant compiles standalone. The suite is built twice:
+# the plain target exercises the large-board policy, the -stickc target defines
+# FURBLE_M5STICKC to exercise the 80x160 small-board policy. The checks are
+# static_asserts, so a wrong policy fails to compile.
+add_executable(text_size_policy_test text_size_policy_test.cpp)
+target_include_directories(text_size_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(text_size_policy_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                     -Wno-unused-parameter)
+add_executable(text_size_policy_stickc_test text_size_policy_test.cpp)
+target_include_directories(text_size_policy_stickc_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_definitions(text_size_policy_stickc_test PRIVATE FURBLE_M5STICKC)
+target_compile_options(text_size_policy_stickc_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                            -Wno-unused-parameter)
+
 add_executable(stale_connect_test stale_connect_test.cpp)
 target_link_libraries(stale_connect_test PRIVATE furble_host_camera)
 target_compile_options(stale_connect_test PRIVATE -Wall -Wextra -Werror -Wno-format
@@ -270,6 +286,8 @@ if(BUILD_TESTING)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+  add_test(NAME text-size-policy COMMAND text_size_policy_test)
+  add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)
   add_test(NAME reconnect-stuck COMMAND reconnect_stuck_test)
