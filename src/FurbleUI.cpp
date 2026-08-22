@@ -5867,12 +5867,12 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
 
         // a degraded, self recovering cycle is otherwise console only, surface
         // the retry count here too. The IfChanged setter keeps this guarded.
-        if (cycle.degraded) {
+        if (gps.isDegraded()) {
           setLabelTextFmtIfChanged(ui->m_NMEA.fix,
                                    "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
-                                   (unsigned long)status.satellites, status.hdop,
-                                   (unsigned long)(status.location_age / 1000), status.speed_kmph,
-                                   (unsigned long)cycle.retries);
+                                    (unsigned long)status.satellites, status.hdop,
+                                    (unsigned long)(status.location_age / 1000), status.speed_kmph,
+                                    (unsigned long)gps.degradedRetries());
         } else {
           setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
                                    (unsigned long)status.satellites, status.hdop,
