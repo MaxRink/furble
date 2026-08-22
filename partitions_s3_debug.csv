@@ -1,0 +1,11 @@
+# Debug-only single-app layout for the 8MB M5StickS3.
+# The debug build adds the USB console command surface and verbose logging on
+# top of the release image, and the WiFi station and LWIP netstack push it past
+# the 1700K per-slot OTA app size. The debug image is flashed over USB and never
+# does OTA, so a single large factory app is used instead of two OTA slots. The
+# nvs region keeps the same 0x6000 size as the release two-OTA table so stored
+# settings and WiFi credentials survive swapping between release and debug images.
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     ,        0x6000,
+phy_init, data, phy,     ,        0x1000,
+factory,  app,  factory, ,        3M,
