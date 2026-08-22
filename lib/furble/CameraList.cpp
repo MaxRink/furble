@@ -14,6 +14,8 @@
 #include "protocol/CameraListProtocol.h"
 
 #define FURBLE_PREF_INDEX "index"
+// Monotonic id allocator, persisted alongside the index in the same namespace.
+#define FURBLE_PREF_NEXT_ID "cam_next_id"
 
 namespace Furble {
 
@@ -24,6 +26,50 @@ void CameraList::fillSaveEntry(index_entry_t &entry, const Camera *camera) {
   const auto key = CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
   snprintf(entry.name, sizeof(entry.name), "%s", key.c_str());
   entry.type = camera->getType();
+  entry.camera_id = 0;
+}
+
+bool CameraList::containsCameraId(const std::vector<index_entry_t> &index, uint8_t cameraId) {
+  for (const auto &entry : index) {
+    if (entry.camera_id == cameraId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+uint8_t CameraList::allocateCameraId(const std::vector<index_entry_t> &index) {
+  // Persisted counter, never handed back below what it has already reached.
+  uint16_t next = m_Prefs.get<uint8_t>(FURBLE_PREF_NEXT_ID, 1);
+  while ((next <= 0xff) && ((next == 0) || containsCameraId(index, static_cast<uint8_t>(next)))) {
+    next++;
+  }
+  if ((next == 0) || (next > 0xff)) {
+    // 255 saved cameras is not reachable on this hardware. Wrap defensively.
+    next = 1;
+  }
+  uint16_t following = static_cast<uint16_t>(next + 1);
+  if (following > 0xff) {
+    following = 0xff;
+  }
+  m_Prefs.put<uint8_t>(FURBLE_PREF_NEXT_ID, static_cast<uint8_t>(following));
+  return static_cast<uint8_t>(next);
+}
+
+void CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
+  uint16_t floor = m_Prefs.get<uint8_t>(FURBLE_PREF_NEXT_ID, 1);
+  for (const auto &entry : index) {
+    if (entry.camera_id >= floor) {
+      floor = static_cast<uint16_t>(entry.camera_id + 1);
+    }
+  }
+  if (floor == 0) {
+    floor = 1;
+  }
+  if (floor > 0xff) {
+    floor = 0xff;
+  }
+  m_Prefs.put<uint8_t>(FURBLE_PREF_NEXT_ID, static_cast<uint8_t>(floor));
 }
 
 void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
@@ -34,6 +80,7 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
       CameraListProtocol::IndexEntry item = {};
       memcpy(item.name, entry.name, sizeof(item.name));
       item.type = static_cast<uint32_t>(entry.type);
+      item.camera_id = entry.camera_id;
       encoded.push_back(item);
     }
 
@@ -56,11 +103,16 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
       std::vector<CameraListProtocol::IndexEntry> decoded;
       m_Prefs.get(FURBLE_PREF_INDEX, buffer.data(), bytes);
       if (CameraListProtocol::decodeIndex(buffer.data(), bytes, decoded)) {
+        // A blob written before ids existed decodes with camera_id zero. Give
+        // those entries stable ids in memory so an upgraded device exposes them
+        // immediately, without losing any saved camera.
+        CameraListProtocol::assignCameraIds(decoded);
         ESP_LOGI(LOG_TAG, "Index entries: %d", decoded.size());
         for (const auto &item : decoded) {
           index_entry_t entry = {};
           memcpy(entry.name, item.name, sizeof(entry.name));
           entry.type = static_cast<Camera::Type>(item.type);
+          entry.camera_id = item.camera_id;
           ESP_LOGI(LOG_TAG, "Loading index entry: %s", entry.name);
           index.push_back(entry);
         }
@@ -92,9 +144,22 @@ void CameraList::add_index(std::vector<CameraList::index_entry_t> &index, index_
 void CameraList::save(const Furble::Camera *camera) {
   m_Prefs.begin(FURBLE_STR, false);
   std::vector<index_entry_t> index = load_index();
+  // Persist the migrated ids into the counter floor before adding anything.
+  syncCameraIdFloor(index);
 
   index_entry_t entry;
   fillSaveEntry(entry, camera);
+
+  // Re-saving a known camera keeps its id. A new camera gets a fresh one.
+  for (const auto &existing : index) {
+    if (strcmp(existing.name, entry.name) == 0) {
+      entry.camera_id = existing.camera_id;
+      break;
+    }
+  }
+  if (entry.camera_id == 0) {
+    entry.camera_id = allocateCameraId(index);
+  }
 
   add_index(index, entry);
 
@@ -114,6 +179,9 @@ void CameraList::save(const Furble::Camera *camera) {
 void CameraList::remove(Furble::Camera *camera) {
   m_Prefs.begin(FURBLE_STR, false);
   std::vector<index_entry_t> index = load_index();
+  // Lock the counter floor before dropping an entry so the deleted id, even if
+  // it was the highest, is never handed back to a future camera.
+  syncCameraIdFloor(index);
 
   index_entry_t entry;
   fillSaveEntry(entry, camera);
@@ -202,6 +270,26 @@ size_t CameraList::getSaveCount(void) {
   m_Prefs.end();
 
   return index.size();
+}
+
+uint8_t CameraList::getCameraId(const Furble::Camera *camera) {
+  if (camera == nullptr) {
+    return 0;
+  }
+
+  index_entry_t entry;
+  fillSaveEntry(entry, camera);
+
+  m_Prefs.begin(FURBLE_STR, true);
+  std::vector<index_entry_t> index = load_index();
+  m_Prefs.end();
+
+  for (const auto &existing : index) {
+    if (strcmp(existing.name, entry.name) == 0) {
+      return existing.camera_id;
+    }
+  }
+  return 0;
 }
 
 size_t CameraList::size(void) {

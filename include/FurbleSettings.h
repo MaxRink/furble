@@ -31,6 +31,7 @@ class Settings {
     GPS_ASSIST,
     INTERVAL,
     MULTICONNECT,
+    MULTISELECT,
     RECONNECT,
     RECON_BACKOFF,
     FAUXNY,
@@ -116,6 +117,14 @@ class Settings {
 
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+
+  static constexpr size_t MULTISELECT_MAX = 8;
+  static constexpr size_t MULTISELECT_NAME_MAX = 16;
+
+  typedef struct __attribute__((packed)) {
+    char name[MULTISELECT_MAX][MULTISELECT_NAME_MAX];
+    uint8_t count;
+  } multiselect_t;
 
   /** Default maximum CPU frequency in MHz, matches Platform. */
   static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
@@ -249,6 +258,10 @@ struct Settings::storage_type<Settings::INTERVAL> {
 template <>
 struct Settings::storage_type<Settings::MULTICONNECT> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::MULTISELECT> {
+  using type = Settings::multiselect_t;
 };
 template <>
 struct Settings::storage_type<Settings::RECONNECT> {
