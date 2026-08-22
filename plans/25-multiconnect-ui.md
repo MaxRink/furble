@@ -93,12 +93,12 @@ Out of scope:
 
 ### Cameras status page
 
-- `src/FurbleUI.cpp:1265-1279`, `UI::addConnectedMenu`. Lines 1268-1275 set a
-  three column by one row grid under `FURBLE_M5COREX`. Lines 1277-1279 create
-  Remote, Interval and Disconnect. Add the Cameras item here.
+- `src/FurbleUI.cpp:1464-1481`, `UI::addConnectedMenu`. The current branch
+  already contains the merged PR03 Connected-page layout. Add the Cameras item
+  to that existing grid.
 - `src/FurbleUI.cpp:53-76`, `UI::m_Menu`. Add an entry for the new page. The
-  Connected page grid holds `m_RemoteShutter {0,0}` (line 72), `m_RemoteInterval
-  {1,0}` (line 73) and `m_RemoteDisconnect {2,0}` (line 74).
+  Connected page grid already holds Remote, Bulb, Interval, GPS Data and
+  Disconnect. Add `m_CamerasStr` at `{1,1}`.
 - `include/FurbleUI.h:161-191`, the page name string constants. Add
   `m_CamerasStr`. `m_GPSDataStr` at line 185 is the model.
 - `src/FurbleUI.cpp:1548-1611`, the GPS Data page. This is the pattern to copy
@@ -177,24 +177,25 @@ Connect  (Multi-Connect on)
 +- [x] Camera C
 
 Connected
-+- Remote
-+- Cameras      (new, read-only)
-+- Interval
-+- Disconnect
++- Remote        {0,0}
++- Bulb          {1,0}
++- Interval      {2,0}
++- GPS Data      {0,1}
++- Cameras       {1,1} (new, read-only)
++- Disconnect    {2,1}
 ```
 
-On Core and Core2 the Connected page is a grid built at
-`src/FurbleUI.cpp:1268-1275` with three columns and one row. A fourth item does
-not fit. Go to two columns by two rows and move Disconnect to `{1,1}`, updating
-the `{col,row}` values in `UI::m_Menu` at lines 72-74. On the Stick boards the
-Connected page is a scrolling list, so placement is just insertion order.
+On Core and Core2 the current Connected page is a three-column by two-row grid
+from merged PR03. It already has Bulb and GPS Data, so no grid dimension change
+is needed. Cameras uses the open middle-bottom cell `{1,1}` and Disconnect
+stays at `{2,1}`. On the Stick boards the Connected page is a scrolling list,
+so placement is insertion order.
 
 Put Cameras next to Remote and keep Disconnect last, so a mis-click does not
 drop the connection.
 
-Note the conflict with PR03, which also adds an item to the Connected page. If
-both land, the grid needs three columns by two rows and both PRs touch the same
-`{col,row}` values. Whichever lands second rebases.
+PR03 is already merged on this branch. The implementation integrates with its
+existing five-item grid instead of applying the old two-by-two grid instruction.
 
 ## Implementation notes
 
@@ -226,9 +227,11 @@ A bitmask over `CameraList` indices is wrong. `CameraList::remove` rewrites the
 saved index (`lib/furble/CameraList.cpp:110-125`), so deleting a camera silently
 shifts every later bit onto the wrong camera.
 
-Store names instead. `CameraList::index_entry_t` already uses a fixed `char
-name[16]` (`lib/furble/CameraList.h:66-69`), so a fixed array of eight 16 byte
-names is 128 bytes and matches the existing storage shape:
+Store names instead. On the current branch `CameraList::index_entry_t` uses its
+fixed `char name[16]` as an address key, not as the display name. The selection
+blob therefore owns a separate fixed array of eight 16 byte display-name slots.
+It is 128 bytes before the count field and keeps the intended fixed storage
+shape:
 
 ```
 typedef struct {
@@ -252,6 +255,11 @@ identical names, and both get pre-ticked. That is a pre-existing property of the
 saved list, which is also keyed by name, so it is not made worse here. Say so in
 the PR body.
 
+The match is also only a 15-character prefix comparison, because the stored
+slots are 16-byte C strings. Two cameras whose names share the same first 15
+characters both get pre-ticked even when the full names differ. Accepted and
+documented, not fixed here.
+
 ### The Cameras page
 
 Copy the GPS Data page exactly (`src/FurbleUI.cpp:1548-1611`). One difference:
@@ -262,7 +270,8 @@ per connection, so build the rows when the page is opened, not in the timer:
 - on the button `LV_EVENT_CLICKED` handler, `lv_obj_clean(page)`, then one label
   per entry of `Control::getInstance().getTargets()`, then
   `lv_timer_resume(timer)`
-- in the 1000 ms timer, only `lv_label_set_text_fmt` on the labels already there
+- in the 1000 ms timer, format each row and call `lv_label_set_text` only when
+  the formatted text changed
 - on leaving, pause the timer through a `camerasStop` copy of `gpsDataStop`
   (`src/FurbleUI.cpp:1606-1611`)
 
@@ -351,10 +360,11 @@ Print `INT8_MIN` as `--`, not as a number.
 
 None hard.
 
-Conflicts with PR03 over the Connected page grid, see Menu placement.
-Independent of everything else. PR05, the diagnostics scaffold, may want to
-reuse `Camera::getRSSI()`, and PR11, adaptive TX power, definitely will. Adding
-the accessor here is why this PR is worth doing early.
+Integrates with the PR03 Connected page grid, see Menu placement.
+Independent of everything else. The `Camera::getRSSI()` accessor originally
+planned here was dropped during review, see the fork PR #24 reconciliation
+section. RSSI consumers (diagnostics, adaptive TX power) build on the cached
+snapshot from that PR instead.
 
 ## Risks
 
@@ -432,6 +442,101 @@ drop RSSI.
 Camera coverage: Fujifilm on hardware, FauxNY for the second target. Sony,
 Nikon, Canon and Ricoh inherit `Camera::getRSSI()` unchanged from the base class
 and are untested. State this in the PR body.
+
+## Implementation state
+
+Implemented on `feat/25-multiconnect-ui`.
+
+Rebase notes:
+
+- `MULTISELECT` is a device-local selection blob, so it gets wire_id 0 and is
+  not exposed over the companion wire, matching `TOUCH_CALIBRATION` and
+  `BULB`.
+- Console settingType reports it as "struct"; printValue and setValue fall to
+  their unsupported defaults. `src/FurbleCompanion.cpp` groups it with the
+  other SETTING_BLOB rejects.
+
+- The Multi-Connect button is first, reads `Connect N`, joins the input group,
+  and is disabled when `N` is zero. The checkbox rows update it through a
+  second `LV_EVENT_VALUE_CHANGED` callback whose user data is the button
+  pointer, not by walking the widget parent chain.
+- The last active selection is stored in the `MULTISELECT` NVS blob. Display
+  names use eight fixed 16-byte slots. Matching uses the same 15-character
+  normalized form used when saving.
+- Only the Multi-Connect button click saves the selection, right before it
+  calls `doConnect`. Single connect, boot autoconnect and console connect
+  never touch the blob, and an unchanged selection skips the NVS write.
+- The Connected menu has a read-only Cameras page. It creates one row per
+  active target and refreshes name plus connection state once per second while
+  visible. Row text is compared before any LVGL label update and rows clip
+  with `LV_LABEL_LONG_DOT` rather than scrolling.
+- The Cameras timer starts and stops in the `LV_EVENT_VALUE_CHANGED`
+  page-change dispatch, following the diagnostics timer. It also pauses while
+  the reconnect message box is visible and resumes when the box hides with the
+  page still active. `doDisconnect` pauses it as well.
+- The target list is re-fetched on every tick and the page is rebuilt when its
+  size changes.
+
+### Deviations from the original plan
+
+- The branch already contains merged PR03. Its Connected page is a three-column
+  by two-row grid with Bulb and GPS Data. Cameras uses the unused `{1,1}` cell.
+  The old two-column by two-row instruction is not applied, and Disconnect
+  remains at `{2,1}`.
+- The original line anchors describe the pre-PR03 file layout. The implementation
+  uses the current `addConnectedMenu` and `addConnectMenu` locations.
+- The current `CameraList::index_entry_t::name` field is an address key. The
+  selection blob uses a separate display-name array instead of reusing that
+  field.
+- The existing Connected flow hides the menu back button. The page-change
+  handler now restores it for Cameras and the shared GPS Data page so both
+  read-only pages can be left while connected.
+- Live RSSI is dropped, taking the fallback the RSSI section already named.
+  `NimBLEClient::getRssi()` is a blocking HCI round trip serialized against
+  all host operations, up to two seconds worst case, and the rows render on
+  the LVGL task. The rows show name and connection state only and the
+  `Camera::getRSSI()` accessor is removed again, so this PR no longer touches
+  lib/furble. See the fork PR #24 reconciliation section.
+- The GPS-Data-style `camerasStart`/`camerasStop` click handlers from the
+  original plan are gone. The click-based stop leaked a re-registration on
+  every page entry, and the page-change dispatch is the established pattern
+  for timers tied to page visibility.
+- `Control::getTargets()` stays a raw reference. That is safe today because
+  every mutation of `m_Targets` (`addActive`, the clear in `disconnect`) runs
+  on the LVGL task, the same task that renders the rows. Fork PR #24 replaces
+  this with a snapshot form, which supersedes the raw reference when it lands.
+
+### Fork PR #24 reconciliation
+
+Fork PR #24 (adaptive BLE connection parameters, plan 10) maintains a cached
+per-target connection statistics snapshot via `updateConnStats`, refreshed off
+the render path. That cache is the one sanctioned RSSI source:
+
+- Whichever of the two PRs lands second wires the Cameras rows to the cached
+  snapshot. There must never be a second, live RSSI path.
+- The row format keeps room for a trailing RSSI column, so re-adding it is a
+  formatting change in `updateCameraRow` only.
+- Until then the Cameras page shows name and connection state, which already
+  covers the drop-visibility motivation.
+
+### Verification state
+
+- clang-format 21.1.2 ran on all touched C++ files.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
+  `-e m5stick-s3-debug` pass after the review fixes.
+- Hardware tested: none. StickS3 pending.
+
+### Narrow-panel connected-page fit
+
+The Cameras entry adds a row to the Connected page. On the three narrow panels
+the per-row padding is trimmed so the extra row stays on screen. The 135x240
+M5StickC Plus and M5StickS3 drop the Connected page rows from 6 to 0 padding.
+The 80x160 M5StickC, the shortest panel, already ran its rows at 1 padding for
+the home menu; its Connected page now drops to 0 as well, matching the larger
+narrow panels. All other menus on the M5StickC keep 1 padding. Core and Core2
+lay the Connected page out as a grid and are unaffected. The
+`sim/scenarios/bughunt/text-size-overflow-large.txt` scenario asserts the
+Connected page reports no overflow on the 80x160 and 135x240 panels.
 
 ## References
 

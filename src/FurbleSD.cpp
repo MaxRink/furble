@@ -169,6 +169,27 @@ bool validCalibration(const Settings::calibration_t &value) {
   return true;
 }
 
+bool validMultiselect(const Settings::multiselect_t &value) {
+  if (value.count > Settings::MULTISELECT_MAX) {
+    return false;
+  }
+
+  // Every name slot must be null terminated so later string use is safe.
+  for (size_t i = 0; i < Settings::MULTISELECT_MAX; i++) {
+    bool terminated = false;
+    for (size_t j = 0; j < Settings::MULTISELECT_NAME_MAX; j++) {
+      if (value.name[i][j] == '\0') {
+        terminated = true;
+        break;
+      }
+    }
+    if (!terminated) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
   switch (setting.type) {
     case Settings::BRIGHTNESS:
@@ -252,6 +273,14 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       const Settings::calibration_t calibration =
           Settings::load<Settings::calibration_t>(setting.type);
       value = sizedHex(&calibration, sizeof(calibration));
+      return true;
+    }
+
+    case Settings::MULTISELECT:
+    {
+      const Settings::multiselect_t selection =
+          Settings::load<Settings::multiselect_t>(setting.type);
+      value = sizedHex(&selection, sizeof(selection));
       return true;
     }
   }
@@ -475,6 +504,16 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
         return false;
       }
       Settings::save<Settings::calibration_t>(setting.type, calibration);
+      return true;
+    }
+
+    case Settings::MULTISELECT:
+    {
+      Settings::multiselect_t selection = {};
+      if (!decodeSizedHex(text, &selection, sizeof(selection)) || !validMultiselect(selection)) {
+        return false;
+      }
+      Settings::save<Settings::multiselect_t>(setting.type, selection);
       return true;
     }
   }
