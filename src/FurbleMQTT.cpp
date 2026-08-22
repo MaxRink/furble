@@ -1,5 +1,7 @@
 #include "FurbleMQTT.h"
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
@@ -1439,3 +1441,5 @@ void MQTT::clearDiscoveryRecords(void) {
 }
 
 }  // namespace Furble
+
+#endif  // defined(FURBLE_MQTT) && FURBLE_MQTT

@@ -1,6 +1,10 @@
 #ifndef FURBLE_MQTT_H
 #define FURBLE_MQTT_H
 
+// FURBLE_MQTT defaults on. When disabled the whole class and its esp-mqtt
+// dependency drop out, so nothing here (including <mqtt_client.h>) is pulled in.
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -173,4 +177,6 @@ class MQTT {
 
 }  // namespace Furble
 
-#endif
+#endif  // defined(FURBLE_MQTT) && FURBLE_MQTT
+
+#endif  // FURBLE_MQTT_H

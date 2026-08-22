@@ -577,6 +577,11 @@ Until one is chosen, MQTT builds and runs on the headless hub and the S3 debug
 image, which are the boards the plan 33 studio-hub and plan 42 wired-Ethernet
 use cases actually target.
 
+Resolved: see the "PR33c flash budget and the FURBLE_MQTT build switch" section
+at the end of this document. Every release env now fits with MQTT on, via an
+mbedtls feature trim plus the CMN certificate bundle, and a FURBLE_MQTT compile
+switch drops MQTT entirely for builds that do not want it.
+
 ---
 
 # PR33b: WiFi station provisioning over the console, and NTP
@@ -1660,3 +1665,139 @@ is flashed:
   toggle, confirm the display stops and starts.
 - The console `pair` command responds.
 - With the GPS unit attached, confirm geotag still pushes to a connected camera.
+
+## PR33c flash budget and the FURBLE_MQTT build switch (2026-08-23)
+
+MQTT rides on esp-mqtt over TLS, which pulls esp_tls, the mbedtls certificate
+bundle and cJSON on top of the WiFi stack that PR33b already linked. On top of a
+full LVGL image that already sits near the OTA ceiling, four of the five display
+release envs overflowed the 1700K (1,740,800 byte) per-slot OTA app. This
+section records how MQTT was made to fit on every board with MQTT on by default,
+and the compile switch that lets a builder drop MQTT and all of its TLS entirely.
+
+### The FURBLE_MQTT build switch
+
+`FURBLE_MQTT` gates the whole MQTT feature. It defaults on. The `[furble]`
+`build_flags` in `platformio.ini` set `-DFURBLE_MQTT=1`, so every env inherits
+it. `src/CMakeLists.txt` gates `FurbleMQTT.cpp` and the `mqtt json` component
+requires behind `if(NOT DEFINED FURBLE_MQTT OR FURBLE_MQTT)`; esp_tls and the
+mbedtls bundle resolve transitively through esp-mqtt and are never listed. Every
+use site is guarded with `#if defined(FURBLE_MQTT) && FURBLE_MQTT`: the class in
+`FurbleMQTT.{h,cpp}`, the `MQTT::init()` call in `main.cpp`, the `mqtt` console
+command and its settings-reload hooks in `FurbleConsole.cpp` and
+`FurbleCompanionService.cpp`, and the six MQTT settings (enum values,
+`storage_type` specialisations, the settings table row block, and every
+exhaustive `Settings::type_t` switch arm in `FurbleSettings.cpp`, `FurbleSD.cpp`,
+`FurbleCompanionService.cpp` and `FurbleConsole.cpp`).
+
+When `FURBLE_MQTT=0` the source drops out of the build and nothing references
+esp-mqtt, esp_tls, the certificate bundle or cJSON, so `--gc-sections` leaves
+them out of the image. The board then behaves exactly as it did before MQTT: no
+code, no flash cost, no MQTT settings. The `m5stick-s3-nomqtt` env in
+`platformio.ini` is the worked example and the off-switch regression build. To
+disable MQTT in any env, set `build_unflags = -DFURBLE_MQTT=1` and append
+`-DFURBLE_MQTT=0` to its `build_flags` (build_unflags drops the inherited default
+so the -DFURBLE_MQTT=0 is not a redefinition under -Werror) and set
+`board_build.cmake_extra_args = -DFURBLE_MQTT=0`.
+
+The host protocol test compiles `src/FurbleSettings.cpp` and compares the runtime
+settings table against the committed golden fixtures, which include the MQTT
+settings. Its Makefile therefore compiles with `-DFURBLE_MQTT=1` so the default
+(on) build stays golden. The goldens did not change.
+
+### Flash shrinkage, in priority order
+
+Cert-bundle trimming was treated as the last resort. The levers were applied in
+this order and measured against the 1,740,800 byte OTA slot.
+
+1. Log-level cap and size optimisation. Already in place from plan 106 group A
+   (`CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y`, `CONFIG_COMPILER_OPTIMIZATION_SIZE=y`,
+   silent assertions, no esp_err name table, LVGL widget/theme trims). No change
+   needed.
+
+2. mbedtls feature trim (not the CA bundle). Disabled features that an esp-mqtt
+   TLS client to a normal broker never uses, applied identically to all five
+   release sdkconfigs plus `sdkconfig.esp32-s3-headless`:
+   - Server-side TLS: switched the choice to `CONFIG_MBEDTLS_TLS_CLIENT_ONLY`,
+     dropping `TLS_SERVER`, `TLS_SERVER_AND_CLIENT` and the server session ticket
+     code. furble is a client only.
+   - Key exchanges: dropped the PSK family (`KEY_EXCHANGE_PSK`, `ECDHE_PSK`,
+     `RSA_PSK`, `PSK_MODES`) and the static-ECDH pair (`ECDH_ECDSA`, `ECDH_RSA`).
+     Kept RSA, ECDHE-RSA and ECDHE-ECDSA.
+   - Elliptic curves: dropped the eight unused Brainpool and Koblitz curves
+     (`SECP192R1/224R1`, `SECP192K1/224K1/256K1`, `BP256R1/384R1/512R1`). Kept
+     secp256r1, secp384r1, secp521r1 and curve25519, which cover public broker
+     certs and WPA3-SAE.
+   - Protocol and parsing extras: dropped `SSL_RENEGOTIATION`, `SSL_ALPN`, the
+     client session ticket, `X509_CRL_PARSE`, `X509_CSR_PARSE`, `PEM_WRITE`,
+     `PKCS7`, `GCM_SUPPORT_NON_AES_CIPHER`, `PK_PARSE_EC_EXTENDED/COMPRESSED`,
+     `ECP_RESTARTABLE` and the mbedtls error string table.
+   Kept TLS 1.2, AES-GCM/CCM, SHA-1/256/384/512, RSA, ECDSA, ECDH, PEM parse and
+   the X.509 certificate chain path so real broker certificates still validate.
+   DTLS and TLS 1.3 were already off.
+
+   Measured effect (m5stick-s3): 1,781,024 -> 1,758,228 bytes, about 23 KB. The
+   two M5Stick boards dropped below the ceiling on this lever alone.
+
+3. Unused ESP-IDF components / LVGL prune / plan 106 review. The remaining plan
+   106 lever with real size (newlib nano formatting, est 20-40 KB) was rejected:
+   furble writes GPS tracks to SD with `%.6f` latitude and longitude in
+   `FurbleGPX.cpp`, a release feature whose float formatting nano changes, and it
+   cannot be verified without hardware here (plan 106 defers it for exactly this
+   reason). No other unreferenced component of meaningful size was found; the
+   linker already drops what is unused.
+
+After levers 1-3 the two M5Stick boards fit but the three larger-panel boards
+still overflowed (all mbedtls trims applied, full CA bundle):
+
+| env | bytes | slot % | over by |
+|---|---:|---:|---:|
+| m5stick-c | 1,700,688 | 97.7 | fits |
+| m5stick-c-plus | 1,716,656 | 98.6 | fits |
+| m5stack-core | 1,764,276 | 101.3 | +23,476 |
+| m5stack-core2 | 1,764,372 | 101.4 | +23,572 |
+| m5stick-s3 | 1,758,228 | 101.0 | +17,428 |
+| esp32-s3-headless | 1,670,920 | 96.0 | fits |
+
+### Last resort: CA bundle common subset
+
+With no safe non-cert lever left to cover the +17 to +24 KB that m5stick-s3,
+m5stack-core and m5stack-core2 still needed, the CA certificate bundle was
+switched from the full set to the common subset
+(`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y`, was `_DEFAULT_FULL=y`) across
+all five release sdkconfigs plus headless. This is the lever the user asked to
+avoid; it was required only because the three large-panel boards overflowed by
+17,428 / 23,476 / 23,572 bytes after every other measure. CMN keeps the common
+public roots (including ISRG Root X1 for Let's Encrypt, the primary Home
+Assistant / Mosquitto case) and drops the long tail of rarely seen CAs. A broker
+whose certificate chains to a CA outside the common set will fail validation; the
+fix is a full-bundle build or the documented MQTT-off switch. CMN reclaims about
+52 KB on the ESP32 boards, which lands every env with headroom.
+
+### Final sizes, MQTT on, all envs fit
+
+Measured with `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e <env>` after a clean
+build (the ESP-IDF certificate bundle `.S` is generated once and is not
+regenerated by an incremental rebuild when only the FULL/CMN choice changes, so
+the bundle change must be measured from a `pio run -t fullclean` build).
+
+| env | bytes | slot | slot % | fits |
+|---|---:|---:|---:|:--:|
+| m5stick-c | 1,655,756 | 1,740,800 | 95.1 | yes |
+| m5stick-c-plus | 1,672,404 | 1,740,800 | 96.1 | yes |
+| m5stack-core | 1,719,392 | 1,740,800 | 98.8 | yes |
+| m5stack-core2 | 1,720,156 | 1,740,800 | 98.8 | yes |
+| m5stick-s3 | 1,735,972 | 1,740,800 | 99.7 | yes |
+| esp32-s3-headless | 1,618,520 | 1,740,800 | 93.0 | yes |
+| m5stick-s3-debug | 2,031,181 | 3,145,728 | 64.6 | yes |
+
+Every release env now fits the two-slot OTA layout with MQTT on. m5stick-s3 is
+the tightest at 99.7% (4,828 bytes of headroom), so it has little room for
+further growth; the MQTT-off switch and the headless / Waveshare Ethernet
+targets are the release valve for boards that later run short. The
+m5stick-s3-debug image uses the single large factory partition and has ample
+room.
+
+The `m5stick-s3-nomqtt` off-switch build compiles cleanly and drops well below
+the m5stick-s3 MQTT-on size, confirming that disabling MQTT removes esp-mqtt,
+esp_tls, the certificate bundle and cJSON from the image.

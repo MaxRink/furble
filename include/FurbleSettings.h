@@ -58,12 +58,14 @@ class Settings {
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     MQTT,
     MQTT_URI,
     MQTT_USER,
     MQTT_PASS,
     MQTT_BASE,
     MQTT_HA,
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
@@ -392,6 +394,7 @@ template <>
 struct Settings::storage_type<Settings::BOOT_SPLASH> {
   using type = bool;
 };
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
 template <>
 struct Settings::storage_type<Settings::MQTT> {
   using type = bool;
@@ -416,6 +419,7 @@ template <>
 struct Settings::storage_type<Settings::MQTT_HA> {
   using type = bool;
 };
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
 template <>
 struct Settings::storage_type<Settings::DISPLAY_MODE> {

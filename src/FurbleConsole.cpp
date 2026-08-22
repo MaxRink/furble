@@ -39,7 +39,9 @@
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
 #include "FurbleMQTT.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSD.h"
@@ -223,10 +225,12 @@ const char *settingType(Settings::type_t type) {
     case Settings::WIFI_SSID:
     case Settings::NTP_SERVER:
     case Settings::WIFI_PSK:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT_URI:
     case Settings::MQTT_USER:
     case Settings::MQTT_PASS:
     case Settings::MQTT_BASE:
+#endif
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -240,8 +244,10 @@ const char *settingType(Settings::type_t type) {
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
     case Settings::MQTT_HA:
+#endif
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
@@ -300,12 +306,14 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::WIFI:
     case Settings::NTP:
     case Settings::NTP_SERVER:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
     case Settings::MQTT_URI:
     case Settings::MQTT_USER:
     case Settings::MQTT_PASS:
     case Settings::MQTT_BASE:
     case Settings::MQTT_HA:
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -367,13 +375,17 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BUTTON_MODE:
     case Settings::WIFI_SSID:
     case Settings::NTP_SERVER:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT_URI:
     case Settings::MQTT_USER:
     case Settings::MQTT_BASE:
+#endif
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
     case Settings::WIFI_PSK:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT_PASS:
+#endif
       printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
       break;
     case Settings::GPS:
@@ -398,8 +410,10 @@ void printValue(const char *prefix, Settings::type_t type) {
 #endif
     case Settings::WIFI:
     case Settings::NTP:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
     case Settings::MQTT_HA:
+#endif
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -519,10 +533,12 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::THEME:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT_URI:
     case Settings::MQTT_USER:
     case Settings::MQTT_PASS:
     case Settings::MQTT_BASE:
+#endif
       if (strlen(text) > MAX_SETTING_STRING) {
         return fail("string is too long");
       }
@@ -585,8 +601,10 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
     case Settings::MQTT_HA:
+#endif
     {
       if ((setting.type == Settings::SD_GPX) && !SD::getInstance().isSupported()) {
         return fail("no SD card slot on this board");
@@ -670,11 +688,13 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
 #endif
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
   if ((setting.type == Settings::MQTT) || (setting.type == Settings::MQTT_URI)
       || (setting.type == Settings::MQTT_USER) || (setting.type == Settings::MQTT_PASS)
       || (setting.type == Settings::MQTT_BASE) || (setting.type == Settings::MQTT_HA)) {
     MQTT::getInstance().reloadSetting();
   }
+#endif
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -1494,6 +1514,7 @@ int cmdDisconnect(int argc, char **argv) {
   return sendRequest(UI::Request::DISCONNECT, 0, "disconnect");
 }
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
 int cmdMQTT(int argc, char **argv) {
   if (argc < 2) {
     return fail("usage: mqtt status | connect | disconnect | discovery clear");
@@ -1529,6 +1550,7 @@ int cmdMQTT(int argc, char **argv) {
 
   return fail("expected status, connect, disconnect or discovery clear");
 }
+#endif
 
 int cmdShutter(int argc, char **argv) {
   if (argc < 2) {
@@ -2136,7 +2158,9 @@ const esp_console_cmd_t COMMANDS[] = {
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
     command("mqtt", "mqtt status | connect | disconnect | discovery clear", cmdMQTT),
+#endif
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
