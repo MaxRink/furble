@@ -219,7 +219,17 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
            static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
 
   m_Client->setClientCallbacks(this, false);
-  m_Client->setSelfDelete(true, true);  // self-delete on any connection failure
+  // Own the client lifetime for the whole connect attempt. Do not let NimBLE
+  // self-delete it: a peer that resets mid-connect (the camera power-cycled
+  // during the handshake) fires onDisconnect on the NimBLE host task, and a
+  // self-deleting client is freed there while _connect() still runs on this
+  // task and keeps dereferencing the client through service discovery and the
+  // pairing writes. That cross-task free of a client still in use was the
+  // mid-connect crash. With self-delete off across _connect() the client stays
+  // valid until _connect() returns, and this task reclaims it deterministically
+  // below. On success self-delete is restored so the live session tears down
+  // through onDisconnect exactly as before.
+  m_Client->setSelfDelete(false, false);
 
   // adjust connection timeout and parameters
   m_Client->setConnectTimeout(timeout);
@@ -233,44 +243,30 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   bool connected = this->_connect();
   if (connected) {
     m_Paired = true;
-  } else if (m_Connected) {
-    // The link came up (onConnect set m_Connected) but a later registration step
-    // failed, so _connect() returned false. Tear down the live link. The
-    // disconnect callback self-deletes the client (deleteOnDisconnect), so do
-    // not delete it here.
-    this->_disconnect();
-    // Do not report this half-open session as connected: connect() returns
-    // m_Connected below and the caller treats a true return as success, which
-    // would leave a stale connected flag on the persistent CameraList camera and
-    // short-circuit the next connect. The async terminate above still runs;
-    // onDisconnect will also clear the flag once it fires, but the camera may
-    // already be gone, so clear it now. This is safe: every m_Client deref is
-    // guarded by m_Connected, so clearing it only removes access, it never races
-    // the self-delete.
-    m_Connected = false;
+    // The session is live. Restore self-delete so a later peer disconnect frees
+    // the client through onDisconnect, the unchanged runtime teardown path.
+    m_Client->setSelfDelete(true, true);
   } else {
-    // The attempt failed before the link ever came up, so onConnect never ran
-    // and m_Connected is false. Reclaim the client here so it does not leak from
-    // the fixed-size NimBLE pool (CONFIG_BT_NIMBLE_MAX_CONNECTIONS). Two failure
-    // classes reach this branch, and NimBLEDevice::deleteClient() is safe for
-    // both because it first checks the client is still in the live client list:
+    // The connect failed. One failure path is the mid-connect crash this fix
+    // targets: the peer reset during the handshake, so onDisconnect fired and
+    // cleared m_Connected while _connect() was still running. Two others reach
+    // here too: the link never came up (a stale-session reconnect whose pairing
+    // scan timed out before NimBLEClient::connect() was even called), or a
+    // registration step failed on a live link (half-open). Reclaim the client
+    // here, on this task, so no async self-delete can race a reader.
     //
-    //   - A vendor _connect() returned before NimBLEClient::connect() was ever
-    //     called. On a Fujifilm reconnect the camera still holds its previous
-    //     session, so the pairing scan times out and _connect() returns false
-    //     with no connection procedure started. No connect or disconnect event
-    //     can fire for a client that never linked, so setSelfDelete never runs
-    //     and the client is orphaned. deleteClient() reclaims it. This is the
-    //     leak that exhausted the pool after nine failed reconnects and broke
-    //     every later connect ("Unable to create client; already at max: 9")
-    //     until a reboot.
-    //
-    //   - NimBLEClient::connect() was reached and failed. setSelfDelete already
-    //     freed the client (deleteOnConnectFail), so it is no longer in the live
-    //     list and deleteClient() is a no-op. No double free.
-    //
-    // Clearing m_Client afterwards is safe because every deref is guarded by
-    // m_Connected, which is false here.
+    // Tear down a still-live link first, then detach this Camera from the client
+    // so a late onDisconnect from that terminate lands on NimBLE's no-op
+    // callbacks (the #128 reclaim pattern), then free it. deleteClient() frees
+    // now if the link is already down, or on the deferred disconnect otherwise,
+    // and is a safe no-op if the client somehow already went away. Every
+    // live-link m_Client deref is guarded by m_Connected, which is false below,
+    // so clearing m_Client cannot race a reader.
+    if (m_Connected) {
+      this->_disconnect();
+    }
+    m_Connected = false;
+    m_Client->setClientCallbacks(nullptr, false);
     NimBLEDevice::deleteClient(m_Client);
     m_Client = nullptr;
     ESP_LOGD(LOG_TAG, "deleteClient(%s) after failed connect, pool now %u", m_Name.c_str(),

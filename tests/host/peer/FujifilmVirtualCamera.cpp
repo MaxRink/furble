@@ -147,6 +147,11 @@ void FujifilmVirtualCamera::dropLinkOnWrite(const NimBLEUUID &service,
   m_DropOnWrite.emplace_back(service, characteristic);
 }
 
+void FujifilmVirtualCamera::dropLinkDuringConnect(const NimBLEUUID &service,
+                                                  const NimBLEUUID &characteristic) {
+  m_DropDuringConnect.emplace_back(service, characteristic);
+}
+
 bool FujifilmVirtualCamera::isServiceSuppressed(const NimBLEUUID &service) const {
   for (const auto &suppressed : m_SuppressedServices) {
     if (matches(suppressed, service)) {
@@ -186,6 +191,16 @@ bool FujifilmVirtualCamera::isDropOnWrite(const NimBLEUUID &service,
   return false;
 }
 
+bool FujifilmVirtualCamera::isDropDuringConnect(const NimBLEUUID &service,
+                                                const NimBLEUUID &characteristic) const {
+  for (const auto &drop : m_DropDuringConnect) {
+    if (matches(drop.first, service) && matches(drop.second, characteristic)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void FujifilmVirtualCamera::clearEvents() {
   m_Writes.clear();
   m_Notifications.clear();
@@ -197,6 +212,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_SuppressedCharacteristics.clear();
   m_FailedWrites.clear();
   m_DropOnWrite.clear();
+  m_DropDuringConnect.clear();
   m_StaleSubscribeSession = false;
 }
 
@@ -299,30 +315,35 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   write_event.response = response;
   m_Writes.push_back(write_event);
 
+  bool result = false;
   if (matches(service, pairServiceUUID()) && matches(characteristic, pairCharacteristicUUID())) {
     const std::vector<uint8_t> expected(m_Config.token.begin(), m_Config.token.end());
     m_TokenAccepted = (value == expected);
-    return m_TokenAccepted;
-  }
-
-  if (matches(service, pairServiceUUID())
-      && matches(characteristic, identifierCharacteristicUUID())) {
+    result = m_TokenAccepted;
+  } else if (matches(service, pairServiceUUID())
+             && matches(characteristic, identifierCharacteristicUUID())) {
     m_Identifier.assign(value.begin(), value.end());
-    return m_TokenAccepted;
-  }
-
-  if (matches(service, geotagServiceUUID())
-      && matches(characteristic, geotagCharacteristicUUID())) {
+    result = m_TokenAccepted;
+  } else if (matches(service, geotagServiceUUID())
+             && matches(characteristic, geotagCharacteristicUUID())) {
     m_LastGeotag = value;
-    return m_GeotagRequested;
+    result = m_GeotagRequested;
+  } else if (matches(service, shutterServiceUUID())
+             && matches(characteristic, shutterCharacteristicUUID())) {
+    result = (value.size() == 2);
   }
 
-  if (matches(service, shutterServiceUUID())
-      && matches(characteristic, shutterCharacteristicUUID())) {
-    return value.size() == 2;
+  // Fault injection: the peer resets mid-handshake. The write itself completes
+  // (result keeps its computed value), then the link is severed with an inline
+  // self-deleting drop, exactly as the NimBLE host task frees a setSelfDelete
+  // client after its disconnect callback. Do this last and touch nothing after:
+  // it may free this client and the characteristic this write was reached
+  // through, so _connect() continuing to its next m_Client dereference is what
+  // this exercises.
+  if (isDropDuringConnect(service, characteristic)) {
+    client.mockDropLinkSelfDelete(0x08);
   }
-
-  return false;
+  return result;
 }
 
 NimBLEAttValue FujifilmVirtualCamera::read(NimBLEClient &client,

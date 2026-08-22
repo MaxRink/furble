@@ -454,6 +454,31 @@ void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
   }
 }
 
+void NimBLEClient::mockDropLinkSelfDelete(int reason) {
+  // Sever the peer link and clear the connected flag, as a supervision-timeout or
+  // peer power-cycle does mid-handshake.
+  if (m_Peer != nullptr) {
+    m_Peer->disconnect(*this, reason);
+  }
+  m_Connected = false;
+
+  // Deliver onDisconnect through the callbacks the client currently holds, then
+  // free a self-deleting client inline, exactly as the NimBLE host task frees a
+  // setSelfDelete client right after its disconnect callback. When the owner has
+  // turned self-delete off for the connect window the client is kept alive, so a
+  // still-running _connect() can unwind against a valid (disconnected) client.
+  const bool selfDelete = m_DeleteOnDisconnect;
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onDisconnect(this, reason);
+  }
+  if (selfDelete) {
+    // delete-this: frees this client and the remote services and characteristics
+    // it owns. Nothing may touch this object, or a characteristic reached through
+    // it, after this returns.
+    eraseClient(this);
+  }
+}
+
 void NimBLEClient::mockStallTerminate() {
   // Model a peer that has gone away mid-session with a stalled ble_gap_terminate:
   // the client stays locally connected and its next disconnect() will not
