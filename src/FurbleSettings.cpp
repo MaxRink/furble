@@ -1,6 +1,7 @@
 #include <esp_bt.h>
 #include <nvs_flash.h>
 
+#include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
@@ -65,6 +66,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
 #if !defined(FURBLE_NO_DISPLAY)
     {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
+    {BATTERY_SAVER,     {BATTERY_SAVER, 0, "Battery Saver", "batt_saver", FURBLE_STR}        },
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
@@ -144,6 +146,10 @@ bool Settings::appliesImmediately(type_t type) {
     case BUTTON_MODE:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
+    // The profile is applied through the effective accessors, which are read at
+    // boot for the display bundle and on the next connect for the link bundle.
+    // A reboot guarantees the whole bundle, so report it as not immediate.
+    case BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
@@ -159,6 +165,9 @@ bool Settings::isDangerous(type_t type) {
     case CPU_FREQ:
     case SLEEP_CONN:
     case COMPANION:
+    // Enabling the profile changes connection and sleep behaviour, the same
+    // link-affecting class as the SLEEP_CONN it bundles.
+    case BATTERY_SAVER:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
@@ -476,6 +485,8 @@ void Settings::init(void) {
         case SLEEP_CONN:
         case COMPANION:
         case SD_GPX:
+        // Default off keeps today's behaviour, the profile is strictly opt-in.
+        case BATTERY_SAVER:
           save<bool>(setting.type, false);
           break;
         case GPS_BAUD:
@@ -515,5 +526,41 @@ void Settings::init(void) {
       }
     }
   }
+}
+
+bool Settings::batterySaver(void) {
+  return load<BATTERY_SAVER>();
+}
+
+bool Settings::sleepConnEffective(void) {
+  const bool stored = load<SLEEP_CONN>();
+#if defined(FURBLE_M5STICKS3)
+  // Only the StickS3 has the modem-sleep controller and the GPS burst lock, so
+  // it is the only board where forcing sleep-while-connected is both effective
+  // and safe. See plans/98 and the FurbleBatterySaver header note.
+  return BatterySaver::sleepConn(batterySaver(), stored, true);
+#else
+  return BatterySaver::sleepConn(batterySaver(), stored, false);
+#endif
+}
+
+bool Settings::connSaverEffective(void) {
+  return BatterySaver::connSaver(batterySaver(), load<CONN_SAVER>());
+}
+
+bool Settings::reconBackoffEffective(void) {
+  return BatterySaver::reconBackoff(batterySaver(), load<RECON_BACKOFF>());
+}
+
+uint8_t Settings::scanModeEffective(void) {
+  return BatterySaver::scanMode(batterySaver(), load<SCAN_MODE>());
+}
+
+uint8_t Settings::inactivityEffective(void) {
+  return BatterySaver::inactivity(batterySaver(), load<INACTIVITY>());
+}
+
+uint8_t Settings::displayOffEffective(void) {
+  return BatterySaver::displayOff(batterySaver(), load<DISPLAY_OFF>());
 }
 }  // namespace Furble
