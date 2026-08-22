@@ -8,11 +8,15 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "FurbleSimCaps.h"
+
 namespace Furble {
 
 // The simulator has no speaker, LED or vibration hardware. The fake reports
 // no capability beyond Off so the Feedback settings menu stays hidden, which
-// keeps the scripted menu routes at their existing positions.
+// keeps the scripted menu routes at their existing positions. A capture run
+// can set FURBLE_SIM_FEEDBACK to report the full output set so the Feedback
+// submenu renders.
 class Feedback {
  public:
   typedef enum {
@@ -54,16 +58,32 @@ class Feedback {
 
   static bool outputIncludesVibration(output_t output) { return output == OUTPUT_VIBRATE; }
 
-  bool supports(output_t output) const { return output == OUTPUT_OFF; }
+  bool supports(output_t output) const {
+    if (output == OUTPUT_OFF) {
+      return true;
+    }
+    return Furble::Sim::capEnabled("FURBLE_SIM_FEEDBACK");
+  }
 
   size_t getOutputOptions(std::array<output_t, OUTPUT_OPTION_COUNT> &options) const {
     options[0] = OUTPUT_OFF;
-    return 1;
+    if (!Furble::Sim::capEnabled("FURBLE_SIM_FEEDBACK")) {
+      return 1;
+    }
+    options[1] = OUTPUT_SOUND;
+    options[2] = OUTPUT_LIGHT;
+    options[3] = OUTPUT_VIBRATE;
+    options[4] = OUTPUT_SOUND_LIGHT;
+    return OUTPUT_OPTION_COUNT;
   }
 
   output_t outputForOption(uint8_t index) const {
-    (void)index;
-    return OUTPUT_OFF;
+    std::array<output_t, OUTPUT_OPTION_COUNT> options {};
+    const size_t count = getOutputOptions(options);
+    if (index >= count) {
+      return OUTPUT_OFF;
+    }
+    return options[index];
   }
 
   void reload(void) {}

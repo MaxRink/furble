@@ -2214,9 +2214,13 @@ void UI::simScenarioAction(const char *action) {
   if (command.compare(0, std::char_traits<char>::length(NAV_PREFIX), NAV_PREFIX) == 0) {
     const std::string name = command.substr(std::char_traits<char>::length(NAV_PREFIX));
     static const std::unordered_map<std::string, const char *> buttons = {
+        {"connect",     m_ConnectStr       },
+        {"scan",        m_ScanStr          },
+        {"delete",      m_DeleteStr        },
         {"settings",    m_SettingsStr      },
         {"display",     m_DisplayStr       },
         {"features",    m_FeaturesStr      },
+        {"infrared",    m_IRSettingsStr    },
         {"gps",         m_GPSStr           },
         {"gps_data",    m_GPSDataStr       },
         {"nmea",        m_GPSNMEAStr       },
@@ -2226,11 +2230,13 @@ void UI::simScenarioAction(const char *action) {
         {"bluetooth",   m_BluetoothStr     },
         {"about",       m_AboutStr         },
         {"power",       m_PowerStr         },
+        {"feedback",    m_FeedbackStr      },
         {"diagnostics", m_DiagnosticsStr   },
         {"device_info", m_DeviceInfoStr    },
         {"power_state", m_PowerStateStr    },
         {"ble",         m_BLEStr           },
         {"battery",     m_BatteryStr       },
+        {"storage",     m_StorageStr       },
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {

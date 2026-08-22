@@ -3,11 +3,14 @@
 
 #include <cstdint>
 
+#include "FurbleSimCaps.h"
+
 namespace Furble {
 
 // The simulator has no RMT peripheral. The fake reports unsupported so the
 // IR trigger and its settings menu stay hidden, which keeps the scripted
-// menu routes at their existing positions.
+// menu routes at their existing positions. A capture run can set
+// FURBLE_SIM_IR to report an IR LED present so the Infrared submenu renders.
 class IR {
  public:
   enum class protocol_t : uint8_t {
@@ -31,7 +34,7 @@ class IR {
 
   static void init(void) {}
 
-  bool isSupported(void) const { return false; }
+  bool isSupported(void) const { return Furble::Sim::capEnabled("FURBLE_SIM_IR"); }
 
   void fire(void) {}
 
