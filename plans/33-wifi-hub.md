@@ -510,18 +510,72 @@ Implemented in `feat/33c-mqtt`:
   `GPS::setExternalFix` and use the existing 30 second fix arbitration.
 - Lifted intervalometer timing into the MQTT task. It uses the saved interval
   setting and does not require the display UI.
-- The base does not contain PR33b WiFi provisioning. MQTT waits for an existing
-  `WIFI_STA_DEF` interface and remains inactive until one has an IP address.
-- This base has no `FurbleCompanion` source and no `setting_t.wire_id` field.
-  Camera IDs are deterministic address and type IDs until the persisted camera
+- Camera IDs are deterministic address and type IDs until the persisted camera
   IDs from plan 51 land. No provisional companion wire IDs are encoded here.
-- Hardware verification is pending. The sandboxed worktree could not run
-  PlatformIO; the `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3`
-  build was run on the harvest machine at commit time and succeeded.
-- None of the plans/65 coexistence rules are implemented in this branch.
-  There is no esp_wifi code on this base, so the BLE connection interval
-  floor above 50 ms while WiFi is up, the three camera cap in hub mode and
-  WIFI_PS_MIN_MODEM all defer to the WiFi radio bring-up PR.
+- None of the plans/65 coexistence rules are implemented in this branch. The BLE
+  connection interval floor above 50 ms while WiFi is up, the three camera cap in
+  hub mode and WIFI_PS_MIN_MODEM all defer to the WiFi radio bring-up PR.
+
+Rebased onto PR33b (`feat/33b-provisioning`) so the branch now carries PR33b's
+WiFi commits plus the three MQTT commits. The two superseded headless review
+commits that predated the PR33a rebase were dropped. Reconciliation with PR33b:
+
+- esp_netif single owner. PR33b owns the single `esp_netif_init()` and
+  `esp_event_loop_create_default()` in `app_main`, and the network module
+  (WiFi now, Ethernet later per plan 42) creates the interface. `MQTT` no longer
+  calls either; it only rides on top of the shared stack.
+- Generic network-up seam. `MQTT::networkReady()` no longer keys on the
+  `WIFI_STA_DEF` handle. It walks every `esp_netif` and starts the client once
+  any interface is up with an assigned IPv4 address. This tracks the
+  `IP_EVENT_*_GOT_IP` outcome without binding to WiFi, so a wired Ethernet node
+  satisfies it unchanged.
+- `src/CMakeLists.txt` keeps PR33b's `esp_wifi esp_netif esp_event nvs_flash
+  lwip` and adds `mqtt json` to both the headless and display register branches.
+  `esp-mqtt`, `json` and the TLS stack are IDF built-ins; `esp-mqtt` pulls
+  `esp-tls` and mbedtls in transitively for the `mqtts://` cert bundle, so no
+  extra requirement and no `idf_component.yml` registry entry are needed.
+- `sdkconfig.esp32-s3-headless`, the primary MQTT target, gains
+  `CONFIG_MQTT_PROTOCOL_311=y` and `CONFIG_MQTT_TRANSPORT_SSL=y` to match the
+  five release configs. MQTT wire IDs 56-61 do not collide with PR33b's WiFi/NTP
+  IDs 51-55 or PR153's Battery Saver.
+- Host ctests pass and the protocol goldens regenerate with no diff. Hardware
+  verification against a broker is still owed and gates the merge.
+
+Known blocker after the rebase: release flash overflow. Stacking `esp-mqtt`,
+the TLS cert bundle and cJSON on top of PR33b WiFi plus the full LVGL UI does
+not fit the shared 1740800 byte OTA app slot in `partitions_two_ota_large.csv`.
+Build results at the rebased head (`FURBLE_VERSION=dev FURBLE_TEST=0`):
+
+| env | result | flash used / max | over |
+| --- | --- | --- | --- |
+| esp32-s3-headless | pass | 1694564 / 1740800 (97.3%) | fits |
+| m5stick-s3-debug | pass | 2073109 / 3145728 (65.9%) | fits, 3M factory |
+| m5stick-c | pass | 1724280 / 1740800 (99.1%) | 16520 B spare |
+| m5stick-c-plus | fail | 1740932 / 1740800 (100.0%) | 132 B |
+| m5stick-s3 | fail | 1781792 / 1740800 (102.4%) | 40992 B |
+| m5stack-core | fail | 1787840 / 1740800 (102.7%) | 47040 B |
+| m5stack-core2 | fail | 1788668 / 1740800 (102.7%) | 47868 B |
+
+The primary MQTT targets, the display-less headless env and the USB-flashed
+m5stick-s3-debug 3M factory image, both fit. Four of the five display release
+envs overflow. Resolving this is a maintainer decision to make with the broker
+bench, not a mechanical rebase change, and the candidate levers each have a
+cost:
+
+- Shrink the mbedtls cert bundle from the full roots to the common subset
+  (`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN`). Saves roughly 150 KB, so
+  every release env would fit, but it drops trust in the less common public
+  roots. A self-hosted Mosquitto with a private CA is unaffected because that
+  path needs an explicit certificate anyway.
+- Enlarge the S3 release OTA slots. The S3 has 8 MB flash with spare room, so
+  m5stick-s3 alone can grow. It does nothing for the four 4 MB ESP32 boards,
+  whose two-OTA layout has no slack.
+- Gate MQTT to the headless and S3 targets and drop it from the 4 MB display
+  boards. The largest change and a product call about which boards are hubs.
+
+Until one is chosen, MQTT builds and runs on the headless hub and the S3 debug
+image, which are the boards the plan 33 studio-hub and plan 42 wired-Ethernet
+use cases actually target.
 
 ---
 
