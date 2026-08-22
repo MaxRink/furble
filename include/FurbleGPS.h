@@ -331,6 +331,9 @@ class GPS {
 #if !defined(FURBLE_NO_DISPLAY)
   lv_obj_t *m_Icon = NULL;
   const lv_image_dsc_t *m_IconSymbol = NULL;
+  // last applied degraded tint state, so the periodic poll only re-tints the
+  // status icon on a change and never re-invalidates it every update
+  bool m_IconDegraded = false;
   lv_timer_t *m_Timer = NULL;
 #endif
 

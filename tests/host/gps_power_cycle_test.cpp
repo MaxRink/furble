@@ -165,6 +165,40 @@ bool testResyncClears() {
   return g_Failures == before;
 }
 
+// The on-screen indicator reuses gpsIndicatorDegraded() to light the status icon
+// only when GPS is enabled and the cycle is degraded. This pins that mapping so
+// a default off GPS never trips the indicator, a degraded episode lights it, and
+// a healthy resync or a GPS off clears it back to normal.
+bool testIndicatorMapping() {
+  std::cout << "test: the on-screen indicator lights only when enabled and degraded\n";
+  const int before = g_Failures;
+
+  // the mapping is gated on enabled, so a default off GPS is never indicated
+  check(!Furble::gpsIndicatorDegraded(false, false), "off and healthy is not indicated");
+  check(!Furble::gpsIndicatorDegraded(false, true), "off but degraded is still not indicated");
+  check(!Furble::gpsIndicatorDegraded(true, false), "enabled and healthy is not indicated");
+  check(Furble::gpsIndicatorDegraded(true, true), "enabled and degraded is indicated");
+
+  // tie it to the real retry lifecycle: enabled GPS lights on entry, clears on
+  // resync, and an off GPS is never indicated whatever the cycle state
+  GpsDegradedRetry retry;
+  const uint32_t now = 3000;
+  check(!Furble::gpsIndicatorDegraded(true, retry.active()),
+        "a healthy cycle does not light the indicator");
+
+  driveBadBurstsAndDegrade(retry, now, BAD_BURSTS_TO_RESYNC);
+  check(Furble::gpsIndicatorDegraded(true, retry.active()),
+        "a degraded episode lights the indicator");
+  check(!Furble::gpsIndicatorDegraded(false, retry.active()),
+        "an off GPS is not indicated even while the cycle is degraded");
+
+  retry.reset();
+  check(!Furble::gpsIndicatorDegraded(true, retry.active()),
+        "a healthy resync clears the indicator");
+
+  return g_Failures == before;
+}
+
 }  // namespace
 
 int main() {
@@ -174,6 +208,7 @@ int main() {
   testNeverHeldForever();
   testBackoffIsBounded();
   testResyncClears();
+  testIndicatorMapping();
 
   if (g_Failures > 0) {
     std::cerr << g_Failures << " check(s) failed\n";

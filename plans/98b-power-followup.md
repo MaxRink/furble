@@ -58,6 +58,24 @@ halving battery life after any spell of poor reception, for example indoors.
 - Diagnostics: `gps` console status prints `degraded:` and `retries:`, and the
   sim profiler sees a `degraded` GPS state.
 
+## On-screen indicator
+
+The degraded state was console only, so a degraded, retrying GPS was invisible on
+the device. A subtle, non-intrusive indicator now surfaces it on screen, without
+a modal or a new widget.
+
+- The pure `Furble::gpsIndicatorDegraded(enabled, degraded)` in
+  `include/FurbleGPSPowerCycle.h` gates the indicator on GPS being enabled, so a
+  default off GPS never trips it and a resync or a GPS off clears it.
+- The header status icon reuses its existing glyph slot: `GPS::update()` layers a
+  subtle amber warning tint on the icon while degraded, and shows the searching
+  glyph rather than the disabled glyph when there is no fix, so a retrying GPS
+  never looks switched off. The tint is a local recolor override cleared on
+  recovery so the theme recolor returns. Both the tint and glyph updates keep the
+  existing changed check, so the periodic poll only redraws on a state change.
+- The GPS NMEA diagnostics page fix label gains a `degraded, retry N` line,
+  guarded by the existing `setLabelTextFmtIfChanged` setter.
+
 ## Verification
 
 - Host regression `tests/host/gps_power_cycle_test.cpp` (ctest
@@ -65,7 +83,9 @@ halving battery life after any spell of poor reception, for example indoors.
   `GpsDegradedRetry` policy and asserts a finite retry is scheduled, the retry is
   always due within the cap (never held forever), the backoff is bounded, and a
   healthy resync clears the state. Mutation check: removing the backoff cap makes
-  the suite fail; restoring it returns to green. Full host suite 24/24 pass.
+  the suite fail; restoring it returns to green. The same test also pins the
+  on-screen indicator mapping: `gpsIndicatorDegraded()` lights only when GPS is
+  enabled and the cycle is degraded, and clears on resync or GPS off.
 - Firmware builds: five release envs plus `m5stick-s3-debug`.
 - Owed: an on-device confirmation on the M5StickS3 that the lock current drops
   during the degraded backoff and recovers on resync. The logic is sim testable

@@ -1514,6 +1514,12 @@ void GPS::update(void) {
   }
 
 #if !defined(FURBLE_NO_DISPLAY)
+  // the degraded, self recovering cycle keeps retrying with the lock released.
+  // Surface it on screen so a degraded GPS is not console only: a subtle warning
+  // tint on the status icon, and, when there is no fix to show, the searching
+  // glyph so a retrying GPS never looks switched off.
+  const bool degraded = gpsIndicatorDegraded(m_Enabled.load(), isDegraded());
+
   // setting the source invalidates the image and forces a decode, only do it
   // when the icon actually changes
   const lv_image_dsc_t *symbol = &icon_location_disabled;
@@ -1521,10 +1527,26 @@ void GPS::update(void) {
     symbol = &icon_my_location;
   } else if (source == SOURCE_COMPANION) {
     symbol = &icon_location_searching;
+  } else if (degraded) {
+    symbol = &icon_location_searching;
   }
   if ((m_Icon != NULL) && (m_IconSymbol != symbol)) {
     m_IconSymbol = symbol;
     lv_image_set_src(m_Icon, symbol);
+  }
+
+  // the tint is a local recolor override, guarded so the poll only touches the
+  // style on a change. Clearing removes the local property so the theme recolor
+  // returns, so recovery or a GPS off restores the normal icon.
+  if ((m_Icon != NULL) && (m_IconDegraded != degraded)) {
+    m_IconDegraded = degraded;
+    if (degraded) {
+      lv_obj_set_style_image_recolor(m_Icon, lv_color_hex(0xFFB300), 0);
+      lv_obj_set_style_image_recolor_opa(m_Icon, LV_OPA_COVER, 0);
+    } else {
+      lv_obj_remove_local_style_prop(m_Icon, LV_STYLE_IMAGE_RECOLOR, 0);
+      lv_obj_remove_local_style_prop(m_Icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
+    }
   }
 #endif
 }
