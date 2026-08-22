@@ -536,7 +536,12 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
+#if defined(FURBLE_NO_DISPLAY)
+    // No UI task headless, reload the GPX log settings in place.
+    GPS::getInstance().reloadLogSettings();
+#else
     UI::sendRequest(UI::Request::SD_RELOAD, 0);
+#endif
   }
 
   // The UI caches the IR menu visibility, so it has to be told as well.
@@ -550,10 +555,14 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::FEEDBACK_RELOAD, 0);
   }
 
-  // The UI caches the power policies, tell it to re-read them.
+  // The UI caches the power policies, tell it to re-read them. The headless
+  // build runs no auto off or low battery policy loop, so there is nothing to
+  // reload there.
+#if !defined(FURBLE_NO_DISPLAY)
   if ((setting.type == Settings::AUTO_OFF) || (setting.type == Settings::LOW_BATT)) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
+#endif
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -617,7 +626,12 @@ int cmdUI(int argc, char **argv) {
     return fail("usage: ui audit");
   }
 
+#if defined(FURBLE_NO_DISPLAY)
+  // The UI audit inspects the LVGL widget tree, which the headless build has no.
+  return fail("not supported in this build");
+#else
   return sendPrintingRequest(UI::Request::AUDIT, 0);
+#endif
 }
 
 /*
@@ -1020,6 +1034,12 @@ int cmdPerfHeap(void) {
 }
 
 int cmdPerfLVGL(int argc, char **argv) {
+#if defined(FURBLE_NO_DISPLAY)
+  // LVGL stats and the overlay only exist in the display build.
+  (void)argc;
+  (void)argv;
+  return fail("not supported in this build");
+#else
   if (argc == 2) {
     return sendPrintingRequest(UI::Request::PERF, -1);
   }
@@ -1034,6 +1054,7 @@ int cmdPerfLVGL(int argc, char **argv) {
   }
 
   return fail("usage: perf lvgl | perf lvgl overlay on | off");
+#endif
 }
 
 int cmdPerf(int argc, char **argv) {

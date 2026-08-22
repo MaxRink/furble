@@ -142,8 +142,10 @@ GPS &GPS::getInstance() {
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 0,
-#if defined(FURBLE_M5STICKS3)
-        // XTAL keeps the baud stable while DFS scales the APB clock
+#if defined(FURBLE_M5STICKS3) || defined(CONFIG_IDF_TARGET_ESP32S3)
+        // XTAL keeps the baud stable while DFS scales the APB clock. It is also
+        // the only valid choice on the ESP32-S3, which has no REF_TICK source,
+        // so the headless S3 profile lands here too.
         .source_clk = UART_SCLK_XTAL,
 #else
         .source_clk = UART_SCLK_REF_TICK,

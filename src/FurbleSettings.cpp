@@ -124,6 +124,9 @@ bool Settings::appliesImmediately(type_t type) {
     case LOW_BATT:
     case SD_GPX:
     case GPX_PERIOD:
+#if !defined(FURBLE_NO_DISPLAY)
+    case DISPLAY_MODE:
+#endif
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
@@ -195,6 +198,9 @@ bool Settings::isDangerous(type_t type) {
     case SD_GPX:
     case GPX_PERIOD:
     case BOOT_SPLASH:
+#if !defined(FURBLE_NO_DISPLAY)
+    case DISPLAY_MODE:
+#endif
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif

@@ -23,6 +23,43 @@
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 
+#if defined(FURBLE_NO_DISPLAY)
+namespace Furble {
+
+// Device status for the companion service. The display build serves these from
+// the UI task, the headless build has no UI so it reads M5.Power directly and
+// reports an idle intervalometer.
+int32_t UI::getBatteryLevel(void) {
+  return M5.Power.getBatteryLevel();
+}
+
+int16_t UI::getBatteryVoltage(void) {
+  return M5.Power.getBatteryVoltage();
+}
+
+int32_t UI::getBatteryCurrent(void) {
+  return M5.Power.getBatteryCurrent();
+}
+
+int16_t UI::getBatteryVBUSVoltage(void) {
+  return M5.Power.getVBUSVoltage();
+}
+
+bool UI::isBatteryCharging(void) {
+  return static_cast<int>(M5.Power.isCharging()) == 1;
+}
+
+uint8_t UI::getIntervalometerState(void) {
+  return 0;
+}
+
+uint16_t UI::getIntervalometerRemaining(void) {
+  return 0;
+}
+
+}  // namespace Furble
+#endif
+
 #if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
 namespace Furble {
 namespace {
