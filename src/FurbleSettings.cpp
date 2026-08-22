@@ -27,7 +27,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
-    {IMU,               {IMU, 36, "IMU", "imu", FURBLE_STR}                                  },
+    {IMU,               {IMU, 45, "IMU", "imu", FURBLE_STR}                                  },
     {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
     {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
     {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
