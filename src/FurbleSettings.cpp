@@ -119,6 +119,9 @@ bool Settings::appliesImmediately(type_t type) {
     case LOW_BATT:
     case SD_GPX:
     case GPX_PERIOD:
+    case WIFI:
+    case NTP:
+    case NTP_SERVER:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
@@ -142,6 +145,8 @@ bool Settings::appliesImmediately(type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
+    case WIFI_SSID:
+    case WIFI_PSK:
       return false;
   }
   return false;
@@ -199,6 +204,11 @@ bool Settings::isDangerous(type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
+    case WIFI:
+    case WIFI_SSID:
+    case WIFI_PSK:
+    case NTP:
+    case NTP_SERVER:
       return false;
   }
   return false;

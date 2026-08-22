@@ -248,6 +248,9 @@ static void vUITask(void *param) {
   // geotag fixes still push to the camera.
   constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
   int64_t nextGPSService = esp_timer_get_time();
+#if defined(FURBLE_CONSOLE)
+  uint32_t count = 0;
+#endif
   while (true) {
     Platform::getInstance().update();
 #if defined(FURBLE_CONSOLE)

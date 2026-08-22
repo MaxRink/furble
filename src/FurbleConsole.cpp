@@ -1153,6 +1153,14 @@ int cmdPerf(int argc, char **argv) {
   return fail("expected tasks, heap or lvgl");
 }
 #else
+int cmdPerfTasks(void) {
+  return fail("not supported in headless build");
+}
+
+int cmdPerfHeap(void) {
+  return fail("not supported in headless build");
+}
+
 int cmdPerf(int argc, char **argv) {
   (void)argc;
   (void)argv;
