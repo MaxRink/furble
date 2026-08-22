@@ -218,6 +218,49 @@ target_compile_options(control_reclaim_uaf_test PRIVATE
 target_link_options(control_reclaim_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(control_reclaim_uaf_test PRIVATE Threads::Threads)
 
+# Seeded BLE lifecycle fuzzer. Drives the real Control state machine through
+# randomised, deterministic (seeded) sequences of connect/disconnect/reconnect
+# operations with injected BLE faults and asserts a battery of invariants after
+# each. It compiles its own copy of the furble sources and the mock BLE seam so
+# the whole call graph (including the mock's client frees) is built under the
+# AddressSanitizer + UndefinedBehaviorSanitizer, which is how the reclaim
+# use-after-free class is caught. The sanitizer is used only when the host
+# toolchain supports it, so the fuzz job stays portable.
+set(FUZZ_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fuzz)
+include(CheckCXXCompilerFlag)
+set(FUZZ_SANITIZER_FLAGS -fsanitize=address,undefined -fno-sanitize-recover=all)
+set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
+check_cxx_compiler_flag("" FUZZ_HAVE_SANITIZERS)
+unset(CMAKE_REQUIRED_FLAGS)
+if(NOT FUZZ_HAVE_SANITIZERS)
+  set(FUZZ_SANITIZER_FLAGS "")
+endif()
+
+add_executable(control_fuzz
+               ${FUZZ_DIR}/control_fuzz.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+target_include_directories(control_fuzz
+                           BEFORE PRIVATE
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(control_fuzz PRIVATE -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h ${FUZZ_SANITIZER_FLAGS})
+target_link_options(control_fuzz PRIVATE ${FUZZ_SANITIZER_FLAGS})
+target_link_libraries(control_fuzz PRIVATE Threads::Threads)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -257,4 +300,24 @@ if(BUILD_TESTING)
   # missing characteristic. Both run as normal passing tests.
   add_test(NAME fujifilm-missing-shutter-service COMMAND fujifilm_missing_shutter_service_test)
   add_test(NAME fujifilm-missing-shutter-char COMMAND fujifilm_missing_shutter_char_test)
+
+  # Seeded BLE lifecycle fuzz. Each fixed seed is a deterministic, reproducible
+  # run; running several widens the explored interleavings while staying green on
+  # the fixed code. A regression or a new bug turns the matching seed red and the
+  # failure line prints the exact seed and operation to replay.
+  foreach(seed 1 2 3 7 42)
+    add_test(NAME control-fuzz-seed-${seed} COMMAND control_fuzz ${seed} 10)
+  endforeach()
+
+  # Seed-pinned regression guards for the two FujifilmBasic missing-shutter
+  # findings, driven through the real control lifecycle by the fuzzer. Both are
+  # now fixed: FujifilmBasic::_connect returns false when the shutter service or
+  # characteristic is missing. Each repro runs clean as a normal passing test.
+  # The service repro drives the connect in a forked child and asserts it never
+  # crashes; the characteristic repro asserts the connect never reports a
+  # connected camera whose shutter is silently dead.
+  add_test(NAME control-fuzz-repro-missing-shutter-service
+           COMMAND control_fuzz --repro missing-shutter-service 1)
+  add_test(NAME control-fuzz-repro-missing-shutter-char
+           COMMAND control_fuzz --repro missing-shutter-char 1)
 endif()
