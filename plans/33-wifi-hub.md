@@ -481,6 +481,12 @@ Rebase onto the PR-A base (resolved):
   BT controller and NimBLE enabled, so the headless build compiles from clean.
 - `esp_netif_init()` and `esp_event_loop_create_default()` are called exactly
   once at boot, guarded so WiFi bring-up does not double-init them.
+- The `m5stick-s3-debug` env adds the USB console and verbose logging on top of
+  the release image. With the WiFi station and LWIP netstack linked in, that
+  combination overflows the 1700K per-slot OTA app size. The debug image is USB
+  flashed and never does OTA, so it now uses `partitions_s3_debug.csv`, a single
+  3M factory app on the 8MB S3 flash. The five release envs keep the two-OTA
+  table unchanged.
 - Hardware verification is still pending. On-device WiFi association, IP
   acquisition and NTP sync must be checked on a real S3 with an AP and
   credentials before this merges.
