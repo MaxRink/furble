@@ -44,21 +44,6 @@ class UI {
   static void serviceRequests(void);
 #endif
 
-  /**
-   * Intervalometer state for the companion status record.
-   *
-   * The intervalometer state machine still lives in the GUI, so the headless
-   * build honestly reports idle with zero shots remaining.
-   */
-  static uint8_t getIntervalometerState(void);
-  static uint16_t getIntervalometerRemaining(void);
-
-  /** Battery readings shared with the companion status record. */
-  static int32_t getBatteryLevel(void);
-  static int16_t getBatteryVoltage(void);
-  static int32_t getBatteryCurrent(void);
-  static int16_t getBatteryVBUSVoltage(void);
-  static bool isBatteryCharging(void);
 };
 }  // namespace Furble
 

@@ -6,6 +6,7 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleMQTT.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -594,6 +595,14 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       if (m_SettingReloadCallback) {
         m_SettingReloadCallback(false);
       }
+      break;
+    case Settings::MQTT:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    case Settings::MQTT_HA:
+      MQTT::getInstance().reloadSetting();
       break;
     default:
       break;
