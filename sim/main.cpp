@@ -1,5 +1,6 @@
 #include <M5GFX.h>
 
+#include <cctype>
 #include <cstdlib>
 #include <string>
 
@@ -13,6 +14,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "capture.h"
 #include "driver.h"
 
 const char *LOG_TAG = FURBLE_STR;
@@ -37,6 +39,14 @@ int runSimulator(bool *) {
   BootScreen::step("Storage");
   BootScreen::step("Power");
 
+  // The boot splash draws straight to the panel before the LVGL UI exists, so
+  // a script cannot reach it. Capturing here, mid progress bar, gives docs a
+  // real splash frame. Set FURBLE_SIM_CAPTURE_SPLASH to the output PNG path.
+  if (const char *splash = std::getenv("FURBLE_SIM_CAPTURE_SPLASH");
+      splash != nullptr && splash[0] != '\0') {
+    Sim::captureFrame(splash);
+  }
+
   // The companion service mirrors the rig request so the rig transport can
   // attach. Scenarios drive every other setting through their seed lines.
   Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
@@ -46,12 +56,39 @@ int runSimulator(bool *) {
     auto camera = CameraList::last();
     CameraList::save(camera.get());
     camera->setActive(true);
+  } else if (Sim::scenarioSettingIsTrue("saved_camera")) {
+    // Seed a saved but inactive camera so the Connect and Delete list pages
+    // render entries and their main-menu buttons are enabled. Unlike
+    // autoconnect this does not mark the camera active, so no connection is
+    // attempted at boot.
+    CameraList::addFauxNY();
+    auto camera = CameraList::last();
+    CameraList::save(camera.get());
   }
 
   // Let capture scripts pick a theme without navigating the roller. The theme
   // is applied once at UI construction, so seed it before the UI exists.
   if (const char *theme = std::getenv("FURBLE_SIM_THEME"); theme != nullptr && theme[0] != '\0') {
     Settings::save<Settings::THEME>(std::string(theme));
+  }
+
+  // Let capture scripts and the UI-collision sweep pick a text size without
+  // navigating the roller and restarting. Like the theme, the font is chosen
+  // once at UI construction from the TEXT_SIZE setting, so seed it here before
+  // the UI exists. Accepts a name (small/normal/large, case insensitive) or the
+  // numeric setting value (0/1/2).
+  if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE"); size != nullptr && size[0] != '\0') {
+    std::string value(size);
+    for (char &c : value) {
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (value == "small" || value == "0") {
+      Settings::save<Settings::TEXT_SIZE>(Settings::TEXT_SIZE_SMALL);
+    } else if (value == "large" || value == "2") {
+      Settings::save<Settings::TEXT_SIZE>(Settings::TEXT_SIZE_LARGE);
+    } else {
+      Settings::save<Settings::TEXT_SIZE>(Settings::TEXT_SIZE_NORMAL);
+    }
   }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));

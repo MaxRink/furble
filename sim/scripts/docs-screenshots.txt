@@ -2,35 +2,72 @@
 # Navigation uses the deterministic scenario actions. Headless input injection
 # (key/btn) does not drive LVGL menu activation, so pages are reached through
 # the same real menu-button clicks the nav action dispatches.
+#
+# The capture harness (sim/scripts/docs-capture.sh) runs this with the optional
+# capability env vars set (FURBLE_SIM_IR / FURBLE_SIM_FEEDBACK / FURBLE_SIM_SD)
+# so the Infrared, Feedback and Storage submenus render, FURBLE_SIM_NO_TOUCH set
+# so the Remote page uses the non-touch layout, and FURBLE_SIM_RIG=0 so the
+# header shows the shipped title. The boot splash is captured separately by the
+# harness through FURBLE_SIM_CAPTURE_SPLASH, before the LVGL UI takes over.
 seed fauxny true
 seed gps true
-wait 400
+seed saved_camera true
+wait 500
 
-# Main menu.
+# Main menu. A saved camera is seeded so the Connect and Delete entries enable.
 home
-wait 200
+wait 300
 capture main
 print ui.page
 
+# Connect, Scan and Delete list pages. Connect and Delete list the saved camera;
+# Scan runs the fake scan that surfaces the FauxNY test camera.
+action nav connect
+wait 400
+capture connect-list
+print ui.page
+
+home
+wait 300
+action nav scan
+wait 700
+capture scan-list
+print ui.page
+
+home
+wait 300
+action nav delete
+wait 400
+capture delete-list
+print ui.page
+
 # Settings root and submenus.
+home
+wait 300
 action nav settings
-wait 250
+wait 350
 capture settings
 print ui.page
 
 action nav display
-wait 250
+wait 350
 capture settings-display
 print ui.page
 
 action nav features
-wait 250
+wait 350
 capture settings-features
+print ui.page
+
+# Infrared submenu, visible because the harness reports an IR LED present.
+action nav infrared
+wait 350
+capture settings-infrared
 print ui.page
 
 # GPS: seeded on, so the full receiver list renders.
 action nav gps
-wait 250
+wait 350
 capture settings-gps
 print ui.page
 
@@ -40,91 +77,115 @@ capture gps-data
 print ui.page
 
 action nav nmea
-wait 600
+wait 700
 capture gps-nmea
 print ui.page
 
 action nav timer
-wait 250
+wait 350
 capture settings-timer
 print ui.page
 
 action nav theme
-wait 250
+wait 350
 capture settings-theme
 print ui.page
 
 action nav text_size
-wait 250
+wait 350
 capture settings-text-size
 print ui.page
 
 action nav bluetooth
-wait 250
+wait 350
 capture settings-bluetooth
 print ui.page
 
 action nav about
-wait 250
+wait 350
 capture settings-about
 print ui.page
 
 action nav power
-wait 250
+wait 350
 capture settings-power
 print ui.page
 
 action nav battery
-wait 400
+wait 500
 capture battery
 print ui.page
 
+# Feedback submenu, visible because the harness reports a feedback output.
+action nav feedback
+wait 350
+capture settings-feedback
+print ui.page
+
 action nav diagnostics
-wait 250
+wait 350
 capture settings-diagnostics
 print ui.page
 
 action nav device_info
-wait 300
+wait 400
 capture diag-device-info
 print ui.page
 
 action nav power_state
-wait 300
+wait 400
 capture diag-power-state
 print ui.page
 
 action nav ble
-wait 300
+wait 400
 capture diag-ble
+print ui.page
+
+# Storage submenu, visible because the harness reports a mounted SD card.
+action nav storage
+wait 500
+capture settings-storage
 print ui.page
 
 # Bulb duration page reached through the preset-step action, which opens the
 # Bulb Duration page and snaps the stored duration onto the preset series.
 home
-wait 150
+wait 250
 action preset-step-up
-wait 300
+wait 400
 capture bulb
 print ui.page
+
+# Companion pairing modal. Inject a pending pairing PIN so the accept/reject
+# dialog the companion service raises renders without a rig peer. Reject it after
+# the capture so the modal does not linger over the following pages.
+home
+wait 250
+action companion-pair-request
+wait 500
+capture companion-pairing
+print ui.modal
+action companion-reject
+wait 250
 
 # Connect flow. action connect drives the real connect the camera button
 # triggers. Capture the connecting overlay first, then the connected page.
 home
-wait 150
-action connect
 wait 250
+action connect
+wait 300
 capture connecting
 print ui.page
 print ui.connect_box
-wait 1600
+wait 1700
 capture connected
 print ui.page
 print ui.connected
 
-# Remote shutter page while connected.
+# Remote shutter page while connected, non-touch layout on this narrow board.
 action blind
-wait 300
+wait 500
 capture remote
 print ui.page
 

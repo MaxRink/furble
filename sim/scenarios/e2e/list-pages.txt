@@ -1,0 +1,24 @@
+# The Connect, Scan and Delete list pages are reachable and populated. A seeded
+# saved camera enables the Connect and Delete entries, and the fake scan surfaces
+# the FauxNY test camera on the Scan page.
+seed fauxny true
+seed saved_camera true
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+# Connect list: the saved camera enables the entry and the page opens.
+action nav connect
+wait 200
+assert ui.page connect
+
+home
+wait 200
+# Scan list: entering the page runs the fake scan.
+action nav scan
+wait 400
+assert ui.page scan
+
+exit
