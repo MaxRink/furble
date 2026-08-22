@@ -631,6 +631,15 @@ target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
 
+# Pure CASIC and NMEA helper logic from lib/furble/protocol/GpsCasic. No BLE or
+# NVS dependency, so it compiles the production source directly.
+add_executable(gps_casic_test
+               gps_casic_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp)
+target_include_directories(gps_casic_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                              -Wno-unused-parameter)
+
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
 # peer, so the full connect/disconnect/reconnect state machine is exercised here,
@@ -1055,6 +1064,7 @@ if(BUILD_TESTING)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
+  add_test(NAME gps-casic COMMAND gps_casic_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
 
