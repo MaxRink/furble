@@ -32,8 +32,14 @@ Platform &Platform::getInstance(void) {
     // M5.Touch.isEnabled() is true regardless of the simulated board. A scenario
     // can seed "no_touch true" to detach it and exercise the physical-button
     // (non-touch) UI branch that boards like the M5StickS3 use, including the
-    // floating on-screen button indicators.
-    if (Sim::scenarioSettingIsTrue("no_touch")) {
+    // floating on-screen button indicators. The FURBLE_SIM_NO_TOUCH environment
+    // variable does the same, so a capture harness can select the non-touch
+    // layout per board without editing the shared scenario script.
+    const char *noTouchEnv = std::getenv("FURBLE_SIM_NO_TOUCH");
+    const bool noTouch =
+        Sim::scenarioSettingIsTrue("no_touch")
+        || (noTouchEnv != nullptr && noTouchEnv[0] != '\0' && noTouchEnv[0] != '0');
+    if (noTouch) {
       M5.Touch.begin(nullptr);
     }
 

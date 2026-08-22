@@ -69,9 +69,18 @@ INCLUDES="\
 -I/usr/local/include \
 -I/usr/local/include/SDL2"
 
+# The companion rig transport and its placeholder header title
+# ("RIG BUILD, NO BLE, NO ENCRYPTION") are on by default so the rig scenarios
+# keep working. Doc captures set FURBLE_SIM_RIG=0 to build without the rig, which
+# renders the shipped one-line header title instead of the placeholder string.
+RIG_DEFINE="-DFURBLE_RIG"
+if [ "${FURBLE_SIM_RIG:-1}" = "0" ]; then
+  RIG_DEFINE=
+fi
+
 DEFINES="\
 -D$FURBLE_BOARD \
--DFURBLE_RIG \
+$RIG_DEFINE \
 -DFURBLE_SIM \
 -DFURBLE_VERSION=\"sim\" \
 -DFURBLE_TEST_VERSION=1 \

@@ -598,9 +598,20 @@ void rigInjectPendingPairing(uint32_t pin) {
 
 #else
 
+#include <atomic>
+
 #include "driver.h"
 
 namespace Furble::Sim {
+namespace {
+
+// A non-rig build has no companion TCP transport, but the injected-pairing
+// seam still works so the companion pairing dialog can be reproduced headlessly
+// (used by the companion-pair-request scenario action and the docs capture).
+std::atomic<bool> injectedPairing {false};
+std::atomic<uint32_t> injectedPin {0};
+
+}  // namespace
 
 void rigConfigure(bool, uint16_t, bool, bool, uint32_t) {}
 void startRig(void) {}
@@ -608,17 +619,22 @@ bool rigRequested(void) {
   return false;
 }
 bool rigIsEnabled(void) {
-  return false;
+  return injectedPairing.load();
 }
 bool rigHasPendingPairing(void) {
-  return false;
+  return injectedPairing.load();
 }
 uint32_t rigPendingPairingPin(void) {
-  return 0;
+  return injectedPin.load();
 }
-void rigConfirmPairing(bool) {}
+void rigConfirmPairing(bool) {
+  injectedPairing.store(false);
+}
 void rigReloadSetting(bool) {}
-void rigInjectPendingPairing(uint32_t) {}
+void rigInjectPendingPairing(uint32_t pin) {
+  injectedPin.store(pin);
+  injectedPairing.store(true);
+}
 
 }  // namespace Furble::Sim
 

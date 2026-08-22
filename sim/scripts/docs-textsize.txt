@@ -1,0 +1,41 @@
+# Text size gallery capture. The board is chosen by the build (panel env vars),
+# the theme by FURBLE_SIM_THEME, and the UI text size by FURBLE_SIM_TEXTSIZE
+# (small / normal / large). The harness runs this script once per size so the
+# same pages render at each option and the difference is obvious side by side.
+# Three representative pages are captured: the Settings root list (a menu of
+# label rows), a label:value diagnostics page (Device info) and the Connected
+# menu. Navigation uses the deterministic nav and connect actions.
+seed fauxny true
+seed gps true
+seed saved_camera true
+wait 500
+
+# Settings root: a dense list of menu labels where the row height tracks the
+# font size directly.
+home
+wait 300
+action nav settings
+wait 400
+capture settings
+print ui.page
+
+# Device info: a read-only label:value page under Feedback > Diagnostics.
+action nav feedback
+wait 400
+action nav diagnostics
+wait 400
+action nav device_info
+wait 400
+capture device-info
+print ui.page
+
+# Connected menu: the live connect flow renders the connected status header and
+# the shutter action rows at the chosen size.
+home
+wait 300
+action connect
+wait 1800
+capture connected
+print ui.page
+
+exit
