@@ -20,7 +20,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -33,10 +33,12 @@
 
 #include "Camera.h"
 #include "FurbleBtDebug.h"
+#include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
+#include "FurbleMQTT.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSD.h"
@@ -50,6 +52,7 @@ namespace {
 
 constexpr const char *PROMPT = "furble> ";
 constexpr size_t MAX_LINE = 128;
+constexpr size_t MAX_SETTING_STRING = MAX_LINE - 1;
 constexpr uint32_t TASK_STACK = 8192;
 
 // Below the control task (4) and the per camera target tasks (3).
@@ -208,13 +211,17 @@ const char *settingType(Settings::type_t type) {
       return "uint16";
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
-      return "enum";
 #endif
+      return "uint8";
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -228,6 +235,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::AUTOCONNECT:
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
@@ -280,6 +289,12 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::LOW_BATT:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
+    case Settings::MQTT:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    case Settings::MQTT_HA:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -322,24 +337,22 @@ void printValue(const char *prefix, Settings::type_t type) {
       break;
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
-    {
-      const uint8_t mode = Settings::load<uint8_t>(type);
-      const char *name = "unknown";
-      if (mode == Settings::GUI) {
-        name = "gui";
-      } else if (mode == Settings::CONSOLE) {
-        name = "console";
-      }
-      printf("%s%s\n", prefix, name);
-    } break;
 #endif
+      printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
+      break;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
       break;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_BASE:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
+      break;
+    case Settings::MQTT_PASS:
+      printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
       break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
@@ -360,6 +373,8 @@ void printValue(const char *prefix, Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -444,12 +459,18 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::DISPLAY_MODE:
     {
       uint8_t value;
+      // numeric like every other uint8 setting, gui and console stay accepted
       if (!strcasecmp(text, "gui")) {
         value = Settings::GUI;
       } else if (!strcasecmp(text, "console")) {
         value = Settings::CONSOLE;
       } else {
-        return fail("expected gui or console");
+        char *end = nullptr;
+        unsigned long numeric = strtoul(text, &end, 0);
+        if ((end == text) || (numeric > Settings::CONSOLE)) {
+          return fail("expected 0 (gui) or 1 (console)");
+        }
+        value = static_cast<uint8_t>(numeric);
       }
       Settings::save<uint8_t>(setting.type, value);
       if (!UI::sendRequest(UI::Request::DISPLAY_MODE, value)) {
@@ -479,6 +500,13 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::THEME:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      if (strlen(text) > MAX_SETTING_STRING) {
+        return fail("string is too long");
+      }
       Settings::save<std::string>(setting.type, std::string(text));
       break;
 
@@ -512,6 +540,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
     {
       if ((setting.type == Settings::SD_GPX) && !SD::getInstance().isSupported()) {
         return fail("no SD card slot on this board");
@@ -563,6 +593,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
 #endif
+  if ((setting.type == Settings::MQTT) || (setting.type == Settings::MQTT_URI)
+      || (setting.type == Settings::MQTT_USER) || (setting.type == Settings::MQTT_PASS)
+      || (setting.type == Settings::MQTT_BASE) || (setting.type == Settings::MQTT_HA)) {
+    MQTT::getInstance().reloadSetting();
+  }
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -592,6 +627,9 @@ int cmdSettings(int argc, char **argv) {
   }
 
 #if defined(FURBLE_NO_DISPLAY)
+  // Redundant on purpose: DISPLAY_MODE is not in the settings table of this
+  // build, so findSetting() would miss it anyway. Scripts written against the
+  // GUI build get a clear answer instead of 'no such setting'.
   if (!strcasecmp(argv[2], "display_mode")) {
     return fail("not supported in this build");
   }
@@ -964,6 +1002,10 @@ int cmdPower(int argc, char **argv) {
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
 
 int cmdPerfTasks(void) {
+#if !defined(CONFIG_FREERTOS_USE_TRACE_FACILITY) \
+    || !defined(CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS)
+  return fail("FreeRTOS task statistics are not enabled in this build");
+#else
   TaskStatus_t before[MAX_TASK_SNAPSHOT] = {};
   TaskStatus_t after[MAX_TASK_SNAPSHOT] = {};
   uint32_t beforeTotal = 0;
@@ -1013,6 +1055,7 @@ int cmdPerfTasks(void) {
   }
 
   return 0;
+#endif
 }
 
 void printHeapCapability(const char *name, uint32_t capabilities) {
@@ -1195,6 +1238,42 @@ int cmdDisconnect(int argc, char **argv) {
   (void)argv;
 
   return sendRequest(UI::Request::DISCONNECT, 0, "disconnect");
+}
+
+int cmdMQTT(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: mqtt status | connect | disconnect | discovery clear");
+  }
+
+  auto &mqtt = MQTT::getInstance();
+  if (!strcmp(argv[1], "status")) {
+    printf("configured: %s\n", boolStr(mqtt.isConfigured()));
+    printf("connected: %s\n", boolStr(mqtt.isConnected()));
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "connect")) {
+    if (!mqtt.isConfigured()) {
+      return fail("set mqtt on first");
+    }
+    mqtt.reloadSetting();
+    printf("queued: mqtt connect\n");
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "disconnect")) {
+    mqtt.disconnect();
+    printf("queued: mqtt disconnect\n");
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "discovery") && (argc >= 3) && !strcmp(argv[2], "clear")) {
+    mqtt.clearDiscovery();
+    printf("queued: mqtt discovery clear\n");
+    return 0;
+  }
+
+  return fail("expected status, connect, disconnect or discovery clear");
 }
 
 int cmdShutter(int argc, char **argv) {
@@ -1506,6 +1585,48 @@ int cmdBt(int argc, char **argv) {
   return fail("expected scan, explore, pair or journal");
 }
 
+/**
+ * Companion numeric-comparison pairing.
+ *
+ * The GUI shows a confirm dialog. The displayless build has no other confirm
+ * path, so pairing is console driven there: the headless loop prints the PIN
+ * when a request arrives and this command answers it. Companion state is
+ * mutex guarded, so calling it from the console task is safe.
+ */
+int cmdPair(int argc, char **argv) {
+  auto &companion = Companion::getInstance();
+
+  if (!companion.isEnabled()) {
+    return fail("companion disabled, settings set companion on");
+  }
+
+  if (argc < 2) {
+    const bool pending = companion.hasPendingPairing();
+    printf("pending: %s\n", boolStr(pending));
+    if (pending) {
+      printf("pin: %06lu\n", static_cast<unsigned long>(companion.getPendingPairingPin()));
+    }
+    return 0;
+  }
+
+  bool accept;
+  if (!strcasecmp(argv[1], "yes")) {
+    accept = true;
+  } else if (!strcasecmp(argv[1], "no")) {
+    accept = false;
+  } else {
+    return fail("usage: pair [yes|no]");
+  }
+
+  if (!companion.hasPendingPairing()) {
+    return fail("no pairing pending");
+  }
+
+  companion.confirmPairing(accept);
+  printf("pairing: %s\n", accept ? "accepted" : "rejected");
+  return 0;
+}
+
 int cmdLog(int argc, char **argv) {
   if (argc < 3) {
     return fail("usage: log <tag> <none|error|warn|info|debug|verbose>");
@@ -1795,6 +1916,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+    command("mqtt", "mqtt status | connect | disconnect | discovery clear", cmdMQTT),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
@@ -1806,6 +1928,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("feedback",
             "feedback test <shutter|countdown|connect|disconnect|battery>",
             cmdFeedback),
+    command("pair", "pair [yes|no], answer a companion pairing request", cmdPair),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
@@ -1835,7 +1958,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -1861,7 +1984,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3)
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(100));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(100));

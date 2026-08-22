@@ -43,6 +43,7 @@ class UI {
   /** Drain queued console operations in the headless main loop. */
   static void serviceRequests(void);
 #endif
+
 };
 }  // namespace Furble
 

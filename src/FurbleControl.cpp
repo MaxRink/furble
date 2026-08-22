@@ -4,6 +4,7 @@
 
 #include "Device.h"
 
+#include <cstdio>
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -74,7 +75,7 @@ std::shared_ptr<Camera> Control::Target::getCamera(void) const {
   return m_Camera;
 }
 
-void Control::Target::sendCommand(cmd_t cmd) {
+BaseType_t Control::Target::sendCommand(cmd_t cmd) {
   if (cmd == CMD_DISCONNECT) {
     // CMD_DISCONNECT must never be dropped. Losing it strands the target task in
     // its command loop and hangs disconnect(). The transient commands still in
@@ -83,14 +84,14 @@ void Control::Target::sendCommand(cmd_t cmd) {
     // delivery. Reset guarantees space, so this never blocks the caller and
     // never fails on a full queue.
     xQueueReset(m_Queue);
-    xQueueSendToFront(m_Queue, &cmd, 0);
-    return;
+    return xQueueSendToFront(m_Queue, &cmd, 0);
   }
 
   BaseType_t ret = xQueueSend(m_Queue, &cmd, 0);
   if (ret != pdTRUE) {
     ESP_LOGE(LOG_TAG, "Failed to send command to target.");
   }
+  return ret;
 }
 
 Control::cmd_t Control::Target::getCommand(void) {
@@ -386,6 +387,48 @@ std::vector<Control::Target *> Control::getTargets(void) {
     targets.push_back(target.get());
   }
   return targets;
+}
+
+std::vector<Control::target_status_t> Control::getTargetStatus(void) {
+  std::vector<std::shared_ptr<Camera>> cameras;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    cameras.reserve(m_Targets.size());
+    for (const auto &target : m_Targets) {
+      cameras.push_back(target->getCamera());
+    }
+  }
+
+  std::vector<target_status_t> status;
+  status.reserve(cameras.size());
+
+  for (const auto &camera : cameras) {
+    status.push_back({getCameraID(*camera), camera->getName(), camera->getType(),
+                      camera->isConnected(), camera->getConnectProgress(),
+                      static_cast<int16_t>(camera->getRSSI())});
+  }
+
+  return status;
+}
+
+BaseType_t Control::sendTargetCommand(const std::string &id, cmd_t cmd) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  for (const auto &target : m_Targets) {
+    if ((getCameraID(*target->getCamera()) == id) && target->getCamera()->isConnected()) {
+      return target->sendCommand(cmd);
+    }
+  }
+
+  return pdFALSE;
+}
+
+std::string Control::getCameraID(const Camera &camera) {
+  char id[32];
+  snprintf(id, sizeof(id), "cam-%012llx-%lu",
+           static_cast<unsigned long long>(static_cast<uint64_t>(camera.getAddress())),
+           static_cast<unsigned long>(camera.getType()));
+  return std::string(id);
 }
 
 void Control::connectAll(bool infiniteReconnect) {

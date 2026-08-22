@@ -18,6 +18,9 @@
 #include "icons.h"
 #endif
 
+#include <algorithm>
+#include <cmath>
+
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -142,12 +145,14 @@ GPS &GPS::getInstance() {
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 0,
-#if defined(FURBLE_M5STICKS3) || defined(CONFIG_IDF_TARGET_ESP32S3)
-        // XTAL keeps the baud stable while DFS scales the APB clock. It is also
-        // the only valid choice on the ESP32-S3, which has no REF_TICK source,
-        // so the headless S3 profile lands here too.
+    // Key the clock on the SoC, not the board: any S3 build must use XTAL
+    // or DFS breaks the baud rate (see the root CLAUDE.md traps section).
+#if SOC_UART_SUPPORT_XTAL_CLK
+        // XTAL keeps the baud stable while DFS scales the APB clock
         .source_clk = UART_SCLK_XTAL,
 #else
+        // the original ESP32 has no XTAL UART clock, REF_TICK is its
+        // DFS stable source
         .source_clk = UART_SCLK_REF_TICK,
 #endif
         .flags = {},
@@ -1266,7 +1271,23 @@ bool GPS::isEnabled(void) const {
 
 /** Start timer event to service/update GPS. */
 void GPS::startService(void) {
-#if !defined(FURBLE_NO_DISPLAY)
+#if defined(FURBLE_NO_DISPLAY)
+  // No LVGL, so drive the same 1 s update() from an esp_timer. update() only
+  // touches LVGL behind its own display guard, the geotag push code is shared.
+  if (m_ServiceTimer != nullptr) {
+    return;
+  }
+
+  const esp_timer_create_args_t args = {
+      .callback = [](void *param) { static_cast<GPS *>(param)->update(); },
+      .arg = this,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = "gps-service",
+      .skip_unhandled_events = true,
+  };
+  ESP_ERROR_CHECK(esp_timer_create(&args, &m_ServiceTimer));
+  ESP_ERROR_CHECK(esp_timer_start_periodic(m_ServiceTimer, SERVICE_MS * 1000ULL));
+#else
   if (m_Timer != NULL) {
     return;
   }
@@ -1286,6 +1307,10 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
       && ((!std::isfinite(fix.gps.latitude)) || (!std::isfinite(fix.gps.longitude))
           || (fix.gps.latitude < -90.0) || (fix.gps.latitude > 90.0) || (fix.gps.longitude < -180.0)
           || (fix.gps.longitude > 180.0))) {
+    return false;
+  }
+
+  if (fix.accuracy_valid && (!std::isfinite(fix.accuracy_m) || (fix.accuracy_m < 0.0f))) {
     return false;
   }
 
@@ -1317,6 +1342,7 @@ void GPS::update(void) {
   const uint64_t now_ms = esp_timer_get_time() / 1000;
   Camera::gps_t dgps = {};
   Camera::timesync_t timesync = {};
+  external_fix_t current = {};
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
   bool altitudeValid = false;
@@ -1337,6 +1363,12 @@ void GPS::update(void) {
     satellites = static_cast<uint8_t>(
         std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
     altitudeValid = m_GPS.altitude.isValid();
+    current.gps = dgps;
+    current.timesync = timesync;
+    current.age_ms = static_cast<uint32_t>(m_GPS.location.age());
+    current.position_valid = true;
+    current.time_valid = true;
+    current.altitude_valid = m_GPS.altitude.isValid();
   } else {
     external_fix_t external = {};
     uint64_t received_ms = 0;
@@ -1359,14 +1391,20 @@ void GPS::update(void) {
       timesync = external.timesync;
       satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
       altitudeValid = external.altitude_valid;
+      current = external;
+      current.age_ms = static_cast<uint32_t>(external.age_ms + elapsed_ms);
     }
   }
 
   m_Source.store(static_cast<uint8_t>(source));
   m_Satellites.store(satellites);
-  m_HasFix = (source != SOURCE_NONE);
+  {
+    const std::lock_guard<std::mutex> lock(m_FixMutex);
+    m_CurrentFix = current;
+    m_HasFix.store(source != SOURCE_NONE);
+  }
 
-  if (m_HasFix) {
+  if (m_HasFix.load()) {
     Control::getInstance().updateGPS(dgps, timesync);
 
     const uint32_t fixSequence = m_FixSequence.load();
@@ -1594,6 +1632,16 @@ void GPS::processSerial(const uint8_t *data, size_t length) {
     serviceBinary(m_RxBuffer.data(), frameLength);
     m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + frameLength);
   }
+}
+
+bool GPS::getCurrentFix(external_fix_t &fix) const {
+  const std::lock_guard<std::mutex> lock(m_FixMutex);
+  if (!m_HasFix.load()) {
+    return false;
+  }
+
+  fix = m_CurrentFix;
+  return true;
 }
 
 /** Read and decode the GPS data from serial port. */

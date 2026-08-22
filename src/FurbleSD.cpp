@@ -207,6 +207,10 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
       value = Settings::load<std::string>(setting.type);
       return true;
 
@@ -226,6 +230,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
     case Settings::BOOT_SPLASH:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -412,6 +418,16 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<std::string>(setting.type, text);
       return true;
 
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      if (text.size() > 255) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
     case Settings::GPS:
     case Settings::GPS_NMEA:
     case Settings::MULTICONNECT:
@@ -428,6 +444,8 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
     case Settings::BOOT_SPLASH:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

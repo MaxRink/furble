@@ -1,4 +1,4 @@
-set(COMPONENT_SRCS
+set(ICON_SRCS
     icon_add_a_photo.c
     icon_add_a_photo_24.c
     icon_all_inclusive.c
@@ -65,8 +65,13 @@ set(COMPONENT_SRCS
     icon_wand_stars.c
     icon_wand_stars_24.c)
 
-set(COMPONENT_ADD_INCLUDEDIRS ".")
-
-register_component()
-
-target_compile_options(${COMPONENT_LIB} PRIVATE -DLV_LVGL_H_INCLUDE_SIMPLE=1)
+# The app REQUIRES this component unconditionally, because component
+# requirements are expanded in an early CMake pass that sees neither the
+# sdkconfig nor the profile cache variable. The displayless profile therefore
+# empties the component here instead, where CONFIG_FURBLE_NO_DISPLAY is set.
+if(CONFIG_FURBLE_NO_DISPLAY)
+  idf_component_register()
+else()
+  idf_component_register(SRCS ${ICON_SRCS} INCLUDE_DIRS ".")
+  target_compile_options(${COMPONENT_LIB} PRIVATE -DLV_LVGL_H_INCLUDE_SIMPLE=1)
+endif()

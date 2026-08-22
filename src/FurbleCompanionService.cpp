@@ -6,6 +6,7 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleMQTT.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -270,6 +271,8 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -302,6 +305,10 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
       return SETTING_U32;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -331,6 +338,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -377,6 +386,10 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     }
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
     {
       const std::string v = Settings::load<std::string>(type);
       value.assign(v.begin(), v.end());
@@ -582,6 +595,14 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       if (m_SettingReloadCallback) {
         m_SettingReloadCallback(false);
       }
+      break;
+    case Settings::MQTT:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    case Settings::MQTT_HA:
+      MQTT::getInstance().reloadSetting();
       break;
     default:
       break;
