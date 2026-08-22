@@ -140,6 +140,12 @@ bool Settings::appliesImmediately(type_t type) {
     case WIFI:
     case NTP:
     case NTP_SERVER:
+    case MQTT:
+    case MQTT_URI:
+    case MQTT_USER:
+    case MQTT_PASS:
+    case MQTT_BASE:
+    case MQTT_HA:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
@@ -223,6 +229,12 @@ bool Settings::isDangerous(type_t type) {
     case SD_GPX:
     case GPX_PERIOD:
     case BOOT_SPLASH:
+    case MQTT:
+    case MQTT_URI:
+    case MQTT_USER:
+    case MQTT_PASS:
+    case MQTT_BASE:
+    case MQTT_HA:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
