@@ -212,6 +212,42 @@ Battery impact, on-board instrumentation only:
 3. 30 minutes connected and idle with Wake Gesture set to Both.
 4. Report both drain slopes in the PR body.
 
+## Implementation state
+
+Implemented:
+
+- Added `IMU_WAKE` with the `imu_wake` NVS key and `IMU_TRIG` with the
+  `imu_trigger` NVS key. Both default to the current disabled behavior.
+- Added a software accelerometer detector for tap, double tap, and shake.
+  The detector runs at 50 Hz only when a gesture feature is enabled and the
+  effective IMU setting is on.
+- Added Settings -> Sensors entries for Wake Gesture and Double-Tap Shutter.
+  Both entries are disabled when the effective IMU setting is off. The page
+  includes the false-trigger warning.
+- Added the Connected and Remote page checks, intervalometer guard, display
+  wake hook, inactivity reset, refractory period, and short shutter command
+  pair.
+- Added console and companion setting type and value cases. Console and
+  companion changes notify the UI task without touching LVGL from another task.
+- The requested S3 build was attempted twice. The first attempt was blocked by
+  the PlatformIO core lock. The second reached CMake but could not install the
+  ESP-IDF Python dependency because PyPI DNS is blocked in the sandbox.
+
+Deviations:
+
+- This branch is based on PR16 and does not contain the PR12 display-off state.
+  The current wake hook calls `M5.Display.wakeup()`, restores the configured
+  brightness, and triggers LVGL activity. Rebase it onto the PR12 wake helper
+  when the branches are combined.
+- Poll power cost and hardware behavior are not measured yet. Hardware
+  verification is pending.
+
+Rebase notes:
+
+- Wire IDs are `IMU_WAKE` 45 and `IMU_TRIG` 46. The reviewed feat/16 base
+  already uses 44 for `BOOT_SPLASH`, so the gesture settings use the next two
+  free IDs.
+
 ## References
 
 All links checked.

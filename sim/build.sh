@@ -167,6 +167,7 @@ for source in \
   "$ROOT/src/FurbleSpinValue.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
+  "$ROOT/src/FurbleUIGesture.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
   "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp"; do
   compile_cpp "$source"

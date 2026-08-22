@@ -18,6 +18,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
     {IMU,               {IMU, 36, "IMU", "imu", FURBLE_STR}                                  },
+    {IMU_WAKE,          {IMU_WAKE, 45, "Wake Gesture", "imu_wake", FURBLE_STR}               },
+    {IMU_TRIG,          {IMU_TRIG, 46, "Double-Tap Shutter", "imu_trigger", FURBLE_STR}      },
     {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
     {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
     {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
@@ -112,6 +114,8 @@ bool Settings::appliesImmediately(type_t type) {
     case LOW_BATT:
     case SD_GPX:
     case GPX_PERIOD:
+    case IMU_WAKE:
+    case IMU_TRIG:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
@@ -183,6 +187,8 @@ bool Settings::isDangerous(type_t type) {
     case SD_GPX:
     case GPX_PERIOD:
     case BOOT_SPLASH:
+    case IMU_WAKE:
+    case IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
@@ -409,6 +415,7 @@ void Settings::init(void) {
         case IR_PROTO:
         case AUTO_OFF:
         case LOW_BATT:
+        case IMU_WAKE:
           save<uint8_t>(setting.type, 0);
           break;
         case BATT_STYLE:
@@ -442,6 +449,7 @@ void Settings::init(void) {
 #endif
         case GPS:
         case IMU:
+        case IMU_TRIG:
         case GPS_NMEA:
         case MULTICONNECT:
         case RECONNECT:
