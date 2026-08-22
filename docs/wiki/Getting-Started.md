@@ -7,11 +7,10 @@ furble runs on these M5Stack ESP32 boards:
 - M5StickC (80x160)
 - M5StickC Plus (135x240)
 - M5StickC Plus2 (135x240)
-- M5StickC Plus SE (135x240)
 - M5StickS3 (135x240)
 - M5Stack Core (320x240)
 - M5Stack Core2 (320x240, touch)
-- M5Tough (320x240, touch)
+- M5Tough (320x240, touch, untested)
 
 furble builds five release images. M5Unified detects the exact board at runtime,
 so one image covers a board family. See [Supported Hardware](Supported-Hardware)

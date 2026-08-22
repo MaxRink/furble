@@ -23,8 +23,8 @@ This wiki is a friendly fork of the upstream furble project.
 
 ## At a glance
 
-- **Boards**: M5StickC, M5StickC Plus, M5StickC Plus2, M5StickC Plus SE,
-  M5StickS3, M5Stack Core, M5Stack Core2, M5Tough.
+- **Boards**: M5StickC, M5StickC Plus, M5StickC Plus2, M5StickS3, M5Stack Core,
+  M5Stack Core2, M5Tough (untested).
 - **Cameras**: Fujifilm, Canon, Sony, Nikon, Ricoh, and others. See the project
   README for the current list.
 - **Framework**: ESP-IDF 5.x built with PlatformIO.

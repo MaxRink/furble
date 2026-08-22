@@ -13,10 +13,10 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | Build env | Chip | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-c` | ESP32 | M5StickC | No | End of life. |
-| `m5stick-c-plus` | ESP32 | M5StickC Plus, M5StickC Plus2, M5StickC Plus SE | No | Plus and Plus SE share the image. |
+| `m5stick-c-plus` | ESP32 | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
 | `m5stick-s3` | ESP32-S3 | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
 | `m5stack-core` | ESP32 | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
-| `m5stack-core2` | ESP32 | M5Stack Core2, M5Tough | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. |
+| `m5stack-core2` | ESP32 | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
 
 ## Cameras
 
