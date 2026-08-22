@@ -186,6 +186,12 @@ const lv_font_t *fontForIconMenu(uint8_t textSize) {
 // LVGL 9.4 has no public long press time getter. This is its default.
 constexpr uint32_t BUTTON_MODE_CLICK_WINDOW_MS = 400;
 
+// Narrowest panel that carries the dropped camera's name in a reconnect
+// indicator. The 135 px StickS3/StickC Plus and the 320 px Core clear it; the
+// 80 px StickC stays icon/count only. The banner label still wraps within a
+// capped width, so a long name never overflows even on the boards that show it.
+constexpr int32_t RECONNECT_NAME_MIN_WIDTH = 135;
+
 }  // namespace
 
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options);
@@ -397,10 +403,32 @@ UI::UI(const interval_t &interval)
 
   m_GPS.init();
   m_Status.gps = &m_GPS;
+
+  // A zero-width flex-grow spacer between the title and the status icons pins
+  // the icon-and-battery block to the header's right edge. The battery is the
+  // last child, so its right edge stays fixed no matter which status icons
+  // (GPS, the reconnecting Bluetooth symbol) show or hide, and it no longer
+  // shifts when the title is hidden (the sticks drop it for header width) and
+  // the block would otherwise pack to the left. It grows alongside the title
+  // when the title is shown, which is inert: the title text is left aligned and
+  // the icons stay right, so the visible layout is unchanged.
+  lv_obj_t *headerSpacer = lv_obj_create(m_Header);
+  lv_obj_remove_style_all(headerSpacer);
+  lv_obj_set_size(headerSpacer, 0, 0);
+  lv_obj_set_flex_grow(headerSpacer, 1);
+  lv_obj_clear_flag(headerSpacer, LV_OBJ_FLAG_SCROLLABLE);
+
   m_Status.reconnectIcon = addIcon(&icon_all_inclusive);
   // Non-blocking indicator for an in-progress mid-session reconnect. Hidden
-  // until a live link drops, so it never competes with the connected view.
+  // until a live link drops, so it never competes with the connected view. It
+  // is recolored red so the status row makes a mid-session drop unmistakable,
+  // matching the red Bluetooth glyph on the Remote shutter page banner. The
+  // recolor is set once here: the icon is only ever shown while reconnecting,
+  // so there is nothing to restore on recovery (it is hidden instead) and no
+  // per-tick style work.
   m_Status.reconnectingIcon = addIcon(&icon_bluetooth);
+  lv_obj_set_style_image_recolor(m_Status.reconnectingIcon, lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_set_style_image_recolor_opa(m_Status.reconnectingIcon, LV_OPA_COVER, 0);
   lv_obj_add_flag(m_Status.reconnectingIcon, LV_OBJ_FLAG_HIDDEN);
   // Captured once the main menu is built (addMainMenu). Left null until then.
   m_Status.menuTitle = nullptr;
@@ -2489,6 +2517,21 @@ std::string UI::simQueryState(const char *key) {
     return hidden ? "no" : "yes";
   }
 
+  // Color state of the status-row Bluetooth symbol. It is hidden except during a
+  // mid-session reconnect, where it must render red so the drop is unmistakable.
+  // Reports "hidden" when it is not showing, "red" when the visible glyph is
+  // recolored red, otherwise "other", so a scenario can assert the red state
+  // tracks the reconnect and clears on recovery.
+  if (query == "bt_color") {
+    lv_obj_t *icon = m_Status.reconnectingIcon;
+    if (icon == nullptr || lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN)) {
+      return "hidden";
+    }
+    const lv_color_t recolor = lv_obj_get_style_image_recolor(icon, LV_PART_MAIN);
+    const lv_color_t red = lv_palette_main(LV_PALETTE_RED);
+    return lv_color_eq(recolor, red) ? "red" : "other";
+  }
+
   // The current menu header title text. On the connected page it reads
   // "Connected" while active and "Reconnecting" (or "Reconnecting (i/n)") during
   // a mid-session reconnect, so a scenario can assert the text tracks the drop
@@ -2540,6 +2583,53 @@ std::string UI::simQueryState(const char *key) {
     const bool hidden =
         m_RemoteReconnect == nullptr || lv_obj_has_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
     return hidden ? "no" : "yes";
+  }
+
+  // "yes" when the shutter banner reflects the dropped-camera name policy for
+  // this panel: the name is shown when exactly one camera is down and the panel
+  // is wide enough (135 px and up), and omitted otherwise (the 80 px StickC, or
+  // when more than one is down). Comparing the actual banner text against the
+  // expected policy lets a single scenario assert the naming on every board
+  // width, and gives the assertion teeth: showing the name where it should not,
+  // or dropping it where it should appear, both flip this to "no".
+  if (query == "remote_named") {
+    const bool hidden =
+        m_RemoteReconnect == nullptr || lv_obj_has_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+    if (hidden || m_RemoteReconnectLabel == nullptr) {
+      return "no";
+    }
+    auto &control = Control::getInstance();
+    const size_t total = control.getTargetCount();
+    const size_t connected = control.getConnectedTargetCount();
+    const size_t down = (total > connected) ? (total - connected) : 0;
+    const std::string name = control.getDisconnectedName();
+    const char *text = lv_label_get_text(m_RemoteReconnectLabel);
+    const bool present =
+        text != nullptr && !name.empty() && std::string(text).find(name) != std::string::npos;
+    const bool expected = down == 1 && m_Width >= RECONNECT_NAME_MIN_WIDTH && !name.empty();
+    return (present == expected) ? "yes" : "no";
+  }
+
+  // "yes" when the header battery block is anchored to the status row's right
+  // edge, so it stays put regardless of which sibling status icons (GPS, the
+  // reconnecting Bluetooth symbol) show or hide. A scenario asserts this across
+  // connected and reconnecting states to prove the battery no longer reflows.
+  if (query == "battery_pinned") {
+    if (m_Header == nullptr || m_Status.batteryLabel == nullptr
+        || m_Status.batteryIcon == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(m_Header);
+    // The rightmost visible battery element: the percent label, or the icon when
+    // the battery style hides the label.
+    lv_obj_t *rightmost = m_Status.batteryLabel;
+    if (lv_obj_has_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN)) {
+      rightmost = m_Status.batteryIcon;
+    }
+    const int32_t elementRight = lv_obj_get_x2(rightmost);
+    const int32_t padRight = lv_obj_get_style_pad_right(m_Header, LV_PART_MAIN);
+    const int32_t headerRight = lv_obj_get_width(m_Header) - padRight - 1;
+    return (headerRight - elementRight <= 4) ? "yes" : "no";
   }
 
   // Whether the connect liveness timer is parked. It must pause once the link is
@@ -3008,11 +3098,27 @@ void UI::updateRemoteReconnect(bool reconnecting) {
   const size_t total = control.getTargetCount();
   const size_t connected = control.getConnectedTargetCount();
   const size_t down = (total > connected) ? (total - connected) : 0;
+  // Name the dropped camera when exactly one target is down and the panel is
+  // wide enough to carry it. With more than one down the name is ambiguous, so
+  // fall back to the bare count. The label wraps within its capped width, so a
+  // long name never overflows the panel.
+  std::string name;
+  if (down == 1 && m_Width >= RECONNECT_NAME_MIN_WIDTH) {
+    name = control.getDisconnectedName();
+  }
   if (total > 1) {
-    setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting (%u/%u)",
-                             static_cast<unsigned>(down), static_cast<unsigned>(total));
-  } else {
+    if (name.empty()) {
+      setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting (%u/%u)",
+                               static_cast<unsigned>(down), static_cast<unsigned>(total));
+    } else {
+      setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting (%u/%u): %s",
+                               static_cast<unsigned>(down), static_cast<unsigned>(total),
+                               name.c_str());
+    }
+  } else if (name.empty()) {
     setLabelTextIfChanged(m_RemoteReconnectLabel, "Reconnecting");
+  } else {
+    setLabelTextFmtIfChanged(m_RemoteReconnectLabel, "Reconnecting %s", name.c_str());
   }
   showStatusIcon(m_RemoteReconnect, true);
 }
@@ -3785,6 +3891,14 @@ UI::menu_t &UI::addConnectedMenu(void) {
   // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
   // panel width.
   lv_obj_set_style_text_font(m_RemoteReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL), 0);
+  // Wrap within a width capped to the panel so a long dropped-camera name (the
+  // banner appends it when one of several cameras is down) wraps onto more lines
+  // instead of overflowing the right edge. The chip still hugs the short
+  // "Reconnecting" text until a name widens it, and it stays floating top-left
+  // clear of the shutter, focus and lock controls.
+  lv_label_set_long_mode(m_RemoteReconnectLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_max_width(m_RemoteReconnectLabel, M5.Display.width() - 8, 0);
+  lv_obj_set_style_text_align(m_RemoteReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(m_RemoteReconnectLabel, "Reconnecting");
 
   // The 80 px StickC panel is too narrow to fit the text even at the Small font,

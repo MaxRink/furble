@@ -766,6 +766,16 @@ size_t Control::getConnectedTargetCount(void) const {
   return connected;
 }
 
+std::string Control::getDisconnectedName(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  for (const auto &target : m_Targets) {
+    if (!target->getCamera()->isConnected()) {
+      return target->getCamera()->getName();
+    }
+  }
+  return std::string();
+}
+
 void Control::setState(state_t state) {
   const std::lock_guard<std::mutex> lock(m_StateMutex);
 

@@ -146,6 +146,17 @@ size_t Control::getConnectedTargetCount(void) const {
   return connected;
 }
 
+std::string Control::getDisconnectedName(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  for (const auto &target : m_Targets) {
+    const auto camera = target->getCamera();
+    if (camera != nullptr && !camera->isConnected()) {
+      return camera->getName();
+    }
+  }
+  return std::string();
+}
+
 void Control::setConnSaver(bool enabled) {
   // The simulated camera has no live BLE connection to retune.
   (void)enabled;

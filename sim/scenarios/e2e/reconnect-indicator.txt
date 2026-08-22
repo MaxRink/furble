@@ -19,6 +19,8 @@ assert ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
 assert ui.status_text Connected
+# Connected: the status-row Bluetooth symbol is not showing at all.
+assert ui.bt_color hidden
 # Drop the active link. The liveness poll must notice and show the indicator and
 # rewrite the title without taking over the screen.
 action drop
@@ -28,6 +30,8 @@ assert control.state connecting
 assert ui.connect_box hidden
 assert ui.page connected
 assert ui.reconnecting yes
+# The status-row Bluetooth symbol shows and is red, so the drop is unmistakable.
+assert ui.bt_color red
 # Single camera: no count, just the word.
 assert ui.status_text Reconnecting
 # The reconnect completes and both the indicator and the title clear.
@@ -36,5 +40,7 @@ assert control.state active
 assert ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
+# Recovered: the red Bluetooth symbol is hidden again.
+assert ui.bt_color hidden
 assert ui.status_text Connected
 exit
