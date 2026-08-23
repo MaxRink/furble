@@ -220,6 +220,7 @@ ir fire [protocol]                  fire the IR emitter
 scan start | stop | list
 bt scan | explore | pair | journal   Bluetooth diagnostics
 feedback test <event>               play a feedback pattern
+ota status | update <url> | abort   inspect or drive the OTA lifecycle
 log <tag> <level>
 debug <subsystem>                   dump internal state
 reboot
