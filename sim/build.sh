@@ -163,11 +163,13 @@ for source in \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurblePower.cpp" \
+  "$ROOT/src/FurbleProvision.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \
   "$ROOT/src/FurbleSpinValue.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
+  "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp"; do
   compile_cpp "$source"
 done

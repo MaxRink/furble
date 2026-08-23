@@ -11,8 +11,10 @@ set(furble_sources
     FurbleIR.cpp
     FurblePlatform.cpp
     FurblePower.cpp
+    FurbleProvision.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
+    ../lib/furble/protocol/ProvisionTLV.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake

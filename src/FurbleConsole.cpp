@@ -39,6 +39,7 @@
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleProvision.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -623,6 +624,85 @@ int cmdSettings(int argc, char **argv) {
   }
 
   return fail("expected list, get or set");
+}
+
+void printProvisionDeferred(const char *name) {
+  // These fields are intentionally accepted by the shared parser before the
+  // WiFi/MQTT backend lands. Never print their values: this includes PSKs and
+  // passwords.
+  printf("provision: %s parsed (not applied; backend pending #53)\n", name);
+}
+
+int cmdProvision(int argc, char **argv) {
+  if ((argc != 2) || (argv[1] == nullptr) || (argv[1][0] == '\0')) {
+    return fail("usage: provision <hex|base64 TLV blob>");
+  }
+
+  std::vector<uint8_t> bytes;
+  ProvisionTLV::Error error;
+  ProvisionTLV::TextEncoding encoding;
+  if (!ProvisionTLV::decodeText(argv[1], bytes, &encoding, &error)) {
+    printf("error: provision: %s at offset %u\n", ProvisionTLV::errorString(error.code),
+           static_cast<unsigned>(error.offset));
+    return 1;
+  }
+
+  ProvisionTLV::ProvisionBundle bundle;
+  if (!ProvisionTLV::decode(bytes.data(), bytes.size(), bundle, &error)) {
+    printf("error: provision: %s at byte %u\n", ProvisionTLV::errorString(error.code),
+           static_cast<unsigned>(error.offset));
+    return 1;
+  }
+
+  Provision::ApplyReport report;
+  if (!Provision::apply(bundle, report)) {
+    printf("error: provision: %s", Provision::applyErrorString(report.error));
+    if (report.failedSettingId != 0) {
+      printf(" (wire id %u)", static_cast<unsigned>(report.failedSettingId));
+    }
+    if (!report.message.empty()) {
+      printf(": %s", report.message.c_str());
+    }
+    printf("\n");
+    return 1;
+  }
+
+  printf("provision: decoded %u bytes as %s\n", static_cast<unsigned>(bytes.size()),
+         (encoding == ProvisionTLV::TextEncoding::HEX) ? "hex" : "base64");
+  if (bundle.wifiSsid.has_value()) {
+    printProvisionDeferred("wifi_ssid");
+  }
+  if (bundle.wifiPsk.has_value()) {
+    printProvisionDeferred("wifi_psk");
+  }
+  if (bundle.companionPassword.has_value()) {
+    printProvisionDeferred("companion_password");
+  }
+  if (bundle.mqttUri.has_value()) {
+    printProvisionDeferred("mqtt_uri");
+  }
+  if (bundle.mqttUsername.has_value()) {
+    printProvisionDeferred("mqtt_username");
+  }
+  if (bundle.mqttPassword.has_value()) {
+    printProvisionDeferred("mqtt_password");
+  }
+  if (bundle.mqttBaseTopic.has_value()) {
+    printProvisionDeferred("mqtt_base_topic");
+  }
+  for (const auto &field : bundle.settings) {
+    const auto *setting = Settings::getByWireId(field.wireId);
+    printf("provision: setting %u (%s) applied\n", static_cast<unsigned>(field.wireId),
+           (setting != nullptr) ? setting->key : "unknown");
+  }
+  if ((report.settingsApplied == 0) && (report.deferredFields == 0)) {
+    printf("provision: no fields\n");
+  } else {
+    printf("provision: %u setting(s) applied, %u field(s) deferred\n",
+           static_cast<unsigned>(report.settingsApplied),
+           static_cast<unsigned>(report.deferredFields));
+  }
+  return 0;
 }
 
 int cmdUI(int argc, char **argv) {
@@ -1799,6 +1879,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
+    command("provision", "provision <hex|base64 TLV blob>", cmdProvision),
     command("ui", "ui audit", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
