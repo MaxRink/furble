@@ -356,3 +356,30 @@ symbol turns red on a mid-session drop and clears on recovery; (2) the shutter
 banner names the dropped camera on the 135 px panel without overflow; (3) the
 battery indicator stays fixed in the top-right corner across connected,
 reconnecting and GPS on/off states.
+
+Follow-up on feat/bulb-reconnect-indicator (stacks on #154 and #156): the
+full-screen Bulb page is the other operational page that hides the header status
+row, and it was the last one still blank on a mid-session drop (flagged by the
+per-page connection-state sim sweep as `page_banner` WILL_FAIL on Bulb). The same
+reconnect state now drives an identical banner there. `updateRemoteReconnect` was
+factored into a shared `updatePageReconnectBanner(banner, label, reconnecting)`
+helper that it calls for both the shutter banner (`m_RemoteReconnect`) and the
+new Bulb banner (`m_BulbReconnect`), so the two always agree and there is no
+second copy of the per-target connection-state read. Because the helper is
+shared, the Bulb banner inherits #156's dropped-camera name and width policy for
+free (name shown when one camera is down and the panel is wide enough, wrapped in
+a capped-width label). The banner is built on the Bulb page in `addBulbMenu`,
+floating top-left, red Bluetooth icon over "Reconnecting" / "Reconnecting (i/n)"
+text, icon-only under 110 px, and never covers the duration picker or Start
+button. New sim queries `bulb_status` and `bulb_reconnecting` mirror
+`remote_status` / `remote_reconnecting`, and a `nav bulb` action reaches the page
+through its real menu button.
+
+clang-format clean, no em-dashes. All five release envs plus m5stick-s3-debug
+build. Host ctests pass (34/34). Sim e2e scenarios pass on both the 135x240 and
+80x160 panels, including the new `bulb-reconnect-indicator` scenario; the
+overflow sweep stays clean on the 80x160 panel.
+
+PENDING HARDWARE VISUAL CONFIRM on the M5StickS3: on the Bulb page, drop a live
+Fujifilm link and confirm the red Bluetooth icon plus "Reconnecting" text appears
+top-left without covering the bulb controls, and clears on reconnect.

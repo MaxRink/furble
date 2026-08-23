@@ -206,6 +206,17 @@ mode:
 On Core2, verify the Connected page layout with the extra item and confirm touch
 targets do not overlap.
 
+Reconnect banner (added on feat/bulb-reconnect-indicator, follow-up to #154): the
+full-screen Bulb page hides the header status row, so it carries its own
+non-blocking reconnect banner, the same one the Remote shutter page got in #154.
+A mid-session link drop shows a red Bluetooth icon plus "Reconnecting" (or
+"Reconnecting (i/n)" for a multi-connect session) floating top-left, and clears
+on recovery. It is floating, so it never covers the duration picker or the Start
+button, and it is icon-only on the 80x160 StickC panel. The banner is driven from
+the shared `updatePageReconnectBanner` helper alongside the shutter banner, so
+no bulb-specific connection-state tracking was added. See plan 89 for the
+reconnect-UI details and the pending hardware visual confirm.
+
 Battery drain: not a target of this PR, but a long bulb exposure keeps the link
 active. Run one 10 minute exposure unplugged and log battery voltage every 30 s
 to confirm nothing unexpected, using the PR02 harness if it has landed.
