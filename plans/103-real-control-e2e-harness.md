@@ -90,7 +90,7 @@ the scenario. All run under the existing `host_camera` CI job (no workflow edit)
   so the device binary and the sim build are untouched.
 
 The multiconnect follow-up adds one host scenario and an address-to-peer routing
-table to the test-only NimBLE mock. The full host suite passes 37 of 37 tests,
+table to the test-only NimBLE mock. The full host suite passes 38 of 38 tests,
 including the new two-peer lifecycle. The unchanged simulator also passes its
 full end-to-end suite on the exact PR commit. Physical radio scheduling and two
 simultaneous camera links remain hardware checks.
