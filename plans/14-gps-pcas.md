@@ -123,7 +123,8 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
 - The GPS Data page displays latitude and longitude to five decimal places.
 - The `gps-speed-coords` sim end-to-end scenario asserts the rendered speed and
   five decimal place coordinates against a known fake fix (42.0 km/h, 48.11730 N,
-  11.51667 E).
+  11.51667 E). It also verifies the eight-satellite count, live fix source and
+  that the complete GPS Data page does not overflow.
 - Keep it board neutral. Nothing here is S3 specific.
 
 ## Dependencies
