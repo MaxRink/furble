@@ -147,6 +147,41 @@ jobs:
               --script "${{ github.workspace }}/sim/scenarios/bughunt/$scenario.txt"
           done
 
+      # The 320x240 M5Stack Core panel, so the connection-state coverage below
+      # runs on all three panel widths. Its own build dir keeps the other two
+      # binaries intact.
+      - name: Build 320x240 (M5Stack Core) simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-core
+          FURBLE_SIM_FURBLE_BOARD: FURBLE_M5COREX
+          FURBLE_SIM_M5GFX_BOARD: board_M5Stack
+        run: sh sim/build.sh
+
+      # Connection-state coverage on every panel width: a mid-session drop must be
+      # surfaced on every page reachable during a connected session
+      # (connstate-page-sweep), and the status row must stay stable across the
+      # disconnected / connected / reconnecting / GPS matrix (statusbar-stability).
+      # Both also run on the default 135x240 binary through run-e2e.sh above; here
+      # they run on the 80x160 and 320x240 binaries too, where the narrow-panel
+      # battery anchor and the wider-panel layout differ. WILL_FAIL lines (xassert)
+      # print XFAIL and keep the run green until their product fixes land: the
+      # bulb-page reconnect banner, the red status-row BT icon, and the 80x160
+      # battery anchor.
+      - name: Assert connection-state coverage (135x240, 80x160, 320x240)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          for scenario in connstate-page-sweep statusbar-stability; do
+            for build in build build-stickc build-core; do
+              echo "=== $build: $scenario ==="
+              "${{ github.workspace }}/sim/$build/furble-sim" \
+                --script "${{ github.workspace }}/sim/scenarios/e2e/$scenario.txt"
+            done
+          done
+
       # Seeded UI fuzzer. Feeds deterministic randomized button, navigation,
       # settings and modal event streams into the real UI and checks the
       # crash-free, stale-focus, stacked-modal, narrow-panel-overflow,

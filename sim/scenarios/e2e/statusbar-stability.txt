@@ -1,0 +1,77 @@
+# Status-bar layout-stability and Bluetooth-icon-colour matrix.
+#
+# Two hardware findings the status row should have been asserting:
+#   - the battery indicator shifts position as icons appear and disappear across
+#     connection and GPS states, so it must stay at a FIXED anchor;
+#   - the status-row Bluetooth icon does not go red on a disconnect, so it must
+#     reflect the connection state.
+#
+# ui.battery_drift is the battery icon x minus the anchor captured on its first
+# read here, so 0 means it has not moved from its baseline position. The battery
+# rides a left-packed status row, so on the narrow 80x160 panel it slides right
+# by a couple of pixels every time an icon appears to its left (the reconnect BT
+# icon on a drop, the GPS icon when GPS is enabled); on the wider 135x240 and
+# 320x240 panels there is enough slack that it does not move. So the checks in a
+# state whose icon set differs from the baseline are xassert (WILL_FAIL): they go
+# XFAIL on the narrow panel today and flip green once the battery is anchored so
+# its position no longer depends on the icons beside it. The checks in a state
+# whose icon set matches the baseline stay hard asserts on every panel: a
+# regression that moved the battery with the icon set unchanged would turn red.
+#
+# ui.bt_icon reports the status-row Bluetooth icon: "hidden" when connected or
+# idle, "red" when it marks a reconnect. The "red" expectations are WILL_FAIL on
+# every panel: the icon appears on a drop but is not recoloured red in the status
+# row (only the shutter-page banner is), so they are xassert until the red-status
+# BT fix lands.
+#
+# Run on all three panel widths (80x160 / 135x240 / 320x240) from the CI job.
+seed fauxny true
+seed reconnect true
+wait 400
+
+# --- disconnected baseline: anchor the battery, BT icon absent -----------
+# Icon set here (reconnect icon on, no reconnecting icon, no GPS icon) is the
+# baseline every hard assert below compares against.
+assert ui.battery_drift 0
+assert ui.bt_icon hidden
+
+# --- connected: same icon set, battery unmoved, BT icon absent -----------
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+assert ui.battery_drift 0
+assert ui.bt_icon hidden
+
+# --- reconnecting: the reconnect BT icon appears -------------------------
+action drop
+wait 700
+assert control.state connecting
+assert ui.reconnecting yes
+# WILL_FAIL on 80x160: the new icon shoves the battery. Battery-anchor fix.
+xassert ui.battery_drift 0
+# WILL_FAIL on all panels: the status-row icon is not red yet.
+xassert ui.bt_icon red
+wait 1000
+assert control.state active
+# recovered: icon set is back to the baseline, so this holds on every panel.
+assert ui.battery_drift 0
+assert ui.bt_icon hidden
+
+# --- GPS on: the GPS icon now also occupies the row ----------------------
+action toggle gps
+wait 400
+# WILL_FAIL on 80x160: the GPS icon shoves the battery. Battery-anchor fix.
+xassert ui.battery_drift 0
+
+# --- reconnecting with GPS on: two extra icons versus the baseline -------
+action drop
+wait 700
+assert ui.reconnecting yes
+xassert ui.battery_drift 0
+xassert ui.bt_icon red
+wait 1000
+assert ui.bt_icon hidden
+# GPS icon still shown, so still off the baseline icon set on the narrow panel.
+xassert ui.battery_drift 0
+exit
