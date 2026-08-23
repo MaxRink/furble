@@ -73,6 +73,21 @@ modules have no BLE or NVS dependency. The settings suite reads the source as
 text, so it needs no furble sources on its link line. None of the fenced
 lifecycle files or the mock BLE stack were touched.
 
+## Settings persistence follow-up
+
+The previously deferred settings load and save coverage is now implemented by
+`tests/host/settings_nvs_roundtrip_test.cpp`. A typed in-memory NVS stub keeps
+the production `Preferences` and `FurbleSettings` translation units unchanged.
+The test covers every setting row, including the StickS3 watchdog and display
+mode conditionals, and checks defaults, the concrete NVS storage type, and a
+representative save/load round trip. It also includes the production SD
+settings helpers to verify the serialized import path and confirms that keys
+in other namespaces or with legacy names do not override canonical defaults.
+
+The host test uses `FURBLE_M5STICKS3` so conditional settings are included in
+the coverage table. It does not claim to validate ESP-IDF's flash wear or
+power-loss behavior. Those remain hardware and platform concerns.
+
 ## Verification
 
 - Built with the PlatformIO bundled cmake under `-Wall -Wextra -Werror`. All
@@ -88,7 +103,7 @@ lifecycle files or the mock BLE stack were touched.
 
 ## Remaining work
 
-GPS pure helpers, the settings load and save paths, CameraList persistence, and
-the non Fujifilm vendor encoders remain uncovered on the host. Each needs
-either a production refactor to extract pure helpers or a heavier ESP-IDF and
-NVS mock, and is out of scope for this test only change.
+GPS pure helpers, CameraList persistence, and the non Fujifilm vendor encoders
+remain uncovered on the host. Each needs either a production refactor to
+extract pure helpers or a heavier ESP-IDF and NVS mock, and is out of scope for
+this test only change.
