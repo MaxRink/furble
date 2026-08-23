@@ -97,6 +97,14 @@ uint32_t g_simDisconnectCalls = 0;
 namespace Furble {
 
 namespace {
+bool imuEnabledForUI(void) {
+#if defined(FURBLE_SIM)
+  return Furble::Sim::imuEnabled();
+#else
+  return M5.Imu.isEnabled();
+#endif
+}
+
 void setLabelTextIfChanged(lv_obj_t *label, const char *text) {
   const char *current = lv_label_get_text(label);
   if ((current == nullptr) || (std::strcmp(current, text) != 0)) {
@@ -2046,13 +2054,13 @@ void UI::addMainMenu(void) {
           } else {
             lv_obj_add_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
           }
-          showIMUWidgets(M5.Imu.isEnabled());
+          showIMUWidgets(imuEnabledForUI());
 
           // hide and disable back button
           lv_obj_add_state(back, LV_STATE_DISABLED);
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
         } else if (page == m_Menu.at(m_DiagnosticsStr).page) {
-          showIMUWidgets(M5.Imu.isEnabled());
+          showIMUWidgets(imuEnabledForUI());
         } else if (page == m_Menu.at(m_RemoteShutter).page) {
           if (M5.Touch.isEnabled()) {
             // if touch screen, enable back
@@ -3751,6 +3759,19 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(countShown(page));
   }
 
+  // Report the optional IMU entry visibility. This uses the same runtime gate
+  // as the firmware pages, while the host seam supplies the sensor presence.
+  // It lets a scenario prove a disabled sensor is not merely an unreadable
+  // page that direct navigation can still reach.
+  if (query == "imu_button_visible" || query == "level_button_visible") {
+    const char *name = query == "imu_button_visible" ? m_IMUDataStr : m_LevelStr;
+    const auto entry = m_Menu.find(name);
+    if (entry == m_Menu.end() || entry->second.button == nullptr) {
+      return "no";
+    }
+    return lv_obj_has_flag(entry->second.button, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
+  }
+
   // Number of LVGL invalidation events since the last invalidate.reset action.
   // A scenario resets it, holds a page steady over a wait and asserts the count
   // stays low, so an unguarded per-tick setter that redraws every frame (the
@@ -4713,7 +4734,7 @@ void UI::addLevelMenu(const menu_t &parent) {
   m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
   lv_timer_pause(m_LevelTimer);
 
-  if (!M5.Imu.isEnabled()) {
+  if (!imuEnabledForUI()) {
     lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -4741,7 +4762,7 @@ void UI::levelUpdate(lv_timer_t *timer) {
     return;
   }
 #else
-  if (!M5.Imu.isEnabled()) {
+  if (!imuEnabledForUI()) {
     return;
   }
 
@@ -7635,7 +7656,7 @@ void UI::addIMUDataMenu(const menu_t &parent) {
   m_Diagnostics.imuGyro = addInfoRow(cont);
   lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
 
-  if (!M5.Imu.isEnabled()) {
+  if (!imuEnabledForUI()) {
     lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
   }
 

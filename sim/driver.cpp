@@ -938,6 +938,10 @@ void applyScenarioSettings(void) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
   saveBoolean("imu", Settings::IMU);
+  // Keep the host sensor surface in step with the setting used to construct
+  // the UI. The SDL platform cannot initialize a physical IMU, so the shared
+  // seam owns the enabled state for both page visibility and sensor reads.
+  imuSetEnabled(scenarioSettingIsTrue("imu"));
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;

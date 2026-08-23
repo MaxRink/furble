@@ -267,9 +267,10 @@ a regression.
   `M5.Imu` surface (enabled, update, getAccel, getGyro) the firmware reads under
   `#if defined(FURBLE_SIM)`. Actions: `imu.accel <x> <y> <z>` (G), `imu.roll
   <deg>`, `imu.pitch <deg>`, `imu.gyro <x> <y> <z>`, `imu.enable`, `imu.disable`.
-  Seed `imu true` turns the IMU setting on. The spirit level filter, sensitivity
-  curve and auto-rotate all run on the injected sample. `imu_accel_x/y/z` read
-  the rendered Diagnostics > IMU live label back.
+  Seed `imu true` turns the IMU setting on, while `seed imu false` models the
+  disabled setting and hides both optional pages. The spirit level filter,
+  sensitivity curve and auto-rotate all run on the injected sample.
+  `imu_accel_x/y/z` read the rendered Diagnostics > IMU live label back.
 - Redraw-storm probe: the `invalidate.reset` action zeroes a counter fed by the
   LVGL `LV_EVENT_INVALIDATE_AREA` hook (`profilerInvalidationProbeCount` in
   `sim/power_profiler.cpp`), and `ui.invalidate_count` reports events since the

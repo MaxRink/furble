@@ -661,6 +661,10 @@ and asserts the Diagnostics > IMU live page renders it. New `simQueryState` keys
 label text, so a missing poll or a broken label format fails the assert, not just
 the read path.
 
+The companion `imu-gating.txt` scenario seeds the IMU off and checks that the
+level and live diagnostics entries stay hidden and unreadable. It then enables
+the host seam and proves the same pages expose and render a fresh sample.
+
 ### Screen-redraw storm guard
 
 The level page updates continuously as tilt changes, which is a prime redraw-storm
