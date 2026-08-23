@@ -3011,7 +3011,6 @@ std::string UI::simQueryState(const char *key) {
          {m_BatteryStr, "battery"},
          {m_PowerStateStr, "power_state"},
          {m_BLEStr, "ble"},
-         {m_BatteryStr, "battery"},
          {m_PowerStr, "power"},
          {m_FeedbackStr, "feedback"},
          {m_FeedbackEventsStr, "feedback_events"},
