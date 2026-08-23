@@ -215,3 +215,52 @@ exponential curve for later retries.
 PENDING HARDWARE RETEST: the 2.5 second first retry is chosen for feel and needs
 on-device confirmation that a stale-session reconnect now recovers in a few
 seconds without spinning the radio.
+
+## Follow-up: skip the first retry when furble initiated the disconnect (2026-08-23, task #54)
+
+Bench report: reconnect after disconnecting via furble also took a while. The
+2.5 second first retry (above) exists so a stale session on the camera can
+expire before furble reconnects. That reason only applies to a peer-initiated
+drop (camera power-off, supervision timeout, out of range), where the camera may
+still hold the previous BLE session for a moment. When furble itself initiated
+the disconnect, the interactive Disconnect or the clean pre-restart teardown of
+plan 68, the camera got a proper link termination and holds no stale session, so
+the 2.5 second wait is avoidable latency.
+
+Change: the first retry is now conditional on who caused the prior disconnect.
+`ReconnectBackoff::delayMs()` gained a `furbleInitiated` argument; at attempt 0
+it returns `FIRST_RETRY_FURBLE_MS` (0, immediate) when furble initiated, and the
+unchanged `FIRST_RETRY_MS` (2.5 s) otherwise. Only the first retry is affected;
+the exponential curve for attempt >= 1 is identical either way, so a persistently
+unreachable camera still backs off exactly as before.
+
+How furble-initiated is known: `Control` tracks a `m_FreshConnect` bit.
+`connectAll(bool)` sets it, because a connect started there is always a fresh,
+furble-initiated connect (the first ever connect, a user reconnect after
+Disconnect, or the boot autoconnect after a clean restart, all of which follow a
+furble-initiated disconnect or no disconnect at all). It is cleared on the first
+successful connect. A mid-session drop re-enters connect through the
+`STATE_ACTIVE` path, not `connectAll(bool)`, so `m_FreshConnect` stays false
+there: the only way a live target re-enters connect without `connectAll(bool)` is
+a peer-initiated drop, which is exactly the case that must keep the backoff. The
+bit is exposed as `control.fresh_connect` in the debug console `debug control`
+snapshot.
+
+Scope note: the camera power-off case the user already accepted (about 7 s
+supervision timeout, then the backoff) is unchanged. That is a peer-initiated
+drop, so it keeps `FIRST_RETRY_MS`.
+
+Tests: `tests/host/reconnect_backoff_test.cpp` gains
+`testFurbleInitiatedFirstRetryIsImmediate`, pinning the pure `delayMs()` curve
+for both initiators. A new Control harness,
+`tests/host/reconnect_initiator_test.cpp` (ctest `reconnect-initiator`), drives
+the production control task against MockNimBLE through both paths and pins the
+timing: a furble-initiated fresh reconnect whose first attempt fails reaches
+active in well under the 2.5 s wait, while a peer-initiated supervision-timeout
+drop still waits it out. Reverting the `delayMs()` condition (always
+`FIRST_RETRY_MS` at attempt 0) fails both, which was confirmed by mutation: the
+fresh reconnect went from about 0.1 s to about 2.7 s.
+
+PENDING HARDWARE CONFIRM (user): disconnect via furble then reconnect is fast;
+camera power-off then reconnect is unchanged (about 7 s supervision plus the
+backoff).

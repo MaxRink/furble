@@ -192,6 +192,7 @@ class Control {
     bool infiniteReconnect;
     bool reconnectBackoff;
     uint32_t reconnectAttempt;
+    bool freshConnect;
     bool adaptiveActive;
     int userPowerLevel;
     int adaptivePowerLevel;
@@ -341,6 +342,16 @@ class Control {
   bool m_ReconnectBackoff = false;
   uint32_t m_ReconnectAttempt = 0;
   bool m_ReconnectHintLogged = false;
+  // True while a connect cycle started by connectAll(bool) has not yet reached
+  // active. Such a cycle is always a fresh, furble-initiated connect: the first
+  // ever connect, a user reconnect after the interactive Disconnect, or the boot
+  // autoconnect after a clean pre-restart teardown. In every case the prior
+  // disconnect (if any) was furble-initiated, so the camera holds no stale
+  // session and the first reconnect retry can skip FIRST_RETRY_MS. It is cleared
+  // on the first success, so a later mid-session drop (a peer-initiated drop, the
+  // only way a live target re-enters connect without going through
+  // connectAll(bool)) keeps the full first-retry backoff.
+  bool m_FreshConnect = false;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

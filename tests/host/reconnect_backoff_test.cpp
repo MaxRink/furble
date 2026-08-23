@@ -10,6 +10,12 @@
 // Mutation check: set ReconnectBackoff::FIRST_RETRY_MS back to 17000 (the old
 // stale-session wait) and testFirstRetryIsQuick() fails its bound. Restoring
 // the short value returns to all-green. That is the test's tooth.
+//
+// The furble-initiated first retry (task #54) is the second tooth: when furble
+// itself caused the prior disconnect there is no stale peer session to wait out,
+// so the first retry is immediate. Reverting delayMs() to ignore the
+// furbleInitiated flag (always FIRST_RETRY_MS at attempt 0) fails
+// testFurbleInitiatedFirstRetryIsImmediate().
 
 #include <cstdint>
 #include <iostream>
@@ -18,6 +24,7 @@
 
 using Furble::ReconnectBackoff::BASE_MS;
 using Furble::ReconnectBackoff::delayMs;
+using Furble::ReconnectBackoff::FIRST_RETRY_MS;
 using Furble::ReconnectBackoff::MAX_MS;
 
 namespace {
@@ -47,6 +54,41 @@ bool testFirstRetryIsQuick() {
   check(backoffOff <= 3000, "the first retry waits at most 3 s with backoff disabled");
   check(backoffOn >= 1000, "the first retry keeps a minimum gap so it does not spin");
   check(backoffOn == backoffOff, "the first retry is the same short wait regardless of backoff");
+
+  return g_Failures == before;
+}
+
+// When furble itself initiated the prior disconnect (task #54) the camera holds
+// no stale session, so the first retry is immediate rather than the
+// FIRST_RETRY_MS stale-session wait. A peer-initiated drop keeps FIRST_RETRY_MS.
+// Only the first retry (attempt 0) is affected; the later curve is unchanged.
+bool testFurbleInitiatedFirstRetryIsImmediate() {
+  std::cout << "test: a furble-initiated first retry skips the stale-session wait\n";
+  const int before = g_Failures;
+
+  // Furble-initiated fast path: immediate, and strictly faster than the
+  // peer-initiated stale-session wait.
+  check(delayMs(0, false, /*furbleInitiated=*/true) == 0,
+        "a furble-initiated first retry is immediate with backoff disabled");
+  check(delayMs(0, true, /*furbleInitiated=*/true) == 0,
+        "a furble-initiated first retry is immediate with backoff enabled");
+  check(delayMs(0, true, /*furbleInitiated=*/true) < FIRST_RETRY_MS,
+        "a furble-initiated first retry is faster than the peer-initiated wait");
+
+  // Peer-initiated path is unchanged: it still waits FIRST_RETRY_MS.
+  check(delayMs(0, false, /*furbleInitiated=*/false) == FIRST_RETRY_MS,
+        "a peer-initiated first retry keeps the stale-session wait");
+  check(delayMs(0, true, /*furbleInitiated=*/false) == FIRST_RETRY_MS,
+        "a peer-initiated first retry keeps the stale-session wait with backoff on");
+
+  // The flag only touches the first retry: later attempts are identical either
+  // way, so the fix cannot regress the persistent-failure curve.
+  for (uint32_t attempt = 1; attempt <= 8; attempt++) {
+    check(delayMs(attempt, true, true) == delayMs(attempt, true, false),
+          "furble-initiated does not change the backoff curve after the first retry");
+    check(delayMs(attempt, false, true) == delayMs(attempt, false, false),
+          "furble-initiated does not change the flat curve after the first retry");
+  }
 
   return g_Failures == before;
 }
@@ -92,6 +134,7 @@ bool testBackoffEnabledGrowsToCap() {
 
 int main() {
   testFirstRetryIsQuick();
+  testFurbleInitiatedFirstRetryIsImmediate();
   testBackoffDisabledIsFlat();
   testBackoffEnabledGrowsToCap();
 

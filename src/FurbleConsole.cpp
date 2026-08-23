@@ -1843,6 +1843,7 @@ int debugControl(void) {
   printf("control.infinite_reconnect: %s\n", boolStr(s.infiniteReconnect));
   printf("control.reconnect_backoff: %s\n", boolStr(s.reconnectBackoff));
   printf("control.reconnect_attempt: %lu\n", static_cast<unsigned long>(s.reconnectAttempt));
+  printf("control.fresh_connect: %s\n", boolStr(s.freshConnect));
   printf("control.adaptive_active: %s\n", boolStr(s.adaptiveActive));
   printf("control.power_level: %d\n", s.userPowerLevel);
   printf("control.adaptive_power_level: %d\n", s.adaptivePowerLevel);

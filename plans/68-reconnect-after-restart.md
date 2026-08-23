@@ -194,3 +194,16 @@ run passes.
 
 Only Fujifilm hardware is available for this verification. Other camera types
 remain covered by code review and FauxNY tests.
+
+## Follow-up: fast reconnect after a clean restart (2026-08-23, task #54)
+
+The boot autoconnect after a clean restart is a furble-initiated fresh connect:
+`prepareRestart()` disconnected the camera cleanly before the reset, so the
+camera holds no stale session on the next boot. Plan 09 now skips the 2.5 second
+first-retry wait for such furble-initiated fresh connects (the `m_FreshConnect`
+bit set by `connectAll(bool)`), so a boot reconnect whose first attempt misses
+retries immediately instead of stalling on the stale-session wait. A
+peer-initiated drop still keeps the backoff. See plan 09 for the mechanism and
+the host tests (`reconnect-backoff`, `reconnect-initiator`). Step 6 above (unclean
+reset while connected) is a peer-initiated case and is unchanged: the camera may
+still hold the old session, so the first-retry wait still applies there.

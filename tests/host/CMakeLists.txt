@@ -786,6 +786,26 @@ target_compile_options(control_disconnect_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
+# End-to-end Control reconnect-initiator regression (task #54). Compiles the real
+# src/FurbleControl.cpp against MockNimBLE and the real Camera under the same
+# control/ shim as control_disconnect_test, and drives the production control
+# task through both reconnect paths to pin their timing: a furble-initiated fresh
+# reconnect skips the #122 first-retry wait, a peer-initiated drop keeps it.
+add_executable(reconnect_initiator_test
+               reconnect_initiator_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(reconnect_initiator_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(reconnect_initiator_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(reconnect_initiator_test PRIVATE furble_host_camera)
+
 # AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
 # It cannot link the shared furble_host_camera library, because the late
 # onDisconnect writes through the freed Camera inside lib/furble/Camera.cpp, so
@@ -1021,6 +1041,7 @@ if(BUILD_TESTING)
   # reintroduced uncancellable wait fails the suite instead of hanging it.
   add_test(NAME control-teardown-wedge COMMAND control_teardown_wedge_test)
   set_tests_properties(control-teardown-wedge PROPERTIES TIMEOUT 60)
+  add_test(NAME reconnect-initiator COMMAND reconnect_initiator_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)

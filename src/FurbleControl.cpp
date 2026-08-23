@@ -245,15 +245,22 @@ Control::state_t Control::connectAll(void) {
       failcount = 0;
       m_ReconnectAttempt = 0;
       m_ReconnectHintLogged = false;
+      // The fresh connect reached active. A drop from here on is peer-initiated,
+      // so restore the full first-retry backoff.
+      m_FreshConnect = false;
       return STATE_ACTIVE;
     }
   }
 
   if (m_InfiniteReconnect || (failcount < 2)) {
     if (m_InfiniteReconnect) {
-      const uint32_t delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
+      // A furble-initiated fresh connect (m_FreshConnect) has no stale peer
+      // session to wait out, so its first retry is immediate. A peer-initiated
+      // drop keeps FIRST_RETRY_MS.
+      const uint32_t delay =
+          ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff, m_FreshConnect);
 
-      if (m_ReconnectAttempt == 0 && !m_ReconnectHintLogged) {
+      if (m_ReconnectAttempt == 0 && !m_FreshConnect && !m_ReconnectHintLogged) {
         ESP_LOGW(LOG_TAG,
                  "Reconnect failed; camera may still hold the previous session. Retrying in "
                  "%lu ms.",
@@ -451,6 +458,11 @@ void Control::connectAll(bool infiniteReconnect) {
   m_ReconnectAttempt = 0;
   m_ReconnectHintLogged = false;
   m_ConnectAbort = false;
+  // A connect started here is fresh and furble-initiated: any prior disconnect
+  // was furble's own, so the first reconnect retry skips the stale-session wait.
+  // Cleared on the first success in connectAll(), so a later mid-session drop
+  // keeps the full backoff.
+  m_FreshConnect = true;
 
   this->sendCommand(CMD_CONNECT);
 }
@@ -756,6 +768,7 @@ Control::debug_state_t Control::getDebugState(void) const {
   snapshot.infiniteReconnect = m_InfiniteReconnect;
   snapshot.reconnectBackoff = m_ReconnectBackoff;
   snapshot.reconnectAttempt = m_ReconnectAttempt;
+  snapshot.freshConnect = m_FreshConnect;
 
   const std::lock_guard<std::mutex> lock(m_Mutex);
   snapshot.targetCount = m_Targets.size();
