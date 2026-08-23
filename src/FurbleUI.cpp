@@ -2299,10 +2299,19 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
-  // Drive the real Bulb Start button so the exposure timer and shutter lock
-  // follow the same path as an on-device click.
+  // Drive the Bulb page's real Start handler so the run page is reachable in
+  // host coverage without relying on a board-specific focus count. The paired
+  // stop action releases the simulated shutter and returns through the real
+  // menu back path, leaving subsequent page checks deterministic.
   if (command == "bulb-start") {
-    lv_obj_send_event(m_BulbStart, LV_EVENT_CLICKED, nullptr);
+    if (m_BulbStart != nullptr) {
+      lv_obj_send_event(m_BulbStart, LV_EVENT_CLICKED, nullptr);
+    }
+    return;
+  }
+  if (command == "bulb-stop") {
+    bulbStop();
+    simulatorBack();
     return;
   }
 
@@ -2360,30 +2369,44 @@ void UI::simScenarioAction(const char *action) {
   if (command.compare(0, std::char_traits<char>::length(NAV_PREFIX), NAV_PREFIX) == 0) {
     const std::string name = command.substr(std::char_traits<char>::length(NAV_PREFIX));
     static const std::unordered_map<std::string, const char *> buttons = {
-        {"connect",     m_ConnectStr       },
-        {"scan",        m_ScanStr          },
-        {"delete",      m_DeleteStr        },
-        {"bulb",        m_RemoteBulb       },
-        {"settings",    m_SettingsStr      },
-        {"display",     m_DisplayStr       },
-        {"features",    m_FeaturesStr      },
-        {"infrared",    m_IRSettingsStr    },
-        {"gps",         m_GPSStr           },
-        {"gps_data",    m_GPSDataStr       },
-        {"nmea",        m_GPSNMEAStr       },
-        {"timer",       m_IntervalometerStr},
-        {"theme",       m_ThemeStr         },
-        {"text_size",   m_TextSizeStr      },
-        {"bluetooth",   m_BluetoothStr     },
-        {"about",       m_AboutStr         },
-        {"power",       m_PowerStr         },
-        {"feedback",    m_FeedbackStr      },
-        {"diagnostics", m_DiagnosticsStr   },
-        {"device_info", m_DeviceInfoStr    },
-        {"power_state", m_PowerStateStr    },
-        {"ble",         m_BLEStr           },
-        {"battery",     m_BatteryStr       },
-        {"storage",     m_StorageStr       },
+        {"connect",           m_ConnectStr         },
+        {"scan",              m_ScanStr            },
+        {"delete",            m_DeleteStr          },
+        {"power_off",         m_PowerOffStr        },
+        {"bulb_duration",     m_BulbDurationStr    },
+        {"bulb",              m_RemoteBulb         },
+        {"settings",          m_SettingsStr        },
+        {"display",           m_DisplayStr         },
+        {"features",          m_FeaturesStr        },
+        {"infrared",          m_IRSettingsStr      },
+        {"gps_rate",          m_GPSRateStr         },
+        {"gps_sentences",     m_GPSSentencesStr    },
+        {"gps_constellation", m_GPSConstellationStr},
+        {"gps_power",         m_GPSPowerStr        },
+        {"gps_assist",        m_GPSAssistStr       },
+        {"gps",               m_GPSStr             },
+        {"gps_data",          m_GPSDataStr         },
+        {"nmea",              m_GPSNMEAStr         },
+        {"timer",             m_IntervalometerStr  },
+        {"theme",             m_ThemeStr           },
+        {"text_size",         m_TextSizeStr        },
+        {"bluetooth",         m_BluetoothStr       },
+        {"tx_power",          m_TransmitPowerStr   },
+        {"about",             m_AboutStr           },
+        {"power",             m_PowerStr           },
+        {"feedback",          m_FeedbackStr        },
+        {"feedback_events",   m_FeedbackEventsStr  },
+        {"feedback_volume",   m_FeedbackVolumeStr  },
+        {"diagnostics",       m_DiagnosticsStr     },
+        {"device_info",       m_DeviceInfoStr      },
+        {"power_state",       m_PowerStateStr      },
+        {"ble",               m_BLEStr             },
+        {"interval_count",    m_IntervalCountStr   },
+        {"interval_delay",    m_IntervalDelayStr   },
+        {"interval_shutter",  m_IntervalShutterStr },
+        {"interval_wait",     m_IntervalWaitStr    },
+        {"battery",           m_BatteryStr         },
+        {"storage",           m_StorageStr         },
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {
@@ -2461,40 +2484,61 @@ void UI::simScenarioAction(const char *action) {
   // on each place a user sits during a live session and confirm a drop is
   // surfaced there. Set through the real lv_menu page load so its per-page
   // handler runs, exactly as clicking the connected-page tile does.
-  if (page_name == "shutter") {
-    page = m_Menu.at(m_RemoteShutter).page;
-  } else if (page_name == "bulb") {
-    page = m_Menu.at(m_RemoteBulb).page;
-  } else if (page_name == "cameras") {
-    page = m_Menu.at(m_CamerasStr).page;
-  } else if (page_name == "remote_timer") {
-    page = m_Menu.at(m_RemoteInterval).page;
-  } else if (page_name == "remote_gps") {
-    page = m_Menu.at(m_RemoteGPSData).page;
-  } else if (page_name == "connected") {
-    page = m_Menu.at(m_ConnectedStr).page;
-  } else if (page_name == "settings") {
-    page = m_Menu.at(m_SettingsStr).page;
-  } else if (page_name == "display") {
-    page = m_Menu.at(m_DisplayStr).page;
-  } else if (page_name == "features") {
-    page = m_Menu.at(m_FeaturesStr).page;
-  } else if (page_name == "gps") {
-    page = m_Menu.at(m_GPSStr).page;
-  } else if (page_name == "timer") {
-    page = m_Menu.at(m_IntervalometerStr).page;
-  } else if (page_name == "theme") {
-    page = m_Menu.at(m_ThemeStr).page;
-  } else if (page_name == "text_size") {
-    page = m_Menu.at(m_TextSizeStr).page;
-  } else if (page_name == "bluetooth") {
-    page = m_Menu.at(m_BluetoothStr).page;
-  } else if (page_name == "about") {
-    page = m_Menu.at(m_AboutStr).page;
-  } else if (page_name == "power") {
-    page = m_Menu.at(m_PowerStr).page;
-  } else if (page_name == "diagnostics") {
-    page = m_Menu.at(m_DiagnosticsStr).page;
+  static const std::unordered_map<std::string, const char *> pages = {
+      {"connect",           m_ConnectStr          },
+      {"scan",              m_ScanStr             },
+      {"delete",            m_DeleteStr           },
+      {"power_off",         m_PowerOffStr         },
+      {"connected",         m_ConnectedStr        },
+      {"ir",                m_IRStr               },
+      {"shutter",           m_RemoteShutter       },
+      {"bulb",              m_RemoteBulb          },
+      {"bulb_duration",     m_BulbDurationStr     },
+      {"bulb_run",          m_BulbRunStr          },
+      {"cameras",           m_CamerasStr          },
+      {"remote_timer",      m_RemoteInterval      },
+      {"remote_gps",        m_RemoteGPSData       },
+      {"remote_disconnect", m_RemoteDisconnect    },
+      {"timer",             m_IntervalometerStr   },
+      {"timer_run",         m_IntervalometerRunStr},
+      {"settings",          m_SettingsStr         },
+      {"display",           m_DisplayStr          },
+      {"features",          m_FeaturesStr         },
+      {"infrared",          m_IRSettingsStr       },
+      {"gps_rate",          m_GPSRateStr          },
+      {"gps_sentences",     m_GPSSentencesStr     },
+      {"gps_constellation", m_GPSConstellationStr },
+      {"gps_power",         m_GPSPowerStr         },
+      {"gps_assist",        m_GPSAssistStr        },
+      {"gps",               m_GPSStr              },
+      {"gps_data",          m_GPSDataStr          },
+      {"nmea",              m_GPSNMEAStr          },
+      {"theme",             m_ThemeStr            },
+      {"text_size",         m_TextSizeStr         },
+      {"bluetooth",         m_BluetoothStr        },
+      {"tx_power",          m_TransmitPowerStr    },
+      {"about",             m_AboutStr            },
+      {"power",             m_PowerStr            },
+      {"feedback",          m_FeedbackStr         },
+      {"feedback_events",   m_FeedbackEventsStr   },
+      {"feedback_volume",   m_FeedbackVolumeStr   },
+      {"storage",           m_StorageStr          },
+      {"diagnostics",       m_DiagnosticsStr      },
+      {"device_info",       m_DeviceInfoStr       },
+      {"battery",           m_BatteryStr          },
+      {"power_state",       m_PowerStateStr       },
+      {"ble",               m_BLEStr              },
+      {"interval_count",    m_IntervalCountStr    },
+      {"interval_delay",    m_IntervalDelayStr    },
+      {"interval_shutter",  m_IntervalShutterStr  },
+      {"interval_wait",     m_IntervalWaitStr     },
+  };
+  const auto found = pages.find(page_name);
+  if (found != pages.end()) {
+    const auto entry = m_Menu.find(found->second);
+    if (entry != m_Menu.end() && entry->second.page != nullptr) {
+      page = entry->second.page;
+    }
   }
   lv_menu_set_page(m_MainMenu.main, page);
 }
@@ -2929,11 +2973,19 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 26> pages = {
+    // Keep this map in lockstep with addMainMenu and the connected-session
+    // sub-pages. The names are a FURBLE_SIM-only contract used by the page
+    // matrix scenario, so adding a page cannot silently turn into "other" in
+    // host coverage. Optional capability pages are looked up with find below
+    // because their menu entries are not built when the capability is absent.
+    const std::array<std::pair<const char *, const char *>, 47> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
          {m_ScanStr, "scan"},
+         {m_DeleteStr, "delete"},
+         {m_PowerOffStr, "power_off"},
+         {m_IRStr, "ir"},
          {m_SettingsStr, "settings"},
          {m_RemoteShutter, "shutter"},
          {m_RemoteBulb, "bulb"},
@@ -2950,17 +3002,37 @@ std::string UI::simQueryState(const char *key) {
          {m_GPSStr, "gps"},
          {m_GPSDataStr, "gps_data"},
          {m_GPSNMEAStr, "nmea"},
+         {m_ThemeStr, "theme"},
          {m_BluetoothStr, "bluetooth"},
+         {m_TransmitPowerStr, "tx_power"},
          {m_AboutStr, "about"},
          {m_DiagnosticsStr, "diagnostics"},
          {m_DeviceInfoStr, "device_info"},
          {m_BatteryStr, "battery"},
          {m_PowerStateStr, "power_state"},
          {m_BLEStr, "ble"},
+         {m_BatteryStr, "battery"},
+         {m_PowerStr, "power"},
+         {m_FeedbackStr, "feedback"},
+         {m_FeedbackEventsStr, "feedback_events"},
+         {m_FeedbackVolumeStr, "feedback_volume"},
+         {m_StorageStr, "storage"},
+         {m_IRSettingsStr, "infrared"},
+         {m_BulbDurationStr, "bulb_duration"},
+         {m_GPSRateStr, "gps_rate"},
+         {m_GPSSentencesStr, "gps_sentences"},
+         {m_GPSConstellationStr, "gps_constellation"},
+         {m_GPSPowerStr, "gps_power"},
+         {m_GPSAssistStr, "gps_assist"},
+         {m_IntervalCountStr, "interval_count"},
+         {m_IntervalDelayStr, "interval_delay"},
+         {m_IntervalShutterStr, "interval_shutter"},
+         {m_IntervalWaitStr, "interval_wait"},
          }
     };
     for (const auto &entry : pages) {
-      if (page == m_Menu.at(entry.first).page) {
+      const auto found = m_Menu.find(entry.first);
+      if (found != m_Menu.end() && page == found->second.page) {
         return entry.second;
       }
     }

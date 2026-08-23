@@ -142,3 +142,14 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   inactive camera so the Connect and Delete lists render and their buttons
   enable; the `nav` action reaches `scan`, `connect`, `delete`, `infrared`,
   `feedback` and `storage` in addition to the settings pages.
+- `sim/scenarios/bughunt/page-matrix.txt` is the release gate for modeled-page
+  reachability and layout. It walks the root, Connect/Scan/Delete lists, every
+  settings and diagnostics route, optional Infrared/Feedback/Storage pages,
+  connected-session pages, and the Bulb and intervalometer run pages. It
+  asserts `ui.page` identity for every route, asserts no overflow on compact
+  pages, and drives intentional-scroll pages to `scroll bottom` and back to
+  `scroll top`, asserting both extents are zero. Run it with
+  `FURBLE_SIM_IR=1 FURBLE_SIM_FEEDBACK=1 FURBLE_SIM_SD=1` against all three
+  panel builds. The CI matrix uses the same script for 80x160 M5StickC,
+  135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
+  particular geometry cannot hide behind a single reference panel.
