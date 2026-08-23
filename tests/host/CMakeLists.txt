@@ -366,6 +366,7 @@ if(BUILD_TESTING)
           false-connected-guard
           transient-connect-recovers
           client-pool-exhaustion
+          multi-connect-fujifilm
           reconnect-shutter-drop)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
   endforeach()
