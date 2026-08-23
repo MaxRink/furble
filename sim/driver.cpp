@@ -540,6 +540,12 @@ void applyScenarioSettings(void) {
   if (interval_changed) {
     Settings::save<Settings::INTERVAL>(interval);
   }
+
+  const auto bulb_duration = scenarioSettings.find("bulb_duration");
+  if (bulb_duration != scenarioSettings.end()) {
+    Settings::save<Settings::BULB>(SpinValue::nvs_t {
+        static_cast<uint16_t>(parseUnsigned(bulb_duration->second)), SpinValue::UNIT_SEC});
+  }
 }
 
 bool scenarioSettingIsTrue(const char *name) {

@@ -1,0 +1,47 @@
+# Bulb exposure coverage on the default S3 panel (135x240).
+# The duration is seeded through Settings::BULB, then the real Bulb Start
+# handler holds the shutter and the real timer releases it at the deadline.
+seed fauxny true
+seed bulb_duration 4
+wait 300
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+
+action nav bulb
+wait 300
+assert ui.page bulb
+assert ui.bulb_ms 4000
+assert ui.overflow no
+assert ui.bulb_remaining 00:00:00
+
+action bulb-start
+wait 100
+assert ui.page bulb_run
+assert ui.overflow no
+assert ui.bulb_state running
+assert ui.shutter_held yes
+assert camera.shutter_presses 1
+assert camera.shutter_releases 0
+assert ui.bulb_remaining 00:00:04
+
+# Cross a page-refresh boundary and observe the rendered countdown change.
+advance 500
+assert ui.bulb_remaining 00:00:03
+assert ui.shutter_held yes
+assert camera.shutter_releases 0
+advance 2300
+assert ui.bulb_remaining 00:00:01
+assert ui.shutter_held yes
+assert camera.shutter_presses 1
+assert camera.shutter_releases 0
+
+# The next advance passes the four-second deadline. The real bulb timer must
+# release exactly once and leave the run in DONE rather than holding the lock.
+advance 2000
+assert ui.bulb_state done
+assert ui.shutter_held no
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+exit
