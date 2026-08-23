@@ -84,6 +84,7 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
 // on a clean teardown erases itself while the caller may already hold it.
 std::recursive_mutex g_ClientsMutex;
 NimBLEMockPeer *g_Peer = nullptr;
+std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
 std::vector<NimBLEClient *> g_PendingReap;  // clients queued for async reap
 bool g_ConnectShouldFail = false;
@@ -382,11 +383,18 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
     g_ConnectFailCount--;
     return false;
   }
-  if ((g_Peer == nullptr) || !g_Peer->acceptConnection(*this, address)) {
+  NimBLEMockPeer *peer = g_Peer;
+  for (const auto &entry : g_Peers) {
+    if (entry.first == address) {
+      peer = entry.second;
+      break;
+    }
+  }
+  if ((peer == nullptr) || !peer->acceptConnection(*this, address)) {
     return false;
   }
 
-  m_Peer = g_Peer;
+  m_Peer = peer;
   m_Address = address;
   m_Connected = true;
   if (m_Callbacks != nullptr) {
@@ -786,6 +794,16 @@ void NimBLEDevice::setMockPeer(NimBLEMockPeer *peer) {
   g_Peer = peer;
 }
 
+void NimBLEDevice::setMockPeerForAddress(const NimBLEAddress &address, NimBLEMockPeer *peer) {
+  for (auto &entry : g_Peers) {
+    if (entry.first == address) {
+      entry.second = peer;
+      return;
+    }
+  }
+  g_Peers.emplace_back(address, peer);
+}
+
 NimBLEMockPeer *NimBLEDevice::getMockPeer() {
   return g_Peer;
 }
@@ -795,6 +813,7 @@ void NimBLEDevice::resetMock() {
   g_Clients.clear();
   g_PendingReap.clear();
   g_Peer = nullptr;
+  g_Peers.clear();
   g_ConnectShouldFail = false;
   g_ConnectFailCount = 0;
   g_MaxClients = 0;

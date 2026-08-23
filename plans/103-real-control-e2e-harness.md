@@ -74,6 +74,10 @@ the scenario. All run under the existing `host_camera` CI job (no workflow edit)
 - `client-pool-exhaustion`: with the pool capped and every connect failing, the
   repeated retries never leak beyond one live client and the machine lands in
   CONNECT_FAILED, then recovers once connects succeed.
+- `multi-connect-fujifilm`: route two virtual Fujifilm peers by BLE address,
+  connect both in one real Control session, fan shutter commands out to both,
+  drop only one link, keep the survivor usable, identify the dropped camera,
+  and reconnect only that target back to a two-camera active session.
 
 ## Verification
 
@@ -85,6 +89,12 @@ the scenario. All run under the existing `host_camera` CI job (no workflow edit)
 - `clang-format` clean. No firmware, `include/`, `lib/` or `sim/` source changed,
   so the device binary and the sim build are untouched.
 
+The multiconnect follow-up adds one host scenario and an address-to-peer routing
+table to the test-only NimBLE mock. The full host suite passes 38 of 38 tests,
+including the new two-peer lifecycle. The unchanged simulator also passes its
+full end-to-end suite on the exact PR commit. Physical radio scheduling and two
+simultaneous camera links remain hardware checks.
+
 ## Honest gaps and next steps
 
 - The mock has no supervision-timeout timer, so a silently dropped link never
@@ -92,9 +102,9 @@ the scenario. All run under the existing `host_camera` CI job (no workflow edit)
   thread in for the supervision timeout to bound the interactive disconnect the
   way the ~7 s `m_IdleTimeout` bounds it on hardware. A real mock supervision
   timer is a future refinement.
-- Multi-connect partial-drop is not covered: `MockNimBLE` models a single peer
-  keyed by address. A multi-peer mock is needed to drive two targets and drop
-  one while the trigger stays live for the other.
+- Multi-connect partial-drop is covered at the real Control boundary. The mock
+  still does not model radio scheduling, connection-parameter contention or
+  two physical peripherals transmitting concurrently.
 - The real UI is not layered on top here. This harness proves the real control
   state machine and the freeze-class timing at the control boundary. Driving the
   same real control under the real LVGL UI in the sim additionally needs a

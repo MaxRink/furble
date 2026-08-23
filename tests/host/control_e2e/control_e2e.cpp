@@ -113,6 +113,29 @@ bool waitForNotState(Control::state_t avoid, uint32_t timeout_ms) {
   return control.getState() != avoid;
 }
 
+bool waitForConnectedCount(size_t want, uint32_t timeout_ms) {
+  auto &control = Control::getInstance();
+  const uint32_t deadline = nowMs() + timeout_ms;
+  while (nowMs() < deadline) {
+    if (control.getConnectedTargetCount() == want) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return control.getConnectedTargetCount() == want;
+}
+
+bool waitForShutterWrites(const FujifilmVirtualCamera &peer, size_t want, uint32_t timeout_ms) {
+  const uint32_t deadline = nowMs() + timeout_ms;
+  while (nowMs() < deadline) {
+    if (shutterWriteCount(peer) >= want) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return shutterWriteCount(peer) >= want;
+}
+
 // Build a real Fujifilm camera bound to a virtual peer and register the peer.
 std::shared_ptr<Furble::FujifilmBasic> makeCamera(FujifilmVirtualCamera &peer) {
   NimBLEDevice::setMockPeer(&peer);
@@ -441,6 +464,81 @@ bool scenarioClientPoolExhaustion() {
   return g_Failures == 0;
 }
 
+// Two real Fujifilm Basic cameras share one Control session. The mock routes
+// each connect by the camera's BLE address, so the assertions observe the real
+// per-target handshake, shutter fan-out, one-link drop and targeted reconnect.
+bool scenarioMultiConnectFujifilm() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera::Config firstConfig;
+  firstConfig.name = "FUJIFILM X100VI A";
+  firstConfig.address = NimBLEAddress(0x112233445501ULL, 0);
+  firstConfig.token = {0x11, 0x22, 0x33, 0x44};
+  FujifilmVirtualCamera::Config secondConfig;
+  secondConfig.name = "FUJIFILM X100VI B";
+  secondConfig.address = NimBLEAddress(0x112233445502ULL, 0);
+  secondConfig.token = {0x55, 0x66, 0x77, 0x88};
+
+  FujifilmVirtualCamera first(firstConfig);
+  FujifilmVirtualCamera second(secondConfig);
+  auto firstCamera = makeCamera(first);
+  auto secondCamera = makeCamera(second);
+  NimBLEDevice::setMockPeerForAddress(first.config().address, &first);
+  NimBLEDevice::setMockPeerForAddress(second.config().address, &second);
+
+  auto &power = Furble::Power::getInstance();
+  control.addActive(firstCamera);
+  control.addActive(secondCamera);
+  check(control.getTargetCount() == 2, "two selected Fujifilm cameras become targets");
+
+  control.connectAll(true);
+  check(waitForState(Control::STATE_ACTIVE, 5000), "both Fujifilm cameras reach active");
+  check(waitForConnectedCount(2, 1000), "both Fujifilm cameras remain connected");
+  check(first.connected() && second.connected(), "both virtual peers see their own link");
+  check(control.getDisconnectedName().empty(), "no camera is marked disconnected when whole");
+  check(power.getCount(Furble::Power::LockType::NO_LIGHT_SLEEP) >= 1,
+        "sleep lock held for the multi-connect session");
+
+  first.clearEvents();
+  second.clearEvents();
+  control.sendCommand(Control::CMD_SHUTTER_PRESS);
+  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  // Fujifilm sends a command and parameter write for each press/release. Four
+  // writes on each peer proves the trigger reached both, not only the aggregate.
+  check(waitForShutterWrites(first, 4, 2000), "first Fujifilm peer receives the shutter");
+  check(waitForShutterWrites(second, 4, 2000), "second Fujifilm peer receives the shutter");
+
+  // The last client is the second target because Control connects targets in
+  // selection order. Drop only that link; the first camera must remain usable.
+  NimBLEClient *droppedClient = NimBLEDevice::lastClient();
+  check(droppedClient != nullptr, "the second target has a mock client");
+  if (droppedClient != nullptr) {
+    droppedClient->mockDropLink(0x08, /*fire_callback=*/true);
+  }
+  check(waitForConnectedCount(1, 3000), "one survivor stays connected after the drop");
+  check(first.connected(), "the first Fujifilm peer survives the drop");
+  check(!second.connected(), "only the second Fujifilm peer drops");
+  check(control.getDisconnectedName() == second.config().name,
+        "the dropped target is identified by name");
+
+  first.clearEvents();
+  second.clearEvents();
+  control.sendCommand(Control::CMD_SHUTTER_PRESS);
+  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  check(waitForShutterWrites(first, 4, 2000), "the live survivor still receives the shutter");
+  check(shutterWriteCount(second) == 0, "the dropped peer receives no down-time shutter");
+
+  check(waitForState(Control::STATE_ACTIVE, 5000), "only the dropped target reconnects");
+  check(waitForConnectedCount(2, 1000), "the reconnect returns to two live targets");
+  check(first.connected() && second.connected(), "both peers are live after reconnect");
+  check(control.getDisconnectedName().empty(), "the per-device reconnect indicator clears");
+
+  control.disconnect();
+  waitForState(Control::STATE_IDLE, 2000);
+  return g_Failures == 0;
+}
+
 // The reconnect replay guard. A shutter issued while the target is not active
 // must be dropped, never buffered on the control queue and flushed when the link
 // returns. Bring a camera to active, force the link down and hold the reconnect
@@ -526,6 +624,7 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"false-connected-guard",            scenarioFalseConnectedGuard         },
       {"transient-connect-recovers",       scenarioTransientConnectRecovers    },
       {"client-pool-exhaustion",           scenarioClientPoolExhaustion        },
+      {"multi-connect-fujifilm",           scenarioMultiConnectFujifilm        },
       {"reconnect-shutter-drop",           scenarioReconnectShutterDrop        },
   };
   return table;

@@ -387,6 +387,10 @@ class NimBLEDevice {
   // that returns false. This is what makes the leak fix double-free safe.
   static bool deleteClient(NimBLEClient *client);
   static void setMockPeer(NimBLEMockPeer *peer);
+  // Route a client to a peer by the advertised BLE address. The single-peer
+  // setter remains the fallback used by existing tests; address routing lets
+  // the host end-to-end harness model more than one camera in one session.
+  static void setMockPeerForAddress(const NimBLEAddress &address, NimBLEMockPeer *peer);
   static NimBLEMockPeer *getMockPeer();
   static void resetMock();
 
