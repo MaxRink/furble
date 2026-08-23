@@ -19,61 +19,58 @@ static_assert(TextSizePolicy::LARGE == Settings::TEXT_SIZE_LARGE,
               "text size policy Large must match the enum");
 
 const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Setting = {
-    {BRIGHTNESS,        {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
-    {INACTIVITY,        {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
-    {DISPLAY_OFF,       {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
-    {THEME,             {THEME, 3, "Theme", "theme", "M5ez"}                                 },
-    {TEXT_SIZE,         {TEXT_SIZE, 40, "Text size", "text_size", FURBLE_STR}                },
-    {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
-    {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
-    {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
-    {IMU,               {IMU, 46, "IMU", "imu", FURBLE_STR}                                  },
-    {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
-    {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
-    {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
-    {GPS_CONSTEL,       {GPS_CONSTEL, 15, "GPS Constellation", "gps_constel", FURBLE_STR}    },
-    {GPS_POWER,         {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
-    {GPS_DUTY,          {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
-    {GPS_ASSIST,        {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
-    {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
-    {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
-    {MULTISELECT,       {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
-    {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
-    {RECON_BACKOFF,     {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
-    {FAUXNY,            {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
-    {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, 0, "Touch Calibration", "t_calib", FURBLE_STR}   },
-    {AUTOCONNECT,       {AUTOCONNECT, 11, "Auto-Connect", "autoconnect", FURBLE_STR}         },
-    {COMPANION,         {COMPANION, 12, "Companion", "companion", FURBLE_STR}                },
+    {BRIGHTNESS,         {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
+    {INACTIVITY,         {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
+    {DISPLAY_OFF,        {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
+    {THEME,              {THEME, 3, "Theme", "theme", "M5ez"}                                 },
+    {TEXT_SIZE,          {TEXT_SIZE, 40, "Text size", "text_size", FURBLE_STR}                },
+    {TX_POWER,           {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
+    {TX_ADAPTIVE,        {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
+    {GPS,                {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
+    {GPS_BAUD,           {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
+    {GPS_RATE,           {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
+    {GPS_NMEA,           {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
+    {GPS_CONSTEL,        {GPS_CONSTEL, 15, "GPS Constellation", "gps_constel", FURBLE_STR}    },
+    {GPS_POWER,          {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
+    {GPS_DUTY,           {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
+    {GPS_ASSIST,         {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
+    {INTERVAL,           {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
+    {MULTICONNECT,       {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
+    {MULTISELECT,        {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
+    {RECONNECT,          {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
+    {RECON_BACKOFF,      {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
+    {FAUXNY,             {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
+    {TOUCH_CALIBRATION,  {TOUCH_CALIBRATION, 0, "Touch Calibration", "t_calib", FURBLE_STR}   },
+    {AUTOCONNECT,        {AUTOCONNECT, 11, "Auto-Connect", "autoconnect", FURBLE_STR}         },
+    {COMPANION,          {COMPANION, 12, "Companion", "companion", FURBLE_STR}                },
     {COMPANION_PASSWORD,
-     {COMPANION_PASSWORD, 47, "Companion password", "companion_pw", FURBLE_STR}              },
-    {CPU_FREQ,          {CPU_FREQ, 17, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
-    {BATT_STYLE,        {BATT_STYLE, 18, "Battery Style", "batt_style", FURBLE_STR}          },
-    {SHOW_TITLE,        {SHOW_TITLE, 19, "Show Title", "show_title", FURBLE_STR}             },
-    {SLEEP_CONN,        {SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", FURBLE_STR}  },
-    {BULB,              {BULB, 0, "Bulb", "bulb", FURBLE_STR}                                },
-    {SCAN_MODE,         {SCAN_MODE, 21, "Scan Mode", "scan_mode", FURBLE_STR}                },
-    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, 22, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
-    {CONN_SAVER,        {CONN_SAVER, 29, "Connection power save", "conn_saver", FURBLE_STR}  },
-    {IR,                {IR, 31, "Infrared", "ir", FURBLE_STR}                               },
-    {IR_PROTO,          {IR_PROTO, 32, "IR Protocol", "ir_proto", FURBLE_STR}                },
-    {FB_OUTPUT,         {FB_OUTPUT, 33, "Feedback", "fb_output", FURBLE_STR}                 },
-    {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
-    {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
-    {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
-    {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
-    {AUTO_OFF,          {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
-    {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
-    {AUTO_OFF_CHARGING,
-     {AUTO_OFF_CHARGING, 43, "Auto off while charging", "autooff_charge", FURBLE_STR}        },
-    {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
-    {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
-    {BOOT_SPLASH,       {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
+     {COMPANION_PASSWORD, 45, "Companion password", "companion_pw", FURBLE_STR}               },
+    {CPU_FREQ,           {CPU_FREQ, 17, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
+    {BATT_STYLE,         {BATT_STYLE, 18, "Battery Style", "batt_style", FURBLE_STR}          },
+    {SHOW_TITLE,         {SHOW_TITLE, 19, "Show Title", "show_title", FURBLE_STR}             },
+    {SLEEP_CONN,         {SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", FURBLE_STR}  },
+    {BULB,               {BULB, 0, "Bulb", "bulb", FURBLE_STR}                                },
+    {SCAN_MODE,          {SCAN_MODE, 21, "Scan Mode", "scan_mode", FURBLE_STR}                },
+    {SCAN_TIMEOUT,       {SCAN_TIMEOUT, 22, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
+    {CONN_SAVER,         {CONN_SAVER, 29, "Connection power save", "conn_saver", FURBLE_STR}  },
+    {IR,                 {IR, 31, "Infrared", "ir", FURBLE_STR}                               },
+    {IR_PROTO,           {IR_PROTO, 32, "IR Protocol", "ir_proto", FURBLE_STR}                },
+    {FB_OUTPUT,          {FB_OUTPUT, 33, "Feedback", "fb_output", FURBLE_STR}                 },
+    {FB_EVENTS,          {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
+    {FB_VOLUME,          {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
+    {PRESET_PICKER,      {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
+    {BUTTON_MODE,        {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
+    {AUTO_OFF,           {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
+    {LOW_BATT,           {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
+    {SD_GPX,             {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
+    {GPX_PERIOD,         {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
+    {BOOT_SPLASH,        {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
 #if !defined(FURBLE_NO_DISPLAY)
-    {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
+    {DISPLAY_MODE,       {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
-    {BATTERY_SAVER,     {BATTERY_SAVER, 0, "Battery Saver", "batt_saver", FURBLE_STR}        },
+    {BATTERY_SAVER,      {BATTERY_SAVER, 0, "Battery Saver", "batt_saver", FURBLE_STR}        },
 #if defined(FURBLE_M5STICKS3)
-    {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
+    {WATCHDOG,           {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
 };
 
@@ -129,12 +126,12 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_VOLUME:
     case AUTO_OFF:
     case LOW_BATT:
-    case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
+    case COMPANION_PASSWORD:
       return true;
     case BRIGHTNESS:
     case INACTIVITY:
@@ -152,9 +149,6 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_OUTPUT:
     case PRESET_PICKER:
     case BUTTON_MODE:
-    // The IMU is brought up during Platform init, so a save takes effect on the
-    // next restart rather than immediately.
-    case IMU:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at
@@ -217,10 +211,8 @@ bool Settings::isDangerous(type_t type) {
     case BUTTON_MODE:
     case AUTO_OFF:
     case LOW_BATT:
-    case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
-    case IMU:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -470,6 +462,9 @@ void Settings::init(void) {
         case THEME:
           save<std::string>(setting.type, "Default");
           break;
+        case COMPANION_PASSWORD:
+          save<std::string>(setting.type, "");
+          break;
         case TEXT_SIZE:
           // The default is board conditional. Large screens keep Normal, but the
           // 80x160 M5StickC starts a fresh device at Small because Normal is
@@ -494,9 +489,6 @@ void Settings::init(void) {
         case AUTO_OFF:
         case LOW_BATT:
           save<uint8_t>(setting.type, 0);
-          break;
-        case AUTO_OFF_CHARGING:
-          save<bool>(setting.type, false);
           break;
         case BATT_STYLE:
           save<uint8_t>(setting.type, BATT_STYLE_ICON);
@@ -533,7 +525,6 @@ void Settings::init(void) {
           save<multiselect_t>(setting.type, selection);
         } break;
         case GPS:
-        case IMU:
         case GPS_NMEA:
         case MULTICONNECT:
         case RECONNECT:
