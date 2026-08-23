@@ -12,6 +12,7 @@
 
 #include "DJIOsmo.h"
 #include "Device.h"
+#include "protocol/AdvertisementProtocol.h"
 
 namespace Furble {
 
@@ -49,11 +50,8 @@ bool DJIOsmo::matches(const NimBLEAdvertisedDevice *pDevice) {
     return false;
 
   const std::string manufacturer = pDevice->getManufacturerData();
-  if (manufacturer.size() < 5)
-    return false;
-
-  const auto *data = reinterpret_cast<const uint8_t *>(manufacturer.data());
-  return data[0] == 0xAA && data[1] == 0x08 && data[4] == 0xFA;
+  return AdvertisementProtocol::matchesDJIAdvertisement(
+      reinterpret_cast<const uint8_t *>(manufacturer.data()), manufacturer.size());
 }
 
 uint16_t DJIOsmo::readLE16(const uint8_t *data) {

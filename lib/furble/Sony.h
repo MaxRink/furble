@@ -36,30 +36,6 @@ class Sony: public Camera {
   } sony_t;
 
   typedef struct __attribute__((packed)) {
-    uint16_t company_id;
-    uint16_t type;
-    uint8_t protocol_version;
-    uint8_t unused;
-    uint16_t model;
-    uint8_t tag22;
-    uint8_t mode22;
-    uint8_t zero0;
-    uint8_t tag21;
-    uint8_t mode21;
-  } sony_adv_t;
-
-  static const uint16_t ADV_SONY_ID = 0x012d;
-  static const uint16_t ADV_SONY_CAMERA = 0x0003;
-  static const uint8_t ADV_MODE22_PAIRING_SUPPORTED = (1 << 7);
-  static const uint8_t ADV_MODE22_PAIRING_ENABLED = (1 << 6);
-  static const uint8_t ADV_MODE22_LOCATION_SUPPORTED = (1 << 5);
-  static const uint8_t ADV_MODE22_LOCATION_ENABLED = (1 << 4);
-  static const uint8_t ADV_MODE22_UNKNOWN_00 = (1 << 3);
-  static const uint8_t ADV_MODE22_UNKNOWN_01 = (1 << 2);
-  static const uint8_t ADV_MODE22_REMOTE_ENABLED = (1 << 1);
-  static const uint8_t ADV_MODE22_UNKNOWN_02 = (1 << 0);
-
-  typedef struct __attribute__((packed)) {
     uint8_t prefix[11];  // fixed prefix (005d0802fc030000101010)
     int32_t latitude;    // *1e7
     int32_t longitude;   // *1e7

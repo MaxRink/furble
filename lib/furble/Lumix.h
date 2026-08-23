@@ -43,15 +43,6 @@ class Lumix: public Camera {
     uint8_t type;        /** Address type. */
   } lumix_t;
 
-  /** Panasonic manufacturer-specific advertising data. */
-  typedef struct __attribute__((packed)) _adv_t {
-    uint16_t company_id; /** Bluetooth SIG company ID. */
-    uint8_t flags;       /** State or pairing flags. */
-    uint8_t addr[5];     /** Bottom five bytes of the address. */
-  } adv_t;
-
-  static constexpr uint16_t ADV_PANASONIC_ID = 0x003a;
-
   // Session service, advertised by LUMIX cameras.
   static const NimBLEUUID SESSION_SVC_UUID;
   // Session-init MEI0 handshake and controller device name.
