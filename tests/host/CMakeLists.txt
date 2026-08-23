@@ -80,6 +80,27 @@ add_executable(settings_table_test settings_table_test.cpp)
 target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                    -Wno-unused-parameter)
 
+# Exercise the real NVS/Preferences settings path against a typed in-memory
+# NVS stub. The test also includes the production SD settings helpers so every
+# table row is checked through both the firmware store and the SD import/export
+# representation. M5STICKS3 keeps the conditional watchdog row in the host
+# table, so a new or conditional setting cannot be omitted silently.
+set(SETTINGS_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/settings_stubs)
+add_executable(settings_nvs_roundtrip_test
+               settings_nvs_roundtrip_test.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(settings_nvs_roundtrip_test BEFORE PRIVATE
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(settings_nvs_roundtrip_test PRIVATE FURBLE_M5STICKS3)
+target_compile_options(settings_nvs_roundtrip_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                             -Wno-unused-parameter
+                                                             -Wno-vla-extension)
+
 # Board-conditional text size policy from include/FurbleTextSize.h. The header is
 # dependency free, so each variant compiles standalone. The suite is built twice:
 # the plain target exercises the large-board policy, the -stickc target defines
@@ -320,6 +341,7 @@ if(BUILD_TESTING)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+  add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
