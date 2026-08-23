@@ -253,77 +253,84 @@ void MQTT::taskEntry(void *param) {
 
 void MQTT::task(void) {
   while (true) {
-    bool reload = false;
-    bool manual_disconnect = false;
-    bool blocked = false;
-    bool stop_client = false;
-
-    {
-      const std::lock_guard<std::mutex> lock(m_Mutex);
-      reload = m_Reload;
-      m_Reload = false;
-      manual_disconnect = m_ManualDisconnect;
-      blocked = m_Blocked;
-      stop_client = m_StopClient;
-      m_StopClient = false;
-    }
-
-    if (reload) {
-      stopClient();
-      loadTopics();
-      m_CameraListLoaded = false;
-      m_LastCamerasPayload.clear();
-      m_LastGPSPayload.clear();
-      m_LastIntervalPayload.clear();
-      m_LastCamerasSampleMs = 0;
-      m_LastBatterySampleMs = 0;
-      m_LastBatteryMs = 0;
-      m_LastGPSMs = 0;
-    }
-
-    const bool enabled = Settings::load<Settings::MQTT>();
-    if (!enabled || manual_disconnect || blocked || !isConfigured()) {
-      if (m_Client != nullptr) {
-        stopClient();
-      }
-      vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS));
-      continue;
-    }
-
-    if (stop_client && (m_Client != nullptr)) {
-      stopClient();
-      vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS));
-      continue;
-    }
-
-    if ((m_Client == nullptr) && networkReady()) {
-      if (!startClient()) {
-        m_ConnectFailures++;
-        ESP_LOGW(MQTT_LOG_TAG, "MQTT client start failed, attempt %lu.",
-                 static_cast<unsigned long>(m_ConnectFailures));
-        if (m_ConnectFailures >= MAX_CONNECT_FAILURES) {
-          const std::lock_guard<std::mutex> lock(m_Mutex);
-          m_Blocked = true;
-          ESP_LOGE(MQTT_LOG_TAG, "MQTT retry limit reached. Use mqtt connect to retry.");
-        }
-      }
-    }
-
-    if (m_Connected.load()) {
-      if (m_ClearDiscovery) {
-        clearDiscoveryRecords();
-        const std::lock_guard<std::mutex> lock(m_Mutex);
-        m_ClearDiscovery = false;
-      } else {
-        publishCameras(false);
-        publishBattery(false);
-        publishGPS(false);
-      }
-    }
-
+    taskStep();
     vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS));
   }
 }
+
+void MQTT::taskStep(void) {
+  bool reload = false;
+  bool manual_disconnect = false;
+  bool blocked = false;
+  bool stop_client = false;
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    reload = m_Reload;
+    m_Reload = false;
+    manual_disconnect = m_ManualDisconnect;
+    blocked = m_Blocked;
+    stop_client = m_StopClient;
+    m_StopClient = false;
+  }
+
+  if (reload) {
+    stopClient();
+    loadTopics();
+    m_CameraListLoaded = false;
+    m_LastCamerasPayload.clear();
+    m_LastGPSPayload.clear();
+    m_LastIntervalPayload.clear();
+    m_LastCamerasSampleMs = 0;
+    m_LastBatterySampleMs = 0;
+    m_LastBatteryMs = 0;
+    m_LastGPSMs = 0;
+  }
+
+  const bool enabled = Settings::load<Settings::MQTT>();
+  if (!enabled || manual_disconnect || blocked || !isConfigured()) {
+    if (m_Client != nullptr) {
+      stopClient();
+    }
+    return;
+  }
+
+  if (stop_client && (m_Client != nullptr)) {
+    stopClient();
+    return;
+  }
+
+  if ((m_Client == nullptr) && networkReady()) {
+    if (!startClient()) {
+      m_ConnectFailures++;
+      ESP_LOGW(MQTT_LOG_TAG, "MQTT client start failed, attempt %lu.",
+               static_cast<unsigned long>(m_ConnectFailures));
+      if (m_ConnectFailures >= MAX_CONNECT_FAILURES) {
+        const std::lock_guard<std::mutex> lock(m_Mutex);
+        m_Blocked = true;
+        ESP_LOGE(MQTT_LOG_TAG, "MQTT retry limit reached. Use mqtt connect to retry.");
+      }
+    }
+  }
+
+  if (m_Connected.load()) {
+    if (m_ClearDiscovery) {
+      clearDiscoveryRecords();
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      m_ClearDiscovery = false;
+    } else {
+      publishCameras(false);
+      publishBattery(false);
+      publishGPS(false);
+    }
+  }
+}
+
+#if defined(FURBLE_MQTT_HOST_TEST)
+void MQTT::hostTaskStep(void) {
+  taskStep();
+}
+#endif
 
 bool MQTT::networkReady(void) const {
   // Key on the generic network-up seam: any interface that is up and holds an

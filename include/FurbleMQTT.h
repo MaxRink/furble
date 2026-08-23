@@ -5,6 +5,9 @@
 // dependency drop out, so nothing here (including <mqtt_client.h>) is pulled in.
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
 
+#if defined(FURBLE_MQTT_HOST_TEST)
+#include "mqtt_host_dependencies.h"
+#else
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -20,6 +23,7 @@
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "interval.h"
+#endif
 
 namespace Furble {
 
@@ -47,6 +51,11 @@ class MQTT {
   bool isConfigured(void) const;
   bool isConnected(void) const { return m_Connected.load(); }
 
+#if defined(FURBLE_MQTT_HOST_TEST)
+  /** Run one production MQTT task iteration without creating a host task. */
+  void hostTaskStep(void);
+#endif
+
  private:
   MQTT() = default;
 
@@ -71,6 +80,7 @@ class MQTT {
   static void intervalTimerCallback(void *arg);
 
   void task(void);
+  void taskStep(void);
   void handleEvent(esp_mqtt_event_handle_t event);
   void handleData(const esp_mqtt_event_handle_t event);
   void handleCommand(const std::string &topic, const std::string &payload);
