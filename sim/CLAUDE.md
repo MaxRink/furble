@@ -40,9 +40,12 @@ which only the sim build defines, so firmware builds compile identical code.
 - The fake scan delivers its result and the scan end callback in the same
   `update()` tick. The fake UART never emits error events and captures all
   writes; dump them with the `uart-dump` script verb.
-- Script verbs: `wait`/`advance`, `key`/`press`, `capture`, `uart-dump`,
+- Script verbs: `wait`/`advance`, `stall`, `key`/`press`, `capture`, `uart-dump`,
   `home`, `back`, `exit`. `home` resets to the root menu and focuses Scan.
   `back` clicks the LVGL header back button and fails on the root page.
+- `stall <ms>` advances virtual time without running `Platform::update`. On the
+  StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
+  ordinary `wait` keeps feeding it.
 - `assert <key> <value>` fails the run on a mismatch. `xassert <key> <value>` is
   an expected-fail assert: it documents a value the app SHOULD produce once a
   pending product fix lands, prints `XFAIL (WILL_FAIL)` on a mismatch and keeps

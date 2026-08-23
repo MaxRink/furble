@@ -24,6 +24,7 @@
 #include "clock.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "platform_state.h"
 #include "power_profiler.h"
 
 namespace Furble::Sim {
@@ -31,6 +32,7 @@ namespace {
 
 enum class StepType {
   WAIT,
+  STALL,
   KEY,
   BTN,
   CAPTURE,
@@ -197,6 +199,15 @@ void readScript(const std::string &path) {
       Step step;
       step.type = StepType::WAIT;
       input >> step.milliseconds;
+      steps.push_back(step);
+    } else if (command == "stall") {
+      Step step;
+      step.type = StepType::STALL;
+      input >> step.milliseconds;
+      if (step.milliseconds == 0) {
+        std::cerr << "stall requires a non-zero duration\n";
+        std::exit(2);
+      }
       steps.push_back(step);
     } else if (command == "key" || command == "press") {
       std::string name;
@@ -473,6 +484,9 @@ std::string queryValue(const std::string &key) {
     }
     return value;
   }
+  if (key == "platform.watchdog") {
+    return watchdogState();
+  }
 
   std::cerr << "Unknown assert key: " << key << '\n';
   std::exit(2);
@@ -659,6 +673,13 @@ void driverTick(void) {
         waiting = false;
         ++stepIndex;
       }
+      break;
+
+    case StepType::STALL:
+      // Advance scenario time without returning to Platform::update. This
+      // models a wedged UI task, so the virtual PM1 watchdog cannot be fed.
+      advanceClock(step.milliseconds);
+      ++stepIndex;
       break;
 
     case StepType::KEY:

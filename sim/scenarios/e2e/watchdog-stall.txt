@@ -1,0 +1,13 @@
+# The M5StickS3 PM1 watchdog is fed from Platform::update. Normal virtual time
+# keeps it armed. A scripted UI stall advances time without running that feed,
+# so the independent PM1 deadline expires exactly as it does on hardware.
+seed watchdog true
+wait 400
+assert platform.watchdog armed
+
+wait 9000
+assert platform.watchdog armed
+
+stall 11000
+assert platform.watchdog expired
+exit
