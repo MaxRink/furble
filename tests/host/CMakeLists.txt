@@ -205,6 +205,41 @@ target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-u
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
 
+# Companion GATT transport-e2e harness. The test drives the production
+# transport-independent CompanionService through a UUID-addressed mock central,
+# then carries location and trigger commands through the real Control and
+# Fujifilm camera paths. The companion-specific doubles replace only hardware
+# status/GPS/settings surfaces that cannot run on the host.
+set(COMPANION_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/companion)
+add_executable(companion_gatt_test
+               companion_gatt_test.cpp
+               ${COMPANION_HOST_DIR}/companion_doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(companion_gatt_test
+                           BEFORE PRIVATE
+                                  ${COMPANION_HOST_DIR}/doubles
+                                  ${COMPANION_HOST_DIR}
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(companion_gatt_test PRIVATE FURBLE_NO_DISPLAY
+                                                       FURBLE_HOST_COMPANION_TEST)
+target_compile_options(companion_gatt_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                   -Wno-unused-parameter
+                                                   -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(companion_gatt_test PRIVATE Threads::Threads)
+
 # End-to-end Control disconnect regression. Compiles the real
 # src/FurbleControl.cpp against MockNimBLE, the real Camera and the host
 # FreeRTOS shim under control/, to lock in the non-blocking interactive
@@ -354,6 +389,7 @@ if(BUILD_TESTING)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
+  add_test(NAME companion-gatt COMMAND companion_gatt_test)
 
   # Real-Control end-to-end scenarios. Each runs the production control state
   # machine end to end against the mock peer and is registered individually so a
