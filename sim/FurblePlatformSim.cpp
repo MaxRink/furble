@@ -11,8 +11,18 @@
 #include "Scan.h"
 #include "clock.h"
 #include "driver.h"
+#include "platform_state.h"
 
 namespace Furble {
+
+namespace {
+
+#if defined(FURBLE_M5STICKS3)
+constexpr uint8_t WDT_TIMEOUT_S = 10;
+constexpr uint32_t WDT_FEED_PERIOD_MS = 1000;
+#endif
+
+}  // namespace
 
 Platform &Platform::getInstance(void) {
   static Platform instance;
@@ -27,6 +37,10 @@ Platform &Platform::getInstance(void) {
     config.internal_mic = false;
     config.pmic_button = true;
     M5.begin(config);
+
+#if defined(FURBLE_M5STICKS3)
+    instance.m_M5PM1.begin(nullptr);
+#endif
 
     // The SDL panel always attaches a mouse-driven touch device, so
     // M5.Touch.isEnabled() is true regardless of the simulated board. A scenario
@@ -78,6 +92,9 @@ void Platform::update(void) {
   M5.update();
   furble_sim_uart_update();
   Scan::getInstance().update();
+#if defined(FURBLE_M5STICKS3)
+  watchdogFeed();
+#endif
   Sim::driverTick();
 }
 
@@ -92,9 +109,35 @@ bool Platform::powerOff(void) {
   return true;
 }
 
-void Platform::watchdogEnable(bool) {}
+void Platform::watchdogEnable(bool enable) {
+#if defined(FURBLE_M5STICKS3)
+  m_WatchdogEnabled = false;
+  m_WatchdogLastFeed = tick();
 
-void Platform::watchdogFeed(void) {}
+  const uint8_t timeout = enable ? WDT_TIMEOUT_S : 0;
+  if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
+    return;
+  }
+  m_WatchdogEnabled = enable;
+#else
+  (void)enable;
+#endif
+}
+
+void Platform::watchdogFeed(void) {
+#if defined(FURBLE_M5STICKS3)
+  if (!m_WatchdogEnabled) {
+    return;
+  }
+
+  const uint32_t now = tick();
+  if (now - m_WatchdogLastFeed < WDT_FEED_PERIOD_MS) {
+    return;
+  }
+  m_WatchdogLastFeed = now;
+  (void)m5pm1Access([this]() { return m_M5PM1.wdtFeed(); });
+#endif
+}
 
 void Platform::setDisplayOff(bool) {}
 
@@ -152,5 +195,21 @@ uint16_t Platform::getBatteryCapacity(void) {
 uint32_t Platform::getBatteryFailCount(void) {
   return 0;
 }
+
+namespace Sim {
+
+const char *watchdogState(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  if (platform.m_M5PM1.watchdogExpired()) {
+    return "expired";
+  }
+  return platform.m_WatchdogEnabled ? "armed" : "disabled";
+#else
+  return "unavailable";
+#endif
+}
+
+}  // namespace Sim
 
 }  // namespace Furble

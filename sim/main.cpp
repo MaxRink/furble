@@ -30,6 +30,9 @@ int runSimulator(bool *) {
   Settings::init();
   Sim::applyScenarioSettings();
   Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
+#if defined(FURBLE_M5STICKS3)
+  Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
+#endif
 
   // Mirror the firmware boot splash so scenarios exercise the same path. A
   // scenario can seed "boot_splash false" to cover the disabled boot too.

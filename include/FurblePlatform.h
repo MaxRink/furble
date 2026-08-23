@@ -10,6 +10,11 @@
 #include <M5PM1.h>
 
 namespace Furble {
+#if defined(FURBLE_SIM)
+namespace Sim {
+const char *watchdogState(void);
+}
+#endif
 class Platform {
  public:
   /** Selectable maximum CPU frequencies in MHz. */
@@ -181,6 +186,9 @@ class Platform {
   uint32_t getBatteryFailCount(void);
 
  private:
+#if defined(FURBLE_SIM)
+  friend const char *Sim::watchdogState(void);
+#endif
   Platform() {};
 
   /**

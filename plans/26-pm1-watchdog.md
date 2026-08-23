@@ -490,3 +490,11 @@ About page (encoder group is never restored after `lv_msgbox_close_async`,
 see `UI::companionPairingTimer`). The console kept logging but the console
 task also stopped answering. Rescue was an RTS-pulse reset over USB, no
 button rescue was needed.
+
+## Simulator verification
+
+The StickS3 host platform mirrors the production watchdog enable and
+rate-limited feed path. `watchdog-stall.txt` proves ordinary virtual time keeps
+the watchdog armed and a scripted 11 second UI stall expires the independent
+PM1 deadline. Physical reset signaling and post-reset rail state still require
+the on-device checks above.
