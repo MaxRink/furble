@@ -1,0 +1,59 @@
+# Existing diagnostics coverage on the modeled M5StickS3 135x240 panel.
+# Pages with intentional scroll print ui.overflow; pages that fit assert no overflow.
+seed gps true
+seed gps_nmea true
+wait 400
+home
+wait 200
+
+action nav diagnostics
+wait 300
+assert ui.page diagnostics
+assert ui.overflow no
+
+action nav about
+wait 300
+assert ui.page about
+assert ui.diag.about.build yes
+assert ui.diag.about.uptime yes
+assert ui.diag.about.heap yes
+assert ui.diag.about.reset yes
+print ui.overflow
+
+action nav device_info
+wait 300
+assert ui.page device_info
+assert ui.diag.device.chip yes
+assert ui.diag.device.uptime yes
+assert ui.diag.device.heap yes
+assert ui.diag.device.reset yes
+print ui.overflow
+
+action nav battery
+wait 300
+assert ui.page battery
+assert ui.diag.battery.level yes
+assert ui.diag.battery.voltage yes
+assert ui.diag.battery.charging no
+assert ui.overflow no
+
+action nav power_state
+wait 300
+assert ui.page power_state
+assert ui.diag.power.cpu yes
+assert ui.diag.power.sleep yes
+print ui.overflow
+
+action nav ble
+wait 300
+assert ui.page ble
+assert ui.diag.ble no_cameras
+assert ui.overflow no
+
+action nav nmea
+wait 1200
+assert ui.page nmea
+assert ui.diag.nmea yes
+print ui.overflow
+
+exit

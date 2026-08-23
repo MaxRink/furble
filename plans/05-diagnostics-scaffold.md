@@ -6,6 +6,20 @@ Expand the About page and add a Settings -> Diagnostics submenu holding device
 info, battery detail and a power state page. Gives later power and BLE PRs a
 place to put live data instead of adding one off debug builds.
 
+## Implementation state
+
+The diagnostics UI is present on the fork. This follow-up adds simulator-only
+queries for the rendered About, Device info, Battery, Power state, BLE and NMEA
+labels, plus an end-to-end scenario that visits every diagnostics page. The
+queries validate value shape and page selection without depending on timestamps
+or host-specific formatting.
+
+This is a fork testability addition. It does not change firmware behavior or
+add settings, storage, or hardware requirements. About, Device info, Power
+state and NMEA are intentionally allowed to report `ui.overflow` because their
+content is scrollable on the modeled StickS3 panel. Battery and BLE fit without
+overflow in the scenario.
+
 ## Scope
 
 In scope:

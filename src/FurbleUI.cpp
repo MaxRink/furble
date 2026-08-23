@@ -2495,6 +2495,202 @@ void UI::simScenarioAction(const char *action) {
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
 
+  // Keep diagnostics assertions tied to the actual rendered labels. These
+  // queries are simulator-only and intentionally return small, stable tokens
+  // so scenarios can check dynamic values without depending on clock/build
+  // timestamps or host-specific formatting.
+  if (query.compare(0, 5, "diag.") == 0) {
+    const std::string field = query.substr(5);
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    const lv_obj_t *aboutPage = m_Menu.at(m_AboutStr).page;
+    const lv_obj_t *devicePage = m_Menu.at(m_DeviceInfoStr).page;
+    const lv_obj_t *batteryPage = m_Menu.at(m_BatteryStr).page;
+    const lv_obj_t *powerPage = m_Menu.at(m_PowerStateStr).page;
+    const lv_obj_t *blePage = m_Menu.at(m_BLEStr).page;
+    const lv_obj_t *nmeaPage = m_Menu.at(m_GPSNMEAStr).page;
+
+    const auto findLabel = [](lv_obj_t *root, const char *prefix) {
+      std::function<std::string(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+        if (obj == nullptr) {
+          return std::string();
+        }
+        if (lv_obj_check_type(obj, &lv_label_class)) {
+          const char *text = lv_label_get_text(obj);
+          if (text != nullptr && std::strncmp(text, prefix, std::strlen(prefix)) == 0) {
+            return std::string(text);
+          }
+        }
+        for (uint32_t n = 0; n < lv_obj_get_child_count(obj); n++) {
+          std::string result = visit(lv_obj_get_child(obj, n));
+          if (!result.empty()) {
+            return result;
+          }
+        }
+        return std::string();
+      };
+      return visit(root);
+    };
+
+    const auto labelText = [](lv_obj_t *label) {
+      if (label == nullptr || !lv_obj_is_valid(label)) {
+        return std::string();
+      }
+      const char *text = lv_label_get_text(label);
+      return text == nullptr ? std::string() : std::string(text);
+    };
+
+    const auto labelValue = [&](lv_obj_t *root, const char *prefix) {
+      const std::string text = findLabel(root, prefix);
+      return text.size() > std::strlen(prefix) ? text.substr(std::strlen(prefix)) : std::string();
+    };
+
+    const auto uptimeIsSane = [](const std::string &value) {
+      unsigned hours = 0;
+      unsigned minutes = 0;
+      unsigned seconds = 0;
+      char extra = '\0';
+      return std::sscanf(value.c_str(), "%u:%u:%u%c", &hours, &minutes, &seconds, &extra) == 3
+             && minutes < 60 && seconds < 60;
+    };
+
+    const auto heapIsSane = [](const std::string &value) {
+      unsigned freeHeap = 0;
+      unsigned minimum = 0;
+      char extra = '\0';
+      return std::sscanf(value.c_str(), "%u B, min %u B%c", &freeHeap, &minimum, &extra) == 2
+             && freeHeap >= minimum && minimum > 0;
+    };
+
+    if (field == "about.build") {
+      return (page == aboutPage && !labelValue(m_Menu.at(m_AboutStr).page, "Build:\n").empty())
+                 ? "yes"
+                 : "no";
+    }
+    if (field == "about.uptime") {
+      return (page == aboutPage
+              && uptimeIsSane(labelValue(m_Menu.at(m_AboutStr).page, "Uptime:\n")))
+                 ? "yes"
+                 : "no";
+    }
+    if (field == "about.heap") {
+      return (page == aboutPage && heapIsSane(labelValue(m_Menu.at(m_AboutStr).page, "Heap:\n")))
+                 ? "yes"
+                 : "no";
+    }
+    if (field == "about.reset") {
+      return (page == aboutPage && !labelValue(m_Menu.at(m_AboutStr).page, "Reset:\n").empty())
+                 ? "yes"
+                 : "no";
+    }
+
+    if (field == "device.chip") {
+      unsigned cores = 0;
+      unsigned flash = 0;
+      char extra = '\0';
+      const std::string coreText = labelValue(m_Menu.at(m_DeviceInfoStr).page, "Cores: ");
+      const std::string flashText = labelValue(m_Menu.at(m_DeviceInfoStr).page, "Flash: ");
+      const bool numeric = std::sscanf(coreText.c_str(), "%u%c", &cores, &extra) == 1
+                           && std::sscanf(flashText.c_str(), "%u MB%c", &flash, &extra) == 1;
+      return (page == devicePage && numeric && cores > 0 && flash > 0
+              && !labelValue(m_Menu.at(m_DeviceInfoStr).page, "Chip:\n").empty())
+                 ? "yes"
+                 : "no";
+    }
+    if (field == "device.uptime") {
+      return (page == devicePage
+              && uptimeIsSane(labelValue(m_Menu.at(m_DeviceInfoStr).page, "Uptime:\n")))
+                 ? "yes"
+                 : "no";
+    }
+    if (field == "device.heap") {
+      return (page == devicePage
+              && heapIsSane(labelValue(m_Menu.at(m_DeviceInfoStr).page, "Heap:\n")))
+                 ? "yes"
+                 : "no";
+    }
+    if (field == "device.reset") {
+      return (page == devicePage
+              && !labelValue(m_Menu.at(m_DeviceInfoStr).page, "Reset:\n").empty())
+                 ? "yes"
+                 : "no";
+    }
+
+    if (field == "battery.level") {
+      unsigned level = 0;
+      char extra = '\0';
+      const std::string value = labelText(m_Status.batteryLevel);
+      const size_t prefixLength = std::strlen("Level: ");
+      const bool valid = value.compare(0, prefixLength, "Level: ") == 0
+                         && std::sscanf(value.c_str() + prefixLength, "%u%%%c", &level, &extra) == 1
+                         && level <= 100;
+      return (page == batteryPage && valid) ? "yes" : "no";
+    }
+    if (field == "battery.voltage") {
+      unsigned volts = 0;
+      unsigned millivolts = 0;
+      char extra = '\0';
+      const std::string value = labelText(m_Status.batteryVoltage);
+      const size_t prefixLength = std::strlen("Volts: ");
+      const bool valid =
+          value.compare(0, prefixLength, "Volts: ") == 0
+          && std::sscanf(value.c_str() + prefixLength, "%u.%u%c", &volts, &millivolts, &extra) == 2
+          && volts > 0 && millivolts <= 999;
+      return (page == batteryPage && valid) ? "yes" : "no";
+    }
+    if (field == "battery.charging") {
+      const std::string value = labelText(m_Status.batteryCharging);
+      const size_t prefixLength = std::strlen("Charging: ");
+      if (page != batteryPage || value.compare(0, prefixLength, "Charging: ") != 0) {
+        return "invalid";
+      }
+      const std::string state = value.substr(prefixLength);
+      return (state == "yes" || state == "no") ? state : "invalid";
+    }
+
+    if (field == "power.cpu") {
+      unsigned minimum = 0;
+      unsigned maximum = 0;
+      char extra = '\0';
+      const std::string value = labelValue(m_Menu.at(m_PowerStateStr).page, "CPU:\n");
+      const bool valid =
+          std::sscanf(value.c_str(), "%u to %u MHz%c", &minimum, &maximum, &extra) == 2
+          && minimum > 0 && maximum >= minimum;
+      return (page == powerPage && valid) ? "yes" : "no";
+    }
+    if (field == "power.sleep") {
+      const std::string value = labelValue(m_Menu.at(m_PowerStateStr).page, "Light sleep:\n");
+      return (page == powerPage && (value == "on" || value == "off")) ? "yes" : "no";
+    }
+
+    if (field == "ble") {
+      if (page != blePage) {
+        return "invalid";
+      }
+      const std::string value = labelText(m_Diagnostics.ble);
+      if (value == "No connected cameras") {
+        return "no_cameras";
+      }
+      return (value.find("Profile: ") != std::string::npos
+              && value.find("RSSI: ") != std::string::npos)
+                 ? "camera"
+                 : "invalid";
+    }
+
+    if (field == "nmea") {
+      const std::string fix = labelText(m_NMEA.fix);
+      const std::string counters = labelText(m_NMEA.counters);
+      const std::string config = labelText(m_NMEA.config);
+      const bool valid =
+          fix.find(" sats, hdop ") != std::string::npos && fix.find(" ago, ") != std::string::npos
+          && fix.find(" km/h") != std::string::npos && counters.find("rx ") == 0
+          && counters.find("\nok ") != std::string::npos
+          && counters.find(", bad ") != std::string::npos && config.find("cfg ") == 0;
+      return (page == nmeaPage && valid) ? "yes" : "no";
+    }
+
+    return "";
+  }
+
   if (query == "connect_box") {
     const bool hidden = m_ConnectContext.messageBox == nullptr
                         || lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
@@ -2726,7 +2922,7 @@ std::string UI::simQueryState(const char *key) {
     if (page == m_MainMenu.page) {
       return "main";
     }
-    const std::array<std::pair<const char *, const char *>, 25> pages = {
+    const std::array<std::pair<const char *, const char *>, 26> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -2751,6 +2947,7 @@ std::string UI::simQueryState(const char *key) {
          {m_AboutStr, "about"},
          {m_DiagnosticsStr, "diagnostics"},
          {m_DeviceInfoStr, "device_info"},
+         {m_BatteryStr, "battery"},
          {m_PowerStateStr, "power_state"},
          {m_BLEStr, "ble"},
          }
