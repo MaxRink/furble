@@ -11,6 +11,7 @@ set(FURBLE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_executable(camera_protocol_tests
   camera_protocol_tests.cpp
   "${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp"
+  "${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp"
   "${FURBLE_ROOT}/lib/furble/protocol/CameraListProtocol.cpp"
   "${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp"
 )

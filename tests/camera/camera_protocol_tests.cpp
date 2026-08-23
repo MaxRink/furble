@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "AdvertisementProtocol.h"
 #include "Blowfish.h"
 #include "CameraListProtocol.h"
 #include "FujifilmProtocol.h"
@@ -115,6 +116,105 @@ bool testFujifilmMessages() {
   return true;
 }
 
+bool testAdvertisementParsing() {
+  using Furble::AdvertisementProtocol::LumixAdvertisement;
+  using Furble::AdvertisementProtocol::NikonAdvertisement;
+  using Furble::AdvertisementProtocol::SonyAdvertisement;
+
+  const std::array<uint8_t, 13> sony = {0x2d, 0x01, 0x03, 0x00, 0x01, 0x00, 0x34,
+                                        0x12, 0x01, 0xc2, 0x00, 0x01, 0x00};
+  SonyAdvertisement sonyParsed = {};
+  CHECK(
+      Furble::AdvertisementProtocol::parseSonyAdvertisement(sony.data(), sony.size(), sonyParsed));
+  CHECK(sonyParsed.companyID == Furble::AdvertisementProtocol::SONY_COMPANY_ID);
+  CHECK(sonyParsed.type == Furble::AdvertisementProtocol::SONY_CAMERA_TYPE);
+  CHECK(sonyParsed.model == 0x1234);
+  CHECK(sonyParsed.mode22 == 0xc2);
+  CHECK(Furble::AdvertisementProtocol::matchesSonyAdvertisement(sony.data(), sony.size()));
+
+  const std::array<uint8_t, 14> sonyOversized = {0x2d, 0x01, 0x03, 0x00, 0x01, 0x00, 0x34,
+                                                 0x12, 0x01, 0xc2, 0x00, 0x01, 0x00, 0xff};
+  CHECK(Furble::AdvertisementProtocol::matchesSonyAdvertisement(sonyOversized.data(),
+                                                                sonyOversized.size()));
+  auto sonyWrongMode = sony;
+  sonyWrongMode[9] = 0x80;
+  CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(sonyWrongMode.data(),
+                                                                 sonyWrongMode.size()));
+  auto sonyWrongCompany = sony;
+  sonyWrongCompany[0] = 0x2e;
+  CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(sonyWrongCompany.data(),
+                                                                 sonyWrongCompany.size()));
+  CHECK(!Furble::AdvertisementProtocol::parseSonyAdvertisement(sony.data(), sony.size() - 1,
+                                                               sonyParsed));
+  CHECK(!Furble::AdvertisementProtocol::parseSonyAdvertisement(nullptr, 0, sonyParsed));
+
+  const std::array<uint8_t, 8> lumix = {0x3a, 0x00, 0x07, 0x10, 0x20, 0x30, 0x40, 0x50};
+  LumixAdvertisement lumixParsed = {};
+  CHECK(Furble::AdvertisementProtocol::parseLumixAdvertisement(lumix.data(), lumix.size(),
+                                                               lumixParsed));
+  CHECK(lumixParsed.companyID == Furble::AdvertisementProtocol::PANASONIC_COMPANY_ID);
+  CHECK(lumixParsed.flags == 0x07);
+  CHECK((lumixParsed.address == std::array<uint8_t, 5> {0x10, 0x20, 0x30, 0x40, 0x50}));
+  CHECK(Furble::AdvertisementProtocol::matchesLumixAdvertisement(lumix.data(), lumix.size(), true));
+  CHECK(
+      !Furble::AdvertisementProtocol::matchesLumixAdvertisement(lumix.data(), lumix.size(), false));
+  auto lumixWrongCompany = lumix;
+  lumixWrongCompany[0] = 0x3b;
+  CHECK(!Furble::AdvertisementProtocol::matchesLumixAdvertisement(lumixWrongCompany.data(),
+                                                                  lumixWrongCompany.size(), true));
+  const std::array<uint8_t, 9> lumixOversized = {0x3a, 0x00, 0x07, 0x10, 0x20,
+                                                 0x30, 0x40, 0x50, 0xff};
+  CHECK(Furble::AdvertisementProtocol::matchesLumixAdvertisement(lumixOversized.data(),
+                                                                 lumixOversized.size(), true));
+  CHECK(!Furble::AdvertisementProtocol::parseLumixAdvertisement(lumix.data(), lumix.size() - 1,
+                                                                lumixParsed));
+  CHECK(!Furble::AdvertisementProtocol::parseLumixAdvertisement(nullptr, 0, lumixParsed));
+
+  const std::array<uint8_t, 7> nikon = {0x99, 0x03, 0x78, 0x56, 0x34, 0x12, 0x00};
+  NikonAdvertisement nikonParsed = {};
+  CHECK(Furble::AdvertisementProtocol::parseNikonAdvertisement(nikon.data(), nikon.size(),
+                                                               nikonParsed));
+  CHECK(nikonParsed.companyID == Furble::AdvertisementProtocol::NIKON_COMPANY_ID);
+  CHECK(nikonParsed.device == 0x12345678);
+  CHECK(
+      Furble::AdvertisementProtocol::matchesNikonReconnect(nikon.data(), nikon.size(), 0x12345678));
+  CHECK(!Furble::AdvertisementProtocol::matchesNikonReconnect(nikon.data(), nikon.size(),
+                                                              0x12345679));
+  auto nikonWrongCompany = nikon;
+  nikonWrongCompany[0] = 0x98;
+  CHECK(!Furble::AdvertisementProtocol::matchesNikonReconnect(
+      nikonWrongCompany.data(), nikonWrongCompany.size(), 0x12345678));
+  const std::array<uint8_t, 8> nikonOversized = {0x99, 0x03, 0x78, 0x56, 0x34, 0x12, 0x00, 0xff};
+  CHECK(Furble::AdvertisementProtocol::matchesNikonReconnect(nikonOversized.data(),
+                                                             nikonOversized.size(), 0x12345678));
+  CHECK(!Furble::AdvertisementProtocol::parseNikonAdvertisement(nikon.data(), nikon.size() - 1,
+                                                                nikonParsed));
+  CHECK(!Furble::AdvertisementProtocol::parseNikonAdvertisement(nullptr, 0, nikonParsed));
+  CHECK(Furble::AdvertisementProtocol::matchesNikonDiscovery(false, true));
+  CHECK(!Furble::AdvertisementProtocol::matchesNikonDiscovery(true, true));
+  CHECK(!Furble::AdvertisementProtocol::matchesNikonDiscovery(false, false));
+
+  const std::array<uint8_t, 5> dji = {0xaa, 0x08, 0x00, 0x00, 0xfa};
+  CHECK(Furble::AdvertisementProtocol::matchesDJIAdvertisement(dji.data(), dji.size()));
+  const std::array<uint8_t, 6> djiOversized = {0xaa, 0x08, 0x00, 0x00, 0xfa, 0xff};
+  CHECK(Furble::AdvertisementProtocol::matchesDJIAdvertisement(djiOversized.data(),
+                                                               djiOversized.size()));
+  auto djiWrong = dji;
+  djiWrong[4] = 0xfb;
+  CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(djiWrong.data(), djiWrong.size()));
+  CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(dji.data(), dji.size() - 1));
+  CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(nullptr, 0));
+
+  CHECK(Furble::AdvertisementProtocol::matchesRicohName("GR"));
+  CHECK(Furble::AdvertisementProtocol::matchesRicohName("Ricoh GR IIIx"));
+  CHECK(Furble::AdvertisementProtocol::matchesRicohName("Pentax K-3 III"));
+  CHECK(Furble::AdvertisementProtocol::matchesRicohName("griii"));
+  CHECK(!Furble::AdvertisementProtocol::matchesRicohName("GRX"));
+  CHECK(!Furble::AdvertisementProtocol::matchesRicohName("Canon"));
+  CHECK(!Furble::AdvertisementProtocol::matchesRicohName(""));
+  return true;
+}
+
 bool testCameraListPersistence() {
   const IndexEntry first = makeIndexEntry("001122334455", 1);
   const IndexEntry second = makeIndexEntry("AABBCCDDEEFF", 8);
@@ -192,10 +292,11 @@ bool testBlowfishVectors() {
 }  // namespace
 
 int main() {
-  const std::array<std::pair<const char *, bool (*)()>, 4> tests = {
+  const std::array<std::pair<const char *, bool (*)()>, 5> tests = {
       {
        {"Fujifilm advertisement parsing", testFujifilmAdvertisementParsing},
        {"Fujifilm message framing", testFujifilmMessages},
+       {"Cross-vendor advertisement parsing", testAdvertisementParsing},
        {"CameraList persistence", testCameraListPersistence},
        {"Blowfish vectors", testBlowfishVectors},
        }

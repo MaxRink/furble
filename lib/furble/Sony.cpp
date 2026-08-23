@@ -6,6 +6,7 @@
 #include <NimBLEUtils.h>
 
 #include "Sony.h"
+#include "protocol/AdvertisementProtocol.h"
 
 namespace Furble {
 
@@ -28,14 +29,10 @@ Sony::Sony(const NimBLEAdvertisedDevice *pDevice) : Camera(Type::SONY, PairType:
 }
 
 bool Sony::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice->haveManufacturerData()
-      && (pDevice->getManufacturerData().size() >= sizeof(sony_adv_t))) {
-    const sony_adv_t adv = pDevice->getManufacturerData<sony_adv_t>();
-    if (adv.company_id == ADV_SONY_ID && adv.type == ADV_SONY_CAMERA) {
-      uint8_t mode =
-          (ADV_MODE22_PAIRING_SUPPORTED | ADV_MODE22_PAIRING_ENABLED | ADV_MODE22_REMOTE_ENABLED);
-      return (adv.mode22 & mode) == mode;
-    }
+  if (pDevice->haveManufacturerData()) {
+    const auto manufacturerData = pDevice->getManufacturerData();
+    return AdvertisementProtocol::matchesSonyAdvertisement(
+        reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.size());
   }
 
   return false;

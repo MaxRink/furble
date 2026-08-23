@@ -9,6 +9,7 @@
 
 #include "Device.h"
 #include "Lumix.h"
+#include "protocol/AdvertisementProtocol.h"
 
 namespace Furble {
 
@@ -64,12 +65,14 @@ Lumix::Lumix(const NimBLEAdvertisedDevice *pDevice) : Camera(Type::PANASONIC_LUM
 }
 
 bool Lumix::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (!pDevice->haveManufacturerData() || pDevice->getManufacturerData().size() < sizeof(adv_t)) {
+  if (!pDevice->haveManufacturerData()) {
     return false;
   }
 
-  const adv_t adv = pDevice->getManufacturerData<adv_t>();
-  return adv.company_id == ADV_PANASONIC_ID && pDevice->isAdvertisingService(SESSION_SVC_UUID);
+  const auto manufacturerData = pDevice->getManufacturerData();
+  return AdvertisementProtocol::matchesLumixAdvertisement(
+      reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.size(),
+      pDevice->isAdvertisingService(SESSION_SVC_UUID));
 }
 
 bool Lumix::_connect(void) {

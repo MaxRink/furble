@@ -12,6 +12,7 @@
 #include "NikonRemote.h"
 #include "NikonSmart.h"
 #include "Scan.h"
+#include "protocol/AdvertisementProtocol.h"
 
 namespace Furble {
 
@@ -54,15 +55,16 @@ bool Nikon::matchesServiceUUID(const NimBLEAdvertisedDevice *pDevice) {
  * * have no manufacturer data
  */
 bool Nikon::matches(const NimBLEAdvertisedDevice *pDevice) {
-  return (!pDevice->haveManufacturerData() && matchesServiceUUID(pDevice));
+  return AdvertisementProtocol::matchesNikonDiscovery(pDevice->haveManufacturerData(),
+                                                      matchesServiceUUID(pDevice));
 }
 
 void Nikon::onResult(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice->haveManufacturerData() && matchesServiceUUID(pDevice)) {
-    nikon_adv_t saved = {COMPANY_ID, m_ID.device, 0x00};
-    nikon_adv_t found = pDevice->getManufacturerData<nikon_adv_t>();
-
-    if ((saved.companyID == found.companyID) && (saved.device == found.device)) {
+    const auto manufacturerData = pDevice->getManufacturerData();
+    if (AdvertisementProtocol::matchesNikonReconnect(
+            reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.size(),
+            m_ID.device)) {
       m_Address = pDevice->getAddress();
       bool success = true;
       xQueueSend(m_Queue, &success, 0);

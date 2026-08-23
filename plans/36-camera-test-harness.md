@@ -146,6 +146,36 @@ time field errors, advertisement length and identifier mistakes, and
 pairing transform regressions. Cannot catch service discovery, notification
 timing, pairing, or lifecycle behavior.
 
+#### Advertisement matcher coverage slice
+
+The host suite now also compiles `lib/furble/protocol/AdvertisementProtocol.cpp`,
+which is the production parser seam for vendor discovery data. The real Sony,
+Panasonic Lumix, Nikon, DJI Osmo, and Ricoh classes route their deterministic
+advertisement checks through this module while NimBLE remains responsible for
+transport access and service presence. The suite covers:
+
+- Sony manufacturer records, including company and camera type, required
+  pairing and remote mode bits, truncated records, and tolerated trailing data.
+- Panasonic Lumix company records, service gating, address extraction,
+  truncated records, and tolerated trailing data.
+- Nikon service-only discovery and saved-camera reconnect records, including
+  company and device identity checks, malformed lengths, and trailing data.
+- DJI Osmo marker records with short, unknown, and trailing-data cases.
+- Ricoh and Pentax name matching with case folding, known model forms, and
+  unknown names.
+
+The parser uses explicit byte bounds and little-endian decoding rather than
+reading packed NimBLE templates. Its protocol constants are grounded in the
+existing vendor references in [61-camera-compatibility.md](61-camera-compatibility.md),
+including the Sony [coral/freemote implementation](https://github.com/coral/freemote),
+the Panasonic [LUMIX GPS logger](https://github.com/tobiasbrummer/lux-lat-long-log),
+the Nikon [furble issue 209](https://github.com/gkoh/furble/issues/209), and the
+DJI [official Osmo GPS controller demo](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo).
+
+Only Fujifilm hardware is available for bench testing. Sony, Panasonic, Nikon,
+Ricoh/Pentax, and DJI paths remain untested on hardware and are covered by
+production-code review plus deterministic host vectors.
+
 Effort: 2 to 3 days for Fujifilm, 5 to 8 days for all vendors.
 
 ### Tier B: mock NimBLE client layer

@@ -37,15 +37,6 @@ class Nikon: public Camera, public NimBLEScanCallbacks {
   void _disconnect(void) override final;
 
  private:
-  static constexpr uint16_t COMPANY_ID = 0x0399;
-
-  /** Connect saved advertised manufacturer data. */
-  typedef struct __attribute__((packed)) _nikon_adv_t {
-    uint16_t companyID;
-    uint32_t device;
-    uint8_t zero;
-  } nikon_adv_t;
-
   /** Non-volatile storage type. */
   typedef struct _nikon_t {
     char name[MAX_NAME];         /** Human readable device name. */
