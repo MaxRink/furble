@@ -13,6 +13,8 @@ public enum FurbleProtocol {
   public static let settingsWireVersion: UInt8 = 2
   public static let locationPacketSize = 42
   public static let statusPacketSize = 20
+  /// Normal trigger operations are two bytes. Timed shutter appends a
+  /// little-endian uint16 hold duration, making that form four bytes.
   public static let triggerPacketSize = 4
   public static let capabilityPacketSize = 6
   public static let authNonceSize = 16
@@ -295,10 +297,12 @@ public enum FurbleProtocol {
   }
 
   public static func encodeTrigger(_ operation: TriggerOperation, holdMilliseconds: UInt16 = 0) -> Data {
-    var writer = Writer(capacity: triggerPacketSize)
+    var writer = Writer(capacity: operation == .timedShutter ? triggerPacketSize : 2)
     writer.u8(version)
     writer.u8(operation.rawValue)
-    writer.u16(holdMilliseconds)
+    if operation == .timedShutter {
+      writer.u16(holdMilliseconds)
+    }
     return writer.data
   }
 

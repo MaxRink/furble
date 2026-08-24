@@ -48,6 +48,13 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertFalse(settingsOnly.supportsCameras)
   }
 
+  func testTriggerUsesFirmwareLengthForEachOperation() {
+    XCTAssertEqual(FurbleProtocol.encodeTrigger(.shutterRelease), Data([1, 0]))
+    XCTAssertEqual(FurbleProtocol.encodeTrigger(.focusPress), Data([1, 2]))
+    XCTAssertEqual(FurbleProtocol.encodeTrigger(.timedShutter, holdMilliseconds: 0x1234),
+      Data([1, 4, 0x34, 0x12]))
+  }
+
   func testSettingsTlvRoundTripsAndRejectsTrailingBytes() throws {
     XCTAssertEqual(FurbleProtocol.settingsListRequest(), Data([0, 0, 0]))
     XCTAssertEqual(try FurbleProtocol.settingsSet(id: 7, value: Data([0xff])), Data([2, 7, 1, 0xff]))
