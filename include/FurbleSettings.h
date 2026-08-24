@@ -215,7 +215,6 @@ class Settings {
   static void saveValue(type_t type, const T &value);
 
   static const std::unordered_map<type_t, setting_t> m_Setting;
-  static Preferences m_Prefs;
 };
 
 template <>

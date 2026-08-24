@@ -7,7 +7,6 @@
 #include "Preferences.h"
 
 namespace Furble {
-Preferences Settings::m_Prefs;
 
 // The board-conditional text size policy in FurbleTextSize.h uses raw values so
 // it stays dependency free for the host tests. Pin those values to the enum so
@@ -224,18 +223,20 @@ bool Settings::isDangerous(type_t type) {
 template <typename T>
 T Settings::loadValue(type_t type) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, true);
-  T value = m_Prefs.get<T>(setting.key, T {});
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, true);
+  T value = prefs.get<T>(setting.key, T {});
+  prefs.end();
   return value;
 }
 
 template <typename T>
 void Settings::saveValue(type_t type, const T &value) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, false);
-  m_Prefs.put<T>(setting.key, value);
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, false);
+  prefs.put<T>(setting.key, value);
+  prefs.end();
 }
 
 template <>
@@ -267,9 +268,10 @@ template <>
 interval_t Settings::load<interval_t>(type_t type) {
   const auto &setting = get(type);
   interval_t interval;
+  Preferences prefs;
 
-  m_Prefs.begin(setting.nvs_namespace, true);
-  size_t len = m_Prefs.get(setting.key, &interval, sizeof(interval_t));
+  prefs.begin(setting.nvs_namespace, true);
+  size_t len = prefs.get(setting.key, &interval, sizeof(interval_t));
   if (len == sizeof(interval_v1_t)) {
     // migrate v1 interval settings
     interval.wait = INTERVAL_DEFAULT_WAIT;
@@ -281,7 +283,7 @@ interval_t Settings::load<interval_t>(type_t type) {
     interval.wait = INTERVAL_DEFAULT_WAIT;
   }
 
-  m_Prefs.end();
+  prefs.end();
 
   return interval;
 }
@@ -290,15 +292,16 @@ template <>
 SpinValue::nvs_t Settings::load<SpinValue::nvs_t>(type_t type) {
   const auto &setting = get(type);
   SpinValue::nvs_t nvs;
+  Preferences prefs;
 
-  m_Prefs.begin(setting.nvs_namespace, true);
-  size_t len = m_Prefs.get(setting.key, &nvs, sizeof(SpinValue::nvs_t));
+  prefs.begin(setting.nvs_namespace, true);
+  size_t len = prefs.get(setting.key, &nvs, sizeof(SpinValue::nvs_t));
   if (len != sizeof(SpinValue::nvs_t)) {
     // default value
     nvs = BULB_DEFAULT;
   }
 
-  m_Prefs.end();
+  prefs.end();
 
   return nvs;
 }
@@ -306,9 +309,10 @@ SpinValue::nvs_t Settings::load<SpinValue::nvs_t>(type_t type) {
 template <>
 esp_power_level_t Settings::load<esp_power_level_t>(type_t type) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, true);
-  uint8_t value = m_Prefs.get<uint8_t>(setting.key);
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, true);
+  uint8_t value = prefs.get<uint8_t>(setting.key);
+  prefs.end();
 
   switch (value) {
     case 0:
@@ -325,9 +329,10 @@ template <>
 Settings::calibration_t Settings::load<Settings::calibration_t>(type_t type) {
   const auto &setting = get(type);
   calibration_t calibration;
+  Preferences prefs;
 
-  m_Prefs.begin(setting.nvs_namespace, true);
-  size_t len = m_Prefs.get(setting.key, &calibration, sizeof(calibration_t));
+  prefs.begin(setting.nvs_namespace, true);
+  size_t len = prefs.get(setting.key, &calibration, sizeof(calibration_t));
   if (len != sizeof(calibration_t)) {
     // default values
     calibration.points[0] = 0;
@@ -341,7 +346,7 @@ Settings::calibration_t Settings::load<Settings::calibration_t>(type_t type) {
     calibration.calibrated = false;
   }
 
-  m_Prefs.end();
+  prefs.end();
 
   return calibration;
 }
@@ -369,22 +374,24 @@ void Settings::save<uint16_t>(const type_t type, const uint16_t &value) {
 template <>
 void Settings::save<interval_t>(const type_t type, const interval_t &value) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, false);
-  m_Prefs.put(setting.key, &value, sizeof(value));
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, false);
+  prefs.put(setting.key, &value, sizeof(value));
+  prefs.end();
 }
 
 template <>
 Settings::multiselect_t Settings::load<Settings::multiselect_t>(type_t type) {
   const auto &setting = get(type);
   multiselect_t selection = {};
+  Preferences prefs;
 
-  m_Prefs.begin(setting.nvs_namespace, true);
-  size_t len = m_Prefs.get(setting.key, &selection, sizeof(selection));
+  prefs.begin(setting.nvs_namespace, true);
+  size_t len = prefs.get(setting.key, &selection, sizeof(selection));
   if (len != sizeof(selection)) {
     selection = {};
   }
-  m_Prefs.end();
+  prefs.end();
 
   return selection;
 }
@@ -392,9 +399,10 @@ Settings::multiselect_t Settings::load<Settings::multiselect_t>(type_t type) {
 template <>
 void Settings::save<SpinValue::nvs_t>(const type_t type, const SpinValue::nvs_t &value) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, false);
-  m_Prefs.put(setting.key, &value, sizeof(value));
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, false);
+  prefs.put(setting.key, &value, sizeof(value));
+  prefs.end();
 }
 
 template <>
@@ -405,17 +413,19 @@ void Settings::save<std::string>(const type_t type, const std::string &value) {
 template <>
 void Settings::save<Settings::calibration_t>(const type_t type, const calibration_t &value) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, false);
-  m_Prefs.put(setting.key, &value, sizeof(value));
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, false);
+  prefs.put(setting.key, &value, sizeof(value));
+  prefs.end();
 }
 
 template <>
 void Settings::save<Settings::multiselect_t>(const type_t type, const multiselect_t &value) {
   const auto &setting = get(type);
-  m_Prefs.begin(setting.nvs_namespace, false);
-  m_Prefs.put(setting.key, &value, sizeof(value));
-  m_Prefs.end();
+  Preferences prefs;
+  prefs.begin(setting.nvs_namespace, false);
+  prefs.put(setting.key, &value, sizeof(value));
+  prefs.end();
 }
 
 void Settings::init(void) {
@@ -430,9 +440,10 @@ void Settings::init(void) {
   // Set default values for all settings
   for (const auto &it : m_Setting) {
     auto &setting = it.second;
-    m_Prefs.begin(setting.nvs_namespace, true);
-    bool exists = m_Prefs.isKey(setting.key);
-    m_Prefs.end();
+    Preferences prefs;
+    prefs.begin(setting.nvs_namespace, true);
+    bool exists = prefs.isKey(setting.key);
+    prefs.end();
 
     if (!exists) {
       switch (setting.type) {
