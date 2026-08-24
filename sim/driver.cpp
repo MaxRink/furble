@@ -205,8 +205,8 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",         "gps_nmea", "fauxny",       "autoconnect", "reconnect",    "sleep_conn",
-      "boot_splash", "watchdog", "connect_fail", "no_touch",    "saved_camera",
+      "gps",        "gps_nmea",    "fauxny",       "autoconnect", "reconnect",
+      "sleep_conn", "boot_splash", "connect_fail", "no_touch",    "saved_camera",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -214,6 +214,19 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::exit(2);
     }
     return;
+  }
+
+  if (name == "watchdog") {
+#if defined(FURBLE_M5STICKS3)
+    if (!booleanSeedValue(value)) {
+      std::cerr << "Invalid watchdog: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+#else
+    std::cerr << "Unsupported scenario seed on this board: watchdog\n";
+    std::exit(2);
+#endif
   }
 
   constexpr const char *intervalSeeds[] = {
