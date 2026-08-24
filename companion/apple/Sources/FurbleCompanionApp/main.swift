@@ -4,7 +4,13 @@ import FurbleCompanionCore
 
 @main
 struct FurbleCompanionApp: App {
-  @StateObject private var client = FurbleBLEClient()
+  @StateObject private var client: FurbleBLEClient
+
+  init() {
+    let accessGroup = Bundle.main.object(forInfoDictionaryKey: "FurbleKeychainAccessGroup") as? String
+    _client = StateObject(wrappedValue: FurbleBLEClient(
+      credentialStore: KeychainCredentialStore(accessGroup: accessGroup)))
+  }
 
   var body: some Scene {
     WindowGroup {

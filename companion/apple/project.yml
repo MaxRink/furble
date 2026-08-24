@@ -1,0 +1,106 @@
+name: FurbleCompanionApps
+
+options:
+  deploymentTarget:
+    iOS: "16.0"
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  FurbleCompanion:
+    path: .
+
+targets:
+  FurbleCompanion-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/FurbleCompanionApp
+    resources:
+      - path: AppResources/PrivacyInfo.xcprivacy
+    dependencies:
+      - package: FurbleCompanion
+        product: FurbleCompanionCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.ios
+        INFOPLIST_FILE: AppResources/iOS-Info.plist
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: "5.0"
+    entitlements:
+      path: AppResources/iOS.entitlements
+
+  FurbleCompanion-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/FurbleCompanionApp
+    resources:
+      - path: AppResources/PrivacyInfo.xcprivacy
+    dependencies:
+      - package: FurbleCompanion
+        product: FurbleCompanionCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.macos
+        INFOPLIST_FILE: AppResources/macOS-Info.plist
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: "5.0"
+    entitlements:
+      path: AppResources/macOS.entitlements
+
+  FurbleCompanionCoreTests-iOS:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/FurbleCompanionCoreTests
+    dependencies:
+      - package: FurbleCompanion
+        product: FurbleCompanionCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.ios
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: "5.0"
+
+  FurbleCompanionCoreTests-macOS:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/FurbleCompanionCoreTests
+    dependencies:
+      - package: FurbleCompanion
+        product: FurbleCompanionCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.macos
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: "5.0"
+
+schemes:
+  FurbleCompanion-iOS:
+    build:
+      targets:
+        FurbleCompanion-iOS: all
+        FurbleCompanionCoreTests-iOS: [test]
+    test:
+      targets:
+        - FurbleCompanionCoreTests-iOS
+    run:
+      config: Debug
+
+  FurbleCompanion-macOS:
+    build:
+      targets:
+        FurbleCompanion-macOS: all
+        FurbleCompanionCoreTests-macOS: [test]
+    test:
+      targets:
+        - FurbleCompanionCoreTests-macOS
+    run:
+      config: Debug

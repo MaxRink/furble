@@ -1,1 +1,3 @@
 .build/
+FurbleCompanion.xcodeproj/
+.swiftpm/

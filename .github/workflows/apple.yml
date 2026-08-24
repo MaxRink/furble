@@ -11,17 +11,59 @@ on:
     paths:
       - "companion/apple/**"
       - "plans/127-apple-companion.md"
+      - ".github/workflows/apple.yml"
 
 permissions:
   contents: read
 
+env:
+  # macos-14 plus an explicit Xcode path prevents a runner image update from
+  # silently changing the Apple SDK used by this workflow.
+  XCODE_VERSION: "16.2"
+
 jobs:
+  apple-project:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Select pinned Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          xcodebuild -version | grep -F "Xcode ${XCODE_VERSION}"
+      - name: Generate native project
+        working-directory: companion/apple
+        run: scripts/generate-xcode-project.sh
+      - name: Build and test iOS simulator target
+        working-directory: companion/apple
+        run: >-
+          xcodebuild
+          -project FurbleCompanion.xcodeproj
+          -scheme FurbleCompanion-iOS
+          -destination 'platform=iOS Simulator,name=iPhone 15'
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          test
+      - name: Build and test macOS target
+        working-directory: companion/apple
+        run: >-
+          xcodebuild
+          -project FurbleCompanion.xcodeproj
+          -scheme FurbleCompanion-macOS
+          -destination 'platform=macOS'
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          test
+
   swift-package:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4.2.2
-      - name: Select pinned Swift toolchain
-        run: swift --version
+      - name: Select pinned Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          xcodebuild -version | grep -F "Xcode ${XCODE_VERSION}"
       - name: Test shared Apple package
         working-directory: companion/apple
         run: swift test --configuration release

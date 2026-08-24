@@ -1,8 +1,9 @@
 # 127 - Apple companion foundation
 
-Status: implementation slice. Shared Swift protocol, auth gate and host tests
-are present under `companion/apple`. The iOS and macOS Xcode targets consume the
-same SwiftUI source and CoreBluetooth adapter.
+Status: implementation slice. Shared Swift protocol, auth gate, native iOS and
+macOS target definition, and host tests are present under `companion/apple`.
+The Xcode project is generated reproducibly from `project.yml` with the pinned
+XcodeGen release documented in the companion README.
 
 ## Delivered
 
@@ -21,18 +22,22 @@ same SwiftUI source and CoreBluetooth adapter.
   bounds, status notifications, reconnect state, and explicit trigger writes.
 - Opt-in Core Location bridge that emits UTC fixes with age and accuracy, and
   never starts location updates merely because a device is paired.
-- Shared SwiftUI iOS/macOS app source plus privacy usage strings.
+- Shared SwiftUI iOS/macOS app source plus platform privacy usage strings.
+- Native iOS and macOS application and unit-test targets, Keychain access-group
+  entitlements, Bluetooth restoration declarations, and unsigned CI build
+  definitions.
 
 ## Follow-up gates
 
-- Firmware must expose the Auth characteristic and capability bit 1 with the
-  challenge format from plan 116 before a physical Apple app can connect.
+- Firmware must expose the Auth characteristic with the challenge format from
+  plan 116 before a physical Apple app can connect. Capability bit 1 is the
+  cameras feature from plan 51, not an authentication flag.
 - Firmware must expose the cameras characteristic from plan 51 before camera
   rows are shown. The current client capability-gates it.
-- An Xcode project must add one signed or unsigned iOS target and one macOS
-  target around the shared Swift package. CI can run `swift test` now; Xcode
-  simulator builds and real iPhone/Mac Bluetooth tests require Xcode and Apple
-  SDKs.
-- Add the Keychain access-group entitlement in the app project. The shared
-  client deliberately does not enable background location unless the user opts
-  in.
+- The generated project has one unsigned iOS target, one unsigned macOS target,
+  and matching unit-test targets around the shared Swift package. CI builds and
+  tests both platforms on a pinned macOS/Xcode image. Real iPhone/Mac
+  Bluetooth tests still require hardware and a signed build.
+- The platform targets declare the shared Keychain access-group entitlement.
+  The shared client deliberately does not enable background location unless
+  the user opts in.
