@@ -14,6 +14,16 @@ assert ui.gps_lon 11.51667
 assert ui.gps_satellites 8
 assert ui.gps_fix yes
 
+# Exercise the real settings callback while the background task is actively
+# decoding. TSan must prove each disable/enable reset is atomic with respect to
+# the task-owned UART and configuration state.
+action toggle gps
+wait 200
+assert setting.gps 0
+action toggle gps
+wait 500
+assert setting.gps 1
+
 action nav nmea
 wait 2200
 assert ui.page nmea

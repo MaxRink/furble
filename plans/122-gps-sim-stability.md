@@ -38,6 +38,8 @@ gate therefore continues to assert rendered state without pixel readback.
    sanitizer exposed the task reading the binary configuration queue while
    `GPS::init()` cleared it during startup; a service mutex now makes the whole
    reset atomic with respect to task passes.
+8. Toggle GPS off and on through its real settings widget during the concurrent
+   page scenario, so the sanitizer covers both startup and runtime reloads.
 
 No GPS protocol, timing, or default setting changes are intended. The parser
 mutex is held only while accessing TinyGPSPlus and never across UART, LVGL,
