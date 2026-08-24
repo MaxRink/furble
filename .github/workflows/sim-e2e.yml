@@ -80,6 +80,27 @@ jobs:
           FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
         run: sh sim/build.sh
 
+      # The GPS decoder runs on a host thread while UI timers query its status.
+      # Keep one focused ThreadSanitizer scenario in CI so parser ownership
+      # regressions fail deterministically instead of surfacing as rare SDL
+      # crashes in unrelated page scenarios.
+      - name: Build GPS concurrency sanitizer
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-tsan
+          FURBLE_SIM_SANITIZE: thread
+        run: sh sim/build.sh
+
+      - name: Assert GPS task ownership under ThreadSanitizer
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: >-
+          sim/build-tsan/furble-sim
+          --script sim/scenarios/e2e/gps-concurrent-pages.txt
+
       - name: Run end-to-end scenarios
         env:
           SDL_VIDEODRIVER: dummy

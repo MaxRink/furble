@@ -36,8 +36,9 @@ console output, NVS, or camera operations.
 - `gps-concurrent-pages.txt` must pass on the M5StickS3 simulator and the
   other panel builds where the pages are present.
 - Run the full host CTest suite for unrelated regressions.
-- Run the simulator sanitizer build with the existing
-  `FURBLE_SIM_SANITIZE=address,undefined` gate when dependencies are available.
+- Build a focused simulator with `FURBLE_SIM_SANITIZE=thread` and run
+  `gps-concurrent-pages.txt` in CI. Any reported race or deadlock fails the
+  simulator E2E job.
 - Hardware validation is not required for this ownership-only change. A
   bench run should still confirm the GPS console output and live page after a
   real receiver fix.
