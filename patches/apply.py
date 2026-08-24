@@ -1,10 +1,11 @@
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent))
-from ble_gap_patch import apply_patch  # noqa: E402
-
 Import("env")
+
+patches_dir = Path(env.subst("$PROJECT_DIR")) / "patches"
+sys.path.insert(0, str(patches_dir))
+from ble_gap_patch import apply_patch  # noqa: E402
 
 framework_dir = env.PioPlatform().get_package_dir("framework-espidf")
 
@@ -22,7 +23,7 @@ def apply_ble_gap_patch():
       / "src"
       / "ble_gap.c"
   )
-  patch_path = Path(env.subst("$PROJECT_DIR")) / "patches" / "ble_gap.patch"
+  patch_path = patches_dir / "ble_gap.patch"
   apply_patch(src_path, patch_path)
 
 

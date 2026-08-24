@@ -3,7 +3,9 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import sys
 import tempfile
+import types
 import unittest
 
 from ble_gap_patch import apply_patch
@@ -54,6 +56,50 @@ class BleGapPatchTest(unittest.TestCase):
       with self.assertRaises(RuntimeError):
         apply_patch(source, patch, marker="new")
       self.assertEqual(list(Path(directory).glob("*.rej")), [])
+
+  def test_platformio_entrypoint_does_not_require_dunder_file(self):
+    """SCons executes extra scripts without defining ``__file__``."""
+    with tempfile.TemporaryDirectory() as directory:
+      project_dir = Path(directory) / "project"
+      framework_dir = Path(directory) / "framework"
+      (project_dir / "patches").mkdir(parents=True)
+      calls = []
+
+      fake_module = types.ModuleType("ble_gap_patch")
+      fake_module.apply_patch = lambda source, patch: calls.append((source, patch))
+
+      class FakePlatform:
+        def get_package_dir(self, name):
+          self.requested_name = name
+          return str(framework_dir)
+
+      class FakeEnv:
+        platform = FakePlatform()
+
+        def subst(self, value):
+          self.requested_value = value
+          return str(project_dir)
+
+        def PioPlatform(self):
+          return self.platform
+
+      previous_module = sys.modules.get("ble_gap_patch")
+      sys.modules["ble_gap_patch"] = fake_module
+      try:
+        entrypoint = Path(__file__).with_name("apply.py").read_text(
+            encoding="utf-8"
+        )
+        namespace = {"Import": lambda _name: None, "env": FakeEnv()}
+        exec(compile(entrypoint, "patches/apply.py", "exec"), namespace)
+      finally:
+        if previous_module is None:
+          del sys.modules["ble_gap_patch"]
+        else:
+          sys.modules["ble_gap_patch"] = previous_module
+
+      self.assertEqual(len(calls), 1)
+      self.assertEqual(calls[0][1], project_dir / "patches" / "ble_gap.patch")
+      self.assertEqual(calls[0][0].name, "ble_gap.c")
 
 
 if __name__ == "__main__":
