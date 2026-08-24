@@ -129,11 +129,12 @@ text after a comment are ignored. Each line starts with one verb.
 | `action` | `action COMMAND` invokes one of the simulator actions below. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
+| `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `xassert`, and `print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, and `setting.*`.
+`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
+`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
 
 ### Effective `seed` names
 
@@ -376,6 +377,9 @@ handshake writes, link drops during a handshake, and deferred client deletion.
    verbs, action values, and query keys above.
 2. Use `seed` for state needed before UI construction. Use `action` to drive a
    real UI path, and `wait` or `advance` before checking timer-driven state.
+   Use `assert-eventually` only when a background simulator task must catch up
+   after virtual time has advanced. Keep exact count/value assertions after the
+   eventual state assertion.
 3. Prefer `assert` for a fixed contract. Use `xassert` only for a known gap
    that is expected to fail today. It records XFAIL and continues; an XPASS
    is the signal to promote the line to `assert` after the product fix.
