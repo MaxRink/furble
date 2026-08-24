@@ -9,6 +9,7 @@ set(furble_sources
     FurbleGPS.cpp
     FurbleGPX.cpp
     FurbleIR.cpp
+    FurbleOTA.cpp
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleProvision.cpp
