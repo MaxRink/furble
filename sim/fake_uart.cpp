@@ -233,6 +233,13 @@ std::vector<std::string> furble_sim_uart_writes_snapshot(void) {
   return uartWrites;
 }
 
+std::vector<std::string> furble_sim_uart_take_writes(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  std::vector<std::string> writes;
+  writes.swap(uartWrites);
+  return writes;
+}
+
 void furble_sim_uart_clear_writes(void) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   uartWrites.clear();

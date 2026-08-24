@@ -819,14 +819,13 @@ void driverTick(void) {
 
     case StepType::UART_DUMP:
       // Print every captured GPS UART command, assertable by the caller.
-      for (const auto &payload : furble_sim_uart_writes_snapshot()) {
+      for (const auto &payload : furble_sim_uart_take_writes()) {
         std::string line = payload;
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
           line.pop_back();
         }
         std::cout << "uart-tx " << line << '\n';
       }
-      furble_sim_uart_clear_writes();
       ++stepIndex;
       break;
 
