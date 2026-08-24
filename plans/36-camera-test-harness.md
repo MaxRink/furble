@@ -269,8 +269,8 @@ vectors under `tests/corpus/x100vi/`, normalized by `tools/corpus/`.
 `README.md` already documents the Android HCI snoop precedent. Encrypted
 GATT traffic needs a sniffer with keys or logging at the NimBLE operation
 boundary. Raw captures stay private; the repository holds normalized
-vectors only. The X100VI is not in the supported camera list, so the corpus
-is a compatibility investigation, not proof of support.
+vectors only. The X100VI is in the supported camera list; the corpus adds
+repeatable protocol-conformance evidence rather than establishing support.
 
 Effort: 1 to 2 days with a working sniffer, 3 to 5 days if key handling
 must be solved.
