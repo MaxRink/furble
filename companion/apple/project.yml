@@ -15,6 +15,7 @@ targets:
       - path: Sources/FurbleCompanionCore
     settings:
       base:
+        PRODUCT_NAME: FurbleCompanionCore
         PRODUCT_MODULE_NAME: FurbleCompanionCore
         SWIFT_VERSION: "5.0"
 
@@ -25,6 +26,7 @@ targets:
       - path: Sources/FurbleCompanionCore
     settings:
       base:
+        PRODUCT_NAME: FurbleCompanionCore
         PRODUCT_MODULE_NAME: FurbleCompanionCore
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         SWIFT_VERSION: "5.0"
