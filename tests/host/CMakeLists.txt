@@ -349,6 +349,7 @@ target_include_directories(companion_gatt_test
                                   ${CONTROL_E2E_DIR}
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
+                                  ${FURBLE_ROOT}/sim/shim
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
 target_compile_definitions(companion_gatt_test PRIVATE FURBLE_NO_DISPLAY

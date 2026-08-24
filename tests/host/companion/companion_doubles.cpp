@@ -41,6 +41,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::SLEEP_CONN,
      {Settings::SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", "furble"}                   },
     {Settings::COMPANION,     {Settings::COMPANION, 12, "Companion", "companion", "furble"}        },
+    {Settings::COMPANION_PASSWORD,
+     {Settings::COMPANION_PASSWORD, 46, "Companion password", "companion_password", "furble"}     },
     {Settings::CONN_SAVER,
      {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                   },
 };

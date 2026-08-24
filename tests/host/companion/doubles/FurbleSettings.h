@@ -27,7 +27,6 @@ class Settings {
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
-    IMU,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -48,6 +47,7 @@ class Settings {
     SHOW_TITLE,
     SLEEP_CONN,
     BULB,
+    COMPANION_PASSWORD,
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
@@ -61,7 +61,6 @@ class Settings {
     BUTTON_MODE,
     AUTO_OFF,
     LOW_BATT,
-    AUTO_OFF_CHARGING,
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
@@ -137,8 +136,8 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 };
 
 template <>
-struct Furble::Settings::storage_type<Furble::Settings::IMU> {
-  using type = bool;
+struct Furble::Settings::storage_type<Furble::Settings::COMPANION_PASSWORD> {
+  using type = std::string;
 };
 
 #endif
