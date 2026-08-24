@@ -105,6 +105,17 @@ target_compile_options(advertisement_dispatch_test PRIVATE
                        -Wno-unused-parameter)
 target_link_libraries(advertisement_dispatch_test PRIVATE Threads::Threads)
 
+# Keep the host Ethernet test tied to the firmware source manifest. The test
+# links the production implementation directly, so this configure-time guard
+# catches the failure mode that matters here: a firmware build which forgets
+# to compile the implementation at all.
+file(STRINGS ${FURBLE_ROOT}/src/CMakeLists.txt FURBLE_SOURCE_LINES
+     REGEX "^[ \\t]*FurbleEthernet\\.cpp[ \\t]*$")
+if(NOT FURBLE_SOURCE_LINES)
+  message(FATAL_ERROR
+          "src/CMakeLists.txt must include FurbleEthernet.cpp in its production source list")
+endif()
+
 # Pure logic unit suites. These link their production source directly instead
 # of the mock BLE library because the modules under test have no BLE or NVS
 # dependency. Each suite is standalone so a build or link break is isolated to
@@ -268,6 +279,17 @@ target_include_directories(sim_power_profiler_test PRIVATE ${FURBLE_ROOT}/includ
                                                            ${FURBLE_ROOT}/sim)
 target_compile_options(sim_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
+
+# Link the host regression against the production Ethernet implementation.
+# The source-manifest guard above ensures this test cannot silently drift away
+# from the firmware source list which owns the link.
+add_executable(ethernet_test
+               ethernet_test.cpp
+               ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
+target_include_directories(ethernet_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ethernet_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                             -Wno-unused-parameter)
+target_link_libraries(ethernet_test PRIVATE Threads::Threads)
 
 # Transport-independent OTA lifecycle. The production state machine is linked
 # directly, while the host test supplies a mock for the ESP-IDF transport seam.
@@ -510,6 +532,7 @@ if(BUILD_TESTING)
   add_test(NAME battery-saver COMMAND battery_saver_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
+  add_test(NAME ethernet-transport COMMAND ethernet_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
