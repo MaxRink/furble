@@ -54,7 +54,9 @@ traps.
   `camera-tests.yml`.
 - The host SDL simulator under `sim/` runs the real UI on a desktop. Build it
   with `sim/build.sh`. It drives scripted UI runs, the seeded UI fuzzer, and the
-  documentation screenshot capture. It never changes firmware behavior.
+  documentation screenshot capture. Incremental builds use compiler depfiles;
+  verify the cache with `sh sim/scripts/test-build-deps.sh` after changing the
+  build script. It never changes firmware behavior.
 - The USB serial console in debug builds is the automation surface for settings,
   GPS, shutter, and status. See `docs/console-commands.md`.
 - Hardware verification happens before a PR. Only Fujifilm cameras are available

@@ -49,6 +49,11 @@ if [ -z "$LVGL_DIR" ] || [ ! -f "$LVGL_DIR/CMakeLists.txt" ]; then
   exit 1
 fi
 
+if ! command -v make >/dev/null 2>&1; then
+  echo "make is required for simulator dependency checks" >&2
+  exit 1
+fi
+
 mkdir -p "$BUILD_DIR/obj"
 
 INCLUDES="\
@@ -113,23 +118,56 @@ CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $SANITIZE_FLAGS $INCLUDE
 
 OBJECTS=
 
+dependency_is_current() {
+  object=$1
+  depfile=$2
+  [ -f "$object" ] && [ -f "$depfile" ] || return 1
+  # Depfiles created before recipe-backed checks were introduced are treated
+  # as a one-time cache miss so they are upgraded safely.
+  grep -q '^[[:space:]]*@:$' "$depfile" || return 1
+
+  # The compiler-generated file is a make rule containing the complete
+  # project-header closure. BSD make and GNU make both implement -q, so this
+  # checks the rule without duplicating make's escaping and path handling in
+  # shell code. A missing or newer prerequisite makes the object stale.
+  make -q -f "$depfile" "$object" >/dev/null 2>&1
+}
+
+write_depfile_recipe() {
+  depfile=$1
+  target=$(sed -n '1s/:.*$//p' "$depfile")
+  {
+    printf '\n%s:\n' "$target"
+    printf '\t@:\n'
+  } >>"$depfile"
+}
+
+object_is_current() {
+  object=$1
+  depfile=$2
+  config_is_newer=$3
+
+  [ "$config_is_newer" = false ] || [ "$object" -nt "$ROOT/sim/lv_conf.h" ] || return 1
+  dependency_is_current "$object" "$depfile"
+}
+
 compile_cpp() {
   source=$1
   name=$(printf '%s' "$source" | sed "s|$ROOT/||; s|[^A-Za-z0-9_]|_|g")
   object="$BUILD_DIR/obj/$name.o"
+  depfile="$object.d"
   config_is_newer=true
   case "$source" in
     "$DEP_ROOT/M5GFX/"*|"$DEP_ROOT/M5Unified/"*) config_is_newer=false ;;
   esac
-  if [ -f "$object" ] && [ "$object" -nt "$source" ] &&
-    { [ "$config_is_newer" = false ] || [ "$object" -nt "$ROOT/sim/lv_conf.h" ]; } &&
-    [ -z "$(find "$ROOT/sim/shim" -type f -newer "$object" -print -quit)" ]; then
+  if object_is_current "$object" "$depfile" "$config_is_newer"; then
     echo "[SKIP] ${source#$ROOT/}"
     OBJECTS="$OBJECTS $object"
     return
   fi
   echo "[CXX] ${source#$ROOT/}"
-  "$CXX" $CXXFLAGS -c "$source" -o "$object"
+  "$CXX" $CXXFLAGS -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
+  write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
 }
 
@@ -137,19 +175,19 @@ compile_c() {
   source=$1
   name=$(printf '%s' "$source" | sed "s|$ROOT/||; s|[^A-Za-z0-9_]|_|g")
   object="$BUILD_DIR/obj/$name.o"
+  depfile="$object.d"
   config_is_newer=true
   case "$source" in
     "$DEP_ROOT/M5GFX/"*|"$DEP_ROOT/M5Unified/"*) config_is_newer=false ;;
   esac
-  if [ -f "$object" ] && [ "$object" -nt "$source" ] &&
-    { [ "$config_is_newer" = false ] || [ "$object" -nt "$ROOT/sim/lv_conf.h" ]; } &&
-    [ -z "$(find "$ROOT/sim/shim" -type f -newer "$object" -print -quit)" ]; then
+  if object_is_current "$object" "$depfile" "$config_is_newer"; then
     echo "[SKIP] ${source#$ROOT/}"
     OBJECTS="$OBJECTS $object"
     return
   fi
   echo "[C]   ${source#$ROOT/}"
-  "$CC" $CFLAGS -c "$source" -o "$object"
+  "$CC" $CFLAGS -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
+  write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
 }
 

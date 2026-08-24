@@ -17,7 +17,13 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 
 - `sim/build.sh`: the verified direct-clang path on macOS. Run
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
-  the sdkconfig changed.
+  the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
+  project-header edits rebuild only their dependents; `make -q` evaluates the
+  depfile and the old source-only timestamp shortcut is not used.
+- `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
+  `include/FurbleGPS.h`, and proves GPS dependents rebuild while an unrelated
+  source stays cached. It requires the same dependency overrides as
+  `sim/build.sh`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.

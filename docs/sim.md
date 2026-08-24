@@ -45,6 +45,19 @@ FURBLE_SIM_M5GFX_BOARD=board_M5StickC \
 sh sim/build.sh
 ```
 
+The direct build stores a compiler depfile beside every object in
+`<build-dir>/obj`. Incremental runs ask `make -q` to evaluate those depfiles,
+so changing a project or dependency header rebuilds every dependent object even
+when the including source file itself is unchanged. A missing depfile is
+treated as a cache miss. Check this contract with:
+
+```sh
+sh sim/scripts/test-build-deps.sh
+```
+
+The self-test performs one complete build and one incremental build. It leaves
+the project header timestamp unchanged when it exits.
+
 The CMake entry point has the same source and board defaults:
 
 ```sh
