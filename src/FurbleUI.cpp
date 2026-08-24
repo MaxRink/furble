@@ -2,7 +2,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -265,12 +264,15 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSBaudStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSAssistStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSPlatformStr,       {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSSatStr,            {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalDelayStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -5570,25 +5572,24 @@ void UI::addGPSMenu(const menu_t &parent) {
   } else if (storedBaud == Settings::BAUD_115200) {
     baudIndex = 2;
   }
-  addGPSOptionMenu(menu, Settings::get(Settings::GPS_BAUD).name, m_GPSBaudOptions, baudIndex,
-                   [](lv_event_t *e) {
-                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-                     uint32_t baud = Settings::BAUD_AUTO;
-                     switch (lv_roller_get_selected(roller)) {
-                       case 1:
-                         baud = Settings::BAUD_9600;
-                         break;
-                       case 2:
-                         baud = Settings::BAUD_115200;
-                         break;
-                       default:
-                         baud = Settings::BAUD_AUTO;
-                         break;
-                     }
-                     Settings::save<Settings::GPS_BAUD>(baud);
-                     status->gps->reloadSetting();
-                   });
+  addGPSOptionMenu(menu, m_GPSBaudStr, m_GPSBaudOptions, baudIndex, [](lv_event_t *e) {
+    auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+    auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    uint32_t baud = Settings::BAUD_AUTO;
+    switch (lv_roller_get_selected(roller)) {
+      case 1:
+        baud = Settings::BAUD_9600;
+        break;
+      case 2:
+        baud = Settings::BAUD_115200;
+        break;
+      default:
+        baud = Settings::BAUD_AUTO;
+        break;
+    }
+    Settings::save<Settings::GPS_BAUD>(baud);
+    status->gps->reloadSetting();
+  });
 
   // add the receiver configuration pages
   addGPSOptionMenu(

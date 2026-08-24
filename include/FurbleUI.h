@@ -610,6 +610,7 @@ class UI {
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
+  static constexpr const char *m_GPSBaudStr = "GPS Baud";
   static constexpr const char *m_GPSRateStr = "Update rate";
   static constexpr const char *m_GPSSentencesStr = "Sentences";
   static constexpr const char *m_GPSConstellationStr = "Constellation";

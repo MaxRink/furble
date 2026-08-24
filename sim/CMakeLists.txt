@@ -87,6 +87,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/GpsCasic.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
     ${ICON_SOURCES})
