@@ -2,6 +2,8 @@
 #include <cstring>
 #include <utility>
 
+#include <esp_random.h>
+
 #include "../include/FurbleCompanionService.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
@@ -37,6 +39,14 @@ struct __attribute__((packed)) interval_wire_t {
 
 static_assert(sizeof(interval_wire_t) == 12, "companion interval wire must stay 12 bytes");
 
+bool generateNonce(uint8_t *nonce, size_t len) {
+  if (nonce == nullptr) {
+    return false;
+  }
+  esp_fill_random(nonce, len);
+  return true;
+}
+
 interval_wire_field_t packField(const SpinValue::nvs_t &nvs) {
   return {nvs.value, static_cast<uint8_t>(nvs.unit)};
 }
@@ -71,7 +81,8 @@ bool unpackInterval(const uint8_t *data, size_t length, interval_t &interval) {
 
 }  // namespace
 
-CompanionService::CompanionService(CompanionTransport &transport) : m_Transport {transport} {}
+CompanionService::CompanionService(CompanionTransport &transport)
+    : m_Transport {transport}, m_Auth {companionHmacSha256, generateNonce} {}
 
 uint64_t CompanionService::nowMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000;
@@ -111,13 +122,31 @@ void CompanionService::deinit(void) {
 }
 
 void CompanionService::onConnected(void) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
   m_HaveLastStatus = false;
   m_LastStatusNotificationMs = 0;
+  const std::string password = Settings::load<std::string>(Settings::COMPANION_PASSWORD);
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_Auth.setPassword(password);
+  m_Auth.onConnected();
 }
 
 void CompanionService::onDisconnected(void) {
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    m_Auth.onDisconnected();
+  }
   releaseHeldCommands();
+}
+
+void CompanionService::reloadPassword(void) {
+  const std::string password = Settings::load<std::string>(Settings::COMPANION_PASSWORD);
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_Auth.setPassword(password);
+}
+
+bool CompanionService::isPasswordAuthenticated(void) const {
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  return m_Auth.isAuthenticated();
 }
 
 void CompanionService::beginPairing(uint32_t pin) {
@@ -265,6 +294,47 @@ void CompanionService::handleLocation(const uint8_t *data, size_t len) {
   fix.time_valid = (packet.flags & TIME_VALID) != 0;
   fix.altitude_valid = (packet.flags & ALTITUDE_VALID) != 0;
   GPS::getInstance().setExternalFix(fix);
+}
+
+void CompanionService::handleAuth(const uint8_t *data, size_t len) {
+  if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr) {
+    return;
+  }
+
+  std::array<uint8_t, CompanionAuth::NONCE_SIZE> nonce = {};
+  uint8_t wireResult = AUTH_RESULT_REJECTED;
+  bool challenge = false;
+  bool disconnect = false;
+  if ((len == 1) && (data[0] == AUTH_BEGIN)) {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    if (m_Auth.begin(nonce)) {
+      challenge = true;
+    } else {
+      wireResult = m_Auth.isDropped() ? AUTH_RESULT_DROPPED
+                                      : (m_Auth.isAuthenticated() ? AUTH_RESULT_NOT_REQUIRED
+                                                                  : AUTH_RESULT_REJECTED);
+    }
+  } else {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    const CompanionAuth::response_t result = m_Auth.respond(data, len);
+    wireResult =
+        result == CompanionAuth::response_t::AUTHENTICATED
+            ? AUTH_RESULT_AUTHENTICATED
+            : (result == CompanionAuth::response_t::DROPPED
+                   ? AUTH_RESULT_DROPPED
+                   : (result == CompanionAuth::response_t::NOT_REQUIRED ? AUTH_RESULT_NOT_REQUIRED
+                                                                        : AUTH_RESULT_REJECTED));
+    disconnect = result == CompanionAuth::response_t::DROPPED;
+  }
+
+  if (challenge) {
+    m_Transport.indicate(COMPANION_CHAR_AUTH, nonce.data(), nonce.size());
+  } else {
+    m_Transport.indicate(COMPANION_CHAR_AUTH, &wireResult, sizeof(wireResult));
+  }
+  if (disconnect) {
+    m_Transport.disconnect();
+  }
 }
 
 CompanionService::setting_type_t CompanionService::settingType(Settings::type_t type) {
@@ -454,6 +524,9 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
     }
     case SETTING_STRING:
     {
+      if ((type == Settings::COMPANION_PASSWORD) && (length > COMPANION_PASSWORD_MAX)) {
+        return false;
+      }
       const std::string v(reinterpret_cast<const char *>(value), length);
       if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
@@ -513,6 +586,10 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
   const uint8_t length = data[2];
   const bool lengthMatches = len == (static_cast<size_t>(3) + length);
   const Settings::setting_t *setting = Settings::getByWireId(id);
+
+  if ((op == 2) && !allowProtected(COMPANION_CHAR_SETTINGS)) {
+    return;
+  }
 
   if (!lengthMatches || ((op <= 1) && (length != 0)) || (op > 2)) {
     std::vector<uint8_t> response;
@@ -609,9 +686,30 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
         m_SettingReloadCallback(false);
       }
       break;
+    case Settings::COMPANION_PASSWORD:
+      reloadPassword();
+      break;
     default:
       break;
   }
+}
+
+bool CompanionService::allowProtected(uint8_t charId) const {
+  bool allowed = false;
+  bool dropped = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    allowed = m_Auth.allowsProtected();
+    dropped = m_Auth.isDropped();
+  }
+  if (allowed) {
+    return true;
+  }
+  m_Transport.error(charId, AUTH_ATT_ERROR);
+  if (dropped) {
+    m_Transport.disconnect();
+  }
+  return false;
 }
 
 bool CompanionService::allowTrigger(void) {
@@ -630,6 +728,9 @@ bool CompanionService::allowTrigger(void) {
 void CompanionService::handleTrigger(const uint8_t *data, size_t len) {
   if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr
       || (len < 2)) {
+    return;
+  }
+  if (!allowProtected(COMPANION_CHAR_TRIGGER)) {
     return;
   }
   const uint8_t op = data[1];
