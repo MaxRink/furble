@@ -3,6 +3,7 @@
 # so the independent PM1 deadline expires exactly as it does on hardware.
 seed watchdog true
 wait 400
+assert setting.watchdog 1
 assert platform.watchdog armed
 
 wait 9000

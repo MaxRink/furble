@@ -109,7 +109,9 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   `sim/scripts/run-invalid.sh` requires malformed typed seed fixtures to exit
   with DSL validation status 2. Typed seeds are validated while the scenario
   file is parsed, before SDL or firmware worker threads start, so invalid input
-  cannot race simulator teardown or be silently narrowed.
+  cannot race simulator teardown or be silently narrowed. Seed names are
+  allowlisted and each seed requires exactly two arguments, preventing typos or
+  trailing values from being silently ignored.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the

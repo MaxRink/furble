@@ -1,0 +1,7 @@
+# A false watchdog seed must override the StickS3 default before Platform reads
+# the setting during simulator startup.
+seed watchdog false
+wait 400
+assert setting.watchdog 0
+assert platform.watchdog disabled
+exit

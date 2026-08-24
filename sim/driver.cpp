@@ -233,22 +233,30 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::cerr << "Invalid battery_level: " << value << '\n';
       std::exit(2);
     }
+    return;
   } else if (name == "battery_voltage") {
     batteryVoltage(value);
+    return;
   } else if (name == "battery_current") {
     parseSigned(value, "battery_current");
+    return;
   } else if (name == "battery_charging") {
     if (!booleanSeedValue(value)) {
       std::cerr << "Invalid battery_charging: " << value << '\n';
       std::exit(2);
     }
+    return;
   } else if (name == "gps_uart_mode") {
     if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
         && value != "partial" && value != "write-error") {
       std::cerr << "Invalid gps_uart_mode: " << value << '\n';
       std::exit(2);
     }
+    return;
   }
+
+  std::cerr << "Unknown scenario seed: " << name << '\n';
+  std::exit(2);
 }
 
 void readScript(const std::string &path) {
@@ -275,8 +283,10 @@ void readScript(const std::string &path) {
       std::string name;
       std::string value;
       input >> name >> value;
-      if (name.empty() || value.empty()) {
-        std::cerr << "seed requires a name and value\n";
+      std::string extra;
+      input >> extra;
+      if (name.empty() || value.empty() || !extra.empty()) {
+        std::cerr << "seed requires exactly a name and value\n";
         std::exit(2);
       }
       validateSeed(name, value);
@@ -813,6 +823,9 @@ void applyScenarioSettings(void) {
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
+#if defined(FURBLE_M5STICKS3)
+  saveBoolean("watchdog", Settings::WATCHDOG);
+#endif
 
   const auto batteryLevel = scenarioSettings.find("battery_level");
   const auto batteryVoltageSetting = scenarioSettings.find("battery_voltage");
