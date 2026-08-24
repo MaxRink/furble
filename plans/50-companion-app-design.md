@@ -759,7 +759,31 @@ the integrated master:
   | 21 | SCAN_MODE | u8 |
   | 22 | SCAN_TIMEOUT | u32 |
   | 23 | WATCHDOG | bool, StickS3 builds only |
-  | 0 | TOUCH_CALIBRATION, BULB | not on the wire |
+  | 24 | DISPLAY_OFF | u8 |
+  | 25 | GPS_POWER | u8 |
+  | 26 | GPS_DUTY | u8 |
+  | 27 | BUTTON_MODE | string |
+  | 28 | TX_ADAPTIVE | bool |
+  | 29 | CONN_SAVER | bool |
+  | 30 | PRESET_PICKER | bool |
+  | 31 | IR | bool |
+  | 32 | IR_PROTO | u8 |
+  | 33 | FB_OUTPUT | u8 |
+  | 34 | FB_EVENTS | u8 |
+  | 35 | FB_VOLUME | u8 |
+  | 36 | DISPLAY_MODE | u8, display builds only |
+  | 37 | AUTO_OFF | u8 |
+  | 38 | LOW_BATT | u8 |
+  | 39 | SD_GPX | bool |
+  | 40 | TEXT_SIZE | u8 |
+  | 41 | GPS_ASSIST | u8 |
+  | 44 | BOOT_SPLASH | bool |
+  | 45 | IMU | reserved by open PR #28 |
+  | 46 | COMPANION_PASSWORD | write-only string, PR #166 |
+  | 0 | TOUCH_CALIBRATION, BULB, MULTISELECT, GPX_PERIOD, BATTERY_SAVER | not on the wire |
+
+  IDs 42 and 43 are unallocated on integrated master. Open branches must check
+  this ledger and the current settings table before reserving either id.
 
 - Settings written over the wire are saved to NVS. GPS, GPS baud, GPS rate, GPS
   sentence filtering and GPS constellation reload the receiver. TX_POWER and
