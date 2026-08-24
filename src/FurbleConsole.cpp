@@ -672,6 +672,7 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
