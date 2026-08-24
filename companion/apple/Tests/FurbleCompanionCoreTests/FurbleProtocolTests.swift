@@ -75,6 +75,17 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertEqual(auth.state, .lockedOut)
   }
 
+  func testAuthPacketsHaveExplicitOperationsAndFixedLengths() throws {
+    XCTAssertEqual(FurbleProtocol.authBegin(), Data([1, 0]))
+    let challenge = Data([1, 0]) + Data(repeating: 9, count: 16)
+    XCTAssertEqual(try FurbleProtocol.decodeAuthChallenge(challenge), Data(repeating: 9, count: 16))
+    let proof = try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 16))
+    XCTAssertEqual(proof.count, 18)
+    XCTAssertTrue(try FurbleProtocol.decodeAuthResult(Data([1, 2, 0])))
+    XCTAssertFalse(try FurbleProtocol.decodeAuthResult(Data([1, 2, 1])))
+    XCTAssertThrowsError(try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15)))
+  }
+
   func testHmacCorrectProofAuthenticatesAndCannotBeReplayed() throws {
     var auth = try FurbleAuthSession(password: "secret")
     _ = try auth.begin(nonce: Data(repeating: 7, count: 16))
