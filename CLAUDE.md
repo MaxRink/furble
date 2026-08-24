@@ -104,6 +104,9 @@ UI change before approving.
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
 - Full detail and more findings live in `plans/95-engineering-lessons.md`. Read
   the matching section before you touch that area.
+- Settings are called from the UI and background tasks. Each NVS transaction
+  must own its own `Preferences` wrapper; never share a mutable begin/end handle
+  across tasks.
 
 ## Layout
 

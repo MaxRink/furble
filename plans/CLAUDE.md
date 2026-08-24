@@ -21,3 +21,5 @@ lands on fork master. This file applies once it does.
   backup rail, $PCAS support). Cite it instead of re-measuring.
 - Restart and BLE recovery plans must cover both clean shutdown and unclean
   reset paths, and must include an immediate reconnect acceptance test.
+- Settings concurrency plans must distinguish ESP-IDF NVS thread safety from
+  the mutable lifetime of each `Preferences` wrapper handle.
