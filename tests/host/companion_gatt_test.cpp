@@ -7,12 +7,14 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -213,6 +215,34 @@ class MockCentral final: public Furble::CompanionTransport {
   uint16_t m_LastError = 0;
 };
 
+// NimBLE can deliver a characteristic write while the disconnect callback is
+// clearing the connection state. This transport only records the calls needed
+// by the auth path and is intentionally safe for that race test.
+class AuthRaceTransport final: public Furble::CompanionTransport {
+ public:
+  bool isConnected(void) const override { return m_Connected.load(); }
+  bool isEncrypted(void) const override { return true; }
+  bool isAuthenticated(void) const override { return true; }
+  uint16_t getMaxPayload(void) const override { return 244; }
+  void notify(uint8_t, const uint8_t *, size_t) override {}
+  void indicate(uint8_t, const uint8_t *, size_t) override {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_Indications++;
+  }
+  void error(uint8_t, uint8_t) override {}
+  void disconnect(void) override { m_Connected.store(false); }
+
+  size_t indications(void) const {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_Indications;
+  }
+
+ private:
+  std::atomic<bool> m_Connected {true};
+  mutable std::mutex m_Mutex;
+  size_t m_Indications = 0;
+};
+
 std::vector<uint8_t> authResponse(const std::string &password, const std::vector<uint8_t> &nonce) {
   std::array<uint8_t, Furble::CompanionAuth::HMAC_SIZE> digest = {};
   if (nonce.size() != Furble::CompanionAuth::NONCE_SIZE
@@ -227,6 +257,26 @@ std::vector<uint8_t> authResponse(const std::string &password, const std::vector
 std::vector<uint8_t> bytesOf(const CompanionService::companion_fix_t &fix) {
   const auto *begin = reinterpret_cast<const uint8_t *>(&fix);
   return {begin, begin + sizeof(fix)};
+}
+
+void testAuthDisconnectRace(void) {
+  std::cout << "test: companion auth/disconnect callback race\n";
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "race password");
+  AuthRaceTransport transport;
+  CompanionService service {transport};
+  const std::vector<uint8_t> begin {CompanionService::AUTH_BEGIN};
+
+  for (size_t iteration = 0; iteration < 500; iteration++) {
+    service.onConnected();
+    std::thread auth([&] { service.handleAuth(begin.data(), begin.size()); });
+    std::thread disconnect([&] { service.onDisconnected(); });
+    auth.join();
+    disconnect.join();
+    check(!service.isPasswordAuthenticated(),
+          "disconnect race left the companion auth state authenticated");
+  }
+  check(transport.indications() > 0, "auth race did not exercise the transport indication path");
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
 }
 
 void testCompanionGattFlow(void) {
@@ -463,6 +513,7 @@ void testCompanionGattFlow(void) {
 
 int main(void) {
   FurbleHostTaskScope taskScope;
+  testAuthDisconnectRace();
   testCompanionGattFlow();
   if (g_Failures != 0) {
     std::cerr << "companion mock-central tests: " << g_Failures << " FAILED\n";
