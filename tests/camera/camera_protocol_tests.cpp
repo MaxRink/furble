@@ -37,6 +37,7 @@ bool testFujifilmAdvertisementParsing() {
 
   const std::array<uint8_t, 2> shortData = {0xd8, 0x04};
   CHECK(!Furble::FujifilmProtocol::isFujifilmAdvertisement(shortData.data(), shortData.size()));
+  CHECK(!Furble::FujifilmProtocol::isFujifilmAdvertisement(nullptr, base.size()));
 
   const std::array<uint8_t, 3> wrongCompany = {0xd9, 0x04, 0x00};
   CHECK(
@@ -76,6 +77,7 @@ bool testFujifilmAdvertisementParsing() {
   CHECK(!Furble::FujifilmProtocol::parseSecureAdvertisement(shortSecure.data(), shortSecure.size(),
                                                             secure));
   CHECK(!Furble::FujifilmProtocol::parseBasicAdvertisement(nullptr, 0, basic));
+  CHECK(!Furble::FujifilmProtocol::parseSecureAdvertisement(nullptr, secureData.size(), secure));
   return true;
 }
 
@@ -132,6 +134,16 @@ bool testAdvertisementParsing() {
   CHECK(sonyParsed.mode22 == 0xc2);
   CHECK(Furble::AdvertisementProtocol::matchesSonyAdvertisement(sony.data(), sony.size()));
 
+  // Each of the three mode bits is required independently. Keep these as
+  // separate mutations so a future mask regression cannot hide behind one
+  // aggregate negative case.
+  for (const uint8_t mode : {uint8_t {0x42}, uint8_t {0x82}, uint8_t {0xc0}}) {
+    auto missingRequiredMode = sony;
+    missingRequiredMode[9] = mode;
+    CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(missingRequiredMode.data(),
+                                                                   missingRequiredMode.size()));
+  }
+
   const std::array<uint8_t, 14> sonyOversized = {0x2d, 0x01, 0x03, 0x00, 0x01, 0x00, 0x34,
                                                  0x12, 0x01, 0xc2, 0x00, 0x01, 0x00, 0xff};
   CHECK(Furble::AdvertisementProtocol::matchesSonyAdvertisement(sonyOversized.data(),
@@ -144,9 +156,14 @@ bool testAdvertisementParsing() {
   sonyWrongCompany[0] = 0x2e;
   CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(sonyWrongCompany.data(),
                                                                  sonyWrongCompany.size()));
+  auto sonyWrongType = sony;
+  sonyWrongType[2] = 0x04;
+  CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(sonyWrongType.data(),
+                                                                 sonyWrongType.size()));
   CHECK(!Furble::AdvertisementProtocol::parseSonyAdvertisement(sony.data(), sony.size() - 1,
                                                                sonyParsed));
   CHECK(!Furble::AdvertisementProtocol::parseSonyAdvertisement(nullptr, 0, sonyParsed));
+  CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(nullptr, sony.size()));
 
   const std::array<uint8_t, 8> lumix = {0x3a, 0x00, 0x07, 0x10, 0x20, 0x30, 0x40, 0x50};
   LumixAdvertisement lumixParsed = {};
@@ -169,6 +186,7 @@ bool testAdvertisementParsing() {
   CHECK(!Furble::AdvertisementProtocol::parseLumixAdvertisement(lumix.data(), lumix.size() - 1,
                                                                 lumixParsed));
   CHECK(!Furble::AdvertisementProtocol::parseLumixAdvertisement(nullptr, 0, lumixParsed));
+  CHECK(!Furble::AdvertisementProtocol::matchesLumixAdvertisement(nullptr, lumix.size(), true));
 
   const std::array<uint8_t, 7> nikon = {0x99, 0x03, 0x78, 0x56, 0x34, 0x12, 0x00};
   NikonAdvertisement nikonParsed = {};
@@ -190,9 +208,11 @@ bool testAdvertisementParsing() {
   CHECK(!Furble::AdvertisementProtocol::parseNikonAdvertisement(nikon.data(), nikon.size() - 1,
                                                                 nikonParsed));
   CHECK(!Furble::AdvertisementProtocol::parseNikonAdvertisement(nullptr, 0, nikonParsed));
+  CHECK(!Furble::AdvertisementProtocol::matchesNikonReconnect(nullptr, nikon.size(), 0x12345678));
   CHECK(Furble::AdvertisementProtocol::matchesNikonDiscovery(false, true));
   CHECK(!Furble::AdvertisementProtocol::matchesNikonDiscovery(true, true));
   CHECK(!Furble::AdvertisementProtocol::matchesNikonDiscovery(false, false));
+  CHECK(!Furble::AdvertisementProtocol::matchesNikonDiscovery(true, false));
 
   const std::array<uint8_t, 5> dji = {0xaa, 0x08, 0x00, 0x00, 0xfa};
   CHECK(Furble::AdvertisementProtocol::matchesDJIAdvertisement(dji.data(), dji.size()));
@@ -204,11 +224,21 @@ bool testAdvertisementParsing() {
   CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(djiWrong.data(), djiWrong.size()));
   CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(dji.data(), dji.size() - 1));
   CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(nullptr, 0));
+  CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(nullptr, dji.size()));
+  auto djiWrongSof = dji;
+  djiWrongSof[0] = 0xab;
+  CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(djiWrongSof.data(),
+                                                                djiWrongSof.size()));
+  auto djiWrongType = dji;
+  djiWrongType[1] = 0x09;
+  CHECK(!Furble::AdvertisementProtocol::matchesDJIAdvertisement(djiWrongType.data(),
+                                                                djiWrongType.size()));
 
   CHECK(Furble::AdvertisementProtocol::matchesRicohName("GR"));
   CHECK(Furble::AdvertisementProtocol::matchesRicohName("Ricoh GR IIIx"));
   CHECK(Furble::AdvertisementProtocol::matchesRicohName("Pentax K-3 III"));
   CHECK(Furble::AdvertisementProtocol::matchesRicohName("griii"));
+  CHECK(Furble::AdvertisementProtocol::matchesRicohName("ricoh"));
   CHECK(!Furble::AdvertisementProtocol::matchesRicohName("GRX"));
   CHECK(!Furble::AdvertisementProtocol::matchesRicohName("Canon"));
   CHECK(!Furble::AdvertisementProtocol::matchesRicohName(""));
