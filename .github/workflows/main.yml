@@ -66,7 +66,7 @@ jobs:
           echo "firmware=$firmware_changed" >> "$GITHUB_OUTPUT"
 
   host_camera:
-    name: Host camera harness
+    name: Host harness and Ethernet lifecycle
     runs-on: ubuntu-latest
 
     steps:
@@ -81,7 +81,7 @@ jobs:
       - name: Build host harness
         run: cmake --build "$RUNNER_TEMP/furble-host-build" --parallel 2
 
-      - name: Run host camera and corpus tests
+      - name: Run host harness, including Ethernet lifecycle
         run: ctest --test-dir "$RUNNER_TEMP/furble-host-build" --output-on-failure
 
   release-transport-gate:

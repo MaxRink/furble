@@ -37,3 +37,16 @@ UndefinedBehaviorSanitizer. Run a seed directly:
 
 The CI job runs five fixed seeds plus two seed-pinned regression guards for the
 FujifilmBasic missing-shutter findings, both now fixed and passing.
+
+## Wired Ethernet lifecycle
+
+`ethernet-transport` links the production `src/FurbleEthernet.cpp` against the
+deterministic `eth/MockEthNetif` transport. It covers the W5500-shaped event
+order without ESP-IDF or hardware: link-up must precede a usable DHCP address,
+empty and stale addresses are ignored, duplicate addresses do not refire the
+network-up callback, and init/start failures recover cleanly. The main host CI
+job runs this test with the rest of the CTest suite.
+
+This does not prove SPI pin wiring, W5500 PHY behavior, DHCP on a physical LAN,
+TLS, or MQTT broker behavior. Those remain the hardware boundary in
+`plans/42-waveshare-eth-node.md` and the MQTT host coverage in plan 117.

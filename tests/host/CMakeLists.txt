@@ -285,8 +285,11 @@ target_compile_options(sim_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wn
 # from the firmware source list which owns the link.
 add_executable(ethernet_test
                ethernet_test.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/eth/MockEthNetif.cpp
                ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
-target_include_directories(ethernet_test PRIVATE ${FURBLE_ROOT}/include)
+target_include_directories(ethernet_test PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}
+                           ${FURBLE_ROOT}/include)
 target_compile_options(ethernet_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                              -Wno-unused-parameter)
 target_link_libraries(ethernet_test PRIVATE Threads::Threads)
