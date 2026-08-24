@@ -17,4 +17,4 @@ test "$(git -C "$WORK/XcodeGen" describe --tags --exact-match HEAD)" = "$XCODEGE
 test "$(git -C "$WORK/XcodeGen" rev-parse HEAD)" = "$XCODEGEN_COMMIT"
 
 swift run --package-path "$WORK/XcodeGen" --configuration release xcodegen \
-  generate --spec "$ROOT/project.yml" --project "$ROOT/FurbleCompanion.xcodeproj"
+  generate --spec "$ROOT/project.yml" --project "$ROOT"

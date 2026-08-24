@@ -1,4 +1,4 @@
-name: FurbleCompanionApps
+name: FurbleCompanion
 
 options:
   deploymentTarget:
@@ -6,12 +6,29 @@ options:
     macOS: "13.0"
   createIntermediateGroups: true
   groupSortPosition: top
-
-packages:
-  FurbleCompanion:
-    path: .
+  localPackagesGroup: ""
 
 targets:
+  FurbleCompanionCoreIOS:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/FurbleCompanionCore
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: FurbleCompanionCore
+        SWIFT_VERSION: "5.0"
+
+  FurbleCompanionCoreMacOS:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/FurbleCompanionCore
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: FurbleCompanionCore
+        SWIFT_VERSION: "5.0"
+
   FurbleCompanion-iOS:
     type: application
     platform: iOS
@@ -20,15 +37,13 @@ targets:
     resources:
       - path: AppResources/PrivacyInfo.xcprivacy
     dependencies:
-      - package: FurbleCompanion
-        product: FurbleCompanionCore
+      - target: FurbleCompanionCoreIOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.ios
         INFOPLIST_FILE: AppResources/iOS-Info.plist
+        CODE_SIGN_ENTITLEMENTS: AppResources/iOS.entitlements
         SWIFT_VERSION: "5.0"
-    entitlements:
-      path: AppResources/iOS.entitlements
 
   FurbleCompanion-macOS:
     type: application
@@ -38,15 +53,13 @@ targets:
     resources:
       - path: AppResources/PrivacyInfo.xcprivacy
     dependencies:
-      - package: FurbleCompanion
-        product: FurbleCompanionCore
+      - target: FurbleCompanionCoreMacOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.macos
         INFOPLIST_FILE: AppResources/macOS-Info.plist
+        CODE_SIGN_ENTITLEMENTS: AppResources/macOS.entitlements
         SWIFT_VERSION: "5.0"
-    entitlements:
-      path: AppResources/macOS.entitlements
 
   FurbleCompanionCoreTests-iOS:
     type: bundle.unit-test
@@ -54,8 +67,7 @@ targets:
     sources:
       - path: Tests/FurbleCompanionCoreTests
     dependencies:
-      - package: FurbleCompanion
-        product: FurbleCompanionCore
+      - target: FurbleCompanionCoreIOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.ios
@@ -67,8 +79,7 @@ targets:
     sources:
       - path: Tests/FurbleCompanionCoreTests
     dependencies:
-      - package: FurbleCompanion
-        product: FurbleCompanionCore
+      - target: FurbleCompanionCoreMacOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.macos
