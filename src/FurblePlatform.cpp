@@ -349,7 +349,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       ESP_LOGE(LOG_TAG, "Failed to save M5PM1 wake marker");
       (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
       restoreWatchdog();
-      return;
+      return false;
     }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
