@@ -34,8 +34,11 @@ if epoch < 0:
   raise RuntimeError("SOURCE_DATE_EPOCH must not be negative")
 
 build_time = datetime.fromtimestamp(epoch, timezone.utc)
-date_text = build_time.strftime("%b %d %Y")
-time_text = build_time.strftime("%H:%M:%S UTC")
+# Keep macro values free of whitespace. PlatformIO renders CPPDEFINES through
+# a shell command line, where spaces inside a quoted macro value are otherwise
+# split into stray compiler inputs (for example ``24``, ``2026``, ``UTC``).
+date_text = build_time.strftime("%Y-%m-%d")
+time_text = build_time.strftime("%H:%M:%SZ")
 
 # SCons passes ENV to every compiler, linker, and ESP-IDF CMake subprocess.
 # Keep the value in the process environment too because PlatformIO helpers

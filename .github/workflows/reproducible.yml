@@ -80,7 +80,9 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Test framework patch isolation
-        run: python3 patches/test_ble_gap_patch.py
+        run: |
+          python3 patches/test_ble_gap_patch.py
+          python3 patches/test_reproducible.py
 
       - name: Compare clean builds
         run: >-
