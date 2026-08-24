@@ -6,6 +6,8 @@
 
 #include <driver/uart.h>
 
+#include <Preferences.h>
+
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleWatchdog.h"
@@ -157,24 +159,53 @@ void Platform::watchdogFeed(void) {
 void Platform::setDisplayOff(bool) {}
 
 bool Platform::canTimedWake(void) {
-  // Model board capability separately from the physical rail operation. This
-  // makes the production menu expose timed-wake controls on StickS3 so layout
-  // and settings behavior are testable, while powerOffUntil remains a safe
-  // failure seam until the reboot-cycle simulator layer is present.
+  // The S3 build models the M5PM1 timed power-on rail. Other board builds
+  // retain the production capability gate and cannot self-wake after power
+  // off. The marker is persisted through the same host NVS file as resume
+  // state, so a second simulator process is a deterministic virtual boot.
 #if defined(FURBLE_M5STICKS3)
-  return true;
+  return M5.getBoard() == m5::board_t::board_M5StickS3;
 #else
   return false;
 #endif
 }
 
 bool Platform::powerOffUntil(uint32_t seconds) {
-  (void)seconds;
-  return powerOff();
+  if (seconds == 0) {
+    return powerOff();
+  }
+
+  // Exercise the firmware failure branch without ending the process. The
+  // production implementation returns after failed timer or shutdown setup,
+  // and UI::intervalometer then clears the resume record and continues awake.
+  if (Sim::scenarioSettingIsTrue("timed_poweroff_fail")) {
+    return false;
+  }
+
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  prefs.put<bool>("sim_timed_wake", true);
+  prefs.end();
+
+  // A real timed power-off does not return. Exit after the marker and NVS
+  // resume state are durable. The follow-up simulator invocation represents
+  // the PMIC wake and a fresh app_main/UI construction.
+  std::_Exit(0);
 }
 
 bool Platform::consumeTimedWake(void) {
-  return false;
+  if (!canTimedWake()) {
+    return false;
+  }
+
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  const bool timedWake = prefs.get<bool>("sim_timed_wake", false);
+  if (timedWake) {
+    prefs.remove("sim_timed_wake");
+  }
+  prefs.end();
+  return timedWake;
 }
 
 void Platform::setCPUMaxFreq(uint8_t mhz) {
