@@ -240,9 +240,8 @@ text after a comment are ignored. Each line starts with one verb.
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
-`print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
+`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
+`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, `setting.*`, and `platform.*`.
 
 The `ble_peers` seed selects the virtual radio topology. Its peers advertise to
 the production `Scan` and answer the production `Camera` connect paths, so the
@@ -678,6 +677,9 @@ reports nothing about the bottom two rather than proving them clear.
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+- `platform.watchdog`: `armed`, `expired`, or `unsupported`.
+- `platform.timed_wake`: `yes` when the simulated board can schedule a timed
+  power-on, otherwise `no`.
 
 GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
 `gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end

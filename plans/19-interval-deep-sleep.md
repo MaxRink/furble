@@ -332,7 +332,8 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
   Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
   rows and must still fit, while compact interactive pages always require no
-  overflow.
+  overflow. The simulator exposes `platform.timed_wake` so each scenario first
+  proves it is exercising the intended capability class.
 - The base tree has no GPS motion-policy hook, so no separate GPS policy change was
   made.
 - The sandboxed worktree could not run PlatformIO. The
