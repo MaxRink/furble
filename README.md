@@ -72,7 +72,7 @@ The following devices have been tested and confirmed to work:
    - Fujifilm X-T4 ([@TomaszLojewski](https://github.com/TomaszLojewski))
    - Fujifilm X-T5 ([@stulevine](https://github.com/stulevine))
    - Fujifilm X100V
-   - Fujifilm X100VI
+   - Fujifilm X100VI (secure connection and shutter command verified; physical capture pending)
 - Canon
    - Canon EOS M6 ([@tardisx](https://github.com/tardisx))
    - Canon EOS R6 Mark II ([@hijae](https://github.com/hijae))
