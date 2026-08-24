@@ -31,6 +31,9 @@ gate therefore continues to assert rendered state without pixel readback.
    simulator thread while the default `Panel_sdl::main()` traverses it on the
    main thread, so this one-time barrier removes a separate startup race without
    patching the third-party dependency.
+6. Suppress only M5GFX `Panel_sdl` frames in the focused sanitizer run. Version
+   0.2.19 reads and swaps its hosted double-buffer pointer on separate threads;
+   the gate remains strict for Furble's GPS, UI, and simulator code.
 
 No GPS protocol, timing, or default setting changes are intended. The parser
 mutex is held only while accessing TinyGPSPlus and never across UART, LVGL,

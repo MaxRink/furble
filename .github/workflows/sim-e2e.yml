@@ -96,7 +96,7 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
-          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1:suppressions=${{ github.workspace }}/sim/tsan.supp
         run: >-
           sim/build-tsan/furble-sim
           --script sim/scenarios/e2e/gps-concurrent-pages.txt
