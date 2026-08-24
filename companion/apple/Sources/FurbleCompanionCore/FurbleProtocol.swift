@@ -386,9 +386,13 @@ public enum FurbleProtocol {
     init(capacity: Int) { data.reserveCapacity(capacity) }
     mutating func u8(_ value: UInt8) { data.append(value) }
     mutating func u16(_ value: UInt16) { data.append(contentsOf: [UInt8(value & 0xff), UInt8(value >> 8)]) }
-    mutating func u32(_ value: UInt32) { data.append(contentsOf: (0..<4).map { UInt8(value >> (8 * $0)) }) }
+    mutating func u32(_ value: UInt32) {
+      data.append(contentsOf: (0..<4).map { UInt8(truncatingIfNeeded: value >> (8 * $0)) })
+    }
     mutating func f64(_ value: Double) { u64(value.bitPattern) }
-    mutating func u64(_ value: UInt64) { data.append(contentsOf: (0..<8).map { UInt8(value >> (8 * $0)) }) }
+    mutating func u64(_ value: UInt64) {
+      data.append(contentsOf: (0..<8).map { UInt8(truncatingIfNeeded: value >> (8 * $0)) })
+    }
     mutating func bytes(_ value: Data) { data.append(value) }
   }
 
