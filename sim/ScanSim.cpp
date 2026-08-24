@@ -19,6 +19,7 @@ void Scan::start(std::function<void(void *)> scan_callback,
                  std::function<void(void *)> scan_end_callback) {
   m_Active = true;
   m_ResultPending = true;
+  m_EndCallbackCount = 0;
   m_ScanResultCallback = std::move(scan_callback);
   m_ScanEndCallback = std::move(scan_end_callback);
   m_ScanResultPrivateData = scan_result_private_data;
@@ -34,6 +35,10 @@ void Scan::stop(void) {
 
 bool Scan::isActive(void) const {
   return m_Active;
+}
+
+size_t Scan::endCallbackCount(void) const {
+  return m_EndCallbackCount;
 }
 
 void Scan::clear(void) {}
@@ -58,10 +63,7 @@ void Scan::update(void) {
   // The real scan passes the result private data to the end callback too.
   m_Active = false;
   if (m_ScanEndCallback) {
-    m_ScanEndCallback(m_ScanResultPrivateData);
-  }
-  m_Active = false;
-  if (m_ScanEndCallback) {
+    m_EndCallbackCount++;
     m_ScanEndCallback(m_ScanResultPrivateData);
   }
 }

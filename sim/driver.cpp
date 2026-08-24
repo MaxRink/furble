@@ -21,6 +21,7 @@
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
+#include "Scan.h"
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
@@ -493,6 +494,9 @@ std::string queryValue(const std::string &key) {
   }
   if (prefixed("camera.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("camera."));
+    if (sub == "count") {
+      return std::to_string(CameraList::size());
+    }
     if (sub == "shutter_presses") {
       return std::to_string(cameraShutterPresses());
     }
@@ -505,6 +509,9 @@ std::string queryValue(const std::string &key) {
     if (sub == "focus_releases") {
       return std::to_string(cameraFocusReleases());
     }
+  }
+  if (key == "scan.end_callbacks") {
+    return std::to_string(Scan::getInstance().endCallbackCount());
   }
   if (prefixed("gps.")) {
     auto &gps = Furble::GPS::getInstance();

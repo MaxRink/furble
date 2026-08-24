@@ -28,6 +28,7 @@ class Scan {
              std::function<void(void *)> scan_end_callback = nullptr);
   void stop(void);
   bool isActive(void) const;
+  size_t endCallbackCount(void) const;
   void clear(void);
   void update(void);
 
@@ -36,6 +37,7 @@ class Scan {
 
   bool m_Active = false;
   bool m_ResultPending = false;
+  size_t m_EndCallbackCount = 0;
   std::function<void(void *)> m_ScanResultCallback;
   std::function<void(void *)> m_ScanEndCallback;
   void *m_ScanResultPrivateData = nullptr;

@@ -176,6 +176,38 @@ Only Fujifilm hardware is available for bench testing. Sony, Panasonic, Nikon,
 Ricoh/Pentax, and DJI paths remain untested on hardware and are covered by
 production-code review plus deterministic host vectors.
 
+#### Scan and advertisement edge follow-up
+
+The cross-vendor vectors now exercise every independent Sony mode-bit rejection,
+wrong vendor/type marker, null manufacturer buffer, exact truncation boundary,
+and tolerated trailing byte. The Nikon discovery predicate covers all four
+manufacturer/service combinations; Lumix service gating and DJI marker bytes
+have explicit negative cases; Ricoh name matching includes case folding and
+near-miss names. These checks remain transport-independent because an invalid
+or truncated manufacturer record must be rejected before a connection attempt.
+
+The SDL simulator adds `camera.count` and
+`sim/scenarios/e2e/scan-duplicate-result.txt`, which drives the same fake scan
+result twice and asserts that the camera list remains one row. This covers the
+simulated scan-result de-duplication seam while the host vectors cover the
+production byte parsers. Neither is evidence of vendor radio interoperability;
+real cameras still require hardware acceptance for service discovery and
+advertisement behavior.
+
+The follow-up also checks every prefix length below each supported advertisement
+record length for Fujifilm, Sony, Lumix, and Nikon. DJI marker records receive
+the same truncation sweep, and each vendor has an all-zero unknown-record case.
+The simulator now exposes `scan.end_callbacks`. The duplicate-result scenario
+asserts that each scripted scan delivers one completion callback. This caught
+and fixed a simulator-only duplicate callback that could run the scan-end UI
+path twice while leaving production scan behavior unchanged.
+
+Validation on the rebased follow-up branch: the camera protocol host suite,
+simulator duplicate-result scenario, full simulator scenario suite, and
+formatting checks pass. Hardware testing is not applicable to parser vectors or
+the deterministic FauxNY scan seam. Only the Fujifilm path remains eligible for
+physical camera validation, and no Fujifilm radio was exercised by this slice.
+
 Effort: 2 to 3 days for Fujifilm, 5 to 8 days for all vendors.
 
 ### Tier B: mock NimBLE client layer

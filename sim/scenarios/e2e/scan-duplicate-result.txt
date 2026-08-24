@@ -1,0 +1,22 @@
+# A repeated scan result must not create a second camera row. The simulator's
+# FauxNY result models the duplicate-address guard used by CameraList::match.
+wait 300
+
+home
+wait 200
+action nav scan
+wait 400
+assert ui.page scan
+assert camera.count 1
+assert scan.end_callbacks 1
+
+# Return to the menu and scan again. The same result is delivered, but the
+# camera list must remain deduplicated.
+home
+wait 200
+action nav scan
+wait 400
+assert ui.page scan
+assert camera.count 1
+assert scan.end_callbacks 1
+exit
