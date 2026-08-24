@@ -1,13 +1,15 @@
-# 115 - OTA update engine and OTA-over-MQTT
+# 115b - HTTPS OTA delivery and OTA-over-MQTT
 
-Status: design only. Implements the delivery half of `plans/34-ota-partitions.md`
-(PR34a-2) plus an MQTT command trigger on top of `plans/33-wifi-hub.md` PR33c.
+Status: design only. The transport-independent OTA engine from
+`plans/115-ota-engine.md` landed in PR #168. This document is the delivery
+follow-up: HTTPS transport, user-facing status, and an MQTT command trigger on
+top of `plans/33-wifi-hub.md` PR33c.
 
-**Split delivery.** The OTA state machine and the MQTT `cmd/ota` topic handler
-are **Codex-implementable and host-testable now** with mock events, WITHOUT a
-real download. Linking the module into firmware is **blocked on WiFi (PR33b) and
-MQTT (PR33c, the #66 MQTT work)**. The real HTTPS download and the
-Home-Assistant-triggered end to end are **Claude / hardware**.
+**Split delivery.** The HTTPS adapter, precondition policy, and MQTT
+`cmd/ota` topic handler are Codex-implementable and host-testable with mock
+events, without a real download. Linking the transport into the firmware is
+blocked on WiFi (PR33b) and MQTT (PR33c, the #66 MQTT work). The real HTTPS
+download and the Home Assistant end to end flow are Claude / hardware work.
 
 ## Motivation
 
@@ -22,11 +24,6 @@ the shutter, with progress reported back to a topic, and never touch a cable.
 
 In scope:
 
-- A transport-agnostic OTA state machine in `src/FurbleOTA.cpp` /
-  `include/FurbleOTA.h` with `begin(size)`, `write(chunk)`, `end()`, `abort()`
-  wrapping `esp_ota_begin` / `esp_ota_write` / `esp_ota_end` /
-  `esp_ota_set_boot_partition`, exactly the interface `plans/34` PR34b asked for
-  so BLE OTA can reuse it later.
 - An HTTPS caller using the advanced `esp_https_ota_begin` /
   `esp_https_ota_perform` loop / `esp_https_ota_finish` API with
   `partial_http_download = true`, `crt_bundle_attach`, and the Cloudflare Pages
@@ -36,11 +33,13 @@ In scope:
 - An MQTT command topic `BASE/ID/cmd/ota` carrying a URL (or `check`), handled by
   the PR33c MQTT event task, with progress and result published to
   `BASE/ID/state/ota` (retained: last result; not retained: live progress).
-- Preconditions enforced not advised: refuse if a camera is connected
+- Preconditions are enforced, not advisory: refuse if a camera is connected
   (`Control::getState() == STATE_ACTIVE`), if the intervalometer is running, or
   if battery is below 40% and not charging on boards that report it. Print/publish
   the reason.
-- The boot health check and rollback arming from `plans/34`, if not already
+- Extend the landed `OTA::Engine` with an injected HTTPS transport and preserve
+  its progress and abort invariants.
+- Add the boot health check and rollback arming from `plans/34`, if not already
   landed with PR34a-1.
 
 Out of scope:
@@ -52,9 +51,9 @@ Out of scope:
 
 ## Files to change
 
-- New `src/FurbleOTA.cpp` / `include/FurbleOTA.h`; add to `furble_sources` and to
-  `src/CMakeLists.txt` `PRIV_REQUIRES` (`esp_https_ota`, `esp_http_client`,
-  `app_update`, `esp-tls`).
+- Extend `src/FurbleOTA.cpp` / `include/FurbleOTA.h`; add the required
+  `PRIV_REQUIRES` (`esp_https_ota`, `esp_http_client`, `app_update`, `esp-tls`)
+  in the same change that links the transport.
 - New `src/FurbleHealth.cpp` / `include/FurbleHealth.h`, or folded into
   `FurbleOTA.cpp`, per `plans/34`.
 - `src/main.cpp` `app_main`: arm the health check after the control task.
@@ -78,14 +77,14 @@ device inert until the user runs `ota update` or publishes to `cmd/ota`.
 ## Dependencies
 
 - `plans/34-ota-partitions.md` PR34a-1 (layout, rollback, health): landed.
-- `plans/113-per-board-ota-slots.md`: gives the S3 real headroom to hold the
-  WiFi+MQTT+TLS+OTA image. Land 113 first.
+- `plans/113-per-board-ota-slots.md` PR #167: gives the S3 real headroom to hold the
+  WiFi+MQTT+TLS+OTA image. The partition invariant is already on fork/master.
 - `plans/33-wifi-hub.md` PR33b (WiFi): **not landed**. Hard blocker for the
   firmware download path.
 - `plans/33-wifi-hub.md` PR33c (MQTT, #66): **not landed**. Hard blocker for the
   `cmd/ota` topic and progress publish.
-- The OTA state machine and the topic handler logic can be **written and
-  host-tested now** against mocks; only firmware linkage waits on 33b/33c.
+- The OTA transport and topic-handler logic can be **written and host-tested
+  now** against mocks; only firmware linkage waits on 33b/33c.
 
 ## Risks
 
@@ -105,40 +104,27 @@ device inert until the user runs `ota update` or publishes to `cmd/ota`.
 
 ## Codex self-verification (headless, no download, no network)
 
-The state machine and the MQTT topic handler are the parts most likely to have
-bugs and both are pure logic. Add host tests under `tests/host`, registered in
-`tests/camera` ctest.
+PR #168 already provides `ota_state_machine_test` for the landed injected
+engine. The delivery follow-up adds host tests under `tests/host`, registered in
+its CTest suite, for the HTTPS adapter and MQTT handler:
 
-`ota_state_machine_test` (mocks `esp_ota_*` via a small double that counts calls
-and can force an `esp_ota_end` failure):
-
-- `begin(size)` then a sequence of `write()` totalling `size` then `end()`
-  drives `esp_ota_begin` once, `esp_ota_write` per chunk, `esp_ota_end` once,
-  `esp_ota_set_boot_partition` once.
-- A second `begin()` while running is rejected (idempotency / no double start).
-- `abort()` mid-stream calls `esp_ota_abort` and leaves the boot partition
-  unchanged.
-- A forced `esp_ota_end` failure (truncated image) does not set the boot
-  partition and reports the error.
-
-`ota_mqtt_handler_test` (feeds a synthetic `MQTT_EVENT_DATA` for
-`BASE/ID/cmd/ota` into the handler with a mock OTA-begin that never touches the
-network):
-
-- A `check` payload triggers a manifest fetch stub and publishes an available
-  version to `state/ota` without starting a download.
-- A URL payload with a camera "connected" (mock `Control::getState() ==
-  STATE_ACTIVE`) is refused and publishes the reason; the mock OTA-begin is
-  never called.
-- A URL payload with preconditions clear calls the mock OTA-begin exactly once.
-- A duplicated URL payload (QoS-1 redelivery) does not call OTA-begin twice.
+- A mock HTTPS transport drives a complete engine update, preserves the engine
+  progress invariants, and aborts cleanly on a transport error.
+- A synthetic `BASE/ID/cmd/ota` `check` publishes an available version without
+  starting a download.
+- A URL is refused while a camera or intervalometer is active, and when the
+  battery precondition is not met.
+- A URL with clear preconditions starts exactly once, and a duplicate QoS-1
+  delivery cannot start a second update.
+- Progress and the final result use the retained/non-retained policy in the
+  scope above.
 
 Run:
 
 ```
-cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
-cmake --build build/camera-tests --parallel 2
-ctest --test-dir build/camera-tests -R 'ota-state-machine|ota-mqtt-handler' \
+cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-tests --parallel 2
+ctest --test-dir build/host-tests -R 'ota-state-machine|ota-mqtt-handler|ota-https' \
   --output-on-failure
 ```
 

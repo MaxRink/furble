@@ -1,15 +1,15 @@
-# 114 - Web flasher WiFi and settings provisioning
+# 114b - Web flasher WiFi and settings provisioning
 
-Status: design only. Firmware side is a console/serial provisioning path.
-Browser side is an ESP Web Tools config step. Extends
+Status: design only. The firmware parser and one-shot console command from
+`plans/114-provision-parser.md` landed in PR #165. This document is the
+follow-up browser transport and WiFi application design. It extends
 `plans/33-wifi-hub.md` PR33b (WiFi settings) and the web installer at
 `web-installer/`.
 
-**Split delivery.** The firmware provisioning parser and console command are
-**Codex-implementable** and host-testable now against the existing `Settings`
-table. The WiFi credential fields are **blocked on plan 33b** landing the
-`WIFI_SSID`/`WIFI_PSK` settings. The browser config step and real serial Improv
-handshake are **Claude / hardware** (a real browser over WebSerial).
+**Split delivery.** The browser config step and real serial WebSerial handshake
+are Claude / hardware work. The existing parser remains the single validated
+settings path. Do not add a second staged settings writer without a separate
+design and tests.
 
 ## Motivation
 
@@ -20,10 +20,10 @@ flasher writes a binary and stops; the user then has to attach a terminal and
 type `wifi set ssid ...`. That is the friction that keeps board-only installs in
 the hands of developers only.
 
-Give the web installer a step that, right after flashing, pushes WiFi
-credentials and a settings blob into NVS over the same serial link the flasher
-already holds open. The device boots once, is provisioned, and joins the network
-with no terminal.
+Give the web installer a step that, right after flashing, sends one complete
+provisioning blob through the existing `provision <hex-or-base64-blob>` console
+command over the same serial link the flasher already holds open. The device
+boots once, is provisioned, and joins the network with no terminal.
 
 ## Protocol choice: batch `provision` console command, not Improv serial
 
@@ -36,10 +36,10 @@ Two candidates were evaluated.
   power, MQTT URI, base topic, companion password). It also needs an Improv
   service state machine resident in the firmware even on battery builds.
 - **A batch `provision` console command** over the existing PR27 console. One
-  line: `provision <base64-blob>`, where the blob is a length-prefixed TLV of
-  `wire_id -> value` pairs reusing the companion settings TLV wire ids from
-  `plans/50-companion-app-design.md` section 3.5. Pro: one code path for phone,
-  console and flasher; carries WiFi creds AND any settings; no second parser.
+  line: `provision <hex-or-base64-blob>`, where the blob uses the production
+  tagged-record codec in `lib/furble/protocol/ProvisionTLV.h` and setting
+  records carry the stable `wire_id`. Pro: one validated firmware path for the
+  console and flasher; no second parser.
   Con: the browser has to speak the console line protocol over WebSerial itself
   rather than using the built-in Improv widget.
 
@@ -56,42 +56,30 @@ note, and revisit only if a non-console flashing surface ever needs it.
 
 In scope:
 
-- A `provision` console command group in the PR27 command table:
-  - `provision begin` clears a staging buffer.
-  - `provision tlv <base64>` appends one or more TLV records to staging.
-  - `provision commit` validates every record, writes them through the same
-    `Settings` path the menu uses, and prints one status line per field.
-  - `provision status` prints how many fields are staged and the last result.
-  - `provision abort` drops the staging buffer.
-- The TLV format is exactly `plans/50` section 3.5's `id/type/len/value`, keyed
-  on the stable `wire_id`, so the phone app, the console and the flasher share
-  one encoder and one validator.
-- A settings allow-list for provisioning: only fields with a non-zero `wire_id`
-  and not marked device-local (e.g. `TOUCH_CALIBRATION`) are writable.
-- Web side: a config step in `web-installer/index.html` that, after ESP Web
-  Tools reports install complete, reopens the serial port, sends
-  `provision begin`, one `provision tlv` per field from a small form (SSID, PSK,
-  optional MQTT URI/user/base topic, optional companion password), then
-  `provision commit`, and shows the per-field results.
+- A config step in `web-installer/index.html` that, after ESP Web Tools reports
+  install complete, reopens the serial port, sends one bounded
+  `provision <hex-or-base64-blob>` command, and shows the parser result.
+- A browser-side encoder that uses the exact record format and field limits in
+  `lib/furble/protocol/ProvisionTLV.h`. It must omit settings whose backend is
+  not present yet, rather than claiming that they were applied.
+- A serial response parser that treats a timeout, malformed response, or any
+  field error as a failed provisioning step and never reports success solely
+  because the write completed.
+- Documentation of the browser flow, including how the user retries without
+  erasing NVS.
 
 Out of scope:
 
 - Improv serial. Rejected above.
-- Any credential display or echo. `provision commit` prints `wifi_psk: set`,
-  never the value, same rule as PR27/PR33b.
+- Any credential display or echo. The provisioning response reports a field as
+  set, never its value, same rule as PR27/PR33b.
 - Multiple WiFi networks. One network, as PR33b.
 
 ## Files to change
 
-- New `src/FurbleProvision.cpp` / `include/FurbleProvision.h`: the staging
-  buffer, TLV decode, allow-list check, and the write-through call. Add to
-  `furble_sources` and to `sim/build.sh` + `sim/CMakeLists.txt` source lists.
-- The PR27 console command table: register the `provision` group.
-- `include/FurbleSettings.h` / `src/FurbleSettings.cpp`: the `wire_id` column
-  (shared with `plans/50`; if 50 has not added it, this PR adds it). WiFi
-  credential wire ids depend on PR33b's `WIFI_SSID`/`WIFI_PSK` existing.
 - `web-installer/index.html` and `web-installer/CLAUDE.md`: the post-flash config
   step and its documentation.
+- `plans/114-provision-parser.md`: the firmware command and validation contract.
 
 ## Settings and defaults
 
@@ -104,6 +92,8 @@ provisioned.
 
 - `plans/27-usb-console.md`: the console is the transport. Hard dependency,
   landed.
+- `plans/114-provision-parser.md` / PR #165: the parser, field limits, and
+  atomic apply path. Hard dependency, landed.
 - `plans/33-wifi-hub.md` PR33b: provides `WIFI`, `WIFI_SSID`, `WIFI_PSK`. The
   WiFi part of provisioning is **blocked** on 33b. The generic TLV parser and
   settings-write path are **not** blocked and can land first, writing any
@@ -115,14 +105,11 @@ provisioned.
 
 ## Risks
 
-- **A bad TLV must never half-write.** `provision commit` validates every record
-  (known id, correct type, length in range) before writing any, and writes
-  atomically field by field with a per-field result. Test the boundary lengths
-  (0, 1, 63, 64 for strings) exactly as PR33b tests its `std::string`
-  specialisation.
-- **Base64 over a line console.** Long blobs split across `provision tlv` lines.
-  Cap each line and the total staging buffer; reject overflow with a clear error
-  rather than truncating.
+- **The parser contract must not drift.** The browser encoder must use the
+  bounded one-shot command and the production field limits. It must reject an
+  oversized payload before writing to the serial port.
+- **Hex/base64 over a line console.** Keep the browser payload within the
+  command limit and reject overflow with a clear error rather than truncating.
 - **WebSerial reopen race.** ESP Web Tools holds the port during install; the
   config step must wait for it to release before reopening. This is a browser
   timing bug waiting to happen and is exactly what the residual browser test
@@ -132,31 +119,24 @@ provisioned.
 
 ## Codex self-verification (headless, no hardware)
 
-The parser, validator and settings write-through are pure host logic. Add a host
-test under `tests/host` and register it in `tests/camera` ctest, mirroring the
-existing `settings_table_test`.
+PR #165 already provides `provision_tlv_test` and `provision_apply_test`. The
+browser follow-up adds a small host test for its encoder and response handling:
 
-New test `provision_tlv_test` asserts:
-
-- A valid multi-field TLV blob commits and every targeted `Settings` key reads
-  back the written value.
-- An unknown `wire_id` yields status "unknown id" and writes nothing.
-- A wrong-length string field (64 bytes for a 63-cap key) is rejected, and no
-  partial write lands.
-- A device-local field (`wire_id == 0`, e.g. touch calibration) is refused.
-- `provision commit` on an empty buffer is a no-op with a clear status.
+- The browser emits the same bytes as the production codec for a multi-field
+  bundle.
+- An error response or a timeout is surfaced as a failed browser step.
 
 Run it:
 
 ```
-cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
-cmake --build build/camera-tests --parallel 2
-ctest --test-dir build/camera-tests -R provision-tlv --output-on-failure
+cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-tests --parallel 2
+ctest --test-dir build/host-tests -R 'provision-(tlv|apply)' --output-on-failure
 ```
 
 Round-trip the console command in the sim: add a `provision` scenario driving
-the staged commands through the console shim and asserting the target settings
-changed via existing `ui.*`/settings queries.
+the one-shot command through the console shim and asserting the target settings
+changed via the existing settings queries.
 
 ```
 SDL_VIDEODRIVER=dummy sim/build/furble-sim \

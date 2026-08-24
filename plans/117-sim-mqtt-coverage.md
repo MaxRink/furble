@@ -66,7 +66,8 @@ Out of scope:
 - New `tests/host/mqtt/MockEspMqtt.{h,cpp}`, `tests/host/mqtt/mqtt_client_test.cpp`.
 - `tests/host/CMakeLists.txt`: `add_executable(mqtt_client_test ...)` and
   `add_test(NAME mqtt-client COMMAND mqtt_client_test)` inside the existing
-  `enable_testing()` block, aggregated by `tests/camera`.
+  `enable_testing()` block. The repository's host CI runs this suite from
+  `tests/host`.
 - Once #66 lands: link `src/FurbleMQTT.cpp` in place of the stub slice.
 
 ## Settings and defaults
@@ -97,9 +98,9 @@ None. Test-only. The MQTT settings themselves are owned by PR33c.
 ## Codex self-verification (headless)
 
 ```
-cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
-cmake --build build/camera-tests --parallel 2
-ctest --test-dir build/camera-tests -R mqtt-client --output-on-failure
+cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-tests --parallel 2
+ctest --test-dir build/host-tests -R mqtt-client --output-on-failure
 ```
 
 Exit 0 proves connect-order, discovery publication, and inbound command routing

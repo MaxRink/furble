@@ -84,9 +84,9 @@ None. Test-only. `plans/42` owns any Ethernet settings.
 ## Codex self-verification (headless)
 
 ```
-cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
-cmake --build build/camera-tests --parallel 2
-ctest --test-dir build/camera-tests -R eth-netif --output-on-failure
+cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-tests --parallel 2
+ctest --test-dir build/host-tests -R eth-netif --output-on-failure
 ```
 
 Exit 0 proves the eth netif brings up, emits got-IP, and starts the MQTT client

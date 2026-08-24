@@ -127,8 +127,23 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 |---|---|
 | [68-flasher-debug-firmware.md](68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
 | [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
+| [113-per-board-ota-slots.md](113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
 | [114-provision-parser.md](114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
+| [114-flasher-provisioning.md](114-flasher-provisioning.md) | Follow-up browser transport for the landed provisioning parser |
+| [115-ota-engine.md](115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
+| [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
 | [124-sim-incremental-deps.md](124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
+
+## Network, companion, and simulator follow-ups
+
+| Doc | Content |
+|---|---|
+| [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
+| [117-sim-mqtt-coverage.md](117-sim-mqtt-coverage.md) | Host MQTT client and Home Assistant discovery coverage |
+| [118-sim-ethernet-coverage.md](118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
+| [119-companion-gatt-sim.md](119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
+| [120-sim-multiconnect-coverage.md](120-sim-multiconnect-coverage.md) | Multi-camera survivor and reconnect coverage |
+| [121-sim-usage-fault-docs.md](121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
 
 ## Design documents
 
@@ -151,16 +166,13 @@ review and the FauxNY test camera, and are marked as untested in each PR.
  ## Wire ids
 
 The frozen setting wire_id ledger lives in
-[50-companion-app-design.md](50-companion-app-design.md) (ids 1 to 23). Later
-plans continue the sequence in their own implementation notes. Current allocations across open PR branches: 27 IMU, 28 TX_ADAPTIVE,
-29 CONN_SAVER (plus provisional 29/30 IMU_WAKE/IMU_TRIG on the stacked
-gestures branch, renumber at rebase), 30 PRESET_PICKER, 31/32 IR/IR_PROTO,
-33/34/35 FB_OUTPUT/FB_EVENTS/FB_VOLUME, 36 DISPLAY_MODE, 37/38
-AUTO_OFF/LOW_BATT, 39 SD_GPX, 40 TEXT_SIZE. Off-wire id 0: BULB,
-TOUCH_CALIBRATION, MULTISELECT, GPX_PERIOD (uint16 has no wire type yet;
-a u16 type is a settings-v2 item). Next free id: 41. Stacked branches with
-provisional ids (dead-reckoning 36, hw-motion 34, gps-hold 35 and friends)
- renumber at their rebase; ids only freeze when a PR merges.
+[50-companion-app-design.md](50-companion-app-design.md). Current integrated
+allocations run through 44 (`BOOT_SPLASH`); the next free id is 45. Off-wire id
+0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`, and
+`BATTERY_SAVER`. Stacked branches with provisional ids must renumber at rebase;
+ids only freeze when a PR merges. The companion-password follow-up must reserve
+one id once its setting is added, and must coordinate with the IMU branch before
+claiming id 45.
 
 ## Dependencies
 

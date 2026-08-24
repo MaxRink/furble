@@ -1,7 +1,9 @@
 # 120 - Sim multiconnect coverage
 
-Status: design only. Extends the existing multi-connect sim scenarios and the
-real-Control end-to-end harness so a full multi-camera flow is proven headless.
+Status: follow-up design. The SDL simulator already has
+`reconnect-multiconnect-shutter.txt`, including survivor firing and no replay
+after reconnect. This plan closes the remaining selection-UI and real-Control
+sleep-lock/client-lifetime assertions.
 
 **Codex-implementable. Startable NOW.** Both vehicles exist on fork master: the
 SDL sim scenarios (`sim/scenarios/e2e/reconnect-multiconnect*.txt`) and the
@@ -21,25 +23,21 @@ is good but partial:
 - `tests/host/control_e2e` runs the real `FurbleControl.cpp` and has a
   `reconnect-shutter-drop` scenario plus `client-pool-exhaustion`.
 
-What is not yet asserted as one flow: connect 2+ cameras, use the selection UI to
-target a subset, disconnect exactly ONE and prove the survivor stays live AND
-keeps firing the shutter, then per-device reconnect restores it, with the sleep
-lock balanced and no client leak. This doc closes that on both panels (the SDL
-UI panel and the real-Control panel).
+What is not yet asserted as one flow is the selection UI plus the real-Control
+resource invariants: connect 2+ cameras, target a subset, disconnect exactly
+ONE, prove the survivor stays live and keeps firing, then verify per-device
+reconnect with the sleep lock balanced and no client leak. This doc closes that
+on both panels (the SDL UI panel and the real-Control panel).
 
 ## Scope
 
 In scope:
 
-- **SDL sim panel** (extends `reconnect-multiconnect.txt` and
-  `reconnect-multiconnect-shutter.txt`):
-  - New `sim/scenarios/e2e/multiconnect-survivor-shutter.txt`: connect two
-    cameras (`action connect-two`), open the Cameras/selection page, fire the
-    shutter and assert BOTH `control.shutter_presses` advance; `action drop 0`;
-    assert `ui.page connected`, `ui.connect_box hidden`, `control.connected 1`,
-    `ui.reconnect_count 1/2`; fire the shutter again and assert the SURVIVOR
-    still receives it (`control.shutter_presses` advances while one link is
-    down); wait for reconnect; assert `control.connected 2` and both fire again.
+- **SDL sim panel** (extends the existing `reconnect-multiconnect*.txt`
+  scenarios):
+  - Keep the existing survivor-shutter assertions as the baseline. Add the
+    missing Cameras/selection-page assertions and verify the connected-count
+    title while one target is down. Do not add a duplicate survivor scenario.
   - A three-camera variant if the fake Control supports it, to prove the
     `i/n` count with n>2.
   - Selection-UI assertions: navigate the multi-connect selection
@@ -78,7 +76,7 @@ None. Test-only. Uses the existing `reconnect` and `fauxny` scenario seeds.
 
 - `plans/25-multiconnect-ui.md`, the multi-connect selection UI: landed.
 - The real-Control harness (`tests/host/control_e2e`): landed.
-- `plans/119-sim-app-coverage.md`: independent; both extend the sim but touch
+- `plans/119-companion-gatt-sim.md`: independent; both extend the sim but touch
   different scenarios.
 - **Startable NOW.** No network, no companion, no MQTT.
 
@@ -110,9 +108,9 @@ SDL_VIDEODRIVER=dummy sim/build/furble-sim \
 Real-Control panel:
 
 ```
-cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
-cmake --build build/camera-tests --parallel 2
-ctest --test-dir build/camera-tests -R control-e2e-multiconnect-survivor-fires \
+cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-tests --parallel 2
+ctest --test-dir build/host-tests -R control-e2e-multiconnect-survivor-fires \
   --output-on-failure
 ```
 

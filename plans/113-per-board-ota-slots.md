@@ -1,13 +1,13 @@
 # 113 - Per-board OTA slot sizing for boards with spare flash
 
-Status: design only. Extends `plans/34-ota-partitions.md`, which already landed
-the uniform two-slot layout. Foundational for the flasher/OTA/app/sim track:
-sequence this FIRST.
+Status: implemented by PR #167. Extends `plans/34-ota-partitions.md`, which
+landed the uniform two-slot layout. This document records the per-flash-size
+follow-up that is now on fork/master.
 
-**Codex-implementable.** Pure build-system and sdkconfig work with a host-side
-partition-decode check. No network, no hardware needed to self-verify the claim
-this doc makes. One residual hardware step (a real non-destructive reflash)
-stays with Claude.
+**Implementation landed.** The committed CSVs, PlatformIO overrides, sdkconfig
+changes, CI size reporting, and host-side partition invariant checker are in
+PR #167. No network or hardware is needed to repeat the software checks. One
+residual hardware step, a real non-destructive reflash, remains with Claude.
 
 ## Motivation
 
@@ -116,10 +116,11 @@ and enlarge the slot only on the two boards that have the flash.
 
 - `plans/34-ota-partitions.md` (PR34a-1): landed. This doc edits the layout it
   established.
-- Feeds `plans/33-wifi-hub.md` PR33c and `plans/42-waveshare-eth-node.md`: both
-  gain real S3/16 MB headroom. Land 113 before measuring the WiFi+MQTT+TLS
-  image against a slot.
-- No dependency on WiFi, MQTT, companion or the sim. **Startable NOW.**
+- Enables `plans/33-wifi-hub.md` PR33c and `plans/42-waveshare-eth-node.md` to
+  use the S3 and Core2 headroom. The WiFi+MQTT+TLS image still needs a measured
+  size check when that implementation lands.
+- No dependency on WiFi, MQTT, companion or the sim. This slice is already
+  implemented; future network work consumes the resulting slot headroom.
 
 ## Risks
 
@@ -140,10 +141,17 @@ and enlarge the slot only on the two boards that have the flash.
   emits it for the two custom-table boards.
 - Nothing here is vendor specific. No camera coverage risk.
 
-## Codex self-verification (headless, no hardware)
+## Verification (headless, no hardware)
 
-All five envs must build and every app must fit its slot, and the decoded table
-must keep `nvs`/`otadata` fixed.
+PR #167 adds `tools/check_partition_tables.py`, which checks all five release
+boards plus the 8 MB headless environment without requiring PlatformIO:
+
+```
+python3 tools/check_partition_tables.py
+```
+
+The firmware CI also builds every release and debug environment and reports
+flash use against the selected slot. A local full check remains:
 
 ```
 export FURBLE_VERSION=dev FURBLE_TEST=0

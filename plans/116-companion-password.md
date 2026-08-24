@@ -82,11 +82,13 @@ Out of scope:
   characteristic, per-connection auth state, the challenge, and the privileged-op
   gate.
 - `include/FurbleSettings.h` / `src/FurbleSettings.cpp`: `COMPANION_PASSWORD`
-  setting and its `wire_id` (shared with `plans/114`/`plans/50`).
+  setting and its `wire_id` (shared with `plans/114`/`plans/50`). Reserve the
+  next free id only after reconciling the open IMU setting claim; do not assume
+  id 45 is available.
 - The PR27 console table: `companion password` subcommands.
 - `sim/shim/FurbleCompanionService.h` and the companion rig
   (`sim/CompanionRigTransport.cpp`): mirror the auth handshake so
-  `plans/119-sim-app-coverage.md` can drive it.
+  `plans/119-companion-gatt-sim.md` can drive it.
 
 ## Settings and defaults
 
@@ -103,7 +105,7 @@ do now: bonding + encryption, no extra step.
   FurbleCompanionService on fork master). **Startable NOW.**
 - `plans/114-flasher-provisioning.md`: the flasher is the intended way to set the
   password at flash time. 114 and 116 share the settings `wire_id` table.
-- `plans/119-sim-app-coverage.md`: adds the sim assertions for this gate; 119's
+- `plans/119-companion-gatt-sim.md`: adds the host assertions for this gate; 119's
   password-gate slice depends on 116.
 
 ## Risks
@@ -123,8 +125,8 @@ do now: bonding + encryption, no extra step.
 
 ## Codex self-verification (headless, no phone)
 
-Add a host test `companion_auth_test` under `tests/host`, registered in
-`tests/camera` ctest, exercising the auth state machine directly (it is plain
+Add a host test `companion_auth_test` under `tests/host`, registered in the
+host CTest suite, exercising the auth state machine directly (it is plain
 logic over a mock connection object):
 
 - Password set, correct HMAC response to the nonce -> connection becomes
@@ -141,9 +143,9 @@ logic over a mock connection object):
 Run:
 
 ```
-cmake -S tests/camera -B build/camera-tests -DCMAKE_BUILD_TYPE=Release
-cmake --build build/camera-tests --parallel 2
-ctest --test-dir build/camera-tests -R companion-auth --output-on-failure
+cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-tests --parallel 2
+ctest --test-dir build/host-tests -R companion-auth --output-on-failure
 ```
 
 Also assert the flash cost on the tightest board:
