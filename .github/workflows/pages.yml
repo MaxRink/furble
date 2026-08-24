@@ -26,6 +26,7 @@ jobs:
           - m5stick-c
           - m5stick-c-plus
           - m5stick-s3
+          - waveshare-s3-eth
         # Empty variant is the release build. The -debug variant builds the
         # matching PlatformIO *-debug env, which enables FURBLE_CONSOLE. Debug
         # envs share the release sdkconfig, so flash offsets are identical. The

@@ -211,6 +211,7 @@ jobs:
               "m5stack-core",
               "m5stack-core2",
               "m5stick-s3",
+              "waveshare-s3-eth",
           ]
           config = Path("platformio.ini").read_text(encoding="utf-8")
           environments = set(
@@ -341,6 +342,7 @@ jobs:
           flash_slot = {
               "m5stack-core2": 0x600000,
               "m5stick-s3": 0x300000,
+              "waveshare-s3-eth": 6 * 1024 * 1024,
           }.get(release_environment, 1700 * 1024)
           record = {
               "schema": 1,
