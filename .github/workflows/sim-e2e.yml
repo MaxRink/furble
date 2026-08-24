@@ -107,6 +107,13 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-e2e.sh
 
+      - name: Stress asynchronous GPS task convergence
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_ASYNC_STRESS_ROUNDS: 5
+        run: sh sim/scripts/run-async-stress.sh
+
       - name: Reject malformed scenario values
         env:
           SDL_VIDEODRIVER: dummy

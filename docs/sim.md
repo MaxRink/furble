@@ -380,6 +380,8 @@ handshake writes, link drops during a handshake, and deferred client deletion.
    Use `assert-eventually` only when a background simulator task must catch up
    after virtual time has advanced. Keep exact count/value assertions after the
    eventual state assertion.
+   CI repeats the asynchronous GPS scenarios through
+   `sim/scripts/run-async-stress.sh`; keep cross-task regressions in that set.
 3. Prefer `assert` for a fixed contract. Use `xassert` only for a known gap
    that is expected to fail today. It records XFAIL and continues; an XPASS
    is the signal to promote the line to `assert` after the product fix.
