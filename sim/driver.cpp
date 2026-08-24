@@ -737,8 +737,8 @@ void applyScenarioSettings(void) {
     }
     if (batteryCharging != scenarioSettings.end()) {
       const std::string &value = batteryCharging->second;
-      if (value != "0" && value != "1" && value != "true" && value != "false"
-          && value != "yes" && value != "no" && value != "on" && value != "off") {
+      if (value != "0" && value != "1" && value != "true" && value != "false" && value != "yes"
+          && value != "no" && value != "on" && value != "off") {
         std::cerr << "Invalid battery_charging: " << value << '\n';
         std::exit(2);
       }
