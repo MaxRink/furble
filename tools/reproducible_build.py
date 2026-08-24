@@ -100,6 +100,61 @@ def copy_source(source: Path, destination: Path) -> None:
   shutil.copytree(source, destination, ignore=ignore)
 
 
+def prepare_platformio_core(
+    destination: Path, inherited_environment: dict[str, str]
+) -> dict[str, str]:
+  """Create an isolated PlatformIO core for one reproducibility build.
+
+  PlatformIO normally shares its framework package between every checkout.
+  This project patches one framework source file, so sharing that package
+  would make the gate depend on build order and would race concurrent builds.
+  Read-only packages and platforms can be linked from the user's cache. The
+  patched ESP-IDF framework is copied so the pre-build script can mutate only
+  this build's package.
+  """
+  base_core = Path(
+      inherited_environment.get("PLATFORMIO_CORE_DIR", "")
+      or (Path.home() / ".platformio")
+  )
+  core = destination / "pio-core"
+  packages = core / "packages"
+  platforms = core / "platforms"
+  if core.exists():
+    if not packages.is_dir() or not platforms.is_dir():
+      raise RuntimeError(f"incomplete isolated PlatformIO core: {core}")
+  else:
+    packages.mkdir(parents=True)
+    platforms.mkdir(parents=True)
+
+  source_packages = base_core / "packages"
+  if source_packages.is_dir():
+    for package in source_packages.iterdir():
+      target = packages / package.name
+      if package.name == "framework-espidf" and package.is_dir():
+        if not target.exists():
+          shutil.copytree(package, target)
+      elif not target.exists() and not target.is_symlink():
+        target.symlink_to(package, target_is_directory=package.is_dir())
+
+  source_platforms = base_core / "platforms"
+  if source_platforms.is_dir():
+    for platform in source_platforms.iterdir():
+      target = platforms / platform.name
+      if not target.exists() and not target.is_symlink():
+        target.symlink_to(platform, target_is_directory=platform.is_dir())
+
+  environment = dict(inherited_environment)
+  environment.update(
+      {
+          "PLATFORMIO_CORE_DIR": str(core),
+          "PLATFORMIO_PACKAGES_DIR": str(packages),
+          "PLATFORMIO_PLATFORMS_DIR": str(platforms),
+          "PLATFORMIO_CACHE_DIR": str(core / ".cache"),
+      }
+  )
+  return environment
+
+
 def build_once(
     project: Path,
     environment_name: str,
@@ -115,6 +170,7 @@ def build_once(
           "SOURCE_DATE_EPOCH": str(epoch),
       }
   )
+  child_environment = prepare_platformio_core(project.parent, child_environment)
   run(
       [
           "platformio",

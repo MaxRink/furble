@@ -15,6 +15,9 @@ the firmware bytes.
   `tools/reproducible-build.lock`.
 - `tools/reproducible_build.py` builds two distinct absolute copies, compares
   the ELF and all flash images, and has a negative version-change test.
+- Each comparison copy gets an isolated PlatformIO core with its own mutable
+  ESP-IDF framework package. The shared-framework NimBLE patch is locked,
+  idempotent, and rejects partial application.
 - CI runs the comparison for every release board.
 
 ## Verification

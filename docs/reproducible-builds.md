@@ -23,11 +23,18 @@ python3 tools/reproducible_build.py --check-inputs
 python3 tools/reproducible_build.py --env m5stick-s3 --negative-version
 ```
 
-The script creates two clean copies in different absolute directories, builds
-the selected environment in each, and compares the SHA-256 of the ELF,
-firmware, bootloader, partition table, and initial OTA data image. The
-negative test changes `FURBLE_VERSION` and requires at least one artifact to
-change. CI runs the same gate for every release board.
+The script creates two clean copies in different absolute directories, gives
+each copy an isolated PlatformIO core, builds the selected environment in each,
+and compares the SHA-256 of the ELF, firmware, bootloader, partition table, and
+initial OTA data image. The isolated core is important because the project has
+a checked-in NimBLE patch and PlatformIO normally shares framework packages
+between checkouts. The negative test changes `FURBLE_VERSION` and requires at
+least one artifact to change. CI runs the same gate for every release board.
+
+The NimBLE pre-build patch is serialized per framework path, is idempotent, and
+fails on a rejected hunk. It never accepts a partial patch or leaves a reject
+file that could silently change the firmware. Its second-application,
+concurrency, and rejected-hunk tests run as a CI step.
 
 The guarantee is for identical source, pinned inputs, target configuration,
 and build timestamp. Signed or encrypted images remain dependent on their

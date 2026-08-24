@@ -12,8 +12,11 @@ on:
       - "lib/**"
       - "components/**"
       - "partitions_*.csv"
+      - "patches/apply.py"
+      - "patches/ble_gap.patch"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
+      - "requirements.txt"
       - ".github/workflows/reproducible.yml"
   pull_request:
     branches: [master]
@@ -26,8 +29,11 @@ on:
       - "lib/**"
       - "components/**"
       - "partitions_*.csv"
+      - "patches/apply.py"
+      - "patches/ble_gap.patch"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
+      - "requirements.txt"
       - ".github/workflows/reproducible.yml"
 
 permissions:
@@ -64,13 +70,16 @@ jobs:
             ~/.platformio/packages
             ~/.platformio/platforms
             ~/.platformio/.cache
-          key: ${{ runner.os }}-repro-platformio-${{ hashFiles('platformio.ini', 'requirements.txt') }}
+          key: ${{ runner.os }}-repro-platformio-${{ hashFiles('platformio.ini', 'requirements.txt', 'patches/ble_gap.patch', 'tools/reproducible-build.lock') }}
           restore-keys: |
             ${{ runner.os }}-repro-platformio-
             ${{ runner.os }}-platformio-
 
       - name: Install PlatformIO
         run: python -m pip install -r requirements.txt
+
+      - name: Test framework patch isolation
+        run: python3 patches/test_ble_gap_patch.py
 
       - name: Compare clean builds
         run: >-
