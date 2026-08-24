@@ -57,16 +57,24 @@ bool testFujifilmAdvertisementParsing() {
                                                             false, true));
   CHECK(!Furble::FujifilmProtocol::matchesBasicAdvertisement(basicData.data(), basicData.size(),
                                                              false, false));
+  CHECK(
+      !Furble::FujifilmProtocol::matchesBasicAdvertisement(nullptr, basicData.size(), true, false));
 
   const std::array<uint8_t, 7> wrongBasicType = {0xd8, 0x04, 0x03, 0x10, 0x20, 0x30, 0x40};
   CHECK(!Furble::FujifilmProtocol::parseBasicAdvertisement(wrongBasicType.data(),
                                                            wrongBasicType.size(), basic));
+  CHECK(!Furble::FujifilmProtocol::matchesBasicAdvertisement(wrongBasicType.data(),
+                                                             wrongBasicType.size(), true, false));
 
   const std::array<uint8_t, 8> basicWithExtra = {0xd8, 0x04, 0x02, 0x10, 0x20, 0x30, 0x40, 0x50};
   CHECK(!Furble::FujifilmProtocol::parseBasicAdvertisement(basicWithExtra.data(),
                                                            basicWithExtra.size(), basic));
+  CHECK(!Furble::FujifilmProtocol::matchesBasicAdvertisement(basicWithExtra.data(),
+                                                             basicWithExtra.size(), true, false));
 
   const std::array<uint8_t, 8> secureData = {0xd8, 0x04, 0x99, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0};
+  const std::array<uint8_t, 9> secureWithExtra = {0xd8, 0x04, 0x99, 0xa0, 0xb0,
+                                                  0xc0, 0xd0, 0xe0, 0xf0};
   Furble::FujifilmProtocol::SecureAdvertisement secure = {};
   CHECK(Furble::FujifilmProtocol::parseSecureAdvertisement(secureData.data(), secureData.size(),
                                                            secure));
@@ -75,17 +83,25 @@ bool testFujifilmAdvertisementParsing() {
                                                              true));
   CHECK(!Furble::FujifilmProtocol::matchesSecureAdvertisement(secureData.data(), secureData.size(),
                                                               false));
+  CHECK(!Furble::FujifilmProtocol::matchesSecureAdvertisement(nullptr, secureData.size(), true));
 
   const std::array<uint8_t, 7> shortSecure = {0xd8, 0x04, 0x99, 0xa0, 0xb0, 0xc0, 0xd0};
   CHECK(!Furble::FujifilmProtocol::parseSecureAdvertisement(shortSecure.data(), shortSecure.size(),
                                                             secure));
+  CHECK(!Furble::FujifilmProtocol::matchesSecureAdvertisement(shortSecure.data(),
+                                                              shortSecure.size(), true));
+  CHECK(!Furble::FujifilmProtocol::matchesSecureAdvertisement(secureWithExtra.data(),
+                                                              secureWithExtra.size(), true));
   CHECK(!Furble::FujifilmProtocol::parseBasicAdvertisement(nullptr, 0, basic));
   CHECK(!Furble::FujifilmProtocol::parseSecureAdvertisement(nullptr, secureData.size(), secure));
   for (size_t bytes = 0; bytes < basicData.size(); ++bytes) {
     CHECK(!Furble::FujifilmProtocol::parseBasicAdvertisement(basicData.data(), bytes, basic));
+    CHECK(
+        !Furble::FujifilmProtocol::matchesBasicAdvertisement(basicData.data(), bytes, true, false));
   }
   for (size_t bytes = 0; bytes < secureData.size(); ++bytes) {
     CHECK(!Furble::FujifilmProtocol::parseSecureAdvertisement(secureData.data(), bytes, secure));
+    CHECK(!Furble::FujifilmProtocol::matchesSecureAdvertisement(secureData.data(), bytes, true));
   }
   return true;
 }
