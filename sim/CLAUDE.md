@@ -82,6 +82,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   It is for cross-task state convergence after virtual time has advanced, not
   for extending a scenario's virtual-time budget. Timeout values must be from
   1 through 60000 ms. A timeout prints the last observed value and exits 1.
+- UI-task delays advance virtual time and then perform a short host scheduler
+  handoff. Preserve that handoff: it lets detached background task threads
+  observe each part of a scripted wait instead of starting work only after the
+  entire virtual-time budget has elapsed.
 - `action drop` and `action drop <n>` model a dropped fake peer link. `seed
   connect_fail true` makes the fake camera reject connection. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and

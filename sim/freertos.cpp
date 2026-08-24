@@ -52,6 +52,13 @@ void vTaskDelay(TickType_t ticks) {
   if (std::strcmp(simTaskName, "ui") == 0) {
     Furble::Sim::profilerTaskDelay(simTaskName, ticks);
     Furble::Sim::advanceClock(ticks);
+    // The UI owns virtual-time advancement. Give detached FreeRTOS task
+    // threads a real scheduling point after every tick so they observe that
+    // time while a scripted wait is in progress, instead of only after the UI
+    // has advanced the entire wait budget. A host yield is only advisory and
+    // remained flaky under load; this bounded handoff makes progress reliable
+    // without deriving production timing from wall time.
+    std::this_thread::sleep_for(std::chrono::microseconds(50));
   } else {
     // Background tasks use this only to yield to the host scheduler. Counting
     // these calls would expose host thread timing instead of scenario time.
