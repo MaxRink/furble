@@ -246,6 +246,10 @@ jobs:
       - name: Install Dependencies
         run: python -m pip install -r requirements.txt
 
+      - name: Check OTA partition-table invariants
+        if: ${{ matrix.platform == 'm5stick-c' }}
+        run: python3 tools/check_partition_tables.py
+
       - name: Set build environment
         shell: bash
         run: |
@@ -306,7 +310,6 @@ jobs:
           flash_used = int(matches["Flash"][1])
           ram_used = int(matches["RAM"][1])
           ram_total = int(matches["RAM"][2])
-          flash_slot = 1700 * 1024
           record = {
               "schema": 1,
               "env": os.environ["FIRMWARE_ENV"],
@@ -442,9 +445,18 @@ jobs:
                   return "0 B"
               return f"{value:+,} B"
 
+          flash_slots = {
+              "m5stack-core2": 0x600000,
+              "m5stick-s3": 0x300000,
+          }
+
+          def slot_size(environment):
+              release_environment = environment.removesuffix("-debug")
+              return flash_slots.get(release_environment, 1700 * 1024)
+
           def flash_text(record):
               used = record["flash_used_bytes"]
-              percent = used / flash_slot * 100
+              percent = used / slot_size(record["env"]) * 100
               return f"{used:,} B ({percent:.1f}%)"
 
           rows = []

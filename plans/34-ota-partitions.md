@@ -260,7 +260,7 @@ Use `partitions_two_ota_large.csv` on all five environments. Reasons, in order:
    `board_build.partitions = partitions_two_ota_large.csv` works with no file
    added to the repo.
 
-## Per flash size variants: not now, and here is why
+## Per flash size variants: adopted for the larger-flash boards
 
 An 8 MB or 16 MB board could carry larger slots. For reference, a 3 MB slot
 layout for the S3 that still preserves `nvs` at 0x9000/24K generates cleanly:
@@ -275,13 +275,21 @@ ota_1,    app,  ota_1, 0x320000,    3M,
 
 That ends at 0x620000 and leaves 1920K free on 8 MB.
 
-Do not ship it in 34a. A per board slot size means the S3 can grow past 1700K
-while the 4 MB boards cannot, and the first time that happens the project has
-split into two feature sets by accident rather than by decision. Keep one
-layout, let the build's partition size check enforce the 1700K ceiling on every
-environment equally, and revisit only when a measured image actually approaches
-it. Note that changing slot sizes later is another full reflash, so this is a
-decision worth getting right once rather than early.
+The implementation now deliberately ships per-flash-size layouts. The 8 MB S3
+boards use two 3 MB slots and the 16 MB Core2 uses two 6 MB slots. The 4 MB
+boards retain the stock 1700K slots. This supersedes the original single-layout
+recommendation: selecting the final layout before the one-time USB migration
+avoids requiring a second partition-table reflash merely to use flash already
+present on those boards.
+
+This does not authorize an accidental feature split. Every release environment
+continues to build in CI, and features intended for all boards must continue to
+fit the 1700K ceiling of the 4 MB boards. The larger slots reserve update and
+diagnostic headroom; they are not permission to stop building the smaller
+targets. `tools/check_partition_tables.py` verifies the exact offsets, equal OTA
+slots, preserved NVS and OTA-data regions, flash bounds, and current image
+headroom for all six board environments. The PlatformIO workflow runs that
+checker before its firmware matrix completes.
 
 ---
 
@@ -984,6 +992,22 @@ Stage 34a-1 is implemented on `feat/34-ota-partitions`.
 - The five release firmware binaries were checked against the `1700K` app
   slot and all fit. The required release builds and the `m5stick-s3-debug`
   build pass. Hardware verification on the M5StickC Plus S3 remains pending.
+
+## Per-board slot sizing complete
+
+- `m5stick-s3` and `esp32-s3-headless` select a repository-owned table with two
+  3 MB OTA slots on their 8 MB flash.
+- `m5stack-core2` selects a repository-owned table with two 6 MB OTA slots on
+  its 16 MB flash.
+- The three 4 MB environments retain the stock two-OTA-large table and its two
+  1700K slots, preserving the cross-board feature budget.
+- The invariant checker covers all six environments and is executed by the
+  PlatformIO CI workflow. The firmware-size PR report uses each environment's
+  real slot size instead of reporting every board against 1700K.
+- This is partition configuration only. Runtime hardware behavior is unchanged;
+  the applicable verification is table validation and complete release/debug
+  firmware builds. The first on-device OTA transition remains part of stage
+  34a-2.
 
 # References
 
