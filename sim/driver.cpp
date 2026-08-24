@@ -74,6 +74,8 @@ Furble::UI *scenarioUi = nullptr;
 bool configured = false;
 Furble::UI *backTarget = nullptr;
 bool waiting = false;
+battery_reading_t simulatedBattery = {80, 4000, 0, false};
+bool simulatedPowerOff = false;
 
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
@@ -361,6 +363,73 @@ void readScript(const std::string &path) {
   }
 }
 
+int32_t parseSigned(const std::string &value, const char *name) {
+  try {
+    size_t parsed = 0;
+    const long number = std::stol(value, &parsed, 10);
+    if (parsed != value.size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+    if (number < std::numeric_limits<int32_t>::min()
+        || number > std::numeric_limits<int32_t>::max()) {
+      throw std::out_of_range("int32 range");
+    }
+    return static_cast<int32_t>(number);
+  } catch (const std::exception &) {
+    std::cerr << "Invalid " << name << ": " << value << '\n';
+    std::exit(2);
+  }
+}
+
+uint16_t batteryVoltage(const std::string &value) {
+  const uint32_t voltage = parseUnsigned(value);
+  if (voltage > 65535) {
+    std::cerr << "Invalid battery_voltage: " << value << '\n';
+    std::exit(2);
+  }
+  return static_cast<uint16_t>(voltage);
+}
+
+bool parseBatteryAction(const std::string &action) {
+  std::istringstream input(action);
+  std::string command;
+  input >> command;
+  if (command != "battery") {
+    return false;
+  }
+
+  std::string levelText;
+  std::string voltageText;
+  std::string currentText;
+  std::string chargingText;
+  if (!(input >> levelText >> voltageText >> currentText >> chargingText)) {
+    std::cerr << "action battery requires level voltage current charging\n";
+    std::exit(2);
+  }
+
+  const uint32_t level = parseUnsigned(levelText);
+  if (level > 100) {
+    std::cerr << "Invalid battery level: " << levelText << '\n';
+    std::exit(2);
+  }
+  const int32_t current = parseSigned(currentText, "battery_current");
+  const bool charging = parseBool(chargingText);
+  if (chargingText != "0" && chargingText != "1" && chargingText != "true"
+      && chargingText != "false" && chargingText != "yes" && chargingText != "no"
+      && chargingText != "on" && chargingText != "off") {
+    std::cerr << "Invalid battery charging flag: " << chargingText << '\n';
+    std::exit(2);
+  }
+  std::string extra;
+  if (input >> extra) {
+    std::cerr << "action battery has unexpected trailing value: " << extra << '\n';
+    std::exit(2);
+  }
+
+  simulatedBattery = {static_cast<uint8_t>(level), batteryVoltage(voltageText), current, charging};
+  return true;
+}
+
 uint32_t parseUnsigned(const std::string &value, const char *option, uint32_t maximum) {
   try {
     size_t parsed = 0;
@@ -585,6 +654,24 @@ std::string queryValue(const std::string &key) {
     }
     return value;
   }
+  if (key == "platform.power_off") {
+    return simulatedPowerOff ? "yes" : "no";
+  }
+  if (prefixed("platform.battery.")) {
+    const std::string field = key.substr(std::char_traits<char>::length("platform.battery."));
+    if (field == "level") {
+      return std::to_string(simulatedBattery.level);
+    }
+    if (field == "voltage") {
+      return std::to_string(simulatedBattery.voltage);
+    }
+    if (field == "current") {
+      return std::to_string(simulatedBattery.current);
+    }
+    if (field == "charging") {
+      return simulatedBattery.charging ? "yes" : "no";
+    }
+  }
   if (key == "platform.watchdog") {
     return watchdogState();
   }
@@ -617,6 +704,8 @@ void applyScenarioSettings(void) {
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
   saveByte("text_size", Settings::TEXT_SIZE);
+  saveByte("auto_off", Settings::AUTO_OFF);
+  saveByte("low_batt", Settings::LOW_BATT);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("fauxny", Settings::FAUXNY);
@@ -624,6 +713,39 @@ void applyScenarioSettings(void) {
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
+
+  const auto batteryLevel = scenarioSettings.find("battery_level");
+  const auto batteryVoltageSetting = scenarioSettings.find("battery_voltage");
+  const auto batteryCurrent = scenarioSettings.find("battery_current");
+  const auto batteryCharging = scenarioSettings.find("battery_charging");
+  if (batteryLevel != scenarioSettings.end() || batteryVoltageSetting != scenarioSettings.end()
+      || batteryCurrent != scenarioSettings.end() || batteryCharging != scenarioSettings.end()) {
+    battery_reading_t reading = simulatedBattery;
+    if (batteryLevel != scenarioSettings.end()) {
+      const uint32_t level = parseUnsigned(batteryLevel->second);
+      if (level > 100) {
+        std::cerr << "Invalid battery_level: " << batteryLevel->second << '\n';
+        std::exit(2);
+      }
+      reading.level = static_cast<uint8_t>(level);
+    }
+    if (batteryVoltageSetting != scenarioSettings.end()) {
+      reading.voltage = batteryVoltage(batteryVoltageSetting->second);
+    }
+    if (batteryCurrent != scenarioSettings.end()) {
+      reading.current = parseSigned(batteryCurrent->second, "battery_current");
+    }
+    if (batteryCharging != scenarioSettings.end()) {
+      const std::string &value = batteryCharging->second;
+      if (value != "0" && value != "1" && value != "true" && value != "false"
+          && value != "yes" && value != "no" && value != "on" && value != "off") {
+        std::cerr << "Invalid battery_charging: " << value << '\n';
+        std::exit(2);
+      }
+      reading.charging = parseBool(value);
+    }
+    simulatedBattery = reading;
+  }
 
   const auto uartMode = scenarioSettings.find("gps_uart_mode");
   if (uartMode != scenarioSettings.end()) {
@@ -664,6 +786,14 @@ bool scenarioSettingIsTrue(const char *name) {
 
 void registerUI(UI *ui) {
   scenarioUi = ui;
+}
+
+battery_reading_t batteryReading(void) {
+  return simulatedBattery;
+}
+
+void notePowerOff(void) {
+  simulatedPowerOff = true;
 }
 
 void configure(int argc, char **argv) {
@@ -883,7 +1013,9 @@ void driverTick(void) {
         std::cerr << "Scenario action ran before the UI was ready: " << step.name << '\n';
         std::exit(1);
       }
-      scenarioUi->simScenarioAction(step.name.c_str());
+      if (!parseBatteryAction(step.name)) {
+        scenarioUi->simScenarioAction(step.name.c_str());
+      }
       ++stepIndex;
       break;
 

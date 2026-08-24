@@ -1,0 +1,5 @@
+# A disabled auto-off policy must leave the simulator running indefinitely.
+seed auto_off 0
+wait 61000
+assert platform.power_off no
+exit

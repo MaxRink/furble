@@ -1,0 +1,15 @@
+# A warning retires after a recovered sample. The runtime action exercises the
+# same battery sample boundary as a changed PMIC reading.
+seed low_batt 1
+seed battery_level 9
+seed battery_voltage 3500
+seed battery_current 0
+seed battery_charging false
+wait 35000
+assert ui.low_battery warn
+action battery 80 4000 0 false
+wait 6000
+assert ui.low_battery none
+assert platform.battery.level 80
+assert platform.battery.voltage 4000
+exit

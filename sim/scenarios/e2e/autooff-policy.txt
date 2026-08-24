@@ -1,0 +1,6 @@
+# Auto-off is evaluated only while disconnected and idle. A one-minute setting
+# keeps the scenario wall-clock independent while exercising the real timer.
+seed auto_off 1
+wait 61000
+assert platform.power_off yes
+exit

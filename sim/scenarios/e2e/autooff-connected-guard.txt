@@ -1,0 +1,9 @@
+# Auto-off must not power down an active camera session, even after an idle
+# display timeout has elapsed.
+seed autoconnect true
+seed auto_off 1
+wait 2000
+assert control.state active
+wait 61000
+assert platform.power_off no
+exit

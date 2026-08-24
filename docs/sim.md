@@ -139,7 +139,13 @@ text after a comment are ignored. Each line starts with one verb.
 
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
-`gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, and `text_size`.
+`gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
+`auto_off`, and `low_batt`.
+
+Battery seeds select the initial deterministic platform sample:
+`battery_level` (0 to 100), `battery_voltage` (millivolts),
+`battery_current` (signed milliamps), and `battery_charging` (`true` or
+`false`).
 
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `sleep_conn`, and
@@ -181,6 +187,15 @@ action companion-pair-request
 action companion-accept
 action companion-reject
 ```
+
+The battery action changes the platform sample at runtime:
+
+```text
+action battery LEVEL VOLTAGE_MV CURRENT_MA CHARGING
+```
+
+For example, `action battery 80 4000 0 false` simulates a recovered,
+discharging pack. The next battery timer sample consumes the new value.
 
 `action drop` drops every active fake camera. `action drop N` drops target
 `N`, using zero-based target numbering. `action connect-two` selects two fake
@@ -259,8 +274,16 @@ The complete `ui.*` query set is:
 | `ui.bt_icon` | `hidden`, `red`, or `plain`. |
 | `ui.battery_x` | Numeric header x position, or `none`. |
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
+| `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
 
 The other namespaces are:
+
+- `platform.battery.level`, `platform.battery.voltage`,
+  `platform.battery.current`, and `platform.battery.charging` report the
+  current deterministic platform sample.
+- `platform.power_off` reports `yes` after production `UI::doPowerOff()` reaches
+  the simulator power-off seam. The simulator records the request instead of
+  terminating the process, so the scenario can assert shutdown ordering.
 
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.
@@ -301,6 +324,10 @@ The other namespaces are:
   launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
   simulator.
+- Battery policy tests should seed `low_batt` and the four battery fields, then
+  use `action battery ...` to change the sample. Six consecutive low samples
+  qualify the production 30-second hysteresis; charging suppresses both the
+  warning and power-off path.
 
 There is no IMU injection knob in this host SDL simulator. The platform shim
 sets `config.internal_imu = false`, and the scenario parser has no IMU action,

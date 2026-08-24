@@ -91,6 +91,12 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   to assert that a repeated fake advertisement does not add a second row.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
+- Battery policy scenarios seed `battery_level`, `battery_voltage`,
+  `battery_current`, and `battery_charging`, plus the real `auto_off` and
+  `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA
+  CHARGING` command changes the reading at runtime. `ui.low_battery` reports
+  the rendered warning state and `platform.power_off` records a production
+  power-off request without terminating the simulator.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the
