@@ -190,7 +190,9 @@ void GPS::reset(void) {
 
 void GPS::task(void) {
   while (true) {
+    std::unique_lock<std::mutex> serviceLock(m_ServiceMutex);
     if (!m_Enabled) {
+      serviceLock.unlock();
       releasePowerLock();
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
@@ -243,6 +245,7 @@ void GPS::enable(void) {
 
   // park the GPS task first, m_Enabled gates every cycle entry point
   m_Enabled = false;
+  const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
 
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   loadAidCache();
@@ -1210,6 +1213,7 @@ bool GPS::sendAidIni(void) {
 
 void GPS::disable(void) {
   m_Enabled = false;
+  const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
   FURBLE_SIM_GPS_STATE("off");
   m_ConfigPending = false;
   m_ConfigQueue.clear();

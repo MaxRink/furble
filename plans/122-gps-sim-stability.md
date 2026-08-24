@@ -34,6 +34,10 @@ gate therefore continues to assert rendered state without pixel readback.
 6. Suppress only M5GFX `Panel_sdl` frames in the focused sanitizer run. Version
    0.2.19 reads and swaps its hosted double-buffer pointer on separate threads;
    the gate remains strict for Furble's GPS, UI, and simulator code.
+7. Park the GPS task across settings-driven enable and disable resets. The
+   sanitizer exposed the task reading the binary configuration queue while
+   `GPS::init()` cleared it during startup; a service mutex now makes the whole
+   reset atomic with respect to task passes.
 
 No GPS protocol, timing, or default setting changes are intended. The parser
 mutex is held only while accessing TinyGPSPlus and never across UART, LVGL,

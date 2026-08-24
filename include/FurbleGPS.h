@@ -323,6 +323,12 @@ class GPS {
   TaskHandle_t m_Task = NULL;
   QueueHandle_t m_Queue = NULL;
 
+  // Parks the GPS task while enable() or disable() resets task-owned UART,
+  // parser, configuration, and cycle state. The task rechecks m_Enabled only
+  // after acquiring this mutex so a stale pre-lock observation cannot enter a
+  // service pass during a settings reload.
+  std::mutex m_ServiceMutex;
+
   std::atomic<bool> m_Enabled = false;
   bool m_HasFix = false;
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
