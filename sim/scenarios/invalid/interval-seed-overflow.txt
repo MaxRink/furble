@@ -1,0 +1,2 @@
+seed interval_count 65536
+exit
