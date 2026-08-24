@@ -20,7 +20,7 @@ jobs:
       firmware: ${{ steps.filter.outputs.firmware }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure host harness
         run: cmake -S tests/host -B "$RUNNER_TEMP/furble-host-build"
@@ -83,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Reject rig transport in release environments
         shell: bash
@@ -125,10 +125,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
 
@@ -166,7 +166,7 @@ jobs:
       matrix: ${{ steps.environments.outputs.matrix }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Discover release and debug environments
         id: environments
@@ -215,7 +215,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -239,7 +239,7 @@ jobs:
             ${{ runner.os }}-pip-platformio-
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
 
@@ -356,7 +356,7 @@ jobs:
 
     steps:
       - name: Download current firmware size artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: firmware-size-*
           path: current-sizes

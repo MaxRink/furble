@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # No restore-keys on purpose: the fetch step below skips a dependency
       # when its directory exists, so a stale prefix match could pin an old

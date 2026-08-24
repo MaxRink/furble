@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Regenerate golden corpus
         run: make -C tests/protocol CXX=clang++ generate
