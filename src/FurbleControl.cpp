@@ -571,6 +571,7 @@ void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect = infiniteReconnect;
   m_ReconnectBackoff = Settings::reconBackoffEffective();
   m_ReconnectAttempt = 0;
+  m_ConnectFailCount = 0;
   m_ReconnectHintLogged = false;
   m_ConnectAbort = false;
 
