@@ -19,6 +19,7 @@ fi
 
 count=0
 for scenario in "$DIR"/*.txt; do
+  [ -f "$scenario" ] || continue
   name=$(basename "$scenario" .txt)
   count=$((count + 1))
   echo "=== invalid: $name ==="
