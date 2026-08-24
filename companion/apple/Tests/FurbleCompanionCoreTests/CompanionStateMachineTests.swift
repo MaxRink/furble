@@ -49,6 +49,22 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertNil(machine.status)
     XCTAssertEqual(machine.retry(attempt: 2), .scan)
   }
+
+  func testReconnectRequiresFreshCapabilityAndAuthentication() {
+    var machine = CompanionStateMachine()
+    _ = machine.start(bluetoothAvailable: true)
+    _ = machine.didFindPeripheral()
+    _ = machine.didConnect()
+    _ = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: false)
+    _ = machine.didReadCapability(Data([1, 2, 1, 0, 0, 0]))
+    _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 3, count: 16))
+    _ = machine.didAuthenticationAccepted()
+    machine.didDisconnect()
+    XCTAssertEqual(machine.phase, .reconnecting(attempt: 1))
+    XCTAssertEqual(machine.didAuthenticationAccepted(), [])
+    XCTAssertEqual(machine.phase, .failed(.authenticationFailed))
+  }
 }
 
 private extension CompanionCommand {

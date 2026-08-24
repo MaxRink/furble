@@ -17,6 +17,7 @@ public enum CompanionFailure: Error, Equatable, Sendable {
   case requiredCharacteristicMissing(String)
   case authenticationUnavailable
   case authenticationFailed
+  case authenticationRequired
   case malformedPacket
   case payloadTooLarge
   case linkLost
@@ -65,6 +66,16 @@ public struct CompanionStateMachine: Sendable {
     }
     phase = .scanning
     lastError = nil
+    capability = nil
+    status = nil
+    cameras = []
+    auth = nil
+    requiresAuthentication = true
+    hasStatus = false
+    hasSettings = false
+    hasTrigger = false
+    hasAuth = false
+    hasCameras = false
     return .scan
   }
 
@@ -123,6 +134,9 @@ public struct CompanionStateMachine: Sendable {
   }
 
   public mutating func beginAuthentication(password: String, nonce: Data) -> CompanionCommand? {
+    guard phase == .awaitingAuthentication, hasAuth, capability != nil else {
+      return fail(.authenticationRequired)
+    }
     do {
       auth = try FurbleAuthSession(password: password)
       guard let auth else { return fail(.authenticationUnavailable) }
@@ -136,6 +150,10 @@ public struct CompanionStateMachine: Sendable {
   }
 
   public mutating func didAuthenticationAccepted() -> [CompanionCommand] {
+    guard phase == .awaitingAuthentication, hasAuth, capability != nil else {
+      _ = fail(.authenticationFailed)
+      return []
+    }
     guard var auth else {
       _ = fail(.authenticationFailed)
       return []
@@ -193,8 +211,16 @@ public struct CompanionStateMachine: Sendable {
   public mutating func didDisconnect() {
     phase = .reconnecting(attempt: 1)
     lastError = .linkLost
+    capability = nil
     status = nil
     cameras = []
+    auth = nil
+    requiresAuthentication = true
+    hasStatus = false
+    hasSettings = false
+    hasTrigger = false
+    hasAuth = false
+    hasCameras = false
   }
 
   public mutating func retry(attempt: Int) -> CompanionCommand? {
