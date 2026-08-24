@@ -126,6 +126,7 @@ enum : uint8_t {
 class NmeaSatellites {
  public:
   static constexpr size_t MAX_SATELLITES = 32;
+  static constexpr size_t MAX_USED_SATELLITES = 64;
 
   /** Feed one whole NMEA sentence. Returns true if it was a GSV or GSA. */
   bool feed(const std::string &sentence);
@@ -153,7 +154,12 @@ class NmeaSatellites {
   TalkerSet &setFor(uint8_t constellation);
 
   std::vector<TalkerSet> m_Sets;
-  std::vector<uint16_t> m_Used;
+  struct UsedSatellite {
+    uint8_t constellation;
+    uint16_t prn;
+  };
+
+  std::vector<UsedSatellite> m_Used;
   DopInfo m_Dop = {0, 0, 0, 0, false};
 };
 

@@ -1258,12 +1258,17 @@ void GPS::serviceConfig(void) {
 
 int64_t GPS::toUnixSeconds(const Camera::timesync_t &timesync) {
   if ((timesync.year < 1970) || (timesync.month < 1) || (timesync.month > 12) || (timesync.day < 1)
-      || (timesync.day > 31) || (timesync.hour > 23) || (timesync.minute > 59)
-      || (timesync.second > 59)) {
+      || (timesync.hour > 23) || (timesync.minute > 59) || (timesync.second > 59)) {
     return -1;
   }
 
   static constexpr std::array<uint8_t, 12> DAYS = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  const uint8_t monthDays = DAYS[timesync.month - 1]
+                            + ((timesync.month == 2) && ((timesync.year % 4) == 0)
+                               && (((timesync.year % 100) != 0) || ((timesync.year % 400) == 0)));
+  if (timesync.day > monthDays) {
+    return -1;
+  }
   int64_t days = 0;
   for (uint32_t year = 1970; year < timesync.year; year++) {
     const bool leap = ((year % 4) == 0) && (((year % 100) != 0) || ((year % 400) == 0));
@@ -1512,6 +1517,16 @@ void GPS::loadEphemerisCache(void) {
   }
 
   m_EphReplay.assign(blob.begin() + sizeof(header), blob.end());
+  const std::vector<std::pair<size_t, size_t>> spans =
+      Casic::splitFrames(m_EphReplay.data(), m_EphReplay.size());
+  size_t framedBytes = 0;
+  for (const auto &span : spans) {
+    framedBytes += span.second;
+  }
+  if ((spans.size() != header.frame_count) || (framedBytes != m_EphReplay.size())) {
+    m_EphReplay.clear();
+    return;
+  }
   m_EphCaptureUtc = header.capture_utc;
   // the stored tick is from a previous power session, so it cannot bound age
   m_EphCaptureTickValid = false;

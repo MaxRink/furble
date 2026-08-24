@@ -304,7 +304,8 @@ bool NmeaSatellites::feedGsv(uint8_t constellation, const std::vector<std::strin
       sat.azimuth = static_cast<uint16_t>(value);
     }
     if (parseUint(fields[base + 3], value)) {
-      if (value > std::numeric_limits<uint8_t>::max()) {
+      // NMEA GSV defines C/N0 as 00 to 99 dB-Hz.
+      if (value > 99) {
         set.malformed = true;
         continue;
       }
@@ -338,14 +339,56 @@ bool NmeaSatellites::feedGsa(uint8_t constellation, const std::vector<std::strin
 
   unsigned long fix_mode = 0;
   if (parseUint(fields[2], fix_mode)) {
-    m_Dop.fix_type = static_cast<uint8_t>(fix_mode);
+    if ((fix_mode >= 1) && (fix_mode <= 3)) {
+      m_Dop.fix_type = static_cast<uint8_t>(fix_mode);
+    }
+  }
+
+  // NMEA 4.1 appends a system ID to GNGSA. Prefer it over the talker prefix,
+  // which is often GN for a receiver that reports one solution per system.
+  uint8_t system = constellation;
+  if (fields.size() >= 19) {
+    unsigned long system_id = 0;
+    if (parseUint(fields[18], system_id)) {
+      switch (system_id) {
+        case CONSTELLATION_GPS:
+        case CONSTELLATION_GLONASS:
+        case CONSTELLATION_GALILEO:
+        case CONSTELLATION_BEIDOU:
+        case CONSTELLATION_QZSS:
+          system = static_cast<uint8_t>(system_id);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  // A GSA sentence replaces the current solution for its system. Keeping old
+  // PRNs makes satellites remain used after they leave the solution. A
+  // combined GNGSA with no system ID replaces all systems.
+  if (system == CONSTELLATION_UNKNOWN) {
+    m_Used.clear();
+  } else {
+    m_Used.erase(std::remove_if(m_Used.begin(), m_Used.end(),
+                                [system](const UsedSatellite &sat) {
+                                  return (sat.constellation == system)
+                                         || (sat.constellation == CONSTELLATION_UNKNOWN);
+                                }),
+                 m_Used.end());
   }
 
   for (size_t i = 3; i < 15; i++) {
     unsigned long prn = 0;
-    if (parseUint(fields[i], prn) && (prn != 0)) {
-      if (std::find(m_Used.begin(), m_Used.end(), static_cast<uint16_t>(prn)) == m_Used.end()) {
-        m_Used.push_back(static_cast<uint16_t>(prn));
+    if (parseUint(fields[i], prn) && (prn != 0) && (prn <= std::numeric_limits<uint16_t>::max())
+        && (m_Used.size() < MAX_USED_SATELLITES)) {
+      const UsedSatellite used = {system, static_cast<uint16_t>(prn)};
+      if (std::find_if(m_Used.begin(), m_Used.end(),
+                       [used](const UsedSatellite &sat) {
+                         return (sat.constellation == used.constellation) && (sat.prn == used.prn);
+                       })
+          == m_Used.end()) {
+        m_Used.push_back(used);
       }
     }
   }
@@ -353,8 +396,8 @@ bool NmeaSatellites::feedGsa(uint8_t constellation, const std::vector<std::strin
   float pdop = 0;
   float hdop = 0;
   float vdop = 0;
-  if (parseFloat(fields[15], pdop) && parseFloat(fields[16], hdop)
-      && ((fields.size() < 18) || parseFloat(fields[17], vdop))) {
+  const bool haveVdop = (fields.size() < 18) || fields[17].empty() || parseFloat(fields[17], vdop);
+  if (parseFloat(fields[15], pdop) && parseFloat(fields[16], hdop) && haveVdop) {
     m_Dop.pdop = pdop;
     m_Dop.hdop = hdop;
     m_Dop.vdop = vdop;
@@ -394,7 +437,13 @@ std::vector<Satellite> NmeaSatellites::satellites(void) const {
   std::vector<Satellite> all;
   for (const auto &set : m_Sets) {
     for (Satellite sat : set.published) {
-      sat.used = std::find(m_Used.begin(), m_Used.end(), sat.prn) != m_Used.end();
+      sat.used = std::find_if(m_Used.begin(), m_Used.end(),
+                              [&sat](const UsedSatellite &used) {
+                                return (used.prn == sat.prn)
+                                       && ((used.constellation == CONSTELLATION_UNKNOWN)
+                                           || (used.constellation == sat.constellation));
+                              })
+                 != m_Used.end();
       all.push_back(sat);
     }
   }
@@ -419,7 +468,13 @@ size_t NmeaSatellites::used(void) const {
   size_t count = 0;
   for (const auto &set : m_Sets) {
     for (const auto &sat : set.published) {
-      if (std::find(m_Used.begin(), m_Used.end(), sat.prn) != m_Used.end()) {
+      if (std::find_if(m_Used.begin(), m_Used.end(),
+                       [&sat](const UsedSatellite &used) {
+                         return (used.prn == sat.prn)
+                                && ((used.constellation == CONSTELLATION_UNKNOWN)
+                                    || (used.constellation == sat.constellation));
+                       })
+          != m_Used.end()) {
         count++;
       }
     }

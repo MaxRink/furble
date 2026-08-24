@@ -153,7 +153,7 @@ bool testNmeaParse() {
   // 3 BeiDou satellites in one sentence.
   sats.feed(nmea("BDGSV,1,1,03,11,50,111,48,12,40,222,44,13,30,333,39,1"));
   // Combined GSA solution: PRNs 01,02,03,11 used, fix mode 3, DOP 2.5/2.0/1.5.
-  sats.feed(nmea("GPGSA,A,3,01,02,03,11,,,,,,,,,2.5,2.0,1.5,1"));
+  sats.feed(nmea("GNGSA,A,3,01,02,03,11,,,,,,,,,2.5,2.0,1.5"));
 
   check(sats.inView() == 11, "inView equals the 8 GPS plus 3 BeiDou satellites fed");
   check(sats.used() == 4, "used equals the four GSA PRNs that are also in view");
@@ -187,6 +187,19 @@ bool testNmeaParse() {
   }
   check(markedUsed == 4, "exactly the four GSA PRNs are flagged used");
 
+  // A newer GSA solution replaces the old used list. PRN 03 and BeiDou PRN
+  // 11 are no longer used in this update and must be cleared.
+  sats.feed(nmea("GNGSA,A,3,01,02,,,,,,,,,,,2.5,2.0,"));
+  const std::vector<Casic::Satellite> refreshed = sats.satellites();
+  for (const auto &s : refreshed) {
+    if ((s.prn == 1) || (s.prn == 2)) {
+      check(s.used, "PRNs retained by a newer GSA remain used");
+    } else {
+      check(!s.used, "PRNs removed by a newer GSA are cleared");
+    }
+  }
+  check(sats.dop().valid, "an empty optional GSA system ID does not invalidate DOP");
+
   return g_Failures == before;
 }
 
@@ -202,6 +215,27 @@ bool testNmeaReassembly() {
   // The second sentence completes the set and publishes all eight.
   sats.feed(nmea("GPGSV,2,2,08,05,45,010,50,06,35,020,42,07,25,030,38,08,15,040,33,1"));
   check(sats.inView() == 8, "the completed GSV set publishes all eight satellites");
+
+  return g_Failures == before;
+}
+
+bool testGsaSystemId() {
+  std::cout << "test: GNGSA system ID keeps used flags scoped to one constellation\n";
+  const int before = g_Failures;
+
+  Casic::NmeaSatellites sats;
+  sats.feed(nmea("GPGSV,1,1,01,01,40,100,45,1"));
+  sats.feed(nmea("BDGSV,1,1,01,01,40,100,45,1"));
+  sats.feed(nmea("GNGSA,A,3,01,,,,,,,,,,,,2.5,2.0,1.5,1"));
+
+  check(sats.used() == 1, "a GNGSA system ID marks only the selected system used");
+  for (const auto &sat : sats.satellites()) {
+    if (sat.constellation == Casic::CONSTELLATION_GPS) {
+      check(sat.used, "GPS is marked used by system ID 1");
+    } else if (sat.constellation == Casic::CONSTELLATION_BEIDOU) {
+      check(!sat.used, "BeiDou is not marked used by system ID 1");
+    }
+  }
 
   return g_Failures == before;
 }
@@ -238,6 +272,10 @@ bool testNmeaMalformed() {
         "an out-of-range satellite field is identified as GSV");
   check(sats.inView() == 8,
         "a new set containing an out-of-range satellite does not replace valid data");
+
+  check(sats.feed(nmea("GPGSV,1,1,01,01,40,100,100,1")),
+        "an out-of-range C/N0 field is identified as GSV");
+  check(sats.inView() == 8, "an out-of-range C/N0 does not replace valid data");
 
   Casic::NmeaSatellites dop;
   check(dop.feed(nmea("GPGSA,A,3,01,,,,,,,,,,,,,nan,2.0,1.0,1")),
@@ -348,6 +386,7 @@ int main() {
   testAutobaudLockLaterStep();
   testNmeaParse();
   testNmeaReassembly();
+  testGsaSystemId();
   testNmeaMalformed();
   testEphemerisCollector();
   testMonHw();
