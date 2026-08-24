@@ -2646,6 +2646,7 @@ void UI::simScenarioActionOnUi(const char *action) {
         {"gps",               m_GPSStr             },
         {"gps_data",          m_GPSDataStr         },
         {"nmea",              m_GPSNMEAStr         },
+        {"gps_sats",          m_GPSSatStr          },
         {"timer",             m_IntervalometerStr  },
         {"theme",             m_ThemeStr           },
         {"text_size",         m_TextSizeStr        },
@@ -3257,7 +3258,7 @@ std::string UI::simQueryState(const char *key) {
     // matrix scenario, so adding a page cannot silently turn into "other" in
     // host coverage. Optional capability pages are looked up with find below
     // because their menu entries are not built when the capability is absent.
-    const std::array<std::pair<const char *, const char *>, 50> pages = {
+    const std::array<std::pair<const char *, const char *>, 48> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -3283,6 +3284,7 @@ std::string UI::simQueryState(const char *key) {
          {m_GPSDataStr, "gps_data"},
          {m_GPSNMEAStr, "nmea"},
          {m_ThemeStr, "theme"},
+         {m_GPSSatStr, "gps_sats"},
          {m_BluetoothStr, "bluetooth"},
          {m_TransmitPowerStr, "tx_power"},
          {m_AboutStr, "about"},
@@ -3599,6 +3601,17 @@ std::string UI::simQueryState(const char *key) {
   // same source decision used by GPS::update() without changing the page.
   if (query == "gps_fix") {
     return GPS::getInstance().getSource() == GPS::SOURCE_NONE ? "no" : "yes";
+  }
+
+  if (query == "gps_sats_in_view" || query == "gps_sats_used" || query == "gps_sats_fix") {
+    const auto report = GPS::getInstance().getSatelliteReport();
+    if (query == "gps_sats_in_view") {
+      return std::to_string(report.in_view);
+    }
+    if (query == "gps_sats_used") {
+      return std::to_string(report.used);
+    }
+    return std::to_string(report.dop.fix_type);
   }
 
   // Count how many widgets in the focused item's subtree currently render a

@@ -257,14 +257,14 @@ and `recon_backoff`. `watchdog` is present in the M5StickS3 build.
 
 The `nav` action clicks a real menu button. Its page names are:
 `connect`, `scan`, `delete`, `bulb`, `settings`, `display`, `features`,
-`infrared`, `gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`,
+`infrared`, `gps`, `gps_data`, `nmea`, `gps_sats`, `timer`, `theme`, `text_size`,
 `bluetooth`, `about`, `power`, `feedback`, `diagnostics`, `device_info`,
 `power_state`, `ble`, `battery`, and `storage`.
 
 The `scroll` action accepts `top`, `bottom`, `next`, or a signed pixel count.
 The `page` action accepts `main`, `shutter`, `bulb`, `cameras`,
 `remote_timer`, `remote_gps`, `connected`, `settings`, `display`, `features`,
-`gps`, `timer`, `theme`, `text_size`, `bluetooth`, `about`, `power`, and
+`gps`, `gps_sats`, `timer`, `theme`, `text_size`, `bluetooth`, `about`, `power`, and
 `diagnostics`. The connected page map can also report `bulb_run`, `timer_run`,
 and `remote_disconnect` while a run or disconnect transition is active.
 
@@ -351,6 +351,10 @@ The other namespaces are:
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+
+GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`, and
+`gps.sats_fix`; the `gps-satellite-page` end-to-end scenario uses the fixed
+GSV/GSA fixture and proves the rendered route before docs capture runs.
 
 ## Fault injection and fuzzing
 

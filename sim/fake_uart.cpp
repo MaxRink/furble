@@ -32,6 +32,14 @@ constexpr char gpsData[] =
     "$GPRMC,123519.00,A,4807.038,N,01131.000,E,22.678,0.0,230394,,,A*67\r\n"
     "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*69\r\n";
 
+// The satellite page asks the fake receiver to enable GSV/GSA. Keep this
+// fixture separate from the normal 1 Hz RMC/GGA burst so the added diagnostics
+// do not change the power-cycle timing scenarios.
+constexpr char satelliteData[] =
+    "$GPGSV,2,1,08,01,40,100,45,02,30,200,40,03,20,300,35,04,10,050,30,1*6A\r\n"
+    "$GPGSV,2,2,08,05,45,010,50,06,35,020,42,07,25,030,38,08,15,040,33,1*68\r\n"
+    "$GPGSA,A,3,01,02,03,04,,,,,,,,,2.5,2.0,1.5,1*2A\r\n";
+
 uint32_t gpsRatePeriodMillis(void) {
   constexpr uint32_t periods[] = {1000, 1000, 500, 200, 100};
   const uint8_t rate = Furble::Settings::load<Furble::Settings::GPS_RATE>();
@@ -211,6 +219,9 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
     return -1;
   }
   const auto *bytes = static_cast<const uint8_t *>(data);
+  if (command.find("PCAS03,1,0,1,1,1,0,0,0") != std::string::npos) {
+    queueRxLocked(std::vector<uint8_t>(satelliteData, satelliteData + sizeof(satelliteData) - 1));
+  }
   if (length >= 10 && bytes[0] == SYNC_0 && bytes[1] == SYNC_1) {
     if (uartMode == "timeout") {
       return static_cast<int>(length);

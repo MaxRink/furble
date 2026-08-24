@@ -220,6 +220,7 @@ class GPS {
 
   /** Start or stop GSV and GSA parsing for the satellite detail page. */
   void setSatelliteCapture(bool capture);
+  bool satelliteCaptureEnabled(void) const { return m_SatCapture.load(); }
 
   /** Snapshot the parsed satellite table. */
   satellite_report_t getSatelliteReport(void);

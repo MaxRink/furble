@@ -76,6 +76,11 @@ wait 900
 capture gps-data
 print ui.page
 
+action nav gps_sats
+wait 2800
+capture gps-satellites
+print ui.page
+
 action nav nmea
 wait 700
 capture gps-nmea

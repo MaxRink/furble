@@ -159,6 +159,16 @@ The GPS Data page shows the live fix: age, satellite count, speed, latitude and
 longitude, altitude, and UTC date and time. It is reachable both here and under
 `Settings` > `GPS` > `GPS Data`.
 
+### GPS Satellites
+
+![GPS satellite detail page](img/gps-satellites.png)
+
+The Satellites page enables GSV/GSA capture only while it is open. It reports
+the fix type, in-view and used counts, PDOP/HDOP/VDOP, and each satellite's
+constellation, PRN, C/N0, and used-in-fix marker. The screenshot uses the
+simulator's fixed eight-satellite fixture; it is a deterministic UI capture,
+not evidence that the attached AT6668 receiver has been hardware-verified.
+
 ## Settings
 
 ![Settings root](img/settings.png)
@@ -228,9 +238,9 @@ submenu renders; see the
 ![GPS settings](img/settings-gps.png)
 
 The GPS switch is the master control. When it is on, the receiver configuration
-rows appear: baud (9600 or 115200), Update rate, Sentences, Constellation, a
-Power saving submenu, Assisted start, and the two live pages GPS Data and Raw
-NMEA. When GPS is off, only the switch is shown.
+rows appear: GPS Baud (Auto, 9600, or 115200), Update rate, Sentences,
+Constellation, Power saving, Assisted start, Platform, and the three live pages
+GPS Data, Raw NMEA, and Satellites. When GPS is off, only the switch is shown.
 
 With GPS on the list runs past the screen. Scrolling down shows the lower rows:
 
@@ -241,7 +251,11 @@ With GPS on the list runs past the screen. Scrolling down shows the lower rows:
 ![Raw NMEA page](img/gps-nmea.png)
 
 Raw NMEA shows the sentences arriving from the receiver, the fix state, and error
-counters, with a Hot restart button.
+counters, binary configuration status, and a Hot restart button. Auto baud
+probing requires two checksummed NMEA sentences; an unsuccessful probe marks the
+receiver absent and cuts the external rail before one delayed retry. The AT6668
+receiver path is simulator-tested but its live response and indoor reception
+remain hardware verification items.
 
 ### Timer
 
@@ -391,6 +405,7 @@ green outline. Set it under `Settings` > `Theme` > `Dark` and press Restart.
 ![Dark features](img/dark-features.png)
 ![Dark Infrared](img/dark-infrared.png)
 ![Dark GPS settings](img/dark-settings-gps.png)
+![Dark GPS satellites](img/dark-gps-satellites.png)
 ![Dark Bluetooth](img/dark-bluetooth.png)
 ![Dark Feedback](img/dark-feedback.png)
 ![Dark Storage](img/dark-storage.png)

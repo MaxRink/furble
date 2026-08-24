@@ -109,18 +109,23 @@ is enabled.
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | GPS | Off | On, Off | Now | Master switch for the GPS receiver. |
-| GPS baud 115200 | Off (9600) | 9600, 115200 | Now | The v1.1 (AT6668) unit needs 115200. The older unit uses 9600. |
+| GPS Baud | 9600 | Auto, 9600, 115200 | Now | Auto probes the six supported rates and requires two checksummed NMEA sentences. The v1.1 AT6668 unit is expected to use 115200; live hardware verification is pending. |
 | Update rate | Default | Default, 1000 ms, 500 ms, 200 ms, 100 ms | Now | How often the receiver reports a position. Default leaves the receiver alone. |
 | Sentences | Default | Default, RMC+GGA | Now | RMC+GGA prunes output to the sentences furble reads. |
 | Constellation | Default | Default, GPS, BDS, GPS+BDS, GLONASS, GPS+GLO, BDS+GLO, All | Now | Which satellite systems the receiver uses. |
 | Power saving > Receiver | Always on | Always on, Standby (PCAS12), Rail cycling | Now | Receiver low-power policy. Rail cycling is experimental. |
 | Power saving > Sleep between fixes | No standby | No standby, 5 s, 10 s, 15 s | Now | Standby interval for the PCAS12 policy. |
-| Assisted start | Off | Off, Position and time | Now | Feeds the receiver a position and time hint for a faster fix. |
+| Assisted start | Off | Off, Position and time, Position, time and ephemeris | Now | Sends a cached position/time hint. The ephemeris option caches and replays receiver frames, but its time-to-first-fix benefit is hardware-tuning-pending. |
+| Platform | Do not send | Do not send, Portable, Stationary, Pedestrian, Vehicle | Now | Applies the CASIC dynamic model through CFG-NAVX, with a PCAS11 fallback. The receiver effect is hardware-tuning-pending. |
 | GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time. |
 | Raw NMEA | n/a | page | n/a | Live receiver sentences, fix state, and error counts. Includes a Hot restart button. |
+| Satellites | n/a | page | n/a | GSV/GSA detail: in-view/used counts, DOP, C/N0 and used flags. Capture runs only while this page is open. |
 
 The receiver is set from these when GPS is enabled, and it returns to its own
-defaults the next time it is powered off.
+defaults the next time it is powered off. With Auto selected, an absent receiver
+is reported and the external rail is dropped; furble retries once after 60
+seconds. The AT6668 path has simulator coverage but has not yet been verified
+against a live unit.
 
 ### Timer (intervalometer)
 

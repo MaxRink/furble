@@ -36,19 +36,24 @@ by code review and the FauxNY test camera.
 
 ## GPS units
 
-Location tagging uses an M5Stack GPS unit on Grove Port A. Every unit furble
-targets is the AT6668/CASIC family, so the existing $PCAS and NMEA support covers
-them with no per-unit protocol code. Set `Settings` > `GPS` > `GPS baud 115200`
-for the AT6668 units.
+Location tagging uses an M5Stack GPS unit on Grove Port A. The implemented
+receiver path is the AT6668/CASIC family: $PCAS configuration, NMEA fixes, and
+the optional CASIC/GSV/GSA diagnostics are covered by host and simulator tests.
+Live receiver response, time-to-first-fix, and indoor reception remain hardware
+verification items for the alpha. The stored default is 9600; use `Auto` or a
+fixed 115200 selection for the v1.1 unit.
 
 | Unit | Chipset | Antenna | furble boards | Wiring | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| GPS/BDS Unit v1.1 | AT6668 | Ceramic patch | All five | Grove Port A | Supported. Indoor reception is marginal. |
-| Unit-GPS (SMA) | AT6668 | External SMA active antenna | All five | Grove Port A | Supported, drop in. Recommended for weak or indoor reception. |
+| GPS/BDS Unit v1.1 | AT6668 | Ceramic patch | All five | Grove Port A | Protocol-supported; live hardware verification pending. Indoor reception is expected to be marginal. |
+| Unit-GPS (SMA) | AT6668 | External SMA active antenna | All five | Grove Port A | Same protocol path; live hardware verification pending. Drop-in option recommended for weak or indoor reception. |
 | Module GPS v2.1 | AT6668 | SMA | Core, Core2 only | M5-Bus module | Planned, not yet in firmware. |
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
 
-The older Mini GPS/BDS Unit is end of life and runs at 9600 baud.
+The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
+115200, 9600, 38400, 57600, 19200, and 4800, and requires two checksummed NMEA
+sentences before declaring the receiver present. If probing fails, furble marks
+the receiver absent, cuts the external rail, and retries once after 60 seconds.
 
 ## Related pages
 
