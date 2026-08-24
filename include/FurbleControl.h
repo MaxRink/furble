@@ -1,6 +1,7 @@
 #ifndef FURBLE_CONTROL_H
 #define FURBLE_CONTROL_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -351,7 +352,9 @@ class Control {
   // on the first success, so a later mid-session drop (a peer-initiated drop, the
   // only way a live target re-enters connect without going through
   // connectAll(bool)) keeps the full first-retry backoff.
-  bool m_FreshConnect = false;
+  // connectAll(bool) is called by the UI task while the control task consumes
+  // the request. Keep the initiator marker race-free across those tasks.
+  std::atomic<bool> m_FreshConnect = false;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;
