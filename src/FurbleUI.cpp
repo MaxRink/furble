@@ -40,6 +40,15 @@
 #include "FurbleUI.h"
 #include "interval.h"
 
+// Firmware builds define these from SOURCE_DATE_EPOCH in reproducible.py.
+// Keep the simulator independent from PlatformIO's pre-build scripts.
+#ifndef FURBLE_BUILD_DATE
+#define FURBLE_BUILD_DATE "sim"
+#endif
+#ifndef FURBLE_BUILD_TIME
+#define FURBLE_BUILD_TIME ""
+#endif
+
 #if defined(FURBLE_SIM)
 #include "power_profiler.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
@@ -6689,7 +6698,7 @@ void UI::addAboutMenu(const menu_t &parent) {
   lv_label_set_text_fmt(id, "ID:\n%s", Device::getStringID().c_str());
 
   lv_obj_t *build = addInfoRow(cont);
-  lv_label_set_text_fmt(build, "Build:\n%s %s", __DATE__, __TIME__);
+  lv_label_set_text_fmt(build, "Build:\n%s %s", FURBLE_BUILD_DATE, FURBLE_BUILD_TIME);
 
   lv_obj_t *idf = addInfoRow(cont);
   lv_label_set_text_fmt(idf, "IDF:\n%s", IDF_VER);

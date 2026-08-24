@@ -1,0 +1,78 @@
+name: Reproducible firmware builds
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "platformio.ini"
+      - "patches/reproducible.py"
+      - "sdkconfig.*"
+      - "src/**"
+      - "include/**"
+      - "lib/**"
+      - "components/**"
+      - "partitions_*.csv"
+      - "tools/reproducible_build.py"
+      - "tools/reproducible-build.lock"
+      - ".github/workflows/reproducible.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "platformio.ini"
+      - "patches/reproducible.py"
+      - "sdkconfig.*"
+      - "src/**"
+      - "include/**"
+      - "lib/**"
+      - "components/**"
+      - "partitions_*.csv"
+      - "tools/reproducible_build.py"
+      - "tools/reproducible-build.lock"
+      - ".github/workflows/reproducible.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - m5stick-c
+          - m5stick-c-plus
+          - m5stack-core
+          - m5stack-core2
+          - m5stick-s3
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Cache PlatformIO packages and platforms
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-repro-platformio-${{ hashFiles('platformio.ini', 'requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-repro-platformio-
+            ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: python -m pip install -r requirements.txt
+
+      - name: Compare clean builds
+        run: >-
+          python3 tools/reproducible_build.py
+          --env "${{ matrix.environment }}" --negative-version
