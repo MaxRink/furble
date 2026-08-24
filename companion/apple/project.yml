@@ -26,8 +26,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.ios
         INFOPLIST_FILE: AppResources/iOS-Info.plist
-        CODE_SIGNING_ALLOWED: NO
-        CODE_SIGNING_REQUIRED: NO
         SWIFT_VERSION: "5.0"
     entitlements:
       path: AppResources/iOS.entitlements
@@ -46,8 +44,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.macos
         INFOPLIST_FILE: AppResources/macOS-Info.plist
-        CODE_SIGNING_ALLOWED: NO
-        CODE_SIGNING_REQUIRED: NO
         SWIFT_VERSION: "5.0"
     entitlements:
       path: AppResources/macOS.entitlements
@@ -63,8 +59,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.ios
-        CODE_SIGNING_ALLOWED: NO
-        CODE_SIGNING_REQUIRED: NO
         SWIFT_VERSION: "5.0"
 
   FurbleCompanionCoreTests-macOS:
@@ -78,8 +72,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.macos
-        CODE_SIGNING_ALLOWED: NO
-        CODE_SIGNING_REQUIRED: NO
         SWIFT_VERSION: "5.0"
 
 schemes:
