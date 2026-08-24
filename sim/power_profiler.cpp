@@ -913,6 +913,13 @@ void profilerSetGpsState(const char *gps_state) {
   state.gps_state = gps_state == nullptr ? "off" : gps_state;
 }
 
+const char *profilerGpsState(void) {
+  static thread_local std::string current;
+  std::lock_guard<std::mutex> lock(state.mutex);
+  current = state.gps_state;
+  return current.c_str();
+}
+
 void profilerPowerConfig(int max_frequency_mhz, int min_frequency_mhz, bool light_sleep_enabled) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();

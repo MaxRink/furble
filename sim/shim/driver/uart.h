@@ -79,6 +79,8 @@ void furble_sim_uart_update(void);
 // every uart_write_bytes payload so scripts can assert on $PCAS sends.
 const std::vector<std::string> &furble_sim_uart_writes(void);
 void furble_sim_uart_clear_writes(void);
+void furble_sim_uart_set_mode(const char *mode);
+void furble_sim_uart_inject_event(const char *event);
 #endif
 
 #endif

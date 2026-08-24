@@ -1,0 +1,10 @@
+# A receiver NACK is terminal for the binary command and uses the documented
+# PCAS fallback without retrying the same command.
+seed gps true
+seed gps_rate 1
+seed gps_uart_mode nack
+wait 5000
+assert gps.config.0.state NACKED
+assert gps.config.0.attempts 1
+assert uart.last $PCAS02,1000*2E
+exit

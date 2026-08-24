@@ -1,0 +1,18 @@
+# The receiver ACKs CFG-RATE. This reaches the real binary parser and status
+# list, then exercises all three PCAS10 restart modes through the public GPS API.
+seed gps true
+seed gps_rate 1
+seed gps_uart_mode ack
+wait 5000
+assert gps.enabled 1
+assert gps.source uart
+assert gps.satellites 8
+assert gps.config.0.state ACKED
+assert gps.config.0.attempts 1
+gps-restart hot
+assert uart.last $PCAS10,0*1C
+gps-restart warm
+assert uart.last $PCAS10,1*1D
+gps-restart cold
+assert uart.last $PCAS10,2*1E
+exit

@@ -1,0 +1,16 @@
+# Exercise every UART event branch. The FIFO and ring-buffer reset paths must
+# recover by receiving another normal NMEA burst.
+seed gps true
+seed gps_uart_mode ack
+wait 1000
+uart-event data
+uart-event fifo
+uart-event buffer
+uart-event break
+uart-event parity
+uart-event frame
+uart-event pattern
+wait 3000
+assert gps.source uart
+assert gps.satellites 8
+exit

@@ -1,8 +1,11 @@
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <driver/uart.h>
@@ -15,13 +18,16 @@ namespace {
 QueueHandle_t gpsQueue = nullptr;
 size_t gpsOffset = 0;
 std::vector<std::string> uartWrites;
+std::deque<uint8_t> rxBytes;
 bool gpsEventQueued = false;
+bool rxEventQueued = false;
 uint32_t gpsNextEventMillis = 0;
 std::mutex gpsMutex;
+std::string uartMode = "ack";
 
-// The RMC ground speed of 22.678 knots is 42.0 km/h, a known non-zero value so
-// scenarios can assert the GPS Data page speed line. The position resolves to
-// 48.11730 N, 11.51667 E, exercising the five decimal place coordinate render.
+constexpr uint8_t SYNC_0 = 0xBA;
+constexpr uint8_t SYNC_1 = 0xCE;
+
 constexpr char gpsData[] =
     "$GPRMC,123519.00,A,4807.038,N,01131.000,E,22.678,0.0,230394,,,A*67\r\n"
     "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*69\r\n";
@@ -32,15 +38,72 @@ uint32_t gpsRatePeriodMillis(void) {
   return rate < (sizeof(periods) / sizeof(periods[0])) ? periods[rate] : periods[0];
 }
 
+uint16_t readU16(const uint8_t *data) {
+  return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+}
+
+uint32_t casicChecksum(uint8_t classId,
+                       uint8_t messageId,
+                       uint16_t length,
+                       const uint8_t *payload) {
+  uint32_t sum =
+      (static_cast<uint32_t>(messageId) << 24) | (static_cast<uint32_t>(classId) << 16) | length;
+  for (uint16_t offset = 0; offset < length; offset += 4) {
+    uint32_t word = 0;
+    for (uint16_t byte = 0; byte < 4 && offset + byte < length; byte++) {
+      word |= static_cast<uint32_t>(payload[offset + byte]) << (byte * 8);
+    }
+    sum += word;
+  }
+  return sum;
+}
+
+std::vector<uint8_t> binaryFrame(uint8_t classId,
+                                 uint8_t messageId,
+                                 const std::vector<uint8_t> &payload) {
+  const uint16_t length = static_cast<uint16_t>(payload.size());
+  std::vector<uint8_t> frame = {
+      SYNC_0,  SYNC_1,   static_cast<uint8_t>(length & 0xff), static_cast<uint8_t>(length >> 8),
+      classId, messageId};
+  frame.insert(frame.end(), payload.begin(), payload.end());
+  const uint32_t sum = casicChecksum(classId, messageId, length, payload.data());
+  frame.push_back(static_cast<uint8_t>(sum & 0xff));
+  frame.push_back(static_cast<uint8_t>((sum >> 8) & 0xff));
+  frame.push_back(static_cast<uint8_t>((sum >> 16) & 0xff));
+  frame.push_back(static_cast<uint8_t>(sum >> 24));
+  return frame;
+}
+
+void queueRxLocked(const std::vector<uint8_t> &bytes) {
+  rxBytes.insert(rxBytes.end(), bytes.begin(), bytes.end());
+  if (!rxEventQueued && gpsQueue != nullptr) {
+    const uart_event_t event = {.type = UART_DATA, .size = rxBytes.size()};
+    rxEventQueued = xQueueSend(gpsQueue, &event, 0) == pdTRUE;
+  }
+}
+
+void queueAckLocked(const uint8_t *request, bool ack) {
+  const uint16_t length = readU16(request + 2);
+  if (length > 2048 || (length % 4) != 0) {
+    return;
+  }
+  queueRxLocked(binaryFrame(0x05, ack ? 0x01 : 0x00, {request[4], request[5], 0, 0}));
+  if (ack && request[4] == 0x06 && request[5] == 0x07 && length == 0) {
+    queueRxLocked(binaryFrame(0x06, 0x07, std::vector<uint8_t>(44, 0)));
+  }
+}
+
 void queueGpsEvent(QueueHandle_t queue) {
   {
     std::lock_guard<std::mutex> lock(gpsMutex);
     gpsQueue = queue;
     gpsOffset = 0;
+    rxBytes.clear();
+    rxEventQueued = false;
     gpsEventQueued = true;
     gpsNextEventMillis = Furble::Sim::clockMillis();
   }
-  uart_event_t event = {.type = UART_PATTERN_DET, .size = sizeof(gpsData) - 1};
+  const uart_event_t event = {.type = UART_PATTERN_DET, .size = sizeof(gpsData) - 1};
   xQueueSend(queue, &event, 0);
 }
 
@@ -82,10 +145,25 @@ esp_err_t uart_set_baudrate(uart_port_t, uint32_t) {
 
 int uart_read_bytes(uart_port_t, uint8_t *buffer, uint32_t length, TickType_t) {
   std::lock_guard<std::mutex> lock(gpsMutex);
-  if (gpsQueue == nullptr || buffer == nullptr || gpsOffset >= sizeof(gpsData) - 1) {
+  if (gpsQueue == nullptr || buffer == nullptr || length == 0) {
     return 0;
   }
-
+  if (!rxBytes.empty()) {
+    const size_t count = uartMode == "partial" ? 1 : std::min<size_t>(length, rxBytes.size());
+    for (size_t i = 0; i < count; i++) {
+      buffer[i] = rxBytes.front();
+      rxBytes.pop_front();
+    }
+    rxEventQueued = false;
+    if (!rxBytes.empty()) {
+      const uart_event_t event = {.type = UART_DATA, .size = rxBytes.size()};
+      rxEventQueued = xQueueSend(gpsQueue, &event, 0) == pdTRUE;
+    }
+    return static_cast<int>(count);
+  }
+  if (gpsOffset >= sizeof(gpsData) - 1) {
+    return 0;
+  }
   const size_t remaining = (sizeof(gpsData) - 1) - gpsOffset;
   const size_t count = std::min<size_t>(length, remaining);
   std::memcpy(buffer, gpsData + gpsOffset, count);
@@ -103,36 +181,48 @@ void furble_sim_uart_update(void) {
     std::lock_guard<std::mutex> lock(gpsMutex);
     const uint32_t now = Furble::Sim::clockMillis();
     const bool due = static_cast<int32_t>(now - gpsNextEventMillis) >= 0;
-    if (gpsQueue != nullptr && !gpsEventQueued && gpsOffset >= sizeof(gpsData) - 1 && due) {
+    if (gpsQueue != nullptr && !gpsEventQueued && rxBytes.empty()
+        && gpsOffset >= sizeof(gpsData) - 1 && due) {
       queue = gpsQueue;
     }
   }
-
   if (queue != nullptr) {
     queueGpsEvent(queue);
   }
 }
 
 int uart_write_bytes(uart_port_t, const void *data, size_t length) {
-  // Commands to the fake receiver are recorded for inspection, and standby
-  // commands are honored so the receiver's next virtual burst follows its
-  // requested duty interval.
-  if (data != nullptr && length > 0) {
-    const std::string command(static_cast<const char *>(data), length);
-    uartWrites.push_back(command);
-    const std::string prefix = "PCAS12,";
-    const size_t offset = command.find(prefix);
-    if (offset != std::string::npos) {
-      const size_t start = offset + prefix.size();
-      const size_t end = command.find_first_not_of("0123456789", start);
-      const uint32_t seconds = static_cast<uint32_t>(
-          std::strtoul(command.substr(start, end - start).c_str(), nullptr, 10));
-      if (seconds > 0) {
-        std::lock_guard<std::mutex> lock(gpsMutex);
-        if (gpsQueue != nullptr && !gpsEventQueued && gpsOffset >= sizeof(gpsData) - 1) {
-          gpsNextEventMillis = Furble::Sim::clockMillis() + seconds * 1000;
-        }
-      }
+  if (data == nullptr || length == 0) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  const std::string command(static_cast<const char *>(data), length);
+  uartWrites.push_back(command);
+  if (uartMode == "write-error") {
+    return -1;
+  }
+  const auto *bytes = static_cast<const uint8_t *>(data);
+  if (length >= 10 && bytes[0] == SYNC_0 && bytes[1] == SYNC_1) {
+    if (uartMode == "timeout") {
+      return static_cast<int>(length);
+    }
+    if (uartMode == "malformed") {
+      auto malformed = binaryFrame(0x05, 0x01, {bytes[4], bytes[5], 0, 0});
+      malformed.back() ^= 0xff;
+      queueRxLocked(malformed);
+    } else {
+      queueAckLocked(bytes, uartMode != "nack");
+    }
+  }
+  const std::string prefix = "PCAS12,";
+  const size_t offset = command.find(prefix);
+  if (offset != std::string::npos) {
+    const size_t start = offset + prefix.size();
+    const size_t end = command.find_first_not_of("0123456789", start);
+    const uint32_t seconds = static_cast<uint32_t>(
+        std::strtoul(command.substr(start, end - start).c_str(), nullptr, 10));
+    if (seconds > 0 && gpsQueue != nullptr && !gpsEventQueued && gpsOffset >= sizeof(gpsData) - 1) {
+      gpsNextEventMillis = Furble::Sim::clockMillis() + seconds * 1000;
     }
   }
   return static_cast<int>(length);
@@ -144,6 +234,36 @@ const std::vector<std::string> &furble_sim_uart_writes(void) {
 
 void furble_sim_uart_clear_writes(void) {
   uartWrites.clear();
+}
+
+void furble_sim_uart_set_mode(const char *mode) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  uartMode = mode == nullptr ? "ack" : mode;
+}
+
+void furble_sim_uart_inject_event(const char *eventName) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  if (gpsQueue == nullptr || eventName == nullptr) {
+    return;
+  }
+  static const std::array<std::pair<const char *, uart_event_type_t>, 7> events = {
+      {
+       {"data", UART_DATA},
+       {"fifo", UART_FIFO_OVF},
+       {"buffer", UART_BUFFER_FULL},
+       {"break", UART_BREAK},
+       {"parity", UART_PARITY_ERR},
+       {"frame", UART_FRAME_ERR},
+       {"pattern", UART_PATTERN_DET},
+       }
+  };
+  for (const auto &entry : events) {
+    if (entry.first == std::string(eventName)) {
+      const uart_event_t event = {.type = entry.second, .size = 0};
+      xQueueSend(gpsQueue, &event, 0);
+      return;
+    }
+  }
 }
 
 esp_err_t uart_wait_tx_done(uart_port_t, TickType_t) {

@@ -18,6 +18,7 @@
 
 #include "CameraList.h"
 #include "FurbleControl.h"
+#include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "capture.h"
@@ -37,6 +38,9 @@ enum class StepType {
   BTN,
   CAPTURE,
   UART_DUMP,
+  UART_MODE,
+  UART_EVENT,
+  GPS_RESTART,
   HOME,
   BACK,
   REPORT,
@@ -255,6 +259,33 @@ void readScript(const std::string &path) {
       Step step;
       step.type = StepType::UART_DUMP;
       steps.push_back(step);
+    } else if (command == "uart-mode" || command == "gps-uart") {
+      Step step;
+      step.type = StepType::UART_MODE;
+      input >> step.name;
+      if (step.name.empty()) {
+        std::cerr << "uart-mode requires ack, nack, timeout, malformed, partial or write-error\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "uart-event" || command == "gps-uart-event") {
+      Step step;
+      step.type = StepType::UART_EVENT;
+      input >> step.name;
+      if (step.name.empty()) {
+        std::cerr << "uart-event requires data, fifo, buffer, break, parity, frame or pattern\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "gps-restart") {
+      Step step;
+      step.type = StepType::GPS_RESTART;
+      input >> step.name;
+      if (step.name != "hot" && step.name != "warm" && step.name != "cold") {
+        std::cerr << "gps-restart requires hot, warm or cold\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
     } else if (command == "home") {
       Step step;
       step.type = StepType::HOME;
@@ -472,6 +503,66 @@ std::string queryValue(const std::string &key) {
       return std::to_string(cameraFocusReleases());
     }
   }
+  if (prefixed("gps.")) {
+    auto &gps = Furble::GPS::getInstance();
+    const std::string sub = key.substr(std::char_traits<char>::length("gps."));
+    if (sub == "enabled") {
+      return gps.isEnabled() ? "1" : "0";
+    }
+    if (sub == "source") {
+      switch (gps.getSource()) {
+        case Furble::GPS::SOURCE_UART:
+          return "uart";
+        case Furble::GPS::SOURCE_COMPANION:
+          return "companion";
+        case Furble::GPS::SOURCE_NONE:
+          return "none";
+      }
+    }
+    if (sub == "satellites") {
+      return std::to_string(gps.getSatellites());
+    }
+    if (sub == "state") {
+      return Furble::Sim::profilerGpsState();
+    }
+    if (sub.rfind("config.", 0) == 0) {
+      const std::string field = sub.substr(7);
+      const size_t dot = field.find('.');
+      if (dot == std::string::npos) {
+        std::cerr << "GPS config assert needs <index>.state or <index>.attempts\n";
+        std::exit(2);
+      }
+      const size_t index = static_cast<size_t>(std::stoul(field.substr(0, dot)));
+      const auto status = gps.getConfigStatus();
+      if (index >= status.size()) {
+        return "";
+      }
+      const std::string property = field.substr(dot + 1);
+      if (property == "state") {
+        return Furble::GPS::configStateName(status[index].state);
+      }
+      if (property == "attempts") {
+        return std::to_string(status[index].attempts);
+      }
+    }
+  }
+  if (prefixed("uart.")) {
+    const std::string sub = key.substr(std::char_traits<char>::length("uart."));
+    const auto &writes = furble_sim_uart_writes();
+    if (sub == "count") {
+      return std::to_string(writes.size());
+    }
+    if (sub == "last") {
+      if (writes.empty()) {
+        return "";
+      }
+      std::string last = writes.back();
+      while (!last.empty() && (last.back() == '\r' || last.back() == '\n')) {
+        last.pop_back();
+      }
+      return last;
+    }
+  }
   if (prefixed("setting.")) {
     const std::string name = key.substr(std::char_traits<char>::length("setting."));
     std::string value = settingByteValue(name);
@@ -523,6 +614,11 @@ void applyScenarioSettings(void) {
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
+
+  const auto uartMode = scenarioSettings.find("gps_uart_mode");
+  if (uartMode != scenarioSettings.end()) {
+    furble_sim_uart_set_mode(uartMode->second.c_str());
+  }
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;
@@ -728,6 +824,21 @@ void driverTick(void) {
         std::cout << "uart-tx " << line << '\n';
       }
       furble_sim_uart_clear_writes();
+      ++stepIndex;
+      break;
+
+    case StepType::UART_MODE:
+      furble_sim_uart_set_mode(step.name.c_str());
+      ++stepIndex;
+      break;
+
+    case StepType::UART_EVENT:
+      furble_sim_uart_inject_event(step.name.c_str());
+      ++stepIndex;
+      break;
+
+    case StepType::GPS_RESTART:
+      Furble::GPS::getInstance().restart(step.name == "hot" ? 0 : step.name == "warm" ? 1 : 2);
       ++stepIndex;
       break;
 

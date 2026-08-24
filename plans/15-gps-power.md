@@ -304,3 +304,12 @@ to the receiver. The gps power lock then cycled on a clean 5 to 6 second
 period matching the duty setting. The console stayed responsive through the
 whole cycle, four command rounds with no stalls, so the busy-spin review
 finding is cleared. Restored to always-on afterwards.
+
+## Simulator verification, 2026-08-24
+
+The host simulator now drives the production GPS power state machine with a
+deterministic fake UART. `gps-standby-wake.txt` asserts the `$PCAS12,5` command,
+standby state, wake, and tracking recovery. UART event, malformed, partial, and
+write-error scenarios exercise recovery without hardware timing. Remaining
+acceptance checks are real receiver standby and wake behavior, cold-start timing,
+and fix recovery with the attached Unit GPS v1.1.
