@@ -59,26 +59,35 @@ upstream implementation:
 - [ESP32-S3 Wi-Fi/BLE Android-hotspot coexistence report](https://github.com/espressif/esp-idf/issues/17871)
 
 The checked-in release configurations already enable DFS, tickless idle, and
-disconnected-station power management. They currently leave bootloader app
-rollback, HTTPS OTA partial download, coexistence power management, Mbed TLS
-dynamic buffers, and variable TLS record lengths disabled. They retain peer
-certificates after verification and use the default 10 static Wi-Fi RX buffers
-and 32 dynamic RX and TX buffers. These are candidates, not defects: each
-setting trades memory, throughput, latency, or radio reliability and must be
-measured on the combined BLE, Wi-Fi, MQTT, and HTTPS workload.
+disconnected-station power management. Bootloader application rollback is
+already enabled on all five boards, and the OTA partition work already emits
+the initial OTA metadata image. Its runtime health check is not implemented.
+HTTPS OTA partial download and resumption are runtime adapter options that are
+not implemented yet, rather than checked-in Kconfig settings. The release
+configurations leave coexistence power management, Mbed TLS dynamic buffers,
+and variable TLS record lengths disabled. They retain peer certificates after
+verification and use the default 10 static Wi-Fi RX buffers and 32 dynamic RX
+and TX buffers. These are candidates, not defects: each setting trades memory,
+throughput, latency, or radio reliability and must be measured on the combined
+BLE, Wi-Fi, MQTT, and HTTPS workload.
 
 Prioritize the new candidates as separate slices:
 
-1. Enable bootloader app rollback in the initial USB-flashed OTA image. Mark an
-   image valid only after boot, settings migration, BLE initialization, and the
-   required network checkpoint. Test explicit validation, diagnostic rollback,
-   crash rollback, and power loss before using OTA for the wider hardware
-   matrix.
+1. Implement and validate the rollback health contract already specified by
+   plan 34. Mark an image valid only after NVS, platform and PMIC, BLE, control
+   task, UI or headless loop, heap floor, and reset-reason checks pass. Camera,
+   Wi-Fi, MQTT, and user interaction remain outside this offline-safe boot
+   contract. Test explicit validation, diagnostic rollback, crash rollback,
+   and power loss before using OTA for the wider hardware matrix.
 2. Add HTTPS range-resume behind a capability flag. Persist a versioned URL,
-   image identity, and byte count transactionally in NVS; reject a changed
-   image, a server that ignores ranges, and corrupt resume state. Host tests use
-   a deterministic HTTP range server, then hardware tests cut the connection
-   and power at multiple erase and write boundaries.
+   immutable manifest identity, cryptographic image digest, expected length,
+   target partition and slot, and committed byte count transactionally in NVS.
+   Advance the checkpoint only after the corresponding flash write is durable.
+   Require HTTP `206` and an exact `Content-Range` continuation. Reject a
+   changed image, length or slot, a server that ignores ranges, and corrupt
+   resume state. Host tests use a deterministic HTTP range server, then
+   hardware tests cut the connection and power at multiple erase, write, and
+   checkpoint boundaries.
 3. Give OTA a scoped throughput policy. Temporarily select the measured Wi-Fi
    power mode for download, then restore the previous mode on success, failure,
    cancellation, and reboot. Do not globally disable modem sleep.
@@ -145,14 +154,19 @@ board, sdkconfig hash, and source hash. Upload dependency licenses and a
 version report. Split the simulator's stable LVGL, M5GFX, and M5Unified objects
 from furble application objects so isolated PR worktrees can reuse a
 content-addressed dependency cache. Include compiler, target board, LVGL config,
-dependency revision, and compile flags in that cache key. Add scheduled clean
-builds and cache-bypass jobs. Coordinate the implementation with plan 124.
+dependency revision, and compile flags in that cache key. The complete key
+covers each dependency's content identity, transitive and generated headers,
+forced simulator shim headers, both board macros, host ABI, exact compiler
+version, C and C++ flags, sanitizer flags, link flags, and a cache-schema
+version. Add scheduled clean builds and cache-bypass jobs. Coordinate the
+implementation with plan 124.
 
 Benefit: upgrades and tuning can be bisected. Risk: stale caches mask missing
 inputs. Acceptance: clean and cached builds pass, with identical hashes where
 supported or documented timestamp differences. The same simulator scenario
 must pass from a cold build and a dependency-cache hit, and CI must retain an
-uncached gate. Rollback is cache disablement.
+uncached gate. Mutation tests change each key input and prove a cache miss.
+Rollback is cache disablement.
 
 ### 125.3 Release, debug, power-lab, and size-lab profiles
 
