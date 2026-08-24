@@ -106,6 +106,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [30-m5stack-framework.md](30-m5stack-framework.md) | Upstream M5Stack library gaps, fork and PR strategy |
 | [40-thinknode-port.md](40-thinknode-port.md) | ThinkNode port feasibility |
 | [41-alternative-hardware.md](41-alternative-hardware.md) | Alternative sidecar hardware |
+| [42-waveshare-eth-node.md](42-waveshare-eth-node.md) | Waveshare ESP32-S3-ETH wired MQTT node |
 
 ## Bug analyses
 
