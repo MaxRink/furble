@@ -241,6 +241,8 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_MOTION, "GPS_MOTION", false, true, StorageKind::BOOL},
       {Settings::INTERVAL, "INTERVAL", defaultInterval(), representativeInterval(),
        StorageKind::BLOB},
+      {Settings::IVL_SLEEP, "IVL_SLEEP", false, true, StorageKind::BOOL},
+      {Settings::IVL_SLEEP_THR, "IVL_SLEEP_THR", uint32_t {60}, uint32_t {120}, StorageKind::U32},
       {Settings::MULTICONNECT, "MULTICONNECT", false, true, StorageKind::BOOL},
       {Settings::MULTISELECT, "MULTISELECT", defaultMultiselect(), representativeMultiselect(),
        StorageKind::BLOB},

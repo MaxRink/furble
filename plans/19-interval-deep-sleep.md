@@ -46,7 +46,7 @@ Verified anchors against the current tree.
 | `src/FurbleUI.cpp` | 1815-1830 | Stop button. Must clear persisted resume state. |
 | `src/FurbleUIIntervalometer.cpp` | 14-18 | `Intervalometer::save()` writes the `INTERVAL` blob. Model the resume blob on it. |
 | `src/FurblePlatform.cpp` | 74-80 | `Platform::powerOff()`. S3 uses `m_M5PM1.shutdown()`, others `M5.Power.powerOff()`. Add a timed variant next to it. |
-| `include/FurblePlatform.h` | 33-41 | Public API. Add `bool canTimedWake()` and `void powerOffUntil(uint32_t seconds)`. |
+| `include/FurblePlatform.h` | 33-41 | Public API. Add `bool canTimedWake()` and `bool powerOffUntil(uint32_t seconds)`. |
 | `src/FurblePlatform.cpp` | 24-32 | Existing `M5.getBoard()` switch. Extend for the capability check. |
 
 ## New settings
@@ -60,9 +60,8 @@ Name strings: `"Deep Sleep"` and `"Sleep Threshold"`.
 
 Wire ids: `IVL_SLEEP` uses 42 and `IVL_SLEEP_THR` uses 43. These were renumbered
 during the rebase onto the current ledger from the provisional 32 and 33, which
-now collide with the merged `IR_PROTO` (32) and `FB_OUTPUT` (33). The ids are
-provisional while sibling branches are in flight and may be bumped again right
-before merge to the true next-free slot.
+now collide with the merged `IR_PROTO` (32) and `FB_OUTPUT` (33). They are free
+at the rebased base and are frozen for this slice.
 
 A `uint32_t` is used rather than a `uint16_t` because `Settings` already has
 `load<uint32_t>` and `save<uint32_t>` specialisations
@@ -312,9 +311,13 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   the retry helper. The PM1 watchdog is disarmed before the timed shutdown.
 - Added the StickC Plus2 BM8563 timer and GPIO4 HOLD path. The RTC IRQ remains
   available long enough to identify a timed wake during boot.
+- `powerOffUntil()` now reports whether timer setup and the power-off request
+  were accepted. The UI keeps the resume record when the request succeeds and
+  only clears it on a setup failure, so a returning boot can restore the run.
 - Resume reconnects through the existing connection path with bounded retries. The
   resume drives `connectAll(false)`, so `Control::connectAll(void)` runs its
-  non-infinite branch: it retries while `failcount < 2` and now waits
+  non-infinite branch: it retries while the session-local failure count is below
+  two and now waits
   `CONNECT_RETRY_GAP_MS` (3 s) in interruptible slices before each retry. A wake
   that misses the camera gets two spaced retries rather than hammering the radio
   or failing on the first miss. After the bounded retries a still-failed reconnect
