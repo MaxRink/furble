@@ -16,6 +16,7 @@ struct FurbleCompanionApp: App {
 
 private struct ContentView: View {
   @ObservedObject var client: FurbleBLEClient
+  @StateObject private var location = FurbleLocationProvider()
 
   var body: some View {
     NavigationStack {
@@ -34,6 +35,15 @@ private struct ContentView: View {
           } else {
             Text("Waiting for an authenticated furble link")
           }
+        }
+        Section("Phone GPS") {
+          Toggle("Send location fixes", isOn: Binding(
+            get: { location.enabled },
+            set: { enabled in
+              if enabled { location.start { client.writeLocation($0) } } else { location.stop() }
+            }))
+          Text("Location is sent only while enabled and the BLE link is authenticated.")
+            .font(.footnote)
         }
         Section("Trigger") {
           Button("Shutter") { try? client.trigger(.shutterRelease) }
