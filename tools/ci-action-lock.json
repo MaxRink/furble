@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "generated_for": "furble",
+  "actions": {
+    "actions/checkout": {
+      "version": "v7.0.1",
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "source": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    },
+    "actions/setup-python": {
+      "version": "v7.0.0",
+      "sha": "5fda3b95a4ea91299a34e894583c3862153e4b97",
+      "source": "https://github.com/actions/setup-python/releases/tag/v7.0.0"
+    },
+    "actions/setup-java": {
+      "version": "v4.7.1",
+      "sha": "c5195efecf7bdfc987ee8bae7a71cb8b11521c00",
+      "source": "https://github.com/actions/setup-java/releases/tag/v4.7.1"
+    },
+    "actions/cache": {
+      "version": "v5.0.0",
+      "sha": "a7833574556fa59680c1b7cb190c1735db73ebf0",
+      "source": "https://github.com/actions/cache/releases/tag/v5.0.0"
+    },
+    "actions/upload-artifact": {
+      "version": "v7.0.1",
+      "sha": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "source": "https://github.com/actions/upload-artifact/releases/tag/v7.0.1"
+    },
+    "actions/download-artifact": {
+      "version": "v8.0.0",
+      "sha": "70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3",
+      "source": "https://github.com/actions/download-artifact/releases/tag/v8.0.0"
+    },
+    "actions/github-script": {
+      "version": "v7.1.0",
+      "sha": "f28e40c7f34bde8b3046d885e986cb6290c5673b",
+      "source": "https://github.com/actions/github-script/releases/tag/v7.1.0"
+    },
+    "gradle/actions/setup-gradle": {
+      "version": "v4.4.2",
+      "sha": "017a9effdb900e5b5b2fddfb590a105619dca3c3",
+      "source": "https://github.com/gradle/actions/releases/tag/v4.4.2"
+    },
+    "android-actions/setup-android": {
+      "version": "v3.2.2",
+      "sha": "9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407",
+      "source": "https://github.com/android-actions/setup-android/releases/tag/v3.2.2"
+    },
+    "reactivecircus/android-emulator-runner": {
+      "version": "v2.38.0",
+      "sha": "a421e43855164a8197daf9d8d40fe71c6996bb0d",
+      "source": "https://github.com/ReactiveCircus/android-emulator-runner/releases/tag/v2.38.0"
+    },
+    "actions/configure-pages": {
+      "version": "v5",
+      "sha": "983d7736d9b0ae728b81ab479565c72886d7745b",
+      "source": "https://github.com/actions/configure-pages/releases/tag/v5"
+    },
+    "actions/upload-pages-artifact": {
+      "version": "v3",
+      "sha": "56afc609e74202658d3ffba0e8f6dda462b719fa",
+      "source": "https://github.com/actions/upload-pages-artifact/releases/tag/v3"
+    },
+    "actions/deploy-pages": {
+      "version": "v4",
+      "sha": "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
+      "source": "https://github.com/actions/deploy-pages/releases/tag/v4"
+    },
+    "softprops/action-gh-release": {
+      "version": "v3.0.2",
+      "sha": "3d0d9888cb7fd7b750713d6e236d1fcb99157228",
+      "source": "https://github.com/softprops/action-gh-release/releases/tag/v3.0.2"
+    }
+  }
+}
