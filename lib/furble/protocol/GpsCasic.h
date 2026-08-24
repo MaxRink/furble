@@ -143,6 +143,7 @@ class NmeaSatellites {
     uint8_t talker_constellation = CONSTELLATION_UNKNOWN;
     uint8_t total_sentences = 0;
     uint8_t seen_mask = 0;
+    bool malformed = false;
     std::vector<Satellite> building;
     std::vector<Satellite> published;
   };

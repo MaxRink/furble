@@ -206,6 +206,47 @@ bool testNmeaReassembly() {
   return g_Failures == before;
 }
 
+bool testNmeaMalformed() {
+  std::cout << "test: malformed, duplicated and out-of-range NMEA does not poison the table\n";
+  const int before = g_Failures;
+
+  Casic::NmeaSatellites sats;
+  const std::string first =
+      nmea("GPGSV,2,1,08,01,40,100,45,02,30,200,40,03,20,300,35,04,10,050,30,1");
+  const std::string second =
+      nmea("GPGSV,2,2,08,05,45,010,50,06,35,020,42,07,25,030,38,08,15,040,33,1");
+  check(sats.feed(first), "a valid first GSV sentence is accepted");
+  check(sats.feed(second), "a valid second GSV sentence is accepted");
+  check(sats.inView() == 8, "the valid set publishes eight satellites");
+
+  check(sats.feed(second), "a duplicate GSV sentence is recognized");
+  check(sats.inView() == 8, "a duplicate sentence does not append duplicate satellites");
+
+  std::string badChecksum = first;
+  badChecksum.back() = (badChecksum.back() == '0') ? '1' : '0';
+  check(!sats.feed(badChecksum), "a sentence with a bad NMEA checksum is rejected");
+  check(sats.inView() == 8, "a bad-checksum sentence leaves the published table unchanged");
+
+  check(sats.feed(nmea("GPGSV,9,1,36,01,40,100,45")),
+        "an oversized GSV set is identified as GSV without being accepted into the table");
+  check(sats.inView() == 8, "a GSV set with more than eight sentences is ignored safely");
+  check(sats.feed(nmea("GPGSV,2,3,08,01,40,100,45")),
+        "an out-of-range GSV index is identified without changing state");
+  check(sats.inView() == 8, "an out-of-range GSV index leaves the table unchanged");
+
+  check(sats.feed(nmea("GPGSV,1,1,01,01,91,100,45")),
+        "an out-of-range satellite field is identified as GSV");
+  check(sats.inView() == 8,
+        "a new set containing an out-of-range satellite does not replace valid data");
+
+  Casic::NmeaSatellites dop;
+  check(dop.feed(nmea("GPGSA,A,3,01,,,,,,,,,,,,,nan,2.0,1.0,1")),
+        "a GSA sentence with non-finite DOP is identified as GSA");
+  check(!dop.dop().valid, "non-finite DOP values are not published as valid diagnostics");
+
+  return g_Failures == before;
+}
+
 // d. EphemerisCollector + isEphemerisMessage + splitFrames.
 bool testEphemerisCollector() {
   std::cout << "test: EphemerisCollector stores only assistance frames and splitFrames replays\n";
@@ -250,6 +291,21 @@ bool testEphemerisCollector() {
       Casic::splitFrames(corrupt.data(), corrupt.size());
   check(corruptSpans.empty(), "splitFrames returns empty on a corrupted stream");
 
+  Casic::EphemerisCollector malformed;
+  check(!malformed.feed(ephFrame.data(), ephFrame.size() - 1),
+        "a truncated assistance frame is rejected before storage");
+  std::vector<uint8_t> trailing = ephFrame;
+  trailing.push_back(0);
+  check(!malformed.feed(trailing.data(), trailing.size()),
+        "an assistance frame with trailing bytes is rejected");
+  check(!malformed.feed(nullptr, ephFrame.size()), "a null assistance frame is rejected");
+  check(malformed.feed(ephFrame.data(), ephFrame.size()),
+        "a valid assistance frame remains accepted after malformed inputs");
+  // Malformed input must not mutate the collector, while the valid frame is
+  // accepted. The frame count is therefore exactly one.
+  check(malformed.frameCount() == 1, "malformed assistance inputs do not mutate frame count");
+  check(Casic::splitFrames(nullptr, 1).empty(), "splitFrames rejects a null non-empty stream");
+
   return g_Failures == before;
 }
 
@@ -278,6 +334,7 @@ bool testMonHw() {
   std::vector<uint8_t> shortBuf(10, 0);
   const Casic::MonHw shortHw = Casic::parseMonHw(shortBuf.data(), shortBuf.size());
   check(!shortHw.valid, "a short MON-HW buffer is invalid");
+  check(!Casic::parseMonHw(nullptr, buf.size()).valid, "a null MON-HW buffer is invalid");
 
   return g_Failures == before;
 }
@@ -291,6 +348,7 @@ int main() {
   testAutobaudLockLaterStep();
   testNmeaParse();
   testNmeaReassembly();
+  testNmeaMalformed();
   testEphemerisCollector();
   testMonHw();
 

@@ -1,7 +1,9 @@
 #include "GpsCasic.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <limits>
 
 namespace Furble {
 namespace Casic {
@@ -71,7 +73,55 @@ bool parseFloat(const std::string &text, float &out) {
   if ((end == nullptr) || (*end != '\0')) {
     return false;
   }
+  if (!std::isfinite(value)) {
+    return false;
+  }
   out = value;
+  return true;
+}
+
+int hexValue(char c) {
+  if ((c >= '0') && (c <= '9')) {
+    return c - '0';
+  }
+  if ((c >= 'A') && (c <= 'F')) {
+    return c - 'A' + 10;
+  }
+  if ((c >= 'a') && (c <= 'f')) {
+    return c - 'a' + 10;
+  }
+  return -1;
+}
+
+bool validNmeaChecksum(const std::string &sentence, size_t dollar) {
+  if ((dollar >= sentence.size()) || (sentence[dollar] != '$')) {
+    return false;
+  }
+  const size_t star = sentence.find('*', dollar + 1);
+  if ((star == std::string::npos) || ((star - dollar) < 5) || (star + 3 > sentence.size())) {
+    return false;
+  }
+  const int high = hexValue(sentence[star + 1]);
+  const int low = hexValue(sentence[star + 2]);
+  if ((high < 0) || (low < 0)) {
+    return false;
+  }
+
+  uint8_t sum = 0;
+  for (size_t i = dollar + 1; i < star; i++) {
+    sum ^= static_cast<uint8_t>(sentence[i]);
+  }
+  if (sum != static_cast<uint8_t>((high << 4) | low)) {
+    return false;
+  }
+
+  // The caller normally passes a line without its terminator, but accept the
+  // CR/LF that captureSentences preserves and reject any other trailing data.
+  for (size_t i = star + 3; i < sentence.size(); i++) {
+    if ((sentence[i] != '\r') && (sentence[i] != '\n')) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -95,6 +145,9 @@ uint32_t checksum(uint8_t class_id, uint8_t message_id, uint16_t length, const u
 std::vector<uint8_t> frame(uint8_t class_id,
                            uint8_t message_id,
                            const std::vector<uint8_t> &payload) {
+  if (payload.size() > std::numeric_limits<uint16_t>::max()) {
+    return {};
+  }
   const uint16_t length = static_cast<uint16_t>(payload.size());
   std::vector<uint8_t> out;
   out.reserve(FRAME_OVERHEAD + length);
@@ -186,8 +239,8 @@ bool NmeaSatellites::feedGsv(uint8_t constellation, const std::vector<std::strin
 
   unsigned long total = 0;
   unsigned long index = 0;
-  if (!parseUint(fields[1], total) || !parseUint(fields[2], index) || (total == 0)
-      || (index == 0)) {
+  if (!parseUint(fields[1], total) || !parseUint(fields[2], index) || (total == 0) || (total > 8)
+      || (index == 0) || (index > total)) {
     return true;
   }
 
@@ -195,13 +248,22 @@ bool NmeaSatellites::feedGsv(uint8_t constellation, const std::vector<std::strin
   if (index == 1) {
     set.total_sentences = static_cast<uint8_t>(total);
     set.seen_mask = 0;
+    set.malformed = false;
     set.building.clear();
   }
   if (total != set.total_sentences) {
     // a set boundary was missed, restart cleanly on this sentence
     set.total_sentences = static_cast<uint8_t>(total);
     set.seen_mask = 0;
+    set.malformed = false;
     set.building.clear();
+  }
+
+  // A repeated sentence number is a duplicate burst, not another set of
+  // satellites. Ignore it until sentence 1 starts the next set; otherwise a
+  // noisy receiver can grow the temporary vector without bound.
+  if ((index > 1) && (set.seen_mask & static_cast<uint8_t>(1u << (index - 1)))) {
+    return true;
   }
 
   for (size_t base = 4; (base + 3) < fields.size(); base += 4) {
@@ -209,17 +271,43 @@ bool NmeaSatellites::feedGsv(uint8_t constellation, const std::vector<std::strin
     if ((base + 4) > fields.size()) {
       break;
     }
+    const bool hasSatelliteFields = !fields[base].empty() || !fields[base + 1].empty()
+                                    || !fields[base + 2].empty() || !fields[base + 3].empty();
+    if (!hasSatelliteFields) {
+      continue;
+    }
     unsigned long prn = 0;
     if (!parseUint(fields[base], prn)) {
+      set.malformed = true;
+      continue;
+    }
+    if (prn > std::numeric_limits<uint16_t>::max()) {
+      set.malformed = true;
       continue;
     }
     Satellite sat = {};
     sat.prn = static_cast<uint16_t>(prn);
     sat.constellation = constellation;
     unsigned long value = 0;
-    sat.elevation = parseUint(fields[base + 1], value) ? static_cast<uint8_t>(value) : 0;
-    sat.azimuth = parseUint(fields[base + 2], value) ? static_cast<uint16_t>(value) : 0;
+    if (parseUint(fields[base + 1], value)) {
+      if (value > 90) {
+        set.malformed = true;
+        continue;
+      }
+      sat.elevation = static_cast<uint8_t>(value);
+    }
+    if (parseUint(fields[base + 2], value)) {
+      if (value > 359) {
+        set.malformed = true;
+        continue;
+      }
+      sat.azimuth = static_cast<uint16_t>(value);
+    }
     if (parseUint(fields[base + 3], value)) {
+      if (value > std::numeric_limits<uint8_t>::max()) {
+        set.malformed = true;
+        continue;
+      }
       sat.snr = static_cast<uint8_t>(value);
       sat.snr_valid = true;
     } else {
@@ -236,7 +324,7 @@ bool NmeaSatellites::feedGsv(uint8_t constellation, const std::vector<std::strin
 
   // publish once every sentence in the set has arrived
   const uint8_t complete = static_cast<uint8_t>((1u << set.total_sentences) - 1);
-  if ((set.total_sentences <= 8) && ((set.seen_mask & complete) == complete)) {
+  if ((set.total_sentences <= 8) && !set.malformed && ((set.seen_mask & complete) == complete)) {
     set.published = set.building;
   }
   return true;
@@ -282,7 +370,7 @@ bool NmeaSatellites::feed(const std::string &sentence) {
   if (dollar == std::string::npos) {
     dollar = 0;
   }
-  if ((sentence.size() - dollar) < 6) {
+  if ((sentence.size() - dollar) < 6 || !validNmeaChecksum(sentence, dollar)) {
     return false;
   }
 
@@ -353,13 +441,24 @@ bool isEphemerisMessage(uint8_t class_id, uint8_t message_id) {
 }  // namespace Eph
 
 bool EphemerisCollector::feed(const uint8_t *frame_data, size_t length) {
-  if (length < FRAME_OVERHEAD) {
+  if ((frame_data == nullptr) || (length < FRAME_OVERHEAD)) {
     return false;
   }
   if ((frame_data[0] != SYNC_0) || (frame_data[1] != SYNC_1)) {
     return false;
   }
+  const uint16_t payload_length = readU16(frame_data + 2);
+  if ((payload_length > MAX_PAYLOAD) || ((payload_length % 4) != 0)
+      || (length != (FRAME_OVERHEAD + payload_length))) {
+    return false;
+  }
   if (!Eph::isEphemerisMessage(frame_data[4], frame_data[5])) {
+    return false;
+  }
+  const uint32_t expected =
+      checksum(frame_data[4], frame_data[5], payload_length, frame_data + HEADER_SIZE);
+  const uint32_t received = readU32(frame_data + HEADER_SIZE + payload_length);
+  if (expected != received) {
     return false;
   }
   if ((m_Data.size() + length) > MAX_BYTES) {
@@ -378,6 +477,9 @@ void EphemerisCollector::clear(void) {
 
 std::vector<std::pair<size_t, size_t>> splitFrames(const uint8_t *data, size_t length) {
   std::vector<std::pair<size_t, size_t>> spans;
+  if ((data == nullptr) && (length != 0)) {
+    return spans;
+  }
   size_t offset = 0;
   while ((offset + FRAME_OVERHEAD) <= length) {
     if ((data[offset] != SYNC_0) || (data[offset + 1] != SYNC_1)) {
@@ -408,7 +510,7 @@ MonHw parseMonHw(const uint8_t *payload, size_t length) {
   // The CASIC section 2.14.2 layout could not be confirmed on a live unit, so
   // this reads a conservative subset and leaves the console to print the raw
   // bytes. Marked hardware-tuning-pending in plans/32-gps-advanced.md.
-  if (length < 56) {
+  if ((payload == nullptr) || (length < 56)) {
     return hw;
   }
   hw.noise = readU32(payload + 0);
