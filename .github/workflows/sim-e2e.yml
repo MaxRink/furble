@@ -107,6 +107,12 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-e2e.sh
 
+      - name: Reject malformed scenario values
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: sh sim/scripts/run-invalid.sh
+
       # The layout overflow the sweep asserts against only happens on the
       # shortest panel, so build a second simulator for the M5StickC 80x160
       # panel. Its own build dir keeps the 135x240 binary above intact.

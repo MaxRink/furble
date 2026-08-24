@@ -97,6 +97,8 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   CHARGING` command changes the reading at runtime. `ui.low_battery` reports
   the rendered warning state and `platform.power_off` records a production
   power-off request without terminating the simulator.
+  `sim/scripts/run-invalid.sh` requires malformed numeric battery fixtures to
+  exit with the DSL validation status instead of accepting a narrowed value.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the

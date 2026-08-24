@@ -102,8 +102,13 @@ bool parseBool(const std::string &value) {
 
 uint32_t parseUnsigned(const std::string &value) {
   try {
-    return static_cast<uint32_t>(std::stoul(value));
-  } catch (...) {
+    size_t parsed = 0;
+    const unsigned long number = std::stoul(value, &parsed, 10);
+    if (parsed != value.size() || number > std::numeric_limits<uint32_t>::max()) {
+      throw std::out_of_range("uint32 range");
+    }
+    return static_cast<uint32_t>(number);
+  } catch (const std::exception &) {
     std::cerr << "Invalid scenario setting value: " << value << '\n';
     std::exit(2);
   }
