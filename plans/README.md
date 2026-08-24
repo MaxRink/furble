@@ -145,6 +145,12 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [120-sim-multiconnect-coverage.md](120-sim-multiconnect-coverage.md) | Multi-camera survivor and reconnect coverage |
 | [121-sim-usage-fault-docs.md](121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
 
+## Optimization program
+
+| Doc | Content |
+|---|---|
+| [125-esp-optimization-program.md](125-esp-optimization-program.md) | Measurement-first ESP-IDF, radio, power, memory, UI, dependency, security, and release optimization program |
+
 ## Design documents
 
 | Doc | Content |
