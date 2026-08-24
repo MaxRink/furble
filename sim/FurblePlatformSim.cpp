@@ -161,9 +161,9 @@ bool Platform::canTimedWake(void) {
   return false;
 }
 
-void Platform::powerOffUntil(uint32_t seconds) {
+bool Platform::powerOffUntil(uint32_t seconds) {
   (void)seconds;
-  powerOff();
+  return powerOff();
 }
 
 bool Platform::consumeTimedWake(void) {
