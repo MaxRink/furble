@@ -19,6 +19,8 @@ same SwiftUI source and CoreBluetooth adapter.
   available. A missing Auth characteristic is an error, never a downgrade.
 - CoreBluetooth central adapter with state restoration, MTU-safe payload
   bounds, status notifications, reconnect state, and explicit trigger writes.
+- Opt-in Core Location bridge that emits UTC fixes with age and accuracy, and
+  never starts location updates merely because a device is paired.
 - Shared SwiftUI iOS/macOS app source plus privacy usage strings.
 
 ## Follow-up gates
@@ -31,6 +33,6 @@ same SwiftUI source and CoreBluetooth adapter.
   target around the shared Swift package. CI can run `swift test` now; Xcode
   simulator builds and real iPhone/Mac Bluetooth tests require Xcode and Apple
   SDKs.
-- Add the location provider and Keychain access-group entitlement in the app
-  project. The shared client deliberately does not enable background location
-  unless the user opts in.
+- Add the Keychain access-group entitlement in the app project. The shared
+  client deliberately does not enable background location unless the user opts
+  in.
