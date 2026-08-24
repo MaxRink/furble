@@ -1,6 +1,8 @@
 # 42 - Waveshare ESP32-S3-ETH wired MQTT node and display-less onboarding
 
-Status: design only. No code in this document. Extends the WiFi/MQTT track in
+Status: board profile and Ethernet transport implemented in PR #170. The
+transport is ready for simulator and host verification. Real Waveshare bench
+verification remains outstanding. Extends the WiFi/MQTT track in
 `plans/33-wifi-hub.md` and the companion and security design in
 `plans/50-companion-app-design.md`. Listed as a wired-network-node board in
 `plans/41-alternative-hardware.md`.
@@ -15,7 +17,7 @@ have a secure onboarding path even though it has no screen. Wired Ethernet is
 the reliability case that plan 33 wanted: a fixed studio or home install that
 is mains or PoE powered, always on, and driven from Home Assistant.
 
-This is a design document. It depends on two pieces of plan 33 landing first:
+The board transport in this PR depends on two pieces of plan 33 landing first:
 
 - The headless build unblock, plan 33a (PR-A). The display-less profile and the
   headless main loop are a hard prerequisite. This board has no display at all.
@@ -23,6 +25,11 @@ This is a design document. It depends on two pieces of plan 33 landing first:
   generic IP-up event and the default netif, not on WiFi, so an Ethernet link
   feeds it the same way a WiFi link does. This is the single cross-dependency
   and it is called out again under Dependencies.
+
+The host seam models the same link-up, DHCP IP, link-down and reconnect events
+without a W5500. It exposes a transport-agnostic network-up callback for the
+MQTT client and rejects empty or stale IP events. MQTT and Home Assistant
+discovery stay owned by plan 33c and are not duplicated in this board PR.
 
 Ethernet is a transport peer of WiFi here, not a competitor. A wired link means
 the plan 33 BLE and WiFi coexistence tax does not apply, so this board is the
@@ -255,9 +262,29 @@ Reuse the plan 50 status and trigger characteristics unchanged.
    documented decision, not an oversight, and it also protects the W5500 SPI
    clock.
 
+## Implementation status
+
+- `boards/waveshare-esp32-s3-eth.json` describes the 16 MB flash and octal
+  PSRAM board instead of borrowing the 8 MB, no-PSRAM DevKit profile.
+- `partitions_waveshare_s3_eth.csv` keeps NVS at `0x9000`, otadata at `0xf000`,
+  and provides two 6 MiB OTA slots beginning at `0x20000` and `0x620000`.
+- `Ethernet::init()` is called during application startup after the platform
+  and companion services are ready. It initializes the process-wide netif and
+  event loop idempotently, then starts the W5500 transport.
+- `Ethernet::stop()` unregisters handlers and releases the SPI, MAC, PHY,
+  netif and driver resources. Host tests exercise stop, reinitialization,
+  duplicate IP suppression, stale IP rejection and link loss.
+- PlatformIO CI and release/page matrices build the board and use its 6 MiB
+  slot when reporting firmware size.
+
 ## Verification
 
 Hardware-gated. Needs a physical Waveshare ESP32-S3-ETH board.
+
+The following can be verified without the board: host Ethernet state tests,
+the complete simulator suite, the Waveshare PlatformIO release and debug
+builds, partition image offsets and the web-installer manifest. A real board
+is still required for the gates below.
 
 1. W5500 link comes up and DHCP assigns an address.
 2. `M5.begin()` behaves on a bare S3-ETH, or the `esp_timer` fallback is used.
