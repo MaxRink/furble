@@ -14,8 +14,24 @@ final class FurbleProtocolTests: XCTestCase {
       ageMilliseconds: 0x01020304)
     let data = try FurbleProtocol.encodeLocation(fix)
     XCTAssertEqual(data.count, 42)
-    XCTAssertEqual(Array(data[37..<41]), [4, 3, 2, 1])
-    XCTAssertEqual(try FurbleProtocol.decodeLocation(data), fix)
+    XCTAssertEqual(Array(data[37..<41]), [UInt8(4), 3, 2, 1])
+    let decoded = try FurbleProtocol.decodeLocation(data)
+    XCTAssertEqual(decoded.positionValid, fix.positionValid)
+    XCTAssertEqual(decoded.timeValid, fix.timeValid)
+    XCTAssertEqual(decoded.altitudeValid, fix.altitudeValid)
+    XCTAssertEqual(decoded.satellites, fix.satellites)
+    XCTAssertEqual(decoded.accuracyMeters, fix.accuracyMeters)
+    XCTAssertEqual(decoded.latitude, fix.latitude)
+    XCTAssertEqual(decoded.longitude, fix.longitude)
+    XCTAssertEqual(decoded.altitude, fix.altitude)
+    XCTAssertEqual(decoded.year, fix.year)
+    XCTAssertEqual(decoded.month, fix.month)
+    XCTAssertEqual(decoded.day, fix.day)
+    XCTAssertEqual(decoded.hour, fix.hour)
+    XCTAssertEqual(decoded.minute, fix.minute)
+    XCTAssertEqual(decoded.second, fix.second)
+    XCTAssertEqual(decoded.centisecond, fix.centisecond)
+    XCTAssertEqual(decoded.ageMilliseconds, fix.ageMilliseconds)
   }
 
   func testLocationRejectsShortAndInvalidCalendarValues() throws {
@@ -57,7 +73,8 @@ final class FurbleProtocolTests: XCTestCase {
 
   func testSettingsTlvRoundTripsAndRejectsTrailingBytes() throws {
     XCTAssertEqual(FurbleProtocol.settingsListRequest(), Data([0, 0, 0]))
-    XCTAssertEqual(try FurbleProtocol.settingsSet(id: 7, value: Data([0xff])), Data([2, 7, 1, 0xff]))
+    let setting = try FurbleProtocol.settingsSet(id: 7, value: Data([0xff]))
+    XCTAssertEqual(setting, Data([2, 7, 1, 0xff]))
     let response = try FurbleProtocol.decodeSettingResponse(Data([0, 7, 1, 1, 0xfe, 1]))
     XCTAssertEqual(response.id, 7)
     XCTAssertEqual(response.value, Data([0xfe]))
