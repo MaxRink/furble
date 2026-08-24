@@ -310,7 +310,9 @@ Implemented on branch `feat/19-interval-deep-sleep`.
 - Added the StickS3 M5PM1 timer and shutdown path. All explicit M5PM1 accesses use
   the retry helper. The PM1 watchdog is disarmed before the timed shutdown.
 - Added the StickC Plus2 BM8563 timer and GPIO4 HOLD path. The RTC IRQ remains
-  available long enough to identify a timed wake during boot.
+  available long enough to identify a timed wake during boot. Its one-minute
+  RTC resolution above 255 seconds is accepted only when it rounds upward;
+  failed or shorter programming leaves the device awake.
 - `powerOffUntil()` now reports whether timer setup and the power-off request
   were accepted. The UI keeps the resume record when the request succeeds and
   only clears it on a setup failure, so a returning boot can restore the run.
