@@ -654,6 +654,12 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
                                  : (type == SETTING_STRING ? length : sizeof(interval_wire_t)));
   const bool saved = (type == SETTING_STRING || length == expected)
                      && saveSetting(setting->type, data + 3, length);
+  // Revoke the current session before acknowledging a password rotation. This
+  // prevents the acknowledgement from racing a protected follow-up write that
+  // still carries the old session authorization.
+  if (saved && (setting->type == Settings::COMPANION_PASSWORD)) {
+    reloadPassword();
+  }
   std::vector<uint8_t> response;
   appendResponse(response, saved ? SETTING_OK : SETTING_BAD_LENGTH, id, type, 0, {}, false);
   notifySettings(response);
@@ -690,7 +696,6 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       }
       break;
     case Settings::COMPANION_PASSWORD:
-      reloadPassword();
       break;
     default:
       break;

@@ -456,6 +456,26 @@ void testCompanionGattFlow(void) {
           "settings response acknowledges the Brightness TLV");
   }
 
+  central.clearEvents();
+  const std::string rotatedPassword = "rotated companion";
+  std::vector<uint8_t> rotatePassword {2, 46, static_cast<uint8_t>(rotatedPassword.size())};
+  rotatePassword.insert(rotatePassword.end(), rotatedPassword.begin(), rotatedPassword.end());
+  check(central.write(SETTINGS_UUID, rotatePassword),
+        "authenticated settings can rotate the companion password");
+  check(!service.isPasswordAuthenticated(),
+        "password rotation revokes the authenticated session before acknowledgement");
+  check(central.indications().size() == 1 && central.indications()[0].size() == 4,
+        "password rotation returns one compact acknowledgement");
+
+  central.clearEvents();
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+        "password rotation issues a fresh challenge");
+  const auto rotatedNonce =
+      central.authIndications().empty() ? std::vector<uint8_t> {} : central.authIndications()[0];
+  check(central.write(AUTH_UUID, authResponse(rotatedPassword, rotatedNonce)),
+        "rotated password response reaches the companion service");
+  check(service.isPasswordAuthenticated(), "rotated password authenticates the session");
+
   first.clearEvents();
   second.clearEvents();
   check(central.write(TRIGGER_UUID, {1, 1}), "trigger UUID accepts shutter press");
