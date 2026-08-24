@@ -22,7 +22,9 @@ using lv_obj_t = _lv_obj_t;
 #include <Camera.h>
 #include <TinyGPS++.h>
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 
 #include "FurblePower.h"
 
@@ -67,6 +69,7 @@ class GPS {
    */
   typedef struct {
     bool position_valid;
+    bool date_valid;
     bool time_valid;
     bool altitude_valid;
     bool fix;

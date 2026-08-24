@@ -1438,8 +1438,8 @@ void GPS::update(void) {
 
 bool GPS::wiredFixIsFresh(const status_t &status) const {
   return m_Enabled && status.position_valid && (status.location_age < MAX_AGE_MS)
-         && status.time_valid && (status.date_age < MAX_AGE_MS) && (status.time_age < MAX_AGE_MS)
-         && status.fix;
+         && status.date_valid && (status.date_age < MAX_AGE_MS) && status.time_valid
+         && (status.time_age < MAX_AGE_MS) && status.fix;
 }
 
 GPS::source_t GPS::getSource(void) const {
@@ -1688,6 +1688,7 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
 
   status_t status = {};
   status.position_valid = gps.location.isValid();
+  status.date_valid = gps.date.isValid();
   status.time_valid = gps.time.isValid();
   status.altitude_valid = gps.altitude.isValid();
   status.fix = status.position_valid && (quality != TinyGPSLocation::Quality::Invalid);
