@@ -19,7 +19,7 @@ def _run_git(args: list[str], project_dir: Path) -> str:
 def resolve_version(
     requested: str, project_dir: Path, run_git: GitRunner = _run_git
 ) -> str:
-  """Append an exact short revision to the conventional ``dev`` version."""
+  """Append an unambiguous short revision to the conventional ``dev`` version."""
   if requested != "dev":
     return requested
 

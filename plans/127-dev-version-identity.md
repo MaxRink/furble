@@ -9,7 +9,8 @@ result hard to tie back to the source that produced it.
 
 ## Implementation
 
-- A PlatformIO pre-build adapter resolves an exact eight-character Git revision.
+- A PlatformIO pre-build adapter requests an unambiguous Git abbreviation of at
+  least eight characters.
 - An input version of `dev` becomes `dev+g<revision>`.
 - Release and explicitly named experimental versions remain byte-for-byte
   unchanged.
