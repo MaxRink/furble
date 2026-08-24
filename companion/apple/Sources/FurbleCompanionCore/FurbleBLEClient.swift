@@ -11,6 +11,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   @Published public private(set) var state = CompanionStateMachine()
   @Published public private(set) var phase = CompanionConnectionPhase.idle
   @Published public private(set) var status: FurbleProtocol.Status?
+  @Published public private(set) var cameras: [FurbleProtocol.CameraRecord] = []
   @Published public private(set) var error: CompanionFailure?
 
   private let credentialStore: FurbleCredentialStore
@@ -39,9 +40,19 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   public func writeLocation(_ fix: FurbleProtocol.LocationFix) {
+    guard state.phase == .ready else { return }
     guard let characteristic = characteristics[CBUUID(string: FurbleProtocol.UUIDs.location)] else { return }
     guard let data = try? FurbleProtocol.encodeLocation(fix) else { return }
     write(data, to: characteristic, type: .withoutResponse)
+  }
+
+  public func requestSettings() throws {
+    let data = FurbleProtocol.settingsListRequest()
+    _ = try state.privileged(.writeSettings(data))
+    guard let characteristic = characteristic(FurbleProtocol.UUIDs.settings) else {
+      throw FurbleProtocol.Error.malformed
+    }
+    write(data, to: characteristic, type: .withResponse)
   }
 
   public func writeSettings(_ data: Data) throws {
@@ -56,6 +67,25 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     let data = FurbleProtocol.encodeTrigger(operation, holdMilliseconds: holdMilliseconds)
     _ = try state.privileged(.writeTrigger(data))
     guard let characteristic = characteristics[CBUUID(string: FurbleProtocol.UUIDs.trigger)] else {
+      throw FurbleProtocol.Error.malformed
+    }
+    write(data, to: characteristic, type: .withResponse)
+  }
+
+  public func requestCameras() throws {
+    let data = FurbleProtocol.cameraListRequest()
+    _ = try state.privileged(.writeCamera(data))
+    guard let characteristic = characteristic(FurbleProtocol.UUIDs.cameras) else {
+      throw FurbleProtocol.Error.malformed
+    }
+    write(data, to: characteristic, type: .withResponse)
+  }
+
+  public func setCamera(_ id: UInt8, selected: Bool) throws {
+    let operation: FurbleProtocol.CameraOperation = selected ? .select : .deselect
+    let data = FurbleProtocol.cameraRequest(operation, id: id)
+    _ = try state.privileged(.writeCamera(data))
+    guard let characteristic = characteristic(FurbleProtocol.UUIDs.cameras) else {
       throw FurbleProtocol.Error.malformed
     }
     write(data, to: characteristic, type: .withResponse)
@@ -230,6 +260,9 @@ extension FurbleBLEClient: CBPeripheralDelegate {
     } else if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.status) {
       guard state.didReceiveStatus(data), let status = state.status else { fail(.malformedPacket); return }
       self.status = status
+    } else if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.cameras) {
+      guard state.didReceiveCamera(data) else { fail(.malformedPacket); return }
+      cameras = state.cameras
     }
   }
 
