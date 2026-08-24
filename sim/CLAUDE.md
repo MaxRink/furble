@@ -46,14 +46,18 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   clock, so `gps.png` is not byte-reproducible and must not be a golden
   baseline as-is.
 - The fake scan delivers its result and the scan end callback in the same
-  `update()` tick. The fake UART never emits error events and captures all
-  writes; dump them with the `uart-dump` script verb.
+  `update()` tick. The fake UART captures all writes and models receiver
+  replies with `uart-mode ack|nack|timeout|malformed|partial|write-error`.
+  Inject UART driver events with `uart-event data|fifo|buffer|break|parity|frame|pattern`.
+  Dump writes with the `uart-dump` script verb. These controls exercise the
+  production GPS binary parser, retry state machine and PCAS fallback without
+  changing firmware behavior.
 - The full script verb set is `seed`, `wait`/`advance`, `key`/`press`,
-  `btn`/`button`, `capture`, `uart-dump`, `home`, `back`, `report`,
-  `action`, `print`, `assert`, `xassert`, `stall`, and `exit`. `home` resets to
-  the root menu and focuses Scan. `back` clicks the LVGL header back button
-  and fails on the root page. See `docs/sim.md` for every action value and
-  query key.
+  `btn`/`button`, `capture`, `uart-dump`, `uart-mode`, `uart-event`,
+  `gps-restart`, `home`, `back`, `report`, `action`, `print`, `assert`,
+  `xassert`, `stall`, and `exit`. `home` resets to the root menu and focuses
+  Scan. `back` clicks the LVGL header back button and fails on the root page.
+  See `docs/sim.md` for every action value and query key.
 - `stall <ms>` advances virtual time without running `Platform::update`. On the
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
   ordinary `wait` keeps feeding it.
@@ -70,6 +74,9 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 - The SDL harness has no IMU injection action, seed, or query. Its platform shim
   sets `config.internal_imu = false`; do not document or add an IMU DSL token
   until a source seam exists.
+- GPS query keys include `gps.source`, `gps.satellites`, `gps.state`, and
+  `gps.config.<index>.state|attempts`. UART write count and the last command are
+  available as `uart.count` and `uart.last`.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the

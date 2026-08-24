@@ -30,6 +30,7 @@ void profilerSetDisplayState(const char *state);
 void profilerSetRadioConnected(bool connected);
 void profilerRadioEvent(const char *name);
 void profilerSetGpsState(const char *state);
+const char *profilerGpsState(void);
 
 /** Record the configured DFS policy and PM lock transitions. */
 void profilerPowerConfig(int max_frequency_mhz, int min_frequency_mhz, bool light_sleep_enabled);

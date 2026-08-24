@@ -1,0 +1,9 @@
+# A bad binary checksum is discarded by processSerial. The command therefore
+# follows the same bounded retry and fallback path as a silent receiver.
+seed gps true
+seed gps_rate 1
+seed gps_uart_mode malformed
+wait 5000
+assert gps.config.0.state FALLBACK
+assert gps.config.0.attempts 3
+exit

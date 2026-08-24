@@ -1151,3 +1151,15 @@ requests. Motivation only, no design.
 > reporting per satellite signal strength that furble discards. Would automatic
 > baud detection, an assisted start from the cached position, and a satellite
 > signal page be welcome?
+
+## Simulator verification, 2026-08-24
+
+The host simulator now drives the production GPS UART parser and configuration
+state machine through a deterministic fake receiver. Scenarios cover binary
+ACK, NACK, timeout with three retries and PCAS fallback, malformed checksum
+frames, byte-at-a-time partial frames, short UART writes, all UART error event
+types, and hot, warm and cold `$PCAS10` restart commands. The GPS profiler state
+query also covers standby to wake transitions without relying on host thread
+timing. Remaining acceptance checks are physical UART framing, receiver ACK
+behavior, real PCAS standby and restart semantics, cold-start timing, and GPS
+fix recovery with the Unit GPS v1.1 attached.

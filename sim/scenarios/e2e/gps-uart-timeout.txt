@@ -1,0 +1,9 @@
+# No receiver response produces exactly three attempts, then PCAS fallback.
+seed gps true
+seed gps_rate 1
+seed gps_uart_mode timeout
+wait 5000
+assert gps.config.0.state FALLBACK
+assert gps.config.0.attempts 3
+assert uart.last $PCAS02,1000*2E
+exit

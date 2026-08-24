@@ -1,0 +1,15 @@
+# Timed standby must emit PCAS12, enter standby, then recover a fresh UART fix
+# after the receiver's virtual wake interval.
+seed gps true
+seed gps_power 1
+seed gps_duty 5
+seed gps_rate 1
+seed gps_uart_mode ack
+wait 5000
+assert gps.source uart
+assert gps.state standby
+assert uart.last $PCAS12,5*1B
+wait 5500
+assert gps.source uart
+assert gps.state tracking
+exit

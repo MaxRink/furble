@@ -77,8 +77,11 @@ void furble_sim_uart_update(void);
 
 // Simulator test hooks, not part of the ESP-IDF API. The fake UART captures
 // every uart_write_bytes payload so scripts can assert on $PCAS sends.
-const std::vector<std::string> &furble_sim_uart_writes(void);
+std::vector<std::string> furble_sim_uart_writes_snapshot(void);
+std::vector<std::string> furble_sim_uart_take_writes(void);
 void furble_sim_uart_clear_writes(void);
+void furble_sim_uart_set_mode(const char *mode);
+void furble_sim_uart_inject_event(const char *event);
 #endif
 
 #endif

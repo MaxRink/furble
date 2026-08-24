@@ -1,0 +1,9 @@
+# A short write is reported by the fake driver. The state machine still
+# bounds retries and falls back to the NMEA command.
+seed gps true
+seed gps_rate 1
+seed gps_uart_mode write-error
+wait 5000
+assert gps.config.0.state FALLBACK
+assert gps.config.0.attempts 3
+exit
