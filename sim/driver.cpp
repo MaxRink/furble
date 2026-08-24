@@ -989,6 +989,10 @@ std::string queryValue(const std::string &key) {
     return Platform::getInstance().canTimedWake() ? "yes" : "no";
   }
 
+  if (key == "platform.timed_wake") {
+    return Platform::getInstance().canTimedWake() ? "yes" : "no";
+  }
+
   std::cerr << "Unknown assert key: " << key << '\n';
   requestExit(2);
   return "";

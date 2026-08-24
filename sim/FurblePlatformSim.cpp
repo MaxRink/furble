@@ -157,8 +157,15 @@ void Platform::watchdogFeed(void) {
 void Platform::setDisplayOff(bool) {}
 
 bool Platform::canTimedWake(void) {
-  // The host simulator has no RTC alarm rail, so timed wake is unavailable.
+  // Model board capability separately from the physical rail operation. This
+  // makes the production menu expose timed-wake controls on StickS3 so layout
+  // and settings behavior are testable, while powerOffUntil remains a safe
+  // failure seam until the reboot-cycle simulator layer is present.
+#if defined(FURBLE_M5STICKS3)
+  return true;
+#else
   return false;
+#endif
 }
 
 bool Platform::powerOffUntil(uint32_t seconds) {
