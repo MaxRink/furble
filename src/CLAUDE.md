@@ -18,9 +18,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
-- `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap. GPX
-  logging only builds a point and queues it via `SD::logPoint()`, never does
-  file I/O.
+- `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap. The
+  parser is owned by GPS and guarded by its mutex; UI and console consumers use
+  `getStatusSnapshot()` and must not retain parser references. GPX logging only
+  builds a point and queues it via `SD::logPoint()`, never does file I/O.
 - `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
   IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on

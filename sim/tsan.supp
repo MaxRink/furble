@@ -1,0 +1,4 @@
+# M5GFX 0.2.19's hosted SDL renderer swaps and reads its double-buffer pointer
+# on different threads. Furble does not own that backend; suppress only its
+# frames so the focused GPS scenario still reports races in Furble code.
+race:lgfx::v1::Panel_sdl

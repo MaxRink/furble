@@ -857,22 +857,20 @@ int gpsConfig(void) {
 
 int gpsStatus(void) {
   auto &gps = GPS::getInstance();
-  auto &tiny = gps.get();
-  bool fix =
-      tiny.location.isValid() && (tiny.location.FixQuality() != TinyGPSLocation::Quality::Invalid);
+  const auto status = gps.getStatusSnapshot();
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
-  printf("fix: %s\n", boolStr(fix));
-  printf("satellites: %lu\n", tiny.satellites.value());
-  printf("lat: %.5f\n", tiny.location.lat());
-  printf("lon: %.5f\n", tiny.location.lng());
-  printf("alt: %.2f\n", tiny.altitude.meters());
-  printf("age: %lu\n", tiny.location.age());
-  printf("date: %04u-%02u-%02u\n", tiny.date.year(), tiny.date.month(), tiny.date.day());
-  printf("time: %02u:%02u:%02u\n", tiny.time.hour(), tiny.time.minute(), tiny.time.second());
-  printf("chars: %lu\n", tiny.charsProcessed());
-  printf("sentences: %lu\n", tiny.passedChecksum());
-  printf("failed: %lu\n", tiny.failedChecksum());
+  printf("fix: %s\n", boolStr(status.fix));
+  printf("satellites: %lu\n", status.satellites);
+  printf("lat: %.5f\n", status.latitude);
+  printf("lon: %.5f\n", status.longitude);
+  printf("alt: %.2f\n", status.altitude);
+  printf("age: %lu\n", status.location_age);
+  printf("date: %04u-%02u-%02u\n", status.year, status.month, status.day);
+  printf("time: %02u:%02u:%02u\n", status.hour, status.minute, status.second);
+  printf("chars: %lu\n", status.chars_processed);
+  printf("sentences: %lu\n", status.sentences_passed);
+  printf("failed: %lu\n", status.sentences_failed);
   printf("raw: %s\n", boolStr(g_GPSRaw));
   return 0;
 }

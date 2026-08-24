@@ -190,7 +190,9 @@ void GPS::reset(void) {
 
 void GPS::task(void) {
   while (true) {
+    std::unique_lock<std::mutex> serviceLock(m_ServiceMutex);
     if (!m_Enabled) {
+      serviceLock.unlock();
       releasePowerLock();
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
@@ -243,6 +245,7 @@ void GPS::enable(void) {
 
   // park the GPS task first, m_Enabled gates every cycle entry point
   m_Enabled = false;
+  const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
 
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   loadAidCache();
@@ -294,7 +297,7 @@ void GPS::enable(void) {
 
     // the receiver is not ready for commands yet, ask the GPS task to
     // configure it once sentences arrive
-    m_ConfigChars = m_GPS.charsProcessed();
+    m_ConfigChars = getStatusSnapshot().chars_processed;
     m_ConfigStart = Platform::getInstance().tick();
     m_ConfigPending = true;
   }
@@ -497,7 +500,7 @@ void GPS::beginBurst(uint32_t now) {
   FURBLE_SIM_GPS_STATE("tracking");
   m_BurstStart = now;
   m_LastSentence = now;
-  m_BurstFailed = m_GPS.failedChecksum();
+  m_BurstFailed = getStatusSnapshot().sentences_failed;
   m_BurstSequence++;
 
   if (m_LastBurstStart != 0) {
@@ -527,7 +530,7 @@ void GPS::finishBurst(uint32_t now) {
 
   m_BurstActive = false;
 
-  const uint32_t failed = m_GPS.failedChecksum() - m_BurstFailed;
+  const uint32_t failed = getStatusSnapshot().sentences_failed - m_BurstFailed;
   if (failed > 0) {
     m_Window += WINDOW_WIDEN_MS;
     const uint32_t interval = (m_ExpectedInterval > 0) ? m_ExpectedInterval : 1000;
@@ -597,7 +600,7 @@ void GPS::beginWindow(uint32_t now) {
   if (previous == cycle_state_t::RAIL_OFF) {
     setRailPower(true);
     reset();
-    m_ConfigChars = m_GPS.charsProcessed();
+    m_ConfigChars = getStatusSnapshot().chars_processed;
     m_ConfigStart = now;
     m_ConfigPending = true;
   }
@@ -946,7 +949,7 @@ void GPS::serviceConfig(void) {
   }
 
   if (m_ConfigPending) {
-    const bool awake = m_GPS.charsProcessed() > m_ConfigChars;
+    const bool awake = getStatusSnapshot().chars_processed > m_ConfigChars;
     const bool expired = (Platform::getInstance().tick() - m_ConfigStart) > SETTLE_MS;
     if (!awake && !expired) {
       return;
@@ -1210,6 +1213,7 @@ bool GPS::sendAidIni(void) {
 
 void GPS::disable(void) {
   m_Enabled = false;
+  const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
   FURBLE_SIM_GPS_STATE("off");
   m_ConfigPending = false;
   m_ConfigQueue.clear();
@@ -1320,23 +1324,23 @@ void GPS::update(void) {
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
   bool altitudeValid = false;
+  const status_t status = getStatusSnapshot();
 
-  if (wiredFixIsFresh()) {
+  if (wiredFixIsFresh(status)) {
     source = SOURCE_UART;
     dgps = {
-        m_GPS.location.lat(),
-        m_GPS.location.lng(),
-        m_GPS.altitude.meters(),
-        m_GPS.satellites.value(),
+        status.latitude,
+        status.longitude,
+        status.altitude,
+        status.satellites,
     };
     timesync = {
-        m_GPS.date.year(),   m_GPS.date.month(),  m_GPS.date.day(),         m_GPS.time.hour(),
-        m_GPS.time.minute(), m_GPS.time.second(), m_GPS.time.centisecond(),
+        status.year,   status.month,  status.day,         status.hour,
+        status.minute, status.second, status.centisecond,
     };
     updateAidCache(dgps, timesync);
-    satellites = static_cast<uint8_t>(
-        std::min<uint32_t>(static_cast<uint32_t>(m_GPS.satellites.value()), 255u));
-    altitudeValid = m_GPS.altitude.isValid();
+    satellites = static_cast<uint8_t>(std::min<uint32_t>(status.satellites, 255u));
+    altitudeValid = status.altitude_valid;
   } else {
     external_fix_t external = {};
     uint64_t received_ms = 0;
@@ -1436,11 +1440,10 @@ void GPS::update(void) {
 #endif
 }
 
-bool GPS::wiredFixIsFresh(void) {
-  return m_Enabled && (m_GPS.location.age() < MAX_AGE_MS) && m_GPS.location.isValid()
-         && (m_GPS.date.age() < MAX_AGE_MS) && m_GPS.date.isValid()
-         && (m_GPS.time.age() < MAX_AGE_MS) && m_GPS.time.isValid()
-         && (m_GPS.location.FixQuality() != TinyGPSLocation::Quality::Invalid);
+bool GPS::wiredFixIsFresh(const status_t &status) const {
+  return m_Enabled && status.position_valid && (status.location_age < MAX_AGE_MS)
+         && status.date_valid && (status.date_age < MAX_AGE_MS) && status.time_valid
+         && (status.time_age < MAX_AGE_MS) && status.fix;
 }
 
 GPS::source_t GPS::getSource(void) const {
@@ -1533,7 +1536,10 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   }
 
   Console::gpsRaw(reinterpret_cast<const char *>(data), length);
-  m_GPS.encode(reinterpret_cast<char *>(data), length);
+  {
+    const std::lock_guard<std::mutex> lock(m_GPSMutex);
+    m_GPS.encode(reinterpret_cast<char *>(data), length);
+  }
   captureSentences(reinterpret_cast<const char *>(data), length);
 }
 
@@ -1616,11 +1622,11 @@ void GPS::serviceSerial(void) {
     // once per read pass.
     processSerial(buffer.data(), bytes);
 
-    const uint32_t locationAge = m_GPS.location.age();
-    if (m_GPS.location.isValid() && (locationAge < m_LastLocationAge)) {
+    const status_t status = getStatusSnapshot();
+    if (status.fix && (status.location_age < m_LastLocationAge)) {
       m_FixSequence = m_BurstSequence.load();
     }
-    m_LastLocationAge = locationAge;
+    m_LastLocationAge = status.location_age;
 
     m_LastSentence = Platform::getInstance().tick();
   }
@@ -1679,8 +1685,37 @@ std::vector<std::string> GPS::getSentences(void) {
   return sentences;
 }
 
-TinyGPSPlus &GPS::get(void) {
-  return m_GPS;
+GPS::status_t GPS::getStatusSnapshot(void) const {
+  const std::lock_guard<std::mutex> lock(m_GPSMutex);
+  TinyGPSPlus &gps = m_GPS;
+  const TinyGPSLocation::Quality quality = gps.location.FixQuality();
+
+  status_t status = {};
+  status.position_valid = gps.location.isValid();
+  status.date_valid = gps.date.isValid();
+  status.time_valid = gps.time.isValid();
+  status.altitude_valid = gps.altitude.isValid();
+  status.fix = status.position_valid && (quality != TinyGPSLocation::Quality::Invalid);
+  status.satellites = gps.satellites.value();
+  status.latitude = gps.location.lat();
+  status.longitude = gps.location.lng();
+  status.altitude = gps.altitude.meters();
+  status.speed_kmph = gps.speed.kmph();
+  status.hdop = gps.hdop.hdop();
+  status.location_age = gps.location.age();
+  status.date_age = gps.date.age();
+  status.time_age = gps.time.age();
+  status.year = static_cast<uint16_t>(gps.date.year());
+  status.month = gps.date.month();
+  status.day = gps.date.day();
+  status.hour = gps.time.hour();
+  status.minute = gps.time.minute();
+  status.second = gps.time.second();
+  status.centisecond = gps.time.centisecond();
+  status.chars_processed = gps.charsProcessed();
+  status.sentences_passed = gps.passedChecksum();
+  status.sentences_failed = gps.failedChecksum();
+  return status;
 }
 
 }  // namespace Furble
