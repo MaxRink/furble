@@ -75,11 +75,13 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurblePower.cpp"
+    "${FURBLE_ROOT}/src/FurbleProvision.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
     "${FURBLE_ROOT}/src/FurbleSpinValue.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
     ${ICON_SOURCES})
 

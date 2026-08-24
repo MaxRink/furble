@@ -101,6 +101,30 @@ target_compile_options(settings_nvs_roundtrip_test PRIVATE -Wall -Wextra -Werror
                                                              -Wno-unused-parameter
                                                              -Wno-vla-extension)
 
+add_executable(provision_tlv_test
+               provision_tlv_test.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp)
+target_include_directories(provision_tlv_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_options(provision_tlv_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter)
+
+add_executable(provision_apply_test
+               provision_apply_test.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleProvision.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(provision_apply_test BEFORE PRIVATE
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(provision_apply_test PRIVATE FURBLE_M5STICKS3)
+target_compile_options(provision_apply_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter
+                                                    -Wno-vla-extension)
+
 # Board-conditional text size policy from include/FurbleTextSize.h. The header is
 # dependency free, so each variant compiles standalone. The suite is built twice:
 # the plain target exercises the large-board policy, the -stickc target defines
@@ -377,6 +401,8 @@ if(BUILD_TESTING)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
+  add_test(NAME provision-tlv COMMAND provision_tlv_test)
+  add_test(NAME provision-apply COMMAND provision_apply_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
