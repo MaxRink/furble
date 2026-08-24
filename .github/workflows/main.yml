@@ -132,6 +132,17 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Check generated simulator LVGL configuration
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/lv_conf.h"
+          python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 "$generated"
+          if ! cmp -s sim/lv_conf.h "$generated"; then
+            diff -u sim/lv_conf.h "$generated" || true
+            echo "sim/lv_conf.h is stale; regenerate it from sdkconfig.m5stick-s3" >&2
+            exit 1
+          fi
+
       - name: Cache clang-format pip downloads
         uses: actions/cache@v5
         with:
