@@ -46,6 +46,12 @@ drift. The two targets use bundle IDs `com.furble.companion.ios` and
 `com.furble.companion.macos`; replace those IDs and the team settings in an
 unsigned local copy before distribution.
 
+Open the generated project in Xcode after running the script. For a signed
+build, set a real `DEVELOPMENT_TEAM`, distribution or development
+`CODE_SIGN_IDENTITY`, provisioning profiles, and `CODE_SIGNING_ALLOWED=YES` in
+your local Xcode configuration. Those values are deliberately absent from the
+repository and CI.
+
 Unsigned simulator builds and tests are available with:
 
 ```sh
