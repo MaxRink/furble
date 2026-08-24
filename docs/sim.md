@@ -160,9 +160,8 @@ text after a comment are ignored. Each line starts with one verb.
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
-`print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
+`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
+`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, `setting.*`, and `platform.*`.
 
 The scenario-only `scan_distinct` seed makes the asynchronous scan worker
 publish two distinct FauxNY advertisements. The
@@ -351,6 +350,9 @@ The other namespaces are:
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+- `platform.watchdog`: `armed`, `expired`, or `unsupported`.
+- `platform.timed_wake`: `yes` when the simulated board can schedule a timed
+  power-on, otherwise `no`.
 
 ## Fault injection and fuzzing
 
