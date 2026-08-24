@@ -1,0 +1,90 @@
+import XCTest
+@testable import FurbleCompanionCore
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
+
+final class FurbleProtocolTests: XCTestCase {
+  func testLocationRoundTripUsesFrozen42ByteLayout() throws {
+    let fix = FurbleProtocol.LocationFix(
+      positionValid: true, timeValid: true, altitudeValid: true,
+      satellites: 7, accuracyMeters: 12, latitude: 12.25,
+      longitude: -45.5, altitude: 123.75, year: 2026, month: 8,
+      day: 16, hour: 14, minute: 15, second: 16, centisecond: 17,
+      ageMilliseconds: 0x01020304)
+    let data = try FurbleProtocol.encodeLocation(fix)
+    XCTAssertEqual(data.count, 42)
+    XCTAssertEqual(Array(data[37..<41]), [4, 3, 2, 1])
+    XCTAssertEqual(try FurbleProtocol.decodeLocation(data), fix)
+  }
+
+  func testLocationRejectsShortAndInvalidCalendarValues() throws {
+    XCTAssertThrowsError(try FurbleProtocol.decodeLocation(Data(repeating: 0, count: 41)))
+    let invalid = FurbleProtocol.LocationFix(
+      positionValid: true, timeValid: true, altitudeValid: false,
+      satellites: 0, accuracyMeters: nil, latitude: 0, longitude: 0,
+      altitude: 0, year: 2026, month: 13, day: 1, hour: 0, minute: 0,
+      second: 0, centisecond: 0, ageMilliseconds: 0)
+    XCTAssertThrowsError(try FurbleProtocol.encodeLocation(invalid))
+  }
+
+  func testStatusDecodesSignedAndUnsignedFields() throws {
+    let data = Data([1, 85, 0x18, 0x10, 0x88, 0xff, 3, 2, 1, 4, 2, 9, 5, 0xff, 0xff, 4, 3, 2, 1, 0])
+    let status = try FurbleProtocol.decodeStatus(data)
+    XCTAssertEqual(status.batteryPercent, 85)
+    XCTAssertEqual(status.batteryMillivolts, 0x1018)
+    XCTAssertEqual(status.batteryMilliamps, -120)
+    XCTAssertEqual(status.intervalometerRemaining, 0xffff)
+    XCTAssertEqual(status.uptimeSeconds, 0x01020304)
+    XCTAssertTrue(status.charging)
+    XCTAssertTrue(status.externalPower)
+  }
+
+  func testCapabilityNeverEnablesSecurityWithoutAuthFeature() throws {
+    let capability = try FurbleProtocol.decodeCapability(Data([1, 2, 1, 0, 0, 0]))
+    XCTAssertTrue(capability.supportsAuthentication)
+    let noAuth = try FurbleProtocol.decodeCapability(Data([1, 2, 1, 0, 0, 0]))
+    XCTAssertFalse(noAuth.features & FurbleProtocol.CapabilityFeature.settingsV2 == 0)
+  }
+
+  func testSettingsTlvRoundTripsAndRejectsTrailingBytes() throws {
+    XCTAssertEqual(FurbleProtocol.settingsListRequest(), Data([0, 0, 0]))
+    XCTAssertEqual(try FurbleProtocol.settingsSet(id: 7, value: Data([0xff])), Data([2, 7, 1, 0xff]))
+    let response = try FurbleProtocol.decodeSettingResponse(Data([0, 7, 1, 1, 0xfe, 1]))
+    XCTAssertEqual(response.id, 7)
+    XCTAssertEqual(response.value, Data([0xfe]))
+    XCTAssertTrue(response.isListRecord)
+    XCTAssertTrue(response.needsRestart)
+    XCTAssertThrowsError(try FurbleProtocol.decodeSettingResponse(Data([0, 7, 1, 1, 0xfe, 1, 2])))
+  }
+
+  func testCameraRecordIsLengthCheckedAndUtf8Validated() throws {
+    let record = try FurbleProtocol.decodeCameraRecord(Data([0, 3, 1, 9, 100, 0xf0, 2, 3, 0x46, 0x75, 0x6a]))
+    XCTAssertEqual(record.name, "Fuj")
+    XCTAssertThrowsError(try FurbleProtocol.decodeCameraRecord(Data([0, 3, 1, 9, 100, 0, 2, 4, 0x46])))
+  }
+
+  func testHmacChallengeIsSingleUseAndLocksAfterFailures() throws {
+    var auth = try FurbleAuthSession(password: "secret", maxFailures: 2)
+    let nonce = Data((0..<16).map(UInt8.init))
+    _ = try auth.begin(nonce: nonce)
+    XCTAssertThrowsError(try auth.verify(proof: Data(repeating: 0, count: 16)))
+    XCTAssertEqual(auth.state, .awaitingChallenge)
+    _ = try auth.begin(nonce: nonce)
+    XCTAssertThrowsError(try auth.verify(proof: Data(repeating: 0, count: 16)))
+    XCTAssertEqual(auth.state, .lockedOut)
+  }
+
+  func testHmacCorrectProofAuthenticatesAndCannotBeReplayed() throws {
+    var auth = try FurbleAuthSession(password: "secret")
+    _ = try auth.begin(nonce: Data(repeating: 7, count: 16))
+    #if canImport(CryptoKit)
+    let proof = Data(HMAC<SHA256>.authenticationCode(for: Data(repeating: 7, count: 16), using: SymmetricKey(data: Data("secret".utf8))).prefix(16))
+    try auth.verify(proof: proof)
+    XCTAssertEqual(auth.state, .authenticated)
+    XCTAssertThrowsError(try auth.verify(proof: proof))
+    #else
+    throw XCTSkip("CryptoKit is unavailable on this host")
+    #endif
+  }
+}

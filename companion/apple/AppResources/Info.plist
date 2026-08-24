@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>furble companion uses Bluetooth to securely monitor and control your furble remote.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>furble companion can send your current location to furble for camera geotagging when you enable phone GPS.</string>
+  <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+  <string>furble companion can keep sending location fixes during an explicitly enabled tracking session.</string>
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>bluetooth-central</string>
+  </array>
+</dict>
+</plist>

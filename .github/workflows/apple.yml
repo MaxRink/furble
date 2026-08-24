@@ -1,0 +1,27 @@
+name: Apple companion
+
+on:
+  pull_request:
+    paths:
+      - "companion/apple/**"
+      - "plans/127-apple-companion.md"
+      - ".github/workflows/apple.yml"
+  push:
+    branches: [master]
+    paths:
+      - "companion/apple/**"
+      - "plans/127-apple-companion.md"
+
+permissions:
+  contents: read
+
+jobs:
+  swift-package:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Select pinned Swift toolchain
+        run: swift --version
+      - name: Test shared Apple package
+        working-directory: companion/apple
+        run: swift test --configuration release
