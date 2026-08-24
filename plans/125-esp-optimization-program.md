@@ -2,8 +2,9 @@
 
 ## Motivation
 
-furble has five board environments, an ESP-IDF 5.4 toolchain, BLE camera
-control, a display, GPS, and planned Wi-Fi, MQTT, OTA, and Ethernet paths. The
+furble has six release targets and five debug variants on its pinned ESP-IDF
+5.4 toolchain, with BLE camera control, displays, GPS, and planned Wi-Fi,
+MQTT, OTA, and Ethernet paths. The
 firmware has power-management code, but it lacks a common measurement contract
 for current, wake latency, radio reliability, heap, stack, flash, and UI work.
 Several expensive diagnostic settings are also present in configurations used
@@ -60,8 +61,8 @@ upstream implementation:
 
 The checked-in release configurations already enable DFS, tickless idle, and
 disconnected-station power management. Bootloader application rollback is
-already enabled on all five boards, and the OTA partition work already emits
-the initial OTA metadata image. Its runtime health check is not implemented.
+already enabled on all six release targets, and the OTA partition work already
+emits the initial OTA metadata image. Its runtime health check is not implemented.
 HTTPS OTA partial download and resumption are runtime adapter options that are
 not implemented yet, rather than checked-in Kconfig settings. The release
 configurations leave coexistence power management, Mbed TLS dynamic buffers,
@@ -116,7 +117,7 @@ Wi-Fi/MQTT state and queue depth, GPS state, LVGL frames and invalidations, and
 NVS free entries and writes. Tests consume structured TSV or JSON, never human
 log text.
 
-Record a baseline for all five release boards and the M5StickS3 debug board:
+Record a baseline for all six release targets and the M5StickS3 debug variant:
 
 | Domain | Required measurements |
 | --- | --- |
@@ -143,10 +144,14 @@ serialization, malformed inputs, time advancement, lock leaks, and teardown.
 
 Benefit: all later optimization claims become reproducible. Risk: counters can
 perturb timing or consume RAM. Gate the feature by profile and prove release
-overhead is bounded. Acceptance: host tests, all five release builds, and one
+overhead is bounded. Acceptance: host tests, all six release builds, and one
 complete StickS3 snapshot pass.
 
 ### 125.2 Reproducible builds and cache hygiene
+
+The byte-reproducible six-target firmware gate and immutable CI action lock are
+already on `master`. Preserve those gates while completing the remaining
+dependency-reporting and cache work below.
 
 Pin PlatformIO, ESP-IDF, Python packages, component versions, sdkconfig inputs,
 and generated metadata. Add CI ccache keys containing host, compiler, IDF,
@@ -170,7 +175,7 @@ Rollback is cache disablement.
 
 ### 125.3 Release, debug, power-lab, and size-lab profiles
 
-Separate five release and five debug sdkconfigs. Keep watchdog, brownout, and
+Separate six release and five debug sdkconfigs. Keep watchdog, brownout, and
 abort-on-corruption protections. Move comprehensive heap poisoning, heap task
 tracking, verbose logs, and expensive PSRAM memtest to debug or diagnostics.
 Add power-lab current markers and size-lab map reports.
@@ -352,11 +357,11 @@ Assert state transitions and external events, not implementation details.
 
 ## Hardware and release gates
 
-The attached M5StickS3 is the primary gate. Tests state USB-connected versus
-battery conditions. Safe automated tests include cold boot, snapshots, PM and
-DFS transitions, display off/on, BLE scan and idle, paired Fujifilm reconnect
-and shutter cycles, GPS parser and standby, settings durability, OTA validation,
-and deep-sleep recovery.
+The M5StickS3 is the primary gate when it is available. Tests state
+USB-connected versus battery conditions. Safe automated tests include cold
+boot, snapshots, PM and DFS transitions, display off/on, BLE scan and idle,
+paired Fujifilm reconnect and shutter cycles, GPS parser and standby, settings
+durability, OTA validation, and deep-sleep recovery.
 
 Human or unavailable-equipment blockers remain explicit: Wi-Fi credentials,
 real MQTT authorization, companion password entry, numeric-comparison pairing,
@@ -365,7 +370,7 @@ Only Fujifilm cameras are available. Other vendor claims are simulator and
 review coverage, marked untested.
 
 An optimization PR is mergeable only after independent review, host tests and
-sanitizers, deterministic sim, all five release and debug builds, before and
+sanitizers, deterministic sim, all six release and five debug builds, before and
 after artifacts, and applicable StickS3 gates. Initial budgets are no unexplained
 failure, no more than 5% regression in boot, shutter round trip, minimum
 internal heap, or wake-to-frame, no missed-notification or reconnect increase,
