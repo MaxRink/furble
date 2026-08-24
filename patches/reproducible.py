@@ -52,7 +52,7 @@ env.Replace(ENV=child_environment)
 # two defines are the application-level replacement for __DATE__ and __TIME__.
 env.Append(
     CPPDEFINES=[
-        ("FURBLE_BUILD_DATE", '"{}"'.format(date_text)),
-        ("FURBLE_BUILD_TIME", '"{}"'.format(time_text)),
+        ("FURBLE_BUILD_DATE", env.StringifyMacro(date_text)),
+        ("FURBLE_BUILD_TIME", env.StringifyMacro(time_text)),
     ]
 )

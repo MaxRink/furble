@@ -27,6 +27,9 @@ class FakeEnv:
   def Append(self, **values):
     self.defines.extend(values["CPPDEFINES"])
 
+  def StringifyMacro(self, value):
+    return '\\"{}\\"'.format(value.replace('"', '\\\\"'))
+
 
 class ReproducibleTimestampTest(unittest.TestCase):
   def test_timestamp_defines_are_deterministic_shell_safe_iso8601(self):
@@ -50,8 +53,8 @@ class ReproducibleTimestampTest(unittest.TestCase):
     self.assertEqual(
         fake_env.defines,
         [
-            ("FURBLE_BUILD_DATE", '"2026-08-24"'),
-            ("FURBLE_BUILD_TIME", '"20:55:29Z"'),
+            ("FURBLE_BUILD_DATE", '\\"2026-08-24\\"'),
+            ("FURBLE_BUILD_TIME", '\\"20:55:29Z\\"'),
         ],
     )
     for _name, value in fake_env.defines:
