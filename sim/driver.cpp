@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <sstream>
@@ -181,6 +182,75 @@ bool buttonKnown(const std::string &name) {
   return false;
 }
 
+int32_t parseSigned(const std::string &value, const char *name);
+uint16_t batteryVoltage(const std::string &value);
+
+bool booleanSeedValue(const std::string &value) {
+  return value == "0" || value == "1" || value == "true" || value == "false" || value == "yes"
+         || value == "no" || value == "on" || value == "off";
+}
+
+void validateSeed(const std::string &name, const std::string &value) {
+  constexpr const char *byteSeeds[] = {
+      "brightness", "inactivity", "display_off", "gps_rate", "gps_constel",
+      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power", "scan_mode",
+      "text_size",  "auto_off",   "low_batt",
+  };
+  if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
+    if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
+      std::cerr << "Invalid " << name << ": " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  }
+
+  constexpr const char *booleanSeeds[] = {
+      "gps",         "gps_nmea", "fauxny",       "autoconnect", "reconnect",    "sleep_conn",
+      "boot_splash", "watchdog", "connect_fail", "no_touch",    "saved_camera",
+  };
+  if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
+    if (!booleanSeedValue(value)) {
+      std::cerr << "Invalid " << name << ": " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  }
+
+  constexpr const char *intervalSeeds[] = {
+      "interval_count", "interval_delay", "interval_shutter", "interval_wait", "bulb_duration",
+  };
+  if (std::find(std::begin(intervalSeeds), std::end(intervalSeeds), name)
+      != std::end(intervalSeeds)) {
+    if (parseUnsigned(value) > std::numeric_limits<uint16_t>::max()) {
+      std::cerr << "Invalid " << name << ": " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  }
+
+  if (name == "battery_level") {
+    if (parseUnsigned(value) > 100) {
+      std::cerr << "Invalid battery_level: " << value << '\n';
+      std::exit(2);
+    }
+  } else if (name == "battery_voltage") {
+    batteryVoltage(value);
+  } else if (name == "battery_current") {
+    parseSigned(value, "battery_current");
+  } else if (name == "battery_charging") {
+    if (!booleanSeedValue(value)) {
+      std::cerr << "Invalid battery_charging: " << value << '\n';
+      std::exit(2);
+    }
+  } else if (name == "gps_uart_mode") {
+    if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
+        && value != "partial" && value != "write-error") {
+      std::cerr << "Invalid gps_uart_mode: " << value << '\n';
+      std::exit(2);
+    }
+  }
+}
+
 void readScript(const std::string &path) {
   std::ifstream file(path);
   if (!file) {
@@ -209,6 +279,7 @@ void readScript(const std::string &path) {
         std::cerr << "seed requires a name and value\n";
         std::exit(2);
       }
+      validateSeed(name, value);
       scenarioSettings[name] = value;
       continue;
     }

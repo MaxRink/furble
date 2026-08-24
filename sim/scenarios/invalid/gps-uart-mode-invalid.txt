@@ -1,0 +1,2 @@
+seed gps_uart_mode unknown
+exit
