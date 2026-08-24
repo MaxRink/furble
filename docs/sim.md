@@ -265,6 +265,8 @@ The other namespaces are:
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.
 - `control.connected` and `control.targets`: numeric target counts.
+- `camera.count`: numeric camera-list row count, useful for scan de-duplication
+  assertions.
 - `camera.shutter_presses`, `camera.shutter_releases`, `camera.focus_presses`,
   and `camera.focus_releases`: numeric fake-camera command counts.
 - `setting.text_size`: the persisted numeric text-size setting.

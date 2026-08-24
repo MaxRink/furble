@@ -176,6 +176,24 @@ Only Fujifilm hardware is available for bench testing. Sony, Panasonic, Nikon,
 Ricoh/Pentax, and DJI paths remain untested on hardware and are covered by
 production-code review plus deterministic host vectors.
 
+#### Scan and advertisement edge follow-up
+
+The cross-vendor vectors now exercise every independent Sony mode-bit rejection,
+wrong vendor/type marker, null manufacturer buffer, exact truncation boundary,
+and tolerated trailing byte. The Nikon discovery predicate covers all four
+manufacturer/service combinations; Lumix service gating and DJI marker bytes
+have explicit negative cases; Ricoh name matching includes case folding and
+near-miss names. These checks remain transport-independent because an invalid
+or truncated manufacturer record must be rejected before a connection attempt.
+
+The SDL simulator adds `camera.count` and
+`sim/scenarios/e2e/scan-duplicate-result.txt`, which drives the same fake scan
+result twice and asserts that the camera list remains one row. This covers the
+simulated scan-result de-duplication seam while the host vectors cover the
+production byte parsers. Neither is evidence of vendor radio interoperability;
+real cameras still require hardware acceptance for service discovery and
+advertisement behavior.
+
 Effort: 2 to 3 days for Fujifilm, 5 to 8 days for all vendors.
 
 ### Tier B: mock NimBLE client layer

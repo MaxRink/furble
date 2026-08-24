@@ -86,7 +86,9 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   until a source seam exists.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`, and
   `gps.config.<index>.state|attempts`. UART write count and the last command are
-  available as `uart.count` and `uart.last`.
+  available as `uart.count` and `uart.last`. `camera.count` reports the current
+  simulated camera-list row count, allowing scan-result de-duplication scenarios
+  to assert that a repeated fake advertisement does not add a second row.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the
