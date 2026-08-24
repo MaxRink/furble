@@ -47,7 +47,8 @@ void testPreflightIsAtomic() {
       {26, ValueType::U8, {6} }, // GPS duty only accepts 0, 5, 10, or 15.
   };
   ApplyReport report;
-  const ApplyOptions options = {.onSettingApplied = recordApplied};
+  ApplyOptions options;
+  options.onSettingApplied = recordApplied;
 
   check(!apply(bundle, report, options), "invalid later setting rejects the whole batch");
   check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
@@ -70,7 +71,8 @@ void testValidatedApplyAndRuntimeHooks() {
       {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
   };
   ApplyReport report;
-  const ApplyOptions options = {.onSettingApplied = recordApplied};
+  ApplyOptions options;
+  options.onSettingApplied = recordApplied;
 
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),

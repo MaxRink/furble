@@ -688,7 +688,8 @@ int cmdProvision(int argc, char **argv) {
   }
 
   Provision::ApplyReport report;
-  const Provision::ApplyOptions options = {.onSettingApplied = reloadProvisionSetting};
+  Provision::ApplyOptions options;
+  options.onSettingApplied = reloadProvisionSetting;
   if (!Provision::apply(bundle, report, options)) {
     printf("error: provision: %s", Provision::applyErrorString(report.error));
     if (report.failedSettingId != 0) {
