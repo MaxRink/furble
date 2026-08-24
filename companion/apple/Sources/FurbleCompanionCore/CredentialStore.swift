@@ -60,7 +60,7 @@ public struct KeychainCredentialStore: FurbleCredentialStore, Sendable {
     if status == errSecItemNotFound {
       var item = baseQuery
       item[kSecValueData as String] = data
-      item[kSecAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+      item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
       let addStatus = SecItemAdd(item as CFDictionary, nil)
       guard addStatus == errSecSuccess else { throw CredentialStoreError.keychain(addStatus) }
     } else if status != errSecSuccess {

@@ -7,7 +7,7 @@ import Combine
 /// Location is off until the user explicitly enables it. The provider emits
 /// the same UTC fields and age semantics as the Android client.
 @MainActor
-public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
+public final class FurbleLocationProvider: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
   @Published public private(set) var enabled = false
   @Published public private(set) var authorization: CLAuthorizationStatus
   private let manager = CLLocationManager()
@@ -27,9 +27,14 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
     self.sink = sink
     wantsUpdates = true
     guard CLLocationManager.locationServicesEnabled() else { return }
-    if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
-    guard manager.authorizationStatus == .authorizedWhenInUse ||
-      manager.authorizationStatus == .authorizedAlways else { return }
+    if manager.authorizationStatus == .notDetermined {
+      #if os(macOS)
+      manager.requestAlwaysAuthorization()
+      #else
+      manager.requestWhenInUseAuthorization()
+      #endif
+    }
+    guard isAuthorized(manager.authorizationStatus) else { return }
     enabled = true
     manager.startUpdatingLocation()
   }
@@ -44,8 +49,7 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
   public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
     authorization = manager.authorizationStatus
     guard wantsUpdates, CLLocationManager.locationServicesEnabled(),
-      manager.authorizationStatus == .authorizedWhenInUse ||
-      manager.authorizationStatus == .authorizedAlways else { return }
+      isAuthorized(manager.authorizationStatus) else { return }
     enabled = true
     manager.startUpdatingLocation()
   }
@@ -73,6 +77,14 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
       centisecond: UInt8(clamping: Calendar.current.component(.nanosecond, from: location.timestamp) / 10_000_000),
       ageMilliseconds: UInt32(clamping: age))
     sink?(fix)
+  }
+
+  private func isAuthorized(_ status: CLAuthorizationStatus) -> Bool {
+    #if os(macOS)
+    return status == .authorizedAlways
+    #else
+    return status == .authorizedWhenInUse || status == .authorizedAlways
+    #endif
   }
 }
 #endif

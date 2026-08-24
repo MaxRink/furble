@@ -33,13 +33,20 @@ jobs:
       - name: Generate native project
         working-directory: companion/apple
         run: scripts/generate-xcode-project.sh
+      - name: Select an available iOS simulator
+        run: |
+          IOS_SIMULATOR_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          test -n "$IOS_SIMULATOR_ID"
+          xcrun simctl boot "$IOS_SIMULATOR_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$IOS_SIMULATOR_ID" -b
+          echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
       - name: Build and test iOS simulator target
         working-directory: companion/apple
         run: >-
           xcodebuild
           -project FurbleCompanion.xcodeproj
           -scheme FurbleCompanion-iOS
-          -destination 'platform=iOS Simulator,name=iPhone 15'
+          -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID}"
           -configuration Debug
           CODE_SIGNING_ALLOWED=NO
           CODE_SIGNING_REQUIRED=NO

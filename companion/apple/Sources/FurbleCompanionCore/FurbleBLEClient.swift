@@ -138,7 +138,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
 
   private func authenticate() {
     guard let authCharacteristic = characteristic(FurbleProtocol.UUIDs.auth),
-      let password = try? credentialStore.readPassword(), let password, !password.isEmpty else {
+      let password = try? credentialStore.readPassword(), !password.isEmpty else {
       fail(.authenticationUnavailable)
       return
     }
@@ -169,7 +169,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       return
     }
     guard data.count == FurbleProtocol.authNonceSize + 2,
-      let password = try? credentialStore.readPassword(), let password, !password.isEmpty,
+      let password = try? credentialStore.readPassword(), !password.isEmpty,
       let authCharacteristic = characteristic(FurbleProtocol.UUIDs.auth) else {
       fail(.authenticationUnavailable)
       return
@@ -210,13 +210,13 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 }
 
-extension FurbleBLEClient: CBCentralManagerDelegate {
+extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   public func centralManagerDidUpdateState(_ central: CBCentralManager) {
     if central.state == .poweredOn { beginScan() }
     else if central.state != .unknown { fail(.bluetoothUnavailable) }
   }
 
-  public func central(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+  public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                      advertisementData: [String: Any], rssi RSSI: NSNumber) {
     self.peripheral = peripheral
     central.stopScan()
@@ -226,19 +226,19 @@ extension FurbleBLEClient: CBCentralManagerDelegate {
     central.connect(peripheral)
   }
 
-  public func central(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+  public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     _ = state.didConnect()
     phase = state.phase
     peripheral.discoverServices([CBUUID(string: FurbleProtocol.UUIDs.service)])
   }
 
-  public func central(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+  public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
     reconnectAttempt += 1
     phase = .reconnecting(attempt: reconnectAttempt)
     if central.state == .poweredOn { beginScan() }
   }
 
-  public func central(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+  public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
     state.didDisconnect()
     phase = state.phase
     reconnectAttempt += 1
@@ -258,7 +258,7 @@ extension FurbleBLEClient: CBCentralManagerDelegate {
   }
 }
 
-extension FurbleBLEClient: CBPeripheralDelegate {
+extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
   public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     guard error == nil, let service = peripheral.services?.first(where: {
       $0.uuid == CBUUID(string: FurbleProtocol.UUIDs.service)
