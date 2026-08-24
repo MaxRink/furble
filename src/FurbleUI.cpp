@@ -2299,6 +2299,13 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // Drive the real Bulb Start button so the exposure timer and shutter lock
+  // follow the same path as an on-device click.
+  if (command == "bulb-start") {
+    lv_obj_send_event(m_BulbStart, LV_EVENT_CLICKED, nullptr);
+    return;
+  }
+
   // Drive the real Stop button so the run state reset and back navigation run
   // exactly as an on-device press does.
   if (command == "stop") {
@@ -3154,6 +3161,50 @@ std::string UI::simQueryState(const char *key) {
         return "finished";
     }
     return "unknown";
+  }
+
+  // The bulb countdown is read from the label rendered by the real refresh
+  // timer. This keeps the assertion tied to the visible UI rather than a test
+  // copy of the timer deadline.
+  if (query == "bulb_remaining") {
+    if (m_Bulb.m_RemainingLabel == nullptr) {
+      return "unknown";
+    }
+    const char *text = lv_label_get_text(m_Bulb.m_RemainingLabel);
+    return text == nullptr ? std::string("unknown") : std::string(text);
+  }
+
+  if (query == "bulb_state") {
+    switch (m_Bulb.m_State) {
+      case Bulb::STATE_IDLE:
+        return "idle";
+      case Bulb::STATE_RUNNING:
+        return "running";
+      case Bulb::STATE_DONE:
+        return "done";
+    }
+    return "unknown";
+  }
+
+  // This is the same shutter lock used by the Remote page. The camera press
+  // and release counters below prove the BLE commands, while this query proves
+  // the UI held the lock throughout the exposure.
+  if (query == "shutter_held") {
+    return m_ShutterLock ? "yes" : "no";
+  }
+
+  // The interval timer writes the fired count into the displayed count label
+  // as NNN/total. Return only NNN so the scenario can assert the real rendered
+  // count without adding a second counter to the production timer.
+  if (query == "interval_count_fired") {
+    if (m_Intervalometer.m_CountLabel == nullptr) {
+      return "0";
+    }
+    const char *text = lv_label_get_text(m_Intervalometer.m_CountLabel);
+    if (text == nullptr) {
+      return "0";
+    }
+    return std::to_string(std::strtoul(text, nullptr, 10));
   }
 
   // Read the rendered GPS Data page labels so scenarios can assert the speed

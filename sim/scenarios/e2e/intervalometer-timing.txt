@@ -1,0 +1,48 @@
+# Intervalometer coverage: three shots at a two-second delay, then stop before
+# the third scheduled shot. The camera counters are the observed virtual-camera
+# commands; the UI fired-count query reads the rendered run counter.
+seed fauxny true
+seed interval_count 3
+seed interval_delay 2
+seed interval_shutter 100
+seed interval_wait 0
+wait 300
+action connect
+wait 1000
+assert control.state active
+assert ui.connected yes
+
+action nav timer
+wait 300
+assert ui.page timer
+action intervalometer
+wait 500
+assert ui.page timer_run
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+assert ui.interval_count_fired 1
+
+# The second shot must not arrive before the configured two-second spacing.
+advance 1500
+assert camera.shutter_presses 1
+assert ui.interval_count_fired 1
+
+# It arrives after the spacing, and the run counter agrees with the camera.
+advance 500
+assert camera.shutter_presses 2
+assert camera.shutter_releases 2
+assert ui.interval_count_fired 2
+
+# Stop while the third shot is still pending. Stop releases the shutter path,
+# but it must not schedule another press after the page returns to Timer.
+advance 1500
+action stop
+wait 200
+assert ui.page timer
+assert ui.interval_state idle
+assert camera.shutter_presses 2
+assert ui.interval_count_fired 2
+advance 3000
+assert camera.shutter_presses 2
+assert ui.interval_count_fired 2
+exit
