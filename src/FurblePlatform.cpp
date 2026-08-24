@@ -376,11 +376,20 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     M5.Rtc.clearIRQ();
     const int requested_seconds = static_cast<int>(seconds);
     const int programmed_seconds = M5.Rtc.setAlarmIRQ(requested_seconds);
-    if (programmed_seconds != requested_seconds) {
+    // The BM8563 has one-second resolution up to 255 seconds and minute
+    // resolution above that. Accept an upward rounding, which is the only
+    // safe direction for a power-off interval, but reject a failed or shorter
+    // timer because it could wake before the saved resume deadline.
+    if ((programmed_seconds <= 0) || (programmed_seconds < requested_seconds)) {
       ESP_LOGW(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
                programmed_seconds);
       M5.Rtc.disableIRQ();
       return false;
+    }
+
+    if (programmed_seconds != requested_seconds) {
+      ESP_LOGI(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
+               programmed_seconds);
     }
 
     M5.Display.sleep();
