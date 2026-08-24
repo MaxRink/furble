@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <SDL2/SDL.h>
@@ -47,6 +49,7 @@ enum class StepType {
   REPORT,
   ACTION,
   ASSERT,
+  ASSERT_EVENTUALLY,
   XASSERT,
   PRINT,
   EXIT,
@@ -59,7 +62,10 @@ struct Step {
   bool hold = false;
   std::string name;
   std::string expected;
+  uint32_t timeoutMilliseconds = 0;
 };
+
+constexpr uint32_t MAX_EVENTUAL_TIMEOUT_MS = 60000;
 
 std::vector<Step> steps;
 std::map<std::string, std::string> scenarioSettings;
@@ -340,6 +346,24 @@ void readScript(const std::string &path) {
       input >> step.expected;
       if (step.name.empty() || step.expected.empty()) {
         std::cerr << "assert requires a key and an expected value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "assert-eventually") {
+      Step step;
+      step.type = StepType::ASSERT_EVENTUALLY;
+      std::string timeout;
+      input >> timeout >> step.name >> step.expected;
+      std::string extra;
+      input >> extra;
+      if (timeout.empty() || step.name.empty() || step.expected.empty() || !extra.empty()) {
+        std::cerr << "assert-eventually requires TIMEOUT_MS KEY VALUE with no trailing values\n";
+        std::exit(2);
+      }
+      step.timeoutMilliseconds = parseUnsigned(timeout);
+      if (step.timeoutMilliseconds == 0 || step.timeoutMilliseconds > MAX_EVENTUAL_TIMEOUT_MS) {
+        std::cerr << "assert-eventually timeout must be between 1 and " << MAX_EVENTUAL_TIMEOUT_MS
+                  << " ms\n";
         std::exit(2);
       }
       steps.push_back(step);
@@ -1037,6 +1061,32 @@ void driverTick(void) {
       }
       std::cout << "assert ok: " << step.name << " = " << actual << '\n';
       ++stepIndex;
+      break;
+    }
+
+    case StepType::ASSERT_EVENTUALLY:
+    {
+      const auto deadline =
+          std::chrono::steady_clock::now() + std::chrono::milliseconds(step.timeoutMilliseconds);
+      std::string actual;
+      for (;;) {
+        actual = queryValue(step.name);
+        if (actual == step.expected) {
+          std::cout << "assert-eventually ok: " << step.name << " = " << actual << '\n';
+          ++stepIndex;
+          break;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+          std::cerr << "ASSERT-EVENTUALLY FAILED: " << step.name << " expected '" << step.expected
+                    << "' got '" << actual << "' after " << step.timeoutMilliseconds << " ms\n";
+          std::cout.flush();
+          std::_Exit(1);
+        }
+        // This is a host-side observation wait. It leaves the UI task blocked
+        // while allowing background simulator tasks to process the state that
+        // the preceding virtual-time steps made due.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
       break;
     }
 

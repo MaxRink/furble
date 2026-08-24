@@ -1,0 +1,3 @@
+seed gps true
+assert-eventually 100 gps.config.0.state FALLBACK extra
+exit

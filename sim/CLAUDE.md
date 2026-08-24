@@ -65,7 +65,7 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 - The full script verb set is `seed`, `wait`/`advance`, `key`/`press`,
   `btn`/`button`, `capture`, `uart-dump`, `uart-mode`, `uart-event`,
   `gps-restart`, `home`, `back`, `report`, `action`, `print`, `assert`,
-  `xassert`, `stall`, and `exit`. `home` resets to the root menu and focuses
+  `assert-eventually`, `xassert`, `stall`, and `exit`. `home` resets to the root menu and focuses
   Scan. `back` clicks the LVGL header back button and fails on the root page.
   See `docs/sim.md` for every action value and query key.
 - `stall <ms>` advances virtual time without running `Platform::update`. On the
@@ -77,6 +77,15 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   running, so CI stays green while the gap is on record. When the fix lands the
   value matches and it prints `XPASS`; promote that line back to `assert` in the
   fix PR so the guard starts enforcing.
+- `assert-eventually <timeout-ms> <key> <value>` polls a query using a bounded
+  monotonic wall-clock timeout while yielding to background simulator tasks.
+  It is for cross-task state convergence after virtual time has advanced, not
+  for extending a scenario's virtual-time budget. Timeout values must be from
+  1 through 60000 ms. A timeout prints the last observed value and exits 1.
+- UI-task delays advance virtual time and then perform a short host scheduler
+  handoff. Preserve that handoff: it lets detached background task threads
+  observe each part of a scripted wait instead of starting work only after the
+  entire virtual-time budget has elapsed.
 - `action drop` and `action drop <n>` model a dropped fake peer link. `seed
   connect_fail true` makes the fake camera reject connection. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
