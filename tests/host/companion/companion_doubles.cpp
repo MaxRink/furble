@@ -29,22 +29,21 @@ namespace Furble {
 namespace {
 
 const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
-    {Settings::BRIGHTNESS,    {Settings::BRIGHTNESS, 1, "Brightness", "brightness", "furble"}      },
-    {Settings::TX_POWER,      {Settings::TX_POWER, 4, "TX Power", "tx_power", "furble"}            },
-    {Settings::IMU,           {Settings::IMU, 46, "IMU", "imu", "furble"}                          },
-    {Settings::TX_ADAPTIVE,   {Settings::TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", "furble"}     },
+    {Settings::BRIGHTNESS,         {Settings::BRIGHTNESS, 1, "Brightness", "brightness", "furble"}      },
+    {Settings::TX_POWER,           {Settings::TX_POWER, 4, "TX Power", "tx_power", "furble"}            },
+    {Settings::TX_ADAPTIVE,        {Settings::TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", "furble"}     },
     {Settings::MULTICONNECT,
-     {Settings::MULTICONNECT, 8, "Multi-Connect", "multiconnect", "furble"}                        },
-    {Settings::RECONNECT,     {Settings::RECONNECT, 9, "Infinite-ReConnect", "reconnect", "furble"}},
+     {Settings::MULTICONNECT, 8, "Multi-Connect", "multiconnect", "furble"}                             },
+    {Settings::RECONNECT,          {Settings::RECONNECT, 9, "Infinite-ReConnect", "reconnect", "furble"}},
     {Settings::RECON_BACKOFF,
-     {Settings::RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", "furble"}                 },
+     {Settings::RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", "furble"}                      },
     {Settings::SLEEP_CONN,
-     {Settings::SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", "furble"}                   },
-    {Settings::COMPANION,     {Settings::COMPANION, 12, "Companion", "companion", "furble"}        },
+     {Settings::SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", "furble"}                        },
+    {Settings::COMPANION,          {Settings::COMPANION, 12, "Companion", "companion", "furble"}        },
     {Settings::COMPANION_PASSWORD,
-     {Settings::COMPANION_PASSWORD, 46, "Companion password", "companion_password", "furble"}     },
+     {Settings::COMPANION_PASSWORD, 46, "Companion password", "companion_password", "furble"}           },
     {Settings::CONN_SAVER,
-     {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                   },
+     {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                        },
 };
 
 struct BatteryState {
@@ -230,19 +229,12 @@ struct FurbleHostTimer {
   bool active = false;
 };
 
-std::mutex g_TimerMutex;
-FurbleHostTimer *g_ActiveTimer = nullptr;
-
 esp_err_t esp_timer_create(const esp_timer_create_args_t *args, esp_timer_handle_t *out_handle) {
   if (args == nullptr || out_handle == nullptr || args->callback == nullptr) {
     return -1;
   }
   auto *timer = new FurbleHostTimer;
   timer->args = *args;
-  {
-    const std::lock_guard<std::mutex> lock(g_TimerMutex);
-    g_ActiveTimer = timer;
-  }
   *out_handle = timer;
   return ESP_OK;
 }
@@ -251,22 +243,12 @@ esp_err_t esp_timer_delete(esp_timer_handle_t handle) {
   if (handle == nullptr) {
     return -1;
   }
-  {
-    const std::lock_guard<std::mutex> lock(g_TimerMutex);
-    if (g_ActiveTimer == handle) {
-      g_ActiveTimer = nullptr;
-    }
-  }
   delete handle;
   return ESP_OK;
 }
 
 bool esp_timer_is_active(esp_timer_handle_t handle) {
-  if (handle == nullptr) {
-    return false;
-  }
-  const std::lock_guard<std::mutex> lock(g_TimerMutex);
-  return handle->active;
+  return handle != nullptr && handle->active;
 }
 
 esp_err_t esp_timer_start_once(esp_timer_handle_t handle, uint64_t timeout_us) {
@@ -274,9 +256,7 @@ esp_err_t esp_timer_start_once(esp_timer_handle_t handle, uint64_t timeout_us) {
   if (handle == nullptr) {
     return -1;
   }
-  const std::lock_guard<std::mutex> lock(g_TimerMutex);
   handle->active = true;
-  g_ActiveTimer = handle;
   return ESP_OK;
 }
 
@@ -284,23 +264,6 @@ esp_err_t esp_timer_stop(esp_timer_handle_t handle) {
   if (handle == nullptr) {
     return -1;
   }
-  const std::lock_guard<std::mutex> lock(g_TimerMutex);
   handle->active = false;
   return ESP_OK;
-}
-
-extern "C" bool furble_host_fire_active_timer(void) {
-  esp_timer_cb_t callback = nullptr;
-  void *arg = nullptr;
-  {
-    const std::lock_guard<std::mutex> lock(g_TimerMutex);
-    if (g_ActiveTimer == nullptr || !g_ActiveTimer->active) {
-      return false;
-    }
-    g_ActiveTimer->active = false;
-    callback = g_ActiveTimer->args.callback;
-    arg = g_ActiveTimer->args.arg;
-  }
-  callback(arg);
-  return true;
 }
