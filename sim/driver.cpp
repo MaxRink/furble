@@ -263,7 +263,8 @@ void readScript(const std::string &path) {
       Step step;
       step.type = StepType::UART_MODE;
       input >> step.name;
-      if (step.name.empty()) {
+      if (step.name != "ack" && step.name != "nack" && step.name != "timeout"
+          && step.name != "malformed" && step.name != "partial" && step.name != "write-error") {
         std::cerr << "uart-mode requires ack, nack, timeout, malformed, partial or write-error\n";
         std::exit(2);
       }
@@ -272,7 +273,9 @@ void readScript(const std::string &path) {
       Step step;
       step.type = StepType::UART_EVENT;
       input >> step.name;
-      if (step.name.empty()) {
+      if (step.name != "data" && step.name != "fifo" && step.name != "buffer"
+          && step.name != "break" && step.name != "parity" && step.name != "frame"
+          && step.name != "pattern") {
         std::cerr << "uart-event requires data, fifo, buffer, break, parity, frame or pattern\n";
         std::exit(2);
       }
