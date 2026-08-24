@@ -108,7 +108,7 @@ class MockCentral final: public Furble::CompanionTransport {
     m_Service->onConnected();
   }
 
-  void disconnect(void) {
+  void disconnect(void) override {
     if (!m_Connected) {
       return;
     }
