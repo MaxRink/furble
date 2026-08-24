@@ -33,6 +33,7 @@
 
 #include "Camera.h"
 #include "FurbleBtDebug.h"
+#include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
@@ -633,6 +634,38 @@ void printProvisionDeferred(const char *name) {
   printf("provision: %s parsed (not applied; backend pending #53)\n", name);
 }
 
+void reloadProvisionSetting(uint8_t wireId) {
+  const auto *setting = Settings::getByWireId(wireId);
+  if (setting == nullptr) {
+    return;
+  }
+
+  switch (setting->type) {
+    case Settings::GPS:
+    case Settings::GPS_BAUD:
+    case Settings::GPS_RATE:
+    case Settings::GPS_NMEA:
+    case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
+      GPS::getInstance().reloadSetting();
+      break;
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
+      Feedback::getInstance().reload();
+      break;
+    case Settings::TX_POWER:
+      Control::getInstance().setPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+      break;
+    case Settings::COMPANION:
+      CompanionGatt::getInstance().reloadSetting();
+      break;
+    default:
+      break;
+  }
+}
+
 int cmdProvision(int argc, char **argv) {
   if ((argc != 2) || (argv[1] == nullptr) || (argv[1][0] == '\0')) {
     return fail("usage: provision <hex|base64 TLV blob>");
@@ -655,7 +688,8 @@ int cmdProvision(int argc, char **argv) {
   }
 
   Provision::ApplyReport report;
-  if (!Provision::apply(bundle, report)) {
+  const Provision::ApplyOptions options = {.onSettingApplied = reloadProvisionSetting};
+  if (!Provision::apply(bundle, report, options)) {
     printf("error: provision: %s", Provision::applyErrorString(report.error));
     if (report.failedSettingId != 0) {
       printf(" (wire id %u)", static_cast<unsigned>(report.failedSettingId));

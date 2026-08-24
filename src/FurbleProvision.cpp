@@ -157,6 +157,29 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.message = "text size setting is out of range";
         return false;
       }
+      if ((setting.type == Settings::FB_OUTPUT) && (field.value[0] > 4)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "feedback output is out of range";
+        return false;
+      }
+      if (setting.type == Settings::GPS_DUTY) {
+        const uint8_t duty = field.value[0];
+        if ((duty != 0) && (duty != 5) && (duty != 10) && (duty != 15)) {
+          report.error = ApplyError::BAD_SETTING;
+          report.failedSettingId = field.wireId;
+          report.message = "GPS duty must be 0, 5, 10 or 15";
+          return false;
+        }
+      }
+#if !defined(FURBLE_NO_DISPLAY)
+      if ((setting.type == Settings::DISPLAY_MODE) && (field.value[0] > Settings::CONSOLE)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "display mode is out of range";
+        return false;
+      }
+#endif
       break;
     case ProvisionTLV::ValueType::U32:
       if ((setting.type == Settings::GPS_BAUD)
@@ -258,7 +281,9 @@ const char *applyErrorString(ApplyError error) {
   return "unknown apply error";
 }
 
-bool apply(const ProvisionTLV::ProvisionBundle &bundle, ApplyReport &report) {
+bool apply(const ProvisionTLV::ProvisionBundle &bundle,
+           ApplyReport &report,
+           const ApplyOptions &options) {
   report = {};
   report.deferredFields = deferredFieldCount(bundle);
 
@@ -291,6 +316,9 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle, ApplyReport &report) {
     }
     saveSetting(field, setting->type);
     report.settingsApplied++;
+    if (options.onSettingApplied != nullptr) {
+      options.onSettingApplied(field.wireId);
+    }
   }
 
   report.ok = true;

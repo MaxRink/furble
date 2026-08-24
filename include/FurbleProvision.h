@@ -26,8 +26,17 @@ struct ApplyReport {
   std::string message;
 };
 
+/** Runtime callback invoked after one validated setting has been persisted. */
+using SettingAppliedCallback = void (*)(uint8_t wireId);
+
+struct ApplyOptions {
+  SettingAppliedCallback onSettingApplied = nullptr;
+};
+
 /** Validate every setting, then persist the whole settings portion. */
-bool apply(const ProvisionTLV::ProvisionBundle &bundle, ApplyReport &report);
+bool apply(const ProvisionTLV::ProvisionBundle &bundle,
+           ApplyReport &report,
+           const ApplyOptions &options = {});
 
 const char *applyErrorString(ApplyError error);
 
