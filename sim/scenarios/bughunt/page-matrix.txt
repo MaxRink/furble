@@ -1,0 +1,298 @@
+# Complete modeled-page matrix. The same scenario runs on the M5StickC
+# (80x160), M5StickS3 (135x240) and M5Stack Core (320x240) binaries. The
+# harness enables IR, feedback and SD so capability-gated pages are included.
+#
+# Compact pages assert that their content fits. Intentional-scroll pages are
+# driven to both ends and assert the LVGL scroll extent is exhausted, even on a
+# wider panel where the current content may happen to fit. Page identity is a
+# FURBLE_SIM-only seam, so a new route cannot silently report "other".
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed interval_count 2
+seed interval_delay 0
+seed interval_shutter 100
+seed interval_wait 0
+wait 300
+
+# Root and deterministic camera list routes.
+assert ui.page main
+assert ui.overflow no
+action nav connect
+wait 150
+assert ui.page connect
+assert ui.overflow no
+action nav scan
+wait 500
+assert ui.page scan
+assert ui.overflow no
+action nav delete
+wait 150
+assert ui.page delete
+assert ui.overflow no
+action page ir
+wait 100
+assert ui.page ir
+assert ui.overflow no
+action page power_off
+wait 100
+assert ui.page power_off
+assert ui.overflow no
+
+# Settings root and compact settings pages.
+action nav settings
+wait 150
+assert ui.page settings
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
+action nav display
+wait 100
+assert ui.page display
+assert ui.overflow no
+action nav features
+wait 100
+assert ui.page features
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav infrared
+wait 100
+assert ui.page infrared
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav gps
+wait 100
+assert ui.page gps
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav gps_rate
+wait 100
+assert ui.page gps_rate
+assert ui.overflow no
+action nav gps_sentences
+wait 100
+assert ui.page gps_sentences
+assert ui.overflow no
+action nav gps_constellation
+wait 100
+assert ui.page gps_constellation
+assert ui.overflow no
+action nav gps_power
+wait 100
+assert ui.page gps_power
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav gps_assist
+wait 100
+assert ui.page gps_assist
+assert ui.overflow no
+action nav gps_data
+wait 300
+assert ui.page gps_data
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav nmea
+wait 300
+assert ui.page nmea
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav timer
+wait 100
+assert ui.page timer
+assert ui.overflow no
+action nav interval_count
+wait 100
+assert ui.page interval_count
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav interval_delay
+wait 100
+assert ui.page interval_delay
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav interval_shutter
+wait 100
+assert ui.page interval_shutter
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav interval_wait
+wait 100
+assert ui.page interval_wait
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav theme
+wait 100
+assert ui.page theme
+assert ui.overflow no
+action nav text_size
+wait 100
+assert ui.page text_size
+assert ui.overflow no
+action nav bluetooth
+wait 100
+assert ui.page bluetooth
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav tx_power
+wait 100
+assert ui.page tx_power
+assert ui.overflow no
+action nav about
+wait 100
+assert ui.page about
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav power
+wait 100
+assert ui.page power
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav feedback
+wait 100
+assert ui.page feedback
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav feedback_events
+wait 100
+assert ui.page feedback_events
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav feedback_volume
+wait 100
+assert ui.page feedback_volume
+assert ui.overflow no
+action nav storage
+wait 100
+assert ui.page storage
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
+# Diagnostics and every linked diagnostics page, including the battery page
+# that is shared with the Power settings implementation.
+action nav diagnostics
+wait 100
+assert ui.page diagnostics
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav device_info
+wait 100
+assert ui.page device_info
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav power_state
+wait 100
+assert ui.page power_state
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav ble
+wait 100
+assert ui.page ble
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav battery
+wait 100
+assert ui.page battery
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
+# Connected-session pages and their run states.
+home
+action connect
+wait 1800
+assert ui.page connected
+assert ui.connected yes
+assert ui.overflow no
+action page shutter
+wait 100
+assert ui.page shutter
+assert ui.overflow no
+action page bulb
+wait 100
+assert ui.page bulb
+assert ui.overflow no
+action nav bulb_duration
+wait 100
+assert ui.page bulb_duration
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action page bulb
+wait 100
+assert ui.page bulb
+action bulb-start
+wait 100
+assert ui.page bulb_run
+assert ui.overflow no
+action bulb-stop
+wait 100
+assert ui.page bulb
+action page cameras
+wait 100
+assert ui.page cameras
+assert ui.overflow no
+action page remote_timer
+wait 100
+assert ui.page remote_timer
+action page remote_gps
+wait 100
+assert ui.page remote_gps
+action page remote_disconnect
+wait 100
+assert ui.page remote_disconnect
+action page connected
+wait 100
+assert ui.page connected
+action intervalometer
+wait 100
+assert ui.page timer_run
+assert ui.overflow no
+action stop
+wait 100
+assert ui.interval_state idle
+assert ui.page connected
+exit

@@ -180,16 +180,33 @@ jobs:
           FURBLE_SIM_M5GFX_BOARD: board_M5Stack
         run: sh sim/build.sh
 
+      # Complete modeled-page and layout matrix. Keep one scenario for all
+      # panel classes so route reachability, optional capability pages and
+      # scroll-end behavior cannot drift between board jobs. The scenario
+      # intentionally enables IR, feedback and SD to cover the gated pages.
+      - name: Assert modeled-page matrix (135x240, 80x160, 320x240)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_IR: 1
+          FURBLE_SIM_FEEDBACK: 1
+          FURBLE_SIM_SD: 1
+        run: |
+          for build in build build-stickc build-core; do
+            echo "=== $build: page-matrix ==="
+            "${{ github.workspace }}/sim/$build/furble-sim" \
+              --script "${{ github.workspace }}/sim/scenarios/bughunt/page-matrix.txt"
+          done
+
       # Connection-state coverage on every panel width: a mid-session drop must be
       # surfaced on every page reachable during a connected session
       # (connstate-page-sweep), and the status row must stay stable across the
       # disconnected / connected / reconnecting / GPS matrix (statusbar-stability).
       # Both also run on the default 135x240 binary through run-e2e.sh above; here
       # they run on the 80x160 and 320x240 binaries too, where the narrow-panel
-      # battery anchor and the wider-panel layout differ. WILL_FAIL lines (xassert)
-      # print XFAIL and keep the run green until their product fixes land: the
-      # bulb-page reconnect banner, the red status-row BT icon, and the 80x160
-      # battery anchor.
+      # battery anchor and the wider-panel layout differ. WILL_FAIL lines
+      # (`xassert`) keep the run green while tracking the bulb-page reconnect
+      # banner and the 80x160 battery anchor. The red BT icon is a hard guard.
       - name: Assert connection-state coverage (135x240, 80x160, 320x240)
         env:
           SDL_VIDEODRIVER: dummy

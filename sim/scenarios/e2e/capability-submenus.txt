@@ -2,9 +2,9 @@
 # output and an SD card. The simulator reports these present through the
 # FURBLE_SIM_IR / FURBLE_SIM_FEEDBACK / FURBLE_SIM_SD capability env vars, which
 # run-e2e.sh sets for the whole suite. With them present, each submenu entry
-# exists in the settings menu and navigating to it leaves the settings page. If
-# the capability were absent the nav would be a no-op and the page would stay on
-# settings, so these asserts also prove the gating is wired.
+# exists in the settings menu and navigating to it leaves the settings page. The
+# stable page identities also make the route independently assertable in the
+# all-board page matrix.
 wait 400
 home
 wait 200
@@ -14,7 +14,7 @@ assert ui.page settings
 
 action nav infrared
 wait 200
-assert ui.page other
+assert ui.page infrared
 
 home
 wait 150
@@ -22,7 +22,7 @@ action nav settings
 wait 150
 action nav feedback
 wait 200
-assert ui.page other
+assert ui.page feedback
 
 home
 wait 150
@@ -30,6 +30,6 @@ action nav settings
 wait 150
 action nav storage
 wait 200
-assert ui.page other
+assert ui.page storage
 
 exit

@@ -92,9 +92,9 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   `ui.bt_icon` (`hidden`/`plain`/`red` status-row reconnect icon), `ui.battery_x`
   and `ui.battery_drift` (battery icon x, and its shift from the first-read
   anchor). `action page <shutter|bulb|cameras|remote_timer|remote_gps>` reaches
-  the connected sub-pages. WILL_FAIL (xassert) lines pending product fixes: a
-  bulb-page reconnect banner (`ui.page_banner yes` on Bulb) and the red status-row
-  BT icon (`ui.bt_icon red` during a reconnect).
+  the connected sub-pages. WILL_FAIL (`xassert`) lines pending product fixes are
+  the bulb-page reconnect banner (`ui.page_banner yes` on Bulb) and the 80x160
+  battery anchor (`ui.battery_drift 0` as status icons change).
 - `sim/scripts/ui-screenshots.txt` captures every modeled page for the
   screenshot CI workflow. Menu routes are position-sensitive: adding or
   removing a settings entry changes the `key down` counts in the scripts.
@@ -142,3 +142,14 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   inactive camera so the Connect and Delete lists render and their buttons
   enable; the `nav` action reaches `scan`, `connect`, `delete`, `infrared`,
   `feedback` and `storage` in addition to the settings pages.
+- `sim/scenarios/bughunt/page-matrix.txt` is the release gate for modeled-page
+  reachability and layout. It walks the root, Connect/Scan/Delete lists, every
+  settings and diagnostics route, optional Infrared/Feedback/Storage pages,
+  connected-session pages, and the Bulb and intervalometer run pages. It
+  asserts `ui.page` identity for every route, asserts no overflow on compact
+  pages, and drives intentional-scroll pages to `scroll bottom` and back to
+  `scroll top`, asserting both extents are zero. Run it with
+  `FURBLE_SIM_IR=1 FURBLE_SIM_FEEDBACK=1 FURBLE_SIM_SD=1` against all three
+  panel builds. The CI matrix uses the same script for 80x160 M5StickC,
+  135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
+  particular geometry cannot hide behind a single reference panel.

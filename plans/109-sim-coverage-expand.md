@@ -45,6 +45,11 @@ on-device hardware detection.
   `docs/img/<board>/<theme>/<page>.png` plus the flat default and dark sets.
 - e2e coverage: `list-pages.txt` and `capability-submenus.txt`; `run-e2e.sh`
   reports the optional capabilities present for the suite.
+- Page/layout matrix: `bughunt/page-matrix.txt` now reaches every modeled page,
+  including optional capability pages and connected-session run states. It
+  asserts stable `ui.page` identities, keeps compact pages must-fit, and
+  verifies the bottom and top scroll extents for every intentional-scroll
+  route. The same scenario is run on all three panel classes in CI.
 
 ## Deviations
 
@@ -61,3 +66,5 @@ on-device hardware detection.
 - Sim builds clean for all three panel classes, rig and non-rig.
 - `sim/scripts/run-e2e.sh` passes, including the two new scenarios.
 - clang-format clean, no em-dashes, 2-space indent.
+- The page matrix passes on the 80x160 M5StickC, 135x240 M5StickS3 and 320x240
+  M5Stack Core simulator builds with all optional capabilities enabled.
