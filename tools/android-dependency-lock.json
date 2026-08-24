@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "generated_for": "furble-companion-android",
-  "agp": "9.2.0",
+  "agp": "9.2.1",
   "gradle": "9.4.1",
   "gradle_sha256": "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb",
   "kotlin": "2.4.10",

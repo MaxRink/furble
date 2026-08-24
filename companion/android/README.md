@@ -14,7 +14,7 @@ cd companion/android
 ```
 
 The app supports Android API 26 and higher and targets Android API 37. The
-Gradle wrapper is configured for Gradle 9.4.1 and Android Gradle Plugin 9.2.0.
+Gradle wrapper is configured for Gradle 9.4.1 and Android Gradle Plugin 9.2.1.
 
 ## Protocol
 
