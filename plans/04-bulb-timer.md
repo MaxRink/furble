@@ -178,6 +178,14 @@ infinite row at `src/FurbleUI.cpp:1674-1676`.
 
 ## Verification
 
+The simulator coverage follow-up seeds a four-second bulb duration, drives the
+real start handler and virtual clock, and asserts the rendered countdown,
+single shutter press, single automatic release and completed state. A separate
+intervalometer timing scenario verifies the first two press/release cycles,
+the configured inter-shot delay, rendered fired count and cancellation before
+the pending third shot. Both use the production UI timers and the FauxNY camera
+command counters rather than duplicate test-only state machines.
+
 Build matrix:
 
 ```
