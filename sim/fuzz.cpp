@@ -61,7 +61,8 @@ constexpr std::array<const char *, 12> kToggles = {
 // deliberately excluded (see the overflow-sweep scenario for the same split).
 bool mustFit(const std::string &page) {
   return page == "main" || page == "connected" || page == "shutter" || page == "bulb"
-         || page == "bulb_run" || page == "timer" || page == "timer_run" || page == "display";
+         || page == "bulb_run" || page == "timer_run" || page == "display"
+         || (page == "timer" && !Platform::getInstance().canTimedWake());
 }
 
 enum class Event {
