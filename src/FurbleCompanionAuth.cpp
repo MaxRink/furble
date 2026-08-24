@@ -9,6 +9,10 @@ CompanionAuth::CompanionAuth(hmac_fn_t hmac, nonce_fn_t nonceGenerator)
     : m_Hmac {hmac}, m_NonceGenerator {nonceGenerator} {}
 
 void CompanionAuth::setPassword(const std::string &password) {
+  // std::string assignment is not required to overwrite the old SSO/heap
+  // bytes. Clear the previous secret before replacing it.
+  std::fill(m_Password.begin(), m_Password.end(), '\0');
+  m_Password.clear();
   m_Password = password;
   m_Failures = 0;
   clearChallenge();
