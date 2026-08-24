@@ -310,6 +310,11 @@ jobs:
           flash_used = int(matches["Flash"][1])
           ram_used = int(matches["RAM"][1])
           ram_total = int(matches["RAM"][2])
+          release_environment = os.environ["FIRMWARE_ENV"].removesuffix("-debug")
+          flash_slot = {
+              "m5stack-core2": 0x600000,
+              "m5stick-s3": 0x300000,
+          }.get(release_environment, 1700 * 1024)
           record = {
               "schema": 1,
               "env": os.environ["FIRMWARE_ENV"],
@@ -445,18 +450,10 @@ jobs:
                   return "0 B"
               return f"{value:+,} B"
 
-          flash_slots = {
-              "m5stack-core2": 0x600000,
-              "m5stick-s3": 0x300000,
-          }
-
-          def slot_size(environment):
-              release_environment = environment.removesuffix("-debug")
-              return flash_slots.get(release_environment, 1700 * 1024)
-
           def flash_text(record):
               used = record["flash_used_bytes"]
-              percent = used / slot_size(record["env"]) * 100
+              slot = record.get("flash_slot_bytes", 1700 * 1024)
+              percent = used / slot * 100
               return f"{used:,} B ({percent:.1f}%)"
 
           rows = []
