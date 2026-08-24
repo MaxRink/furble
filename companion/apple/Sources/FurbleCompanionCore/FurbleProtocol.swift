@@ -265,7 +265,7 @@ public enum FurbleProtocol {
   }
 
   public static func decodeStatus(_ data: Data) throws -> Status {
-    guard data.count >= statusPacketSize - 1 else { throw Error.malformed }
+    guard data.count >= statusPacketSize else { throw Error.malformed }
     var reader = Reader(data)
     let wireVersion = try reader.u8()
     guard wireVersion >= version else { throw Error.unsupportedVersion(wireVersion) }

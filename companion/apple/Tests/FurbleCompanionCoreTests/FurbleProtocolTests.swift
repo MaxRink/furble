@@ -38,6 +38,7 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertEqual(status.uptimeSeconds, 0x01020304)
     XCTAssertTrue(status.charging)
     XCTAssertTrue(status.externalPower)
+    XCTAssertThrowsError(try FurbleProtocol.decodeStatus(Data(repeating: 0, count: 19)))
   }
 
   func testCapabilityUsesFrozenCameraBit() throws {
