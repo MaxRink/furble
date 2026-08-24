@@ -3,7 +3,7 @@ name: FurbleCompanion
 options:
   deploymentTarget:
     iOS: "16.0"
-  macOS: "13.0"
+    macOS: "13.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
@@ -26,6 +26,7 @@ targets:
     settings:
       base:
         PRODUCT_MODULE_NAME: FurbleCompanionCore
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
         SWIFT_VERSION: "5.0"
 
   FurbleCompanion-iOS:
@@ -58,6 +59,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.macos
         INFOPLIST_FILE: AppResources/macOS-Info.plist
         CODE_SIGN_ENTITLEMENTS: AppResources/macOS.entitlements
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
         SWIFT_VERSION: "5.0"
 
   FurbleCompanionCoreTests-iOS:
@@ -82,6 +84,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.furble.companion.tests.macos
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
         SWIFT_VERSION: "5.0"
 
 schemes:
