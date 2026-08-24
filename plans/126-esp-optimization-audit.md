@@ -14,7 +14,8 @@ plan 125, not as a second list of unmeasured tuning guesses.
 ## Current inventory
 
 The release inputs currently have five board environments and five debug
-variants in `platformio.ini`. The file pins `espressif32@6.12.0` and
+variants in `platformio.ini`, plus the non-release `esp32-s3-headless`
+validation environment. The file pins `espressif32@6.12.0` and
 `framework-espidf@3.50402.0`, which is the ESP-IDF 5.4.2 package family. The
 exact installed package revision must be recorded before an upgrade because a
 PlatformIO platform can change its default framework independently of the
@@ -105,8 +106,18 @@ The following are normative primary sources. URLs were checked on 2026-08-24.
   W5500 path as well as display traffic.
 * [ESP-IDF version policy](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/versions.html)
   recommends an in-service release and says each minor line is supported for
-  thirty months. At audit time the Espressif release page lists 5.5.5 and
-  6.0.2 as stable releases, with 6.1 beta explicitly pre-release.
+  thirty months. The [Espressif release index](https://github.com/espressif/esp-idf/releases)
+  was checked on 2026-08-24 and lists 5.5.5 and 6.0.2 as stable releases; its
+  indexed 6.1 entry is a beta. Re-check the release index when this plan is
+  implemented because release status is time-sensitive and the roadmap is not
+  a release manifest.
+* The [PlatformIO Espressif 32 registry](https://registry.platformio.org/platforms/platformio/espressif32)
+  was checked on 2026-08-24 and lists platform 7.0.1 as current. Its
+  [ESP-IDF framework package registry](https://registry.platformio.org/tools/platformio/framework-espidf)
+  lists package `4.60001.0` (ESP-IDF 6.0.1) as current. PlatformIO platform
+  and framework package versions are separate inputs, so an Espressif 6.0.2
+  source release must not be treated as available through a PlatformIO package
+  until the exact package or override has been resolved and built.
 
 The following are useful field reports or secondary leads. They are not proof
 that furble has the same failure:
@@ -221,8 +232,10 @@ unknown. The report itself must not contain absolute user paths.
 
 ### 126.2 ESP-IDF reproducible configuration
 
-Enable `CONFIG_APP_REPRODUCIBLE_BUILD` in every release and debug profile after
-checking its generated sdkconfig diff. Remove or normalize compile-time dates.
+Enable `CONFIG_APP_REPRODUCIBLE_BUILD` in every committed sdkconfig, including
+the headless validation config, after checking its generated sdkconfig diff.
+Build every release, debug, and headless environment. Remove or normalize
+compile-time dates.
 Build each board twice from two absolute paths and with two `SOURCE_DATE_EPOCH`
 values. Compare bootloader, partition table, OTA data inputs, ELF, BIN, map,
 and checksums. If map files contain intentionally unstable tool diagnostics,
@@ -258,9 +271,9 @@ independently.
 The slice is complete only when clean and cached builds from two checkouts
 produce identical unsigned ELF/BIN/bootloader/partition artifacts for all five
 release boards, or an explicitly reviewed toolchain exception is recorded.
-Debug artifacts must meet the same rule. All host/sim tests, all ten board
-builds, size reporting, OTA image validation, and the existing firmware checks
-must remain green.
+Debug and headless artifacts must meet the same rule. All host/sim tests, all
+five release builds, five debug builds, the headless build, size reporting, OTA
+image validation, and the existing firmware checks must remain green.
 
 ## Concrete PR sequence
 
@@ -291,18 +304,22 @@ Every PR updates its plan state and includes exact base/head SHAs.
 
 Do not combine an SDK upgrade with an optimization default. First preserve the
 current 5.4.2-family build as a named baseline and capture all artifacts and
-hardware measurements. Then test the latest 5.5 bugfix line, currently 5.5.5,
-with the same PlatformIO board definitions and the smallest required migration
-patch. The upgrade must include the migration guide, release-note issues,
-NimBLE patch applicability, M5 dependency compatibility, and regenerated
-sdkconfigs as reviewed inputs.
+hardware measurements. Evaluate the current PlatformIO 7.0.1 platform in its
+own compatibility PR before changing the framework package. Then test the
+latest 5.5 bugfix line, currently 5.5.5, with the same PlatformIO board
+definitions and the smallest required migration patch. The upgrade must
+include the migration guide, release-note issues, NimBLE patch applicability,
+M5 dependency compatibility, and regenerated sdkconfigs as reviewed inputs.
 
-Only after 5.5.5 is green should the team evaluate 6.0.2 in a compatibility
-branch. Read the [5.x to 6.0 migration guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/migration-guides/index.html)
-before changing APIs. Keep 6.1 beta out of release qualification. Upgrade
-PlatformIO itself separately from the framework. Upgrade M5PM1, M5GFX, M5Unified,
-LVGL, NimBLE C++, and TinyGPSPlus one at a time, with a lock report and map
-delta for each.
+Only after 5.5.5 is green should the team evaluate the Espressif 6.0.2 source
+release in a compatibility branch. The PlatformIO registry currently exposes
+an ESP-IDF 6.0.1 package, not 6.0.2, so the implementation PR must record the
+exact package provenance or use a separately verified framework override. Read
+the [5.x to 6.0 migration guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/migration-guides/index.html)
+before changing APIs. Keep any 6.1 beta or other pre-release out of release
+qualification; re-check this statement against the release index at merge
+time. Upgrade M5PM1, M5GFX, M5Unified, LVGL, NimBLE C++, and TinyGPSPlus one at
+a time, with a lock report and map delta for each.
 
 The rollback point for every upgrade is the previous lock report, sdkconfig
 set, patch preimage, and artifact manifest. A migration is not complete when it
