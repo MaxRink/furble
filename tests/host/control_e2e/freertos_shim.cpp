@@ -1,11 +1,14 @@
 // Real-thread FreeRTOS shim for the control end-to-end harness.
 //
-// Tasks are detached std::threads and queues are mutex + condition_variable
+// Tasks are joinable std::threads and queues are mutex + condition_variable
 // backed deques, so the real Control task, the per-target tasks and the
 // scenario thread all run concurrently, exactly like the device. Time is real
 // wall-clock time: the harness asserts real elapsed bounds, so a stall in the
-// production teardown shows up as a real delay here.
+// production teardown shows up as a real delay here. The harness stops and
+// joins the firmware-lifetime tasks before C++ static destruction.
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -28,7 +31,14 @@ struct FurbleHostQueue {
 
 namespace {
 std::chrono::steady_clock::time_point g_Start = std::chrono::steady_clock::now();
-}
+std::atomic<bool> g_StopTasks {false};
+std::mutex g_TasksMutex;
+std::vector<std::thread> g_Tasks;
+std::mutex g_QueuesMutex;
+std::vector<FurbleHostQueue *> g_Queues;
+
+struct StopTask {};
+}  // namespace
 
 BaseType_t xTaskCreate(TaskFunction_t task,
                        const char *name,
@@ -41,8 +51,17 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     return pdFALSE;
   }
 
-  std::thread worker([task, parameter]() { task(parameter); });
-  worker.detach();
+  std::lock_guard<std::mutex> lock(g_TasksMutex);
+  if (g_StopTasks.load()) {
+    return pdFALSE;
+  }
+  g_Tasks.emplace_back([task, parameter]() {
+    try {
+      task(parameter);
+    } catch (const StopTask &) {
+      // Host shutdown interrupts firmware tasks that are immortal on-device.
+    }
+  });
   if (task_handle != nullptr) {
     *task_handle = reinterpret_cast<TaskHandle_t>(static_cast<uintptr_t>(1));
   }
@@ -53,6 +72,9 @@ void vTaskDelete(TaskHandle_t) {}
 
 void vTaskDelay(TickType_t ticks) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ticks));
+  if (g_StopTasks.load()) {
+    throw StopTask {};
+  }
 }
 
 TickType_t xTaskGetTickCount(void) {
@@ -65,7 +87,12 @@ QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size) {
   if (queue_length == 0 || item_size == 0) {
     return nullptr;
   }
-  return new FurbleHostQueue(queue_length, item_size);
+  auto *queue = new FurbleHostQueue(queue_length, item_size);
+  {
+    const std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    g_Queues.push_back(queue);
+  }
+  return queue;
 }
 
 static BaseType_t queueSend(QueueHandle_t queue, const void *item, bool front) {
@@ -103,12 +130,19 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks_to_wa
   }
 
   std::unique_lock<std::mutex> lock(queue->mutex);
+  if (g_StopTasks.load()) {
+    throw StopTask {};
+  }
   if (queue->items.empty()) {
     if (ticks_to_wait == 0) {
       return pdFALSE;
     }
     queue->condition.wait_for(lock, std::chrono::milliseconds(ticks_to_wait),
-                              [queue]() { return !queue->items.empty(); });
+                              [queue]() { return g_StopTasks.load() || !queue->items.empty(); });
+  }
+
+  if (g_StopTasks.load()) {
+    throw StopTask {};
   }
 
   if (queue->items.empty()) {
@@ -121,6 +155,30 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks_to_wa
   return pdTRUE;
 }
 
+void furbleHostStopTasks(void) {
+  g_StopTasks.store(true);
+
+  // Wake every queue wait immediately. The predicate also checks the stop
+  // flag, so a task cannot miss shutdown between the notify and its wakeup.
+  {
+    const std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    for (auto *queue : g_Queues) {
+      queue->condition.notify_all();
+    }
+  }
+
+  std::vector<std::thread> tasks;
+  {
+    const std::lock_guard<std::mutex> lock(g_TasksMutex);
+    tasks.swap(g_Tasks);
+  }
+  for (auto &task : tasks) {
+    if (task.joinable()) {
+      task.join();
+    }
+  }
+}
+
 BaseType_t xQueueReset(QueueHandle_t queue) {
   if (queue == nullptr) {
     return pdFALSE;
@@ -131,5 +189,15 @@ BaseType_t xQueueReset(QueueHandle_t queue) {
 }
 
 void vQueueDelete(QueueHandle_t queue) {
+  if (queue == nullptr) {
+    return;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    const auto it = std::find(g_Queues.begin(), g_Queues.end(), queue);
+    if (it != g_Queues.end()) {
+      g_Queues.erase(it);
+    }
+  }
   delete queue;
 }

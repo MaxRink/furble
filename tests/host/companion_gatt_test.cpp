@@ -344,6 +344,7 @@ void testCompanionGattFlow(void) {
 }  // namespace
 
 int main(void) {
+  FurbleHostTaskScope taskScope;
   testCompanionGattFlow();
   if (g_Failures != 0) {
     std::cerr << "companion mock-central tests: " << g_Failures << " FAILED\n";

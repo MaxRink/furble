@@ -718,6 +718,7 @@ int usage(const char *argv0) {
 }  // namespace
 
 int main(int argc, char **argv) {
+  FurbleHostTaskScope taskScope;
   if ((argc >= 2) && (std::strcmp(argv[1], "--repro") == 0)) {
     if (argc < 3) {
       return usage(argv[0]);
