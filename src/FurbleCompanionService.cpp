@@ -122,8 +122,11 @@ void CompanionService::deinit(void) {
 }
 
 void CompanionService::onConnected(void) {
-  m_HaveLastStatus = false;
-  m_LastStatusNotificationMs = 0;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_HaveLastStatus = false;
+    m_LastStatusNotificationMs = 0;
+  }
   const std::string password = Settings::load<std::string>(Settings::COMPANION_PASSWORD);
   const std::lock_guard<std::mutex> lock(m_AuthMutex);
   m_Auth.setPassword(password);
