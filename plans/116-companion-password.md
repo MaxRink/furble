@@ -15,6 +15,8 @@ integration remain hardware and app validation work.
 - Three failed responses drop the companion connection. Disconnect and password
   reload clear the nonce and authentication state. An empty password preserves
   the pre-authentication behavior.
+- Replaced in-memory password and HMAC buffers are erased with volatile stores
+  so optimized builds cannot discard the clearing writes.
 - Settings writes and trigger commands require both the existing encrypted,
   bonded BLE link and successful companion-password authentication. Location
   updates remain available on the encrypted companion link because they are an

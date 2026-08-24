@@ -8,10 +8,16 @@ namespace Furble {
 CompanionAuth::CompanionAuth(hmac_fn_t hmac, nonce_fn_t nonceGenerator)
     : m_Hmac {hmac}, m_NonceGenerator {nonceGenerator} {}
 
+CompanionAuth::~CompanionAuth() {
+  secureZero(m_Password.data(), m_Password.size());
+  secureZero(m_Nonce.data(), m_Nonce.size());
+}
+
 void CompanionAuth::setPassword(const std::string &password) {
   // std::string assignment is not required to overwrite the old SSO/heap
-  // bytes. Clear the previous secret before replacing it.
-  std::fill(m_Password.begin(), m_Password.end(), '\0');
+  // bytes. Use volatile stores so an optimizing compiler cannot elide the
+  // clear before replacing the secret.
+  secureZero(m_Password.data(), m_Password.size());
   m_Password.clear();
   m_Password = password;
   m_Failures = 0;
@@ -81,7 +87,7 @@ CompanionAuth::response_t CompanionAuth::respond(const uint8_t *response, size_t
              m_Nonce.data(), m_Nonce.size(), digest.data(), digest.size());
   const bool matches = computed && constantTimeEqual(digest.data(), response, RESPONSE_SIZE);
   clearChallenge();
-  std::fill(digest.begin(), digest.end(), 0);
+  secureZero(digest.data(), digest.size());
 
   if (matches) {
     m_Failures = 0;
@@ -130,6 +136,13 @@ bool CompanionAuth::constantTimeEqual(const uint8_t *left, const uint8_t *right,
     difference |= left[index] ^ right[index];
   }
   return difference == 0;
+}
+
+void CompanionAuth::secureZero(void *data, size_t len) {
+  volatile uint8_t *bytes = static_cast<volatile uint8_t *>(data);
+  while (len-- > 0) {
+    *bytes++ = 0;
+  }
 }
 
 void CompanionAuth::clearChallenge(void) {
