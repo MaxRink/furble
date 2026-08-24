@@ -37,7 +37,7 @@ jobs:
       # No restore-keys on purpose: the fetch step below skips a dependency
       # when its directory exists, so a stale prefix match could pin an old
       # version. An exact key miss just re-clones, which takes seconds.
-      - uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # v5.0.0
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: sim/.pio
           key: ${{ runner.os }}-sim-e2e-${{ hashFiles('sim/platformio.ini', '.github/workflows/sim-e2e.yml') }}
