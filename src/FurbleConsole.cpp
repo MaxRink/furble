@@ -38,7 +38,6 @@
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
-#include "FurbleOTA.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleProvision.h"
@@ -1893,57 +1892,6 @@ int cmdReboot(int argc, char **argv) {
   return 0;
 }
 
-void printOtaStatus() {
-  const OTA::Snapshot &snapshot = OTA::getEngine().snapshot();
-  printf("ota.state: %s\n", OTA::stateName(snapshot.state));
-  printf("ota.progress: %u\n", static_cast<unsigned>(snapshot.progress));
-  printf("ota.bytes: %lu\n", static_cast<unsigned long>(snapshot.bytesDownloaded));
-  printf("ota.total: %lu\n", static_cast<unsigned long>(snapshot.totalBytes));
-  printf("ota.error: %s\n", OTA::errorName(snapshot.error));
-}
-
-int cmdOta(int argc, char **argv) {
-  if (argc < 2) {
-    return fail("usage: ota status | update <url> | abort");
-  }
-
-  OTA::Engine &engine = OTA::getEngine();
-  if (!strcmp(argv[1], "status")) {
-    printOtaStatus();
-    return 0;
-  }
-
-  if (!strcmp(argv[1], "abort")) {
-    engine.abort();
-    printOtaStatus();
-    return 0;
-  }
-
-  if (!strcmp(argv[1], "update")) {
-    if (argc != 3) {
-      return fail("usage: ota update <url>");
-    }
-    if (!engine.begin(argv[2])) {
-      return fail(OTA::errorName(engine.lastError()));
-    }
-
-    while (engine.busy()) {
-      if (!engine.step()) {
-        break;
-      }
-      printOtaStatus();
-      vTaskDelay(pdMS_TO_TICKS(1));
-    }
-    printOtaStatus();
-    if (engine.snapshot().state == OTA::State::Error) {
-      return fail(OTA::errorName(engine.snapshot().error));
-    }
-    return 0;
-  }
-
-  return fail("expected status, update or abort");
-}
-
 /** Build a command table entry, argtable is unused, every command parses argv. */
 constexpr esp_console_cmd_t command(const char *name,
                                     const char *help,
@@ -1982,7 +1930,6 @@ const esp_console_cmd_t COMMANDS[] = {
     command("feedback",
             "feedback test <shutter|countdown|connect|disconnect|battery>",
             cmdFeedback),
-    command("ota", "ota status | update <url> | abort", cmdOta),
     command("log", "log <tag> <level>, '*' sets all tags", cmdLog),
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",

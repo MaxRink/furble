@@ -112,9 +112,6 @@ class Engine {
 const char *stateName(State state);
 const char *errorName(Error error);
 
-/** The firmware's default esp_https_ota-backed engine. */
-Engine &getEngine();
-
 }  // namespace OTA
 }  // namespace Furble
 

@@ -36,9 +36,9 @@ endif()
 # them out and the release binaries are unchanged.
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES app_update console esp-tls esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_http_client esp_https_ota esp_pm fatfs sdmmc)
+                         PRIV_REQUIRES console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc)
 else()
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES app_update console esp-tls esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_http_client esp_https_ota esp_pm fatfs sdmmc
+                         PRIV_REQUIRES console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc
                          REQUIRES icons)
 endif()

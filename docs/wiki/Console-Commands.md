@@ -33,7 +33,6 @@ typing. Every command prints one fact per line as `key: value`.
 | `scan` | `start`, `stop`, or `list`. |
 | `bt` | Bluetooth diagnostics, see below. |
 | `feedback` | `feedback test <shutter\|countdown\|connect\|disconnect\|battery>`. |
-| `ota` | `status`, `update <url>`, or `abort` for the explicit OTA lifecycle. |
 | `log` | `log <tag> <level>`, `*` sets all tags. |
 | `debug` | Dump internal state, see below. |
 | `reboot` | Restart the device. |
@@ -81,17 +80,6 @@ the shutter-lock state.
 
 `debug <target>` dumps internal state for one subsystem: `control`,
 `camera [idx]`, `ble`, `heap`, `tasks`, `power`, `gps`, `settings`, or `all`.
-
-## ota
-
-- `ota status` prints the lifecycle state, progress, byte counts, and error.
-- `ota update <url>` runs one explicit update through checking, downloading,
-  verification, and applying. It is available only in debug builds.
-- `ota abort` cancels a running transfer and leaves its byte checkpoint
-  available to a transport that supports resume.
-
-MQTT triggering, manifest-only checks, rollback, and boot confirmation are
-separate follow-up work.
 
 ## Related pages
 

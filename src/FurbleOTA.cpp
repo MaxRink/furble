@@ -2,12 +2,6 @@
 
 #include <cstring>
 
-#if defined(ESP_PLATFORM)
-#include <esp_crt_bundle.h>
-#include <esp_http_client.h>
-#include <esp_https_ota.h>
-#endif
-
 namespace Furble {
 namespace OTA {
 
@@ -24,141 +18,6 @@ uint8_t percentage(size_t bytesDownloaded, size_t totalBytes) {
   const size_t remainder = bytesDownloaded % totalBytes;
   const size_t value = (whole * 100) + ((remainder * 100) / totalBytes);
   return static_cast<uint8_t>(value > 100 ? 100 : value);
-}
-
-#if defined(ESP_PLATFORM)
-
-/**
- * ESP-IDF delivery adapter. The lifecycle above never includes ESP-IDF types,
- * so the same state machine can be linked into a host test with no SDK.
- */
-class EspHttpsOtaTransport final: public Transport {
- public:
-  bool check(const char *url, size_t resumeOffset, size_t &totalBytes) override {
-    abort();
-
-    // esp_https_ota exposes HTTP range requests for one active transfer via
-    // partial_http_download, but it does not expose a persisted image offset
-    // after an aborted handle. The host seam still supports checkpoints, while
-    // the firmware adapter reports a non-zero checkpoint as unsupported rather
-    // than writing a restarted image at the wrong offset.
-    if (resumeOffset != 0) {
-      return false;
-    }
-
-    m_HttpConfig = {};
-    m_HttpConfig.url = url;
-    m_HttpConfig.crt_bundle_attach = esp_crt_bundle_attach;
-
-    m_OtaConfig = {};
-    m_OtaConfig.http_config = &m_HttpConfig;
-    m_OtaConfig.partial_http_download = true;
-    m_OtaConfig.max_http_request_size = 4096;
-
-    if (esp_https_ota_begin(&m_OtaConfig, &m_Handle) != ESP_OK) {
-      m_Handle = nullptr;
-      return false;
-    }
-
-    const int imageSize = esp_https_ota_get_image_size(m_Handle);
-    m_TotalBytes = imageSize > 0 ? static_cast<size_t>(imageSize) : 0;
-    totalBytes = m_TotalBytes;
-    return true;
-  }
-
-  DownloadProgress download() override {
-    DownloadProgress progress;
-    progress.totalBytes = m_TotalBytes;
-
-    if (m_Handle == nullptr) {
-      progress.result = DownloadResult::Failed;
-      return progress;
-    }
-
-    const esp_err_t result = esp_https_ota_perform(m_Handle);
-    const int imageLength = esp_https_ota_get_image_len_read(m_Handle);
-    progress.bytesDownloaded = imageLength > 0 ? static_cast<size_t>(imageLength) : 0;
-
-    if (result == ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
-      progress.result = DownloadResult::InProgress;
-      return progress;
-    }
-
-    if ((result != ESP_OK) || !esp_https_ota_is_complete_data_received(m_Handle)) {
-      progress.result = DownloadResult::Failed;
-      return progress;
-    }
-
-    progress.result = DownloadResult::Complete;
-    return progress;
-  }
-
-  bool verify() override {
-    if (m_Handle == nullptr) {
-      return false;
-    }
-
-    // esp_https_ota_finish validates the image and commits the boot partition.
-    // The engine keeps an explicit Applying state so a different transport can
-    // separate those operations, while this adapter treats finish as the
-    // device's verify-and-apply preparation step.
-    const bool ok = esp_https_ota_finish(m_Handle) == ESP_OK;
-    m_Handle = nullptr;
-    m_Verified = ok;
-    return ok;
-  }
-
-  bool apply() override {
-    // esp_https_ota_finish has already selected the next boot partition. The
-    // caller decides when to restart, so applying never unexpectedly resets a
-    // debug console or an MQTT task.
-    return m_Verified;
-  }
-
-  void abort() override {
-    if (m_Handle != nullptr) {
-      esp_https_ota_abort(m_Handle);
-      m_Handle = nullptr;
-    }
-    m_TotalBytes = 0;
-    m_Verified = false;
-  }
-
- private:
-  esp_https_ota_handle_t m_Handle = nullptr;
-  esp_http_client_config_t m_HttpConfig = {};
-  esp_https_ota_config_t m_OtaConfig = {};
-  size_t m_TotalBytes = 0;
-  bool m_Verified = false;
-};
-
-#else
-
-/** Host fallback used only by getEngine() when no transport is injected. */
-class UnavailableTransport final: public Transport {
- public:
-  bool check(const char *, size_t, size_t &) override { return false; }
-
-  DownloadProgress download() override {
-    DownloadProgress progress;
-    progress.result = DownloadResult::Failed;
-    return progress;
-  }
-
-  bool verify() override { return false; }
-  bool apply() override { return false; }
-  void abort() override {}
-};
-
-#endif
-
-Transport &defaultTransport() {
-#if defined(ESP_PLATFORM)
-  static EspHttpsOtaTransport transport;
-#else
-  static UnavailableTransport transport;
-#endif
-  return transport;
 }
 
 }  // namespace
@@ -271,6 +130,7 @@ bool Engine::step() {
       }
       m_Snapshot.progress = 100;
       m_Snapshot.state = State::Done;
+      m_LastError = Error::None;
       return true;
 
     case State::Idle:
@@ -367,11 +227,6 @@ const char *errorName(Error error) {
       return "aborted";
   }
   return "unknown";
-}
-
-Engine &getEngine() {
-  static Engine engine(defaultTransport());
-  return engine;
 }
 
 }  // namespace OTA

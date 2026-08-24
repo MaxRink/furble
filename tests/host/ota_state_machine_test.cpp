@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "FurbleOTA.h"
@@ -28,6 +29,7 @@ bool check(bool condition, const char *message) {
 struct Poll {
   OTA::DownloadResult result;
   size_t bytesDownloaded;
+  size_t totalBytes = 0;
 };
 
 class MockTransport final: public OTA::Transport {
@@ -57,7 +59,6 @@ class MockTransport final: public OTA::Transport {
   OTA::DownloadProgress download() override {
     downloadCalls++;
     OTA::DownloadProgress progress;
-    progress.totalBytes = totalBytes;
     if (planIndex >= plan.size()) {
       progress.result = OTA::DownloadResult::Failed;
       return progress;
@@ -66,6 +67,7 @@ class MockTransport final: public OTA::Transport {
     const Poll poll = plan[planIndex++];
     progress.result = poll.result;
     progress.bytesDownloaded = poll.bytesDownloaded;
+    progress.totalBytes = poll.totalBytes == 0 ? totalBytes : poll.totalBytes;
     return progress;
   }
 
@@ -127,6 +129,7 @@ bool testCleanSuccessAndBusyRejection() {
   check(engine.snapshot().error == OTA::Error::None, "clean update has no error");
   check(engine.snapshot().progress == 100, "clean update reports 100 percent");
   check(engine.snapshot().bytesDownloaded == 100, "clean update reports all bytes");
+  check(engine.lastError() == OTA::Error::None, "successful completion clears transient errors");
   check(transport.checkCalls == 1, "transport check runs once");
   check(transport.downloadCalls == 3, "transport is polled once per planned chunk");
   check(transport.verifyCalls == 1, "transport verify runs once");
@@ -274,6 +277,127 @@ bool testAbortPreservesCheckpoint() {
   return g_Failures == before;
 }
 
+bool testInvalidRequestsNeverReachTransport() {
+  std::cout << "test: invalid requests fail before touching the transport\n";
+  const int before = g_Failures;
+
+  MockTransport transport;
+  OTA::Engine engine(transport);
+  check(!engine.begin(nullptr), "null URL is rejected");
+  check(engine.snapshot().error == OTA::Error::InvalidRequest, "null URL reports invalid request");
+  check(!engine.begin(""), "empty URL is rejected");
+  const std::string tooLong(OTA::Engine::MAX_URL_LENGTH, 'x');
+  check(!engine.begin(tooLong.c_str()), "URL at the storage bound is rejected");
+  check(transport.checkCalls == 0, "invalid requests never check the transport");
+  check(transport.abortCalls == 0, "invalid requests never abort an unopened transport");
+
+  return g_Failures == before;
+}
+
+bool testCheckAndResumeFailuresAbort() {
+  std::cout << "test: check and resume validation failures abort safely\n";
+  const int before = g_Failures;
+
+  MockTransport checkFailure;
+  checkFailure.checkSucceeds = false;
+  OTA::Engine first(checkFailure);
+  check(first.begin("source"), "check failure case begins");
+  check(!first.step(), "failed check returns false");
+  check(first.snapshot().error == OTA::Error::CheckFailed, "failed check reports check_failed");
+  check(checkFailure.abortCalls == 1, "failed check aborts the transport");
+
+  MockTransport invalidResume;
+  invalidResume.totalBytes = 40;
+  OTA::Engine second(invalidResume);
+  check(second.begin("source", 41), "resume validation is deferred until size is known");
+  check(!second.step(), "resume beyond the image is rejected");
+  check(second.snapshot().error == OTA::Error::InvalidResume,
+        "oversized checkpoint reports invalid_resume");
+  check(invalidResume.abortCalls == 1, "invalid resume aborts the transport");
+
+  return g_Failures == before;
+}
+
+bool testDownloadInvariants() {
+  std::cout << "test: inconsistent transport progress is rejected\n";
+  const int before = g_Failures;
+
+  const auto expectDownloadFailure = [](std::vector<Poll> plan, const char *message) {
+    MockTransport transport;
+    transport.plan = std::move(plan);
+    OTA::Engine engine(transport);
+    check(engine.begin("source"), "invariant case begins");
+    check(engine.step(), "invariant case completes checking");
+    while (engine.busy()) {
+      if (!engine.step()) {
+        break;
+      }
+    }
+    check(engine.snapshot().error == OTA::Error::DownloadFailed, message);
+    check(transport.abortCalls == 1, "invariant failure aborts the transport");
+  };
+
+  expectDownloadFailure(
+      {
+          {OTA::DownloadResult::InProgress, 50},
+          {OTA::DownloadResult::InProgress, 49}
+  },
+      "regressing byte count fails");
+  expectDownloadFailure(
+      {
+          {OTA::DownloadResult::InProgress, 50, 101}
+  },
+      "changing total size fails");
+  expectDownloadFailure(
+      {
+          {OTA::DownloadResult::InProgress, 101}
+  },
+      "byte count beyond total fails");
+  expectDownloadFailure(
+      {
+          {OTA::DownloadResult::Complete, 99}
+  },
+      "early completion fails");
+
+  return g_Failures == before;
+}
+
+bool testUnknownSizeAndApplyFailure() {
+  std::cout << "test: unknown sizes and apply failures remain deterministic\n";
+  const int before = g_Failures;
+
+  MockTransport unknownSize;
+  unknownSize.totalBytes = 0;
+  unknownSize.plan = {
+      {OTA::DownloadResult::InProgress, 25,  100},
+      {OTA::DownloadResult::Complete,   100, 100},
+  };
+  OTA::Engine first(unknownSize);
+  check(first.begin("source"), "unknown-size case begins");
+  check(runToTerminal(first), "unknown-size case terminates");
+  check(first.snapshot().state == OTA::State::Done, "transport may reveal size during download");
+  check(first.snapshot().totalBytes == 100, "revealed size is retained");
+
+  MockTransport applyFailure;
+  applyFailure.applySucceeds = false;
+  applyFailure.plan = {
+      {OTA::DownloadResult::Complete, 100}
+  };
+  OTA::Engine second(applyFailure);
+  check(second.begin("source"), "apply failure case begins");
+  check(runToTerminal(second), "apply failure reaches a terminal state");
+  check(second.snapshot().error == OTA::Error::ApplyFailed, "apply failure is reported");
+  check(applyFailure.abortCalls == 1, "apply failure aborts the transport");
+
+  MockTransport idleAbort;
+  OTA::Engine third(idleAbort);
+  third.abort();
+  check(third.snapshot().state == OTA::State::Idle, "idle abort is a no-op");
+  check(idleAbort.abortCalls == 0, "idle abort does not touch the transport");
+
+  return g_Failures == before;
+}
+
 }  // namespace
 
 int main() {
@@ -283,6 +407,10 @@ int main() {
   testProgressIsMonotonic();
   testResumeFromCheckpoint();
   testAbortPreservesCheckpoint();
+  testInvalidRequestsNeverReachTransport();
+  testCheckAndResumeFailuresAbort();
+  testDownloadInvariants();
+  testUnknownSizeAndApplyFailure();
 
   if (g_Failures != 0) {
     std::cout << "ota state machine harness: FAIL (" << g_Failures << " checks)\n";
