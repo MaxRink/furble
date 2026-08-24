@@ -105,6 +105,8 @@ a regression.
   `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
   sync. Both carry a note.
+- Platform timed power-off returns a boolean: the simulator and firmware must
+  report setup failure without consuming a persisted intervalometer resume.
 - Console-only firmware modules that have no simulator behavior still get a
   no-capability shadow in `sim/shim`, such as `FurbleBtDebug.h`.
 

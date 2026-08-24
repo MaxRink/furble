@@ -122,51 +122,6 @@ bool Platform::powerOff(void) {
   return true;
 }
 
-#if defined(FURBLE_M5STICKS3)
-bool Platform::unlockDownloadRecovery(void) {
-  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
-    return false;
-  }
-
-  bool locked = true;
-  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
-    return false;
-  }
-  return !locked;
-}
-
-bool Platform::prepareFlash(void) {
-  if (!watchdogEnable(false)) {
-    (void)watchdogEnable(true);
-    return false;
-  }
-  uint8_t watchdogCount = 1;
-  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
-      || watchdogCount != 0) {
-    (void)watchdogEnable(true);
-    return false;
-  }
-
-  if (!unlockDownloadRecovery()) {
-    (void)watchdogEnable(true);
-    return false;
-  }
-  return true;
-}
-
-bool Platform::downloadRecoveryUnlocked(void) {
-  bool locked = true;
-  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
-    return false;
-  }
-  return !locked;
-}
-
-bool Platform::cancelFlashPreparation(void) {
-  return watchdogEnable(true);
-}
-#endif
-
 bool Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
   m_WatchdogEnabled = false;
@@ -175,17 +130,13 @@ bool Platform::watchdogEnable(bool enable) {
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     return false;
   }
-  uint8_t count = enable ? 0 : 1;
-  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
-      || (enable ? count == 0 : count != 0)) {
-    return false;
-  }
   m_WatchdogEnabled = enable;
   return true;
 #else
   (void)enable;
   return true;
 #endif
+  return true;
 }
 
 void Platform::watchdogFeed(void) {
@@ -210,9 +161,9 @@ bool Platform::canTimedWake(void) {
   return false;
 }
 
-void Platform::powerOffUntil(uint32_t seconds) {
+bool Platform::powerOffUntil(uint32_t seconds) {
   (void)seconds;
-  powerOff();
+  return powerOff();
 }
 
 bool Platform::consumeTimedWake(void) {

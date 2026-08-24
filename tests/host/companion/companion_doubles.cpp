@@ -43,6 +43,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::COMPANION,     {Settings::COMPANION, 12, "Companion", "companion", "furble"}        },
     {Settings::CONN_SAVER,
      {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                   },
+    {Settings::IVL_SLEEP,     {Settings::IVL_SLEEP, 42, "Deep Sleep", "ivl_sleep", "furble"}       },
+    {Settings::IVL_SLEEP_THR,
+     {Settings::IVL_SLEEP_THR, 43, "Sleep Threshold", "ivl_sleep_thr", "furble"}                   },
 };
 
 struct BatteryState {

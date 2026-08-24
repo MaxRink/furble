@@ -216,6 +216,8 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_ASSIST,        "GPS_ASSIST",        uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
       {Settings::INTERVAL,          "INTERVAL",          defaultInterval(),                                    representativeInterval(),
        StorageKind::BLOB                                                                                                                                       },
+      {Settings::IVL_SLEEP,         "IVL_SLEEP",         false,                                                true,                        StorageKind::BOOL  },
+      {Settings::IVL_SLEEP_THR,     "IVL_SLEEP_THR",     uint32_t {60},                                        uint32_t {120},              StorageKind::U32   },
       {Settings::MULTICONNECT,      "MULTICONNECT",      false,                                                true,                        StorageKind::BOOL  },
       {Settings::MULTISELECT,       "MULTISELECT",       defaultMultiselect(),                                 representativeMultiselect(),
        StorageKind::BLOB                                                                                                                                       },
@@ -282,6 +284,8 @@ ASSERT_STORAGE_TYPE(GPS_POWER, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_DUTY, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_ASSIST, uint8_t);
 ASSERT_STORAGE_TYPE(INTERVAL, Furble::interval_t);
+ASSERT_STORAGE_TYPE(IVL_SLEEP, bool);
+ASSERT_STORAGE_TYPE(IVL_SLEEP_THR, uint32_t);
 ASSERT_STORAGE_TYPE(MULTICONNECT, bool);
 ASSERT_STORAGE_TYPE(MULTISELECT, Settings::multiselect_t);
 ASSERT_STORAGE_TYPE(RECONNECT, bool);
@@ -350,6 +354,7 @@ SettingValue loadValue(Settings::type_t type) {
 
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return Settings::load<uint32_t>(type);
 
     case Settings::GPX_PERIOD:
@@ -375,6 +380,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::IVL_SLEEP:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:

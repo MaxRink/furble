@@ -4433,9 +4433,10 @@ void UI::intervalometer(lv_timer_t *timer) {
               }
               ESP_LOGI(LOG_TAG, "Intervalometer sleeping for %lu seconds",
                        static_cast<unsigned long>(sleep_seconds));
-              Platform::getInstance().powerOffUntil(sleep_seconds);
-              interval->clearResume();
-              ESP_LOGW(LOG_TAG, "Timed power off failed, continuing awake");
+              if (!Platform::getInstance().powerOffUntil(sleep_seconds)) {
+                interval->clearResume();
+                ESP_LOGW(LOG_TAG, "Timed power off failed, continuing awake");
+              }
             }
           } else {
             ESP_LOGW(LOG_TAG, "Intervalometer camera is not in the saved camera list");

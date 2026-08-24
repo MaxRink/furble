@@ -66,6 +66,8 @@ class Settings {
     GPX_PERIOD,
     BOOT_SPLASH,
     BATTERY_SAVER,
+    IVL_SLEEP,
+    IVL_SLEEP_THR,
   } type_t;
 
   typedef struct {
@@ -137,8 +139,13 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 };
 
 template <>
-struct Furble::Settings::storage_type<Furble::Settings::IMU> {
+struct Furble::Settings::storage_type<Furble::Settings::IVL_SLEEP> {
   using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::IVL_SLEEP_THR> {
+  using type = uint32_t;
 };
 
 #endif
