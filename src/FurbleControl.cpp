@@ -184,7 +184,6 @@ Control &Control::getInstance(void) {
 }
 
 Control::state_t Control::connectAll(void) {
-  static uint32_t failcount = 0;
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
@@ -225,7 +224,11 @@ Control::state_t Control::connectAll(void) {
 
     m_ConnectCamera = camera;
     if (!camera->connect(m_Power, timeout)) {
-      failcount++;
+      if (!m_InfiniteReconnect) {
+        // Keep the bounded resume retry count with this connection session.
+        // A static counter would leak a prior failed resume into the next one.
+        m_ReconnectAttempt++;
+      }
       break;
     } else {
       m_ConnectCamera = nullptr;
@@ -242,14 +245,13 @@ Control::state_t Control::connectAll(void) {
     }
 
     if (allConnected()) {
-      failcount = 0;
       m_ReconnectAttempt = 0;
       m_ReconnectHintLogged = false;
       return STATE_ACTIVE;
     }
   }
 
-  if (m_InfiniteReconnect || (failcount < 2)) {
+  if (m_InfiniteReconnect || (m_ReconnectAttempt < 2)) {
     uint32_t delay;
     if (m_InfiniteReconnect) {
       delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
@@ -270,7 +272,7 @@ Control::state_t Control::connectAll(void) {
       // the camera gives the radio time to settle rather than hammering it, and
       // so a single miss does not fail the resume outright.
       delay = CONNECT_RETRY_GAP_MS;
-      ESP_LOGI(LOG_TAG, "Connect retry %lu of 2, waiting %lu ms.", failcount, delay);
+      ESP_LOGI(LOG_TAG, "Connect retry %lu of 2, waiting %lu ms.", m_ReconnectAttempt, delay);
     }
 
     // Sleep in short slices so disconnect can interrupt the retry wait.
