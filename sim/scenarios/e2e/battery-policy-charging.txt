@@ -1,0 +1,12 @@
+# Charging suppresses the low-battery policy even when the level is below both
+# thresholds and the policy is configured to power off.
+seed low_batt 2
+seed battery_level 4
+seed battery_voltage 3400
+seed battery_current 120
+seed battery_charging true
+wait 40000
+assert ui.low_battery none
+assert platform.battery.charging yes
+assert platform.power_off no
+exit

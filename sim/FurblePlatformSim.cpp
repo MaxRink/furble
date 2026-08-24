@@ -105,7 +105,7 @@ void Platform::restart(void) {
 }
 
 bool Platform::powerOff(void) {
-  std::_Exit(0);
+  Sim::notePowerOff();
   return true;
 }
 
@@ -174,11 +174,13 @@ const Platform::battery_caps_t &Platform::getBatteryCaps(void) {
 }
 
 Platform::battery_t Platform::readBattery(void) {
-  return {80, 4000, 0, false};
+  const auto reading = Sim::batteryReading();
+  return {reading.level, reading.voltage, reading.current, reading.charging};
 }
 
 Platform::battery_sample_t Platform::sampleBattery(void) {
-  // The sim battery reading is fixed, so the smoothed means just mirror it.
+  // Keep the same sample boundary as firmware while allowing a scenario to
+  // replace the deterministic reading between 5-second timer ticks.
   const battery_t battery = readBattery();
   m_BatterySample.battery = battery;
   m_BatterySample.meanLevel = battery.level;

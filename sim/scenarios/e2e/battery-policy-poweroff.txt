@@ -1,0 +1,13 @@
+# Critical battery policy: qualify six samples, show the 30-second countdown,
+# then reach the production shutdown seam without terminating the simulator.
+seed low_batt 2
+seed battery_level 4
+seed battery_voltage 3400
+seed battery_current 0
+seed battery_charging false
+wait 35000
+assert ui.low_battery power_off_pending
+assert platform.power_off no
+wait 31000
+assert platform.power_off yes
+exit

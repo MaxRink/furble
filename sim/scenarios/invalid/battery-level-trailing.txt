@@ -1,0 +1,3 @@
+# Numeric scenario settings reject trailing non-numeric text.
+seed battery_level 9junk
+exit

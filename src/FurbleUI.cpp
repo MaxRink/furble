@@ -2968,6 +2968,20 @@ std::string UI::simQueryState(const char *key) {
     return (onConnectedPage && boxHidden && active) ? "yes" : "no";
   }
 
+  // Low-battery policy state is simulator-only. It is derived from the real
+  // message-box text so the scenario proves the policy reached the rendered
+  // warning surface, not merely an internal counter.
+  if (query == "low_battery") {
+    if (m_LowBatteryMessageBox == nullptr || m_LowBatteryMessage == nullptr) {
+      return "none";
+    }
+    const char *text = lv_label_get_text(m_LowBatteryMessage);
+    if (text != nullptr && std::string(text) == m_LowBattCriticalText) {
+      return "power_off_pending";
+    }
+    return "warn";
+  }
+
   if (query == "page") {
     lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
     if (page == m_MainMenu.page) {

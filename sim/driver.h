@@ -9,6 +9,13 @@ class UI;
 
 namespace Furble::Sim {
 
+struct battery_reading_t {
+  uint8_t level;
+  uint16_t voltage;
+  int32_t current;
+  bool charging;
+};
+
 void configure(int argc, char **argv);
 void startProfiler(void);
 void preparePreferences(void);
@@ -41,6 +48,12 @@ bool rigHasPendingPairing(void);
 uint32_t rigPendingPairingPin(void);
 void rigConfirmPairing(bool accept);
 void rigReloadSetting(bool pairingWindow);
+
+/** Read the deterministic battery sample used by the simulator. */
+battery_reading_t batteryReading(void);
+
+/** Record a simulated power-off request without terminating the test process. */
+void notePowerOff(void);
 
 // Force a pending companion pairing without a rig TCP peer. The UI pairing
 // timer then raises the real modal, so the input-after-approve regression

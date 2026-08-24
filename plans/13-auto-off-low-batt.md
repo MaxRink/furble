@@ -312,3 +312,22 @@ Not reachable over console, on the user checklist:
 Combined image caveat: this build tripped a one shot boot task watchdog and a
 disconnect during connect hang. See the cross cutting note in plans/25. Neither
 is attributed to this PR's policy code.
+
+## Simulator policy coverage, 2026-08-24
+
+The host simulator now drives the production battery policy with a deterministic
+platform sample. Scenario seeds set `battery_level`, `battery_voltage`,
+`battery_current`, and `battery_charging`; `action battery LEVEL VOLTAGE_MV
+CURRENT_MA CHARGING` replaces the sample at runtime. The existing `auto_off` and
+`low_batt` settings are also applied by the scenario driver.
+
+`Platform::powerOff()` records a request instead of terminating the host process,
+so `platform.power_off` can assert that the production shutdown path was reached.
+`ui.low_battery` reads the actual rendered warning text and reports `none`,
+`warn`, or `power_off_pending`.
+
+Focused scenarios cover six-sample warning hysteresis, charging suppression,
+recovery after a low sample, critical countdown and power-off, disconnected
+auto-off, and the active-connection and disabled-policy auto-off guards. This
+reduces the hardware gate to battery/PMIC electrical behavior and confirms the
+policy state machine before bench work.

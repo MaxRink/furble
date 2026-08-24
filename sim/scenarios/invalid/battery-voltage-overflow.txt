@@ -1,0 +1,3 @@
+# Battery voltage validation happens before an oversized value can narrow.
+seed battery_voltage 4295032831
+exit

@@ -1,0 +1,16 @@
+# Six low battery samples are required before the warning is shown. The
+# simulator clock advances quickly, but every sample still arrives through the
+# production 5-second battery timer.
+seed low_batt 1
+seed battery_level 9
+seed battery_voltage 3500
+seed battery_current 0
+seed battery_charging false
+wait 15000
+assert ui.low_battery none
+wait 10000
+assert ui.low_battery warn
+assert platform.battery.level 9
+assert platform.battery.voltage 3500
+assert platform.power_off no
+exit
