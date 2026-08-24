@@ -179,9 +179,10 @@ void testTextDecoding() {
         "base64 text has the expected bytes");
   check(Furble::ProvisionTLV::decodeText("AQID", bytes, nullptr, &error),
         "unpadded base64 text decodes");
-  check(!Furble::ProvisionTLV::decodeText("abc", bytes, nullptr, &error),
-        "odd-length auto-hex text is rejected");
-  check(error.code == ErrorCode::INVALID_TEXT, "invalid text reports the right error");
+  check(Furble::ProvisionTLV::decodeText("abc", bytes, &encoding, &error),
+        "odd-length non-byte text falls back to base64");
+  check(encoding == Furble::ProvisionTLV::TextEncoding::BASE64 && bytes == Bytes({0x69, 0xb7}),
+        "base64 fallback has the expected bytes");
   check(!Furble::ProvisionTLV::decodeText("base64:A", bytes, nullptr, &error),
         "truncated base64 quantum is rejected");
 }

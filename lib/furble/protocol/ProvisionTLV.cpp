@@ -608,11 +608,7 @@ bool decodeText(const char *text, std::vector<uint8_t> &out, TextEncoding *encod
         break;
       }
     }
-    if (allHex) {
-      if ((input.size() % 2) != 0) {
-        setError(error, ErrorCode::INVALID_TEXT, input.size());
-        return false;
-      }
+    if (allHex && ((input.size() % 2) == 0)) {
       selected = TextEncoding::HEX;
     }
   }

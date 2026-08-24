@@ -383,11 +383,8 @@ if(BUILD_TESTING)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-<<<<<<< ours
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
-=======
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
->>>>>>> theirs
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
