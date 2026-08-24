@@ -11,7 +11,13 @@
 #include <string>
 #include <vector>
 
+#if defined(FURBLE_HOST_COMPANION_TEST)
+// The host transport test replaces the NVS-backed Settings implementation with
+// a typed in-memory double. Firmware builds keep the normal Settings header.
+#include "CompanionHostSettings.h"
+#else
 #include "FurbleSettings.h"
+#endif
 
 namespace Furble {
 
