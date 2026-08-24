@@ -68,6 +68,7 @@ void testValidatedApplyAndRuntimeHooks() {
       {1,  ValueType::U8,     {77}                                              },
       {26, ValueType::U8,     {5}                                               },
       {33, ValueType::U8,     {4}                                               },
+      {42, ValueType::U8,     {4}                                               },
       {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
   };
   ApplyReport report;
@@ -77,7 +78,7 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 27}),
+  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 42, 27}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -85,6 +86,8 @@ void testValidatedApplyAndRuntimeHooks() {
         "validated GPS duty setting is persisted");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::FB_OUTPUT) == 4,
         "validated feedback output setting is persisted");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PLATFORM) == 4,
+        "validated GPS platform setting is persisted");
   check(Furble::Settings::load<std::string>(Furble::Settings::BUTTON_MODE)
             == Furble::Settings::BUTTON_MODE_ONE_BUTTON_VALUE,
         "validated button mode setting is persisted");
@@ -96,6 +99,7 @@ void testDomainValidation() {
   for (const SettingValue &invalid : {
            SettingValue {26, ValueType::U8,     {6}                 },
            SettingValue {33, ValueType::U8,     {5}                 },
+           SettingValue {42, ValueType::U8,     {5}                 },
            SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}},
   }) {
     ProvisionBundle bundle;

@@ -214,6 +214,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_POWER,         "GPS_POWER",         uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
       {Settings::GPS_DUTY,          "GPS_DUTY",          uint8_t {0},                                          uint8_t {15},                StorageKind::U8    },
       {Settings::GPS_ASSIST,        "GPS_ASSIST",        uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
+      {Settings::GPS_PLATFORM,      "GPS_PLATFORM",      uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
       {Settings::INTERVAL,          "INTERVAL",          defaultInterval(),                                    representativeInterval(),
        StorageKind::BLOB                                                                                                                                       },
       {Settings::MULTICONNECT,      "MULTICONNECT",      false,                                                true,                        StorageKind::BOOL  },
@@ -281,6 +282,7 @@ ASSERT_STORAGE_TYPE(GPS_CONSTEL, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_POWER, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_DUTY, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_ASSIST, uint8_t);
+ASSERT_STORAGE_TYPE(GPS_PLATFORM, uint8_t);
 ASSERT_STORAGE_TYPE(INTERVAL, Furble::interval_t);
 ASSERT_STORAGE_TYPE(MULTICONNECT, bool);
 ASSERT_STORAGE_TYPE(MULTISELECT, Settings::multiselect_t);
@@ -334,6 +336,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:

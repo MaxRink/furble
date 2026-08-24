@@ -451,6 +451,10 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       }
       uint32_t v;
       std::memcpy(&v, value, sizeof(v));
+      if ((type == Settings::GPS_BAUD) && (v != Settings::BAUD_AUTO) && (v != Settings::BAUD_9600)
+          && (v != Settings::BAUD_115200)) {
+        return false;
+      }
       Settings::save<uint32_t>(type, v);
       return true;
     }

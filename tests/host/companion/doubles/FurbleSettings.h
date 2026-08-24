@@ -35,6 +35,7 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_PLATFORM,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -137,8 +138,8 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 };
 
 template <>
-struct Furble::Settings::storage_type<Furble::Settings::IMU> {
-  using type = bool;
+struct Furble::Settings::storage_type<Furble::Settings::GPS_PLATFORM> {
+  using type = uint8_t;
 };
 
 #endif
