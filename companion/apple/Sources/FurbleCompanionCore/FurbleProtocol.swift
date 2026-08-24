@@ -168,6 +168,12 @@ public enum FurbleProtocol {
     case timedShutter = 4
   }
 
+  public enum AuthOperation: UInt8, Sendable {
+    case begin = 0
+    case proof = 1
+    case result = 2
+  }
+
   public struct CameraRecord: Equatable, Sendable {
     public let status: UInt8
     public let cameraID: UInt8
@@ -292,6 +298,26 @@ public enum FurbleProtocol {
     writer.u8(operation.rawValue)
     writer.u16(holdMilliseconds)
     return writer.data
+  }
+
+  public static func authBegin() -> Data { Data([version, AuthOperation.begin.rawValue]) }
+
+  public static func decodeAuthChallenge(_ data: Data) throws -> Data {
+    guard data.count == authNonceSize + 2, data[0] == version,
+      data[1] == AuthOperation.begin.rawValue else { throw Error.malformed }
+    return data.subdata(in: 2..<data.count)
+  }
+
+  public static func encodeAuthProof(_ proof: Data) throws -> Data {
+    guard proof.count == authProofSize else { throw Error.malformed }
+    return Data([version, AuthOperation.proof.rawValue]) + proof
+  }
+
+  public static func decodeAuthResult(_ data: Data) throws -> Bool {
+    guard data.count == 3, data[0] == version, data[1] == AuthOperation.result.rawValue else {
+      throw Error.malformed
+    }
+    return data[2] == 0
   }
 
   public static func settingsListRequest() -> Data { settingsRequest(op: 0, id: 0, value: Data()) }

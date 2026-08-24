@@ -91,12 +91,11 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     }
     // The firmware owns nonce generation. Never authenticate a locally
     // generated nonce or accept a proof without the firmware response.
-    let begin = Data([FurbleProtocol.version, 0])
-    write(begin, to: authCharacteristic, type: .withResponse)
+    write(FurbleProtocol.authBegin(), to: authCharacteristic, type: .withResponse)
   }
 
   private func handleAuth(_ data: Data) {
-    if data.count == 3, data[0] == FurbleProtocol.version, data[1] == 2, data[2] == 0 {
+    if (try? FurbleProtocol.decodeAuthResult(data)) == true {
       let commands = state.didAuthenticationAccepted()
       phase = state.phase
       subscribe(commands)
@@ -108,13 +107,20 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       fail(.authenticationUnavailable)
       return
     }
-    let nonce = data.subdata(in: 2..<data.count)
+    guard let nonce = try? FurbleProtocol.decodeAuthChallenge(data) else {
+      fail(.malformedPacket)
+      return
+    }
     guard let command = state.beginAuthentication(password: password, nonce: nonce),
       case .writeAuthentication(let proof) = command else {
       fail(.authenticationUnavailable)
       return
     }
-    write(Data([FurbleProtocol.version, 1]) + proof, to: authCharacteristic, type: .withResponse)
+    guard let packet = try? FurbleProtocol.encodeAuthProof(proof) else {
+      fail(.authenticationUnavailable)
+      return
+    }
+    write(packet, to: authCharacteristic, type: .withResponse)
   }
 
   private func subscribe(_ commands: [CompanionCommand]) {

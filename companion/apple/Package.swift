@@ -21,5 +21,6 @@ let package = Package(
       name: "FurbleCompanionCoreTests",
       dependencies: ["FurbleCompanionCore"]
     )
-  ]
+  ],
+  swiftLanguageModes: [.v5]
 )
