@@ -83,12 +83,14 @@ public struct CompanionStateMachine: Sendable {
     settings: Bool,
     trigger: Bool,
     auth: Bool,
-    cameras: Bool
+    cameras: Bool,
+    capability: Bool = true
   ) -> CompanionCommand? {
     guard serviceFound else { return fail(.serviceMissing) }
     guard status else { return fail(.requiredCharacteristicMissing("status")) }
     guard settings else { return fail(.requiredCharacteristicMissing("settings")) }
     guard trigger else { return fail(.requiredCharacteristicMissing("trigger")) }
+    guard capability else { return fail(.requiredCharacteristicMissing("capability")) }
     // A secure client must never silently downgrade to firmware that lacks
     // the application auth characteristic. BLE link encryption remains a
     // separate requirement enforced by CoreBluetooth and firmware.

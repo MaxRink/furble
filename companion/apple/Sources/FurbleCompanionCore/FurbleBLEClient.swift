@@ -240,7 +240,8 @@ extension FurbleBLEClient: CBPeripheralDelegate {
       settings: characteristic(FurbleProtocol.UUIDs.settings) != nil,
       trigger: characteristic(FurbleProtocol.UUIDs.trigger) != nil,
       auth: characteristic(FurbleProtocol.UUIDs.auth) != nil,
-      cameras: characteristic(FurbleProtocol.UUIDs.cameras) != nil
+      cameras: characteristic(FurbleProtocol.UUIDs.cameras) != nil,
+      capability: characteristic(FurbleProtocol.UUIDs.capability) != nil
     )
     guard let command else { fail(state.lastError ?? .malformedPacket); return }
     phase = state.phase
