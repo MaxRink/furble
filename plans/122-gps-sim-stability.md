@@ -26,6 +26,11 @@ gate therefore continues to assert rendered state without pixel readback.
    a single update cannot combine fields from different parser states.
 4. Add an e2e scenario that repeatedly visits the GPS Data and Raw NMEA pages
    while the fake UART and GPS task run concurrently.
+5. Start the SDL render loop only after `Platform::init()` has registered the
+   single simulated panel. Pinned M5GFX mutates its global monitor list on the
+   simulator thread while the default `Panel_sdl::main()` traverses it on the
+   main thread, so this one-time barrier removes a separate startup race without
+   patching the third-party dependency.
 
 No GPS protocol, timing, or default setting changes are intended. The parser
 mutex is held only while accessing TinyGPSPlus and never across UART, LVGL,

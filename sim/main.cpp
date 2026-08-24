@@ -1,8 +1,10 @@
 #include <M5GFX.h>
 
+#include <atomic>
 #include <cctype>
 #include <cstdlib>
 #include <string>
+#include <thread>
 
 #include <freertos/FreeRTOS.h>
 
@@ -21,10 +23,17 @@ const char *LOG_TAG = FURBLE_STR;
 
 namespace {
 
+std::atomic<bool> panelReady {false};
+
 int runSimulator(bool *) {
   using namespace Furble;
 
   Platform::init();
+  // Panel_sdl::main starts its render loop concurrently with this callback.
+  // M5GFX registers the panel from Platform::init without protecting its
+  // global monitor list, so let our main thread observe that registration
+  // before it asks Panel_sdl to traverse the list.
+  panelReady.store(true, std::memory_order_release);
   Sim::startProfiler();
   Sim::preparePreferences();
   Settings::init();
@@ -117,5 +126,19 @@ int runSimulator(bool *) {
 
 int main(int argc, char **argv) {
   Furble::Sim::configure(argc, argv);
-  return lgfx::Panel_sdl::main(runSimulator, 128);
+  if (lgfx::Panel_sdl::setup() != 0) {
+    return 1;
+  }
+
+  bool running = true;
+  std::thread simulator([&running]() { runSimulator(&running); });
+  while (!panelReady.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  while (lgfx::Panel_sdl::loop() == 0) {
+  }
+
+  running = false;
+  simulator.join();
+  return lgfx::Panel_sdl::close();
 }
