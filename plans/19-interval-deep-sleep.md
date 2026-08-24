@@ -328,6 +328,11 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   genuine deep-sleep wake that fails the first reconnect must show two spaced
   retries in the serial log and then either recover or land on the resume error.
   Deep sleep only exercises on hardware, so this cannot be confirmed on host.
+- Timer layout coverage is capability-aware in both deterministic scenarios and
+  the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
+  Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
+  rows and must still fit, while compact interactive pages always require no
+  overflow.
 - The base tree has no GPS motion-policy hook, so no separate GPS policy change was
   made.
 - The sandboxed worktree could not run PlatformIO. The

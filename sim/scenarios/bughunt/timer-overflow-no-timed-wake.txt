@@ -1,0 +1,13 @@
+# Boards without timed wake hide Deep Sleep and Sleep Threshold. Even at Large
+# text size the remaining four interval fields must fit the 80x160 StickC panel.
+seed text_size 2
+wait 300
+assert platform.timed_wake no
+action page settings
+action nav timer
+wait 100
+assert ui.page timer
+assert ui.overflow no
+assert ui.focus ok
+assert ui.focus_on_page yes
+exit
