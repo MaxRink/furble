@@ -119,6 +119,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [122-gps-sim-stability.md](122-gps-sim-stability.md) | Serialize TinyGPSPlus ownership across the GPS task, LVGL timers, and console snapshots; exercise concurrent GPS pages in the host simulator |
+| [123-host-task-lifecycle.md](123-host-task-lifecycle.md) | Join real-Control harness tasks before host static destruction |
 
 ## Tooling and web installer
 

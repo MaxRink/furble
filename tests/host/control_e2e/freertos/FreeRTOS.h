@@ -39,6 +39,18 @@ void vTaskDelete(TaskHandle_t task_handle);
 void vTaskDelay(TickType_t ticks);
 TickType_t xTaskGetTickCount(void);
 
+// Stop and join every std::thread-backed task before host static destruction.
+void furbleHostStopTasks(void);
+
+class FurbleHostTaskScope {
+ public:
+  FurbleHostTaskScope() = default;
+  ~FurbleHostTaskScope() { furbleHostStopTasks(); }
+
+  FurbleHostTaskScope(const FurbleHostTaskScope &) = delete;
+  FurbleHostTaskScope &operator=(const FurbleHostTaskScope &) = delete;
+};
+
 QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size);
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticks_to_wait);
 BaseType_t xQueueSendToFront(QueueHandle_t queue, const void *item, TickType_t ticks_to_wait);

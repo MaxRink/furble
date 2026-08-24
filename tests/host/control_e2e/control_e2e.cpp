@@ -652,24 +652,26 @@ int runOne(const std::string &name) {
 }  // namespace
 
 int main(int argc, char **argv) {
-  if (argc >= 2) {
-    return runOne(argv[1]);
-  }
-
-  // No argument: run every scenario in one process.
-  startControlTask();
+  FurbleHostTaskScope taskScope;
   int rc = 0;
-  for (const auto &entry : scenarios()) {
-    std::cout << "control-e2e scenario: " << entry.first << '\n';
-    g_Failures = 0;
-    const bool ok = entry.second();
-    resetControl();
-    if (!ok || g_Failures != 0) {
-      std::cout << "control-e2e " << entry.first << ": FAIL (" << g_Failures << " checks)\n";
-      rc = 1;
-    } else {
-      std::cout << "control-e2e " << entry.first << ": PASS\n";
+  if (argc >= 2) {
+    rc = runOne(argv[1]);
+  } else {
+    // No argument: run every scenario in one process.
+    startControlTask();
+    for (const auto &entry : scenarios()) {
+      std::cout << "control-e2e scenario: " << entry.first << '\n';
+      g_Failures = 0;
+      const bool ok = entry.second();
+      resetControl();
+      if (!ok || g_Failures != 0) {
+        std::cout << "control-e2e " << entry.first << ": FAIL (" << g_Failures << " checks)\n";
+        rc = 1;
+      } else {
+        std::cout << "control-e2e " << entry.first << ": PASS\n";
+      }
     }
   }
+
   return rc;
 }
