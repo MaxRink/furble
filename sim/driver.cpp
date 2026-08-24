@@ -1117,6 +1117,8 @@ void applyScenarioSettings(void) {
   const auto uartMode = scenarioSettings.find("gps_uart_mode");
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
+  }
+
   const auto threshold = scenarioSettings.find("ivl_sleep_thr");
   if (threshold != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::IVL_SLEEP_THR, parseUnsigned(threshold->second));
@@ -1153,6 +1155,7 @@ void applyScenarioSettings(void) {
   if (bulb_duration != scenarioSettings.end()) {
     Settings::save<Settings::BULB>(SpinValue::nvs_t {
         static_cast<uint16_t>(parseUnsigned(bulb_duration->second)), SpinValue::UNIT_SEC});
+  }
 
   // These fixtures deliberately use the production NVS key and packed record
   // layout. They let the real Intervalometer::loadResume validation run on a
