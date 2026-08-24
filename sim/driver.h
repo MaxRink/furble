@@ -33,6 +33,7 @@ void setBackTarget(Furble::UI *ui);
 void driverTick(void);
 /** Notify the fuzzer after the UI task completes its real LVGL cycle. */
 void fuzzCycleComplete(Furble::UI *ui);
+bool scenarioSettingIs(const char *name, const char *value);
 
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);

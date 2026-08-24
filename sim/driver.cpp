@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -26,6 +27,7 @@
 #include <driver/uart.h>
 
 #include <FauxNY.h>
+#include <Preferences.h>
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -35,7 +37,6 @@
 
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
-#include "Preferences.h"
 #include "Scan.h"
 #include "ble_sim.h"
 #include "capture.h"
@@ -151,6 +152,36 @@ bool livenessArmed = false;
 bool livenessLatched = false;
 uint32_t livenessDeadline = 0;
 uint32_t livenessViolations = 0;
+
+struct SimResumeState {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t length;
+  uint32_t count;
+  uint32_t target;
+  uint8_t camera_id;
+  uint8_t reserved[3];
+  int64_t wake_time;
+  interval_t interval;
+} __attribute__((packed));
+
+constexpr uint32_t kResumeMagic = 0x49564c31;
+constexpr uint16_t kResumeVersion = 2;
+
+struct SimResumeState {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t length;
+  uint32_t count;
+  uint32_t target;
+  uint16_t camera_index;
+  uint16_t reserved;
+  int64_t wake_time;
+  interval_t interval;
+} __attribute__((packed));
+
+constexpr uint32_t kResumeMagic = 0x49564c31;
+constexpr uint16_t kResumeVersion = 1;
 
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
@@ -950,11 +981,12 @@ const char *controlStateName(Control::state_t state) {
 // Report a boolean setting as "1" or "0" so scenarios can assert persistence.
 std::string settingBoolValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> booleans = {
-      {"fauxny",            Settings::FAUXNY           },
-      {"autoconnect",       Settings::AUTOCONNECT      },
-      {"reconnect",         Settings::RECONNECT        },
-      {"multiconnect",      Settings::MULTICONNECT     },
-      {"companion",         Settings::COMPANION        },
+      {"fauxny",        Settings::FAUXNY       },
+      {"autoconnect",   Settings::AUTOCONNECT  },
+      {"reconnect",     Settings::RECONNECT    },
+      {"multiconnect",  Settings::MULTICONNECT },
+      {"companion",     Settings::COMPANION    },
+      {"ivl_sleep",     Settings::IVL_SLEEP     },
 #if defined(FURBLE_M5STICKS3)
       {"watchdog",          Settings::WATCHDOG         },
 #endif
@@ -1453,6 +1485,13 @@ std::string queryValue(const std::string &key) {
     return Platform::getInstance().canTimedWake() ? "yes" : "no";
   }
 
+  if (key == "platform.wake_marker") {
+    Preferences prefs;
+    prefs.begin(FURBLE_STR, true);
+    const bool marker = prefs.get<bool>("sim_timed_wake", false);
+    prefs.end();
+    return marker ? "yes" : "no";
+  }
   std::cerr << "Unknown assert key: " << key << '\n';
   requestExit(2);
   return "";
@@ -1462,6 +1501,14 @@ std::string queryValue(const std::string &key) {
 
 uint32_t livenessViolationCount(void) {
   return livenessViolations;
+}
+
+bool scenarioSettingIs(const char *name, const char *value) {
+  if (name == nullptr || value == nullptr) {
+    return false;
+  }
+  const auto found = scenarioSettings.find(name);
+  return found != scenarioSettings.end() && found->second == value;
 }
 
 void preparePreferences(void) {
@@ -1492,7 +1539,10 @@ void preparePreferences(void) {
     std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
     std::exit(1);
   }
-  std::remove(path.c_str());
+  const char *preserve = std::getenv("FURBLE_SIM_PRESERVE_PREFS");
+  if (preserve == nullptr || preserve[0] == '\0' || preserve[0] == '0') {
+    std::remove(path.c_str());
+  }
 }
 
 void removePreferences(void) {
@@ -1540,6 +1590,7 @@ void applyScenarioSettings(void) {
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("recon_backoff", Settings::RECON_BACKOFF);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
+  saveBoolean("ivl_sleep", Settings::IVL_SLEEP);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
 #if defined(FURBLE_M5STICKS3)
   saveBoolean("watchdog", Settings::WATCHDOG);
@@ -1583,6 +1634,10 @@ void applyScenarioSettings(void) {
   const auto uartMode = scenarioSettings.find("gps_uart_mode");
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
+  }
+  const auto threshold = scenarioSettings.find("ivl_sleep_thr");
+  if (threshold != scenarioSettings.end()) {
+    Settings::save<uint32_t>(Settings::IVL_SLEEP_THR, parseUnsigned(threshold->second));
   }
   furble_sim_uart_set_stationary(scenarioSettingIsTrue("gps_stationary"));
 
@@ -1661,6 +1716,49 @@ void applyScenarioSettings(void) {
   if (bulb_duration != scenarioSettings.end()) {
     Settings::save<Settings::BULB>(SpinValue::nvs_t {
         static_cast<uint16_t>(parseUnsigned(bulb_duration->second)), SpinValue::UNIT_SEC});
+  }
+
+  // These fixtures deliberately use the production NVS key and packed record
+  // layout. They let the real Intervalometer::loadResume validation run on a
+  // fresh UI construction, including invalid metadata and stale wake times.
+  const auto fixture = scenarioSettings.find("resume_fixture");
+  if (fixture != scenarioSettings.end()) {
+    SimResumeState state = {};
+    state.magic = kResumeMagic;
+    state.version = kResumeVersion;
+    state.length = sizeof(state);
+    state.count = 1;
+    state.target = 2;
+    state.camera_id = 1;
+    state.interval = interval;
+    state.wake_time = std::time(nullptr);
+    if (fixture->second == "stale") {
+      state.wake_time -= 7200;
+    } else if (fixture->second == "invalid") {
+      state.magic ^= 1;
+    } else if (fixture->second == "completed") {
+      state.count = state.target;
+    } else if (fixture->second == "outofrange") {
+      state.count = state.target + 1;
+    } else if (fixture->second == "early") {
+      state.wake_time += 5;
+    } else if (fixture->second == "late") {
+      state.wake_time -= 5;
+    } else if (fixture->second == "wrong_camera") {
+      state.camera_id = 254;
+    }
+
+    Preferences prefs;
+    prefs.begin(FURBLE_STR, false);
+    prefs.put("ivl_resume", &state, sizeof(state));
+    prefs.end();
+  }
+
+  if (scenarioSettingIsTrue("timed_wake")) {
+    Preferences prefs;
+    prefs.begin(FURBLE_STR, false);
+    prefs.put<bool>("sim_timed_wake", true);
+    prefs.end();
   }
 }
 
