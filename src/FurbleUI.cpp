@@ -3161,9 +3161,10 @@ std::string UI::simQueryState(const char *key) {
   // actual label text, so a precision or missing line regression fails here.
   // Speed is returned without its "km/h" unit and coordinates without the
   // degree sign, keeping each result a single whitespace free token.
-  if (query == "gps_speed" || query == "gps_lat" || query == "gps_lon") {
+  if (query == "gps_speed" || query == "gps_lat" || query == "gps_lon"
+      || query == "gps_satellites") {
     lv_obj_t *page = m_Menu.at(m_GPSDataStr).page;
-    std::string speed, lat, lon;
+    std::string speed, lat, lon, satellites;
     int coordinates = 0;
     for (uint32_t i = 0; page != nullptr && i < lv_obj_get_child_count(page); i++) {
       lv_obj_t *child = lv_obj_get_child(page, i);
@@ -3174,6 +3175,8 @@ std::string UI::simQueryState(const char *key) {
       const size_t degree = text.find("°");
       if (text.find("km/h") != std::string::npos) {
         speed = text.substr(0, text.find(' '));
+      } else if (text.find(" satellites") != std::string::npos) {
+        satellites = text.substr(0, text.find(' '));
       } else if (degree != std::string::npos) {
         (coordinates++ == 0 ? lat : lon) = text.substr(0, degree);
       }
@@ -3181,7 +3184,17 @@ std::string UI::simQueryState(const char *key) {
     if (query == "gps_speed") {
       return speed;
     }
+    if (query == "gps_satellites") {
+      return satellites;
+    }
     return query == "gps_lat" ? lat : lon;
+  }
+
+  // Report the receiver's current fix status for the GPS Data page. The page
+  // renders the individual fix fields, while this sim-only query exposes the
+  // same source decision used by GPS::update() without changing the page.
+  if (query == "gps_fix") {
+    return GPS::getInstance().getSource() == GPS::SOURCE_NONE ? "no" : "yes";
   }
 
   // Count how many widgets in the focused item's subtree currently render a
