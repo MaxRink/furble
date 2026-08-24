@@ -1,0 +1,10 @@
+# Inputs that affect firmware bytes. Update this file with platformio.ini.
+platformio=6.1.19
+platform=espressif32@6.12.0
+framework=3.50402.0
+M5PM1=1.0.6
+M5GFX=0.2.19
+M5Unified=0.2.13
+TinyGPSPlus=92ac8c2
+NimBLE=2.5.0
+LVGL=9.4.0
