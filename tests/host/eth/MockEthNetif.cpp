@@ -42,4 +42,10 @@ void MockEthNetif::emitGotIp(const std::string &ip) {
   }
 }
 
+void MockEthNetif::emitQueuedEvent(Event event, const std::string &ip) {
+  if (m_Callback) {
+    m_Callback(event, ip);
+  }
+}
+
 }  // namespace FurbleHost

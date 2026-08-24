@@ -18,6 +18,10 @@ class MockEthNetif final: public Furble::Ethernet::Transport {
   void emitLinkDown(void);
   void emitGotIp(const std::string &ip);
 
+  // Simulate an event already queued by the real event loop before stop().
+  // Ordinary emit* methods remain transport-faithful and require started().
+  void emitQueuedEvent(Event event, const std::string &ip = {});
+
   void setInitResult(bool result) { m_InitResult = result; }
   void setStartResult(bool result) { m_StartResult = result; }
 

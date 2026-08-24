@@ -84,8 +84,11 @@ int main(void) {
   Furble::Ethernet::stop();
   check(!Furble::Ethernet::isConnected(), "stop clears the connected state");
   check(Furble::Ethernet::getIP().empty(), "stop clears the active IP");
-  mock.emitLinkDown();
-  mock.emitGotIp("203.0.113.1");
+  // These model callbacks that were already queued by the event loop before
+  // stop() unregistered the real transport handlers. They must still be
+  // rejected by production's g_Initialized guard.
+  mock.emitQueuedEvent(Furble::Ethernet::Transport::Event::LINK_DOWN);
+  mock.emitQueuedEvent(Furble::Ethernet::Transport::Event::GOT_IP, "203.0.113.1");
   check(callbackCount == 2, "events after stop are ignored");
 
   check(Furble::Ethernet::init(mock), "the transport can be initialized again after stop");
