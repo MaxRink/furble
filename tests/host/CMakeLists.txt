@@ -335,6 +335,8 @@ add_executable(companion_gatt_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionCrypto.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
