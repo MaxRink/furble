@@ -57,7 +57,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     guard let characteristic = characteristic(FurbleProtocol.UUIDs.settings) else {
       throw FurbleProtocol.Error.malformed
     }
-    write(data, to: characteristic, type: .withResponse)
+    guard write(data, to: characteristic, type: .withResponse) else {
+      throw FurbleProtocol.Error.payloadTooLarge
+    }
   }
 
   public func writeSettings(_ data: Data) throws {
@@ -65,7 +67,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     guard let characteristic = characteristics[CBUUID(string: FurbleProtocol.UUIDs.settings)] else {
       throw FurbleProtocol.Error.malformed
     }
-    write(data, to: characteristic, type: .withResponse)
+    guard write(data, to: characteristic, type: .withResponse) else {
+      throw FurbleProtocol.Error.payloadTooLarge
+    }
   }
 
   public func trigger(_ operation: FurbleProtocol.TriggerOperation, holdMilliseconds: UInt16 = 0) throws {
@@ -74,7 +78,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     guard let characteristic = characteristics[CBUUID(string: FurbleProtocol.UUIDs.trigger)] else {
       throw FurbleProtocol.Error.malformed
     }
-    write(data, to: characteristic, type: .withResponse)
+    guard write(data, to: characteristic, type: .withResponse) else {
+      throw FurbleProtocol.Error.payloadTooLarge
+    }
   }
 
   public func requestCameras() throws {
@@ -83,7 +89,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     guard let characteristic = characteristic(FurbleProtocol.UUIDs.cameras) else {
       throw FurbleProtocol.Error.malformed
     }
-    write(data, to: characteristic, type: .withResponse)
+    guard write(data, to: characteristic, type: .withResponse) else {
+      throw FurbleProtocol.Error.payloadTooLarge
+    }
   }
 
   public func setCamera(_ id: UInt8, selected: Bool) throws {
@@ -93,7 +101,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     guard let characteristic = characteristic(FurbleProtocol.UUIDs.cameras) else {
       throw FurbleProtocol.Error.malformed
     }
-    write(data, to: characteristic, type: .withResponse)
+    guard write(data, to: characteristic, type: .withResponse) else {
+      throw FurbleProtocol.Error.payloadTooLarge
+    }
   }
 
   private func beginScan() {
@@ -102,9 +112,17 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     central.scanForPeripherals(withServices: [CBUUID(string: FurbleProtocol.UUIDs.service)])
   }
 
-  private func write(_ data: Data, to characteristic: CBCharacteristic, type: CBCharacteristicWriteType) {
-    guard data.count <= FurbleProtocol.maxPayloadSize else { return }
-    peripheral?.writeValue(data, for: characteristic, type: type)
+  @discardableResult
+  private func write(_ data: Data, to characteristic: CBCharacteristic,
+                     type: CBCharacteristicWriteType) -> Bool {
+    guard data.count <= FurbleProtocol.maxPayloadSize,
+      let peripheral,
+      data.count <= peripheral.maximumWriteValueLength(for: type) else {
+      error = .payloadTooLarge
+      return false
+    }
+    peripheral.writeValue(data, for: characteristic, type: type)
+    return true
   }
 
   private func fail(_ value: CompanionFailure) {
