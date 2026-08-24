@@ -7,8 +7,7 @@
 #if defined(ESP_PLATFORM) && defined(FURBLE_ETHERNET)
 #include <driver/spi_master.h>
 #include <esp_eth.h>
-#include <esp_eth_mac_w5500.h>
-#include <esp_eth_phy_w5500.h>
+#include <esp_eth_mac_spi.h>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_mac.h>
@@ -249,13 +248,11 @@ class EspEthTransport final: public Ethernet::Transport {
 
   void stop(void) override {
     if (m_IpHandlerRegistered) {
-      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler,
-                                   this);
+      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler);
       m_IpHandlerRegistered = false;
     }
     if (m_EthHandlerRegistered) {
-      esp_event_handler_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler,
-                                   this);
+      esp_event_handler_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler);
       m_EthHandlerRegistered = false;
     }
     if (m_EthHandle != nullptr) {
@@ -272,11 +269,11 @@ class EspEthTransport final: public Ethernet::Transport {
       m_Netif = nullptr;
     }
     if (m_Phy != nullptr) {
-      esp_eth_phy_del(m_Phy);
+      m_Phy->del(m_Phy);
       m_Phy = nullptr;
     }
     if (m_Mac != nullptr) {
-      esp_eth_mac_del(m_Mac);
+      m_Mac->del(m_Mac);
       m_Mac = nullptr;
     }
     if (m_SpiBusInitialized) {
