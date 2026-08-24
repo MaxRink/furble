@@ -228,11 +228,13 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
   return static_cast<int>(length);
 }
 
-const std::vector<std::string> &furble_sim_uart_writes(void) {
+std::vector<std::string> furble_sim_uart_writes_snapshot(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
   return uartWrites;
 }
 
 void furble_sim_uart_clear_writes(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
   uartWrites.clear();
 }
 

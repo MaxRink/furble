@@ -551,7 +551,7 @@ std::string queryValue(const std::string &key) {
   }
   if (prefixed("uart.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("uart."));
-    const auto &writes = furble_sim_uart_writes();
+    const auto writes = furble_sim_uart_writes_snapshot();
     if (sub == "count") {
       return std::to_string(writes.size());
     }
@@ -819,7 +819,7 @@ void driverTick(void) {
 
     case StepType::UART_DUMP:
       // Print every captured GPS UART command, assertable by the caller.
-      for (const auto &payload : furble_sim_uart_writes()) {
+      for (const auto &payload : furble_sim_uart_writes_snapshot()) {
         std::string line = payload;
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
           line.pop_back();
