@@ -493,6 +493,9 @@ std::string queryValue(const std::string &key) {
   }
   if (prefixed("camera.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("camera."));
+    if (sub == "count") {
+      return std::to_string(CameraList::size());
+    }
     if (sub == "shutter_presses") {
       return std::to_string(cameraShutterPresses());
     }
