@@ -64,6 +64,7 @@ def check_inputs(root: Path) -> None:
 
   requirements = (root / "requirements.txt").read_text(encoding="utf-8")
   platformio = (root / "platformio.ini").read_text(encoding="utf-8")
+  component_manifest = (root / "src" / "idf_component.yml").read_text(encoding="utf-8")
   expected = {
       "platformio": (requirements, f"platformio=={lock.get('platformio', '')}"),
       "platform": (platformio, f"platform = {lock.get('platform', '')}"),
@@ -72,6 +73,14 @@ def check_inputs(root: Path) -> None:
       "M5GFX": (platformio, f"M5GFX@{lock.get('M5GFX', '')}"),
       "M5Unified": (platformio, f"M5Unified@{lock.get('M5Unified', '')}"),
       "TinyGPSPlus": (platformio, f"TinyGPSPlus#{lock.get('TinyGPSPlus', '')}"),
+      "NimBLE": (
+          component_manifest,
+          'h2zero/esp-nimble-cpp:\n    version: "{}"'.format(lock.get("NimBLE", "")),
+      ),
+      "LVGL": (
+          component_manifest,
+          'lvgl/lvgl:\n    version: "{}"'.format(lock.get("LVGL", "")),
+      ),
   }
   missing = [
       key
@@ -244,6 +253,7 @@ def main() -> int:
       "m5stack-core",
       "m5stack-core2",
       "m5stick-s3",
+      "esp32-s3-headless",
   ]
   epoch, version = commit_metadata(source)
   print(f"SOURCE_DATE_EPOCH={epoch}")

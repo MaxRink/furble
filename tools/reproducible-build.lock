@@ -6,3 +6,5 @@ M5PM1=1.0.6
 M5GFX=0.2.19
 M5Unified=0.2.13
 TinyGPSPlus=92ac8c2
+NimBLE=2.5.0
+LVGL=9.4.0

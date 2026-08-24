@@ -8,7 +8,7 @@ the firmware bytes.
 
 ## Implementation state
 
-- All five release sdkconfigs enable `CONFIG_APP_REPRODUCIBLE_BUILD`.
+- All six release sdkconfigs enable `CONFIG_APP_REPRODUCIBLE_BUILD`.
 - The PlatformIO pre-build script derives `SOURCE_DATE_EPOCH` from the commit
   timestamp and supplies deterministic UTC text to the About page.
 - PlatformIO and firmware dependencies are recorded in

@@ -5,15 +5,15 @@ on:
     branches: [master]
     paths:
       - "platformio.ini"
-      - "patches/reproducible.py"
+      - "CMakeLists.txt"
+      - "patches/**"
       - "sdkconfig.*"
+      - "src/idf_component.yml"
       - "src/**"
       - "include/**"
       - "lib/**"
       - "components/**"
       - "partitions_*.csv"
-      - "patches/apply.py"
-      - "patches/ble_gap.patch"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
       - "requirements.txt"
@@ -22,15 +22,15 @@ on:
     branches: [master]
     paths:
       - "platformio.ini"
-      - "patches/reproducible.py"
+      - "CMakeLists.txt"
+      - "patches/**"
       - "sdkconfig.*"
+      - "src/idf_component.yml"
       - "src/**"
       - "include/**"
       - "lib/**"
       - "components/**"
       - "partitions_*.csv"
-      - "patches/apply.py"
-      - "patches/ble_gap.patch"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
       - "requirements.txt"
@@ -52,6 +52,7 @@ jobs:
           - m5stack-core
           - m5stack-core2
           - m5stick-s3
+          - esp32-s3-headless
 
     steps:
       - uses: actions/checkout@v7
@@ -70,7 +71,7 @@ jobs:
             ~/.platformio/packages
             ~/.platformio/platforms
             ~/.platformio/.cache
-          key: ${{ runner.os }}-repro-platformio-${{ hashFiles('platformio.ini', 'requirements.txt', 'patches/ble_gap.patch', 'tools/reproducible-build.lock') }}
+          key: ${{ runner.os }}-repro-platformio-${{ hashFiles('platformio.ini', 'requirements.txt', 'src/idf_component.yml', 'patches/**', 'tools/reproducible-build.lock') }}
           restore-keys: |
             ${{ runner.os }}-repro-platformio-
             ${{ runner.os }}-platformio-

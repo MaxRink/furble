@@ -1,6 +1,6 @@
 # Reproducible firmware builds
 
-The five release firmware environments enable ESP-IDF's
+The six release firmware environments enable ESP-IDF's
 `CONFIG_APP_REPRODUCIBLE_BUILD`. ESP-IDF then normalizes compiler paths,
 component ordering, and application metadata. The About page uses the same
 deterministic UTC timestamp instead of the compiler's `__DATE__` and `__TIME__`
