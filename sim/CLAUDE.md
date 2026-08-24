@@ -8,6 +8,11 @@ shim headers and the fake implementations here. One narrow exception exists:
 deterministic menu navigation. They are guarded by `#if defined(FURBLE_SIM)`,
 which only the sim build defines, so firmware builds compile identical code.
 
+The complete build, panel, scenario DSL, query, fault-injection, and
+scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
+as the directory-local contract and keep the reference synchronized with the
+tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
+
 ## Build entry points
 
 - `sim/build.sh`: the verified direct-clang path on macOS. Run
@@ -16,6 +21,9 @@ which only the sim build defines, so firmware builds compile identical code.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
+- The three modeled panels are the 80x160 `FURBLE_M5STICKC` /
+  `board_M5StickC`, the 135x240 `FURBLE_M5STICKS3` /
+  `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
   sync. Both carry a note.
 - Console-only firmware modules that have no simulator behavior still get a
@@ -40,9 +48,12 @@ which only the sim build defines, so firmware builds compile identical code.
 - The fake scan delivers its result and the scan end callback in the same
   `update()` tick. The fake UART never emits error events and captures all
   writes; dump them with the `uart-dump` script verb.
-- Script verbs: `wait`/`advance`, `stall`, `key`/`press`, `capture`, `uart-dump`,
-  `home`, `back`, `exit`. `home` resets to the root menu and focuses Scan.
-  `back` clicks the LVGL header back button and fails on the root page.
+- The full script verb set is `seed`, `wait`/`advance`, `key`/`press`,
+  `btn`/`button`, `capture`, `uart-dump`, `home`, `back`, `report`,
+  `action`, `print`, `assert`, `xassert`, `stall`, and `exit`. `home` resets to
+  the root menu and focuses Scan. `back` clicks the LVGL header back button
+  and fails on the root page. See `docs/sim.md` for every action value and
+  query key.
 - `stall <ms>` advances virtual time without running `Platform::update`. On the
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
   ordinary `wait` keeps feeding it.
@@ -52,6 +63,13 @@ which only the sim build defines, so firmware builds compile identical code.
   running, so CI stays green while the gap is on record. When the fix lands the
   value matches and it prints `XPASS`; promote that line back to `assert` in the
   fix PR so the guard starts enforcing.
+- `action drop` and `action drop <n>` model a dropped fake peer link. `seed
+  connect_fail true` makes the fake camera reject connection. The rig options
+  are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
+  `--delay-ms`.
+- The SDL harness has no IMU injection action, seed, or query. Its platform shim
+  sets `config.internal_imu = false`; do not document or add an IMU DSL token
+  until a source seam exists.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the
