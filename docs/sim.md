@@ -267,6 +267,8 @@ The other namespaces are:
 - `control.connected` and `control.targets`: numeric target counts.
 - `camera.count`: numeric camera-list row count, useful for scan de-duplication
   assertions.
+- `scan.end_callbacks`: numeric count of simulated scan-end callbacks delivered
+  by the current scan. A discovery scan should deliver exactly one callback.
 - `camera.shutter_presses`, `camera.shutter_releases`, `camera.focus_presses`,
   and `camera.focus_releases`: numeric fake-camera command counts.
 - `setting.text_size`: the persisted numeric text-size setting.

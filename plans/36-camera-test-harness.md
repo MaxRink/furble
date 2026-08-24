@@ -194,6 +194,20 @@ production byte parsers. Neither is evidence of vendor radio interoperability;
 real cameras still require hardware acceptance for service discovery and
 advertisement behavior.
 
+The follow-up also checks every prefix length below each supported advertisement
+record length for Fujifilm, Sony, Lumix, and Nikon. DJI marker records receive
+the same truncation sweep, and each vendor has an all-zero unknown-record case.
+The simulator now exposes `scan.end_callbacks`. The duplicate-result scenario
+asserts that each scripted scan delivers one completion callback. This caught
+and fixed a simulator-only duplicate callback that could run the scan-end UI
+path twice while leaving production scan behavior unchanged.
+
+Validation on the rebased follow-up branch: the camera protocol host suite,
+simulator duplicate-result scenario, full simulator scenario suite, and
+formatting checks pass. Hardware testing is not applicable to parser vectors or
+the deterministic FauxNY scan seam. Only the Fujifilm path remains eligible for
+physical camera validation, and no Fujifilm radio was exercised by this slice.
+
 Effort: 2 to 3 days for Fujifilm, 5 to 8 days for all vendors.
 
 ### Tier B: mock NimBLE client layer

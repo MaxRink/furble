@@ -8,6 +8,7 @@ action nav scan
 wait 400
 assert ui.page scan
 assert camera.count 1
+assert scan.end_callbacks 1
 
 # Return to the menu and scan again. The same result is delivered, but the
 # camera list must remain deduplicated.
@@ -17,4 +18,5 @@ action nav scan
 wait 400
 assert ui.page scan
 assert camera.count 1
+assert scan.end_callbacks 1
 exit
