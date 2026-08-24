@@ -23,3 +23,6 @@ lands on fork master. This file applies once it does.
   reset paths, and must include an immediate reconnect acceptance test.
 - Settings concurrency plans must distinguish ESP-IDF NVS thread safety from
   the mutable lifetime of each `Preferences` wrapper handle.
+- OTA plans separate the initial USB-flashed bootloader and partition contract
+  from later application updates. Rollback, validation, range resumption, and
+  interrupted-write recovery each need explicit simulator and hardware gates.

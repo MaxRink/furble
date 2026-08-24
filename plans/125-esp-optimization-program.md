@@ -48,6 +48,58 @@ acceptance criteria:
 - [NimBLE S3 power-save issue and measurements](https://github.com/espressif/esp-idf/issues/13073)
 - [LVGL community forum](https://forum.lvgl.io/)
 
+The August 2026 follow-up also reviewed the current ESP32-S3 guidance and
+upstream implementation:
+
+- [ESP-IDF 6.0.2 Wi-Fi performance and power save](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/wifi-performance-and-power-save.html)
+- [ESP-IDF 6.0.2 Mbed TLS memory tuning](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/protocols/mbedtls.html)
+- [ESP HTTPS OTA resumption and partial download](https://github.com/espressif/esp-idf/blob/master/docs/en/api-reference/system/esp_https_ota.rst)
+- [Advanced HTTPS OTA example](https://github.com/espressif/esp-idf/blob/master/examples/system/ota/advanced_https_ota/main/advanced_https_ota_example.c)
+- [Espressif OTA reliability and security guidance](https://developer.espressif.com/blog/ota-updates-framework/)
+- [ESP32-S3 Wi-Fi/BLE Android-hotspot coexistence report](https://github.com/espressif/esp-idf/issues/17871)
+
+The checked-in release configurations already enable DFS, tickless idle, and
+disconnected-station power management. Bootloader application rollback is
+already enabled on all five boards, and the OTA partition work already emits
+the initial OTA metadata image. Its runtime health check is not implemented.
+HTTPS OTA partial download and resumption are runtime adapter options that are
+not implemented yet, rather than checked-in Kconfig settings. The release
+configurations leave coexistence power management, Mbed TLS dynamic buffers,
+and variable TLS record lengths disabled. They retain peer certificates after
+verification and use the default 10 static Wi-Fi RX buffers and 32 dynamic RX
+and TX buffers. These are candidates, not defects: each setting trades memory,
+throughput, latency, or radio reliability and must be measured on the combined
+BLE, Wi-Fi, MQTT, and HTTPS workload.
+
+Prioritize the new candidates as separate slices:
+
+1. Implement and validate the rollback health contract already specified by
+   plan 34. Mark an image valid only after NVS, platform and PMIC, BLE, control
+   task, UI or headless loop, heap floor, and reset-reason checks pass. Camera,
+   Wi-Fi, MQTT, and user interaction remain outside this offline-safe boot
+   contract. Test explicit validation, diagnostic rollback, crash rollback,
+   and power loss before using OTA for the wider hardware matrix.
+2. Add HTTPS range-resume behind a capability flag. Persist a versioned URL,
+   immutable manifest identity, cryptographic image digest, expected length,
+   target partition and slot, and committed byte count transactionally in NVS.
+   Advance the checkpoint only after the corresponding flash write is durable.
+   Require HTTP `206` and an exact `Content-Range` continuation. Reject a
+   changed image, length or slot, a server that ignores ranges, and corrupt
+   resume state. Host tests use a deterministic HTTP range server, then
+   hardware tests cut the connection and power at multiple erase, write, and
+   checkpoint boundaries.
+3. Give OTA a scoped throughput policy. Temporarily select the measured Wi-Fi
+   power mode for download, then restore the previous mode on success, failure,
+   cancellation, and reboot. Do not globally disable modem sleep.
+4. Measure Mbed TLS dynamic buffers, variable record lengths, CA release, and
+   peer-certificate retention one option at a time. Record minimum internal
+   heap, largest free block, download throughput, certificate failures, and
+   reconnect behavior before selecting a release profile.
+5. Measure coexistence power management and Wi-Fi buffer counts only after the
+   real AP, MQTT, BLE scan, connected camera, and HTTPS OTA workload exists.
+   Include home routers and Android 13 or newer hotspots because the upstream
+   S3 coexistence report shows that a normal home-router pass is insufficient.
+
 The current inventory also records the hard-won board constraints: GPS UART
 must use an XTAL-stable clock under DFS, LEDC backlight needs an APB lock while
 active, M5PM1's first transaction after idle needs a retry, and DMA display
@@ -99,11 +151,22 @@ complete StickS3 snapshot pass.
 Pin PlatformIO, ESP-IDF, Python packages, component versions, sdkconfig inputs,
 and generated metadata. Add CI ccache keys containing host, compiler, IDF,
 board, sdkconfig hash, and source hash. Upload dependency licenses and a
-version report. Add scheduled clean builds and cache-bypass jobs.
+version report. Split the simulator's stable LVGL, M5GFX, and M5Unified objects
+from furble application objects so isolated PR worktrees can reuse a
+content-addressed dependency cache. Include compiler, target board, LVGL config,
+dependency revision, and compile flags in that cache key. The complete key
+covers each dependency's content identity, transitive and generated headers,
+forced simulator shim headers, both board macros, host ABI, exact compiler
+version, C and C++ flags, sanitizer flags, link flags, and a cache-schema
+version. Add scheduled clean builds and cache-bypass jobs. Coordinate the
+implementation with plan 124.
 
 Benefit: upgrades and tuning can be bisected. Risk: stale caches mask missing
 inputs. Acceptance: clean and cached builds pass, with identical hashes where
-supported or documented timestamp differences. Rollback is cache disablement.
+supported or documented timestamp differences. The same simulator scenario
+must pass from a cold build and a dependency-cache hit, and CI must retain an
+uncached gate. Mutation tests change each key input and prove a cache miss.
+Rollback is cache disablement.
 
 ### 125.3 Release, debug, power-lab, and size-lab profiles
 
