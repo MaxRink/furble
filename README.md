@@ -22,8 +22,8 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, an Android companion app, and an optional
-  firmware shared-password gate for privileged companion writes
+- A host SDL simulator for the UI, Android and Apple companion apps, and an
+  optional firmware shared-password gate for privileged companion writes
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or
