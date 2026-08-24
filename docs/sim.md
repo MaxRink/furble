@@ -150,13 +150,16 @@ Battery seeds select the initial deterministic platform sample:
 
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `sleep_conn`, and
-`boot_splash`.
+`boot_splash`. The M5StickS3 model also accepts `watchdog`; other board models
+reject that seed because they cannot apply it.
 
 The scenario-only settings are `saved_camera`, `connect_fail`, and
 `no_touch`. `saved_camera` adds an inactive saved camera, `connect_fail`
 makes the fake camera reject connect, and `no_touch` selects the physical-button
 layout. The interval settings are `interval_count`, `interval_delay`,
-`interval_shutter`, and `interval_wait`.
+`interval_shutter`, and `interval_wait`; `bulb_duration` seeds the bulb timer.
+`gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`, or
+`write-error` before the GPS task starts.
 
 ### `action` commands
 

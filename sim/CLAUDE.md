@@ -70,7 +70,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   See `docs/sim.md` for every action value and query key.
 - `stall <ms>` advances virtual time without running `Platform::update`. On the
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
-  ordinary `wait` keeps feeding it.
+  ordinary `wait` keeps feeding it. The `watchdog` seed is therefore accepted
+  only by the StickS3 model. Specialized pre-start seeds also include
+  `bulb_duration` and `gps_uart_mode`; keep their values synchronized with
+  `docs/sim.md` and `validateSeed`.
 - `assert <key> <value>` fails the run on a mismatch. `xassert <key> <value>` is
   an expected-fail assert: it documents a value the app SHOULD produce once a
   pending product fix lands, prints `XFAIL (WILL_FAIL)` on a mismatch and keeps
@@ -109,7 +112,9 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   `sim/scripts/run-invalid.sh` requires malformed typed seed fixtures to exit
   with DSL validation status 2. Typed seeds are validated while the scenario
   file is parsed, before SDL or firmware worker threads start, so invalid input
-  cannot race simulator teardown or be silently narrowed.
+  cannot race simulator teardown or be silently narrowed. Seed names are
+  allowlisted and each seed requires exactly two arguments, preventing typos or
+  trailing values from being silently ignored.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the

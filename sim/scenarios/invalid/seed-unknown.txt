@@ -1,0 +1,2 @@
+seed brightnes 1
+exit
