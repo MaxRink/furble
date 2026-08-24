@@ -22,9 +22,7 @@ using lv_obj_t = _lv_obj_t;
 #include <Camera.h>
 #include <TinyGPS++.h>
 
-#include <atomic>
 #include <cstdint>
-#include <mutex>
 
 #include "FurblePower.h"
 
@@ -62,6 +60,37 @@ class GPS {
     bool altitude_valid;
   } external_fix_t;
 
+  /**
+   * Coherent, thread-safe copy of the TinyGPSPlus fields used by the UI and
+   * console. TinyGPSPlus accessors clear update flags, so callers must not
+   * retain a reference to the parser or read fields outside this snapshot.
+   */
+  typedef struct {
+    bool position_valid;
+    bool time_valid;
+    bool altitude_valid;
+    bool fix;
+    uint32_t satellites;
+    double latitude;
+    double longitude;
+    double altitude;
+    double speed_kmph;
+    double hdop;
+    uint32_t location_age;
+    uint32_t date_age;
+    uint32_t time_age;
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint8_t centisecond;
+    uint32_t chars_processed;
+    uint32_t sentences_passed;
+    uint32_t sentences_failed;
+  } status_t;
+
   static GPS &getInstance();
 
   GPS(GPS const &) = delete;
@@ -90,7 +119,7 @@ class GPS {
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
 
-  TinyGPSPlus &get(void);
+  status_t getStatusSnapshot(void) const;
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
 
@@ -225,7 +254,7 @@ class GPS {
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
-  bool wiredFixIsFresh(void);
+  bool wiredFixIsFresh(const status_t &status) const;
 
   void acquirePowerLock(void);
   void releasePowerLock(void);
@@ -306,7 +335,8 @@ class GPS {
   uint32_t m_LastLoggedFix = 0;
   uint64_t m_LastLoggedStamp = 0;
   bool m_LogDropWarned = false;
-  TinyGPSPlus m_GPS;
+  mutable TinyGPSPlus m_GPS;
+  mutable std::mutex m_GPSMutex;
 
   uint8_t m_PowerPolicy = POWER_ALWAYS_ON;
   uint8_t m_DutySeconds = 0;

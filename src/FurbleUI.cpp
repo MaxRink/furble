@@ -4766,46 +4766,44 @@ void UI::addGPSDataMenu(const menu_t &parent) {
       [](lv_timer_t *t) {
         FURBLE_SIM_TIMER_FIRE("gps_data_timer");
         auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
-        auto &gps = GPS::getInstance().get();
+        const auto status = GPS::getInstance().getStatusSnapshot();
 
         static lv_obj_t *age = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(age, "%lus ago", gps.location.age() / 1000);
+        setLabelTextFmtIfChanged(age, "%lus ago", status.location_age / 1000);
 
         static lv_obj_t *satellites = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(satellites, "%lu satellites", gps.satellites.value());
+        setLabelTextFmtIfChanged(satellites, "%lu satellites", status.satellites);
 
         static lv_obj_t *speed = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(speed, "%.1f km/h", gps.speed.kmph());
+        setLabelTextFmtIfChanged(speed, "%.1f km/h", status.speed_kmph);
 
         static lv_obj_t *lat = nullptr;
         if (lat == nullptr) {
           lat = lv_label_create(gpsData->page);
           lv_obj_set_style_text_font(lat, &lv_font_montserrat_12, 0);
         }
-        setLabelTextFmtIfChanged(lat, "%.5f°", gps.location.lat());
+        setLabelTextFmtIfChanged(lat, "%.5f°", status.latitude);
 
         static lv_obj_t *lon = nullptr;
         if (lon == nullptr) {
           lon = lv_label_create(gpsData->page);
           lv_obj_set_style_text_font(lon, &lv_font_montserrat_12, 0);
         }
-        setLabelTextFmtIfChanged(lon, "%.5f°", gps.location.lng());
+        setLabelTextFmtIfChanged(lon, "%.5f°", status.longitude);
 
         static lv_obj_t *alt = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(alt, "%.2f m", gps.altitude.meters());
+        setLabelTextFmtIfChanged(alt, "%.2f m", status.altitude);
 
 #if defined(FURBLE_M5COREX)
         static lv_obj_t *datetime = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(datetime, "%4u-%02u-%02u %02u:%02u:%02u", gps.date.year(),
-                                 gps.date.month(), gps.date.day(), gps.time.hour(),
-                                 gps.time.minute(), gps.time.second());
+        setLabelTextFmtIfChanged(datetime, "%4u-%02u-%02u %02u:%02u:%02u", status.year,
+                                 status.month, status.day, status.hour, status.minute,
+                                 status.second);
 #else
         static lv_obj_t *date = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(date, "%4u-%02u-%02u", gps.date.year(), gps.date.month(),
-                                 gps.date.day());
+        setLabelTextFmtIfChanged(date, "%4u-%02u-%02u", status.year, status.month, status.day);
         static lv_obj_t *time = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", gps.time.hour(), gps.time.minute(),
-                                 gps.time.second());
+        setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", status.hour, status.minute, status.second);
 #endif
       },
       1000, &gpsData);
@@ -4876,15 +4874,14 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         FURBLE_SIM_TIMER_FIRE("nmea_timer");
         auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
         auto &gps = GPS::getInstance();
-        auto &tinygps = gps.get();
+        const auto status = gps.getStatusSnapshot();
 
         setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
-                                 (unsigned long)tinygps.satellites.value(), tinygps.hdop.hdop(),
-                                 (unsigned long)(tinygps.location.age() / 1000),
-                                 tinygps.speed.kmph());
+                                 (unsigned long)status.satellites, status.hdop,
+                                 (unsigned long)(status.location_age / 1000), status.speed_kmph);
         setLabelTextFmtIfChanged(
-            ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)tinygps.charsProcessed(),
-            (unsigned long)tinygps.passedChecksum(), (unsigned long)tinygps.failedChecksum());
+            ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu", (unsigned long)status.chars_processed,
+            (unsigned long)status.sentences_passed, (unsigned long)status.sentences_failed);
 
         std::string config;
         for (const auto &entry : gps.getConfigStatus()) {

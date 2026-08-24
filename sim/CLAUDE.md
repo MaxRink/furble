@@ -52,6 +52,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   Dump writes with the `uart-dump` script verb. These controls exercise the
   production GPS binary parser, retry state machine and PCAS fallback without
   changing firmware behavior.
+- The fake UART and GPS task run on a background host thread. GPS page scenarios
+  therefore exercise the real cross-task ownership boundary; use the
+  thread-safe GPS status snapshot rather than adding direct parser reads to a
+  simulator seam.
 - The full script verb set is `seed`, `wait`/`advance`, `key`/`press`,
   `btn`/`button`, `capture`, `uart-dump`, `uart-mode`, `uart-event`,
   `gps-restart`, `home`, `back`, `report`, `action`, `print`, `assert`,
