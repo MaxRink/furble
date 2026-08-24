@@ -294,6 +294,16 @@ target_compile_options(ethernet_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                              -Wno-unused-parameter)
 target_link_libraries(ethernet_test PRIVATE Threads::Threads)
 
+# Test-only power/source model for the Waveshare board. The real board has no
+# software-readable PoE HAT or negotiated-power signal, so this fixture keeps
+# HAT, PoE, link, and USB observations explicit and independent.
+add_executable(poe_power_model_test
+               poe_power_model_test.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/eth/PoEPowerModel.cpp)
+target_include_directories(poe_power_model_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(poe_power_model_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                     -Wno-unused-parameter)
+
 # Transport-independent OTA lifecycle. The production state machine is linked
 # directly, while the host test supplies a mock for the ESP-IDF transport seam.
 add_executable(ota_state_machine_test
@@ -536,6 +546,7 @@ if(BUILD_TESTING)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
   add_test(NAME ethernet-transport COMMAND ethernet_test)
+  add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
