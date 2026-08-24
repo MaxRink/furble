@@ -5,7 +5,7 @@ application module, Kotlin, Gradle Kotlin DSL, and Jetpack Compose.
 
 ## Build
 
-Install a JDK 17, the Android SDK platform and build tools for API 36, then
+Install a JDK 17, the Android SDK platform and build tools for API 37, then
 run:
 
 ```sh
@@ -13,8 +13,8 @@ cd companion/android
 ./gradlew assembleDebug
 ```
 
-The app supports Android API 26 and higher and targets Android API 36. The
-Gradle wrapper is configured for Gradle 8.11.1.
+The app supports Android API 26 and higher and targets Android API 37. The
+Gradle wrapper is configured for Gradle 9.4.1 and Android Gradle Plugin 9.2.0.
 
 ## Protocol
 
