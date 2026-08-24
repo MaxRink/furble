@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "generated_for": "furble-companion-android",
+  "agp": "9.2.1",
+  "gradle": "9.4.1",
+  "gradle_sha256": "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb",
+  "kotlin": "2.4.10",
+  "compile_sdk": 37,
+  "target_sdk": 37,
+  "compose_bom": "2026.08.00",
+  "activity": "1.13.0",
+  "core_ktx": "1.19.0",
+  "lifecycle": "2.11.0",
+  "source": {
+    "agp": "https://developer.android.com/build/releases/agp-9-2-0-release-notes",
+    "kotlin": "https://kotlinlang.org/docs/releases.html",
+    "androidx": "https://developer.android.com/jetpack/androidx/versions/stable-channel"
+  }
+}
