@@ -325,7 +325,18 @@ Implemented on branch `feat/19-interval-deep-sleep`.
 - PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
   genuine deep-sleep wake that fails the first reconnect must show two spaced
   retries in the serial log and then either recover or land on the resume error.
-  Deep sleep only exercises on hardware, so this cannot be confirmed on host.
+- Host simulator coverage now exercises the production resume validator and
+  reconnect path. `sim/scripts/run-deep-sleep.sh` persists a resume record and
+  timed-wake marker, exits at the simulated power-off boundary, and launches a
+  fresh process that consumes the marker and continues the shot count. Dedicated
+  scenarios reject invalid metadata and stale wake times, verify the failed
+  timed-power-off fallback, and assert unsupported-board gating. The unsupported
+  scenario runs on the M5StickC simulator build. `.github/workflows/sim-e2e.yml`
+  runs this complete runner on every simulator CI job, including the two-process
+  persistence check.
+- The simulator cannot prove the PMIC timer, RTC alarm, GPIO4 HOLD latch, actual
+  rail removal, boot-time marker source, camera remote-mode retention, or real
+  wake-to-shutter latency. Those remain attached-board checks.
 - Timer layout coverage is capability-aware in both deterministic scenarios and
   the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
   Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
