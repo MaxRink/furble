@@ -334,6 +334,11 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   scenario runs on the M5StickC simulator build. `.github/workflows/sim-e2e.yml`
   runs this complete runner on every simulator CI job, including the two-process
   persistence check.
+- Timer layout coverage is capability-aware in both deterministic scenarios and
+  the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
+  Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
+  rows and must still fit, while compact interactive pages always require no
+  overflow.
 - The simulator cannot prove the PMIC timer, RTC alarm, GPIO4 HOLD latch, actual
   rail removal, boot-time marker source, camera remote-mode retention, or real
   wake-to-shutter latency. Those remain attached-board checks.
