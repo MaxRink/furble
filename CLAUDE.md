@@ -24,6 +24,9 @@ CLAUDE.md whose directory it touches.
   documented env, including the non-CI `esp32-s3-headless` env. A new settings
   enum value must be added in five places or the headless build fails
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
+- The direct SDL simulator build writes compiler depfiles beside each object.
+  Its incremental cache follows project and dependency headers with `make -q`;
+  run `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
 
 ## Style
 
