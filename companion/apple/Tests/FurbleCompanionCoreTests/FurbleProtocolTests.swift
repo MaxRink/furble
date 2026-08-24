@@ -40,11 +40,11 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertTrue(status.externalPower)
   }
 
-  func testCapabilityNeverEnablesSecurityWithoutAuthFeature() throws {
-    let capability = try FurbleProtocol.decodeCapability(Data([1, 2, 1, 0, 0, 0]))
-    XCTAssertTrue(capability.supportsAuthentication)
-    let noAuth = try FurbleProtocol.decodeCapability(Data([1, 2, 1, 0, 0, 0]))
-    XCTAssertFalse(noAuth.features & FurbleProtocol.CapabilityFeature.settingsV2 == 0)
+  func testCapabilityUsesFrozenCameraBit() throws {
+    let capability = try FurbleProtocol.decodeCapability(Data([1, 2, 2, 0, 0, 0]))
+    XCTAssertTrue(capability.supportsCameras)
+    let settingsOnly = try FurbleProtocol.decodeCapability(Data([1, 2, 1, 0, 0, 0]))
+    XCTAssertFalse(settingsOnly.supportsCameras)
   }
 
   func testSettingsTlvRoundTripsAndRejectsTrailingBytes() throws {
@@ -83,6 +83,7 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertEqual(proof.count, 18)
     XCTAssertTrue(try FurbleProtocol.decodeAuthResult(Data([1, 2, 0])))
     XCTAssertFalse(try FurbleProtocol.decodeAuthResult(Data([1, 2, 1])))
+    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([1, 2, 2])))
     XCTAssertThrowsError(try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15)))
   }
 

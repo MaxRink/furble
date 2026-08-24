@@ -20,6 +20,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private var peripheral: CBPeripheral?
   private var characteristics: [CBUUID: CBCharacteristic] = [:]
   private var reconnectAttempt = 0
+  private var authBeginPending = false
 
   public init(credentialStore: FurbleCredentialStore = KeychainCredentialStore()) {
     self.credentialStore = credentialStore
@@ -35,6 +36,10 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   public func stop() {
     if let peripheral { central.cancelPeripheralConnection(peripheral) }
     central.stopScan()
+    authBeginPending = false
+    characteristics.removeAll()
+    status = nil
+    cameras.removeAll()
     state = CompanionStateMachine()
     phase = .idle
   }
@@ -121,11 +126,25 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     }
     // The firmware owns nonce generation. Never authenticate a locally
     // generated nonce or accept a proof without the firmware response.
-    write(FurbleProtocol.authBegin(), to: authCharacteristic, type: .withResponse)
+    guard let peripheral else { fail(.authenticationUnavailable); return }
+    authBeginPending = true
+    if authCharacteristic.isNotifying {
+      authBeginPending = false
+      write(FurbleProtocol.authBegin(), to: authCharacteristic, type: .withResponse)
+    } else {
+      // Auth replies are indications. Subscribe before writing the begin
+      // packet or the firmware's nonce can be lost between the two callbacks.
+      peripheral.setNotifyValue(true, for: authCharacteristic)
+    }
   }
 
   private func handleAuth(_ data: Data) {
-    if (try? FurbleProtocol.decodeAuthResult(data)) == true {
+    if let result = try? FurbleProtocol.decodeAuthResult(data) {
+      guard result else {
+        _ = state.didAuthenticationRejected()
+        fail(.authenticationFailed)
+        return
+      }
       let commands = state.didAuthenticationAccepted()
       phase = state.phase
       subscribe(commands)
@@ -198,13 +217,18 @@ extension FurbleBLEClient: CBCentralManagerDelegate {
   public func central(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
     reconnectAttempt += 1
     phase = .reconnecting(attempt: reconnectAttempt)
-    beginScan()
+    if central.state == .poweredOn { beginScan() }
   }
 
   public func central(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
     state.didDisconnect()
     phase = state.phase
     reconnectAttempt += 1
+    characteristics.removeAll()
+    status = nil
+    cameras.removeAll()
+    authBeginPending = false
+    if central.state == .poweredOn { beginScan() }
   }
 
   public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
@@ -269,7 +293,12 @@ extension FurbleBLEClient: CBPeripheralDelegate {
 
   public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic,
                          error: Error?) {
-    if error != nil { fail(.malformedPacket) }
+    if error != nil { fail(.malformedPacket); return }
+    if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.auth), authBeginPending {
+      guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }
+      authBeginPending = false
+      write(FurbleProtocol.authBegin(), to: characteristic, type: .withResponse)
+    }
   }
 }
 

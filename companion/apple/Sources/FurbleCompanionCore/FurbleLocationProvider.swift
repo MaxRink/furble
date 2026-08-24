@@ -12,6 +12,7 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
   @Published public private(set) var authorization: CLAuthorizationStatus
   private let manager = CLLocationManager()
   private var sink: ((FurbleProtocol.LocationFix) -> Void)?
+  private var wantsUpdates = false
 
   public override init() {
     authorization = manager.authorizationStatus
@@ -24,6 +25,7 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
 
   public func start(sink: @escaping (FurbleProtocol.LocationFix) -> Void) {
     self.sink = sink
+    wantsUpdates = true
     guard CLLocationManager.locationServicesEnabled() else { return }
     if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
     guard manager.authorizationStatus == .authorizedWhenInUse ||
@@ -33,6 +35,7 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
   }
 
   public func stop() {
+    wantsUpdates = false
     enabled = false
     manager.stopUpdatingLocation()
     sink = nil
@@ -40,6 +43,11 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, CLLocatio
 
   public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
     authorization = manager.authorizationStatus
+    guard wantsUpdates, CLLocationManager.locationServicesEnabled(),
+      manager.authorizationStatus == .authorizedWhenInUse ||
+      manager.authorizationStatus == .authorizedAlways else { return }
+    enabled = true
+    manager.startUpdatingLocation()
   }
 
   public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {

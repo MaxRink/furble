@@ -29,6 +29,18 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertEqual(machine.status?.batteryPercent, 85)
   }
 
+  func testCameraSubscriptionRequiresTheFrozenCapabilityBit() {
+    var machine = CompanionStateMachine()
+    _ = machine.start(bluetoothAvailable: true)
+    _ = machine.didFindPeripheral()
+    _ = machine.didConnect()
+    XCTAssertEqual(machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: true), .readCapability)
+    XCTAssertEqual(machine.didReadCapability(Data([1, 2, 1, 0, 0, 0])), .beginAuthentication)
+    _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 2, count: 16))
+    XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus, .subscribeSettings])
+  }
+
   func testDisconnectClearsSensitiveStateAndReconnects() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)

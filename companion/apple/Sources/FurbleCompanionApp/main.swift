@@ -28,9 +28,9 @@ private struct ContentView: View {
         }
         Section("Status") {
           if let status = client.status {
-            LabeledContent("Battery", value: status.batteryPercent == 255 ? "Unknown" : "(status.batteryPercent)%")
-            LabeledContent("Voltage", value: "(status.batteryMillivolts) mV")
-            LabeledContent("Cameras", value: "(status.cameraConnected)/(status.cameraTotal)")
+            LabeledContent("Battery", value: status.batteryPercent == 255 ? "Unknown" : "\(status.batteryPercent)%")
+            LabeledContent("Voltage", value: "\(status.batteryMillivolts) mV")
+            LabeledContent("Cameras", value: "\(status.cameraConnected)/\(status.cameraTotal)")
             LabeledContent("GPS", value: status.gpsSource == 0 ? "No fix" : "Available")
           } else {
             Text("Waiting for an authenticated furble link")

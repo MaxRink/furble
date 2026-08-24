@@ -108,8 +108,12 @@ public struct CompanionStateMachine: Sendable {
     do {
       let value = try FurbleProtocol.decodeCapability(data)
       capability = value
-      requiresAuthentication = value.supportsAuthentication
+      // Authentication is tied to the discovered Auth characteristic. The
+      // capability bit layout reserves bit 1 for cameras, so it cannot also
+      // be used as an authentication flag.
+      requiresAuthentication = hasAuth
       guard requiresAuthentication else { return fail(.authenticationUnavailable) }
+      hasCameras = hasCameras && value.supportsCameras
       phase = .awaitingAuthentication
       return .beginAuthentication
     } catch {

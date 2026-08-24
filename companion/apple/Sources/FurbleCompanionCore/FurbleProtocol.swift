@@ -36,8 +36,10 @@ public enum FurbleProtocol {
 
   public enum CapabilityFeature {
     public static let settingsV2: UInt32 = 1 << 0
-    public static let authHMAC: UInt32 = 1 << 1
-    public static let cameras: UInt32 = 1 << 2
+    // Bit 1 is the cameras characteristic, as frozen by plans/51 and the
+    // firmware cameras slice. Authentication is advertised by the presence of
+    // the dedicated Auth characteristic, not by stealing this bit.
+    public static let cameras: UInt32 = 1 << 1
   }
 
   public enum Error: Swift.Error, Equatable {
@@ -134,8 +136,8 @@ public enum FurbleProtocol {
         features & CapabilityFeature.settingsV2 != 0
     }
 
-    public var supportsAuthentication: Bool {
-      version >= capabilityVersion && features & CapabilityFeature.authHMAC != 0
+    public var supportsCameras: Bool {
+      version >= capabilityVersion && features & CapabilityFeature.cameras != 0
     }
   }
 
@@ -317,6 +319,7 @@ public enum FurbleProtocol {
     guard data.count == 3, data[0] == version, data[1] == AuthOperation.result.rawValue else {
       throw Error.malformed
     }
+    guard data[2] == 0 || data[2] == 1 else { throw Error.malformed }
     return data[2] == 0
   }
 
@@ -439,6 +442,7 @@ public struct FurbleAuthSession: Sendable {
   public mutating func begin(nonce: Data) throws -> Data {
     guard nonce.count == FurbleProtocol.authNonceSize else { throw FurbleProtocol.Error.malformed }
     guard state != .lockedOut else { throw FurbleProtocol.Error.authenticationFailed }
+    guard state != .authenticated else { throw FurbleProtocol.Error.authenticationRequired }
     self.nonce = nonce
     state = .challenged
     return try Self.proof(password: password, nonce: nonce)
