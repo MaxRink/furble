@@ -5,16 +5,18 @@ import FurbleCompanionCore
 @main
 struct FurbleCompanionApp: App {
   @StateObject private var client: FurbleBLEClient
+  private let credentialStore: KeychainCredentialStore
 
   init() {
     let accessGroup = Bundle.main.object(forInfoDictionaryKey: "FurbleKeychainAccessGroup") as? String
-    _client = StateObject(wrappedValue: FurbleBLEClient(
-      credentialStore: KeychainCredentialStore(accessGroup: accessGroup)))
+    let store = KeychainCredentialStore(accessGroup: accessGroup)
+    credentialStore = store
+    _client = StateObject(wrappedValue: FurbleBLEClient(credentialStore: store))
   }
 
   var body: some Scene {
     WindowGroup {
-      ContentView(client: client)
+      ContentView(client: client, credentialStore: credentialStore)
         .onAppear { client.start() }
     }
   }
@@ -22,11 +24,23 @@ struct FurbleCompanionApp: App {
 
 private struct ContentView: View {
   @ObservedObject var client: FurbleBLEClient
+  let credentialStore: KeychainCredentialStore
   @StateObject private var location = FurbleLocationProvider()
 
   var body: some View {
     NavigationStack {
       List {
+        Section("Companion password") {
+          PasswordOnboardingView(
+            credentialStore: credentialStore,
+            onPasswordSaved: {
+              client.stop()
+              client.start()
+            },
+            onPasswordDeleted: {
+              client.stop()
+            })
+        }
         Section("Connection") {
           Label(client.phase.label, systemImage: client.phase.symbol)
           if let error = client.error { Text(error.localizedDescription).foregroundStyle(.red) }

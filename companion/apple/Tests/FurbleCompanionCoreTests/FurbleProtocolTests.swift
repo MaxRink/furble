@@ -152,6 +152,33 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertNoThrow(try FurbleAuthSession(password: String(repeating: "é", count: 31) + "a"))
   }
 
+  func testPasswordOnboardingValidatesBytesAndConfirmationWithoutStoringSecret() {
+    var form = PasswordOnboardingState()
+    XCTAssertFalse(form.validate(password: "", confirmation: ""))
+    XCTAssertEqual(form.validation, .empty)
+    XCTAssertFalse(form.validate(password: String(repeating: "é", count: 32), confirmation: ""))
+    XCTAssertEqual(form.validation, .tooLong)
+    XCTAssertFalse(form.validate(password: "secret", confirmation: "different"))
+    XCTAssertEqual(form.validation, .mismatch)
+    XCTAssertTrue(form.validate(password: String(repeating: "é", count: 31) + "a",
+      confirmation: String(repeating: "é", count: 31) + "a"))
+    XCTAssertEqual(form.validation, .none)
+    XCTAssertFalse(form.hasStoredPassword)
+  }
+
+  func testPasswordOnboardingClearAndDeleteForgetOnlyPresence() {
+    var form = PasswordOnboardingState()
+    form.setStoredPassword(true)
+    XCTAssertTrue(form.hasStoredPassword)
+    form.didDelete()
+    XCTAssertFalse(form.hasStoredPassword)
+    XCTAssertEqual(form.validation, .none)
+    form.didSave()
+    XCTAssertTrue(form.hasStoredPassword)
+    form.setStoredPassword(false)
+    XCTAssertFalse(form.hasStoredPassword)
+  }
+
   func testAuthPacketsHaveExplicitOperationsAndFixedLengths() throws {
     XCTAssertEqual(FurbleProtocol.authBegin(), Data([1, 0]))
     let challenge = Data([1, 0]) + Data(repeating: 9, count: 16)

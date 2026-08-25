@@ -19,6 +19,15 @@ characteristic from the follow-up companion security slice must land before a
 physical Apple link can be used. Capability bit 1 is reserved for the cameras
 characteristic, matching plans/51 and the firmware cameras slice.
 
+On first launch, or after choosing **Change password**, the shared iOS/macOS
+SwiftUI screen accepts a password and confirmation through secure fields. It
+validates the UTF-8 byte count against the firmware's 63-byte limit, writes the
+value to the platform Keychain, and clears both entry fields after save, cancel,
+or failure. A saved password is represented only as a presence state; it is
+never rendered, printed, or copied into app preferences. **Delete password**
+removes the Keychain item and disconnects the BLE client. It reconnects only
+after a new password is saved.
+
 ## Host tests
 
 ```sh
