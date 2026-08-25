@@ -463,6 +463,7 @@ public struct FurbleAuthSession: Sendable {
     guard nonce.count == FurbleProtocol.authNonceSize else { throw FurbleProtocol.Error.malformed }
     guard state != .lockedOut else { throw FurbleProtocol.Error.authenticationFailed }
     guard state != .authenticated else { throw FurbleProtocol.Error.authenticationRequired }
+    clearNonce()
     self.nonce = nonce
     state = .challenged
     return try Self.proof(password: password.bytes, nonce: nonce)
@@ -470,8 +471,10 @@ public struct FurbleAuthSession: Sendable {
 
   public mutating func verify(proof: Data) throws {
     guard state == .challenged, let nonce else { throw FurbleProtocol.Error.authenticationRequired }
-    var expected = try Self.proof(password: password.bytes, nonce: nonce)
-    self.nonce = nil
+    var challenge = nonce
+    var expected = try Self.proof(password: password.bytes, nonce: challenge)
+    clearNonce()
+    challenge.resetBytes(in: 0..<challenge.count)
     guard proof.count == expected.count, Self.constantTimeEqual(proof, expected) else {
       expected.resetBytes(in: 0..<expected.count)
       failures += 1
@@ -488,11 +491,16 @@ public struct FurbleAuthSession: Sendable {
   public mutating func markAuthenticated() throws {
     guard state == .challenged else { throw FurbleProtocol.Error.authenticationRequired }
     state = .authenticated
-    nonce = nil
+    clearNonce()
   }
 
   public func requireAuthenticated() throws {
     guard state == .authenticated else { throw FurbleProtocol.Error.authenticationRequired }
+  }
+
+  private mutating func clearNonce() {
+    nonce?.resetBytes(in: 0..<(nonce?.count ?? 0))
+    nonce = nil
   }
 
   #if canImport(CryptoKit)
