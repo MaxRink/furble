@@ -1,4 +1,5 @@
 #include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -55,12 +56,30 @@ void CameraList::clear(void) {
   cameras.clear();
 }
 
+std::vector<std::shared_ptr<Camera>> CameraList::snapshot(void) {
+  return cameras;
+}
+
 std::shared_ptr<Camera> CameraList::last(void) {
   return hasCamera() ? cameras.back() : nullptr;
 }
 
 std::shared_ptr<Camera> CameraList::get(size_t n) {
   return cameras.at(n);
+}
+
+uint8_t CameraList::getCameraId(const Camera *camera) {
+  if (camera == nullptr) {
+    return 0;
+  }
+  for (size_t index = 0; index < cameras.size(); ++index) {
+    if (cameras[index].get() == camera) {
+      // The simulator has no persisted NVS identity, but its list order is
+      // stable for a scenario and mirrors the production non-zero ID contract.
+      return static_cast<uint8_t>(index + 1U);
+    }
+  }
+  return 0;
 }
 
 void CameraList::addFauxNY(void) {

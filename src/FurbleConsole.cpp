@@ -246,7 +246,6 @@ const char *settingType(Settings::type_t type) {
     case Settings::MULTISELECT:
     case Settings::TOUCH_CALIBRATION:
     case Settings::BULB:
-    case Settings::MULTISELECT:
       return "struct";
   }
   return "unknown";
