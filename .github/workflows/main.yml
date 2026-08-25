@@ -67,6 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Check portability contract
+        run: python3 tools/check_portability_inventory.py --check
+
       - name: Configure host harness
         run: cmake -S tests/host -B "$RUNNER_TEMP/furble-host-build"
 

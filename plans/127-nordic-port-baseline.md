@@ -90,7 +90,10 @@ The current boundary is intentionally narrow:
 | Simulator | `sim/`, `tests/host/`, protocol tests | Existing host simulator uses production sources plus HAL doubles | Make this the acceptance gate for every extracted contract and every Nordic HAL double |
 
 `tools/check_portability_inventory.py --check` protects the declared portable
-subtree. It also reports direct coupling in the current camera and app layers,
+subtree and `tools/portable_core_manifest.txt` is the shared production-source
+manifest. The checker fails closed for missing or empty roots, stale manifest
+entries, and a copied protocol source under a Nordic port tree. It also reports
+direct coupling in the current camera and app layers, including public headers,
 so a future extraction can shrink the inventory rather than silently growing a
 second implementation.
 
