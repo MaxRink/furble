@@ -133,6 +133,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [114-flasher-provisioning.md](114-flasher-provisioning.md) | Follow-up browser transport for the landed provisioning parser |
 | [115-ota-engine.md](115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
+| [130-ota-mqtt-contract.md](130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
 | [124-sim-incremental-deps.md](124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
 
 ## Network, companion, and simulator follow-ups
