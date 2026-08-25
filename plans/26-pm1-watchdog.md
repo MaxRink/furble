@@ -187,8 +187,8 @@ Wrap them in `Platform` so nothing outside `FurblePlatform.cpp` includes
 `M5PM1.h` for this:
 
 ```
-void watchdogEnable(bool enable);   // wdtSet(WDT_TIMEOUT_S) or wdtSet(0)
-void watchdogFeed(void);            // rate limited wdtFeed()
+void watchdogEnable(bool enable);   // wdtSet(Watchdog::PM1_TIMEOUT_S) or wdtSet(0)
+void watchdogFeed(void);            // rate limited to Watchdog::PM1_FEED_PERIOD_MS
 ```
 
 Both compile to nothing outside `FURBLE_M5STICKS3`. `include/FurblePlatform.h`
@@ -243,14 +243,16 @@ blocks on a 5 ms `vTaskDelay` (`src/FurbleUI.cpp:2133`), so today the longest
 the chip can sleep between two feeds is 5 ms. The 10 s timeout has enormous
 margin.
 
-The invariant to write down and keep: **the feed period must stay at or below
-one third of the watchdog timeout, and the longest possible gap between two
-calls to `Platform::update()` must stay well under the timeout.** Later PRs
+The invariant to write down and keep: **`Watchdog::PM1_FEED_PERIOD_MS` must stay
+at or below one third of `Watchdog::PM1_TIMEOUT_MS`, and the longest possible
+gap between two calls to `Platform::update()` must stay well under the
+timeout.** Later PRs
 stretch this. PR07, BLE and light sleep while connected, and PR12, true display
 off with longer timeouts, both aim to make the device idle for much longer
 between wakes. If any of them lengthens the UI loop delay past a second or two,
-this feed and this timeout both have to be revisited. Put a comment next to
-`WDT_TIMEOUT_S` saying so.
+this feed and this timeout both have to be revisited. The shared constants live
+in `include/FurbleWatchdog.h` and are consumed by firmware, simulator, and OTA
+host tests.
 
 Two things the PM1 watchdog is not affected by, worth stating because they are
 easy to get wrong:

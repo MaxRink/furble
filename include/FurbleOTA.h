@@ -142,7 +142,19 @@ enum class BootFailure : uint8_t {
  * being hidden in app_main().
  */
 struct BootHealth {
+  /**
+   * Maximum time allowed for a pending image to prove that it is healthy.
+   *
+   * Runtime integration must derive validationDeadlineReached from elapsed
+   * boot time with deadlineReached(), rather than choosing an
+   * arbitrary timer at each call site.
+   */
+  static constexpr uint32_t VALIDATION_WINDOW_MS = 30000;
   static constexpr uint32_t MIN_SERVICE_TICKS = 100;
+
+  static constexpr bool deadlineReached(uint32_t elapsedMs) {
+    return elapsedMs >= VALIDATION_WINDOW_MS;
+  }
 
   RollbackState rollbackState = RollbackState::ReadError;
   bool nvsReady = false;
@@ -155,6 +167,18 @@ struct BootHealth {
   ResetReason resetReason = ResetReason::Unknown;
   bool validationDeadlineReached = false;
 };
+
+/**
+ * Check whether a continuously running watchdog can cover the health window.
+ *
+ * A zero timeout means that no external watchdog is armed. A finite watchdog
+ * must outlive the deadline. Equality is rejected because both events could
+ * fire at the same instant, leaving no scheduling margin for the rollback
+ * action.
+ */
+constexpr bool validationWindowFitsWatchdog(uint32_t watchdogTimeoutMs) {
+  return (watchdogTimeoutMs == 0) || (watchdogTimeoutMs > BootHealth::VALIDATION_WINDOW_MS);
+}
 
 struct BootDecision {
   BootAction action = BootAction::NoAction;

@@ -418,3 +418,16 @@ log the stable failure name before a rollback reboot, and invoke the matching
 is blocked because the landed 10 second PM1 watchdog is shorter than the
 planned window. No simulator or hardware claim is made for those probes until
 deterministic fakes and an on-device run exist.
+
+The policy now exposes the 30,000 ms window and its exact deadline boundary to
+the future integration. It also exposes a pure compatibility check for an
+external watchdog. A zero timeout means that no external watchdog is armed; a
+finite timeout must be strictly longer than the health window so the rollback
+decision can run after the deadline. The current StickS3 PM1 timeout is 10,000
+ms, so the host regression test records the incompatibility explicitly. The
+watchdog timeout and feed period live in the dependency-light
+`include/FurbleWatchdog.h`, which is consumed by the firmware, simulator, and
+host test so this safety conclusion cannot drift from the armed PM1 setting.
+This slice does not lengthen that watchdog or shorten the health window: either
+change needs a hardware-backed boot and recovery test, and the current policy
+does not justify one.
