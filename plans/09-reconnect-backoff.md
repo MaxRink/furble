@@ -234,17 +234,16 @@ unchanged `FIRST_RETRY_MS` (2.5 s) otherwise. Only the first retry is affected;
 the exponential curve for attempt >= 1 is identical either way, so a persistently
 unreachable camera still backs off exactly as before.
 
-How furble-initiated is known: `Control` tracks a `m_FreshConnect` bit.
-`connectAll(bool)` sets it, because a connect started there is always a fresh,
-furble-initiated connect (the first ever connect, a user reconnect after
-Disconnect, or the boot autoconnect after a clean restart, all of which follow a
-furble-initiated disconnect or no disconnect at all). It is cleared on the first
-successful connect. A mid-session drop re-enters connect through the
-`STATE_ACTIVE` path, not `connectAll(bool)`, so `m_FreshConnect` stays false
-there: the only way a live target re-enters connect without `connectAll(bool)` is
-a peer-initiated drop, which is exactly the case that must keep the backoff. The
-bit is exposed as `control.fresh_connect` in the debug console `debug control`
-snapshot.
+How furble-initiated is known: `Control` carries a reconnect origin in the
+queued connect request. The next explicit connect consumes a token set by an
+interactive furble disconnect. A controlled restart writes a one-shot NVS
+marker after its teardown; the first Control instance consumes it on boot. If
+the marker cannot be written, read, or removed, the boot defaults to the peer
+backoff. Mid-session drops and peer resets during a handshake enter the private
+reconnect path with the peer origin. A request arriving while that recovery is
+running cannot mutate the active cycle's origin. The origin is exposed as
+`control.fresh_connect` in the debug console `debug control` snapshot for
+compatibility with the original diagnostic field.
 
 Scope note: the camera power-off case the user already accepted (about 7 s
 supervision timeout, then the backoff) is unchanged. That is a peer-initiated
@@ -252,14 +251,12 @@ drop, so it keeps `FIRST_RETRY_MS`.
 
 Tests: `tests/host/reconnect_backoff_test.cpp` gains
 `testFurbleInitiatedFirstRetryIsImmediate`, pinning the pure `delayMs()` curve
-for both initiators. A new Control harness,
+for both initiators and large or wrapped retry counters. A new Control harness,
 `tests/host/reconnect_initiator_test.cpp` (ctest `reconnect-initiator`), drives
-the production control task against MockNimBLE through both paths and pins the
-timing: a furble-initiated fresh reconnect whose first attempt fails reaches
-active in well under the 2.5 s wait, while a peer-initiated supervision-timeout
-drop still waits it out. Reverting the `delayMs()` condition (always
-`FIRST_RETRY_MS` at attempt 0) fails both, which was confirmed by mutation: the
-fresh reconnect went from about 0.1 s to about 2.7 s.
+the production control task against MockNimBLE through the interactive token,
+peer supervision drop, peer reset during handshake, and concurrent manual
+request paths. Only the controlled teardown path reaches active in well under
+the 2.5 s wait.
 
 PENDING HARDWARE CONFIRM (user): disconnect via furble then reconnect is fast;
 camera power-off then reconnect is unchanged (about 7 s supervision plus the

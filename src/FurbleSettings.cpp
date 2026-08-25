@@ -8,6 +8,10 @@
 
 namespace Furble {
 
+namespace {
+constexpr const char *CLEAN_RESTART_KEY = "clean_restart";
+}
+
 // The board-conditional text size policy in FurbleTextSize.h uses raw values so
 // it stays dependency free for the host tests. Pin those values to the enum so
 // the two cannot drift apart.
@@ -581,6 +585,29 @@ void Settings::init(void) {
       }
     }
   }
+}
+
+bool Settings::markCleanRestart(void) {
+  if (!m_Prefs.begin(FURBLE_STR, false)) {
+    return false;
+  }
+
+  const bool written = m_Prefs.put(CLEAN_RESTART_KEY, true) != 0;
+  m_Prefs.end();
+  return written;
+}
+
+bool Settings::consumeCleanRestart(void) {
+  if (!m_Prefs.begin(FURBLE_STR, false)) {
+    return false;
+  }
+
+  const bool marked = m_Prefs.get(CLEAN_RESTART_KEY, false);
+  // If the marker cannot be removed, do not trust it. Leaving it behind would
+  // incorrectly make a later crash boot look like another clean restart.
+  const bool consumed = !marked || m_Prefs.remove(CLEAN_RESTART_KEY);
+  m_Prefs.end();
+  return marked && consumed;
 }
 
 bool Settings::batterySaver(void) {

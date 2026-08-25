@@ -160,6 +160,13 @@ class Settings {
 
   static void init(void);
 
+  // A controlled restart writes a one-shot marker so the next boot can
+  // distinguish its clean teardown from a power loss or watchdog reset. NVS
+  // failures deliberately return false, which makes the next connect retain
+  // the patient peer-drop retry.
+  static bool markCleanRestart(void);
+  static bool consumeCleanRestart(void);
+
   static const setting_t &get(type_t);
   static const setting_t *getByWireId(uint8_t wire_id);
   static const std::unordered_map<type_t, setting_t> &all(void);

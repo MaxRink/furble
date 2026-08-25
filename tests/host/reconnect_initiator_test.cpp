@@ -105,13 +105,19 @@ bool testFurbleInitiatedReconnectIsFast() {
     return false;
   }
 
+  // Establish the origin token through the production interactive disconnect
+  // path. A later AUTO request must consume that token, rather than treating
+  // every explicit connect call as fresh.
+  control.disconnect();
+  control.addActive(camera);
+
   // Fail the very first connect attempt so the first-retry path is exercised at
   // attempt 0. The next attempt then succeeds.
   NimBLEDevice::setConnectFailCount(1);
 
   const auto start = std::chrono::steady_clock::now();
   // Infinite reconnect on: this is the only mode where the first-retry backoff
-  // applies. connectAll(bool) marks the cycle fresh (furble-initiated).
+  // applies. AUTO consumes the token carried by the interactive disconnect.
   control.connectAll(true);
 
   const bool connected = waitFor([&] { return control.getConnectedTargetCount() == 1; }, 4000);
@@ -196,11 +202,104 @@ bool testPeerInitiatedDropKeepsBackoff() {
   return g_Failures == before;
 }
 
+// A peer reset during the first handshake is still peer-originated even though
+// the public connect request started the cycle. The first retry must therefore
+// keep the stale-session wait.
+bool testPeerResetDuringHandshakeKeepsBackoff() {
+  std::cout << "test: a peer reset during handshake keeps the first-retry backoff\n";
+  const int before = g_Failures;
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  ensureControlTask();
+
+  Furble::Host::FujifilmVirtualCamera peer;
+  peer.dropLinkDuringConnect(Furble::Host::FujifilmVirtualCamera::pairServiceUUID(),
+                             Furble::Host::FujifilmVirtualCamera::identifierCharacteristicUUID());
+  auto camera = makeCamera(peer);
+  auto &control = Control::getInstance();
+  control.addActive(camera);
+
+  const auto start = std::chrono::steady_clock::now();
+  control.connectAll(true, Control::reconnect_origin_t::PEER);
+  // Remove the fault after the first attempt has had time to reach the
+  // identify write. The retry itself must still honor the peer wait.
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  peer.clearFaults();
+
+  const bool connected = waitFor([&] { return control.getConnectedTargetCount() == 1; }, 8000);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+  check(connected, "the peer-reset connect eventually recovers");
+  check(elapsed >= 2000, "a peer reset during handshake does not take the furble fast path");
+  std::cout << "  peer-reset reconnect completed in " << elapsed << " ms\n";
+
+  control.disconnect();
+  NimBLEDevice::resetMock();
+  return g_Failures == before;
+}
+
+// A manual connect request arriving while the automatic peer recovery is
+// waiting must not mutate that running cycle's origin or retry configuration.
+bool testManualConnectDuringPeerRecoveryKeepsBackoff() {
+  std::cout << "test: manual connect during peer recovery keeps its origin\n";
+  const int before = g_Failures;
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  ensureControlTask();
+
+  Furble::Host::FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  auto &control = Control::getInstance();
+  control.addActive(camera);
+  control.connectAll(true, Control::reconnect_origin_t::PEER);
+  if (!check(waitFor([&] { return control.getConnectedTargetCount() == 1; }, 4000),
+             "the peer-recovery test starts active")) {
+    control.disconnect();
+    NimBLEDevice::resetMock();
+    return false;
+  }
+
+  NimBLEDevice::setConnectFailCount(1);
+  NimBLEClient *client = NimBLEDevice::lastClient();
+  if (!check(client != nullptr, "the peer-recovery test created a client")) {
+    control.disconnect();
+    NimBLEDevice::resetMock();
+    return false;
+  }
+
+  const auto start = std::chrono::steady_clock::now();
+  client->mockDropLink(0x08, /*fire_callback=*/true);
+  // Queue concurrent requests while the automatic peer reconnect is in its
+  // first failed attempt. Neither may rewrite the active cycle's origin.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::thread fastRequest(
+      [&control] { control.connectAll(false, Control::reconnect_origin_t::FURBLE); });
+  std::thread patientRequest(
+      [&control] { control.connectAll(true, Control::reconnect_origin_t::PEER); });
+  fastRequest.join();
+  patientRequest.join();
+
+  const bool connected = waitFor([&] { return control.getConnectedTargetCount() == 1; }, 8000);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+  check(connected, "peer recovery survives a concurrent manual connect request");
+  check(elapsed >= 2000, "a concurrent manual connect request cannot shorten peer recovery");
+  std::cout << "  concurrent peer recovery completed in " << elapsed << " ms\n";
+
+  control.disconnect();
+  NimBLEDevice::resetMock();
+  return g_Failures == before;
+}
+
 }  // namespace
 
 int main() {
   testFurbleInitiatedReconnectIsFast();
   testPeerInitiatedDropKeepsBackoff();
+  testPeerResetDuringHandshakeKeepsBackoff();
+  testManualConnectDuringPeerRecoveryKeepsBackoff();
 
   const int status = (g_Failures == 0) ? 0 : 1;
   if (status == 0) {

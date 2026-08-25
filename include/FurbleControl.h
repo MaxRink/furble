@@ -1,7 +1,6 @@
 #ifndef FURBLE_CONTROL_H
 #define FURBLE_CONTROL_H
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -41,6 +40,15 @@ class Control {
     /** Disconnecting. */
     STATE_DISCONNECTING,
   } state_t;
+
+  // The first retry may skip the stale-session wait only when the prior link
+  // teardown was known to be ours. AUTO is resolved from the pending origin
+  // token; callers must use PEER when a link may have been dropped by camera.
+  enum class reconnect_origin_t : uint8_t {
+    AUTO,
+    PEER,
+    FURBLE,
+  };
 
   class Target {
     friend class Control;
@@ -136,7 +144,7 @@ class Control {
   /**
    * Connect to all active cameras.
    */
-  void connectAll(bool infiniteReconnect);
+  void connectAll(bool infiniteReconnect, reconnect_origin_t origin = reconnect_origin_t::AUTO);
 
   /**
    * Disconnect all connected cameras.
@@ -295,6 +303,11 @@ class Control {
    */
   void setState(state_t state);
 
+  struct command_t;
+
+  /** Apply a queued explicit connect request on the control task. */
+  void startConnectRequest(const command_t &request);
+
   /**
    * Sample connection RSSI and adjust the shared transmit power.
    *
@@ -320,6 +333,12 @@ class Control {
   static constexpr UBaseType_t m_QueueLength = 32;
   static constexpr const char *POWER_LOCK_OWNER = "control";
 
+  struct command_t {
+    cmd_t command;
+    reconnect_origin_t origin;
+    bool infiniteReconnect;
+  };
+
   QueueHandle_t m_Queue = NULL;
   mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
@@ -343,18 +362,14 @@ class Control {
   bool m_ReconnectBackoff = false;
   uint32_t m_ReconnectAttempt = 0;
   bool m_ReconnectHintLogged = false;
-  // True while a connect cycle started by connectAll(bool) has not yet reached
-  // active. Such a cycle is always a fresh, furble-initiated connect: the first
-  // ever connect, a user reconnect after the interactive Disconnect, or the boot
-  // autoconnect after a clean pre-restart teardown. In every case the prior
-  // disconnect (if any) was furble-initiated, so the camera holds no stale
-  // session and the first reconnect retry can skip FIRST_RETRY_MS. It is cleared
-  // on the first success, so a later mid-session drop (a peer-initiated drop, the
-  // only way a live target re-enters connect without going through
-  // connectAll(bool)) keeps the full first-retry backoff.
-  // connectAll(bool) is called by the UI task while the control task consumes
-  // the request. Keep the initiator marker race-free across those tasks.
-  std::atomic<bool> m_FreshConnect = false;
+  // Origin of the currently running connect cycle. This is written and read by
+  // the control task only. A peer drop always starts the private reconnect path
+  // with PEER, while an interactive disconnect or consumed clean-restart marker
+  // supplies FURBLE to the next explicit connect request.
+  reconnect_origin_t m_ConnectOrigin = reconnect_origin_t::PEER;
+  // Origin token for the next explicit connect request. Guarded by m_Mutex so
+  // disconnect() and connectAll() cannot race or lose the clean teardown cause.
+  reconnect_origin_t m_NextConnectOrigin = reconnect_origin_t::PEER;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

@@ -167,7 +167,7 @@ task_exit:
 Control &Control::getInstance(void) {
   static Control instance;
   if (instance.m_Queue == NULL) {
-    instance.m_Queue = xQueueCreate(m_QueueLength, sizeof(cmd_t));
+    instance.m_Queue = xQueueCreate(m_QueueLength, sizeof(command_t));
     if (instance.m_Queue == NULL) {
       ESP_LOGE(LOG_TAG, "Failed to create control queue.");
       abort();
@@ -178,9 +178,32 @@ Control &Control::getInstance(void) {
     // the compile-time default.
     instance.m_Power = Settings::load<esp_power_level_t>(Settings::TX_POWER);
     instance.m_AdaptivePower = instance.m_Power;
+    if (Settings::consumeCleanRestart()) {
+      instance.m_NextConnectOrigin = reconnect_origin_t::FURBLE;
+    }
   }
 
   return instance;
+}
+
+void Control::startConnectRequest(const command_t &request) {
+  {
+    // A new user connect cycle re-arms every target camera. The cancel token
+    // set by a previous disconnect() must not leak into this cycle, and it is
+    // deliberately not cleared inside Camera::connect(): a cancel that lands
+    // just as an attempt starts has to survive into that attempt.
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto &target : m_Targets) {
+      target->getCamera()->clearConnectCancel();
+    }
+  }
+
+  m_InfiniteReconnect = request.infiniteReconnect;
+  m_ReconnectBackoff = Settings::reconBackoffEffective();
+  m_ReconnectAttempt = 0;
+  m_ReconnectHintLogged = false;
+  m_ConnectAbort = false;
+  m_ConnectOrigin = request.origin;
 }
 
 Control::state_t Control::connectAll(void) {
@@ -245,23 +268,21 @@ Control::state_t Control::connectAll(void) {
       failcount = 0;
       m_ReconnectAttempt = 0;
       m_ReconnectHintLogged = false;
-      // The fresh connect reached active. A drop from here on is peer-initiated,
-      // so restore the full first-retry backoff.
-      m_FreshConnect.store(false, std::memory_order_release);
+      // A later drop from this active session is peer-initiated.
+      m_ConnectOrigin = reconnect_origin_t::PEER;
       return STATE_ACTIVE;
     }
   }
 
   if (m_InfiniteReconnect || (failcount < 2)) {
     if (m_InfiniteReconnect) {
-      // A furble-initiated fresh connect (m_FreshConnect) has no stale peer
-      // session to wait out, so its first retry is immediate. A peer-initiated
-      // drop keeps FIRST_RETRY_MS.
-      const bool freshConnect = m_FreshConnect.load(std::memory_order_acquire);
-      const uint32_t delay =
-          ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff, freshConnect);
+      // A furble-initiated teardown has no stale peer session to wait out, so
+      // its first retry is immediate. A peer-initiated drop keeps the wait.
+      const uint32_t delay = ReconnectBackoff::delayMs(
+          m_ReconnectAttempt, m_ReconnectBackoff, m_ConnectOrigin == reconnect_origin_t::FURBLE);
 
-      if (m_ReconnectAttempt == 0 && !freshConnect && !m_ReconnectHintLogged) {
+      if (m_ReconnectAttempt == 0 && (m_ConnectOrigin == reconnect_origin_t::PEER)
+          && !m_ReconnectHintLogged) {
         ESP_LOGW(LOG_TAG,
                  "Reconnect failed; camera may still hold the previous session. Retrying in "
                  "%lu ms.",
@@ -295,13 +316,15 @@ void Control::task(void) {
     // task can still touch them.
     reapZombieTargets();
 
-    cmd_t cmd;
-    BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
+    command_t request = {CMD_ERROR, reconnect_origin_t::PEER, false};
+    BaseType_t ret = xQueueReceive(m_Queue, &request, pdMS_TO_TICKS(50));
+    const cmd_t cmd = request.command;
 
     switch (m_State) {
       case STATE_IDLE:
         if (ret == pdTRUE) {
           if (cmd == CMD_CONNECT) {
+            startConnectRequest(request);
             setState(STATE_CONNECT);
             continue;
           }
@@ -334,6 +357,10 @@ void Control::task(void) {
 
       case STATE_CONNECTING:
       case STATE_CONNECT_FAILED:
+        if (ret == pdTRUE && cmd == CMD_CONNECT) {
+          startConnectRequest(request);
+          setState(STATE_CONNECT);
+        }
         break;
 
       case STATE_ACTIVE:
@@ -342,6 +369,10 @@ void Control::task(void) {
             const std::lock_guard<std::mutex> lock(m_Mutex);
             resetAdaptiveState();
           }
+          // A live session that drops is always a peer-origin reconnect. An
+          // explicit request queued while this recovery is in progress must
+          // not overwrite that origin.
+          m_ConnectOrigin = reconnect_origin_t::PEER;
           setState(STATE_CONNECT);
           continue;
         }
@@ -409,7 +440,8 @@ BaseType_t Control::sendCommand(cmd_t cmd) {
       break;
   }
 
-  return xQueueSend(m_Queue, &cmd, 0);
+  const command_t request = {cmd, reconnect_origin_t::PEER, false};
+  return xQueueSend(m_Queue, &request, 0);
 }
 
 BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {
@@ -417,8 +449,8 @@ BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t
     target->updateGPS(gps, timesync);
   }
 
-  cmd_t cmd = CMD_GPS_UPDATE;
-  return xQueueSend(m_Queue, &cmd, 0);
+  const command_t request = {CMD_GPS_UPDATE, reconnect_origin_t::PEER, false};
+  return xQueueSend(m_Queue, &request, 0);
 }
 
 bool Control::allConnected(void) {
@@ -442,30 +474,20 @@ std::vector<Control::Target *> Control::getTargets(void) {
   return targets;
 }
 
-void Control::connectAll(bool infiniteReconnect) {
+void Control::connectAll(bool infiniteReconnect, reconnect_origin_t origin) {
+  command_t request = {CMD_CONNECT, origin, infiniteReconnect};
   {
-    // A new user connect cycle re-arms every target camera. The cancel token
-    // set by a previous disconnect() must not leak into this cycle, and it is
-    // deliberately not cleared inside Camera::connect(): a cancel that lands
-    // just as an attempt starts has to survive into that attempt.
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    for (const auto &target : m_Targets) {
-      target->getCamera()->clearConnectCancel();
+    if (origin == reconnect_origin_t::AUTO) {
+      request.origin = m_NextConnectOrigin;
+    }
+
+    // Serialize origin capture with disconnect(). The command carries the
+    // captured value, so later calls cannot change an already queued cycle.
+    if (xQueueSend(m_Queue, &request, 0) == pdTRUE) {
+      m_NextConnectOrigin = reconnect_origin_t::PEER;
     }
   }
-
-  m_InfiniteReconnect = infiniteReconnect;
-  m_ReconnectBackoff = Settings::reconBackoffEffective();
-  m_ReconnectAttempt = 0;
-  m_ReconnectHintLogged = false;
-  m_ConnectAbort = false;
-  // A connect started here is fresh and furble-initiated: any prior disconnect
-  // was furble's own, so the first reconnect retry skips the stale-session wait.
-  // Cleared on the first success in connectAll(), so a later mid-session drop
-  // keeps the full backoff.
-  m_FreshConnect.store(true, std::memory_order_release);
-
-  this->sendCommand(CMD_CONNECT);
 }
 
 bool Control::disconnectComplete(void) {
@@ -588,6 +610,10 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       }
       m_Targets.clear();
       m_ConnectCamera = nullptr;
+      // The next explicit connect follows this controlled teardown. Keep the
+      // token under the same mutex used by connectAll() so a concurrent manual
+      // request cannot misclassify a peer drop as furble-initiated.
+      m_NextConnectOrigin = reconnect_origin_t::FURBLE;
     }
     setState(STATE_IDLE);
     return true;
@@ -769,7 +795,7 @@ Control::debug_state_t Control::getDebugState(void) const {
   snapshot.infiniteReconnect = m_InfiniteReconnect;
   snapshot.reconnectBackoff = m_ReconnectBackoff;
   snapshot.reconnectAttempt = m_ReconnectAttempt;
-  snapshot.freshConnect = m_FreshConnect.load(std::memory_order_acquire);
+  snapshot.freshConnect = (m_ConnectOrigin == reconnect_origin_t::FURBLE);
 
   const std::lock_guard<std::mutex> lock(m_Mutex);
   snapshot.targetCount = m_Targets.size();

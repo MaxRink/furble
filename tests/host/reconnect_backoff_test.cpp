@@ -90,6 +90,13 @@ bool testFurbleInitiatedFirstRetryIsImmediate() {
           "furble-initiated does not change the flat curve after the first retry");
   }
 
+  // Saturation remains safe for arbitrarily large retry counters. In
+  // particular, a wrapped uint32_t attempt must not turn into a zero or small
+  // delay through an overflowing shift.
+  check(delayMs(UINT32_MAX, true) == MAX_MS,
+        "a wrapped retry counter stays at the maximum backoff");
+  check(delayMs(31, true) == MAX_MS, "a large retry counter stays at the maximum backoff");
+
   return g_Failures == before;
 }
 
