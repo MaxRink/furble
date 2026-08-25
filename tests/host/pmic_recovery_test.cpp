@@ -68,6 +68,58 @@ int main() {
   check(watchdogAfterReset.watchdogExpired(),
         "retained watchdog expires while the ESP32 is in download mode");
 
+  // Every PMIC operation has a negative path. The production wrapper must
+  // retry once, and callers such as flash preparation must fail closed when
+  // both attempts fail.
+  M5PM1::resetPersistentStateForTest();
+  setClockMillis(0);
+  M5PM1 faults;
+  check(faults.begin(nullptr) == M5PM1_OK, "fault-injection PMIC begins");
+  M5PM1::failNextForTest(false, false, true, false);
+  check(faults.setDownloadLock(false) == M5PM1_ERROR,
+        "download unlock wake precedes injected failure");
+  check(faults.setDownloadLock(false) == M5PM1_ERROR,
+        "download unlock write reports injected failure");
+  check(faults.setDownloadLock(false) == M5PM1_OK,
+        "download unlock remains recoverable after injected failure");
+
+  M5PM1::failNextForTest(false, false, false, true);
+  bool faultLock = false;
+  check(faults.getDownloadLock(&faultLock) == M5PM1_ERROR,
+        "download lock read wake precedes injected failure");
+  check(faults.getDownloadLock(&faultLock) == M5PM1_ERROR,
+        "download lock read reports injected failure");
+  check(faults.getDownloadLock(&faultLock) == M5PM1_OK,
+        "download lock read recovers after injected failure");
+
+  M5PM1::failNextForTest(true, false, false, false);
+  check(faults.wdtSet(0) == M5PM1_ERROR,
+        "watchdog disable wake precedes injected failure");
+  check(faults.wdtSet(0) == M5PM1_ERROR,
+        "watchdog disable reports injected write failure");
+  check(faults.wdtSet(0) == M5PM1_OK,
+        "watchdog disable recovers after injected write failure");
+
+  M5PM1::failNextForTest(false, true, false, false);
+  uint8_t faultCount = 0;
+  check(faults.wdtGetCount(&faultCount) == M5PM1_ERROR,
+        "watchdog readback wake precedes injected failure");
+  check(faults.wdtGetCount(&faultCount) == M5PM1_ERROR,
+        "watchdog readback reports injected failure");
+  check(faults.wdtGetCount(&faultCount) == M5PM1_OK && faultCount == 0,
+        "watchdog readback recovers and confirms disabled state");
+
+  // A failed restoration must not be mistaken for an armed watchdog. The
+  // retained PMIC state remains disabled until a verified arm succeeds.
+  M5PM1::failNextForTest(true, false, false, false);
+  check(faults.wdtSet(2) == M5PM1_ERROR,
+        "watchdog restore wake precedes injected failure");
+  check(faults.wdtSet(2) == M5PM1_ERROR,
+        "watchdog restore reports injected failure");
+  faultCount = 1;
+  check(faults.wdtGetCount(&faultCount) == M5PM1_OK && faultCount == 0,
+        "failed watchdog restore leaves the watchdog disabled and observable");
+
   std::cout << "pmic recovery persistence tests passed\n";
   return 0;
 }

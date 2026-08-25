@@ -1919,7 +1919,9 @@ int cmdFlash(int argc, char **argv) {
   }
 
   if ((argc == 2) && !strcasecmp(argv[1], "cancel")) {
-    Platform::getInstance().cancelFlashPreparation();
+    if (!Platform::getInstance().cancelFlashPreparation()) {
+      return fail("PMIC watchdog restore failed; keep the device powered and use manual recovery");
+    }
     printf("flash.ready: false\n");
     printf("flash.watchdog: armed\n");
     return 0;

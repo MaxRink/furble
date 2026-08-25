@@ -92,7 +92,15 @@ def main() -> int:
         "--upload-port",
         args.port,
     ]
-    return subprocess.run(command, check=False).returncode
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        print(
+            "upload failed. The device may still be in ROM download mode. "
+            "Power-cycle it before retrying; if the application boots, run "
+            "'flash cancel' to restore watchdog protection.",
+            file=sys.stderr,
+        )
+    return result.returncode
 
 
 if __name__ == "__main__":
