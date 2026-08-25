@@ -7,6 +7,7 @@ namespace FurbleHost {
 bool MockEthNetif::init(EventCallback callback) {
   ++m_InitCalls;
   m_Callback = std::move(callback);
+  m_Callbacks.push_back(m_Callback);
   return m_InitResult;
 }
 
@@ -42,9 +43,23 @@ void MockEthNetif::emitGotIp(const std::string &ip) {
   }
 }
 
+void MockEthNetif::emitIpLost(void) {
+  if (m_Started && m_Callback) {
+    m_Callback(Event::IP_LOST, "");
+  }
+}
+
 void MockEthNetif::emitQueuedEvent(Event event, const std::string &ip) {
   if (m_Callback) {
     m_Callback(event, ip);
+  }
+}
+
+void MockEthNetif::emitQueuedEventFromGeneration(size_t generation,
+                                                 Event event,
+                                                 const std::string &ip) {
+  if (generation < m_Callbacks.size()) {
+    m_Callbacks[generation](event, ip);
   }
 }
 

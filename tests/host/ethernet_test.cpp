@@ -81,6 +81,14 @@ int main(void) {
   mock.emitGotIp("198.51.100.7");
   check(callbackCount == 2, "duplicate IP events do not refire network-up");
 
+  mock.emitIpLost();
+  check(!Furble::Ethernet::isConnected(), "IP loss clears the connected state");
+  check(Furble::Ethernet::getIP().empty(), "IP loss clears the active IP");
+  check(callbackCount == 2, "IP loss does not fire a network-up callback");
+  mock.emitGotIp("198.51.100.7");
+  check(Furble::Ethernet::isConnected(), "the same IP can be reacquired after loss");
+  check(callbackCount == 3, "same-IP reacquisition fires network-up");
+
   Furble::Ethernet::stop();
   check(!Furble::Ethernet::isConnected(), "stop clears the connected state");
   check(Furble::Ethernet::getIP().empty(), "stop clears the active IP");
@@ -89,14 +97,21 @@ int main(void) {
   // rejected by production's g_Initialized guard.
   mock.emitQueuedEvent(Furble::Ethernet::Transport::Event::LINK_DOWN);
   mock.emitQueuedEvent(Furble::Ethernet::Transport::Event::GOT_IP, "203.0.113.1");
-  check(callbackCount == 2, "events after stop are ignored");
+  check(callbackCount == 3, "events after stop are ignored");
 
   check(Furble::Ethernet::init(mock), "the transport can be initialized again after stop");
   check(mock.initCalls() == 2, "restart initializes the transport again");
   check(mock.startCalls() == 2, "restart starts the transport again");
+  check(mock.callbackGenerationCount() == 2, "restart installs a new callback generation");
+  mock.emitQueuedEventFromGeneration(0, Furble::Ethernet::Transport::Event::LINK_UP);
+  mock.emitQueuedEventFromGeneration(0, Furble::Ethernet::Transport::Event::GOT_IP,
+                                     "203.0.113.8");
+  check(!Furble::Ethernet::isConnected(), "a queued old-generation event cannot revive a restart");
+  check(Furble::Ethernet::getIP().empty(), "old-generation IP cannot mutate restart state");
+  check(callbackCount == 3, "old-generation events do not notify network-up");
   mock.emitLinkUp();
   mock.emitGotIp("203.0.113.9");
-  check(callbackCount == 3, "a restarted transport reports network-up");
+  check(callbackCount == 4, "a restarted transport reports network-up");
   check(Furble::Ethernet::getIP() == "203.0.113.9", "restart reports the new IP");
   Furble::Ethernet::stop();
 
