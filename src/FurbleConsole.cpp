@@ -478,7 +478,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
-      if ((end == text) || (value > 3)) {
+      if ((end == text) || (*end != '\0') || (value > 3)) {
         return fail("expected 0-3");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));

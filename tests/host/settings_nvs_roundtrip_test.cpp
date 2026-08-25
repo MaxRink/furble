@@ -206,6 +206,8 @@ std::vector<SettingCase> settingCases() {
       {Settings::TX_ADAPTIVE,       "TX_ADAPTIVE",       false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS,               "GPS",               false,                                                true,                        StorageKind::BOOL  },
       {Settings::IMU,               "IMU",               false,                                                true,                        StorageKind::BOOL  },
+      {Settings::IMU_WAKE,          "IMU_WAKE",          uint8_t {0},                                          uint8_t {3},                 StorageKind::U8    },
+      {Settings::IMU_TRIG,          "IMU_TRIG",          false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS_BAUD,          "GPS_BAUD",          uint32_t {Settings::BAUD_9600},
        uint32_t {Settings::BAUD_115200},                                                                                                    StorageKind::U32   },
       {Settings::GPS_RATE,          "GPS_RATE",          uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
@@ -316,6 +318,8 @@ ASSERT_STORAGE_TYPE(DISPLAY_MODE, uint8_t);
 #endif
 ASSERT_STORAGE_TYPE(BATTERY_SAVER, bool);
 ASSERT_STORAGE_TYPE(IMU, bool);
+ASSERT_STORAGE_TYPE(IMU_WAKE, uint8_t);
+ASSERT_STORAGE_TYPE(IMU_TRIG, bool);
 #if defined(FURBLE_M5STICKS3)
 ASSERT_STORAGE_TYPE(WATCHDOG, bool);
 #endif
@@ -343,6 +347,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -378,6 +383,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

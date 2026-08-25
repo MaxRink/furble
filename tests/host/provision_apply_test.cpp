@@ -69,6 +69,9 @@ void testValidatedApplyAndRuntimeHooks() {
       {26, ValueType::U8,     {5}                                               },
       {33, ValueType::U8,     {4}                                               },
       {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
+      {45, ValueType::BOOL,   {1}                                               },
+      {63, ValueType::U8,     {3}                                               },
+      {64, ValueType::BOOL,   {1}                                               },
   };
   ApplyReport report;
   ApplyOptions options;
@@ -77,7 +80,7 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 27}),
+  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 27, 45, 63, 64}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -88,6 +91,12 @@ void testValidatedApplyAndRuntimeHooks() {
   check(Furble::Settings::load<std::string>(Furble::Settings::BUTTON_MODE)
             == Furble::Settings::BUTTON_MODE_ONE_BUTTON_VALUE,
         "validated button mode setting is persisted");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+        "validated IMU wake setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU),
+        "validated IMU setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
+        "validated IMU trigger setting is persisted");
 }
 
 void testDomainValidation() {
@@ -96,6 +105,7 @@ void testDomainValidation() {
   for (const SettingValue &invalid : {
            SettingValue {26, ValueType::U8,     {6}                 },
            SettingValue {33, ValueType::U8,     {5}                 },
+           SettingValue {63, ValueType::U8,     {4}                 },
            SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}},
   }) {
     ProvisionBundle bundle;

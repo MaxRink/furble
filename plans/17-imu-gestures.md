@@ -52,8 +52,8 @@ The shutter path is `Control::sendCommand(Control::CMD_SHUTTER_PRESS)` and
 
 | Enum | NVS key | Namespace | Type | Default | Notes |
 |---|---|---|---|---|---|
-| `IMU_WAKE` | `imu_wake` (8) | `FURBLE_STR` | `uint8_t` | `0` | 0 off, 1 tap, 2 shake, 3 both. 0 is current behaviour. |
-| `IMU_TRIG` | `imu_trigger` (11) | `FURBLE_STR` | `bool` | `false` | False is current behaviour. |
+| `IMU_WAKE` | `imu_wake` (63) | `FURBLE_STR` | `uint8_t` | `0` | 0 off, 1 tap, 2 shake, 3 both. 0 is current behaviour. |
+| `IMU_TRIG` | `imu_trigger` (64) | `FURBLE_STR` | `bool` | `false` | False is current behaviour. |
 
 Name strings: `"Wake Gesture"` and `"Double-Tap Shutter"`.
 
@@ -244,8 +244,9 @@ Deviations:
 
 Rebase notes:
 
-- Wire IDs are `IMU_WAKE` 44 and `IMU_TRIG` 45, assigned during the rebase onto
-  the reviewed feat/16 base.
+- Wire IDs are `IMU_WAKE` 63 and `IMU_TRIG` 64. IDs 45 and 46 are reserved by
+  the shipped IMU setting and companion password; 47/48 are reserved by the
+  open hardware-motion roadmap, and 51-62 by the Wi-Fi/MQTT settings ledger.
 
 ## References
 

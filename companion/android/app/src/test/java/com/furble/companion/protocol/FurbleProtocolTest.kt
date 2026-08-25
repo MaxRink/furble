@@ -189,8 +189,8 @@ class FurbleProtocolTest {
 
     @Test
     fun metadataCoversEveryCurrentWireIdAndUnknownRowsStayReadOnly() {
-        assertEquals(42, FurbleSettingMetadata.byWireId.size)
-        assertEquals((1..41).toSet() + 44, FurbleSettingMetadata.byWireId.keys)
+        assertEquals(45, FurbleSettingMetadata.byWireId.size)
+        assertEquals((1..41).toSet() + setOf(44, 45, 63, 64), FurbleSettingMetadata.byWireId.keys)
         assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
         assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
         assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
@@ -206,6 +206,12 @@ class FurbleProtocolTest {
         assertFalse(textSize?.dangerous == true)
         assertTrue(FurbleProtocol.isSettingValueValid(40, FurbleProtocol.SettingType.UINT8, byteArrayOf(2)))
         assertFalse(FurbleProtocol.isSettingValueValid(40, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))
+        assertEquals(FurbleProtocol.SettingType.BOOL, FurbleSettingMetadata.byWireId[45]?.wireType)
+        assertEquals(FurbleProtocol.SettingType.UINT8, FurbleSettingMetadata.byWireId[63]?.wireType)
+        assertEquals(listOf(0, 1, 2, 3), FurbleSettingMetadata.byWireId[63]?.options?.map { it.value })
+        assertTrue(FurbleProtocol.isSettingValueValid(63, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))
+        assertFalse(FurbleProtocol.isSettingValueValid(63, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)))
+        assertTrue(FurbleProtocol.isSettingValueValid(64, FurbleProtocol.SettingType.BOOL, byteArrayOf(1)))
     }
 
     @Test
