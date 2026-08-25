@@ -40,6 +40,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
+    error = nil
     state = CompanionStateMachine()
     phase = .idle
   }
