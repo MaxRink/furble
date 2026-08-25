@@ -14,48 +14,49 @@ namespace {
 // runtime apply path still asks Settings::getByWireId(), so a setting that is
 // conditional on the board cannot accidentally be written when it is absent.
 constexpr SettingSchema SETTING_SCHEMAS[] = {
-    {1,  ValueType::U8,     1,  1               },
-    {2,  ValueType::U8,     1,  1               },
-    {3,  ValueType::STRING, 0,  MAX_STRING_BYTES},
-    {4,  ValueType::U8,     1,  1               },
-    {5,  ValueType::BOOL,   1,  1               },
-    {6,  ValueType::U32,    4,  4               },
-    {7,  ValueType::BLOB,   12, 12              },
-    {8,  ValueType::BOOL,   1,  1               },
-    {9,  ValueType::BOOL,   1,  1               },
-    {10, ValueType::BOOL,   1,  1               },
-    {11, ValueType::BOOL,   1,  1               },
-    {12, ValueType::BOOL,   1,  1               },
-    {13, ValueType::U8,     1,  1               },
-    {14, ValueType::BOOL,   1,  1               },
-    {15, ValueType::U8,     1,  1               },
-    {16, ValueType::BOOL,   1,  1               },
-    {17, ValueType::U8,     1,  1               },
-    {18, ValueType::U8,     1,  1               },
-    {19, ValueType::BOOL,   1,  1               },
-    {20, ValueType::BOOL,   1,  1               },
-    {21, ValueType::U8,     1,  1               },
-    {22, ValueType::U32,    4,  4               },
-    {23, ValueType::BOOL,   1,  1               },
-    {24, ValueType::U8,     1,  1               },
-    {25, ValueType::U8,     1,  1               },
-    {26, ValueType::U8,     1,  1               },
-    {27, ValueType::STRING, 0,  MAX_STRING_BYTES},
-    {28, ValueType::BOOL,   1,  1               },
-    {29, ValueType::BOOL,   1,  1               },
-    {30, ValueType::BOOL,   1,  1               },
-    {31, ValueType::BOOL,   1,  1               },
-    {32, ValueType::U8,     1,  1               },
-    {33, ValueType::U8,     1,  1               },
-    {34, ValueType::U8,     1,  1               },
-    {35, ValueType::U8,     1,  1               },
-    {36, ValueType::U8,     1,  1               },
-    {37, ValueType::U8,     1,  1               },
-    {38, ValueType::U8,     1,  1               },
-    {39, ValueType::BOOL,   1,  1               },
-    {40, ValueType::U8,     1,  1               },
-    {41, ValueType::U8,     1,  1               },
-    {44, ValueType::BOOL,   1,  1               },
+    {1,                          ValueType::U8,     1,  1                           },
+    {2,                          ValueType::U8,     1,  1                           },
+    {3,                          ValueType::STRING, 0,  MAX_STRING_BYTES            },
+    {4,                          ValueType::U8,     1,  1                           },
+    {5,                          ValueType::BOOL,   1,  1                           },
+    {6,                          ValueType::U32,    4,  4                           },
+    {7,                          ValueType::BLOB,   12, 12                          },
+    {8,                          ValueType::BOOL,   1,  1                           },
+    {9,                          ValueType::BOOL,   1,  1                           },
+    {10,                         ValueType::BOOL,   1,  1                           },
+    {11,                         ValueType::BOOL,   1,  1                           },
+    {12,                         ValueType::BOOL,   1,  1                           },
+    {13,                         ValueType::U8,     1,  1                           },
+    {14,                         ValueType::BOOL,   1,  1                           },
+    {15,                         ValueType::U8,     1,  1                           },
+    {16,                         ValueType::BOOL,   1,  1                           },
+    {17,                         ValueType::U8,     1,  1                           },
+    {18,                         ValueType::U8,     1,  1                           },
+    {19,                         ValueType::BOOL,   1,  1                           },
+    {20,                         ValueType::BOOL,   1,  1                           },
+    {21,                         ValueType::U8,     1,  1                           },
+    {22,                         ValueType::U32,    4,  4                           },
+    {23,                         ValueType::BOOL,   1,  1                           },
+    {24,                         ValueType::U8,     1,  1                           },
+    {25,                         ValueType::U8,     1,  1                           },
+    {26,                         ValueType::U8,     1,  1                           },
+    {27,                         ValueType::STRING, 0,  MAX_STRING_BYTES            },
+    {28,                         ValueType::BOOL,   1,  1                           },
+    {29,                         ValueType::BOOL,   1,  1                           },
+    {30,                         ValueType::BOOL,   1,  1                           },
+    {31,                         ValueType::BOOL,   1,  1                           },
+    {32,                         ValueType::U8,     1,  1                           },
+    {33,                         ValueType::U8,     1,  1                           },
+    {34,                         ValueType::U8,     1,  1                           },
+    {35,                         ValueType::U8,     1,  1                           },
+    {36,                         ValueType::U8,     1,  1                           },
+    {37,                         ValueType::U8,     1,  1                           },
+    {38,                         ValueType::U8,     1,  1                           },
+    {39,                         ValueType::BOOL,   1,  1                           },
+    {40,                         ValueType::U8,     1,  1                           },
+    {41,                         ValueType::U8,     1,  1                           },
+    {44,                         ValueType::BOOL,   1,  1                           },
+    {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, 1,  MAX_COMPANION_PASSWORD_BYTES},
 };
 
 struct FieldSchema {
@@ -410,6 +411,10 @@ bool decode(const uint8_t *data, size_t length, ProvisionBundle &out, Error *err
         setError(error, ErrorCode::DUPLICATE_FIELD, recordOffset);
         return false;
       }
+      if ((wireId == COMPANION_PASSWORD_WIRE_ID) && decoded.companionPassword.has_value()) {
+        setError(error, ErrorCode::DUPLICATE_FIELD, recordOffset);
+        return false;
+      }
       SettingValue setting;
       setting.wireId = wireId;
       setting.type = type;
@@ -453,7 +458,8 @@ bool decode(const uint8_t *data, size_t length, ProvisionBundle &out, Error *err
           decoded.wifiPsk = std::move(field);
           break;
         case FieldTag::COMPANION_PASSWORD:
-          if (decoded.companionPassword.has_value()) {
+          if (decoded.companionPassword.has_value()
+              || hasSetting(decoded.settings, COMPANION_PASSWORD_WIRE_ID)) {
             setError(error, ErrorCode::DUPLICATE_FIELD, recordOffset);
             return false;
           }
@@ -564,6 +570,11 @@ bool encode(const ProvisionBundle &bundle, std::vector<uint8_t> &out, Error *err
       return false;
     }
     if (hasSetting(bundle.settings, setting.wireId, i)) {
+      setError(error, ErrorCode::DUPLICATE_FIELD, i);
+      out.clear();
+      return false;
+    }
+    if ((setting.wireId == COMPANION_PASSWORD_WIRE_ID) && bundle.companionPassword.has_value()) {
       setError(error, ErrorCode::DUPLICATE_FIELD, i);
       out.clear();
       return false;
