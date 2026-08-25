@@ -31,6 +31,7 @@ namespace {
 const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::BRIGHTNESS,    {Settings::BRIGHTNESS, 1, "Brightness", "brightness", "furble"}      },
     {Settings::TX_POWER,      {Settings::TX_POWER, 4, "TX Power", "tx_power", "furble"}            },
+    {Settings::IMU,           {Settings::IMU, 45, "IMU", "imu", "furble"}                          },
     {Settings::TX_ADAPTIVE,   {Settings::TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", "furble"}     },
     {Settings::MULTICONNECT,
      {Settings::MULTICONNECT, 8, "Multi-Connect", "multiconnect", "furble"}                        },

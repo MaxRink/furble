@@ -204,6 +204,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::TX_POWER,          "TX_POWER",          uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
       {Settings::TX_ADAPTIVE,       "TX_ADAPTIVE",       false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS,               "GPS",               false,                                                true,                        StorageKind::BOOL  },
+      {Settings::IMU,               "IMU",               false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS_BAUD,          "GPS_BAUD",          uint32_t {Settings::BAUD_9600},
        uint32_t {Settings::BAUD_115200},                                                                                                    StorageKind::U32   },
       {Settings::GPS_RATE,          "GPS_RATE",          uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
@@ -313,6 +314,7 @@ ASSERT_STORAGE_TYPE(BOOT_SPLASH, bool);
 ASSERT_STORAGE_TYPE(DISPLAY_MODE, uint8_t);
 #endif
 ASSERT_STORAGE_TYPE(BATTERY_SAVER, bool);
+ASSERT_STORAGE_TYPE(IMU, bool);
 #if defined(FURBLE_M5STICKS3)
 ASSERT_STORAGE_TYPE(WATCHDOG, bool);
 #endif
@@ -374,6 +376,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

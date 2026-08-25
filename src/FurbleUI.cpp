@@ -2614,8 +2614,8 @@ void UI::simScenarioAction(const char *action) {
         {"interval_wait",     m_IntervalWaitStr    },
         {"battery",           m_BatteryStr         },
         {"storage",           m_StorageStr         },
-        {"imu",         m_IMUDataStr       },
-        {"level",       m_LevelStr         },
+        {"imu",               m_IMUDataStr         },
+        {"level",             m_LevelStr           },
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {
@@ -3670,6 +3670,7 @@ std::string UI::simQueryState(const char *key) {
       anchor = x;
     }
     return std::to_string(x - anchor);
+  }
 
   // Spirit level bubble geometry, driven by the level_accel injection action.
   // The circle bubble carries roll on X and pitch on Y, the side tube carries
