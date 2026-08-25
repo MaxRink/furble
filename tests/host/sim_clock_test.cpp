@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <limits>
 
+#include "FurbleTime.h"
 #include "M5PM1.h"
 #include "clock.h"
 
@@ -12,6 +13,8 @@ static_assert(!clockDeadlineReached(std::numeric_limits<uint32_t>::max() - 1, 4)
 static_assert(!clockDeadlineReached(3, 4));
 static_assert(clockDeadlineReached(4, 4));
 static_assert(clockDeadlineReached(0, std::numeric_limits<uint32_t>::max()));
+static_assert(Furble::Time::elapsed(4, std::numeric_limits<uint32_t>::max() - 1) == 6);
+static_assert(Furble::Time::deadlineReached(4, 4));
 
 int main() {
   using namespace Furble::Sim;

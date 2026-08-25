@@ -255,7 +255,8 @@ target_compile_options(battery_saver_test PRIVATE -Wall -Wextra -Werror -Wno-for
                                                   -Wno-unused-parameter)
 
 add_executable(sim_clock_test sim_clock_test.cpp ${FURBLE_ROOT}/sim/clock.cpp)
-target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/sim ${FURBLE_ROOT}/sim/shim)
+target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBLE_ROOT}/sim
+                                                  ${FURBLE_ROOT}/sim/shim)
 target_compile_options(sim_clock_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
@@ -263,7 +264,8 @@ add_executable(sim_power_profiler_test
                sim_power_profiler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
                ${FURBLE_ROOT}/sim/power_profiler.cpp)
-target_include_directories(sim_power_profiler_test PRIVATE ${FURBLE_ROOT}/sim)
+target_include_directories(sim_power_profiler_test PRIVATE ${FURBLE_ROOT}/include
+                                                           ${FURBLE_ROOT}/sim)
 target_compile_options(sim_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
 

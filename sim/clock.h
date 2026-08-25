@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "FurbleTime.h"
+
 namespace Furble::Sim {
 
 uint32_t clockMillis(void);
@@ -11,12 +13,12 @@ void advanceClock(uint32_t milliseconds);
 
 /** Return the elapsed milliseconds across the uint32_t clock wrap. */
 constexpr uint32_t clockElapsed(uint32_t now, uint32_t since) {
-  return now - since;
+  return Furble::Time::elapsed(now, since);
 }
 
 /** Return true when a clock deadline has been reached, including equality. */
 constexpr bool clockDeadlineReached(uint32_t now, uint32_t deadline) {
-  return static_cast<int32_t>(now - deadline) >= 0;
+  return Furble::Time::deadlineReached(now, deadline);
 }
 
 }  // namespace Furble::Sim

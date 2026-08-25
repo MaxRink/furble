@@ -37,6 +37,7 @@
 #include "FurblePower.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTime.h"
 #include "FurbleUI.h"
 #include "interval.h"
 
@@ -5404,7 +5405,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         FURBLE_SIM_TIMER_FIRE("interval_page_refresh");
         auto *label = static_cast<lv_obj_t *>(lv_timer_get_user_data(timer));
         uint32_t now = tick();
-        uint32_t remaining = Feedback::isDue(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
+        uint32_t remaining = Time::deadlineReached(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
         SpinValue::hms_t hms = SpinValue::toHMS(remaining);
         lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", hms.hours, hms.minutes, hms.seconds);
 
@@ -5430,7 +5431,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
 
 void UI::bulbRefresh(void) {
   uint32_t now = tick();
-  uint32_t remaining = Feedback::isDue(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
+  uint32_t remaining = Time::deadlineReached(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
   SpinValue::hms_t hms = SpinValue::toHMS(remaining);
   lv_label_set_text_fmt(m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", hms.hours, hms.minutes,
                         hms.seconds);
