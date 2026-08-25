@@ -58,7 +58,11 @@ run_start() {
   kill "$watcher_pid" 2>/dev/null || :
   wait "$watcher_pid" 2>/dev/null || :
 
-  if [ -f "$timeout_marker" ]; then
+  # A process can exit cleanly between kill -0 and the termination signal.
+  # Treat the marker as a timeout only when the child was actually reaped with
+  # a non-zero status. This prevents a clean near-deadline exit from becoming
+  # a false timeout while still distinguishing a killed hung child.
+  if [ -f "$timeout_marker" ] && [ "$sim_status" -ne 0 ]; then
     rm -f "$timeout_marker"
     echo "Timed-sleep start scenario did not reach simulated power-off within ${START_TIMEOUT}s" >&2
     return 1
