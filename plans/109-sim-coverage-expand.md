@@ -50,6 +50,11 @@ on-device hardware detection.
   asserts stable `ui.page` identities, keeps compact pages must-fit, and
   verifies the bottom and top scroll extents for every intentional-scroll
   route. The same scenario is run on all three panel classes in CI.
+- Overflow audit: `bughunt/overflow-sweep.txt` now visits those same reachable
+  page classes for layout diagnostics. Compact pages assert `ui.overflow no`,
+  while intentional-scroll pages print their observed state. CI runs the audit
+  on the 80x160 M5StickC, 135x240 M5StickS3, and 320x240 M5Stack Core with
+  optional capability pages enabled.
 
 ## Deviations
 
@@ -68,3 +73,6 @@ on-device hardware detection.
 - clang-format clean, no em-dashes, 2-space indent.
 - The page matrix passes on the 80x160 M5StickC, 135x240 M5StickS3 and 320x240
   M5Stack Core simulator builds with all optional capabilities enabled.
+- The expanded overflow audit passes on all three panel classes. It covers 48
+  page observations, including 22 compact-page fit assertions and 26
+  intentional-scroll diagnostics, without adding a firmware seam.

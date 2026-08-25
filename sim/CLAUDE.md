@@ -187,3 +187,9 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   panel builds. The CI matrix uses the same script for 80x160 M5StickC,
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
   particular geometry cannot hide behind a single reference panel.
+- `sim/scenarios/bughunt/overflow-sweep.txt` is the complementary layout audit.
+  It visits every reachable root, settings, diagnostics, capability, and
+  connected-session page, asserts fit for compact pages, and prints the
+  overflow state for intentional-scroll pages. CI runs it on all three panel
+  classes with optional capabilities enabled. Keep route identity and scroll
+  endpoint assertions in `page-matrix.txt` rather than duplicating them here.
