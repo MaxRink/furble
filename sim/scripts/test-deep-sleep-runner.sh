@@ -5,6 +5,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 RUNNER="$ROOT/sim/scripts/run-deep-sleep.sh"
 FAKE="$ROOT/sim/scripts/deep-sleep-runner-fake.sh"
+RUNNER_SHELL=${FURBLE_SIM_RUNNER_SHELL:-sh}
 TMPDIR_RUN=$(mktemp -d "${TMPDIR:-/tmp}/furble-deep-sleep-runner.XXXXXX")
 trap 'rm -rf "$TMPDIR_RUN"' EXIT HUP INT TERM
 
@@ -19,7 +20,7 @@ run_case() {
       FURBLE_SIM_DEEP_SLEEP_EVIDENCE="$evidence" \
       FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT=3 \
       FURBLE_SIM_DEEP_SLEEP_FAKE_MODE="$mode" \
-      sh "$RUNNER" >/dev/null 2>&1; then
+      "$RUNNER_SHELL" "$RUNNER" >/dev/null 2>&1; then
     status=0
   else
     status=$?
@@ -48,7 +49,7 @@ run_invalid_timeout() {
       FURBLE_SIM_DEEP_SLEEP_EVIDENCE="$invalid_evidence" \
       FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT="$invalid_value" \
       FURBLE_SIM_DEEP_SLEEP_FAKE_MODE=normal \
-      sh "$RUNNER" >/dev/null 2>&1; then
+      "$RUNNER_SHELL" "$RUNNER" >/dev/null 2>&1; then
     echo "invalid-timeout-$invalid_value: expected failure" >&2
     exit 1
   else
@@ -64,7 +65,11 @@ run_invalid_timeout() {
 run_invalid_timeout 0
 run_invalid_timeout -1
 run_invalid_timeout abc
+run_invalid_timeout 3601
+run_invalid_timeout 99999
+run_invalid_timeout 12345678901234567890
 
 run_case arbitrary-evidence arbitrary_evidence 1
 run_case hung hung 1
+run_case term-trap-zero term_trap_zero 1
 run_case nonzero nonzero 7

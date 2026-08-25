@@ -9,8 +9,8 @@ EVIDENCE=${FURBLE_SIM_DEEP_SLEEP_EVIDENCE:-"$PREFS.ready"}
 START_TIMEOUT=${FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT:-30}
 
 case "$START_TIMEOUT" in
-  ''|*[!0-9]*)
-    echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be a positive integer" >&2
+  ''|*[!0-9]*|?????*)
+    echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be an integer from 1 to 3600" >&2
     exit 2
     ;;
 esac
@@ -19,7 +19,11 @@ while [ "${timeout_digits#0}" != "$timeout_digits" ]; do
   timeout_digits=${timeout_digits#0}
 done
 if [ -z "$timeout_digits" ]; then
-  echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be a positive integer" >&2
+  echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be an integer from 1 to 3600" >&2
+  exit 2
+fi
+if [ "$START_TIMEOUT" -lt 1 ] || [ "$START_TIMEOUT" -gt 3600 ]; then
+  echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be an integer from 1 to 3600" >&2
   exit 2
 fi
 
@@ -58,11 +62,10 @@ run_start() {
   kill "$watcher_pid" 2>/dev/null || :
   wait "$watcher_pid" 2>/dev/null || :
 
-  # A process can exit cleanly between kill -0 and the termination signal.
-  # Treat the marker as a timeout only when the child was actually reaped with
-  # a non-zero status. This prevents a clean near-deadline exit from becoming
-  # a false timeout while still distinguishing a killed hung child.
-  if [ -f "$timeout_marker" ] && [ "$sim_status" -ne 0 ]; then
+  # The marker is written only after the watcher successfully delivered the
+  # termination signal, so it is authoritative even if the child traps TERM
+  # and exits with status zero.
+  if [ -f "$timeout_marker" ]; then
     rm -f "$timeout_marker"
     echo "Timed-sleep start scenario did not reach simulated power-off within ${START_TIMEOUT}s" >&2
     return 1

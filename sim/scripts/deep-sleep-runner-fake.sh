@@ -24,6 +24,10 @@ case "${FURBLE_SIM_DEEP_SLEEP_FAKE_MODE:-normal}" in
   hung)
     sleep 60
     ;;
+  term_trap_zero)
+    trap 'exit 0' TERM
+    sleep 60
+    ;;
   nonzero)
     exit 7
     ;;
