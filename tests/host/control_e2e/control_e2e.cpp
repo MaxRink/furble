@@ -32,6 +32,7 @@
 #include "FurbleControl.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "WrapSafeTime.h"
 
 const char *LOG_TAG = "furble-control-e2e";
 
@@ -77,8 +78,8 @@ uint32_t nowMs() {
 // Poll the control state until it matches (or times out). Returns true on match.
 bool waitForState(Control::state_t want, uint32_t timeout_ms) {
   auto &control = Control::getInstance();
-  const uint32_t deadline = nowMs() + timeout_ms;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
     if (control.getState() == want) {
       return true;
     }
@@ -103,8 +104,8 @@ size_t shutterWriteCount(const FujifilmVirtualCamera &peer) {
 // Poll until the control state is anything other than `avoid` (or times out).
 bool waitForNotState(Control::state_t avoid, uint32_t timeout_ms) {
   auto &control = Control::getInstance();
-  const uint32_t deadline = nowMs() + timeout_ms;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
     if (control.getState() != avoid) {
       return true;
     }
@@ -115,8 +116,8 @@ bool waitForNotState(Control::state_t avoid, uint32_t timeout_ms) {
 
 bool waitForConnectedCount(size_t want, uint32_t timeout_ms) {
   auto &control = Control::getInstance();
-  const uint32_t deadline = nowMs() + timeout_ms;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
     if (control.getConnectedTargetCount() == want) {
       return true;
     }
@@ -126,8 +127,8 @@ bool waitForConnectedCount(size_t want, uint32_t timeout_ms) {
 }
 
 bool waitForShutterWrites(const FujifilmVirtualCamera &peer, size_t want, uint32_t timeout_ms) {
-  const uint32_t deadline = nowMs() + timeout_ms;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
     if (shutterWriteCount(peer) >= want) {
       return true;
     }
@@ -604,8 +605,8 @@ bool scenarioReconnectShutterDrop() {
   peer.clearEvents();
   control.sendCommand(Control::CMD_SHUTTER_PRESS);
   control.sendCommand(Control::CMD_SHUTTER_RELEASE);
-  const uint32_t deadline = nowMs() + 2000;
-  while (nowMs() < deadline && shutterWriteCount(peer) == 0) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), 2000) && shutterWriteCount(peer) == 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   check(shutterWriteCount(peer) >= 1, "a shutter on the live link still fires");

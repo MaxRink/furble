@@ -53,6 +53,9 @@ target_link_libraries(lifecycle_test PRIVATE furble_host_camera)
 target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                               -Wno-unused-parameter)
 
+add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
+target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE
@@ -275,6 +278,7 @@ add_executable(control_e2e_test
                ${FURBLE_ROOT}/src/FurbleControl.cpp)
 target_include_directories(control_e2e_test
                            BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${CONTROL_E2E_DIR}/doubles
                                   ${CONTROL_E2E_DIR}
                                   ${FURBLE_ROOT}/include
@@ -436,6 +440,7 @@ add_executable(control_fuzz
                ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
 target_include_directories(control_fuzz
                            BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${CONTROL_E2E_DIR}/doubles
                                   ${CONTROL_E2E_DIR}
                                   ${FURBLE_ROOT}/include
@@ -453,6 +458,7 @@ if(BUILD_TESTING)
            COMMAND corpus_replay_test
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
+  add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
 
