@@ -32,6 +32,11 @@ a checked-in NimBLE patch and PlatformIO normally shares framework packages
 between checkouts. The negative test changes `FURBLE_VERSION` and requires at
 least one artifact to change. CI runs the same gate for every release board.
 
+The shared flags fix GCC's random seed and the ESP-IDF pre-build patch maps both
+logical and real checkout paths. Both are needed on macOS, where `/tmp`
+resolves to `/private/tmp`, so optimizer decisions and ELF debug data cannot
+retain checkout-specific differences.
+
 The NimBLE pre-build patch is serialized per framework path, is idempotent, and
 fails on a rejected hunk. It never accepts a partial patch or leaves a reject
 file that could silently change the firmware. Its second-application,

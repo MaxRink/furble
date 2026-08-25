@@ -192,6 +192,12 @@ def build_once(
     version: str,
     inherited_environment: dict[str, str],
 ) -> BuildResult:
+  # macOS exposes /tmp as a symlink to /private/tmp. Resolve the checkout
+  # before handing it to PlatformIO so CMake's project path and the ESP-IDF
+  # prefix-map path use the same spelling. Without this, the ELF debug string
+  # table retains the checkout-specific /private/tmp path and also changes the
+  # app ELF SHA256 embedded in firmware.bin.
+  project = project.resolve()
   child_environment = dict(inherited_environment)
   child_environment.update(
       {
