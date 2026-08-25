@@ -208,6 +208,20 @@ formatting checks pass. Hardware testing is not applicable to parser vectors or
 the deterministic FauxNY scan seam. Only the Fujifilm path remains eligible for
 physical camera validation, and no Fujifilm radio was exercised by this slice.
 
+#### Directed cross-vendor conformance update
+
+The rejected isolation matrix used vendor records of different lengths for
+many negative assertions, so those checks could pass without exercising the
+other matcher. The additive follow-up uses accepted Nikon, Lumix, and DJI
+records padded to Sony's 13-byte length, plus Sony's accepted 13-byte record.
+It runs every direction in the four-by-four matcher matrix and retains each
+vendor's marker and company bytes unchanged. Fujifilm Basic and Secure remain
+exact-length protocols; their padded forms are tested as explicit structural
+length gates and as negative inputs to every other matcher. Null and truncated
+cases remain separately named malformed-input checks. No production changes
+are needed because PR #207 already fixed dispatch and parser safety; this
+slice adds only the missing directed evidence.
+
 The subsequent audit found one production dispatch gap in the newly added
 Lumix path: `CameraList::match` appended a Lumix camera but did not return a
 match result. The branch now reports success, and null scan callbacks are
