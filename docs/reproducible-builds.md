@@ -12,7 +12,8 @@ the same timestamp for a commit. An explicit non-negative
 `SOURCE_DATE_EPOCH` can be supplied when building an exported source archive.
 
 PlatformIO, the Espressif platform and framework, and each registry or Git
-dependency are pinned. The pins are recorded in
+dependency are pinned. The current firmware toolchain is Espressif32 6.13.0
+with ESP-IDF 5.5.3 (`framework-espidf@3.50503.0`). The pins are recorded in
 `tools/reproducible-build.lock`; the verification script rejects drift between
 that file and `platformio.ini` or `requirements.txt`.
 
