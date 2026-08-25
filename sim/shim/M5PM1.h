@@ -26,10 +26,35 @@ class M5PM1 {
     uint32_t watchdogDeadline;
   };
 
+  struct Faults {
+    Faults()
+        : failSetWatchdog(false),
+          failReadWatchdog(false),
+          failSetDownloadLock(false),
+          failReadDownloadLock(false) {}
+
+    bool failSetWatchdog;
+    bool failReadWatchdog;
+    bool failSetDownloadLock;
+    bool failReadDownloadLock;
+  };
+
  public:
   /** Reset the retained PMIC model between independent host tests. */
   static void resetPersistentStateForTest(void) {
     m_Persistent = PersistentState();
+    m_Faults = Faults();
+  }
+
+  /** Inject one-shot I2C failures for negative-path host tests. */
+  static void failNextForTest(bool set_watchdog,
+                              bool read_watchdog,
+                              bool set_download_lock,
+                              bool read_download_lock) {
+    m_Faults.failSetWatchdog = set_watchdog;
+    m_Faults.failReadWatchdog = read_watchdog;
+    m_Faults.failSetDownloadLock = set_download_lock;
+    m_Faults.failReadDownloadLock = read_download_lock;
   }
 
   int begin(void *) {
@@ -48,10 +73,22 @@ class M5PM1 {
   }
 
   int setDownloadLock(bool value) {
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failSetDownloadLock)) {
+      return M5PM1_ERROR;
+    }
     return access([value]() { m_Persistent.downloadLocked = value; });
   }
 
   int getDownloadLock(bool *value) {
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failReadDownloadLock)) {
+      return M5PM1_ERROR;
+    }
     return access([value]() {
       if (value != nullptr) {
         *value = m_Persistent.downloadLocked;
@@ -60,6 +97,12 @@ class M5PM1 {
   }
 
   int wdtSet(uint8_t timeout_seconds) {
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failSetWatchdog)) {
+      return M5PM1_ERROR;
+    }
     return access([timeout_seconds]() {
       m_Persistent.watchdogSeconds = timeout_seconds;
       m_Persistent.watchdogArmed = timeout_seconds != 0;
@@ -82,6 +125,12 @@ class M5PM1 {
   }
 
   int wdtGetCount(uint8_t *count) {
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failReadWatchdog)) {
+      return M5PM1_ERROR;
+    }
     return access([count]() {
       if (count == nullptr) {
         return;
@@ -160,6 +209,14 @@ class M5PM1 {
   bool downloadRecoveryUnlocked(void) const { return !m_Persistent.downloadLocked; }
 
  private:
+  static bool consumeFault(bool &fault) {
+    if (!fault) {
+      return false;
+    }
+    fault = false;
+    return true;
+  }
+
   template <typename Callback>
   int access(Callback callback) {
     // The first transaction after the PMIC has entered idle only wakes it.
@@ -184,6 +241,7 @@ class M5PM1 {
   uint32_t m_BeginMillis = 0;
 
   inline static PersistentState m_Persistent;
+  inline static Faults m_Faults;
 };
 
 #endif

@@ -119,17 +119,24 @@ bool Platform::prepareFlash(void) {
   // A serial upload can spend longer than the normal 10 second PMIC window
   // in ROM download mode. The caller must be a deliberate local console user;
   // the regular runtime watchdog is restored on the next application boot.
-  watchdogEnable(false);
+  if (!watchdogEnable(false)) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog disable failed before flash");
+    (void)watchdogEnable(true);
+    return false;
+  }
   uint8_t watchdogCount = 1;
   if (!m5pm1Access(
           [this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
       || watchdogCount != 0) {
     ESP_LOGE(LOG_TAG, "M5PM1 watchdog did not verify disabled for flash");
+    (void)watchdogEnable(true);
     return false;
   }
 
   if (!unlockDownloadRecovery()) {
-    watchdogEnable(true);
+    if (!watchdogEnable(true)) {
+      ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after flash preparation error");
+    }
     return false;
   }
 
@@ -146,19 +153,31 @@ bool Platform::downloadRecoveryUnlocked(void) {
   return !locked;
 }
 
-void Platform::cancelFlashPreparation(void) {
-  watchdogEnable(true);
+bool Platform::cancelFlashPreparation(void) {
+  if (!watchdogEnable(true)) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after cancelled flash");
+    return false;
+  }
   ESP_LOGI(LOG_TAG, "M5PM1 watchdog restored after cancelled flash");
+  return true;
 }
 
-void Platform::watchdogEnable(bool enable) {
+bool Platform::watchdogEnable(bool enable) {
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
 
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     ESP_LOGE(LOG_TAG, "Failed to set M5PM1 watchdog to %u seconds", static_cast<unsigned>(timeout));
-    return;
+    return false;
+  }
+
+  uint8_t count = enable ? 0 : 1;
+  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
+      || (enable ? count == 0 : count != 0)) {
+    ESP_LOGE(LOG_TAG, "Failed to verify M5PM1 watchdog %s",
+             enable ? "armed" : "disabled");
+    return false;
   }
 
   if (enable) {
@@ -167,6 +186,7 @@ void Platform::watchdogEnable(bool enable) {
   } else {
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog disabled");
   }
+  return true;
 }
 
 void Platform::watchdogFeed(void) {

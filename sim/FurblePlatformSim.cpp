@@ -132,16 +132,20 @@ bool Platform::unlockDownloadRecovery(void) {
 }
 
 bool Platform::prepareFlash(void) {
-  watchdogEnable(false);
+  if (!watchdogEnable(false)) {
+    (void)watchdogEnable(true);
+    return false;
+  }
   uint8_t watchdogCount = 1;
   if (!m5pm1Access(
           [this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
       || watchdogCount != 0) {
+    (void)watchdogEnable(true);
     return false;
   }
 
   if (!unlockDownloadRecovery()) {
-    watchdogEnable(true);
+    (void)watchdogEnable(true);
     return false;
   }
   return true;
@@ -155,23 +159,30 @@ bool Platform::downloadRecoveryUnlocked(void) {
   return !locked;
 }
 
-void Platform::cancelFlashPreparation(void) {
-  watchdogEnable(true);
+bool Platform::cancelFlashPreparation(void) {
+  return watchdogEnable(true);
 }
 #endif
 
-void Platform::watchdogEnable(bool enable) {
+bool Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
 
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
-    return;
+    return false;
+  }
+  uint8_t count = enable ? 0 : 1;
+  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
+      || (enable ? count == 0 : count != 0)) {
+    return false;
   }
   m_WatchdogEnabled = enable;
+  return true;
 #else
   (void)enable;
+  return true;
 #endif
 }
 

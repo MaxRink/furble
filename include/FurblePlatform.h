@@ -90,10 +90,8 @@ class Platform {
    */
   void update(void);
 
-  /**
-   * Enable or disable the M5PM1 hardware watchdog.
-   */
-  void watchdogEnable(bool enable);
+  /** Set and verify the StickS3 PMIC watchdog state. */
+  bool watchdogEnable(bool enable);
 
   /** Disconnect cameras and disable restart-sensitive hardware before reset. */
   void prepareRestart(void);
@@ -201,7 +199,7 @@ class Platform {
   /**
    * Undo prepareFlash after an upload was cancelled.
    */
-  void cancelFlashPreparation(void);
+  bool cancelFlashPreparation(void);
 #endif
 
  private:
