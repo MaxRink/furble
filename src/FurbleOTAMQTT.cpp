@@ -438,6 +438,16 @@ Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size
 }
 
 Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
+  if (m_Dispatching) {
+    return reject(Error::Busy);
+  }
+  m_Dispatching = true;
+  Outcome outcome = dispatchMessage(meta, message);
+  m_Dispatching = false;
+  return outcome;
+}
+
+Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message) {
   if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
     return reject(Error::InvalidQoS);
   }
@@ -469,9 +479,11 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
     if (message.manifest.rollbackCounter <= installedFloor) {
       return reject(Error::Replay);
     }
+    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter)) {
+      return reject(Error::ReplayStoreFailed);
+    }
     m_Manifest = message.manifest;
     m_BeginSequence = message.sequence;
-    m_InstalledFloor = installedFloor;
     if (!m_Sink.begin(message.manifest)) {
       return terminalFailure(Error::SinkRejected);
     }
@@ -556,9 +568,6 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
     m_State = State::Verifying;
     if (!m_Sink.finalize(m_Manifest)) {
       return terminalFailure(Error::VerificationFailed);
-    }
-    if (!m_ReplayStore.commitFloor(m_InstalledFloor, m_Manifest.rollbackCounter)) {
-      return terminalFailure(Error::ReplayStoreFailed);
     }
     if (!m_Sink.activate()) {
       return terminalFailure(Error::SinkRejected);

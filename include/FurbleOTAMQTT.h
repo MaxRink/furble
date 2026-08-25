@@ -17,11 +17,12 @@ constexpr size_t SIGNATURE_BYTES = 64;
 constexpr size_t MAX_VERSION_BYTES = 63;
 constexpr size_t MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 constexpr size_t MAX_CHUNK_BYTES = 4096;
-constexpr size_t OTA_LEDGER_BUDGET_BYTES = 4096;
+constexpr size_t OTA_LEDGER_BUDGET_BYTES = 1024;
 #ifndef FURBLE_OTA_LEDGER_ENTRIES
-#define FURBLE_OTA_LEDGER_ENTRIES 256
+#define FURBLE_OTA_LEDGER_ENTRIES 64
 #endif
 constexpr size_t OTA_LEDGER_ENTRIES = FURBLE_OTA_LEDGER_ENTRIES;
+constexpr size_t OTA_SESSION_BUDGET_BYTES = 2048;
 static_assert((OTA_LEDGER_ENTRIES > 0) && ((OTA_LEDGER_ENTRIES * 16) <= OTA_LEDGER_BUDGET_BYTES),
               "OTA ledger exceeds the small-target memory budget");
 constexpr uint8_t MIN_QOS = 1;
@@ -170,17 +171,19 @@ class Sink {
 /**
  * Durable anti-rollback storage owned by the platform adapter.
  *
- * loadFloor() must return the installed signed-update counter. commitFloor()
- * is an atomic compare-and-swap persistence operation: it succeeds only when
- * expectedFloor is still stored and nextFloor is strictly greater. A failed
- * commit must not report success. Flash/NVS adapters must journal this record
- * before acknowledging it and recover the last complete record after reboot.
+ * loadFloor() must return the installed or reserved signed-update counter.
+ * reserveFloor() is an atomic compare-and-swap persistence operation: it
+ * succeeds only when expectedFloor is still stored and nextFloor is strictly
+ * greater. Reservation happens at BEGIN, so an aborted or failed update cannot
+ * reuse its signed counter. A failed reservation must not report success.
+ * Flash/NVS adapters must journal this record before acknowledging it and
+ * recover the last complete record after reboot.
  */
 class ReplayStore {
  public:
   virtual ~ReplayStore() = default;
   virtual bool loadFloor(uint32_t &floor) = 0;
-  virtual bool commitFloor(uint32_t expectedFloor, uint32_t nextFloor) = 0;
+  virtual bool reserveFloor(uint32_t expectedFloor, uint32_t nextFloor) = 0;
 };
 
 struct Outcome {
@@ -201,6 +204,12 @@ struct Outcome {
  */
 class Session {
  public:
+  /**
+   * The owner must keep this object in persistent task/static storage and
+   * serialize all onMessage calls. The implementation rejects reentrant
+   * dispatch from sink callbacks; platform adapters must serialize concurrent
+   * MQTT callbacks before entering this API.
+   */
   Session(Sink &sink, ReplayStore &replayStore);
 
   Outcome onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length);
@@ -226,6 +235,7 @@ class Session {
   bool hasCompleteImage() const;
   bool sequenceUsed(uint32_t sequence) const;
   Outcome terminalFailure(Error error);
+  Outcome dispatchMessage(const MessageMeta &meta, const Message &message);
 
   Sink &m_Sink;
   ReplayStore &m_ReplayStore;
@@ -238,8 +248,11 @@ class Session {
   size_t m_ReceivedBytes = 0;
   uint32_t m_BeginSequence = 0;
   uint32_t m_TerminalSequence = 0;
-  uint32_t m_InstalledFloor = 0;
+  bool m_Dispatching = false;
 };
+
+static_assert(sizeof(Session) <= OTA_SESSION_BUDGET_BYTES,
+              "OTA Session exceeds the small-target object budget");
 
 uint32_t crc32(const uint8_t *data, size_t length);
 
