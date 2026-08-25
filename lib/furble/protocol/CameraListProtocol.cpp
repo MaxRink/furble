@@ -8,13 +8,27 @@ namespace Furble {
 namespace CameraListProtocol {
 
 std::string addressKey(uint64_t address) {
+  if (address > 0xffffffffffffULL) {
+    return {};
+  }
   char key[INDEX_NAME_BYTES] = {0};
   std::snprintf(key, sizeof(key), "%08llX", static_cast<unsigned long long>(address));
   return std::string(key);
 }
 
+std::string typedAddressKey(uint64_t address, uint8_t addressType) {
+  if (address > 0xffffffffffffULL || addressType > 0xf) {
+    return {};
+  }
+  char key[INDEX_NAME_BYTES] = {0};
+  std::snprintf(key, sizeof(key), "%012llX%X", static_cast<unsigned long long>(address),
+                static_cast<unsigned>(addressType));
+  return std::string(key);
+}
+
 bool encodeIndex(const std::vector<IndexEntry> &entries, std::vector<uint8_t> &bytes) {
-  if (entries.size() > std::numeric_limits<size_t>::max() / INDEX_ENTRY_BYTES) {
+  if (entries.size() > MAX_INDEX_ENTRIES
+      || entries.size() > std::numeric_limits<size_t>::max() / INDEX_ENTRY_BYTES) {
     return false;
   }
 
@@ -79,7 +93,9 @@ bool decodeIndex(const uint8_t *data,
 
   const size_t entrySize =
       (format == IndexFormat::CURRENT) ? INDEX_ENTRY_BYTES : LEGACY_INDEX_ENTRY_BYTES;
-  if ((bytes % entrySize) != 0) {
+  const size_t maxBytes =
+      (format == IndexFormat::CURRENT) ? MAX_CURRENT_INDEX_BYTES : MAX_LEGACY_INDEX_BYTES;
+  if ((bytes % entrySize) != 0 || bytes > maxBytes) {
     return false;
   }
 

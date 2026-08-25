@@ -99,6 +99,13 @@ const index_slot_keys_t &slotKeys(size_t slot) {
 }
 
 enum class slot_state_t : uint8_t { ABSENT, INVALID, VALID };
+enum class reference_state_t : uint8_t {
+  ABSENT,
+  INVALID,
+  UNKNOWN,
+  REFERENCES,
+  DOES_NOT_REFERENCE,
+};
 
 // RFC1982 serial-number arithmetic: equal and half-range values are not
 // ordered and must be treated as ambiguous rather than guessed.
@@ -127,7 +134,10 @@ slot_state_t readSlot(Preferences &prefs,
   const size_t commitRead = prefs.get(keys.commit, &commit, sizeof(commit));
   if ((headerRead != sizeof(header)) || (crcRead != sizeof(crc)) || (commitRead != sizeof(commit))
       || (header.magic != FURBLE_INDEX_SLOT_MAGIC) || (header.format != FURBLE_INDEX_FORMAT_CURRENT)
+      || (header.generation == 0)
+      || (header.reserved[0] != 0 || header.reserved[1] != 0 || header.reserved[2] != 0)
       || (commit != header.generation) || (header.bytes > blobBytes)
+      || (header.bytes > CameraListProtocol::MAX_CURRENT_INDEX_BYTES)
       || ((header.bytes == 0) ? !(blobBytes == 0 || blobBytes == 1)
                               : (header.bytes != blobBytes))) {
     return slot_state_t::INVALID;
@@ -156,8 +166,22 @@ bool anySlotKey(Preferences &prefs) {
 }
 
 bool validCameraType(uint32_t type) {
-  return (type >= static_cast<uint32_t>(Camera::Type::FUJIFILM_BASIC))
-         && (type <= static_cast<uint32_t>(Camera::Type::DJI_OSMO));
+  switch (static_cast<Camera::Type>(type)) {
+    case Camera::Type::FUJIFILM_BASIC:
+    case Camera::Type::CANON_EOS_SMART:
+    case Camera::Type::CANON_EOS_REMOTE:
+    case Camera::Type::FAUXNY:
+    case Camera::Type::NIKON:
+    case Camera::Type::SONY:
+    case Camera::Type::RICOH:
+    case Camera::Type::FUJIFILM_SECURE:
+    case Camera::Type::PANASONIC_LUMIX:
+    case Camera::Type::DJI_OSMO:
+      return true;
+    case Camera::Type::MOBILE_DEVICE:
+      return false;
+  }
+  return false;
 }
 
 bool reservedNvsKey(const char *name) {
@@ -175,15 +199,14 @@ bool reservedNvsKey(const char *name) {
                      [name](const char *item) { return std::strcmp(name, item) == 0; });
 }
 
-// Camera blobs are keyed by the canonical uppercase hexadecimal BLE address
-// produced by CameraListProtocol::addressKey(). Do not let a stale or corrupt
-// intent name address arbitrary NVS metadata.
-bool canonicalCameraBlobKey(const char *name) {
+// Camera blobs use the exact 48-bit address plus one address-type nibble. Do
+// not let a stale or corrupt intent name address arbitrary NVS metadata.
+bool typedCameraBlobKey(const char *name) {
   if (name == nullptr) {
     return false;
   }
   const size_t length = ::strnlen(name, 16);
-  if (length < 8 || length >= 16) {
+  if (length != 13) {
     return false;
   }
   if (reservedNvsKey(name) || !Preferences::validNvsKey(name)) {
@@ -195,16 +218,56 @@ bool canonicalCameraBlobKey(const char *name) {
       return false;
     }
   }
+  if (name[12] > '9') {
+    if (name[12] < 'A' || name[12] > 'F') {
+      return false;
+    }
+  }
+  char addressText[13] = {};
+  std::memcpy(addressText, name, 12);
+  errno = 0;
+  char *end = nullptr;
+  const unsigned long long address = std::strtoull(addressText, &end, 16);
+  const unsigned parsedType = (name[12] <= '9') ? static_cast<unsigned>(name[12] - '0')
+                                                : static_cast<unsigned>(name[12] - 'A' + 10);
+  return errno == 0 && end != nullptr && *end == '\0' && address <= 0xffffffffffffULL
+         && parsedType <= 0xf
+         && CameraListProtocol::typedAddressKey(static_cast<uint64_t>(address),
+                                                static_cast<uint8_t>(parsedType))
+                == name;
+}
+
+// Keys written by firmware before PR75 carried only the address. They remain
+// readable as an explicit legacy representation; every newly saved camera uses
+// typedCameraBlobKey() so public/random identities cannot alias going forward.
+bool legacyCameraBlobKey(const char *name) {
+  if (name == nullptr) {
+    return false;
+  }
+  const size_t length = ::strnlen(name, 16);
+  if (length < 8 || length > 12 || reservedNvsKey(name) || !Preferences::validNvsKey(name)) {
+    return false;
+  }
+  for (size_t i = 0; i < length; i++) {
+    const char c = name[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
+      return false;
+    }
+  }
   errno = 0;
   char *end = nullptr;
   const unsigned long long address = std::strtoull(name, &end, 16);
-  return errno == 0 && end == name + length
+  return errno == 0 && end == name + length && address <= 0xffffffffffffULL
          && CameraListProtocol::addressKey(static_cast<uint64_t>(address)) == name;
+}
+
+bool cameraBlobKey(const char *name) {
+  return typedCameraBlobKey(name) || legacyCameraBlobKey(name);
 }
 
 bool validIndexEntry(const CameraListProtocol::IndexEntry &entry, bool allowZeroId) {
   const size_t nameLength = ::strnlen(entry.name, CameraListProtocol::INDEX_NAME_BYTES);
-  if (nameLength >= CameraListProtocol::INDEX_NAME_BYTES || !canonicalCameraBlobKey(entry.name)
+  if (nameLength >= CameraListProtocol::INDEX_NAME_BYTES || !cameraBlobKey(entry.name)
       || !validCameraType(entry.type)) {
     return false;
   }
@@ -248,7 +311,7 @@ bool readReclaimQueue(Preferences &prefs, std::vector<std::string> &names) {
     if (queue.names[i][0] == '\0') {
       continue;
     }
-    if (!canonicalCameraBlobKey(queue.names[i])) {
+    if (!cameraBlobKey(queue.names[i])) {
       return false;
     }
     names.emplace_back(queue.names[i]);
@@ -268,7 +331,7 @@ bool writeReclaimQueue(Preferences &prefs, const std::vector<std::string> &names
   }
   reclaim_queue_t queue = {};
   for (size_t i = 0; i < names.size(); i++) {
-    if (names[i].size() >= FURBLE_RECLAIM_NAME_BYTES || !canonicalCameraBlobKey(names[i].c_str())) {
+    if (names[i].size() >= FURBLE_RECLAIM_NAME_BYTES || !cameraBlobKey(names[i].c_str())) {
       return false;
     }
     std::strncpy(queue.names[i], names[i].c_str(), FURBLE_RECLAIM_NAME_BYTES - 1);
@@ -276,47 +339,65 @@ bool writeReclaimQueue(Preferences &prefs, const std::vector<std::string> &names
   return prefs.put(FURBLE_PREF_RECLAIM, &queue, sizeof(queue)) == sizeof(queue);
 }
 
-bool slotReferences(Preferences &prefs, size_t slot, const char *name) {
-  if (!canonicalCameraBlobKey(name)) {
-    return true;
+reference_state_t slotReferenceState(Preferences &prefs, size_t slot, const char *name) {
+  if (!cameraBlobKey(name)) {
+    return reference_state_t::UNKNOWN;
   }
   std::vector<uint8_t> bytes;
   uint32_t generation = 0;
-  if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID) {
-    // An invalid slot is conservatively treated as a reference. This keeps a
-    // blob available for recovery if the other slot is damaged later.
-    return true;
+  const slot_state_t state = readSlot(prefs, slot, bytes, generation);
+  if (state == slot_state_t::ABSENT) {
+    return reference_state_t::ABSENT;
+  }
+  if (state != slot_state_t::VALID) {
+    return reference_state_t::INVALID;
   }
   std::vector<CameraListProtocol::IndexEntry> entries;
   if (!CameraListProtocol::decodeIndex(bytes.data(), bytes.size(),
-                                       CameraListProtocol::IndexFormat::CURRENT, entries)) {
-    return true;
+                                       CameraListProtocol::IndexFormat::CURRENT, entries)
+      || !validIndexEntries(entries, true)) {
+    return reference_state_t::UNKNOWN;
+  }
+  CameraListProtocol::assignCameraIds(entries);
+  if (!validIndexEntries(entries, false)) {
+    return reference_state_t::UNKNOWN;
+  }
+  // A CRC authenticates bytes, not their meaning. Missing serialized records
+  // make the generation semantically invalid and must never authorize erase.
+  for (const auto &entry : entries) {
+    if (!prefs.isKey(entry.name)) {
+      return reference_state_t::UNKNOWN;
+    }
   }
   for (const auto &entry : entries) {
     if (std::strncmp(entry.name, name, FURBLE_RECLAIM_NAME_BYTES) == 0) {
-      return true;
+      return reference_state_t::REFERENCES;
     }
   }
-  return false;
+  return reference_state_t::DOES_NOT_REFERENCE;
 }
 
-bool durableSlotReferences(Preferences &prefs, size_t slot, const char *name) {
-  if (!canonicalCameraBlobKey(name)) {
-    return true;
-  }
-  std::vector<uint8_t> bytes;
-  uint32_t generation = 0;
-  if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID) {
+bool slotSemanticallyValid(Preferences &prefs,
+                           size_t slot,
+                           std::vector<uint8_t> &bytes,
+                           uint32_t &generation,
+                           std::vector<CameraListProtocol::IndexEntry> &entries) {
+  if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID
+      || !CameraListProtocol::decodeIndex(bytes.data(), bytes.size(),
+                                          CameraListProtocol::IndexFormat::CURRENT, entries)
+      || !validIndexEntries(entries, true)) {
     return false;
   }
-  std::vector<CameraListProtocol::IndexEntry> entries;
-  if (!CameraListProtocol::decodeIndex(bytes.data(), bytes.size(),
-                                       CameraListProtocol::IndexFormat::CURRENT, entries)) {
+  CameraListProtocol::assignCameraIds(entries);
+  if (!validIndexEntries(entries, false)) {
     return false;
   }
-  return std::any_of(entries.begin(), entries.end(), [name](const auto &entry) {
-    return std::strncmp(entry.name, name, FURBLE_RECLAIM_NAME_BYTES) == 0;
-  });
+  for (const auto &entry : entries) {
+    if (!prefs.isKey(entry.name)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -326,7 +407,8 @@ Preferences CameraList::m_Prefs;
 std::mutex CameraList::m_PrefsMutex;
 
 void CameraList::fillSaveEntry(index_entry_t &entry, const Camera *camera) {
-  const auto key = CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
+  const auto key = CameraListProtocol::typedAddressKey(static_cast<uint64_t>(camera->getAddress()),
+                                                       camera->getAddress().getType());
   snprintf(entry.name, sizeof(entry.name), "%s", key.c_str());
   entry.type = camera->getType();
   entry.camera_id = 0;
@@ -396,7 +478,7 @@ bool CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
 }
 
 bool CameraList::writePendingBlob(const char *name) {
-  if (!canonicalCameraBlobKey(name)) {
+  if (!cameraBlobKey(name)) {
     return false;
   }
   pending_blob_t pending = {};
@@ -417,7 +499,7 @@ bool CameraList::pendingBlobName(std::string &name) {
   if (m_Prefs.get(FURBLE_PREF_PENDING_BLOB, &pending, sizeof(pending)) != sizeof(pending)
       || pending.name[0] == '\0'
       || ::strnlen(pending.name, sizeof(pending.name)) >= sizeof(pending.name)
-      || !canonicalCameraBlobKey(pending.name)) {
+      || !cameraBlobKey(pending.name)) {
     return false;
   }
   name.assign(pending.name);
@@ -439,9 +521,13 @@ void CameraList::recoverPendingBlob(void) {
   if (name.empty()) {
     return;
   }
-  if (durableSlotReferences(m_Prefs, 0, name.c_str())
-      || durableSlotReferences(m_Prefs, 1, name.c_str())) {
+  const reference_state_t first = slotReferenceState(m_Prefs, 0, name.c_str());
+  const reference_state_t second = slotReferenceState(m_Prefs, 1, name.c_str());
+  if ((first == reference_state_t::REFERENCES) || (second == reference_state_t::REFERENCES)) {
     (void)clearPendingBlob();
+    return;
+  }
+  if ((first == reference_state_t::UNKNOWN) || (second == reference_state_t::UNKNOWN)) {
     return;
   }
   // Deleting first and clearing the intent second is idempotent across a cut
@@ -475,7 +561,10 @@ void CameraList::reclaimSafeBlobs(void) {
   std::vector<std::string> remaining;
   bool changed = false;
   for (const auto &name : names) {
-    if (slotReferences(m_Prefs, 0, name.c_str()) || slotReferences(m_Prefs, 1, name.c_str())) {
+    const reference_state_t first = slotReferenceState(m_Prefs, 0, name.c_str());
+    const reference_state_t second = slotReferenceState(m_Prefs, 1, name.c_str());
+    if (first != reference_state_t::DOES_NOT_REFERENCE
+        || second != reference_state_t::DOES_NOT_REFERENCE) {
       remaining.push_back(name);
       continue;
     }
@@ -583,7 +672,8 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(bool *migrated) {
     for (size_t slot = 0; slot < 2; slot++) {
       std::vector<uint8_t> bytes;
       uint32_t generation = 0;
-      if (readSlot(m_Prefs, slot, bytes, generation) == slot_state_t::VALID) {
+      std::vector<CameraListProtocol::IndexEntry> entries;
+      if (slotSemanticallyValid(m_Prefs, slot, bytes, generation, entries)) {
         if (!selected || generationNewer(generation, selectedGeneration)) {
           selectedBytes = std::move(bytes);
           selectedGeneration = generation;
@@ -631,21 +721,25 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(bool *migrated) {
 
   if (m_Prefs.isKey(FURBLE_PREF_INDEX)) {
     size_t bytes = m_Prefs.getBytesLength(FURBLE_PREF_INDEX);
+    const bool formatKey = m_Prefs.isKey(FURBLE_PREF_INDEX_FORMAT);
+    const bool checksumKey = m_Prefs.isKey(FURBLE_PREF_INDEX_CHECKSUM);
+    // Check the persisted format and its bounded wire size before allocating
+    // a buffer. A malformed NVS length is untrusted input, not a capacity
+    // request.
+    if (formatKey != checksumKey
+        || bytes > (formatKey ? CameraListProtocol::MAX_CURRENT_INDEX_BYTES
+                              : CameraListProtocol::MAX_LEGACY_INDEX_BYTES)) {
+      return index;
+    }
     if (bytes > 0) {
       std::vector<uint8_t> buffer(bytes, 0x00);
       std::vector<CameraListProtocol::IndexEntry> decoded;
       if (m_Prefs.get(FURBLE_PREF_INDEX, buffer.data(), bytes) != bytes) {
         return index;
       }
-      const bool formatKey = m_Prefs.isKey(FURBLE_PREF_INDEX_FORMAT);
-      const bool checksumKey = m_Prefs.isKey(FURBLE_PREF_INDEX_CHECKSUM);
       // A genuinely legacy installation has neither metadata key. Any
       // partial metadata set is an interrupted current-format write and must
       // fail closed rather than falling through to legacy decoding.
-      if (formatKey != checksumKey) {
-        return index;
-      }
-
       uint8_t format = 0;
       const bool formatValid =
           !formatKey
@@ -737,10 +831,28 @@ void CameraList::save(const Furble::Camera *camera) {
   fillSaveEntry(entry, camera);
 
   // Re-saving a known camera keeps its id. A new camera gets a fresh one.
+  bool legacyMigration = false;
+  std::string legacyName;
+  const std::string oldAddressKey =
+      CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
   for (const auto &existing : index) {
     if (strcmp(existing.name, entry.name) == 0) {
       entry.camera_id = existing.camera_id;
       break;
+    }
+    if (existing.name == oldAddressKey && legacyCameraBlobKey(existing.name)) {
+      entry.camera_id = existing.camera_id;
+      legacyMigration = true;
+      legacyName = existing.name;
+      break;
+    }
+  }
+  if (legacyMigration) {
+    for (auto &existing : index) {
+      if (existing.name == legacyName) {
+        existing = entry;
+        break;
+      }
     }
   }
   const bool newCamera = entry.camera_id == 0;
@@ -757,9 +869,16 @@ void CameraList::save(const Furble::Camera *camera) {
   size_t dbytes = camera->getSerialisedBytes();
   std::vector<uint8_t> dbuffer(dbytes, 0);
   if (camera->serialise(dbuffer.data(), dbytes)) {
-    if (newCamera && !writePendingBlob(entry.name)) {
+    const bool needsBlobIntent = newCamera || legacyMigration;
+    if (needsBlobIntent && !writePendingBlob(entry.name)) {
       m_Prefs.end();
       return;
+    }
+    if (legacyMigration) {
+      // Queue the old address-only blob before publishing the typed key. If
+      // the queue is full, retaining that unreachable legacy blob is safer
+      // than failing a user save or deleting it early.
+      (void)enqueueReclaim(legacyName.c_str());
     }
     // Store the entry and the index if serialisation succeeds
     if (m_Prefs.put(entry.name, dbuffer.data(), dbytes) != dbytes) {
@@ -767,7 +886,7 @@ void CameraList::save(const Furble::Camera *camera) {
       return;
     }
     ESP_LOGI(LOG_TAG, "Saved %s", entry.name);
-    if (save_index(index) && newCamera) {
+    if (save_index(index) && needsBlobIntent) {
       (void)clearPendingBlob();
     }
     ESP_LOGI(LOG_TAG, "Index entries: %d", index.size());

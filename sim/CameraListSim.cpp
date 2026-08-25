@@ -14,6 +14,7 @@ std::vector<std::shared_ptr<Camera>> cameras;
 struct saved_camera_t {
   std::string name;
   uint64_t address;
+  uint8_t addressType;
   uint8_t id;
 };
 
@@ -21,6 +22,7 @@ std::vector<saved_camera_t> savedCameras;
 struct camera_identity_t {
   const Camera *camera;
   uint64_t address;
+  uint8_t addressType;
   uint8_t id;
 };
 
@@ -46,15 +48,17 @@ void CameraList::save(const Camera *camera) {
 
   const std::lock_guard<std::mutex> lock(camerasMutex);
   const uint64_t address = camera->getAddress();
+  const uint8_t addressType = camera->getAddressType();
   for (const auto &entry : cameraIds) {
-    if ((entry.camera == camera) || (entry.address == address)) {
+    if ((entry.camera == camera)
+        || ((entry.address == address) && (entry.addressType == addressType))) {
       return;
     }
   }
 
   for (const auto &saved : savedCameras) {
-    if (saved.address == address) {
-      cameraIds.push_back({camera, address, saved.id});
+    if ((saved.address == address) && (saved.addressType == addressType)) {
+      cameraIds.push_back({camera, address, addressType, saved.id});
       return;
     }
   }
@@ -63,8 +67,8 @@ void CameraList::save(const Camera *camera) {
   if (id == 0) {
     return;
   }
-  savedCameras.push_back({camera->getName(), address, id});
-  cameraIds.push_back({camera, address, id});
+  savedCameras.push_back({camera->getName(), address, addressType, id});
+  cameraIds.push_back({camera, address, addressType, id});
 }
 
 void CameraList::remove(Camera *camera) {
@@ -101,8 +105,8 @@ void CameraList::load(void) {
   cameras.clear();
   cameraIds.clear();
   for (const auto &saved : savedCameras) {
-    auto camera = std::make_shared<Camera>(saved.name, saved.address);
-    cameraIds.push_back({camera.get(), saved.address, saved.id});
+    auto camera = std::make_shared<Camera>(saved.name, saved.address, saved.addressType);
+    cameraIds.push_back({camera.get(), saved.address, saved.addressType, saved.id});
     cameras.push_back(std::move(camera));
   }
 }

@@ -46,9 +46,20 @@ int main(void) {
   check(CameraList::getCameraId(first.get()) == 1, "first saved id is stable");
   check(CameraList::getCameraId(second.get()) == 2, "second saved id is stable");
 
+  // BLE identity includes the address type. Equal address bits with public and
+  // random types must remain two saved cameras, not one overwrite.
+  auto publicIdentity = std::make_shared<Camera>("typed-public", 0x123456789abcULL, 0);
+  auto randomIdentity = std::make_shared<Camera>("typed-random", 0x123456789abcULL, 1);
+  CameraList::save(publicIdentity.get());
+  CameraList::save(randomIdentity.get());
+  check(CameraList::getSaveCount() == 4, "sim keeps equal address bits with distinct BLE types");
+  check(CameraList::getCameraId(publicIdentity.get())
+            != CameraList::getCameraId(randomIdentity.get()),
+        "sim gives distinct BLE address types distinct ids");
+
   CameraList::clear();
   CameraList::load();
-  check(CameraList::size() == 2, "reload restores both saved cameras");
+  check(CameraList::size() == 4, "reload restores all saved cameras");
   auto loadedFirst = CameraList::get(0);
   auto loadedSecond = CameraList::get(1);
   check(CameraList::getCameraId(loadedFirst.get()) == 1, "first id survives reload");
@@ -59,23 +70,23 @@ int main(void) {
   // the production address-keyed list is.
   CameraList::clear();
   CameraList::save(first.get());
-  check(CameraList::getSaveCount() == 2, "clear and re-save do not duplicate a camera");
+  check(CameraList::getSaveCount() == 4, "clear and re-save do not duplicate a camera");
   check(CameraList::getCameraId(first.get()) == 1,
         "clear and re-save retain the original stable id");
   CameraList::load();
   loadedFirst = CameraList::get(0);
 
   CameraList::remove(loadedFirst.get());
-  check(CameraList::getSaveCount() == 1, "remove deletes only one saved entry");
+  check(CameraList::getSaveCount() == 3, "remove deletes only one saved entry");
   CameraList::clear();
   CameraList::load();
-  check(CameraList::size() == 1, "reload keeps the remaining camera");
+  check(CameraList::size() == 3, "reload keeps the remaining cameras");
   check(CameraList::getCameraId(CameraList::get(0).get()) == 2,
         "remaining id does not depend on list position");
 
   auto third = std::make_shared<Camera>("Third");
   CameraList::save(third.get());
-  check(CameraList::getCameraId(third.get()) == 3, "removed id is not reused");
+  check(CameraList::getCameraId(third.get()) == 5, "removed ids are not reused");
   CameraList::clear();
   return 0;
 }

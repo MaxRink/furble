@@ -15,3 +15,11 @@ generation before deleting an entry, and retains the serialized camera record
 until both durable generations no longer reference it. Deferred reclamation is
 bounded and retryable after a power cut. The Cameras characteristic requires an
 encrypted and authenticated Companion link.
+
+New records use a thirteen-character uppercase key containing the exact
+48-bit BLE address and address type, so public and random identities cannot
+alias within the ESP-NVS fifteen-character key limit. Older address-only keys
+remain readable as a legacy representation and are not used for new saves.
+Index payloads are bounded before allocation at 254 records: 5,334 bytes in
+the current layout and 5,080 bytes in the legacy layout. This is the storage
+bound derived from the protocol's 1-254 camera-ID range.

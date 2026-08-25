@@ -25,6 +25,9 @@ using Furble::CameraListProtocol::indexChecksum;
 using Furble::CameraListProtocol::IndexEntry;
 using Furble::CameraListProtocol::IndexFormat;
 using Furble::CameraListProtocol::LEGACY_INDEX_ENTRY_BYTES;
+using Furble::CameraListProtocol::MAX_CURRENT_INDEX_BYTES;
+using Furble::CameraListProtocol::MAX_INDEX_ENTRIES;
+using Furble::CameraListProtocol::typedAddressKey;
 using Furble::CameraListProtocol::upsertIndex;
 
 namespace {
@@ -59,6 +62,18 @@ void testAddressKey() {
   check(addressKey(0xDEADBEEF) == "DEADBEEF", "address renders uppercase hex");
   check(addressKey(0xABCDEF) == "00ABCDEF", "address shorter than eight digits pads");
   check(addressKey(0x004080C0FF).size() >= 8, "wider address grows past eight digits");
+  check(typedAddressKey(0x112233445566ULL, 0) == "1122334455660",
+        "typed key carries a public address type");
+  check(typedAddressKey(0x112233445566ULL, 1) == "1122334455661",
+        "typed key distinguishes a random address with equal bits");
+  check(typedAddressKey(0xffffffffffffULL, 0xf) == "FFFFFFFFFFFFF",
+        "typed key stays within the fifteen-character NVS limit");
+  check(typedAddressKey(0x1000000000000ULL, 0).empty(),
+        "typed key rejects addresses wider than 48 bits without truncation");
+  check(typedAddressKey(0x112233445566ULL, 0x10).empty(),
+        "typed key rejects address types wider than one nibble");
+  check(addressKey(0x1000000000000ULL).empty(),
+        "legacy key rejects addresses wider than 48 bits without truncation");
 }
 
 void testRoundTrip() {
@@ -120,6 +135,13 @@ void testRejects() {
   // A null pointer with a nonzero length is a programming error, not empty.
   check(!decodeIndex(nullptr, INDEX_ENTRY_BYTES, decoded),
         "decodeIndex rejects a null pointer with a nonzero length");
+  std::vector<uint8_t> oversizedCurrent(MAX_CURRENT_INDEX_BYTES + INDEX_ENTRY_BYTES, 0);
+  check(
+      !decodeIndex(oversizedCurrent.data(), oversizedCurrent.size(), IndexFormat::CURRENT, decoded),
+      "current decoder rejects an oversized payload before resize");
+  std::vector<uint8_t> oversizedLegacy(LEGACY_INDEX_ENTRY_BYTES * (MAX_INDEX_ENTRIES + 1), 0);
+  check(!decodeIndex(oversizedLegacy.data(), oversizedLegacy.size(), IndexFormat::LEGACY, decoded),
+        "legacy decoder rejects an oversized payload before resize");
 }
 
 std::vector<uint8_t> makeLegacyBlob(const std::vector<std::pair<std::string, uint32_t>> &items);

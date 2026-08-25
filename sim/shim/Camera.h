@@ -49,8 +49,10 @@ class Camera {
     unsigned int centisecond;
   } timesync_t;
 
-  explicit Camera(std::string name = "FauxNY", uint64_t address = 0)
-      : m_Address {address == 0 ? allocateAddress() : address}, m_Name {std::move(name)} {}
+  explicit Camera(std::string name = "FauxNY", uint64_t address = 0, uint8_t addressType = 0)
+      : m_Address {address == 0 ? allocateAddress() : address},
+        m_AddressType {addressType},
+        m_Name {std::move(name)} {}
   virtual ~Camera() = default;
 
   bool connect(esp_power_level_t power, uint32_t timeout);
@@ -61,6 +63,7 @@ class Camera {
   const Type &getType(void) const;
   const std::string &getName(void) const;
   uint64_t getAddress(void) const { return m_Address; }
+  uint8_t getAddressType(void) const { return m_AddressType; }
   uint8_t getConnectProgress(void) const;
 
   void setConnectProgress(uint8_t progress);
@@ -104,6 +107,7 @@ class Camera {
   }
 
   uint64_t m_Address;
+  uint8_t m_AddressType;
   Type m_Type = Type::FAUXNY;
   std::string m_Name;
   std::atomic<uint8_t> m_Progress {0};

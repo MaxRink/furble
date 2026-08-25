@@ -27,6 +27,19 @@ it. Reclamation is attempted only after a later successful publication makes
 both generations exclude the record. The bounded deferred-reclamation queue is
 safe to retry after a power cut.
 
+New serialized camera records use a thirteen-character uppercase NVS key made
+from the exact 48-bit BLE address followed by its one-digit address type. This
+fits the ESP-NVS fifteen-character limit and keeps public and random identities
+with equal address bits distinct. Older address-only keys remain an explicit
+legacy representation and are never used for new saves. A CRC-valid journal
+generation is accepted only when every indexed record has a valid supported
+type and an existing blob.
+
+Index payloads are bounded before they are read or allocated: at most 254
+records, or 5,334 bytes in the current 21-byte layout (5,080 bytes in the
+legacy 20-byte layout). These limits follow the 1-254 camera-ID protocol range
+and keep malformed NVS lengths within the supported storage format.
+
 The Cameras characteristic requires an encrypted and authenticated Companion
 link. The `0xff` marker applies to selection and all-camera operations; a
 specific operation using an unknown ID is rejected.

@@ -12,6 +12,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -59,7 +60,8 @@ static_assert(sizeof(TestIndexHeader) == 16, "test index header layout changed")
 
 void writeTestJournalSlot(size_t slot,
                           uint32_t generation,
-                          const std::vector<Furble::CameraListProtocol::IndexEntry> &entries) {
+                          const std::vector<Furble::CameraListProtocol::IndexEntry> &entries,
+                          uint8_t reserved = 0) {
   std::vector<uint8_t> bytes;
   check(Furble::CameraListProtocol::encodeIndex(entries, bytes), "crafted index encodes");
   const char *blob = slot == 0 ? "slot_a_blob" : "slot_b_blob";
@@ -71,7 +73,7 @@ void writeTestJournalSlot(size_t slot,
                                       bytes.empty() ? 1 : bytes.size()),
         "crafted blob writes");
   const TestIndexHeader testHeader = {
-      0x46524C49U, generation, static_cast<uint32_t>(bytes.size()), 1, {0, 0, 0}
+      0x46524C49U, generation, static_cast<uint32_t>(bytes.size()), 1, {reserved, 0, 0}
   };
   const uint32_t checksum = Furble::CameraListProtocol::indexChecksum(bytes.data(), bytes.size());
   check(Furble::hostPreferencesPutRaw(header, &testHeader, sizeof(testHeader)),
@@ -132,10 +134,10 @@ void testCorruptCameraJournals(void) {
   std::cout << "test: corrupt camera journals fail closed\n";
   Furble::FauxNY first;
   Furble::FauxNY second;
-  const auto firstKey =
-      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(first.getAddress()));
-  const auto secondKey =
-      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(second.getAddress()));
+  const auto firstKey = Furble::CameraListProtocol::typedAddressKey(
+      static_cast<uint64_t>(first.getAddress()), first.getAddress().getType());
+  const auto secondKey = Furble::CameraListProtocol::typedAddressKey(
+      static_cast<uint64_t>(second.getAddress()), second.getAddress().getType());
 
   // A current-format entry must have a canonical, terminated camera key and a
   // supported type. A CRC-valid but malformed payload must not reach strcmp.
@@ -146,6 +148,7 @@ void testCorruptCameraJournals(void) {
        testIndexEntry(firstKey, static_cast<uint32_t>(Furble::Camera::Type::FAUXNY), 2)},
       {testIndexEntry(firstKey, static_cast<uint32_t>(Furble::Camera::Type::FAUXNY), 1),
        testIndexEntry(secondKey, static_cast<uint32_t>(Furble::Camera::Type::FAUXNY), 1)},
+      {testIndexEntry(firstKey, static_cast<uint32_t>(Furble::Camera::Type::MOBILE_DEVICE), 1)},
   };
   for (const auto &entries : malformedCases) {
     prepareJournalSeed(first);
@@ -154,6 +157,75 @@ void testCorruptCameraJournals(void) {
     Furble::CameraList::load();
     check(Furble::CameraList::getSaveCount() == 0, "malformed CRC-valid current index is rejected");
   }
+
+  // Reclamation must fail closed when both CRC-valid generations are
+  // semantically corrupt. Otherwise a queued live blob can be erased merely
+  // because a damaged index no longer names it.
+  prepareJournalSeed(first);
+  Furble::FauxNY secondForCorruption;
+  const auto secondCorruptKey = Furble::CameraListProtocol::typedAddressKey(
+      static_cast<uint64_t>(secondForCorruption.getAddress()),
+      secondForCorruption.getAddress().getType());
+  Furble::CameraList::save(&secondForCorruption);
+  Furble::CameraList::remove(&first);
+  check(Furble::hostPreferencesHasKey(firstKey.c_str()),
+        "queued removed blob remains before both fallback generations exclude it");
+  const auto corruptEntry = testIndexEntry(secondCorruptKey, 0xffffffffU, 2);
+  writeTestJournalSlot(0, 20, {corruptEntry});
+  writeTestJournalSlot(1, 21, {corruptEntry});
+  Furble::CameraList::clear();
+  Furble::CameraList::load();
+  check(Furble::hostPreferencesHasKey(firstKey.c_str()),
+        "corrupt two-slot generations never authorize queued blob deletion");
+  check(Furble::hostPreferencesHasKey("reclaim"),
+        "corrupt two-slot generations retain the reclaim queue");
+
+  // A nonzero reserved header byte is metadata corruption, even with a valid
+  // payload CRC, and must not be accepted as a durable generation.
+  Furble::hostPreferencesClearStorage();
+  writeTestJournalSlot(0, 22, {}, 1);
+  Furble::CameraList::clear();
+  Furble::CameraList::load();
+  check(Furble::CameraList::getSaveCount() == 0,
+        "nonzero journal header reserved bytes are rejected");
+
+  // A huge declared payload must be rejected from the header before any
+  // vector resize or blob read is attempted.
+  Furble::hostPreferencesClearStorage();
+  const TestIndexHeader hugeHeader = {
+      0x46524C49U, 23, std::numeric_limits<uint32_t>::max(), 1, {0, 0, 0}
+  };
+  const uint32_t hugeChecksum = 0;
+  const uint32_t hugeCommit = 23;
+  const uint8_t hugeMarker = 0;
+  check(Furble::hostPreferencesPutRaw("slot_a_blob", &hugeMarker, sizeof(hugeMarker)),
+        "huge journal payload marker writes");
+  check(Furble::hostPreferencesPutRaw("slot_a_hdr", &hugeHeader, sizeof(hugeHeader)),
+        "huge journal header writes");
+  check(Furble::hostPreferencesPutRaw("slot_a_crc", &hugeChecksum, sizeof(hugeChecksum)),
+        "huge journal CRC writes");
+  check(Furble::hostPreferencesPutRaw("slot_a_cmt", &hugeCommit, sizeof(hugeCommit)),
+        "huge journal commit writes");
+  Furble::CameraList::clear();
+  Furble::CameraList::load();
+  check(Furble::CameraList::getSaveCount() == 0,
+        "huge journal payload is rejected before allocation");
+
+  // A newer CRC-valid generation naming a missing blob must be ignored in
+  // favour of the older semantically valid generation.
+  prepareJournalSeed(first);
+  const auto firstTypedKey = Furble::CameraListProtocol::typedAddressKey(
+      static_cast<uint64_t>(first.getAddress()), first.getAddress().getType());
+  const auto missingEntry =
+      testIndexEntry("1122334455660", static_cast<uint32_t>(Furble::Camera::Type::FAUXNY), 2);
+  writeTestJournalSlot(
+      1, 30,
+      {testIndexEntry(firstTypedKey, static_cast<uint32_t>(Furble::Camera::Type::FAUXNY), 1)});
+  writeTestJournalSlot(0, 31, {missingEntry});
+  Furble::CameraList::clear();
+  Furble::CameraList::load();
+  check(Furble::CameraList::getSaveCount() == 1,
+        "missing-blob newer generation fails over to an older valid generation");
 
   // Pending intents and deferred queues are not allowed to name metadata.
   prepareJournalSeed(first);
@@ -610,8 +682,8 @@ void testCompanionGattFlow(void) {
   Furble::CameraList::remove(firstCamera.get());
   check(Furble::CameraList::getSaveCount() == 1, "successful removal commits a new index");
 
-  const std::string firstKey =
-      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(firstCamera->getAddress()));
+  const std::string firstKey = Furble::CameraListProtocol::typedAddressKey(
+      static_cast<uint64_t>(firstCamera->getAddress()), firstCamera->getAddress().getType());
   check(Furble::hostPreferencesHasKey(firstKey.c_str()),
         "removed blob remains while the fallback journal can reference it");
   Furble::CameraList::save(secondCamera.get());
@@ -645,8 +717,8 @@ void testCompanionGattFlow(void) {
   // A new camera blob has its own pending intent. Every cut from intent write
   // through index publication and intent clear must either recover the prior
   // state or remove the unreferenced blob on the next boot.
-  const std::string newKey =
-      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(firstCamera->getAddress()));
+  const std::string newKey = Furble::CameraListProtocol::typedAddressKey(
+      static_cast<uint64_t>(firstCamera->getAddress()), firstCamera->getAddress().getType());
   for (size_t boundary = 1; boundary <= 8; boundary++) {
     Furble::hostPreferencesClearStorage();
     Furble::CameraList::clear();
