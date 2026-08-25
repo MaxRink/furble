@@ -48,6 +48,18 @@ bool hostPreferencesHasKey(const char *key) {
   });
 }
 
+std::size_t hostPreferencesMutationCount(void) {
+  return g_MutatingOperation;
+}
+
+bool hostPreferencesHasKey(const char *key) {
+  const std::string suffix = std::string(":") + key;
+  return std::any_of(g_Storage.begin(), g_Storage.end(), [&suffix](const auto &entry) {
+    return entry.first.size() >= suffix.size()
+           && entry.first.compare(entry.first.size() - suffix.size(), suffix.size(), suffix) == 0;
+  });
+}
+
 Preferences::Preferences() : _handle(0), _started(false), _readOnly(false) {}
 Preferences::~Preferences() = default;
 bool Preferences::begin(const char *name, bool readOnly, const char *) {
