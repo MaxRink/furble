@@ -127,8 +127,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   and `ui.battery_drift` (battery icon x, and its shift from the first-read
   anchor). `action page <shutter|bulb|cameras|remote_timer|remote_gps>` reaches
   the connected sub-pages. WILL_FAIL (`xassert`) lines pending product fixes are
-  the bulb-page reconnect banner (`ui.page_banner yes` on Bulb) and the 80x160
-  battery anchor (`ui.battery_drift 0` as status icons change).
+  the bulb-page reconnect banner (`ui.page_banner yes` on Bulb) and the exact
+  battery anchor (`ui.battery_drift 0` as status icons change). The current
+  audit passes that exact check on 135x240 and 320x240 but still finds drift on
+  80x160, so it remains xassert until all three panels pass.
 - `sim/scripts/ui-screenshots.txt` captures every modeled page for the
   screenshot CI workflow. Menu routes are position-sensitive: adding or
   removing a settings entry changes the `key down` counts in the scripts.
