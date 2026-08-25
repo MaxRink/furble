@@ -26,8 +26,10 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - Never hold the Control mutex across a delay or a blocking BLE call. The
   reconnect cancel deadlock bricked the device: buttons and USB went dead
   because furble disables all M5PM1 power button gestures at boot, so there was
-  no hardware escape. Rescue: hold the side button while replugging USB until
-  the green LED flashes, then reflash. Design rule: take the mutex, read or
+  no hardware escape. A retained PMIC `DL_LOCK` is not cleared by USB
+  unplugging or reset. Remove battery power (disconnect, depletion, or service),
+  restore it, then hold the side button until the green LED flashes and reflash.
+  Design rule: take the mutex, read or
   write the shared state, release it, then do the slow work.
 - M5PM1 (StickS3 PMIC) first-transaction quirk. The first I2C transaction after
   the PMIC idle sleep fails and only wakes it. Always retry once.

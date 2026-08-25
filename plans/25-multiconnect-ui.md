@@ -602,8 +602,9 @@ integration, not only this PR):
    followed by `connect` while the X100VI was connected de-enumerated the device
    from USB entirely (`AppleUSBSerial = 0`, no 303a device present), matching the
    reconnect cancel deadlock documented in the repo CLAUDE.md. Recovery needs the
-   physical rescue: hold the side button while replugging USB until the green LED
-   flashes, then reflash. None of these four PRs change the reconnect state
+   physical rescue: if PMIC `DL_LOCK` is retained, remove battery power first,
+   restore it, then hold the side button until the green LED flashes and reflash.
+   None of these four PRs change the reconnect state
    machine (this PR explicitly leaves it alone), so this is most likely a pre
    existing reconnect path hazard exposed by back to back console commands rather
    than a regression from these PRs. It still needs a fix before the reconnect UX

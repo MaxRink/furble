@@ -18,9 +18,10 @@ from pathlib import Path
 
 def recovery_message() -> str:
     return (
-        "PMIC preflight did not complete. Unplug USB, hold the StickS3 side button "
-        "for about two seconds until the green LED flashes, release it, reconnect "
-        "USB, then run esptool/PlatformIO again."
+        "PMIC preflight did not complete. USB unplugging and reset are insufficient "
+        "for a retained DL_LOCK; remove battery power (disconnect, depletion, or "
+        "service), restore it, then hold the StickS3 side button until the green "
+        "LED flashes and retry."
     )
 
 

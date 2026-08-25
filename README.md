@@ -252,12 +252,18 @@ and reboot before attaching a JTAG debugger, because halting the CPU stops the w
 
 If the M5StickS3 is powered off and will not turn on, single click the side button.
 
-If the device is wedged, the screen is dark, and USB is not enumerating:
+If the device is wedged, the screen is dark, and USB is not enumerating, first
+try the PMIC-safe uploader below while the application can still answer. USB
+unplugging alone is not a PMIC reset: an already-set `DL_LOCK` survives an ESP
+reset, a PMIC watchdog reset, and removal of USB power while the battery is
+connected. If the lock is already set and the application cannot clear it, the
+device needs true PMIC power loss (battery disconnect/depletion or service)
+before the side-button recovery can work:
 
-1. Unplug the USB cable.
-2. Press and hold the side button for about two seconds.
+1. Remove battery power or have the battery fully depleted/service-disconnected.
+2. Restore battery power, then press and hold the side button for about two seconds.
 3. When the green LED inside the device flashes, release the button.
-4. Plug the USB cable back in. The port should enumerate.
+4. Connect USB. The port should enumerate in download mode.
 5. Reflash with `pio run -e m5stick-s3 -t upload`.
 
 For a responsive developer-console build, use the PMIC-safe uploader. It

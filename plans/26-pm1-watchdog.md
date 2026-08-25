@@ -41,7 +41,7 @@ into one that reboots in ten seconds.
 
 Open this before any code. Motivation only, no design.
 
-> **StickS3 can lock up with no way to reset it**
+> **Historical report: StickS3 can lock up with no way to reset it**
 >
 > I managed to wedge a StickS3 while developing against furble. The screen
 > stayed dark, the buttons did nothing, and the USB port stopped enumerating, so
@@ -50,7 +50,8 @@ Open this before any code. Motivation only, no design.
 > the button as a UI input, which means once the firmware stops running there is
 > no button path left. The only way back was holding the side button while
 > replugging USB to force download mode, which is not obvious and not documented
-> anywhere. The PM1 has a hardware watchdog that could recover this
+> anywhere. That procedure is not sufficient when `DL_LOCK` is retained: USB
+> removal is not PMIC power loss. The PM1 has a hardware watchdog that could recover this
 > automatically. Would a PR wiring that up be welcome?
 
 ## Scope
@@ -324,30 +325,27 @@ Case 1, device is off and will not turn on:
 
 Case 2, device is wedged, screen dark, USB not enumerating:
 
-1. Unplug the USB cable.
-2. Press and hold the side button for about two seconds.
-3. The green LED inside the device blinks. Release the button. The device is in
+An already-set `DL_LOCK` is in the PMIC power domain. ESP reset, PMIC watchdog
+reset, and unplugging USB while the battery remains connected do not clear it.
+Only true PMIC power loss, by battery disconnect, depletion, or service, clears the
+lock. After that power loss and a restored battery:
+
+1. Press and hold the side button for about two seconds.
+2. The green LED inside the device blinks. Release the button. The device is in
    download mode.
-4. Plug the USB cable back in. The port enumerates.
-5. Reflash: `pio run -e m5stick-s3 -t upload`.
+3. Connect USB. The port enumerates.
+4. Reflash: `pio run -e m5stick-s3 -t upload`.
 
-The two M5Stack pages describe the order slightly differently. The programming
-page says hold until the green LED blinks, release, then connect USB. The
-product page says connect the cable then hold the reset button. Try USB
-unplugged first, since a wedged device that is confusing the host is the case
-being recovered from.
+The two M5Stack pages describe the button/USB order slightly differently. That
+order matters only after the PMIC has actually lost power; keep USB disconnected
+while removing/restoring battery power so a host connection cannot mask the
+download transition.
 
-Open question to settle on hardware before this PR is written up: furble sets
-`setDownloadLock(true)` at `src/FurblePlatform.cpp:38`, which sets the `DL_LOCK`
-bit in `M5PM1_REG_BTN_CFG_1` (register 0x49) and disables the long press into
-download mode. The header documents `M5PM1_REG_HOLD_CFG` as auto-clearing on
-reset, download mode and shutdown, but says nothing of the sort about
-`M5PM1_REG_BTN_CFG_1`. If `DL_LOCK` is sticky across a power cycle, the rescue
-above does not work on a device that has ever run furble, and the whole recovery
-story changes. Test it explicitly: flash furble, let it boot, then attempt the
-case 2 procedure. Report the result in the PR body either way. If `DL_LOCK`
-turns out to be sticky, that is a much bigger problem than this PR and it should
-become its own issue.
+Hardware evidence now confirms that `DL_LOCK` in `M5PM1_REG_BTN_CFG_1`
+(register 0x49) is retained across ESP reset, PMIC watchdog reset, and USB
+unplug while battery-powered. It clears only after true PMIC power loss
+(battery disconnect, depletion, or service). The recovery instructions above
+must not imply that an ordinary shutdown or USB removal is sufficient.
 
 ## Dependencies
 
