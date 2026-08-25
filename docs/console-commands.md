@@ -20,6 +20,11 @@ The console distorts power measurements, so do not take power numbers from a
 build that contains it. On the ESP32 boards the console holds an APB frequency
 lock for its lifetime. On the M5StickS3 no lock is needed.
 
+For a development build, `version` reports `dev+g<revision>`, where the suffix
+is Git's unambiguous abbreviation of the checked-out commit (at least eight
+characters). Explicit release versions remain unchanged. The same identity is
+shown on the About page and exposed through companion BLE Device Information.
+
 ## Command summary
 
 | Command | What it does |

@@ -4,8 +4,8 @@
 
 Development firmware previously displayed exactly the caller-provided `dev`
 string. Two locally built images from different commits were indistinguishable
-on the About page, MQTT metadata, and USB console. That makes an OTA or bench
-result hard to tie back to the source that produced it.
+on the About page, companion BLE Device Information, and USB console. That
+makes an OTA or bench result hard to tie back to the source that produced it.
 
 ## Implementation
 

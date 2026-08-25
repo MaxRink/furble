@@ -204,6 +204,11 @@ Log output shares the port, so `log * warn` is usually the first thing worth
 typing. Every command prints one fact per line as `key: value`, so a host script
 can parse it with a split on the first colon.
 
+Development builds identify their source as `dev+g<revision>` in the About
+page, companion BLE Device Information, and the `version` command. The revision
+is Git's unambiguous abbreviation of at least eight characters; explicit
+release versions are shown unchanged.
+
 ```
 version                             firmware and IDF version
 status                              state, targets, uptime, heap, battery, reset reason

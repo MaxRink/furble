@@ -19,7 +19,7 @@ class BuildVersionTest(unittest.TestCase):
           text=True,
       ).strip()
     except (OSError, subprocess.CalledProcessError):
-      self.skipTest("the source tree has no usable Git metadata")
+      self.fail("checkout-backed version test requires usable Git metadata")
 
     self.assertTrue(revision)
     self.assertEqual(
