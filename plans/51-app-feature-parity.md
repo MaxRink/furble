@@ -74,7 +74,9 @@ The Android settings portion is implemented. The app now:
 - The expanded Linux host target exposed a partial `struct tm` initialization
   in the existing Lumix geotag path. The record is now zero-initialized before
   assigning its portable fields, so glibc extension fields cannot fail the
-  companion harness under `-Werror`. The complete host suite passes 49/49.
+  companion harness under `-Werror`. The same gate exposed three Nikon GPS
+  direction characters assigned to byte fields; those conversions are now
+  explicit. The complete host suite passes 49/49 locally.
 - Hardware verification of the phone round-trip is still outstanding because the
   companion tab that consumes this characteristic (step 4) is not built yet.
 
