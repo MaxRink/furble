@@ -171,7 +171,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       return
     }
     guard data.count == FurbleProtocol.authNonceSize + 2,
-      let password = try? credentialStore.readPassword(), let password, !password.isEmpty,
+      let password = try? credentialStore.readPassword(), !password.isEmpty,
       let authCharacteristic = characteristic(FurbleProtocol.UUIDs.auth) else {
       fail(.authenticationUnavailable)
       return
