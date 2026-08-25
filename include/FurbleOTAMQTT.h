@@ -147,10 +147,17 @@ bool encode(const Message &message, std::vector<uint8_t> &out, ErrorInfo *error 
 /** Stable diagnostic label for a protocol error. */
 const char *errorString(Error error);
 
-/** Sink invoked only after protocol checks. finalize must verify digest and signature. */
+/**
+ * Sink invoked only after protocol checks. authenticate must verify all signed
+ * manifest metadata before begin or replay reservation. finalize must verify
+ * streamed digest equality and the signature again before activation.
+ */
 class Sink {
  public:
   virtual ~Sink() = default;
+
+  /** Authenticate all signed manifest metadata before touching sink state. */
+  virtual bool authenticate(const Manifest &manifest) = 0;
 
   virtual bool begin(const Manifest &manifest) = 0;
   virtual bool write(uint32_t offset, const uint8_t *data, size_t length) = 0;
@@ -182,9 +189,10 @@ class Sink {
  * owner-and-counter CAS transitions. completeReservation() consumes the
  * reservation before irreversible boot-partition activation; activation
  * failure therefore leaves the old image selected but never blocks the floor.
- * recoverAbandonedReservation() is called
- * by the platform after reboot when staged data is known to be abandoned; it
- * clears the owner while preserving the consumed floor.
+ * recoverAbandonedReservation() is called by the platform-owned
+ * RecoveryCoordinator after reboot when staged data is known to be abandoned;
+ * it clears the owner while preserving the consumed floor. The coordinator
+ * calls it at most once per boot.
  * Flash/NVS adapters must journal this record before acknowledging it and
  * recover the last complete record after reboot.
  */
@@ -197,6 +205,28 @@ class ReplayStore {
   virtual bool completeReservation(const SessionId &owner, uint32_t counter) = 0;
   virtual bool abandonReservation(const SessionId &owner, uint32_t counter) = 0;
   virtual bool recoverAbandonedReservation() = 0;
+};
+
+/**
+ * Once-per-boot recovery gate owned by the eventual transport composition.
+ *
+ * Construction has no side effects. The platform calls recoverAtBoot() only
+ * after it has discarded any abandoned staged image, then shares this object
+ * with every Session for that boot. Repeated calls are no-ops, so creating a
+ * second Session cannot clear a live same-boot reservation.
+ */
+class RecoveryCoordinator final {
+ public:
+  explicit RecoveryCoordinator(ReplayStore &replayStore) : m_ReplayStore(replayStore) {}
+
+  bool recoverAtBoot();
+  bool ready() const;
+  ReplayStore &replayStore() const;
+
+ private:
+  ReplayStore &m_ReplayStore;
+  bool m_Attempted = false;
+  bool m_Ready = false;
 };
 
 struct Outcome {
@@ -218,12 +248,12 @@ struct Outcome {
 class Session {
  public:
   /**
-   * The owner must keep this object in persistent task/static storage and
-   * serialize all onMessage calls. The implementation rejects reentrant
-   * dispatch from sink callbacks; platform adapters must serialize concurrent
-   * MQTT callbacks before entering this API.
+   * The owner must keep this object and its once-per-boot RecoveryCoordinator
+   * in persistent task/static storage and serialize all onMessage calls. The
+   * implementation rejects reentrant dispatch from sink callbacks; platform
+   * adapters must serialize concurrent MQTT callbacks before entering this API.
    */
-  Session(Sink &sink, ReplayStore &replayStore);
+  Session(Sink &sink, ReplayStore &replayStore, RecoveryCoordinator &recovery);
 
   Outcome onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length);
   Outcome onMessage(const MessageMeta &meta, const Message &message);
@@ -253,6 +283,7 @@ class Session {
 
   Sink &m_Sink;
   ReplayStore &m_ReplayStore;
+  RecoveryCoordinator &m_Recovery;
   State m_State = State::Idle;
   Error m_LastError = Error::None;
   Manifest m_Manifest {};
@@ -264,7 +295,6 @@ class Session {
   uint32_t m_TerminalSequence = 0;
   bool m_Dispatching = false;
   bool m_ReservationActive = false;
-  bool m_ReplayRecoveryChecked = false;
 };
 
 static_assert(sizeof(Session) <= OTA_SESSION_BUDGET_BYTES,

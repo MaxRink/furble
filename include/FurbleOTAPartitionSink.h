@@ -33,6 +33,8 @@ class PartitionTarget {
 class ManifestVerifier {
  public:
   virtual ~ManifestVerifier() = default;
+  /** Authenticate signed manifest metadata before any sink mutation. */
+  virtual bool authenticate(const MQTT::Manifest &manifest) = 0;
   virtual bool verify(const MQTT::Manifest &manifest) = 0;
 };
 
@@ -50,6 +52,7 @@ class PartitionSink final: public MQTT::Sink {
  public:
   PartitionSink(PartitionTarget &target, ManifestVerifier &verifier);
 
+  bool authenticate(const MQTT::Manifest &manifest) override;
   bool begin(const MQTT::Manifest &manifest) override;
   bool write(uint32_t offset, const uint8_t *data, size_t length) override;
   bool matches(uint32_t offset, const uint8_t *data, size_t length, uint32_t checksum) override;
@@ -80,6 +83,8 @@ class PartitionSink final: public MQTT::Sink {
   bool m_Started = false;
   bool m_Finalized = false;
   bool m_Activated = false;
+  bool m_Authenticated = false;
+  MQTT::Manifest m_AuthenticatedManifest {};
 };
 
 }  // namespace OTA

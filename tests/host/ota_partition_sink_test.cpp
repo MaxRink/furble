@@ -95,8 +95,15 @@ class FakeTarget final: public PartitionTarget {
 
 class FakeVerifier final: public ManifestVerifier {
  public:
+  bool authenticateResult = true;
   bool result = true;
   size_t calls = 0;
+  size_t authenticateCalls = 0;
+
+  bool authenticate(const OTA::Manifest &) override {
+    authenticateCalls++;
+    return authenticateResult;
+  }
 
   bool verify(const OTA::Manifest &) override {
     calls++;
@@ -196,6 +203,18 @@ void rejectsBeginAndWriteFaults() {
     assert(!sink.write(0, bytes, sizeof(bytes)));
     assert(target.abortCalls == 1);
   }
+}
+
+void rejectsUnauthenticatedManifestBeforeTargetMutation() {
+  FakeTarget target;
+  FakeVerifier verifier;
+  verifier.authenticateResult = false;
+  PartitionSink sink(target, verifier);
+  const OTA::Manifest value = manifest();
+  assert(!sink.authenticate(value));
+  assert(!sink.begin(value));
+  assert(target.beginCalls == 0);
+  assert(target.abortCalls == 0);
 }
 
 void rejectsDigestVerifierAndEndFaults() {
@@ -335,6 +354,7 @@ int main() {
   cleanUpdate();
   rejectsInvalidRangesAndRetries();
   rejectsBeginAndWriteFaults();
+  rejectsUnauthenticatedManifestBeforeTargetMutation();
   rejectsDigestVerifierAndEndFaults();
   rejectsActivationAndRebootLeavesBootUnchanged();
   rejectsCapacityAndTruncation();

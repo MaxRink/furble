@@ -77,6 +77,7 @@ OTA::Message control(OTA::Kind kind, const OTA::SessionId &session, uint32_t seq
 
 class FakeSink final: public OTA::Sink {
  public:
+  bool authenticateResult = true;
   bool beginResult = true;
   bool writeResult = true;
   bool matchesResult = true;
@@ -88,8 +89,14 @@ class FakeSink final: public OTA::Sink {
   size_t matchesCalls = 0;
   bool activateResult = true;
   size_t activateCalls = 0;
+  size_t authenticateCalls = 0;
   OTA::Manifest lastManifest;
   std::vector<uint8_t> image;
+
+  bool authenticate(const OTA::Manifest &) override {
+    authenticateCalls++;
+    return authenticateResult;
+  }
 
   bool begin(const OTA::Manifest &value) override {
     beginCalls++;
@@ -146,6 +153,7 @@ class FakeReplayStore final: public OTA::ReplayStore {
   size_t reserveCalls = 0;
   bool outstanding = false;
   bool staged = false;
+  size_t recoveryCalls = 0;
   OTA::SessionId owner {};
   uint32_t reservedCounter = 0;
 
@@ -198,10 +206,33 @@ class FakeReplayStore final: public OTA::ReplayStore {
   }
 
   bool recoverAbandonedReservation() override {
+    recoveryCalls++;
     outstanding = false;
     staged = false;
     return true;
   }
+};
+
+class SessionHarness final {
+ public:
+  SessionHarness(OTA::Sink &sink, FakeReplayStore &store)
+      : recovery(store), session(sink, store, recovery) {
+    recovery.recoverAtBoot();
+  }
+
+  OTA::Outcome onMessage(const OTA::MessageMeta &meta, const OTA::Message &message) {
+    return session.onMessage(meta, message);
+  }
+
+  OTA::Outcome onMessage(const OTA::MessageMeta &meta, const uint8_t *payload, size_t length) {
+    return session.onMessage(meta, payload, length);
+  }
+
+  OTA::State state() const { return session.state(); }
+  size_t receivedBytes() const { return session.receivedBytes(); }
+
+  OTA::RecoveryCoordinator recovery;
+  OTA::Session session;
 };
 
 OTA::Message roundTrip(const OTA::Message &message) {
@@ -296,7 +327,7 @@ void testDeliveryPolicyAndChunkLedger() {
   std::cout << "test: QoS, retained replay, ordering, duplicates, and bounds\n";
   FakeSink sink;
   FakeReplayStore store;
-  OTA::Session session(sink, store);
+  SessionHarness session(sink, store);
   const OTA::SessionId sessionId = id(20);
   const OTA::Manifest value = manifest(sessionId);
   const OTA::MessageMeta good {1, false, false};
@@ -372,7 +403,7 @@ void testSinkAndVerificationFailures() {
   FakeSink sink;
   sink.finalizeResult = false;
   FakeReplayStore store;
-  OTA::Session session(sink, store);
+  SessionHarness session(sink, store);
   const OTA::MessageMeta good {2, false, false};
   expect(session.onMessage(good, begin(value)).accepted, "verification case begins");
   expect(session.onMessage(good, chunk(sessionId, 0, {0, 1, 2, 3, 4}, 2)).accepted,
@@ -388,7 +419,7 @@ void testSinkAndVerificationFailures() {
   FakeSink rejected;
   rejected.beginResult = false;
   FakeReplayStore rejectedStore;
-  OTA::Session rejectedSession(rejected, rejectedStore);
+  SessionHarness rejectedSession(rejected, rejectedStore);
   expect(
       rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::SinkRejected,
       "sink can reject a manifest before writes");
@@ -401,7 +432,7 @@ void testSinkAndVerificationFailures() {
   FakeSink persistenceFailure;
   FakeReplayStore failedStore;
   failedStore.reserveResult = false;
-  OTA::Session failedCommit(persistenceFailure, failedStore);
+  SessionHarness failedCommit(persistenceFailure, failedStore);
   const OTA::SessionId failedId = id(101);
   expect(failedCommit.onMessage(good, begin(manifest(failedId, 1))).error
              == OTA::Error::ReplayStoreFailed,
@@ -414,7 +445,7 @@ void testSinkAndVerificationFailures() {
   FakeSink activationFailure;
   activationFailure.activateResult = false;
   FakeReplayStore activationStore;
-  OTA::Session failedActivation(activationFailure, activationStore);
+  SessionHarness failedActivation(activationFailure, activationStore);
   const OTA::SessionId activationId = id(102);
   expect(failedActivation.onMessage(good, begin(manifest(activationId, 1))).accepted,
          "activation failure case begins");
@@ -427,7 +458,7 @@ void testSinkAndVerificationFailures() {
          "replay floor is committed before activation");
   expect(failedActivation.state() == OTA::State::Error, "activation failure is terminal");
   FakeSink activationRebootSink;
-  OTA::Session activationReboot(activationRebootSink, activationStore);
+  SessionHarness activationReboot(activationRebootSink, activationStore);
   expect(activationReboot.onMessage(good, begin(manifest(activationId, 1))).error
              == OTA::Error::Replay,
          "activation failure cannot replay the reserved counter after reboot");
@@ -435,7 +466,7 @@ void testSinkAndVerificationFailures() {
   FakeSink completionFailureSink;
   FakeReplayStore completionFailureStore;
   completionFailureStore.completeResult = false;
-  OTA::Session completionFailure(completionFailureSink, completionFailureStore);
+  SessionHarness completionFailure(completionFailureSink, completionFailureStore);
   const OTA::SessionId completionId = id(104);
   expect(completionFailure.onMessage(good, begin(manifest(completionId, 1))).accepted,
          "completion-failure case begins");
@@ -452,7 +483,7 @@ void testSinkAndVerificationFailures() {
          "failed journal completion consumes the counter without leaving a live owner");
   expect(completionFailureStore.recoverAbandonedReservation(),
          "reboot recovery clears the abandoned reservation");
-  OTA::Session completionRetry(completionFailureSink, completionFailureStore);
+  SessionHarness completionRetry(completionFailureSink, completionFailureStore);
   const OTA::SessionId completionRetryId = id(105);
   expect(completionRetry.onMessage(good, begin(manifest(completionRetryId, 2))).accepted,
          "recovery permits a newer counter after completion failure");
@@ -461,7 +492,7 @@ void testSinkAndVerificationFailures() {
   FakeSink unavailableSink;
   FakeReplayStore unavailableStore;
   unavailableStore.loadResult = false;
-  OTA::Session unavailable(unavailableSink, unavailableStore);
+  SessionHarness unavailable(unavailableSink, unavailableStore);
   expect(unavailable.onMessage(good, begin(manifest(id(103), 1))).error
              == OTA::Error::ReplayStoreFailed,
          "unavailable replay storage fails closed before sink begin");
@@ -476,13 +507,53 @@ void testSinkAndVerificationFailures() {
   expect(error.code == OTA::Error::InvalidSignature, "unsigned manifest reports invalid signature");
 }
 
+void testManifestAuthenticationBeforeReservation() {
+  std::cout << "test: forged manifests cannot mutate sink or burn rollback counters\n";
+  const OTA::MessageMeta good {1, false, false};
+  FakeSink sink;
+  sink.authenticateResult = false;
+  FakeReplayStore store;
+  SessionHarness session(sink, store);
+  OTA::Manifest forged = manifest(id(111), 1);
+  forged.rollbackCounter = UINT32_MAX;
+  expect(session.onMessage(good, begin(forged)).error == OTA::Error::VerificationFailed,
+         "forged manifest is rejected before reservation");
+  expect(sink.authenticateCalls == 1, "preflight authentication runs once");
+  expect(sink.beginCalls == 0, "forged manifest never starts the sink");
+  expect(store.reserveCalls == 0, "forged manifest never reserves its counter");
+  expect(store.floor == 0, "forged maximum counter cannot burn the replay floor");
+}
+
+void testExplicitRecoveryCoordinator() {
+  std::cout << "test: recovery is explicit, once per boot, and owner-safe\n";
+  const OTA::MessageMeta good {1, false, false};
+  FakeReplayStore store;
+  FakeSink sinkA;
+  FakeSink sinkB;
+  OTA::RecoveryCoordinator recovery(store);
+  expect(!recovery.ready(), "recovery starts not ready");
+  expect(recovery.recoverAtBoot(), "boot recovery succeeds explicitly");
+  expect(recovery.recoverAtBoot(), "repeated boot recovery is idempotent");
+  expect(store.recoveryCalls == 1, "repeated recovery calls the store only once");
+  OTA::Session sessionA(sinkA, store, recovery);
+  OTA::Session sessionB(sinkB, store, recovery);
+  expect(store.recoveryCalls == 1, "Session construction has no recovery side effect");
+  const OTA::Manifest first = manifest(id(112), 1);
+  const OTA::Manifest second = manifest(id(113), 1);
+  expect(sessionA.onMessage(good, begin(first)).accepted, "first owner reserves the floor");
+  expect(sessionB.onMessage(good, begin(second)).error == OTA::Error::ReplayStoreFailed,
+         "second session cannot reserve over a live owner");
+  expect(recovery.recoverAtBoot(), "repeated recovery does not fail the live boot");
+  expect(store.outstanding, "repeated recovery cannot clear a live same-boot owner");
+}
+
 void testSequenceAndBoundedResourceRules() {
   std::cout << "test: sequence uniqueness, sink-backed retry, and bounded ledger\n";
   const OTA::MessageMeta good {1, false, false};
   const OTA::SessionId sessionId = id(150);
   FakeSink sink;
   FakeReplayStore store;
-  OTA::Session session(sink, store);
+  SessionHarness session(sink, store);
   OTA::Manifest value = manifest(sessionId, 3);
   OTA::Message zeroBegin = begin(value);
   zeroBegin.sequence = 0;
@@ -505,7 +576,7 @@ void testSequenceAndBoundedResourceRules() {
   FakeSink noReadback;
   noReadback.matchesResult = false;
   FakeReplayStore noReadbackStore;
-  OTA::Session noReadbackSession(noReadback, noReadbackStore);
+  SessionHarness noReadbackSession(noReadback, noReadbackStore);
   const OTA::SessionId noReadbackId = id(151);
   expect(noReadbackSession.onMessage(good, begin(manifest(noReadbackId, 1))).accepted,
          "readback case begins");
@@ -517,7 +588,7 @@ void testSequenceAndBoundedResourceRules() {
 
   FakeSink bounded;
   FakeReplayStore boundedStore;
-  OTA::Session boundedSession(bounded, boundedStore);
+  SessionHarness boundedSession(bounded, boundedStore);
   const OTA::SessionId boundedId = id(152);
   expect(boundedSession.onMessage(good, begin(manifest(boundedId, OTA::OTA_LEDGER_ENTRIES + 1)))
              .accepted,
@@ -542,7 +613,7 @@ void testTerminalReplayWindow() {
   std::cout << "test: persistent anti-rollback survives many sessions and reboot\n";
   FakeSink sink;
   FakeReplayStore store;
-  OTA::Session session(sink, store);
+  SessionHarness session(sink, store);
   const OTA::MessageMeta good {2, false, false};
   std::array<OTA::SessionId, 10> ids {};
   for (size_t index = 0; index < ids.size(); index++) {
@@ -556,7 +627,7 @@ void testTerminalReplayWindow() {
   }
 
   FakeSink rebootSink;
-  OTA::Session rebooted(rebootSink, store);
+  SessionHarness rebooted(rebootSink, store);
   for (const OTA::SessionId &sessionId : ids) {
     expect(rebooted.onMessage(good, begin(manifest(sessionId, 1))).error == OTA::Error::Replay,
            "all stale signed sessions remain rejected after reboot");
@@ -577,7 +648,7 @@ void testAbortReservationAndCompetingSessions() {
   const OTA::Manifest abortedManifest = manifest(abortedId, 1);
   FakeReplayStore store;
   FakeSink sink;
-  OTA::Session session(sink, store);
+  SessionHarness session(sink, store);
   expect(session.onMessage(good, begin(abortedManifest)).accepted, "aborted reservation begins");
   expect(
       session.onMessage(good, control(OTA::Kind::Abort, abortedId, 2)).error == OTA::Error::Aborted,
@@ -586,7 +657,7 @@ void testAbortReservationAndCompetingSessions() {
          "same-process post-abort replay is rejected");
 
   FakeSink rebootSink;
-  OTA::Session rebooted(rebootSink, store);
+  SessionHarness rebooted(rebootSink, store);
   expect(rebooted.onMessage(good, begin(abortedManifest)).error == OTA::Error::Replay,
          "reconstructed session post-abort replay is rejected");
   const OTA::SessionId laterId = id(121);
@@ -594,7 +665,7 @@ void testAbortReservationAndCompetingSessions() {
          "a later signed counter remains usable after abort");
 
   FakeSink competingSink;
-  OTA::Session competing(competingSink, store);
+  SessionHarness competing(competingSink, store);
   expect(competing.onMessage(good, begin(manifest(laterId, 1))).error == OTA::Error::Replay,
          "competing session cannot reserve an already-used counter");
 
@@ -602,14 +673,14 @@ void testAbortReservationAndCompetingSessions() {
   failedWriteSink.writeResult = false;
   FakeReplayStore failedWriteStore;
   const OTA::SessionId failedWriteId = id(122);
-  OTA::Session failedWrite(failedWriteSink, failedWriteStore);
+  SessionHarness failedWrite(failedWriteSink, failedWriteStore);
   expect(failedWrite.onMessage(good, begin(manifest(failedWriteId, 1))).accepted,
          "sink failure case begins");
   expect(failedWrite.onMessage(good, chunk(failedWriteId, 0, {1}, 2)).error
              == OTA::Error::SinkRejected,
          "sink write failure is terminal");
   FakeSink failedWriteRebootSink;
-  OTA::Session failedWriteReboot(failedWriteRebootSink, failedWriteStore);
+  SessionHarness failedWriteReboot(failedWriteRebootSink, failedWriteStore);
   expect(failedWriteReboot.onMessage(good, begin(manifest(failedWriteId, 1))).error
              == OTA::Error::Replay,
          "sink failure cannot replay its reserved counter after reboot");
@@ -629,8 +700,8 @@ void testGlobalReservationLifecycle() {
   FakeReplayStore store;
   FakeSink sinkA;
   FakeSink sinkB;
-  OTA::Session sessionA(sinkA, store);
-  OTA::Session sessionB(sinkB, store);
+  SessionHarness sessionA(sinkA, store);
+  SessionHarness sessionB(sinkB, store);
   const OTA::SessionId idA = id(140);
   const OTA::SessionId idB = id(141);
   expect(sessionA.onMessage(good, begin(manifest(idA, 1))).accepted,
@@ -651,13 +722,13 @@ void testGlobalReservationLifecycle() {
   expect(store.abandonReservation(idB, idB[0]), "owner can abandon its reservation");
 
   FakeSink rebootSink;
-  OTA::Session rebooted(rebootSink, store);
+  SessionHarness rebooted(rebootSink, store);
   const OTA::SessionId abandonedId = id(143);
   expect(rebooted.onMessage(good, begin(manifest(abandonedId, 1))).accepted,
          "reservation can be reconstructed before recovery");
   expect(store.recoverAbandonedReservation(), "platform clears abandoned reservation on reboot");
   FakeSink recoveredSink;
-  OTA::Session recovered(recoveredSink, store);
+  SessionHarness recovered(recoveredSink, store);
   expect(recovered.onMessage(good, begin(manifest(id(144), 1))).accepted,
          "recovery preserves the floor while allowing a later counter");
 }
@@ -677,7 +748,7 @@ void testCanonicalSignatureBytes() {
 
   FakeSink sink;
   FakeReplayStore store;
-  OTA::Session session(sink, store);
+  SessionHarness session(sink, store);
   const OTA::MessageMeta good {1, false, false};
   expect(session.onMessage(good, begin(value)).accepted, "canonical case begins");
   OTA::Message nested = chunk(value.sessionId, 0, {1}, 2);
@@ -693,6 +764,8 @@ int main() {
   testMalformedFuzz();
   testDeliveryPolicyAndChunkLedger();
   testSinkAndVerificationFailures();
+  testManifestAuthenticationBeforeReservation();
+  testExplicitRecoveryCoordinator();
   testCanonicalSignatureBytes();
   testSequenceAndBoundedResourceRules();
   testTerminalReplayWindow();

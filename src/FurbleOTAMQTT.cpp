@@ -51,7 +51,8 @@ uint32_t read32(const uint8_t *data) {
 }
 
 uint16_t read16(const uint8_t *data) {
-  return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+  return static_cast<uint16_t>(static_cast<uint32_t>(data[0])
+                               | (static_cast<uint32_t>(data[1]) << 8));
 }
 
 void append16(std::vector<uint8_t> &out, uint16_t value) {
@@ -420,10 +421,25 @@ const char *errorString(Error error) {
   return "unknown";
 }
 
-Session::Session(Sink &sink, ReplayStore &replayStore)
-    : m_Sink(sink),
-      m_ReplayStore(replayStore),
-      m_ReplayRecoveryChecked(m_ReplayStore.recoverAbandonedReservation()) {}
+bool RecoveryCoordinator::recoverAtBoot() {
+  if (m_Attempted) {
+    return m_Ready;
+  }
+  m_Attempted = true;
+  m_Ready = m_ReplayStore.recoverAbandonedReservation();
+  return m_Ready;
+}
+
+bool RecoveryCoordinator::ready() const {
+  return m_Ready;
+}
+
+ReplayStore &RecoveryCoordinator::replayStore() const {
+  return m_ReplayStore;
+}
+
+Session::Session(Sink &sink, ReplayStore &replayStore, RecoveryCoordinator &recovery)
+    : m_Sink(sink), m_ReplayStore(replayStore), m_Recovery(recovery) {}
 
 Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length) {
   if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
@@ -475,10 +491,7 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
       }
       return reject(Error::Busy);
     }
-    // Construction performs the one-time post-reboot recovery before this
-    // session can accept BEGIN. A production transport owns one persistent
-    // Session instance; concurrent callers must serialize through it.
-    if (!m_ReplayRecoveryChecked) {
+    if (!m_Recovery.ready() || (&m_Recovery.replayStore() != &m_ReplayStore)) {
       return reject(Error::ReplayStoreFailed);
     }
     uint32_t installedFloor = 0;
@@ -487,6 +500,12 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     }
     if (message.manifest.rollbackCounter <= installedFloor) {
       return reject(Error::Replay);
+    }
+    if (!m_Sink.authenticate(message.manifest)) {
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      m_LastError = Error::VerificationFailed;
+      return reject(Error::VerificationFailed);
     }
     m_Manifest = message.manifest;
     m_BeginSequence = message.sequence;

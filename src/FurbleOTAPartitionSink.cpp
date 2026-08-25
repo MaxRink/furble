@@ -52,11 +52,28 @@ PartitionSink::PartitionSink(PartitionTarget &target, ManifestVerifier &verifier
   resetState();
 }
 
+bool PartitionSink::authenticate(const MQTT::Manifest &manifest) {
+  if (m_Started || !validManifest(manifest) || !m_Verifier.authenticate(manifest)) {
+    return false;
+  }
+  m_AuthenticatedManifest = manifest;
+  m_Authenticated = true;
+  return true;
+}
+
 bool PartitionSink::begin(const MQTT::Manifest &manifest) {
   if (m_Started) {
+    if (!m_Authenticated || !(manifest == m_AuthenticatedManifest)) {
+      return false;
+    }
     abort();
   }
-  if (!validManifest(manifest)) {
+  if (!m_Authenticated && !authenticate(manifest)) {
+    return false;
+  }
+  if (!validManifest(manifest) || !m_Authenticated || !(manifest == m_AuthenticatedManifest)) {
+    m_Authenticated = false;
+    m_AuthenticatedManifest = {};
     return false;
   }
 
@@ -105,7 +122,8 @@ bool PartitionSink::matches(uint32_t offset,
 
 bool PartitionSink::finalize(const MQTT::Manifest &manifest) {
   if (!m_Started || m_Finalized || (manifest.imageSize != m_ImageSize)
-      || (manifest.partitionSize != m_PartitionSize) || (m_NextOffset != m_ImageSize)) {
+      || (manifest.partitionSize != m_PartitionSize) || !(manifest == m_AuthenticatedManifest)
+      || (m_NextOffset != m_ImageSize)) {
     if (m_Started && !m_Finalized) {
       abort();
     }
@@ -132,6 +150,8 @@ bool PartitionSink::activate() {
   }
   m_Started = false;
   m_Activated = true;
+  m_Authenticated = false;
+  m_AuthenticatedManifest = {};
   return true;
 }
 
@@ -155,6 +175,8 @@ void PartitionSink::resetState() {
   m_Started = false;
   m_Finalized = false;
   m_Activated = false;
+  m_Authenticated = false;
+  m_AuthenticatedManifest = {};
 }
 
 void PartitionSink::hashInit(Sha256State &state) {
