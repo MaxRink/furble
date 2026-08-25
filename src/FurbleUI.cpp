@@ -5614,7 +5614,8 @@ void UI::addSensorsMenu(const menu_t &parent) {
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart");
   lv_obj_center(label);
-  lv_obj_add_event_cb(restart, [](lv_event_t *) { esp_restart(); }, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(
+      restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
