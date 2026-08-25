@@ -479,9 +479,11 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     if (message.manifest.rollbackCounter <= installedFloor) {
       return reject(Error::Replay);
     }
-    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter)) {
+    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter,
+                                    message.manifest.sessionId)) {
       return reject(Error::ReplayStoreFailed);
     }
+    m_ReservationActive = true;
     m_Manifest = message.manifest;
     m_BeginSequence = message.sequence;
     if (!m_Sink.begin(message.manifest)) {
@@ -569,9 +571,19 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     if (!m_Sink.finalize(m_Manifest)) {
       return terminalFailure(Error::VerificationFailed);
     }
+    if (!m_ReplayStore.markStaged(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
+      return terminalFailure(Error::ReplayStoreFailed);
+    }
     if (!m_Sink.activate()) {
       return terminalFailure(Error::SinkRejected);
     }
+    if (!m_ReplayStore.completeReservation(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
+      m_Sink.abort();
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      return reject(Error::ReplayStoreFailed);
+    }
+    m_ReservationActive = false;
     m_State = State::Done;
     m_TerminalSequence = message.sequence;
     m_LastError = Error::None;
@@ -594,6 +606,7 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
       return reject(Error::Replay);
     }
     m_Sink.abort();
+    abandonReservation();
     m_State = State::Aborted;
     m_TerminalSequence = message.sequence;
     m_LastError = Error::Aborted;
@@ -642,9 +655,21 @@ bool Session::sequenceUsed(uint32_t sequence) const {
 
 Outcome Session::terminalFailure(Error error) {
   m_Sink.abort();
+  abandonReservation();
   m_State = State::Error;
   m_TerminalSequence = 0;
   return reject(error);
+}
+
+void Session::abandonReservation() {
+  if (!m_ReservationActive) {
+    return;
+  }
+  // The counter remains consumed even when the staged image is discarded.
+  // A failed adapter CAS leaves the reservation for explicit reboot recovery.
+  if (m_ReplayStore.abandonReservation(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
+    m_ReservationActive = false;
+  }
 }
 
 bool Session::validateManifest(const Manifest &manifest, Error &error) const {

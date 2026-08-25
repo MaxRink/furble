@@ -174,8 +174,13 @@ class Sink {
  * loadFloor() must return the installed or reserved signed-update counter.
  * reserveFloor() is an atomic compare-and-swap persistence operation: it
  * succeeds only when expectedFloor is still stored and nextFloor is strictly
- * greater. Reservation happens at BEGIN, so an aborted or failed update cannot
- * reuse its signed counter. A failed reservation must not report success.
+ * greater and no other reservation is outstanding. Reservation happens at
+ * BEGIN, so an aborted or failed update cannot reuse its signed counter. The
+ * owner token prevents another session from completing this reservation.
+ * markStaged(), completeReservation(), and abandonReservation() are atomic
+ * owner-and-counter CAS transitions. recoverAbandonedReservation() is called
+ * by the platform after reboot when staged data is known to be abandoned; it
+ * clears the owner while preserving the consumed floor.
  * Flash/NVS adapters must journal this record before acknowledging it and
  * recover the last complete record after reboot.
  */
@@ -183,7 +188,11 @@ class ReplayStore {
  public:
   virtual ~ReplayStore() = default;
   virtual bool loadFloor(uint32_t &floor) = 0;
-  virtual bool reserveFloor(uint32_t expectedFloor, uint32_t nextFloor) = 0;
+  virtual bool reserveFloor(uint32_t expectedFloor, uint32_t nextFloor, const SessionId &owner) = 0;
+  virtual bool markStaged(const SessionId &owner, uint32_t counter) = 0;
+  virtual bool completeReservation(const SessionId &owner, uint32_t counter) = 0;
+  virtual bool abandonReservation(const SessionId &owner, uint32_t counter) = 0;
+  virtual bool recoverAbandonedReservation() = 0;
 };
 
 struct Outcome {
@@ -235,6 +244,7 @@ class Session {
   bool hasCompleteImage() const;
   bool sequenceUsed(uint32_t sequence) const;
   Outcome terminalFailure(Error error);
+  void abandonReservation();
   Outcome dispatchMessage(const MessageMeta &meta, const Message &message);
 
   Sink &m_Sink;
@@ -249,6 +259,7 @@ class Session {
   uint32_t m_BeginSequence = 0;
   uint32_t m_TerminalSequence = 0;
   bool m_Dispatching = false;
+  bool m_ReservationActive = false;
 };
 
 static_assert(sizeof(Session) <= OTA_SESSION_BUDGET_BYTES,
