@@ -63,8 +63,8 @@ jobs:
               git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
           }
           mkdir -p "$DEPS"
-          clone_tag m5stack/M5GFX 0.2.19 M5GFX
-          clone_tag m5stack/M5Unified 0.2.13 M5Unified
+          clone_tag m5stack/M5GFX 0.2.27 M5GFX
+          clone_tag m5stack/M5Unified 0.2.20 M5Unified
           clone_tag lvgl/lvgl v9.4.0 lvgl
           if [ ! -d "$DEPS/TinyGPSPlus" ]; then
             git init "$DEPS/TinyGPSPlus"

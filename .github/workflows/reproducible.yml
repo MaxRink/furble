@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - "platformio.ini"
+      - "sim/platformio.ini"
       - "CMakeLists.txt"
       - "patches/**"
       - "sdkconfig.*"
@@ -16,12 +17,16 @@ on:
       - "partitions_*.csv"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
+      - ".github/workflows/sim-e2e.yml"
+      - ".github/workflows/power-gate.yml"
+      - ".github/workflows/ui-screenshots.yml"
       - "requirements.txt"
       - ".github/workflows/reproducible.yml"
   pull_request:
     branches: [master]
     paths:
       - "platformio.ini"
+      - "sim/platformio.ini"
       - "CMakeLists.txt"
       - "patches/**"
       - "sdkconfig.*"
@@ -33,6 +38,9 @@ on:
       - "partitions_*.csv"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
+      - ".github/workflows/sim-e2e.yml"
+      - ".github/workflows/power-gate.yml"
+      - ".github/workflows/ui-screenshots.yml"
       - "requirements.txt"
       - ".github/workflows/reproducible.yml"
 
