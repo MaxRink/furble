@@ -2,6 +2,7 @@
 #define FURBLE_HOST_PREFERENCES_STUB_H
 
 #include <cstddef>
+#include <cstdint>
 
 namespace Furble {
 
@@ -13,6 +14,8 @@ void hostPreferencesResetFaults(void);
 void hostPreferencesClearStorage(void);
 std::size_t hostPreferencesMutationCount(void);
 bool hostPreferencesHasKey(const char *key);
+bool hostPreferencesPutRaw(const char *key, const void *value, std::size_t bytes);
+bool hostPreferencesRemoveRaw(const char *key);
 
 }  // namespace Furble
 

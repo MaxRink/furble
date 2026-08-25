@@ -1,6 +1,9 @@
 #include <NimBLEAdvertisedDevice.h>
 #include <Preferences.h>
 
+#include <cerrno>
+#include <cstdlib>
+
 #include "CanonEOSRemote.h"
 #include "CanonEOSSmart.h"
 #include "DJIOsmo.h"
@@ -157,6 +160,77 @@ bool validCameraType(uint32_t type) {
          && (type <= static_cast<uint32_t>(Camera::Type::DJI_OSMO));
 }
 
+bool reservedNvsKey(const char *name) {
+  if (name == nullptr || ::strnlen(name, 16) >= 16) {
+    return true;
+  }
+  const char *reserved[] = {
+      FURBLE_PREF_INDEX,         FURBLE_PREF_INDEX_FORMAT,  FURBLE_PREF_INDEX_CHECKSUM,
+      FURBLE_PREF_SLOT_A_BLOB,   FURBLE_PREF_SLOT_A_HEADER, FURBLE_PREF_SLOT_A_CRC,
+      FURBLE_PREF_SLOT_A_COMMIT, FURBLE_PREF_SLOT_B_BLOB,   FURBLE_PREF_SLOT_B_HEADER,
+      FURBLE_PREF_SLOT_B_CRC,    FURBLE_PREF_SLOT_B_COMMIT, FURBLE_PREF_NEXT_ID,
+      FURBLE_PREF_PENDING_BLOB,  FURBLE_PREF_RECLAIM,
+  };
+  return std::any_of(std::begin(reserved), std::end(reserved),
+                     [name](const char *item) { return std::strcmp(name, item) == 0; });
+}
+
+// Camera blobs are keyed by the canonical uppercase hexadecimal BLE address
+// produced by CameraListProtocol::addressKey(). Do not let a stale or corrupt
+// intent name address arbitrary NVS metadata.
+bool canonicalCameraBlobKey(const char *name) {
+  if (name == nullptr) {
+    return false;
+  }
+  const size_t length = ::strnlen(name, 16);
+  if (length < 8 || length >= 16) {
+    return false;
+  }
+  if (reservedNvsKey(name) || !Preferences::validNvsKey(name)) {
+    return false;
+  }
+  for (size_t i = 0; i < length; i++) {
+    const char c = name[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
+      return false;
+    }
+  }
+  errno = 0;
+  char *end = nullptr;
+  const unsigned long long address = std::strtoull(name, &end, 16);
+  return errno == 0 && end == name + length
+         && CameraListProtocol::addressKey(static_cast<uint64_t>(address)) == name;
+}
+
+bool validIndexEntry(const CameraListProtocol::IndexEntry &entry, bool allowZeroId) {
+  const size_t nameLength = ::strnlen(entry.name, CameraListProtocol::INDEX_NAME_BYTES);
+  if (nameLength >= CameraListProtocol::INDEX_NAME_BYTES || !canonicalCameraBlobKey(entry.name)
+      || !validCameraType(entry.type)) {
+    return false;
+  }
+  return allowZeroId ? (entry.camera_id <= 0xfe)
+                     : (entry.camera_id >= 1 && entry.camera_id <= 0xfe);
+}
+
+bool validIndexEntries(const std::vector<CameraListProtocol::IndexEntry> &entries,
+                       bool allowZeroId) {
+  for (size_t i = 0; i < entries.size(); i++) {
+    if (!validIndexEntry(entries[i], allowZeroId)) {
+      return false;
+    }
+    for (size_t j = i + 1; j < entries.size(); j++) {
+      if (std::strncmp(entries[i].name, entries[j].name, CameraListProtocol::INDEX_NAME_BYTES)
+          == 0) {
+        return false;
+      }
+      if ((entries[i].camera_id != 0) && (entries[i].camera_id == entries[j].camera_id)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 bool readReclaimQueue(Preferences &prefs, std::vector<std::string> &names) {
   names.clear();
   const size_t bytes = prefs.getBytesLength(FURBLE_PREF_RECLAIM);
@@ -174,8 +248,7 @@ bool readReclaimQueue(Preferences &prefs, std::vector<std::string> &names) {
     if (queue.names[i][0] == '\0') {
       continue;
     }
-    if (::strnlen(queue.names[i], FURBLE_RECLAIM_NAME_BYTES) >= FURBLE_RECLAIM_NAME_BYTES
-        || !Preferences::validNvsKey(queue.names[i])) {
+    if (!canonicalCameraBlobKey(queue.names[i])) {
       return false;
     }
     names.emplace_back(queue.names[i]);
@@ -195,8 +268,7 @@ bool writeReclaimQueue(Preferences &prefs, const std::vector<std::string> &names
   }
   reclaim_queue_t queue = {};
   for (size_t i = 0; i < names.size(); i++) {
-    if (names[i].size() >= FURBLE_RECLAIM_NAME_BYTES
-        || !Preferences::validNvsKey(names[i].c_str())) {
+    if (names[i].size() >= FURBLE_RECLAIM_NAME_BYTES || !canonicalCameraBlobKey(names[i].c_str())) {
       return false;
     }
     std::strncpy(queue.names[i], names[i].c_str(), FURBLE_RECLAIM_NAME_BYTES - 1);
@@ -205,6 +277,9 @@ bool writeReclaimQueue(Preferences &prefs, const std::vector<std::string> &names
 }
 
 bool slotReferences(Preferences &prefs, size_t slot, const char *name) {
+  if (!canonicalCameraBlobKey(name)) {
+    return true;
+  }
   std::vector<uint8_t> bytes;
   uint32_t generation = 0;
   if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID) {
@@ -226,6 +301,9 @@ bool slotReferences(Preferences &prefs, size_t slot, const char *name) {
 }
 
 bool durableSlotReferences(Preferences &prefs, size_t slot, const char *name) {
+  if (!canonicalCameraBlobKey(name)) {
+    return true;
+  }
   std::vector<uint8_t> bytes;
   uint32_t generation = 0;
   if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID) {
@@ -318,7 +396,7 @@ bool CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
 }
 
 bool CameraList::writePendingBlob(const char *name) {
-  if (name == nullptr || !Preferences::validNvsKey(name)) {
+  if (!canonicalCameraBlobKey(name)) {
     return false;
   }
   pending_blob_t pending = {};
@@ -339,7 +417,7 @@ bool CameraList::pendingBlobName(std::string &name) {
   if (m_Prefs.get(FURBLE_PREF_PENDING_BLOB, &pending, sizeof(pending)) != sizeof(pending)
       || pending.name[0] == '\0'
       || ::strnlen(pending.name, sizeof(pending.name)) >= sizeof(pending.name)
-      || !Preferences::validNvsKey(pending.name)) {
+      || !canonicalCameraBlobKey(pending.name)) {
     return false;
   }
   name.assign(pending.name);
@@ -433,15 +511,22 @@ bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
 
   uint32_t generation[2] = {};
   bool valid[2] = {};
+  std::vector<uint8_t> oldBytes[2];
   for (size_t slot = 0; slot < 2; slot++) {
-    std::vector<uint8_t> oldBytes;
-    valid[slot] = readSlot(m_Prefs, slot, oldBytes, generation[slot]) == slot_state_t::VALID;
+    valid[slot] = readSlot(m_Prefs, slot, oldBytes[slot], generation[slot]) == slot_state_t::VALID;
   }
   if (valid[0] && valid[1]
       && (generation[0] == generation[1]
           || (!generationNewer(generation[0], generation[1])
               && !generationNewer(generation[1], generation[0])))) {
-    return true;
+    // Equal or half-range generations have no safe active-slot ordering. It
+    // is safe to report success only when both durable records already equal
+    // the requested bytes, so no publication is being falsely claimed.
+    if ((oldBytes[0] == bytes) && (oldBytes[1] == bytes)) {
+      reclaimSafeBlobs();
+      return true;
+    }
+    return false;
   }
   size_t active = valid[1] && (!valid[0] || generationNewer(generation[1], generation[0])) ? 1 : 0;
   const size_t target = valid[0] || valid[1] ? (active ^ 1U) : 0;
@@ -521,22 +606,13 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(bool *migrated) {
                                            CameraListProtocol::IndexFormat::CURRENT, decoded)) {
         return index;
       }
-      for (size_t i = 0; i < decoded.size(); i++) {
-        if (decoded[i].camera_id == 0xff) {
-          return index;
-        }
-        for (size_t j = i + 1; j < decoded.size(); j++) {
-          if ((decoded[i].camera_id != 0) && (decoded[i].camera_id == decoded[j].camera_id)) {
-            return index;
-          }
-        }
+      if (!validIndexEntries(decoded, true)) {
+        return index;
       }
       const bool needsMigration = std::any_of(decoded.begin(), decoded.end(),
                                               [](const auto &item) { return item.camera_id == 0; });
       CameraListProtocol::assignCameraIds(decoded);
-      if (std::any_of(decoded.begin(), decoded.end(), [](const auto &item) {
-            return item.camera_id == 0 || item.camera_id == 0xff;
-          })) {
+      if (!validIndexEntries(decoded, false)) {
         return index;
       }
       for (const auto &item : decoded) {
@@ -583,14 +659,15 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(bool *migrated) {
       const auto indexFormat = formatKey ? CameraListProtocol::IndexFormat::CURRENT
                                          : CameraListProtocol::IndexFormat::LEGACY;
       if ((!formatKey || (format == FURBLE_INDEX_FORMAT_CURRENT)) && formatValid && checksumValid
-          && CameraListProtocol::decodeIndex(buffer.data(), bytes, indexFormat, decoded)) {
+          && CameraListProtocol::decodeIndex(buffer.data(), bytes, indexFormat, decoded)
+          && validIndexEntries(decoded, !formatKey)) {
         if (!formatKey) {
           // The only safe metadata-free migration candidate is a real legacy
           // index whose names and types still point at stored camera records.
           // A current-format blob interrupted before metadata publication is
           // otherwise indistinguishable at the byte level and must fail closed.
           for (const auto &item : decoded) {
-            if (!validCameraType(item.type) || !m_Prefs.isKey(item.name)) {
+            if (!m_Prefs.isKey(item.name)) {
               return index;
             }
           }
@@ -739,12 +816,15 @@ void CameraList::remove(Furble::Camera *camera) {
     m_Prefs.end();
     return;
   }
-  (void)save_index(index);
+  const bool published = save_index(index);
 
   m_Prefs.end();
 
-  // delete bond whether needed or not
-  NimBLEDevice::deleteBond(camera->getAddress());
+  // Do not delete the bond until the index omission is durably published. A
+  // failed or ambiguous journal write leaves the camera saved and retryable.
+  if (published) {
+    NimBLEDevice::deleteBond(camera->getAddress());
+  }
 }
 
 /**

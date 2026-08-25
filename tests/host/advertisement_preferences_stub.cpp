@@ -60,6 +60,36 @@ bool hostPreferencesHasKey(const char *key) {
   });
 }
 
+bool hostPreferencesPutRaw(const char *key, const void *value, std::size_t bytes) {
+  if (key == nullptr || value == nullptr) {
+    return false;
+  }
+  std::string prefix;
+  if (!g_Storage.empty()) {
+    prefix = g_Storage.begin()->first.substr(0, g_Storage.begin()->first.find(':') + 1);
+  } else {
+    prefix = std::to_string(reinterpret_cast<uintptr_t>("furble")) + ":";
+  }
+  const auto *begin = static_cast<const uint8_t *>(value);
+  g_Storage[prefix + key] = {begin, begin + bytes};
+  return true;
+}
+
+bool hostPreferencesRemoveRaw(const char *key) {
+  if (key == nullptr) {
+    return false;
+  }
+  const std::string suffix = ":" + std::string(key);
+  for (auto it = g_Storage.begin(); it != g_Storage.end(); ++it) {
+    if (it->first.size() >= suffix.size()
+        && it->first.compare(it->first.size() - suffix.size(), suffix.size(), suffix) == 0) {
+      g_Storage.erase(it);
+      return true;
+    }
+  }
+  return false;
+}
+
 Preferences::Preferences() : _handle(0), _started(false), _readOnly(false) {}
 Preferences::~Preferences() = default;
 bool Preferences::begin(const char *name, bool readOnly, const char *) {
