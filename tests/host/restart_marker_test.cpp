@@ -20,12 +20,18 @@ class FaultStorage final: public Storage {
  public:
   std::map<std::string, uint32_t> values;
   std::vector<Operation> trace;
-  std::set<std::string> failLabels;
+  std::set<size_t> failOrdinals;
+  std::vector<size_t> failedOrdinals;
 
   bool shouldFail(const char *kind, const char *key) {
     const std::string label = std::string(kind) + ":" + key;
     trace.push_back({kind, key, trace.size()});
-    return failLabels.count(label) != 0;
+    const size_t ordinal = trace.back().ordinal;
+    if (failOrdinals.count(ordinal) != 0) {
+      failedOrdinals.push_back(ordinal);
+      return true;
+    }
+    return false;
   }
   result read(const char *key, uint32_t &value) override {
     if (shouldFail("read", key))
@@ -82,9 +88,10 @@ int main() {
                                 "write:cr_commit", "read:cr_commit"});
   for (const auto &operation : markProbe.trace) {
     FaultStorage fault;
-    fault.failLabels.insert(label(operation));
+    fault.failOrdinals.insert(operation.ordinal);
     assert(!Furble::RestartMarker::mark(fault));
-    fault.failLabels.clear();
+    assert(fault.failedOrdinals == std::vector<size_t> {operation.ordinal});
+    fault.failOrdinals.clear();
     fault.trace.clear();
     assert(!Furble::RestartMarker::consume(fault));
   }
@@ -99,9 +106,10 @@ int main() {
                "remove:cr_pending", "exists:cr_pending"});
   for (const auto &operation : consumeProbe.trace) {
     FaultStorage fault = armedStorage();
-    fault.failLabels.insert(label(operation));
+    fault.failOrdinals.insert(operation.ordinal);
     assert(!Furble::RestartMarker::consume(fault));
-    fault.failLabels.clear();
+    assert(fault.failedOrdinals == std::vector<size_t> {operation.ordinal});
+    fault.failOrdinals.clear();
     fault.trace.clear();
     if (Furble::RestartMarker::consume(fault)) {
       std::fprintf(stderr, "generation consume resurrection: %s\\n", label(operation).c_str());
@@ -122,9 +130,10 @@ int main() {
     markGenerationReadInjected |= label(operation) == "read:cr_boot_gen";
     FaultStorage fault;
     fault.values["cr_boot_gen"] = 41;
-    fault.failLabels.insert(label(operation));
+    fault.failOrdinals.insert(operation.ordinal);
     assert(!Furble::RestartMarker::mark(fault));
-    fault.failLabels.clear();
+    assert(fault.failedOrdinals == std::vector<size_t> {operation.ordinal});
+    fault.failOrdinals.clear();
     fault.trace.clear();
     assert(!Furble::RestartMarker::consume(fault));
     fault.trace.clear();
@@ -146,9 +155,10 @@ int main() {
     consumeGenerationReadInjected |= label(operation) == "read:cr_boot_gen";
     FaultStorage fault = presentMark;
     fault.trace.clear();
-    fault.failLabels.insert(label(operation));
+    fault.failOrdinals.insert(operation.ordinal);
     assert(!Furble::RestartMarker::consume(fault));
-    fault.failLabels.clear();
+    assert(fault.failedOrdinals == std::vector<size_t> {operation.ordinal});
+    fault.failOrdinals.clear();
     fault.trace.clear();
     if (Furble::RestartMarker::consume(fault)) {
       std::fprintf(stderr, "generation consume resurrection: %s\\n", label(operation).c_str());
@@ -160,15 +170,21 @@ int main() {
   assert(consumeGenerationReadInjected);
 
   // Target the poison write by its label, not by a positional magic bound.
-  FaultStorage poison = armedStorage();
-  poison.failLabels = {"exists:cr_poison", "write:cr_poison"};
-  assert(!Furble::RestartMarker::consume(poison));
-  bool poisonWriteSeen = false;
-  for (const auto &operation : poison.trace) {
-    poisonWriteSeen |= label(operation) == "write:cr_poison";
+  FaultStorage poisonProbe = armedStorage();
+  poisonProbe.failOrdinals.insert(3);  // exists:cr_poison
+  assert(!Furble::RestartMarker::consume(poisonProbe));
+  size_t poisonWriteOrdinal = SIZE_MAX;
+  for (const auto &operation : poisonProbe.trace) {
+    if (label(operation) == "write:cr_poison")
+      poisonWriteOrdinal = operation.ordinal;
   }
-  assert(poisonWriteSeen);
-  poison.failLabels.clear();
+  assert(poisonWriteOrdinal != SIZE_MAX);
+  FaultStorage poison = armedStorage();
+  poison.failOrdinals = {3, poisonWriteOrdinal};
+  assert(!Furble::RestartMarker::consume(poison));
+  const std::vector<size_t> expectedPoisonFailures = {3, poisonWriteOrdinal};
+  assert(poison.failedOrdinals == expectedPoisonFailures);
+  poison.failOrdinals.clear();
   poison.trace.clear();
   assert(!Furble::RestartMarker::consume(poison));
   poison.trace.clear();
