@@ -6,6 +6,7 @@ Import("env")
 patches_dir = Path(env.subst("$PROJECT_DIR")) / "patches"
 sys.path.insert(0, str(patches_dir))
 from ble_gap_patch import apply_patch  # noqa: E402
+from repro_prefix_map import apply as apply_reproducible_prefix_map  # noqa: E402
 
 framework_dir = env.PioPlatform().get_package_dir("framework-espidf")
 
@@ -29,3 +30,6 @@ def apply_ble_gap_patch():
 
 # patch NimBLE
 apply_ble_gap_patch()
+apply_reproducible_prefix_map(
+    Path(framework_dir) / "tools" / "cmake" / "prefix_map.cmake"
+)

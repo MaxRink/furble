@@ -91,6 +91,8 @@ jobs:
         run: |
           python3 patches/test_ble_gap_patch.py
           python3 patches/test_reproducible.py
+          python3 patches/test_repro_prefix_map.py
+          python3 tests/test_reproducible_paths.py
 
       - name: Compare clean builds
         run: >-
