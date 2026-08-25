@@ -6,6 +6,7 @@ seed imu_trigger true
 wait 400
 action nav sensors
 wait 100
+assert ui.page_overflow yes
 assert ui.imu_gesture_controls_enabled yes
 
 action imu.disable
