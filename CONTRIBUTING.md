@@ -34,6 +34,11 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug -t upload
 ```
 
+Development builds report `dev+g<unambiguous-hash>`. A tracked, staged, or
+non-ignored untracked change appends `.dirty`; ignored-only changes do not.
+Explicit release versions remain unchanged. See `CLAUDE.md` for the complete
+build identity guidance.
+
 A settings enum change must be applied consistently across all five committed
 `sdkconfig.<env>` files, never for just one env. See `CLAUDE.md` for the build
 traps.

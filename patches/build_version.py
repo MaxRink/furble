@@ -7,13 +7,21 @@ from pathlib import Path
 from typing import Callable
 
 
-GitRunner = Callable[[list[str], Path], str]
+GitOutput = str | bytes
+GitRunner = Callable[[list[str], Path], GitOutput]
 
 
-def _run_git(args: list[str], project_dir: Path) -> str:
-  return subprocess.check_output(
-      ["git", *args], cwd=project_dir, stderr=subprocess.DEVNULL, text=True
-  ).strip()
+def _run_git(args: list[str], project_dir: Path) -> GitOutput:
+  result = subprocess.run(
+      ["git", *args],
+      cwd=project_dir,
+      capture_output=True,
+      check=True,
+      text=False,
+  )
+  if args and args[0] == "status":
+    return result.stdout
+  return result.stdout.decode("utf-8").strip()
 
 
 def resolve_version(
@@ -31,6 +39,11 @@ def resolve_version(
   except (OSError, subprocess.CalledProcessError):
     return requested
 
+  if isinstance(revision, bytes):
+    try:
+      revision = revision.decode("ascii").strip()
+    except UnicodeDecodeError:
+      return requested
   if not revision:
     return requested
   return f"dev+g{revision}{'.dirty' if dirty else ''}"

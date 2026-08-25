@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression tests for development firmware version resolution."""
 
+import os
 import subprocess
 import tarfile
 import tempfile
@@ -64,6 +65,25 @@ class BuildVersionTest(unittest.TestCase):
     with tempfile.TemporaryDirectory() as temporary:
       project_dir = self._new_repo(Path(temporary))
       (project_dir / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+      revision = self._git(["rev-parse", "--short=8", "HEAD"], project_dir)
+      self.assertEqual(
+          resolve_version("dev", project_dir), f"dev+g{revision}.dirty"
+      )
+
+  @unittest.skipUnless(os.name == "posix", "non-UTF-8 filenames need Unix bytes paths")
+  def test_non_utf8_untracked_file_marks_dirty(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      project_dir = self._new_repo(Path(temporary))
+      self._git(["config", "core.quotePath", "false"], project_dir)
+      filename = b"untracked-\xff.txt"
+      path_bytes = os.fsencode(project_dir) + b"/" + filename
+      try:
+        descriptor = os.open(path_bytes, os.O_WRONLY | os.O_CREAT, 0o600)
+      except OSError as error:
+        self.skipTest(f"filesystem cannot create non-UTF-8 names: {error}")
+      else:
+        with os.fdopen(descriptor, "wb") as untracked:
+          untracked.write(b"untracked\n")
       revision = self._git(["rev-parse", "--short=8", "HEAD"], project_dir)
       self.assertEqual(
           resolve_version("dev", project_dir), f"dev+g{revision}.dirty"
