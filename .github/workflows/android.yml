@@ -6,9 +6,11 @@ on:
       - master
     paths:
       - companion/android/**
+      - .github/workflows/android.yml
   pull_request:
     paths:
       - companion/android/**
+      - .github/workflows/android.yml
   workflow_dispatch:
     inputs:
       run_emulator:

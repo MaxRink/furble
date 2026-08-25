@@ -431,7 +431,6 @@ jobs:
           CURRENT_SIZES: current-sizes
           BASE_SIZES: base-sizes
           BASELINE_SHA: ${{ steps.base.outputs.baseline_sha }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -522,7 +521,6 @@ jobs:
               *rows,
           ]
 
-          base_ref = os.environ["BASE_REF"]
           short_baseline = baseline_sha[:12]
           if not base_available:
               body.extend(
@@ -530,14 +528,14 @@ jobs:
                       "",
                       "> No firmware size baseline is available yet. Deltas are "
                       "omitted. The newest successful firmware build on a "
-                      f"`{base_ref}` push provides the baseline.",
+                      "`master` push provides the baseline.",
                   ]
               )
           else:
               body.extend(
                   [
                       "",
-                      f"Base comparison: latest `{base_ref}` build at commit "
+                      "Base comparison: latest `master` build at commit "
                       f"`{short_baseline}`.",
                       "Flash growth over 1% and any positive RAM delta are marked with ⚠️.",
                   ]
