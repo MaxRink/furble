@@ -4,6 +4,8 @@
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
 
+#include <vector>
+
 #include "CanonEOS.h"
 #include "Device.h"
 
@@ -36,10 +38,10 @@ bool CanonEOS::writePrefix(const NimBLEUUID &serviceUUID,
                            const uint8_t prefix,
                            const void *data,
                            uint16_t length) {
-  uint8_t buffer[length + 1] = {0};
+  std::vector<uint8_t> buffer(length + 1, 0);
   buffer[0] = prefix;
   memcpy(&buffer[1], data, length);
-  return gattWrite(serviceUUID, characteristicUUID, &buffer[0], length + 1, false);
+  return gattWrite(serviceUUID, characteristicUUID, buffer.data(), length + 1, false);
 }
 
 size_t CanonEOS::getSerialisedBytes(void) const {

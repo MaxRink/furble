@@ -299,6 +299,40 @@ bool testAdvertisementParsing() {
   return true;
 }
 
+bool testMalformedAdvertisementOutputIsolation() {
+  const std::array<uint8_t, 13> sony = {0x2d, 0x01, 0x03, 0x00, 0x01, 0x00, 0x34,
+                                        0x12, 0x01, 0xc2, 0x00, 0x01, 0x00};
+  Furble::AdvertisementProtocol::SonyAdvertisement sonyParsed = {0xffff, 0xffff, 0xff, 0xff, 0xffff,
+                                                                 0xff,   0xff,   0xff, 0xff, 0xff};
+  CHECK(!Furble::AdvertisementProtocol::parseSonyAdvertisement(sony.data(), sony.size() - 1,
+                                                               sonyParsed));
+  CHECK(sonyParsed.companyID == 0xffff && sonyParsed.type == 0xffff
+        && sonyParsed.protocolVersion == 0xff && sonyParsed.unused == 0xff
+        && sonyParsed.model == 0xffff && sonyParsed.tag22 == 0xff && sonyParsed.mode22 == 0xff
+        && sonyParsed.zero0 == 0xff && sonyParsed.tag21 == 0xff && sonyParsed.mode21 == 0xff);
+  CHECK(!Furble::AdvertisementProtocol::parseSonyAdvertisement(nullptr, 0, sonyParsed));
+
+  const std::array<uint8_t, 8> lumix = {0x3a, 0x00, 0x07, 0x10, 0x20, 0x30, 0x40, 0x50};
+  Furble::AdvertisementProtocol::LumixAdvertisement lumixParsed = {
+      0xffff, 0xff, {0xff, 0xff, 0xff, 0xff, 0xff}
+  };
+  CHECK(!Furble::AdvertisementProtocol::parseLumixAdvertisement(lumix.data(), lumix.size() - 1,
+                                                                lumixParsed));
+  const std::array<uint8_t, 5> erasedAddress = {0xff, 0xff, 0xff, 0xff, 0xff};
+  CHECK(lumixParsed.companyID == 0xffff && lumixParsed.flags == 0xff
+        && lumixParsed.address == erasedAddress);
+  CHECK(!Furble::AdvertisementProtocol::parseLumixAdvertisement(nullptr, 0, lumixParsed));
+
+  const std::array<uint8_t, 7> nikon = {0x99, 0x03, 0x78, 0x56, 0x34, 0x12, 0x00};
+  Furble::AdvertisementProtocol::NikonAdvertisement nikonParsed = {0xffff, 0xffffffff, 0xff};
+  CHECK(!Furble::AdvertisementProtocol::parseNikonAdvertisement(nikon.data(), nikon.size() - 1,
+                                                                nikonParsed));
+  CHECK(nikonParsed.companyID == 0xffff && nikonParsed.device == 0xffffffff
+        && nikonParsed.zero == 0xff);
+  CHECK(!Furble::AdvertisementProtocol::parseNikonAdvertisement(nullptr, 0, nikonParsed));
+  return true;
+}
+
 bool testCameraListPersistence() {
   const IndexEntry first = makeIndexEntry("001122334455", 1);
   const IndexEntry second = makeIndexEntry("AABBCCDDEEFF", 8);
@@ -376,11 +410,12 @@ bool testBlowfishVectors() {
 }  // namespace
 
 int main() {
-  const std::array<std::pair<const char *, bool (*)()>, 5> tests = {
+  const std::array<std::pair<const char *, bool (*)()>, 6> tests = {
       {
        {"Fujifilm advertisement parsing", testFujifilmAdvertisementParsing},
        {"Fujifilm message framing", testFujifilmMessages},
        {"Cross-vendor advertisement parsing", testAdvertisementParsing},
+       {"Malformed advertisement output isolation", testMalformedAdvertisementOutputIsolation},
        {"CameraList persistence", testCameraListPersistence},
        {"Blowfish vectors", testBlowfishVectors},
        }

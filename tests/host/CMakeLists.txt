@@ -55,6 +55,53 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
+# Compile and call the real CameraList dispatch path with the host NimBLE
+# advertisement double. This guards null input, Lumix dispatch, and address
+# de-duplication without reconstructing the production matcher in a test.
+add_executable(advertisement_dispatch_test
+               advertisement_dispatch_test.cpp
+               advertisement_preferences_stub.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/CameraList.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/DJIOsmo.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp
+               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/Sony.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               advertisement_scan_stub.cpp)
+target_include_directories(advertisement_dispatch_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${FURBLE_ROOT}/sim
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(advertisement_dispatch_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension
+                       -Wno-vla-extension-static-assert -Wno-c++11-narrowing
+                       -Wno-sign-compare -Wno-format -Wno-error
+                       -Wno-unused-parameter)
+target_link_libraries(advertisement_dispatch_test PRIVATE Threads::Threads)
+
 # Pure logic unit suites. These link their production source directly instead
 # of the mock BLE library because the modules under test have no BLE or NVS
 # dependency. Each suite is standalone so a build or link break is isolated to
@@ -407,6 +454,7 @@ if(BUILD_TESTING)
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
+  add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
