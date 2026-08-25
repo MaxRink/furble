@@ -140,8 +140,13 @@ class FakeReplayStore final: public OTA::ReplayStore {
   uint32_t floor = 0;
   bool loadResult = true;
   bool reserveResult = true;
+  bool lifecycleResult = true;
   size_t loadCalls = 0;
   size_t reserveCalls = 0;
+  bool outstanding = false;
+  bool staged = false;
+  OTA::SessionId owner {};
+  uint32_t reservedCounter = 0;
 
   bool loadFloor(uint32_t &value) override {
     loadCalls++;
@@ -149,12 +154,51 @@ class FakeReplayStore final: public OTA::ReplayStore {
     return loadResult;
   }
 
-  bool reserveFloor(uint32_t expectedFloor, uint32_t nextFloor) override {
+  bool reserveFloor(uint32_t expectedFloor,
+                    uint32_t nextFloor,
+                    const OTA::SessionId &reservationOwner) override {
     reserveCalls++;
-    if (!reserveResult || (expectedFloor != floor) || (nextFloor <= floor)) {
+    if (!reserveResult || outstanding || (expectedFloor != floor) || (nextFloor <= floor)) {
       return false;
     }
     floor = nextFloor;
+    outstanding = true;
+    owner = reservationOwner;
+    reservedCounter = nextFloor;
+    return true;
+  }
+
+  bool markStaged(const OTA::SessionId &reservationOwner, uint32_t counter) override {
+    if (!lifecycleResult || !outstanding || owner != reservationOwner
+        || reservedCounter != counter) {
+      return false;
+    }
+    staged = true;
+    return true;
+  }
+
+  bool completeReservation(const OTA::SessionId &reservationOwner, uint32_t counter) override {
+    if (!lifecycleResult || !outstanding || !staged || owner != reservationOwner
+        || reservedCounter != counter) {
+      return false;
+    }
+    outstanding = false;
+    staged = false;
+    return true;
+  }
+
+  bool abandonReservation(const OTA::SessionId &reservationOwner, uint32_t counter) override {
+    if (!outstanding || owner != reservationOwner || reservedCounter != counter) {
+      return false;
+    }
+    outstanding = false;
+    staged = false;
+    return true;
+  }
+
+  bool recoverAbandonedReservation() override {
+    outstanding = false;
+    staged = false;
     return true;
   }
 };
@@ -551,6 +595,45 @@ void testSessionObjectBudgetAndDispatchGuard() {
          "default range ledger fits its explicit memory budget");
 }
 
+void testGlobalReservationLifecycle() {
+  std::cout << "test: global owner-bound reservation prevents activation inversion\n";
+  const OTA::MessageMeta good {1, false, false};
+  FakeReplayStore store;
+  FakeSink sinkA;
+  FakeSink sinkB;
+  OTA::Session sessionA(sinkA, store);
+  OTA::Session sessionB(sinkB, store);
+  const OTA::SessionId idA = id(140);
+  const OTA::SessionId idB = id(141);
+  expect(sessionA.onMessage(good, begin(manifest(idA, 1))).accepted,
+         "first owner reserves the lifecycle");
+  expect(sessionB.onMessage(good, begin(manifest(idB, 1))).error == OTA::Error::ReplayStoreFailed,
+         "competing session cannot reserve while first is outstanding");
+  expect(sessionA.onMessage(good, chunk(idA, 0, {1}, 2)).accepted,
+         "first owner receives its image");
+  expect(sessionA.onMessage(good, control(OTA::Kind::Commit, idA, 3)).accepted,
+         "first owner completes before the competing owner can start");
+  expect(sessionB.onMessage(good, begin(manifest(idB, 1))).accepted,
+         "competing owner starts after lifecycle completion");
+
+  const OTA::SessionId wrongOwner = id(142);
+  expect(!store.markStaged(wrongOwner, idB[0]), "wrong owner cannot stage a reservation");
+  expect(!store.completeReservation(wrongOwner, idB[0]),
+         "wrong owner cannot complete a reservation");
+  expect(store.abandonReservation(idB, idB[0]), "owner can abandon its reservation");
+
+  FakeSink rebootSink;
+  OTA::Session rebooted(rebootSink, store);
+  const OTA::SessionId abandonedId = id(143);
+  expect(rebooted.onMessage(good, begin(manifest(abandonedId, 1))).accepted,
+         "reservation can be reconstructed before recovery");
+  expect(store.recoverAbandonedReservation(), "platform clears abandoned reservation on reboot");
+  FakeSink recoveredSink;
+  OTA::Session recovered(recoveredSink, store);
+  expect(recovered.onMessage(good, begin(manifest(id(144), 1))).accepted,
+         "recovery preserves the floor while allowing a later counter");
+}
+
 void testCanonicalSignatureBytes() {
   std::cout << "test: canonical signature bytes and nested session binding\n";
   const OTA::Manifest value = manifest(id(130));
@@ -587,6 +670,7 @@ int main() {
   testTerminalReplayWindow();
   testAbortReservationAndCompetingSessions();
   testSessionObjectBudgetAndDispatchGuard();
+  testGlobalReservationLifecycle();
   if (failures != 0) {
     std::cerr << failures << " failure(s)\n";
     return 1;
