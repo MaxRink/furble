@@ -114,6 +114,32 @@ int main(void) {
   check(Furble::Ethernet::getIP() == "203.0.113.9", "restart reports the new IP");
   Furble::Ethernet::stop();
 
+  // Repeat stop/reinit twice more. Each callback generation represents an
+  // event-loop registration that may still have queued work when stop() runs.
+  // Old generations must remain harmless across rapid successive restarts.
+  check(Furble::Ethernet::init(mock), "the transport supports a second restart");
+  check(mock.callbackGenerationCount() == 3, "second restart installs a third callback generation");
+  mock.emitQueuedEventFromGeneration(1, Furble::Ethernet::Transport::Event::LINK_UP);
+  mock.emitQueuedEventFromGeneration(1, Furble::Ethernet::Transport::Event::GOT_IP, "203.0.113.10");
+  check(!Furble::Ethernet::isConnected(), "the prior generation cannot revive a second restart");
+  check(Furble::Ethernet::getIP().empty(), "the prior generation cannot set a second IP");
+  mock.emitLinkUp();
+  mock.emitGotIp("203.0.113.11");
+  check(callbackCount == 5, "the second restart reports network-up");
+  check(Furble::Ethernet::getIP() == "203.0.113.11", "second restart reports its new IP");
+  Furble::Ethernet::stop();
+
+  check(Furble::Ethernet::init(mock), "the transport supports a third restart");
+  check(mock.callbackGenerationCount() == 4, "third restart installs a fourth callback generation");
+  mock.emitQueuedEventFromGeneration(2, Furble::Ethernet::Transport::Event::LINK_UP);
+  mock.emitQueuedEventFromGeneration(2, Furble::Ethernet::Transport::Event::GOT_IP, "203.0.113.12");
+  check(!Furble::Ethernet::isConnected(), "an older generation cannot revive a third restart");
+  mock.emitLinkUp();
+  mock.emitGotIp("203.0.113.13");
+  check(callbackCount == 6, "the third restart reports network-up");
+  check(Furble::Ethernet::getIP() == "203.0.113.13", "third restart reports its new IP");
+  Furble::Ethernet::stop();
+
   std::cout << "ethernet transport: PASS\n";
   return 0;
 }
