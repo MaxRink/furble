@@ -1,4 +1,5 @@
 #include "FurbleOTAReplayStore.h"
+#include "nvs.h"
 
 #include <array>
 #include <cassert>
@@ -18,13 +19,16 @@ class FaultBackend final : public ReplayJournalBackend {
   std::array<std::array<uint8_t, JournalReplayStore::RECORD_BYTES>, 2> durable {};
   std::array<bool, 2> present {};
   bool failRead = false;
+  int failReadSlot = -1;
   bool failWrite = false;
+  int failWriteSlot = -1;
   bool failCommit = false;
   bool tearWrite = false;
+  size_t tearLength = JournalReplayStore::RECORD_BYTES;
   size_t truncatedLength = JournalReplayStore::RECORD_BYTES;
 
   ReadResult read(uint8_t slot, uint8_t *bytes, size_t length) override {
-    if (failRead || slot >= present.size() || bytes == nullptr
+    if (failRead || (static_cast<int>(slot) == failReadSlot) || slot >= present.size() || bytes == nullptr
         || length != JournalReplayStore::RECORD_BYTES) {
       return ReadResult::Failed;
     }
@@ -38,14 +42,14 @@ class FaultBackend final : public ReplayJournalBackend {
   }
 
   bool write(uint8_t slot, const uint8_t *bytes, size_t length) override {
-    if (failWrite || slot >= present.size() || bytes == nullptr
+    if (failWrite || (static_cast<int>(slot) == failWriteSlot) || slot >= present.size() || bytes == nullptr
         || length != JournalReplayStore::RECORD_BYTES) {
       return false;
     }
     pendingSlot = slot;
     pending = true;
     std::memset(staged.data(), 0, staged.size());
-    const size_t copied = tearWrite ? staged.size() / 2 : length;
+    const size_t copied = tearWrite ? (tearLength < length ? tearLength : length) : length;
     std::memcpy(staged.data(), bytes, copied);
     return true;
   }
@@ -58,15 +62,18 @@ class FaultBackend final : public ReplayJournalBackend {
     durable[pendingSlot] = staged;
     present[pendingSlot] = true;
     pending = false;
-    return true;
+    return !tearWrite;
   }
 
   void reboot() {
     pending = false;
     failRead = false;
+    failReadSlot = -1;
     failWrite = false;
+    failWriteSlot = -1;
     failCommit = false;
     tearWrite = false;
+    tearLength = JournalReplayStore::RECORD_BYTES;
     truncatedLength = JournalReplayStore::RECORD_BYTES;
   }
 
@@ -183,6 +190,77 @@ void generationRollover() {
   assert(store.loadFloor(floor) && floor == 5);
 }
 
+void goldenAndAmbiguousRecords() {
+  // External golden bytes for an erased, format-v1 FRJ1 record. The CRC is
+  // intentionally a fixed oracle, not produced by the implementation under
+  // test. Every single-byte mutation must cease to be a valid initial record.
+  constexpr auto golden = [] {
+    std::array<uint8_t, JournalReplayStore::RECORD_BYTES> bytes {};
+    bytes[0] = 0x46;
+    bytes[1] = 0x52;
+    bytes[2] = 0x4a;
+    bytes[3] = 0x31;
+    bytes[4] = 0x01;
+    bytes[6] = 0x40;
+    // CRC-32 of the preceding 60 fixed bytes, independently generated.
+    bytes[60] = 0x32;
+    bytes[61] = 0xbf;
+    bytes[62] = 0xe1;
+    bytes[63] = 0xf4;
+    return bytes;
+  }();
+  FaultBackend backend;
+  backend.durable[0] = golden;
+  backend.present[0] = true;
+  JournalReplayStore store(backend);
+  uint32_t floor = 99;
+  assert(store.loadFloor(floor) && floor == 0);
+  for (size_t index = 0; index < golden.size(); index++) {
+    backend.durable[0] = golden;
+    backend.durable[0][index] ^= 1;
+    assert(!store.loadFloor(floor));
+  }
+
+  // Same generation and same record is harmless; divergent equal generations
+  // and RFC1982's exact half-range are both deliberately unorderable.
+  backend = FaultBackend {};
+  seedRecord(backend, 0, 10, 3);
+  seedRecord(backend, 1, 10, 3);
+  assert(store.loadFloor(floor) && floor == 3);
+  seedRecord(backend, 1, 10, 4);
+  assert(!store.loadFloor(floor));
+  seedRecord(backend, 0, 0, 3);
+  seedRecord(backend, 1, 0x80000000U, 4);
+  assert(!store.loadFloor(floor));
+}
+
+void tornWriteMatrix() {
+  const SessionId first = owner(8);
+  for (size_t length = 0; length <= JournalReplayStore::RECORD_BYTES; length++) {
+    // Reserved -> staged publishes slot 1 after slot 0 is known-good.
+    FaultBackend backend;
+    JournalReplayStore store(backend);
+    assert(store.reserveFloor(0, 7, first));
+    backend.tearWrite = true;
+    backend.tearLength = length;
+    assert(!store.markStaged(first, 7));
+    backend.reboot();
+    uint32_t floor = 0;
+    assert(store.loadFloor(floor) && floor == 7);
+
+    // Staged -> complete publishes slot 0 after slot 1 is known-good.
+    FaultBackend secondBackend;
+    JournalReplayStore second(secondBackend);
+    assert(second.reserveFloor(0, 7, first));
+    assert(second.markStaged(first, 7));
+    secondBackend.tearWrite = true;
+    secondBackend.tearLength = length;
+    assert(!second.completeReservation(first, 7));
+    secondBackend.reboot();
+    assert(second.loadFloor(floor) && floor == 7);
+  }
+}
+
 void faultBoundaries() {
   for (unsigned boundary = 0; boundary < 3; boundary++) {
     FaultBackend backend;
@@ -201,11 +279,44 @@ void faultBoundaries() {
     assert(store.loadFloor(floor) && floor == 0);
     assert(store.reserveFloor(0, 11, first));
   }
+  for (int slot = 0; slot < 2; slot++) {
+    FaultBackend backend;
+    JournalReplayStore store(backend);
+    const SessionId first = owner(static_cast<uint8_t>(20 + slot));
+    backend.failReadSlot = slot;
+    assert(!store.reserveFloor(0, 11, first));
+    backend.reboot();
+    assert(store.reserveFloor(0, 11, first));
+    uint32_t floor = 0;
+    assert(store.loadFloor(floor) && floor == 11);
+  }
+  {
+    FaultBackend backend;
+    JournalReplayStore store(backend);
+    const SessionId first = owner(22);
+    assert(store.reserveFloor(0, 11, first));
+    backend.failWriteSlot = 1;
+    assert(!store.markStaged(first, 11));
+    backend.reboot();
+    uint32_t floor = 0;
+    assert(store.loadFloor(floor) && floor == 11);
+  }
+  {
+    FaultBackend backend;
+    JournalReplayStore store(backend);
+    const SessionId first = owner(23);
+    assert(store.reserveFloor(0, 11, first));
+    assert(store.markStaged(first, 11));
+    backend.failWriteSlot = 0;
+    assert(!store.completeReservation(first, 11));
+    backend.reboot();
+    uint32_t floor = 0;
+    assert(store.loadFloor(floor) && floor == 11);
+  }
 }
 
 void randomizedStateMachine() {
   FaultBackend backend;
-  JournalReplayStore store(backend);
   std::mt19937 rng(0x5eed1234U);
   uint32_t floor = 0;
   bool reserved = false;
@@ -213,6 +324,12 @@ void randomizedStateMachine() {
   SessionId currentOwner {};
   uint32_t currentCounter = 0;
   for (unsigned step = 0; step < 100000; step++) {
+    if ((step % 97U) == 0U) {
+      backend.reboot();
+    }
+    // Reconstruct the production object after each reboot boundary. The
+    // logical model below is intentionally independent of the journal bytes.
+    JournalReplayStore store(backend);
     const unsigned operation = rng() % 6U;
     const SessionId candidate = owner(static_cast<uint8_t>((rng() % 250U) + 1U));
     const uint32_t candidateCounter = (rng() & 1U) ? currentCounter : (rng() % 1000U) + 1U;
@@ -269,14 +386,47 @@ void randomizedStateMachine() {
   }
 }
 
+void transactionalNvsBackend() {
+  FakeNvs::reset();
+  Furble::OTA::NvsReplayJournalBackend nvs;
+  assert(nvs.begin());
+  JournalReplayStore store(nvs);
+  const SessionId first = owner(31);
+  assert(store.reserveFloor(0, 17, first));
+  FakeNvs::reboot();
+  nvs.end();
+  assert(nvs.begin());
+  JournalReplayStore rebooted(nvs);
+  uint32_t floor = 0;
+  assert(rebooted.loadFloor(floor) && floor == 17);
+
+  // A set_blob is invisible until commit, and a failed commit is discarded.
+  std::array<uint8_t, JournalReplayStore::RECORD_BYTES> scratch {};
+  assert(nvs.write(1, scratch.data(), scratch.size()));
+  FakeNvs::reboot();
+  assert(nvs.read(1, scratch.data(), scratch.size()) == ReplayJournalBackend::ReadResult::Missing);
+  FakeNvs::failNextCommit();
+  assert(!rebooted.markStaged(first, 17));
+  FakeNvs::reboot();
+  assert(rebooted.loadFloor(floor) && floor == 17);
+
+  // A present but truncated blob is corruption and must not be accepted.
+  FakeNvs::truncateSlot(0, 7);
+  assert(!rebooted.loadFloor(floor));
+  nvs.end();
+}
+
 }  // namespace
 
 int main() {
   basicTransitions();
   commitAndCorruptionRecovery();
   generationRollover();
+  goldenAndAmbiguousRecords();
+  tornWriteMatrix();
   faultBoundaries();
   randomizedStateMachine();
+  transactionalNvsBackend();
   std::cout << "ota replay store: transitions, recovery, rollover, faults, and 100k property steps passed\n";
   return 0;
 }

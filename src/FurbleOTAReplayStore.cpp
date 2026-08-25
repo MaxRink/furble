@@ -164,14 +164,24 @@ bool JournalReplayStore::readLatest(Latest &latest) {
       continue;
     }
     candidate.slot = slot;
-    if (!latest.present || newerGeneration(candidate.generation, latest.record.generation)) {
+    if (!latest.present) {
       latest.record = candidate;
       latest.present = true;
-    } else if ((candidate.generation == latest.record.generation)
-               && !recordsEqual(candidate, latest.record)) {
-      // Equal-generation divergent records cannot be ordered safely.  Do not
-      // choose one and risk lowering the anti-rollback floor.
+      continue;
+    }
+    const uint32_t delta = candidate.generation - latest.record.generation;
+    if (delta == 0U) {
+      if (!recordsEqual(candidate, latest.record)) {
+        // Equal-generation divergent records cannot be ordered safely.  Do
+        // not choose one and risk lowering the anti-rollback floor.
+        return false;
+      }
+    } else if (delta == 0x80000000U) {
+      // RFC 1982's exact half-range is ambiguous in both directions.  Slot
+      // order must never break that tie because it could lower the floor.
       return false;
+    } else if (newerGeneration(candidate.generation, latest.record.generation)) {
+      latest.record = candidate;
     }
   }
   // An erased pair is the only valid initial state. Corrupt or torn bytes in
@@ -192,7 +202,8 @@ bool JournalReplayStore::publish(const Latest &latest, const Record &next) {
 }
 
 bool JournalReplayStore::newerGeneration(uint32_t candidate, uint32_t current) {
-  return static_cast<int32_t>(candidate - current) > 0;
+  const uint32_t delta = candidate - current;
+  return (delta != 0U) && (delta < 0x80000000U);
 }
 
 bool JournalReplayStore::recordsEqual(const Record &a, const Record &b) {

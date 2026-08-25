@@ -293,8 +293,13 @@ target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno
 # compiled unchanged for host and simulator.
 add_executable(ota_replay_store_test
                ota_replay_store_test.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp)
-target_include_directories(ota_replay_store_test PRIVATE ${FURBLE_ROOT}/include)
+               nvs_replay_fake/nvs_fake.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAReplayStoreNVS.cpp)
+target_include_directories(ota_replay_store_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/nvs_replay_fake
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(ota_replay_store_test PRIVATE ESP_PLATFORM)
 target_compile_options(ota_replay_store_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                        -Wno-unused-parameter)
 
