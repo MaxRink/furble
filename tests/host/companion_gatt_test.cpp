@@ -268,7 +268,7 @@ void testCorruptCameraJournals(void) {
 
   // Equal and half-range generations are not orderable. A divergent request
   // must retain its pending intent instead of claiming publication.
-  for (const auto generations : {
+  for (const auto &generations : {
            std::pair<uint32_t, uint32_t> {10, 10         },
            std::pair<uint32_t, uint32_t> {1,  0x80000001U}
   }) {
