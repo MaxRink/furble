@@ -13,22 +13,25 @@ CompanionAuth::~CompanionAuth() {
   secureZero(m_Nonce.data(), m_Nonce.size());
 }
 
-void CompanionAuth::setPassword(const std::string &password) {
-  // std::string assignment is not required to overwrite the old SSO/heap
-  // bytes. Use volatile stores so an optimizing compiler cannot elide the
-  // clear before replacing the secret.
+bool CompanionAuth::setPassword(const std::string &password) {
+  // std::string capacity cannot be wiped portably. Keep the secret in a fixed
+  // 64-byte buffer so every byte is erased on replacement and destruction.
+  if (password.size() > PASSWORD_MAX) {
+    return false;
+  }
   secureZero(m_Password.data(), m_Password.size());
-  m_Password.clear();
-  m_Password = password;
+  std::copy(password.begin(), password.end(), m_Password.begin());
+  m_PasswordLen = password.size();
   m_Failures = 0;
   clearChallenge();
-  m_State = m_Password.empty() ? state_t::AUTHENTICATED : state_t::UNAUTHENTICATED;
+  m_State = m_PasswordLen == 0 ? state_t::AUTHENTICATED : state_t::UNAUTHENTICATED;
+  return true;
 }
 
 void CompanionAuth::onConnected(void) {
   m_Failures = 0;
   clearChallenge();
-  m_State = m_Password.empty() ? state_t::AUTHENTICATED : state_t::UNAUTHENTICATED;
+  m_State = m_PasswordLen == 0 ? state_t::AUTHENTICATED : state_t::UNAUTHENTICATED;
 }
 
 void CompanionAuth::onDisconnected(void) {
@@ -39,7 +42,7 @@ void CompanionAuth::onDisconnected(void) {
 
 bool CompanionAuth::begin(std::array<uint8_t, NONCE_SIZE> &nonce) {
   nonce.fill(0);
-  if (m_Password.empty()) {
+  if (m_PasswordLen == 0) {
     m_State = state_t::AUTHENTICATED;
     return false;
   }
@@ -59,7 +62,7 @@ bool CompanionAuth::begin(std::array<uint8_t, NONCE_SIZE> &nonce) {
 }
 
 CompanionAuth::response_t CompanionAuth::respond(const uint8_t *response, size_t len) {
-  if (m_Password.empty()) {
+  if (m_PasswordLen == 0) {
     m_State = state_t::AUTHENTICATED;
     return response_t::NOT_REQUIRED;
   }
@@ -82,9 +85,8 @@ CompanionAuth::response_t CompanionAuth::respond(const uint8_t *response, size_t
   }
 
   std::array<uint8_t, HMAC_SIZE> digest = {};
-  const bool computed =
-      m_Hmac(reinterpret_cast<const uint8_t *>(m_Password.data()), m_Password.size(),
-             m_Nonce.data(), m_Nonce.size(), digest.data(), digest.size());
+  const bool computed = m_Hmac(m_Password.data(), m_PasswordLen, m_Nonce.data(), m_Nonce.size(),
+                               digest.data(), digest.size());
   const bool matches = computed && constantTimeEqual(digest.data(), response, RESPONSE_SIZE);
   clearChallenge();
   secureZero(digest.data(), digest.size());
@@ -111,7 +113,7 @@ bool CompanionAuth::allowsProtected(void) const {
 }
 
 bool CompanionAuth::isPasswordSet(void) const {
-  return !m_Password.empty();
+  return m_PasswordLen != 0;
 }
 
 bool CompanionAuth::hasChallenge(void) const {
@@ -146,7 +148,7 @@ void CompanionAuth::secureZero(void *data, size_t len) {
 }
 
 void CompanionAuth::clearChallenge(void) {
-  std::fill(m_Nonce.begin(), m_Nonce.end(), 0);
+  secureZero(m_Nonce.data(), m_Nonce.size());
   m_HaveNonce = false;
 }
 

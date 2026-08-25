@@ -14,6 +14,7 @@ class CompanionAuth {
   static constexpr size_t NONCE_SIZE = 16;
   static constexpr size_t HMAC_SIZE = 32;
   static constexpr size_t RESPONSE_SIZE = 16;
+  static constexpr size_t PASSWORD_MAX = 63;
   static constexpr uint8_t MAX_FAILURES = 3;
 
   enum class state_t : uint8_t {
@@ -41,7 +42,8 @@ class CompanionAuth {
   CompanionAuth(hmac_fn_t hmac, nonce_fn_t nonceGenerator);
   ~CompanionAuth();
 
-  void setPassword(const std::string &password);
+  /** Replace the connection password. Input length is measured in UTF-8 bytes. */
+  bool setPassword(const std::string &password);
   void onConnected(void);
   void onDisconnected(void);
 
@@ -64,7 +66,8 @@ class CompanionAuth {
   static void secureZero(void *data, size_t len);
   void clearChallenge(void);
 
-  std::string m_Password;
+  std::array<uint8_t, PASSWORD_MAX + 1> m_Password = {};
+  size_t m_PasswordLen = 0;
   hmac_fn_t m_Hmac;
   nonce_fn_t m_NonceGenerator;
   std::array<uint8_t, NONCE_SIZE> m_Nonce = {};
