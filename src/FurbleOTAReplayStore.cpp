@@ -64,7 +64,8 @@ bool JournalReplayStore::loadFloor(uint32_t &floor) {
   return true;
 }
 
-bool JournalReplayStore::reserveFloor(uint32_t expectedFloor, uint32_t nextFloor,
+bool JournalReplayStore::reserveFloor(uint32_t expectedFloor,
+                                      uint32_t nextFloor,
                                       const MQTT::SessionId &owner) {
   if (owner == MQTT::SessionId {} || nextFloor <= expectedFloor) {
     // Rollback counters are not serial numbers.  Once UINT32_MAX is consumed
@@ -220,10 +221,11 @@ bool JournalReplayStore::active(const Record &record) {
 }
 
 bool JournalReplayStore::validRecord(const uint8_t *bytes, size_t length, Record &out) {
-  if ((bytes == nullptr) || (length != RECORD_BYTES) || (std::memcmp(bytes, MAGIC, sizeof(MAGIC)) != 0)
-      || (read16(bytes + 4) != FORMAT_VERSION) || (read16(bytes + 6) != RECORD_BYTES)
-      || (read32(bytes + CRC_OFFSET) != crc32(bytes, CRC_OFFSET))
-      || !allZero(bytes + 17, 3) || !allZero(bytes + 40, 20)) {
+  if ((bytes == nullptr) || (length != RECORD_BYTES)
+      || (std::memcmp(bytes, MAGIC, sizeof(MAGIC)) != 0) || (read16(bytes + 4) != FORMAT_VERSION)
+      || (read16(bytes + 6) != RECORD_BYTES)
+      || (read32(bytes + CRC_OFFSET) != crc32(bytes, CRC_OFFSET)) || !allZero(bytes + 17, 3)
+      || !allZero(bytes + 40, 20)) {
     return false;
   }
   const uint8_t state = bytes[16];

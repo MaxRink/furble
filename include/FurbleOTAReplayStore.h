@@ -45,7 +45,7 @@ class ReplayJournalBackend {
  * wrap-safe: accepting a wrapped counter would make an old signed image
  * reusable.  Generation numbers are serial-number ordered and may wrap.
  */
-class JournalReplayStore final : public MQTT::ReplayStore {
+class JournalReplayStore final: public MQTT::ReplayStore {
  public:
   static constexpr uint8_t SLOT_COUNT = 2;
   static constexpr size_t RECORD_BYTES = 64;
@@ -54,7 +54,8 @@ class JournalReplayStore final : public MQTT::ReplayStore {
   explicit JournalReplayStore(ReplayJournalBackend &backend);
 
   bool loadFloor(uint32_t &floor) override;
-  bool reserveFloor(uint32_t expectedFloor, uint32_t nextFloor,
+  bool reserveFloor(uint32_t expectedFloor,
+                    uint32_t nextFloor,
                     const MQTT::SessionId &owner) override;
   bool markStaged(const MQTT::SessionId &owner, uint32_t counter) override;
   bool completeReservation(const MQTT::SessionId &owner, uint32_t counter) override;
@@ -99,7 +100,7 @@ class JournalReplayStore final : public MQTT::ReplayStore {
  * publication barrier, matching ReplayJournalBackend's host/sim contract.
  * The application must initialize NVS before begin().
  */
-class NvsReplayJournalBackend final : public ReplayJournalBackend {
+class NvsReplayJournalBackend final: public ReplayJournalBackend {
  public:
   NvsReplayJournalBackend();
   ~NvsReplayJournalBackend() override;

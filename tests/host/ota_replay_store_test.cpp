@@ -14,7 +14,7 @@ using Furble::OTA::MQTT::SessionId;
 
 namespace {
 
-class FaultBackend final : public ReplayJournalBackend {
+class FaultBackend final: public ReplayJournalBackend {
  public:
   std::array<std::array<uint8_t, JournalReplayStore::RECORD_BYTES>, 2> durable {};
   std::array<bool, 2> present {};
@@ -28,8 +28,8 @@ class FaultBackend final : public ReplayJournalBackend {
   size_t truncatedLength = JournalReplayStore::RECORD_BYTES;
 
   ReadResult read(uint8_t slot, uint8_t *bytes, size_t length) override {
-    if (failRead || (static_cast<int>(slot) == failReadSlot) || slot >= present.size() || bytes == nullptr
-        || length != JournalReplayStore::RECORD_BYTES) {
+    if (failRead || (static_cast<int>(slot) == failReadSlot) || slot >= present.size()
+        || bytes == nullptr || length != JournalReplayStore::RECORD_BYTES) {
       return ReadResult::Failed;
     }
     if (!present[slot]) {
@@ -42,8 +42,8 @@ class FaultBackend final : public ReplayJournalBackend {
   }
 
   bool write(uint8_t slot, const uint8_t *bytes, size_t length) override {
-    if (failWrite || (static_cast<int>(slot) == failWriteSlot) || slot >= present.size() || bytes == nullptr
-        || length != JournalReplayStore::RECORD_BYTES) {
+    if (failWrite || (static_cast<int>(slot) == failWriteSlot) || slot >= present.size()
+        || bytes == nullptr || length != JournalReplayStore::RECORD_BYTES) {
       return false;
     }
     pendingSlot = slot;
@@ -183,7 +183,7 @@ void generationRollover() {
   JournalReplayStore store(backend);
   const SessionId first = owner(4);
   assert(store.reserveFloor(4, 5, first));  // generation UINT32_MAX
-  assert(store.markStaged(first, 5));        // generation zero
+  assert(store.markStaged(first, 5));       // generation zero
   uint32_t floor = 0;
   assert(store.loadFloor(floor) && floor == 5);
   assert(store.completeReservation(first, 5));
@@ -353,14 +353,14 @@ void randomizedStateMachine() {
       }
     } else if (operation == 2) {
       expected = reserved && !staged && (candidate == currentOwner)
-                && (candidateCounter == currentCounter);
+                 && (candidateCounter == currentCounter);
       assert(store.markStaged(candidate, candidateCounter) == expected);
       if (expected) {
         staged = true;
       }
     } else if (operation == 3) {
-      expected = reserved && staged && (candidate == currentOwner)
-                && (candidateCounter == currentCounter);
+      expected =
+          reserved && staged && (candidate == currentOwner) && (candidateCounter == currentCounter);
       assert(store.completeReservation(candidate, candidateCounter) == expected);
       if (expected) {
         reserved = false;
@@ -427,6 +427,7 @@ int main() {
   faultBoundaries();
   randomizedStateMachine();
   transactionalNvsBackend();
-  std::cout << "ota replay store: transitions, recovery, rollover, faults, and 100k property steps passed\n";
+  std::cout << "ota replay store: transitions, recovery, rollover, faults, and 100k property steps "
+               "passed\n";
   return 0;
 }

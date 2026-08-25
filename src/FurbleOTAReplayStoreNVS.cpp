@@ -44,7 +44,8 @@ void NvsReplayJournalBackend::end() {
   }
 }
 
-ReplayJournalBackend::ReadResult NvsReplayJournalBackend::read(uint8_t slot, uint8_t *bytes,
+ReplayJournalBackend::ReadResult NvsReplayJournalBackend::read(uint8_t slot,
+                                                               uint8_t *bytes,
                                                                size_t length) {
   if (!m_Started || (slot >= JournalReplayStore::SLOT_COUNT) || (bytes == nullptr)
       || (length != JournalReplayStore::RECORD_BYTES)) {
@@ -66,9 +67,8 @@ ReplayJournalBackend::ReadResult NvsReplayJournalBackend::read(uint8_t slot, uin
     std::memset(bytes, 0, length);
     return ReadResult::Ok;
   }
-  return nvs_get_blob(handle, slotKey(slot), bytes, &storedLength) == ESP_OK
-             ? ReadResult::Ok
-             : ReadResult::Failed;
+  return nvs_get_blob(handle, slotKey(slot), bytes, &storedLength) == ESP_OK ? ReadResult::Ok
+                                                                             : ReadResult::Failed;
 }
 
 bool NvsReplayJournalBackend::write(uint8_t slot, const uint8_t *bytes, size_t length) {
