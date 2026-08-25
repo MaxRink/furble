@@ -104,6 +104,7 @@ class CameraList {
   static std::vector<std::shared_ptr<Furble::Camera>> m_ConnectList;
 
   static Preferences m_Prefs;
+  static std::mutex m_PrefsMutex;
   static std::mutex m_Mutex;
 };
 }  // namespace Furble

@@ -17,6 +17,7 @@
 #include <thread>
 #include <vector>
 
+#include <Preferences.h>
 #include "CameraList.h"
 #include "Device.h"
 #include "FujifilmBasic.h"
@@ -434,6 +435,34 @@ void testCompanionGattFlow(void) {
   for (size_t boundary = 1; boundary <= 6; boundary++) {
     verifyIndexWriteBoundary(boundary);
   }
+
+  // ESP-NVS rejects keys longer than fifteen bytes; keep the host model
+  // honest so an invalid production key cannot hide behind the stub.
+  Furble::Preferences keyLimit;
+  check(keyLimit.begin("furble", false), "preferences key-limit fixture opens");
+  const uint8_t marker = 1;
+  check(keyLimit.put("sixteen_byte_key", &marker, sizeof(marker)) == 0,
+        "preferences stub rejects keys longer than the ESP-NVS limit");
+  keyLimit.end();
+
+  // Removal is journal-first: every failed mutation keeps both cameras and a
+  // successful removal leaves the old camera blob as deferred garbage.
+  for (size_t boundary = 1; boundary <= 5; boundary++) {
+    Furble::hostPreferencesClearStorage();
+    Furble::CameraList::save(firstCamera.get());
+    Furble::CameraList::save(secondCamera.get());
+    Furble::hostPreferencesFailAfter(boundary);
+    Furble::CameraList::remove(firstCamera.get());
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::load();
+    check(Furble::CameraList::getSaveCount() == 2,
+          "interrupted removal preserves the committed camera generation");
+  }
+  Furble::hostPreferencesClearStorage();
+  Furble::CameraList::save(firstCamera.get());
+  Furble::CameraList::save(secondCamera.get());
+  Furble::CameraList::remove(firstCamera.get());
+  check(Furble::CameraList::getSaveCount() == 1, "successful removal commits a new index");
 
   // Exercise the list lock under the same concurrent scan/snapshot pattern
   // used by the companion task. Duplicate advertisement results must still

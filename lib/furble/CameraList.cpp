@@ -19,19 +19,32 @@
 #define FURBLE_PREF_INDEX_FORMAT "index_format"
 #define FURBLE_PREF_INDEX_CHECKSUM "index_crc"
 #define FURBLE_INDEX_FORMAT_CURRENT 1
-#define FURBLE_PREF_SLOT_A_BLOB "index_slot_a_blob"
-#define FURBLE_PREF_SLOT_A_HEADER "index_slot_a_header"
-#define FURBLE_PREF_SLOT_A_CRC "index_slot_a_crc"
-#define FURBLE_PREF_SLOT_A_COMMIT "index_slot_a_commit"
-#define FURBLE_PREF_SLOT_B_BLOB "index_slot_b_blob"
-#define FURBLE_PREF_SLOT_B_HEADER "index_slot_b_header"
-#define FURBLE_PREF_SLOT_B_CRC "index_slot_b_crc"
-#define FURBLE_PREF_SLOT_B_COMMIT "index_slot_b_commit"
+#define FURBLE_PREF_SLOT_A_BLOB "slot_a_blob"
+#define FURBLE_PREF_SLOT_A_HEADER "slot_a_hdr"
+#define FURBLE_PREF_SLOT_A_CRC "slot_a_crc"
+#define FURBLE_PREF_SLOT_A_COMMIT "slot_a_cmt"
+#define FURBLE_PREF_SLOT_B_BLOB "slot_b_blob"
+#define FURBLE_PREF_SLOT_B_HEADER "slot_b_hdr"
+#define FURBLE_PREF_SLOT_B_CRC "slot_b_crc"
+#define FURBLE_PREF_SLOT_B_COMMIT "slot_b_cmt"
 #define FURBLE_INDEX_SLOT_MAGIC 0x46524C49U
 // Monotonic id allocator, persisted alongside the index in the same namespace.
 #define FURBLE_PREF_NEXT_ID "cam_next_id"
 
 namespace Furble {
+
+static_assert(Preferences::validNvsKey(FURBLE_PREF_INDEX));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_INDEX_FORMAT));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_INDEX_CHECKSUM));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_A_BLOB));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_A_HEADER));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_A_CRC));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_A_COMMIT));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_BLOB));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_HEADER));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_CRC));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_COMMIT));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_NEXT_ID));
 
 std::mutex CameraList::m_Mutex;
 
@@ -65,6 +78,13 @@ const index_slot_keys_t &slotKeys(size_t slot) {
 }
 
 enum class slot_state_t : uint8_t { ABSENT, INVALID, VALID };
+
+// RFC1982 serial-number arithmetic: equal and half-range values are not
+// ordered and must be treated as ambiguous rather than guessed.
+bool generationNewer(uint32_t lhs, uint32_t rhs) {
+  const uint32_t delta = lhs - rhs;
+  return delta != 0 && delta < 0x80000000U;
+}
 
 slot_state_t readSlot(Preferences &prefs,
                       size_t slot,
@@ -123,6 +143,7 @@ bool validCameraType(uint32_t type) {
 
 std::vector<std::shared_ptr<Furble::Camera>> CameraList::m_ConnectList;
 Preferences CameraList::m_Prefs;
+std::mutex CameraList::m_PrefsMutex;
 
 void CameraList::fillSaveEntry(index_entry_t &entry, const Camera *camera) {
   const auto key = CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
@@ -212,7 +233,13 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
     std::vector<uint8_t> oldBytes;
     valid[slot] = readSlot(m_Prefs, slot, oldBytes, generation[slot]) == slot_state_t::VALID;
   }
-  size_t active = valid[1] && (!valid[0] || (generation[1] > generation[0])) ? 1 : 0;
+  if (valid[0] && valid[1]
+      && (generation[0] == generation[1]
+          || (!generationNewer(generation[0], generation[1])
+              && !generationNewer(generation[1], generation[0])))) {
+    return;
+  }
+  size_t active = valid[1] && (!valid[0] || generationNewer(generation[1], generation[0])) ? 1 : 0;
   const size_t target = valid[0] || valid[1] ? (active ^ 1U) : 0;
   uint32_t nextGeneration = (valid[0] || valid[1]) ? (generation[active] + 1U) : 1U;
   if (nextGeneration == 0) {
@@ -262,30 +289,39 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
     for (size_t slot = 0; slot < 2; slot++) {
       std::vector<uint8_t> bytes;
       uint32_t generation = 0;
-      if (readSlot(m_Prefs, slot, bytes, generation) == slot_state_t::VALID
-          && (!selected || generation > selectedGeneration)) {
-        selectedBytes = std::move(bytes);
-        selectedGeneration = generation;
-        selected = true;
+      if (readSlot(m_Prefs, slot, bytes, generation) == slot_state_t::VALID) {
+        if (!selected || generationNewer(generation, selectedGeneration)) {
+          selectedBytes = std::move(bytes);
+          selectedGeneration = generation;
+          selected = true;
+        } else if (!generationNewer(selectedGeneration, generation)) {
+          return index;
+        }
       }
     }
     if (!selected) {
+      // An interrupted first journal write may coexist with an intact legacy
+      // index. Let the explicit legacy migration below recover it; without a
+      // legacy index, fail closed on the corrupt/current journal state.
+      if (!m_Prefs.isKey(FURBLE_PREF_INDEX)) {
+        return index;
+      }
+    } else {
+      std::vector<CameraListProtocol::IndexEntry> decoded;
+      if (!CameraListProtocol::decodeIndex(selectedBytes.data(), selectedBytes.size(),
+                                           CameraListProtocol::IndexFormat::CURRENT, decoded)) {
+        return index;
+      }
+      CameraListProtocol::assignCameraIds(decoded);
+      for (const auto &item : decoded) {
+        index_entry_t entry = {};
+        memcpy(entry.name, item.name, sizeof(entry.name));
+        entry.type = static_cast<Camera::Type>(item.type);
+        entry.camera_id = item.camera_id;
+        index.push_back(entry);
+      }
       return index;
     }
-    std::vector<CameraListProtocol::IndexEntry> decoded;
-    if (!CameraListProtocol::decodeIndex(selectedBytes.data(), selectedBytes.size(),
-                                         CameraListProtocol::IndexFormat::CURRENT, decoded)) {
-      return index;
-    }
-    CameraListProtocol::assignCameraIds(decoded);
-    for (const auto &item : decoded) {
-      index_entry_t entry = {};
-      memcpy(entry.name, item.name, sizeof(entry.name));
-      entry.type = static_cast<Camera::Type>(item.type);
-      entry.camera_id = item.camera_id;
-      index.push_back(entry);
-    }
-    return index;
   }
 
   if (m_Prefs.isKey(FURBLE_PREF_INDEX)) {
@@ -369,6 +405,7 @@ void CameraList::add_index(std::vector<CameraList::index_entry_t> &index, index_
 }
 
 void CameraList::save(const Furble::Camera *camera) {
+  const std::lock_guard<std::mutex> prefsLock(m_PrefsMutex);
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     return;
   }
@@ -416,6 +453,7 @@ void CameraList::save(const Furble::Camera *camera) {
 }
 
 void CameraList::remove(Furble::Camera *camera) {
+  const std::lock_guard<std::mutex> prefsLock(m_PrefsMutex);
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     return;
   }
@@ -431,21 +469,22 @@ void CameraList::remove(Furble::Camera *camera) {
   fillSaveEntry(entry, camera);
 
   size_t i = 0;
-  bool found = false;
   for (i = 0; i < index.size(); i++) {
     if (strcmp(index[i].name, entry.name) == 0) {
       ESP_LOGI(LOG_TAG, "Deleting: %s", entry.name);
       index.erase(index.begin() + i);
-      found = true;
       break;
     }
   }
 
-  if (found && !m_Prefs.remove(entry.name)) {
-    m_Prefs.end();
-    return;
-  }
+  // Publish the new index before garbage-collecting the old blob. A power
+  // cut therefore leaves the previous generation and all referenced data
+  // intact; an erase failure merely leaves an unreachable stale blob.
   save_index(index);
+
+  // Camera blobs are intentionally retained as deferred garbage. Removing
+  // them here would require observing the commit result and would reintroduce
+  // a power-loss window between index publication and data reclamation.
 
   m_Prefs.end();
 
@@ -461,6 +500,7 @@ void CameraList::remove(Furble::Camera *camera) {
  * index with a known name and storing target devices in separate entries.
  */
 void CameraList::load(void) {
+  const std::lock_guard<std::mutex> prefsLock(m_PrefsMutex);
   if (!m_Prefs.begin(FURBLE_STR, true)) {
     return;
   }
@@ -530,6 +570,7 @@ void CameraList::load(void) {
 }
 
 size_t CameraList::getSaveCount(void) {
+  const std::lock_guard<std::mutex> prefsLock(m_PrefsMutex);
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     return 0;
   }
@@ -544,6 +585,7 @@ uint8_t CameraList::getCameraId(const Furble::Camera *camera) {
     return 0;
   }
 
+  const std::lock_guard<std::mutex> prefsLock(m_PrefsMutex);
   index_entry_t entry;
   fillSaveEntry(entry, camera);
 

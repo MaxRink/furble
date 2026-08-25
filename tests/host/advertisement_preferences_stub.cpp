@@ -34,12 +34,12 @@ bool Preferences::clear() {
   return true;
 }
 bool Preferences::remove(const char *key) {
-  if (!_started || _readOnly || key == nullptr)
+  if (!_started || _readOnly || !validNvsKey(key))
     return false;
   return g_Storage.erase(std::to_string(_handle) + ":" + key) != 0;
 }
 size_t Preferences::put(const char *key, const void *value, size_t bytes) {
-  if (!_started || _readOnly || key == nullptr || value == nullptr)
+  if (!_started || _readOnly || !validNvsKey(key) || value == nullptr)
     return 0;
   const auto *begin = static_cast<const uint8_t *>(value);
   g_Storage[std::to_string(_handle) + ":" + key] = {begin, begin + bytes};
@@ -49,7 +49,7 @@ size_t Preferences::put(const char *key, const char *value) {
   return value == nullptr ? 0 : put(key, value, std::strlen(value) + 1);
 }
 size_t Preferences::get(const char *key, void *value, size_t bytes) {
-  if (!_started || key == nullptr || value == nullptr)
+  if (!_started || !validNvsKey(key) || value == nullptr)
     return 0;
   const auto found = g_Storage.find(std::to_string(_handle) + ":" + key);
   if (found == g_Storage.end())
@@ -59,11 +59,11 @@ size_t Preferences::get(const char *key, void *value, size_t bytes) {
   return copied;
 }
 bool Preferences::isKey(const char *key) {
-  return _started && key != nullptr
+  return _started && validNvsKey(key)
          && g_Storage.find(std::to_string(_handle) + ":" + key) != g_Storage.end();
 }
 size_t Preferences::getBytesLength(const char *key) {
-  if (!_started || key == nullptr)
+  if (!_started || !validNvsKey(key))
     return 0;
   const auto found = g_Storage.find(std::to_string(_handle) + ":" + key);
   return found == g_Storage.end() ? 0 : found->second.size();
