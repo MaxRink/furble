@@ -10,6 +10,7 @@ host simulator and a future Zephyr CI job.
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 import re
 import sys
@@ -18,7 +19,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PORTABLE_RELATIVE_PATHS = (Path("lib/furble/protocol"),)
 MANIFEST_RELATIVE_PATH = Path("tools/portable_core_manifest.txt")
-DUPLICATE_PORT_ROOT_NAMES = {"nordic", "furble-nordic"}
+NORDIC_SOC_PATTERN = re.compile(r"nrf(?:52840|5340|54[a-z0-9-]*)$", re.IGNORECASE)
 
 FORBIDDEN = {
     "Arduino": re.compile(r"\bArduino(?:\.h)?\b"),
@@ -67,6 +68,35 @@ def manifest_files(root: Path) -> tuple[list[Path], list[str]]:
     return files, errors
 
 
+def is_declared_nordic_port(path: Path, root: Path) -> bool:
+    """Return whether path is under a conventional, declared Nordic port root."""
+
+    parts = path.relative_to(root).parts
+    for index, part in enumerate(parts[:-1]):
+        name = part.lower()
+        next_name = parts[index + 1].lower()
+        if name == "platform" and next_name == "nordic":
+            return True
+        if name == "ports" and (next_name == "nordic" or NORDIC_SOC_PATTERN.fullmatch(next_name)):
+            return True
+    return False
+
+
+def normalized_source_hash(path: Path) -> str:
+    normalized = "".join(path.read_text(encoding="utf-8").split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def declared_nordic_sources(root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix in SOURCE_SUFFIXES
+        and is_declared_nordic_port(path, root)
+    )
+
+
 def check_portable_contract(root: Path = ROOT) -> list[str]:
     violations: list[str] = []
     portable_files: list[Path] = []
@@ -86,15 +116,11 @@ def check_portable_contract(root: Path = ROOT) -> list[str]:
     if manifest and sorted(manifest) != sorted(portable_files):
         violations.append("shared source manifest does not match portable contract roots")
 
-    manifest_names = {path.name for path in manifest}
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix not in SOURCE_SUFFIXES:
-            continue
-        if not any(part.lower() in DUPLICATE_PORT_ROOT_NAMES for part in path.parts):
-            continue
-        if path.name in manifest_names:
+    manifest_hashes = {normalized_source_hash(path) for path in manifest}
+    for path in declared_nordic_sources(root):
+        if normalized_source_hash(path) in manifest_hashes:
             violations.append(
-                "duplicate portable source under Nordic port tree: "
+                "duplicate portable source content under Nordic port tree: "
                 f"{relative(path, root)}"
             )
 
@@ -146,6 +172,7 @@ def main() -> int:
     print("furble portability inventory")
     print(f"portable contract files: {len(protocol_files)}")
     print(f"shared source manifest files: {len(manifest_files(root)[0])}")
+    print(f"declared Nordic port source files scanned: {len(declared_nordic_sources(root))}")
     print(f"camera library files: {len(vendor_files)}")
     print(f"app and public-header files: {len(app_files)}")
     print(

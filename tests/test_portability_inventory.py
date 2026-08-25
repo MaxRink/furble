@@ -58,10 +58,22 @@ class PortabilityInventoryTest(unittest.TestCase):
         root = self.make_minimal_root()
         copied = root / "ports/nordic/lib/furble"
         copied.mkdir(parents=True)
-        (copied / "codec.cpp").write_text("int codec() { return 0; }\n", encoding="utf-8")
+        (copied / "camera_bytes.cpp").write_text(
+            "int   codec() {\n  return 0; }\n", encoding="utf-8"
+        )
         result = self.run_checker(root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("duplicate portable source", result.stderr)
+        self.assertIn("duplicate portable source content", result.stderr)
+
+    def test_nordic_port_adapter_without_copy_is_allowed(self):
+        root = self.make_minimal_root()
+        adapter = root / "ports/nrf52840"
+        adapter.mkdir(parents=True)
+        (adapter / "ble_adapter.cpp").write_text(
+            "int nordic_adapter() { return 1; }\n", encoding="utf-8"
+        )
+        result = self.run_checker(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_current_tree_passes(self):
         result = self.run_checker(ROOT)

@@ -92,10 +92,14 @@ The current boundary is intentionally narrow:
 `tools/check_portability_inventory.py --check` protects the declared portable
 subtree and `tools/portable_core_manifest.txt` is the shared production-source
 manifest. The checker fails closed for missing or empty roots, stale manifest
-entries, and a copied protocol source under a Nordic port tree. It also reports
-direct coupling in the current camera and app layers, including public headers,
-so a future extraction can shrink the inventory rather than silently growing a
-second implementation.
+entries, and normalized-content copies under the declared Nordic roots
+`ports/nrf52840`, `ports/nrf5340`, `ports/nrf54*`, `ports/nordic`, and
+`platform/nordic`. It reports direct coupling in the current camera and app
+layers, including public headers, so a future extraction can shrink the
+inventory rather than silently growing a second implementation. This is a
+machine guard against copied source content, including whitespace-only copies;
+semantic rewrites with different bytes still require review and shared-scenario
+tests.
 
 ## Shared contract shape
 
