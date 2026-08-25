@@ -52,6 +52,7 @@ class RestartMarker {
     }
     if (state == RestartMarkerStorage::result::PRESENT
         && storage.read("cr_boot_gen", generation) != RestartMarkerStorage::result::PRESENT) {
+      (void)storage.write("cr_poison", 1);
       return false;
     }
     const uint32_t boot = generation == UINT32_MAX ? 1U : generation + 1U;

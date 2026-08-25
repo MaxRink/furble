@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <map>
 #include <set>
 #include <string>
@@ -102,8 +103,61 @@ int main() {
     assert(!Furble::RestartMarker::consume(fault));
     fault.failLabels.clear();
     fault.trace.clear();
+    if (Furble::RestartMarker::consume(fault)) {
+      std::fprintf(stderr, "generation consume resurrection: %s\\n", label(operation).c_str());
+      return 1;
+    }
+  }
+
+  // Repeat both schedules with an existing, valid boot generation. This
+  // exercises the read:cr_boot_gen branches rather than only the empty-store
+  // ABSENT branches above.
+  FaultStorage presentMark;
+  presentMark.values["cr_boot_gen"] = 41;
+  assert(Furble::RestartMarker::mark(presentMark));
+  assertTrace(presentMark.trace, {"exists:cr_boot_gen", "read:cr_boot_gen", "write:cr_pending",
+                                  "read:cr_pending", "write:cr_commit", "read:cr_commit"});
+  bool markGenerationReadInjected = false;
+  for (const auto &operation : presentMark.trace) {
+    markGenerationReadInjected |= label(operation) == "read:cr_boot_gen";
+    FaultStorage fault;
+    fault.values["cr_boot_gen"] = 41;
+    fault.failLabels.insert(label(operation));
+    assert(!Furble::RestartMarker::mark(fault));
+    fault.failLabels.clear();
+    fault.trace.clear();
+    assert(!Furble::RestartMarker::consume(fault));
+    fault.trace.clear();
+    assert(!Furble::RestartMarker::consume(fault));
+    fault.trace.clear();
     assert(!Furble::RestartMarker::consume(fault));
   }
+  assert(markGenerationReadInjected);
+
+  FaultStorage presentConsume = presentMark;
+  presentConsume.trace.clear();
+  assert(Furble::RestartMarker::consume(presentConsume));
+  assertTrace(presentConsume.trace,
+              {"exists:cr_boot_gen", "read:cr_boot_gen", "write:cr_boot_gen", "read:cr_boot_gen",
+               "exists:cr_poison", "read:cr_pending", "read:cr_commit", "remove:cr_commit",
+               "exists:cr_commit", "remove:cr_pending", "exists:cr_pending"});
+  bool consumeGenerationReadInjected = false;
+  for (const auto &operation : presentConsume.trace) {
+    consumeGenerationReadInjected |= label(operation) == "read:cr_boot_gen";
+    FaultStorage fault = presentMark;
+    fault.trace.clear();
+    fault.failLabels.insert(label(operation));
+    assert(!Furble::RestartMarker::consume(fault));
+    fault.failLabels.clear();
+    fault.trace.clear();
+    if (Furble::RestartMarker::consume(fault)) {
+      std::fprintf(stderr, "generation consume resurrection: %s\\n", label(operation).c_str());
+      return 1;
+    }
+    fault.trace.clear();
+    assert(!Furble::RestartMarker::consume(fault));
+  }
+  assert(consumeGenerationReadInjected);
 
   // Target the poison write by its label, not by a positional magic bound.
   FaultStorage poison = armedStorage();
