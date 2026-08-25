@@ -14,21 +14,26 @@ class PreferencesRestartStorage final: public RestartMarkerStorage {
  public:
   explicit PreferencesRestartStorage(Preferences &prefs) : m_Prefs(prefs) {}
   result read(const char *key, uint32_t &value) override {
-    if (!m_Prefs.isKey(key))
+    const auto status = m_Prefs.readU32(key, value);
+    if (status == Preferences::status::NOT_FOUND)
       return result::ABSENT;
-    value = m_Prefs.get<uint32_t>(key, 0);
-    return result::PRESENT;
+    return status == Preferences::status::OK ? result::PRESENT : result::ERROR;
   }
   result write(const char *key, uint32_t value) override {
     return m_Prefs.put<uint32_t>(key, value) == sizeof(value) ? result::SUCCESS : result::ERROR;
   }
   result remove(const char *key) override {
-    if (!m_Prefs.isKey(key))
+    const auto status = m_Prefs.removeKey(key);
+    if (status == Preferences::status::NOT_FOUND)
       return result::ABSENT;
-    return m_Prefs.remove(key) ? result::SUCCESS : result::ERROR;
+    return status == Preferences::status::OK ? result::SUCCESS : result::ERROR;
   }
   result exists(const char *key) override {
-    return m_Prefs.isKey(key) ? result::PRESENT : result::ABSENT;
+    uint32_t value = 0;
+    const auto status = m_Prefs.readU32(key, value);
+    if (status == Preferences::status::NOT_FOUND)
+      return result::ABSENT;
+    return status == Preferences::status::OK ? result::PRESENT : result::ERROR;
   }
 
  private:

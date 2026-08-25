@@ -44,15 +44,6 @@ class RestartMarker {
   }
 
   static bool consume(RestartMarkerStorage &storage) {
-    const auto poisonState = storage.exists("cr_poison");
-    if (poisonState == RestartMarkerStorage::result::ERROR) {
-      (void)storage.write("cr_poison", 1);
-      return false;
-    }
-    if (poisonState == RestartMarkerStorage::result::PRESENT) {
-      (void)storage.remove("cr_poison");
-      return false;
-    }
     uint32_t generation = 0;
     const auto state = storage.exists("cr_boot_gen");
     if (state == RestartMarkerStorage::result::ERROR) {
@@ -69,6 +60,20 @@ class RestartMarker {
     if (storage.write("cr_boot_gen", boot) != RestartMarkerStorage::result::SUCCESS
         || !verify(storage, "cr_boot_gen", boot)) {
       (void)storage.write("cr_poison", 1);
+      return false;
+    }
+    // The generation is advanced before poison handling. A recovery reset can
+    // therefore never clear the only guard while leaving an old token valid.
+    const auto poisonState = storage.exists("cr_poison");
+    if (poisonState == RestartMarkerStorage::result::ERROR) {
+      (void)storage.write("cr_poison", 1);
+      return false;
+    }
+    if (poisonState == RestartMarkerStorage::result::PRESENT) {
+      if (storage.remove("cr_poison") != RestartMarkerStorage::result::SUCCESS
+          || storage.exists("cr_poison") != RestartMarkerStorage::result::ABSENT) {
+        return false;
+      }
       return false;
     }
     uint32_t pending = 0;

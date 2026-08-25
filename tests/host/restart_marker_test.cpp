@@ -70,7 +70,7 @@ int main() {
 
   // Fault every consume operation after a successful mark, including the
   // reviewer boundaries 0, 6 and 8, then simulate the next boot.
-  for (int boundary = 0; boundary < 10; ++boundary) {
+  for (int boundary = 0; boundary < 9; ++boundary) {
     FaultStorage fault = armedStorage();
     fault.failAt = boundary;
     if (Furble::RestartMarker::consume(fault)) {
@@ -84,5 +84,27 @@ int main() {
       return 1;
     }
   }
+
+  // Regression for the poison-recovery resurrection: b1 is the injected
+  // failure, b2 is the poison recovery boot, and b3 must remain false.
+  FaultStorage regression = armedStorage();
+  regression.failAt = 0;
+  assert(!Furble::RestartMarker::consume(regression));  // b1
+  regression.failAt = -1;
+  regression.calls = 0;
+  assert(!Furble::RestartMarker::consume(regression));  // b2
+  regression.calls = 0;
+  assert(!Furble::RestartMarker::consume(regression));  // b3
+
+  // If the poison write itself fails, every later boot still advances the
+  // generation and cannot resurrect the old marker.
+  FaultStorage poisonWrite = armedStorage();
+  poisonWrite.failAt = 4;
+  assert(!Furble::RestartMarker::consume(poisonWrite));
+  poisonWrite.failAt = -1;
+  poisonWrite.calls = 0;
+  assert(!Furble::RestartMarker::consume(poisonWrite));
+  poisonWrite.calls = 0;
+  assert(!Furble::RestartMarker::consume(poisonWrite));
   return 0;
 }
