@@ -62,6 +62,7 @@
 #include "FurbleControl.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "WrapSafeTime.h"
 
 const char *LOG_TAG = "furble-control-fuzz";
 
@@ -103,8 +104,8 @@ uint32_t nowMs() {
 
 bool waitForState(Control::state_t want, uint32_t timeout_ms) {
   auto &control = Control::getInstance();
-  const uint32_t deadline = nowMs() + timeout_ms;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
     if (control.getState() == want) {
       return true;
     }
@@ -114,8 +115,8 @@ bool waitForState(Control::state_t want, uint32_t timeout_ms) {
 }
 
 bool waitUntil(const std::function<bool()> &predicate, uint32_t timeout_ms) {
-  const uint32_t deadline = nowMs() + timeout_ms;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
     if (predicate()) {
       return true;
     }
@@ -192,8 +193,8 @@ bool shutterReachesPeer(FuzzContext &ctx) {
   ctx.peer.clearEvents();
   Control::getInstance().sendCommand(Control::CMD_SHUTTER_PRESS);
   const std::string shutterChar = FujifilmVirtualCamera::shutterCharacteristicUUID().toString();
-  const uint32_t deadline = nowMs() + SHUTTER_TIMEOUT_MS;
-  while (nowMs() < deadline) {
+  const uint32_t start = nowMs();
+  while (Furble::Host::timeoutPending(start, nowMs(), SHUTTER_TIMEOUT_MS)) {
     for (const auto &write : ctx.peer.writes()) {
       if (write.characteristic == shutterChar) {
         Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
