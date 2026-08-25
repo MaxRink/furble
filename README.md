@@ -255,6 +255,21 @@ If the device is wedged, the screen is dark, and USB is not enumerating:
 4. Plug the USB cable back in. The port should enumerate.
 5. Reflash with `pio run -e m5stick-s3 -t upload`.
 
+For a responsive developer-console build, use the PMIC-safe uploader. It
+disarms the external watchdog before entering ROM download mode, verifies that
+the long-press recovery path is unlocked, and starts PlatformIO only after both
+checks pass:
+
+```sh
+python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
+  --env m5stick-s3-debug
+```
+
+If preflight cannot reach the application, it refuses to flash and prints the
+manual recovery steps above. A cancelled preflight should be followed by
+`flash cancel` on the console, or by a reboot, so normal watchdog protection is
+restored.
+
 ## Usage
 
 For a screen by screen tour of the interface with a screenshot of every page,
