@@ -511,6 +511,35 @@ bool testRollbackHealthNoOpOutsidePending() {
   return g_Failures == before;
 }
 
+bool testRollbackHealthTimingContract() {
+  std::cout << "test: rollback deadline has an explicit timing contract\n";
+  const int before = g_Failures;
+
+  check(!OTA::BootHealth::deadlineReached(0), "a new boot is inside the validation window");
+  check(!OTA::BootHealth::deadlineReached(OTA::BootHealth::VALIDATION_WINDOW_MS - 1),
+        "the last millisecond is inside the validation window");
+  check(OTA::BootHealth::deadlineReached(OTA::BootHealth::VALIDATION_WINDOW_MS),
+        "the deadline is reached at the configured window");
+  check(OTA::BootHealth::deadlineReached(OTA::BootHealth::VALIDATION_WINDOW_MS + 1),
+        "time after the deadline remains expired");
+
+  check(OTA::validationWindowFitsWatchdog(0),
+        "a board without an external watchdog has no timing conflict");
+  check(OTA::validationWindowFitsWatchdog(OTA::BootHealth::VALIDATION_WINDOW_MS + 1),
+        "a watchdog outliving the window is compatible");
+  check(!OTA::validationWindowFitsWatchdog(OTA::BootHealth::VALIDATION_WINDOW_MS),
+        "a watchdog ending at the deadline has no scheduling margin");
+
+  // The StickS3 PM1 watchdog is currently 10 seconds. Keep this explicit
+  // regression guard until runtime rollback integration either lengthens the
+  // watchdog or deliberately shortens the health window.
+  constexpr uint32_t stickS3WatchdogMs = 10000;
+  check(!OTA::validationWindowFitsWatchdog(stickS3WatchdogMs),
+        "the current 10 second StickS3 watchdog cannot cover the 30 second window");
+
+  return g_Failures == before;
+}
+
 bool testEspIdfAdaptersAndDiagnostics() {
   std::cout << "test: ESP-IDF values and boot diagnostics have exhaustive stable mappings\n";
   const int before = g_Failures;
@@ -605,6 +634,7 @@ int main() {
   testUnknownSizeAndApplyFailure();
   testRollbackHealthContract();
   testRollbackHealthNoOpOutsidePending();
+  testRollbackHealthTimingContract();
   testEspIdfAdaptersAndDiagnostics();
 
   if (g_Failures != 0) {
