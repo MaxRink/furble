@@ -194,6 +194,9 @@ void dropConnection(void) {
     return;
   }
   g_Client->connected = false;
+  // The production config uses clean sessions. A link loss discards the
+  // broker-side subscriptions, so MQTT_EVENT_CONNECTED must recreate them.
+  g_Subscriptions.clear();
   emit(g_Client, MQTT_EVENT_DISCONNECTED);
 }
 

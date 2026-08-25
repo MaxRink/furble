@@ -224,6 +224,8 @@ int main(void) {
 
   host_mqtt::dropConnection();
   require(!mqtt.isConnected(), "unexpected broker loss did not clear connected state");
+  require(host_mqtt::subscriptions().empty(),
+          "clean-session broker retained subscriptions after link loss");
   const size_t lost_command_count = Control::commands().size();
   host_mqtt::deliver(root_topic + "/cmd/shutter", "press");
   require(Control::commands().size() == lost_command_count,
@@ -231,7 +233,7 @@ int main(void) {
   host_mqtt::restoreConnection();
   require(mqtt.isConnected(), "broker reconnect event did not restore connected state");
   require(host_mqtt::subscriptions().size() == 2,
-          "reconnect duplicated MQTT subscriptions in one clean session");
+          "connected event did not recreate clean-session MQTT subscriptions");
 
   require(host_mqtt::hasRetained("homeassistant/device/furble_hub-42/config"),
           "hub discovery was not retained");

@@ -11,18 +11,19 @@ The host target compiles the production `FurbleMQTT.cpp` with small dependency
 shims. Its in-process broker model accepts publications, stores retained
 records, enforces client state and subscription filters, and delivers retained
 records after subscription. It removes retained records on an empty retained
-publish, clears subscriptions when a client is destroyed, rejects malformed
-filters, and applies the MQTT `$` wildcard rule. It records outgoing QoS and
-retain flags. It does not claim to model a wire-level QoS handshake, TLS,
-broker persistence, or concurrent esp-mqtt callbacks.
+publish, clears clean-session subscriptions on destruction or link loss,
+rejects malformed filters, and applies the MQTT `$` wildcard rule. It records
+outgoing QoS and retain flags. It does not claim to model a wire-level QoS
+handshake, TLS, broker persistence, or concurrent esp-mqtt callbacks.
 
 The command test covers generic network readiness, Home Assistant discovery,
 retained Home Assistant status delivery, reconnect, offline command gating,
 subscription filtering, fragmented frames, empty and malformed payloads,
 oversized hold values, and inactive Control routing. It also exercises
-unexpected link loss and a deterministic reconnect event, retained discovery
-deletion, clean-session subscription reset, invalid filters, and `$` topic
-exclusion. Raw client fixtures verify repeated init/destroy/reset cleanup.
+unexpected link loss and a deterministic reconnect event that recreates the
+clean-session subscriptions, retained discovery deletion, clean-session
+subscription reset, invalid filters, and `$` topic exclusion. Raw client
+fixtures verify repeated init/destroy/reset cleanup.
 
 ## Implementation state
 
