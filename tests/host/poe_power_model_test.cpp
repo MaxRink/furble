@@ -44,10 +44,8 @@ void checkHatWithoutNegotiatedPower(void) {
   const auto &state = model.state();
   check(state.hatPresent == TriState::YES, "HAT presence is explicit");
   check(state.hatCapable == TriState::YES, "HAT capability is explicit");
-  check(state.poeAvailable == TriState::NO,
-        "a capable HAT without negotiation has no PoE power");
-  check(state.ethernetLink == EthernetLink::UP,
-        "link state does not imply PoE availability");
+  check(state.poeAvailable == TriState::NO, "a capable HAT without negotiation has no PoE power");
+  check(state.ethernetLink == EthernetLink::UP, "link state does not imply PoE availability");
 }
 
 void checkNegotiatedPoe(void) {
@@ -72,8 +70,7 @@ void checkPowerLossAndRecovery(void) {
   model.setEthernetLink(EthernetLink::DOWN);
   check(model.state().hatPresent == TriState::YES,
         "power loss does not erase physical HAT presence");
-  check(model.state().hatCapable == TriState::YES,
-        "power loss does not erase HAT capability");
+  check(model.state().hatCapable == TriState::YES, "power loss does not erase HAT capability");
   check(model.state().poeAvailable == TriState::NO, "power loss is observable in fixture");
   check(model.state().ethernetLink == EthernetLink::DOWN, "power loss can take link down");
 
@@ -93,8 +90,7 @@ void checkUnknownIsNotInferred(void) {
   model.setUsbExternalPower(TriState::UNKNOWN);
   check(model.state().poeAvailable == TriState::UNKNOWN,
         "unknown PoE remains unknown despite link-up");
-  check(model.state().hatPresent == TriState::UNKNOWN,
-        "unobservable HAT presence remains unknown");
+  check(model.state().hatPresent == TriState::UNKNOWN, "unobservable HAT presence remains unknown");
   check(model.state().hatCapable == TriState::UNKNOWN,
         "unobservable HAT capability remains unknown");
 }
