@@ -291,6 +291,107 @@ void testCorruptCameraJournals(void) {
   Furble::hostPreferencesClearStorage();
 }
 
+void writeLegacyCameraFixture(const Furble::FauxNY &camera) {
+  // Seed the exact production namespace handle before the raw helper writes
+  // bytes. The helper derives its namespace prefix from the first key.
+  Furble::Preferences bootstrap;
+  check(bootstrap.begin(FURBLE_STR, false), "legacy fixture namespace opens");
+  const uint8_t marker = 1;
+  check(bootstrap.put("bootstrap", &marker, sizeof(marker)) == sizeof(marker),
+        "legacy fixture namespace seeds");
+  bootstrap.end();
+
+  const std::string key =
+      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(camera.getAddress()));
+  std::vector<uint8_t> blob(camera.getSerialisedBytes(), 0);
+  check(camera.serialise(blob.data(), blob.size()), "legacy camera blob serialises");
+  check(Furble::hostPreferencesPutRaw(key.c_str(), blob.data(), blob.size()),
+        "legacy camera blob writes");
+
+  std::vector<uint8_t> index(Furble::CameraListProtocol::LEGACY_INDEX_ENTRY_BYTES, 0);
+  std::memcpy(index.data(), key.data(),
+              std::min(key.size(), Furble::CameraListProtocol::INDEX_NAME_BYTES));
+  const uint32_t type = static_cast<uint32_t>(Furble::Camera::Type::FAUXNY);
+  std::memcpy(index.data() + Furble::CameraListProtocol::INDEX_NAME_BYTES, &type, sizeof(type));
+  check(Furble::hostPreferencesPutRaw("index", index.data(), index.size()),
+        "legacy camera index writes");
+}
+
+void testLegacyIdentityCompatibility(void) {
+  std::cout << "test: legacy camera identities retain typed lookup and removal\n";
+  Furble::hostPreferencesClearStorage();
+  Furble::CameraList::clear();
+
+  Furble::FauxNY legacy;
+  const std::string legacyKey =
+      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(legacy.getAddress()));
+  writeLegacyCameraFixture(legacy);
+  check(Furble::hostPreferencesHasKey(legacyKey.c_str()), "legacy fixture blob is present");
+  check(Furble::hostPreferencesHasKey("index"), "legacy fixture index is present");
+  Furble::Preferences inspect;
+  check(inspect.begin(FURBLE_STR, true), "legacy fixture inspect opens");
+  check(inspect.getBytesLength(legacyKey.c_str()) > 0, "legacy fixture blob is readable");
+  inspect.end();
+  Furble::CameraList::load();
+  Furble::Preferences inspectAfter;
+  check(inspectAfter.begin(FURBLE_STR, true), "legacy post-load inspect opens");
+  check(inspectAfter.getBytesLength(legacyKey.c_str()) > 0,
+        "legacy post-load blob remains readable");
+  inspectAfter.end();
+  check(Furble::CameraList::getSaveCount() == 1, "legacy index loads one camera");
+  if (Furble::CameraList::size() == 0) {
+    Furble::hostPreferencesClearStorage();
+    return;
+  }
+  auto loaded = Furble::CameraList::get(0);
+  check(Furble::CameraList::getCameraId(loaded.get()) == 1,
+        "loaded legacy camera has an immediate Companion ID");
+
+  // Reboot through the current journal path. The legacy blob remains the
+  // durable source record, and lookup must still use its serialized type.
+  Furble::CameraList::clear();
+  Furble::CameraList::load();
+  loaded = Furble::CameraList::get(0);
+  check(Furble::CameraList::getCameraId(loaded.get()) == 1,
+        "legacy camera ID survives reboot before explicit save migration");
+
+  Furble::CameraList::remove(loaded.get());
+  check(Furble::CameraList::getSaveCount() == 0,
+        "direct removal finds a legacy camera without requiring save");
+  check(Furble::hostPreferencesHasKey(legacyKey.c_str()),
+        "legacy blob remains until both journal generations exclude it");
+
+  // Equal numeric address bits remain distinct because the new representation
+  // includes the BLE address type, while a legacy lookup validates the blob's
+  // serialized type before accepting the old address-only key.
+  check(Furble::CameraListProtocol::typedAddressKey(0x123456789abcULL, 0)
+            != Furble::CameraListProtocol::typedAddressKey(0x123456789abcULL, 1),
+        "typed identities distinguish equal address bits with different types");
+
+  // Faults during direct legacy removal leave either the old committed index
+  // or a committed empty index, and the next reboot remains readable.
+  for (size_t boundary = 1; boundary <= 6; boundary++) {
+    Furble::hostPreferencesClearStorage();
+    Furble::CameraList::clear();
+    Furble::FauxNY faultCamera;
+    writeLegacyCameraFixture(faultCamera);
+    Furble::CameraList::load();
+    auto faultLoaded = Furble::CameraList::get(0);
+    Furble::hostPreferencesFailAfter(boundary);
+    Furble::CameraList::remove(faultLoaded.get());
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::clear();
+    Furble::CameraList::load();
+    const size_t count = Furble::CameraList::getSaveCount();
+    check((count == 0) || (count == 1), "legacy removal fault leaves a readable index");
+    if (count == 1) {
+      check(Furble::CameraList::getCameraId(Furble::CameraList::get(0).get()) == 1,
+            "legacy ID survives an interrupted removal");
+    }
+  }
+  Furble::hostPreferencesClearStorage();
+}
+
 bool sameGeotag(const FujifilmVirtualCamera &peer,
                 const std::array<uint8_t, Furble::FujifilmProtocol::GEOTAG_BYTES> &expected) {
   const auto &actual = peer.lastGeotag();
@@ -818,6 +919,7 @@ void testCompanionGattFlow(void) {
 int main(void) {
   FurbleHostTaskScope taskScope;
   testCorruptCameraJournals();
+  testLegacyIdentityCompatibility();
   testCompanionGattFlow();
   if (g_Failures != 0) {
     std::cerr << "companion mock-central tests: " << g_Failures << " FAILED\n";

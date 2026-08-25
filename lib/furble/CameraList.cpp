@@ -1,6 +1,7 @@
 #include <NimBLEAdvertisedDevice.h>
 #include <Preferences.h>
 
+#include <array>
 #include <cerrno>
 #include <cstdlib>
 
@@ -263,6 +264,32 @@ bool legacyCameraBlobKey(const char *name) {
 
 bool cameraBlobKey(const char *name) {
   return typedCameraBlobKey(name) || legacyCameraBlobKey(name);
+}
+
+// Every serialized camera format starts with the common MAX_NAME field,
+// followed by the exact 48-bit address value and its BLE address type. Read
+// those fields directly so legacy lookup never aliases equal address bits with
+// a different address type. A malformed or missing blob is not a match.
+bool legacyBlobMatchesCamera(Preferences &prefs, const char *name, const Camera *camera) {
+  if (!legacyCameraBlobKey(name) || camera == nullptr) {
+    return false;
+  }
+  constexpr size_t addressOffset = MAX_NAME;
+  constexpr size_t typeOffset = addressOffset + sizeof(uint64_t);
+  constexpr size_t identityBytes = typeOffset + sizeof(uint8_t);
+  const size_t bytes = prefs.getBytesLength(name);
+  if (bytes < identityBytes) {
+    return false;
+  }
+  std::array<uint8_t, identityBytes> identity = {};
+  if (prefs.get(name, identity.data(), identity.size()) != identity.size()) {
+    return false;
+  }
+  uint64_t address = 0;
+  std::memcpy(&address, identity.data() + addressOffset, sizeof(address));
+  const uint8_t addressType = identity[typeOffset];
+  return address <= 0xffffffffffffULL && address == static_cast<uint64_t>(camera->getAddress())
+         && addressType == camera->getAddress().getType();
 }
 
 bool validIndexEntry(const CameraListProtocol::IndexEntry &entry, bool allowZeroId) {
@@ -840,7 +867,7 @@ void CameraList::save(const Furble::Camera *camera) {
       entry.camera_id = existing.camera_id;
       break;
     }
-    if (existing.name == oldAddressKey && legacyCameraBlobKey(existing.name)) {
+    if (existing.name == oldAddressKey && legacyBlobMatchesCamera(m_Prefs, existing.name, camera)) {
       entry.camera_id = existing.camera_id;
       legacyMigration = true;
       legacyName = existing.name;
@@ -912,10 +939,14 @@ void CameraList::remove(Furble::Camera *camera) {
   fillSaveEntry(entry, camera);
 
   bool removed = false;
+  std::string removedName;
   size_t i = 0;
   for (i = 0; i < index.size(); i++) {
-    if (strcmp(index[i].name, entry.name) == 0) {
-      ESP_LOGI(LOG_TAG, "Deleting: %s", entry.name);
+    const bool typedMatch = strcmp(index[i].name, entry.name) == 0;
+    const bool legacyMatch = legacyBlobMatchesCamera(m_Prefs, index[i].name, camera);
+    if (typedMatch || legacyMatch) {
+      ESP_LOGI(LOG_TAG, "Deleting: %s", index[i].name);
+      removedName = index[i].name;
       index.erase(index.begin() + i);
       removed = true;
       break;
@@ -931,7 +962,7 @@ void CameraList::remove(Furble::Camera *camera) {
   // before the commit, the old generation still references it and the queue
   // is harmless. A later successful publication reclaims only after both
   // durable generations exclude the queued key.
-  if (!enqueueReclaim(entry.name)) {
+  if (!enqueueReclaim(removedName.c_str())) {
     m_Prefs.end();
     return;
   }
@@ -1058,14 +1089,20 @@ uint8_t CameraList::getCameraId(const Furble::Camera *camera) {
     return 0;
   }
   std::vector<index_entry_t> index = load_index();
-  m_Prefs.end();
-
+  uint8_t matchedId = 0;
   for (const auto &existing : index) {
     if (strcmp(existing.name, entry.name) == 0) {
-      return existing.camera_id;
+      matchedId = existing.camera_id;
+      break;
+    }
+    if (existing.name == CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()))
+        && legacyBlobMatchesCamera(m_Prefs, existing.name, camera)) {
+      matchedId = existing.camera_id;
+      break;
     }
   }
-  return 0;
+  m_Prefs.end();
+  return matchedId;
 }
 
 size_t CameraList::size(void) {
