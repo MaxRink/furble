@@ -30,6 +30,9 @@
 #define FURBLE_INDEX_SLOT_MAGIC 0x46524C49U
 // Monotonic id allocator, persisted alongside the index in the same namespace.
 #define FURBLE_PREF_NEXT_ID "cam_next_id"
+#define FURBLE_PREF_RECLAIM "reclaim"
+#define FURBLE_RECLAIM_SLOTS 2
+#define FURBLE_RECLAIM_NAME_BYTES 16
 
 namespace Furble {
 
@@ -45,6 +48,7 @@ static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_HEADER));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_CRC));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_COMMIT));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_NEXT_ID));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_RECLAIM));
 
 std::mutex CameraList::m_Mutex;
 
@@ -66,6 +70,12 @@ struct index_slot_keys_t {
   const char *crc;
   const char *commit;
 };
+
+struct reclaim_queue_t {
+  char names[FURBLE_RECLAIM_SLOTS][FURBLE_RECLAIM_NAME_BYTES];
+};
+
+static_assert(sizeof(reclaim_queue_t) == 32, "reclaim queue layout changed");
 
 const index_slot_keys_t &slotKeys(size_t slot) {
   static const index_slot_keys_t keys[] = {
@@ -139,6 +149,74 @@ bool validCameraType(uint32_t type) {
          && (type <= static_cast<uint32_t>(Camera::Type::DJI_OSMO));
 }
 
+bool readReclaimQueue(Preferences &prefs, std::vector<std::string> &names) {
+  names.clear();
+  const size_t bytes = prefs.getBytesLength(FURBLE_PREF_RECLAIM);
+  if (bytes == 0) {
+    return true;
+  }
+  if (bytes != sizeof(reclaim_queue_t)) {
+    return false;
+  }
+  reclaim_queue_t queue = {};
+  if (prefs.get(FURBLE_PREF_RECLAIM, &queue, sizeof(queue)) != sizeof(queue)) {
+    return false;
+  }
+  for (size_t i = 0; i < FURBLE_RECLAIM_SLOTS; i++) {
+    if (queue.names[i][0] == '\0') {
+      continue;
+    }
+    if (::strnlen(queue.names[i], FURBLE_RECLAIM_NAME_BYTES) >= FURBLE_RECLAIM_NAME_BYTES
+        || !Preferences::validNvsKey(queue.names[i])) {
+      return false;
+    }
+    names.emplace_back(queue.names[i]);
+  }
+  return true;
+}
+
+bool writeReclaimQueue(Preferences &prefs, const std::vector<std::string> &names) {
+  if (names.empty()) {
+    if (!prefs.isKey(FURBLE_PREF_RECLAIM)) {
+      return true;
+    }
+    return prefs.remove(FURBLE_PREF_RECLAIM);
+  }
+  if (names.size() > FURBLE_RECLAIM_SLOTS) {
+    return false;
+  }
+  reclaim_queue_t queue = {};
+  for (size_t i = 0; i < names.size(); i++) {
+    if (names[i].size() >= FURBLE_RECLAIM_NAME_BYTES
+        || !Preferences::validNvsKey(names[i].c_str())) {
+      return false;
+    }
+    std::strncpy(queue.names[i], names[i].c_str(), FURBLE_RECLAIM_NAME_BYTES - 1);
+  }
+  return prefs.put(FURBLE_PREF_RECLAIM, &queue, sizeof(queue)) == sizeof(queue);
+}
+
+bool slotReferences(Preferences &prefs, size_t slot, const char *name) {
+  std::vector<uint8_t> bytes;
+  uint32_t generation = 0;
+  if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID) {
+    // An invalid slot is conservatively treated as a reference. This keeps a
+    // blob available for recovery if the other slot is damaged later.
+    return true;
+  }
+  std::vector<CameraListProtocol::IndexEntry> entries;
+  if (!CameraListProtocol::decodeIndex(bytes.data(), bytes.size(),
+                                       CameraListProtocol::IndexFormat::CURRENT, entries)) {
+    return true;
+  }
+  for (const auto &entry : entries) {
+    if (std::strncmp(entry.name, name, FURBLE_RECLAIM_NAME_BYTES) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 std::vector<std::shared_ptr<Furble::Camera>> CameraList::m_ConnectList;
@@ -208,8 +286,52 @@ bool CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
     floor = 0xff;
   }
   const uint8_t persistedFloorValue = static_cast<uint8_t>(floor);
+  if (persistedFloorValue == persistedFloor) {
+    return true;
+  }
   return m_Prefs.put(FURBLE_PREF_NEXT_ID, &persistedFloorValue, sizeof(persistedFloorValue))
          == sizeof(persistedFloorValue);
+}
+
+bool CameraList::enqueueReclaim(const char *name) {
+  std::vector<std::string> names;
+  if (!readReclaimQueue(m_Prefs, names)) {
+    return false;
+  }
+  if (std::find(names.begin(), names.end(), name) != names.end()) {
+    return true;
+  }
+  if (names.size() >= FURBLE_RECLAIM_SLOTS) {
+    return false;
+  }
+  names.emplace_back(name);
+  return writeReclaimQueue(m_Prefs, names);
+}
+
+void CameraList::reclaimSafeBlobs(void) {
+  std::vector<std::string> names;
+  if (!readReclaimQueue(m_Prefs, names)) {
+    return;
+  }
+  std::vector<std::string> remaining;
+  bool changed = false;
+  for (const auto &name : names) {
+    if (slotReferences(m_Prefs, 0, name.c_str()) || slotReferences(m_Prefs, 1, name.c_str())) {
+      remaining.push_back(name);
+      continue;
+    }
+    // The journal has two durable generations excluding this key. Erasing
+    // the blob is now safe; if the erase or queue update is interrupted, the
+    // queue remains and the next boot retries the idempotent erase.
+    if (m_Prefs.isKey(name.c_str()) && !m_Prefs.remove(name.c_str())) {
+      remaining.push_back(name);
+      continue;
+    }
+    changed = true;
+  }
+  if (changed) {
+    (void)writeReclaimQueue(m_Prefs, remaining);
+  }
 }
 
 bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
@@ -278,6 +400,7 @@ bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   if (m_Prefs.put(keys.commit, &nextGeneration, sizeof(nextGeneration)) != sizeof(nextGeneration)) {
     return false;
   }
+  reclaimSafeBlobs();
   return true;
 }
 
@@ -514,28 +637,22 @@ void CameraList::remove(Furble::Camera *camera) {
     }
   }
 
-  // Publish the new index before garbage-collecting the old blob. A power
-  // cut therefore leaves the previous generation and all referenced data
-  // intact; an erase failure merely leaves an unreachable stale blob.
-  // The old generation remains recoverable until the new commit marker is
-  // durable. Only then is the now-unreferenced camera blob reclaimed.
-  const bool committed = removed && save_index(index);
+  if (!removed) {
+    m_Prefs.end();
+    return;
+  }
 
-  // Reclaiming is deliberately deferred until after the new index commit.
-  // This leaves an unreachable blob only if the later erase itself fails.
+  // Queue the blob before publishing the new generation. If power fails
+  // before the commit, the old generation still references it and the queue
+  // is harmless. A later successful publication reclaims only after both
+  // durable generations exclude the queued key.
+  if (!enqueueReclaim(entry.name)) {
+    m_Prefs.end();
+    return;
+  }
+  (void)save_index(index);
 
   m_Prefs.end();
-
-  if (committed) {
-    // Deleting after publication is power-cut safe: the committed index no
-    // longer references this key, while a cut before publication leaves the
-    // old generation and its blob intact.
-    // (The Preferences handle is closed above, so reopen for this one key.)
-    if (m_Prefs.begin(FURBLE_STR, false)) {
-      m_Prefs.remove(entry.name);
-      m_Prefs.end();
-    }
-  }
 
   // delete bond whether needed or not
   NimBLEDevice::deleteBond(camera->getAddress());

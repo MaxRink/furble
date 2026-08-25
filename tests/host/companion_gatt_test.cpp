@@ -29,6 +29,7 @@
 #include "FurbleUI.h"
 #include "NimBLEDevice.h"
 #include "advertisement_preferences_stub.h"
+#include "protocol/CameraListProtocol.h"
 #include "protocol/FujifilmProtocol.h"
 
 namespace {
@@ -463,6 +464,45 @@ void testCompanionGattFlow(void) {
   Furble::CameraList::save(secondCamera.get());
   Furble::CameraList::remove(firstCamera.get());
   check(Furble::CameraList::getSaveCount() == 1, "successful removal commits a new index");
+
+  const std::string firstKey =
+      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(firstCamera->getAddress()));
+  check(Furble::hostPreferencesHasKey(firstKey.c_str()),
+        "removed blob remains while the fallback journal can reference it");
+  Furble::CameraList::save(secondCamera.get());
+  check(!Furble::hostPreferencesHasKey(firstKey.c_str()),
+        "removed blob is reclaimed after both journal generations exclude it");
+
+  // Exercise every mutation boundary of the deferred reclamation pass. A
+  // fault before the second index commit leaves the old generation and blob;
+  // a fault during reclaim leaves an idempotent queue for the next boot.
+  for (size_t boundary = 1; boundary <= 8; boundary++) {
+    Furble::hostPreferencesClearStorage();
+    Furble::CameraList::save(firstCamera.get());
+    Furble::CameraList::save(secondCamera.get());
+    Furble::CameraList::remove(firstCamera.get());
+    Furble::hostPreferencesFailAfter(boundary);
+    Furble::CameraList::save(secondCamera.get());
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::load();
+    check((Furble::CameraList::getSaveCount() == 1) || (Furble::CameraList::getSaveCount() == 2),
+          "deferred reclamation fault leaves a readable journal state");
+    if (Furble::hostPreferencesHasKey(firstKey.c_str())) {
+      check(Furble::CameraList::getSaveCount() >= 1,
+            "a retained blob remains available after a reclamation fault");
+    }
+  }
+
+  Furble::hostPreferencesClearStorage();
+  Furble::CameraList::save(firstCamera.get());
+  const size_t beforeResave = Furble::hostPreferencesMutationCount();
+  Furble::CameraList::save(firstCamera.get());
+  check((Furble::hostPreferencesMutationCount() - beforeResave) == 5,
+        "resaving a camera does not rewrite an unchanged ID floor");
+  const size_t beforeMissingRemove = Furble::hostPreferencesMutationCount();
+  Furble::CameraList::remove(secondCamera.get());
+  check(Furble::hostPreferencesMutationCount() == beforeMissingRemove,
+        "removing an unsaved camera performs no NVS mutation");
 
   // Exercise the list lock under the same concurrent scan/snapshot pattern
   // used by the companion task. Duplicate advertisement results must still

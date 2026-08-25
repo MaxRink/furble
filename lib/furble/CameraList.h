@@ -94,6 +94,8 @@ class CameraList {
    * that id back to the next saved camera. Requires m_Prefs open for writing.
    */
   static bool syncCameraIdFloor(const std::vector<index_entry_t> &index);
+  static bool enqueueReclaim(const char *name);
+  static void reclaimSafeBlobs(void);
 
   /**
    * List of connectable devices.
