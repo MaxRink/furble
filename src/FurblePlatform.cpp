@@ -320,7 +320,11 @@ void Platform::initBattery(void) {
       break;
 
     default:
-      m_BatteryCaps = {true, false, false, false};
+      // An unrecognized board has no trustworthy battery backend. In
+      // particular, the Waveshare ESP32-S3-ETH is a mains/PoE node with no
+      // battery or PMIC. Do not turn M5Unified's fallback values into a fake
+      // battery percentage.
+      m_BatteryCaps = {false, false, false, false};
       m_BatteryCapacity = 0;
   }
 
