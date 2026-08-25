@@ -142,6 +142,10 @@ void setLabelIfChangedFmt(lv_obj_t *label, const char *format, Args... args) {
   setLabelIfChanged(label, text);
 }
 const lv_font_t *fontForTextSize(uint8_t textSize) {
+  // Clamp to the board maximum so a value stored past this board's limit (for
+  // example Large carried over from a larger board's NVS, or forced through the
+  // console) can never select a font that overflows the panel.
+  textSize = TextSizePolicy::clamp(textSize);
   switch (textSize) {
     case Settings::TEXT_SIZE_SMALL:
 #if defined(FURBLE_M5STICKC)
@@ -286,11 +290,11 @@ UI::UI(const interval_t &interval)
   // set display brightness
   auto brightness = Settings::load<Settings::BRIGHTNESS>();
   M5.Display.setBrightness(brightness);
-  m_DisplayOffMode = Settings::load<Settings::DISPLAY_OFF>();
+  m_DisplayOffMode = Settings::displayOffEffective();
   if (m_DisplayOffMode > 2) {
     m_DisplayOffMode = 0;
   }
-  setInactivityTimeout(Settings::load<Settings::INACTIVITY>());
+  setInactivityTimeout(Settings::inactivityEffective());
 #if defined(FURBLE_SIM)
   Sim::profilerSetDisplayState("on");
 #endif
@@ -1689,6 +1693,11 @@ UI::menu_t &UI::addMenu(const char *name,
     menu.button = addMenuItem(parent, icon, name, false, menu.grid.column, menu.grid.row);
   }
 
+  // Every menu and sub page is built here during startup, all on the main task
+  // before the UI loop begins. Yield once per page so the synchronous build
+  // never holds CPU0 long enough to starve IDLE0 and trip the task watchdog.
+  bootYield();
+
   return menu;
 }
 
@@ -1893,6 +1902,15 @@ void UI::addMainMenu(void) {
       LV_EVENT_CLICKED, this);
 
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+}
+
+void UI::bootYield(void) {
+#if !defined(FURBLE_SIM)
+  // The task loop has not started yet, so nothing else touches LVGL here and a
+  // one tick sleep is safe. It hands CPU0 to IDLE0 long enough to reset the
+  // ESP-IDF task watchdog while the menu tree is built.
+  vTaskDelay(1);
+#endif
 }
 
 void UI::displayNavigationBar(bool show) {
@@ -2214,9 +2232,13 @@ void UI::simScenarioAction(const char *action) {
   if (command.compare(0, std::char_traits<char>::length(NAV_PREFIX), NAV_PREFIX) == 0) {
     const std::string name = command.substr(std::char_traits<char>::length(NAV_PREFIX));
     static const std::unordered_map<std::string, const char *> buttons = {
+        {"connect",     m_ConnectStr       },
+        {"scan",        m_ScanStr          },
+        {"delete",      m_DeleteStr        },
         {"settings",    m_SettingsStr      },
         {"display",     m_DisplayStr       },
         {"features",    m_FeaturesStr      },
+        {"infrared",    m_IRSettingsStr    },
         {"gps",         m_GPSStr           },
         {"gps_data",    m_GPSDataStr       },
         {"nmea",        m_GPSNMEAStr       },
@@ -2226,11 +2248,13 @@ void UI::simScenarioAction(const char *action) {
         {"bluetooth",   m_BluetoothStr     },
         {"about",       m_AboutStr         },
         {"power",       m_PowerStr         },
+        {"feedback",    m_FeedbackStr      },
         {"diagnostics", m_DiagnosticsStr   },
         {"device_info", m_DeviceInfoStr    },
         {"power_state", m_PowerStateStr    },
         {"ble",         m_BLEStr           },
         {"battery",     m_BatteryStr       },
+        {"storage",     m_StorageStr       },
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {
@@ -2247,6 +2271,52 @@ void UI::simScenarioAction(const char *action) {
     lv_obj_t *button = entry->second.button;
     if (button != nullptr) {
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+    }
+    return;
+  }
+
+  // Scroll the current menu page so off-screen rows come into view. A settings
+  // page taller than the panel only shows its top rows in one screenshot, so the
+  // docs capture drives this between frames to picture every option. The scroll
+  // runs on the live LVGL page the same way a touch drag or an encoder walk past
+  // the last visible row does, so no shipping layout changes.
+  //   scroll next    one viewport down, minus a small overlap so no row is skipped
+  //   scroll top     back to the first row
+  //   scroll bottom  all the way to the last row
+  //   scroll <n>     n pixels down (negative scrolls up)
+  constexpr const char *SCROLL_PREFIX = "scroll ";
+  if (command.compare(0, std::char_traits<char>::length(SCROLL_PREFIX), SCROLL_PREFIX) == 0) {
+    const std::string arg = command.substr(std::char_traits<char>::length(SCROLL_PREFIX));
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return;
+    }
+    lv_obj_update_layout(page);
+    if (arg == "top") {
+      lv_obj_scroll_to_y(page, 0, LV_ANIM_OFF);
+    } else if (arg == "bottom") {
+      const int32_t below = lv_obj_get_scroll_bottom(page);
+      if (below > 0) {
+        lv_obj_scroll_by(page, 0, -below, LV_ANIM_OFF);
+      }
+    } else if (arg == "next") {
+      // One viewport minus an overlap band keeps a couple of rows shared between
+      // consecutive frames, so a row straddling the fold is never lost.
+      const int32_t viewport = lv_obj_get_height(page);
+      const int32_t overlap = viewport / 6;
+      int32_t delta = viewport - overlap;
+      if (delta < 1) {
+        delta = viewport;
+      }
+      const int32_t below = lv_obj_get_scroll_bottom(page);
+      if (delta > below) {
+        delta = below;
+      }
+      if (delta > 0) {
+        lv_obj_scroll_by(page, 0, -delta, LV_ANIM_OFF);
+      }
+    } else {
+      lv_obj_scroll_by(page, 0, -std::atoi(arg.c_str()), LV_ANIM_OFF);
     }
     return;
   }
@@ -2505,9 +2575,38 @@ std::string UI::simQueryState(const char *key) {
     return (below > 0 || above > 0) ? "yes" : "no";
   }
 
+  // Pixels of content still below the current viewport, so a scroll scenario can
+  // assert it reached the last row (0) after driving "scroll bottom" or a run of
+  // "scroll next" steps. Clamped at 0 so a fully scrolled page never reads
+  // negative.
+  if (query == "scroll_bottom") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(page);
+    const int32_t below = lv_obj_get_scroll_bottom(page);
+    return std::to_string(below > 0 ? below : 0);
+  }
+
+  // Pixels of content scrolled above the current viewport, so a scenario can
+  // assert "scroll top" returned the page to its first row (0).
+  if (query == "scroll_top") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(page);
+    const int32_t above = lv_obj_get_scroll_top(page);
+    return std::to_string(above > 0 ? above : 0);
+  }
+
   // Report the Text size roller's current selection so scenarios can assert the
   // saved TEXT_SIZE setting was loaded and reflected in the widget on boot.
-  if (query == "text_size") {
+  // "text_size" reports the roller selection; "text_size_options" reports how
+  // many sizes the roller offers, so a scenario can assert the small board drops
+  // Large from the list.
+  if (query == "text_size" || query == "text_size_options") {
     const auto entry = m_Menu.find(m_TextSizeStr);
     if (entry == m_Menu.end() || entry->second.page == nullptr) {
       return "unknown";
@@ -2526,6 +2625,11 @@ std::string UI::simQueryState(const char *key) {
     lv_obj_t *roller = findRoller(entry->second.page);
     if (roller == nullptr) {
       return "unknown";
+    }
+    if (query == "text_size_options") {
+      // The true option count, not the inflated string an infinite-mode roller
+      // repeats internally to fake the wrap-around.
+      return std::to_string(lv_roller_get_option_count(roller));
     }
     return std::to_string(lv_roller_get_selected(roller));
   }
@@ -2755,8 +2859,19 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         }
 
         if (camera != nullptr) {
-          lv_label_set_text(ctx->label, camera->getName().c_str());
-          lv_bar_set_value(ctx->bar, camera->getConnectProgress(), LV_ANIM_ON);
+          // This runs every 50 ms while connecting. Only touch the widgets when
+          // their value actually changes: an unconditional set relabels and
+          // redraws the progress box on every tick even when nothing moved.
+          const std::string &name = camera->getName();
+          if (ctx->connectingName != name) {
+            ctx->connectingName = name;
+            lv_label_set_text(ctx->label, name.c_str());
+          }
+          const int32_t progress = camera->getConnectProgress();
+          if (ctx->connectProgress != progress) {
+            ctx->connectProgress = progress;
+            lv_bar_set_value(ctx->bar, progress, LV_ANIM_ON);
+          }
         }
       }
       break;
@@ -3103,6 +3218,11 @@ void UI::doConnect(lv_event_t *e) {
   // the screen until the first link goes active.
   m_ConnectContext.sessionEstablished = false;
 
+  // Force the progress box to relabel on the first tick of this connect: the
+  // widgets are reused across connects, so clear the guard cache.
+  m_ConnectContext.connectingName.clear();
+  m_ConnectContext.connectProgress = -1;
+
   // activate selected cameras
   for (auto n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
@@ -3445,7 +3565,7 @@ void UI::startScan(void) {
     updateItems(menu);
   }
 
-  scan.setMode(static_cast<Scan::Mode>(Settings::load<Settings::SCAN_MODE>()));
+  scan.setMode(static_cast<Scan::Mode>(Settings::scanModeEffective()));
   scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
 
   scan.clear();
@@ -4576,13 +4696,26 @@ void UI::addTextSizeMenu(const menu_t &parent) {
 #if !defined(FURBLE_M5COREX)
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
-  lv_roller_set_options(roller, "Small\nNormal\nLarge", LV_ROLLER_MODE_INFINITE);
+  // The 80x160 M5StickC cannot fit the Large font, so it drops Large and offers
+  // only Small and Normal. Every other board offers all three.
+  const char *options =
+      (TextSizePolicy::MAX >= Settings::TEXT_SIZE_LARGE) ? "Small\nNormal\nLarge" : "Small\nNormal";
+  lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
-  uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
-  if (textSize > Settings::TEXT_SIZE_LARGE) {
-    textSize = Settings::TEXT_SIZE_NORMAL;
-  }
+  // Clamp the stored size to this board's maximum so a value carried in from a
+  // larger board lands on a valid roller row instead of running off the end.
+  uint8_t textSize = TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>());
   lv_roller_set_selected(roller, textSize, LV_ANIM_OFF);
+
+  // Explain the missing option on the boards that drop Large, so the shorter
+  // list does not look like a bug.
+  if (TextSizePolicy::MAX < Settings::TEXT_SIZE_LARGE) {
+    lv_obj_t *note = lv_label_create(cont);
+    lv_obj_set_width(note, LV_PCT(90));
+    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(note, "Large needs a bigger screen");
+  }
 
   lv_obj_t *restart = lv_button_create(cont);
   lv_obj_t *restartLabel = lv_label_create(restart);
@@ -4743,6 +4876,21 @@ void UI::addBatteryMenu(const menu_t &parent) {
 void UI::addPowerMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
 
+  // Battery Saver is the one-switch low-power profile. It overrides a bundle of
+  // power settings when on and leaves the stored individual settings untouched,
+  // so turning it off restores the user's own choices. Opt-in, default off.
+  addSettingItem(menu.page, NULL, Settings::BATTERY_SAVER);
+
+  // Static, non-focusable hint under the switch, matching the one-button hint
+  // precedent. It is never added to an input group so it takes no encoder focus.
+  lv_obj_t *batterySaverHint = lv_label_create(menu.page);
+  lv_obj_set_width(batterySaverHint, LV_PCT(100));
+  lv_label_set_long_mode(batterySaverHint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(batterySaverHint,
+                    "Battery Saver: one switch for connection saver, 60s screen off, reconnect "
+                    "backoff, balanced scan, and light sleep while connected on StickS3. Applies "
+                    "after a reboot and keeps your own settings.");
+
   // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
   // the switch does nothing on the other boards. Leave it out there.
   bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
@@ -4755,9 +4903,9 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_width(cont, LV_PCT(100));
-  // share the page when other rows are present, otherwise keep the rollers
-  // centred
-  lv_obj_set_height(cont, (sleepConn || policies) ? LV_SIZE_CONTENT : LV_PCT(100));
+  // The Battery Saver switch and hint are always present above this container,
+  // so the rollers always share the page rather than centring on their own.
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);

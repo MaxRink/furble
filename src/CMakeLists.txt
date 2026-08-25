@@ -13,6 +13,7 @@ set(furble_sources
     FurblePower.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
+    FurbleWiFi.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake
@@ -33,9 +34,11 @@ endif()
 # them out and the release binaries are unchanged.
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc)
+                         PRIV_REQUIRES console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm
+                                      fatfs sdmmc esp_wifi esp_netif esp_event nvs_flash lwip)
 else()
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc
+                         PRIV_REQUIRES console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm
+                                      fatfs sdmmc esp_wifi esp_netif esp_event nvs_flash lwip
                          REQUIRES icons)
 endif()

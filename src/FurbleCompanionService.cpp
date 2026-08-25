@@ -9,6 +9,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 namespace Furble {
 
@@ -270,9 +271,12 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       return SETTING_BOOL;
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
@@ -302,6 +306,9 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
       return SETTING_U32;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -331,9 +338,12 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
     {
       const bool v = Settings::load<bool>(type);
       value.assign(reinterpret_cast<const uint8_t *>(&v),
@@ -377,6 +387,9 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     }
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
     {
       const std::string v = Settings::load<std::string>(type);
       value.assign(v.begin(), v.end());
@@ -582,6 +595,15 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       if (m_SettingReloadCallback) {
         m_SettingReloadCallback(false);
       }
+      break;
+    case Settings::WIFI:
+      WiFi::setEnabled(Settings::load<bool>(Settings::WIFI));
+      break;
+    case Settings::NTP:
+      WiFi::setNtpEnabled(Settings::load<bool>(Settings::NTP));
+      break;
+    case Settings::NTP_SERVER:
+      WiFi::reloadNtp();
       break;
     default:
       break;

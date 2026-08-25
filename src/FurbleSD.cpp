@@ -207,6 +207,9 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       value = Settings::load<std::string>(setting.type);
       return true;
 
@@ -226,9 +229,12 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       value = Settings::load<bool>(setting.type) ? "true" : "false";
       return true;
 
@@ -412,6 +418,27 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<std::string>(setting.type, text);
       return true;
 
+    case Settings::WIFI_SSID:
+      if (text.size() > 32) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
+    case Settings::WIFI_PSK:
+      if (text.size() > 63) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
+    case Settings::NTP_SERVER:
+      if (text.empty() || (text.size() > 63)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
     case Settings::GPS:
     case Settings::GPS_NMEA:
     case Settings::MULTICONNECT:
@@ -428,9 +455,12 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
     case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
     {
       bool enabled = false;
       if (!parseBool(text, enabled)) {

@@ -253,6 +253,12 @@ class NimBLEClient {
   // When fire_callback is false the link is down but no callback fires, which
   // models the window where the peer is gone yet the app still holds a stale
   // connected flag because onDisconnect has not run.
+  //
+  // With the deferred-delete model enabled (NimBLEDevice::setDeferredClientDelete)
+  // a fire_callback drop on a self-deleting client does not free it inline. The
+  // client is queued for asynchronous reap instead, because a link-loss drop is
+  // driven from a helper thread that still holds this raw pointer. The fuzz
+  // harness reaps the queue at a quiescent point (NimBLEDevice::reapDeferredClients).
   void mockDropLink(int reason, bool fire_callback);
 
   // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
@@ -276,7 +282,18 @@ class NimBLEClient {
   bool mockRequestDelete();
   void mockCompleteStalledTerminate(int reason);
 
+  // Host test hook. Model the peer requesting its own connection parameters, as a
+  // camera does to save its own power. Runs the client's
+  // onConnParamsUpdateRequest callback with these params. When the callback
+  // accepts (returns true) the mock applies them to the live NimBLEConnInfo,
+  // mirroring the controller installing the peer's values; when it rejects
+  // (returns false) the current parameters stay in force. Returns the callback
+  // result so a test can assert the accept or reject decision.
+  bool mockPeerRequestConnParams(const ble_gap_upd_params &params);
+
  private:
+  friend class NimBLEDevice;
+
   NimBLEClientCallbacks *m_Callbacks = nullptr;
   NimBLEMockPeer *m_Peer = nullptr;
   NimBLEAddress m_Address;
@@ -285,6 +302,13 @@ class NimBLEClient {
   bool m_Connected = false;
   bool m_StuckTerminate = false;
   bool m_DeferredDelete = false;
+  // Self-delete flags recorded from setSelfDelete(). The fuzzer deferred-delete
+  // model uses m_DeleteOnDisconnect to free a client after onDisconnect,
+  // mirroring the real NimBLEClient. m_PendingReap guards against a client being
+  // queued for asynchronous reap twice by repeated drops.
+  bool m_DeleteOnDisconnect = false;
+  bool m_DeleteOnConnectFailure = false;
+  bool m_PendingReap = false;
   std::map<std::string, std::unique_ptr<NimBLERemoteService>> m_Services;
 };
 
@@ -377,6 +401,25 @@ class NimBLEDevice {
   // as the controller does with "Unable to create client; already at max". Zero
   // means unlimited. resetMock() restores unlimited.
   static void setMaxClients(size_t max);
+
+  // Enable the deferred client-delete model, off by default so the existing
+  // suites keep their simpler synchronous semantics. When enabled the mock
+  // faithfully honours setSelfDelete: a self-deleting client is freed after its
+  // onDisconnect fires (on a clean Camera-driven teardown, inline; on a link-loss
+  // mockDropLink, queued for reapDeferredClients), and deleteClient() on a client
+  // that is still connected defers instead of freeing synchronously. This is what
+  // makes the live-client count a sound leak probe across reconnect cycles and
+  // arms ASan to catch a dereference of a client after its self-delete, the
+  // reclaim use-after-free class. resetMock() disables it again.
+  static void setDeferredClientDelete(bool enabled);
+
+  // Free every client queued for asynchronous reap by a link-loss drop under the
+  // deferred-delete model. The fuzz harness calls this at a quiescent point where
+  // no other thread holds the queued pointers. Returns the number reaped.
+  static size_t reapDeferredClients();
+
+  // Number of clients queued for asynchronous reap but not yet freed.
+  static size_t pendingReapCount();
 };
 
 #endif

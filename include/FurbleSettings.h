@@ -5,6 +5,7 @@
 
 #include "Preferences.h"
 
+#include "FurbleTextSize.h"
 #include "interval.h"
 
 namespace Furble {
@@ -60,9 +61,15 @@ class Settings {
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
+    BATTERY_SAVER,
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
+    WIFI,
+    WIFI_SSID,
+    WIFI_PSK,
+    NTP,
+    NTP_SERVER,
   } type_t;
 
 #if !defined(FURBLE_NO_DISPLAY)
@@ -157,6 +164,21 @@ class Settings {
   /** Return true when an over-the-air write can affect the companion link. */
   static bool isDangerous(type_t type);
 
+  /** Return true when the Battery Saver power profile is enabled. */
+  static bool batterySaver(void);
+
+  // Effective power-setting accessors. When Battery Saver is on, each returns
+  // the battery-optimal value from the bundle, otherwise the user's stored
+  // value. The stored individual settings are never modified, so turning the
+  // profile off restores the user's own choices with no bookkeeping. Read
+  // these instead of the raw setting anywhere the value drives power behavior.
+  static bool sleepConnEffective(void);
+  static bool connSaverEffective(void);
+  static bool reconBackoffEffective(void);
+  static uint8_t scanModeEffective(void);
+  static uint8_t inactivityEffective(void);
+  static uint8_t displayOffEffective(void);
+
   /** Retrieve every setting, keyed by type. */
   static const std::unordered_map<type_t, setting_t> &getAll(void) { return m_Setting; }
 
@@ -164,13 +186,13 @@ class Settings {
   template <type_t S>
   struct storage_type;
 
-  /** Load a setting, with type deduced from the setting. */
+  /** Load a setting, with the type deduced from the setting. */
   template <type_t S>
   static typename storage_type<S>::type load() {
     return load<typename storage_type<S>::type>(S);
   }
 
-  /** Save a setting, with type deduced from the setting. */
+  /** Save a setting, with the type deduced from the setting. */
   template <type_t S>
   static void save(const typename storage_type<S>::type &value) {
     save<typename storage_type<S>::type>(S, value);
@@ -370,12 +392,36 @@ struct Settings::storage_type<Settings::DISPLAY_MODE> {
   using type = uint8_t;
 };
 #endif
+template <>
+struct Settings::storage_type<Settings::BATTERY_SAVER> {
+  using type = bool;
+};
 #if defined(FURBLE_M5STICKS3)
 template <>
 struct Settings::storage_type<Settings::WATCHDOG> {
   using type = bool;
 };
 #endif
+template <>
+struct Settings::storage_type<Settings::WIFI> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::WIFI_SSID> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::WIFI_PSK> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::NTP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::NTP_SERVER> {
+  using type = std::string;
+};
 
 }  // namespace Furble
 

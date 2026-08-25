@@ -189,7 +189,7 @@ Control::state_t Control::connectAll(void) {
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
 
-  const bool connSaver = Settings::load<Settings::CONN_SAVER>();
+  const bool connSaver = Settings::connSaverEffective();
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -390,7 +390,7 @@ std::vector<Control::Target *> Control::getTargets(void) {
 
 void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect = infiniteReconnect;
-  m_ReconnectBackoff = Settings::load<Settings::RECON_BACKOFF>();
+  m_ReconnectBackoff = Settings::reconBackoffEffective();
   m_ReconnectAttempt = 0;
   m_ReconnectHintLogged = false;
   m_ConnectAbort = false;
@@ -746,7 +746,7 @@ void Control::setState(state_t state) {
   // The setting is read once per connect, on the transition into STATE_ACTIVE.
   // Holding the lock keeps the device awake for the whole connection, which is
   // what furble did before the controller could modem sleep.
-  bool hold = (state == STATE_ACTIVE) && !Settings::load<Settings::SLEEP_CONN>();
+  bool hold = (state == STATE_ACTIVE) && !Settings::sleepConnEffective();
   if (hold == m_SleepLockHeld) {
     return;
   }

@@ -1,0 +1,40 @@
+# Exercise the sim scroll action on a page taller than the panel. The Settings
+# root overflows on the modeled M5StickS3, so it is a stable target: scrolling to
+# the bottom must clear the below-viewport remainder, and scrolling back to the
+# top must clear the above-viewport remainder. This guards the scroll capability
+# the docs scroll strips rely on.
+seed gps true
+seed saved_camera true
+wait 400
+home
+wait 300
+
+action nav settings
+wait 350
+
+# At the top the page overflows and nothing is scrolled above the viewport.
+assert ui.overflow yes
+assert ui.scroll_top 0
+
+# Scrolling to the bottom leaves no content below the viewport.
+action scroll bottom
+assert ui.scroll_bottom 0
+assert ui.overflow yes
+
+# Scrolling back to the top leaves no content above the viewport and restores the
+# below-viewport remainder.
+action scroll top
+assert ui.scroll_top 0
+assert ui.overflow yes
+
+# A single viewport step down leaves the page mid scroll: content is now above
+# the viewport and the page still overflows below. Returning to the top clears
+# the above-viewport remainder again.
+action scroll next
+assert ui.overflow yes
+print ui.scroll_top
+print ui.scroll_bottom
+action scroll top
+assert ui.scroll_top 0
+
+exit

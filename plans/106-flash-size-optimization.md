@@ -311,3 +311,91 @@ stay inside 1700K without a repartition.
 - plan 98 power-optimization-audit: RAM and energy, distinct axis from flash.
 - plan 24 sd-gpx-logging, PR #41: coordinate the `FURBLE_SD` gate.
 - plan 61 camera catalog, PR #124: vendor library growth pushes libfurble up.
+
+## Implementation state: Group A quick wins (feat/106-flash-size-quickwins)
+
+Landed as a single config-only PR off fork master `9a2f7be`, touching only the
+five committed `sdkconfig.*` files. No source, no runtime behavior change. The
+same 13 line changes are applied identically to all five board configs.
+
+### Items implemented
+
+1. Item 1, cap compiled log level to INFO. The plan named
+   `CONFIG_LOG_MAXIMUM_LEVEL_INFO=y`, which is not a real symbol in the ESP-IDF
+   log Kconfig choice. The correct way to cap the maximum at the default (INFO,
+   level 3) is `CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y`, with
+   `# CONFIG_LOG_MAXIMUM_LEVEL_VERBOSE is not set` and
+   `CONFIG_LOG_MAXIMUM_LEVEL=3`. The runtime default was already INFO
+   (`CONFIG_LOG_DEFAULT_LEVEL=3`), so no DEBUG or VERBOSE line was ever printed
+   at runtime; only their format strings are dropped from `.flash.rodata`.
+   Deviation from the plan: there is no separate `sdkconfig.debug`. The debug
+   envs share the release sdkconfig by design (see CLAUDE.md and
+   platformio.ini) and already force full logging in furble's own translation
+   units through the existing `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE` build flag, so
+   the `*-debug` builds keep their console debug logging without a second
+   config file.
+
+2. Item 2, silence release assertions. Set
+   `CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y` and
+   `CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL=1` (plus the legacy
+   `CONFIG_OPTIMIZATION_*` aliases). The build then derived
+   `CONFIG_HAL_DEFAULT_ASSERTION_LEVEL=1`, so the HAL assertion level follows to
+   SILENT too, matching the plan intent, and that derived symbol is committed
+   identically across all five files. SILENT keeps the assertion check and abort,
+   it only drops the `__FILE__` and message strings, so control flow on the
+   happy path is byte for byte identical. Because debug envs share this config,
+   a failing assert in a debug build now aborts without the message string too.
+   That is a diagnostic reduction for debug builds, not a functional change, and
+   was accepted rather than introducing separate debug sdkconfig files (a
+   structural change the CLAUDE.md design explicitly avoids).
+
+4. Item 4, drop the esp_err name table. Set
+   `# CONFIG_ESP_ERR_TO_NAME_LOOKUP is not set`. `esp_err_to_name` now returns
+   the hex code instead of a name string.
+
+5. Item 5, disable unused LVGL widgets and the second theme. Disabled
+   `LV_USE_ARCLABEL`, `LV_USE_BUTTONMATRIX` and `LV_USE_THEME_SIMPLE`, all
+   proven unused by a full grep of `src/`, `include/` and `lib/`.
+   Deviation from the plan: the plan also listed `LV_USE_TEXTAREA` as unused. It
+   is NOT safe to disable. `lv_spinbox` derives from the textarea class
+   (`lv_spinbox.c`: `.base_class = &lv_textarea_class`) and furble uses spinbox
+   in `src/FurbleCalibrate.cpp`. TEXTAREA is kept. BUTTONMATRIX is safe because
+   furble uses neither `lv_calendar` nor `lv_keyboard` (its only dependents in
+   this LVGL 9.x), and `lv_msgbox`/`lv_dropdown` no longer reference it.
+
+### Measured size delta (firmware.bin, FURBLE_VERSION=dev FURBLE_TEST=0)
+
+| Env | Before (bytes) | After (bytes) | Delta | % |
+|---|---:|---:|---:|---:|
+| m5stick-s3 | 1,264,736 | 1,183,888 | -80,848 | -6.39 |
+| m5stick-c | 1,199,984 | 1,127,216 | -72,768 | -6.06 |
+| m5stick-c-plus | 1,204,544 | 1,130,288 | -74,256 | -6.16 |
+| m5stack-core | 1,252,144 | 1,177,920 | -74,224 | -5.93 |
+| m5stack-core2 | 1,252,240 | 1,178,032 | -74,208 | -5.93 |
+
+For the primary M5StickS3 the OTA slot use drops from 72.65% to 68.01% of the
+1,700K app partition, banking about 79 KB of headroom for the WiFi hub track.
+The bulk of the saving is the log level cap and silent assertions removing
+DEBUG/VERBOSE format strings and assert `__FILE__`/message strings from
+`.flash.rodata` across every ESP-IDF component; the LVGL widget and theme
+disables contribute the remainder.
+
+### Deferred
+
+- Item 3, newlib nano formatting. Deferred to its own PR as the plan directs.
+  furble relies on float and width formatting (GPS coordinates, battery percent,
+  timer and version strings), which nano changes, so it needs isolated
+  verification in the sim and on hardware.
+- Item 6, icon audit. 18 of the 65 icon arrays are provably unreferenced
+  (`icon_restart_alt_24`, `icon_remote_gen_24`, and 16 plain size-alias twins
+  such as `icon_delete`, `icon_settings`). They are already dropped from the
+  linked image by `--gc-sections` (confirmed absent from the m5stick-s3
+  `firmware.elf` while used icons like `icon_delete_24` are present), so
+  removing their source files saves zero flash today. Deferred as a pure source
+  hygiene change with no size benefit.
+- Item 14, WiFi/Ethernet/mbedTLS hygiene scope-out. Out of scope for this pass;
+  no flash effect today and it belongs with the WiFi hub track that will
+  re-enable exactly what it needs.
+- Group C feature gating (items 7 to 13), the `FURBLE_*` compile gates. These
+  are structural source and CMake changes with behavior and UX implications and
+  remain one PR per feature, unchanged from the plan.

@@ -331,3 +331,49 @@ latency 1, timeout 512) and issued `shutterPress` 3 ms later, so the command
 is not blocked behind the renegotiation. Finding: active GPS geotagging keeps
 the link permanently fast because every geotag write counts as activity, so
 the saver only helps with GPS off or without a fix.
+
+## Peer supervision timeout cap, 2026-08-22
+
+Fix for the false-connected / undetected-drop bug (tasks #40 and #54). Hardware
+report: with a camera connected, powering the camera off left furble showing
+`control.state=active`, `control.connected=1` for well over 15 seconds, and
+shutter writes issued in that window buffered in the NimBLE stack and flushed to
+the camera when it powered back on.
+
+Root cause. The supervision timeout is the link-loss detector: it bounds how
+long a dead peer keeps reporting connected before `onDisconnect` fires. furble
+caps its own request at `m_IdleTimeout` (700 units, 7 s), but
+`onConnParamsUpdateRequest()` accepted whatever the peer asked for. A Fujifilm
+camera that requested a long supervision timeout to save its own radio power had
+that value installed as the live parameter, so a power-off then took the whole
+peer-chosen window to surface. Because Fujifilm shutter writes are write with
+response, presses in that window blocked in NimBLE and were delivered late when
+the link came back, never signalling the drop upward.
+
+Decision. `onConnParamsUpdateRequest()` now rejects any peer request whose
+`supervision_timeout` exceeds `m_IdleTimeout`, and accepts requests at or below
+it. Rejecting keeps the parameters already in force (furble's fast or idle
+profile, both bounded), which already satisfy the
+`supervision_timeout > (1 + latency) * interval * 2` margin, so detection stays
+prompt. furble does not counter-request on a reject, so there is no
+renegotiation loop; a well-behaved peer keeps furble's parameters. A peer that
+wants a shorter or equal timeout, or a different interval within the cap, is
+still honoured. With the cap a powered-off camera now drops within the bounded
+supervision window (fast about 5.1 s, idle 7 s), which drives the existing
+`STATE_ACTIVE` to `STATE_CONNECT` transition and PR89's reconnecting indicator,
+and the bounded window also fails the in-flight shutter write instead of letting
+it buffer.
+
+Tradeoff. A camera that genuinely needs a longer supervision timeout for a very
+long idle interval cannot get one above 7 s. That is intentional: dead-link
+detection latency is the user-visible property being protected, and furble's own
+idle profile already sits at the 7 s cap.
+
+Test. `tests/host/control_disconnect_test.cpp` gains
+`testPeerSupervisionTimeoutIsCapped`, driving a peer request through the new
+`NimBLEClient::mockPeerRequestConnParams()` mock hook: a 3200-unit (32 s) request
+is rejected and the live timeout stays within the cap, and a 500-unit (5 s)
+request is accepted and applied.
+
+The fast and idle timeout constants themselves are unchanged; they were already
+reasonable and hardware-soak tuned. Only the peer-accept path was uncapped.

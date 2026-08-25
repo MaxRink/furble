@@ -41,6 +41,8 @@ class Camera: public NimBLEClientCallbacks {
     SONY = 7,
     FUJIFILM_SECURE = 8,
     RICOH = 9,
+    PANASONIC_LUMIX = 10,
+    DJI_OSMO = 11,
   };
 
   enum class PairType : uint8_t {

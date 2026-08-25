@@ -43,6 +43,15 @@ class Settings {
 
   template <typename T>
   static T load(type_t type);
+
+  // Battery Saver is not modelled in this host shim, so the effective power
+  // accessors the real Control now calls just return the stored value. This
+  // keeps the shim's fresh-device semantics (sleep-while-connected on, the rest
+  // off) unchanged. Defined below the load<bool> specialization so the inline
+  // bodies do not instantiate it early.
+  static bool sleepConnEffective(void);
+  static bool connSaverEffective(void);
+  static bool reconBackoffEffective(void);
 };
 
 template <>
@@ -77,6 +86,16 @@ template <>
 inline esp_power_level_t Settings::load<esp_power_level_t>(type_t type) {
   (void)type;
   return ESP_PWR_LVL_P3;
+}
+
+inline bool Settings::sleepConnEffective(void) {
+  return load<bool>(SLEEP_CONN);
+}
+inline bool Settings::connSaverEffective(void) {
+  return load<bool>(CONN_SAVER);
+}
+inline bool Settings::reconBackoffEffective(void) {
+  return load<bool>(RECON_BACKOFF);
 }
 
 }  // namespace Furble

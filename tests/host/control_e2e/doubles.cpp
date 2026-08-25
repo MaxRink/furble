@@ -73,4 +73,16 @@ void Settings::save<bool>(type_t type, const bool &value) {
   g_Bools[static_cast<size_t>(type)].store(value);
 }
 
+// Battery Saver is not modelled here, so the effective accessors return the
+// seeded stored value. Defined after the load<bool> specialization above.
+bool Settings::sleepConnEffective(void) {
+  return load<bool>(SLEEP_CONN);
+}
+bool Settings::connSaverEffective(void) {
+  return load<bool>(CONN_SAVER);
+}
+bool Settings::reconBackoffEffective(void) {
+  return load<bool>(RECON_BACKOFF);
+}
+
 }  // namespace Furble
