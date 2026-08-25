@@ -74,6 +74,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
+    "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurblePower.cpp"
     "${FURBLE_ROOT}/src/FurbleProvision.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"

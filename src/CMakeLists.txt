@@ -10,6 +10,7 @@ set(furble_sources
     FurbleGPX.cpp
     FurbleIR.cpp
     FurbleOTA.cpp
+    FurbleOTAMQTT.cpp
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleProvision.cpp

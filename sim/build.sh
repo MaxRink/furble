@@ -200,6 +200,7 @@ for source in \
   "$ROOT/src/FurbleCalibrate.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
+  "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleProvision.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \

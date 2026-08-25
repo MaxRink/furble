@@ -278,6 +278,16 @@ target_include_directories(ota_state_machine_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(ota_state_machine_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# Transport-neutral MQTT OTA envelope and delivery policy. This is production
+# source compiled directly into the host test, so simulator and firmware use
+# the same parser, chunk ledger, and retained/replay policy.
+add_executable(ota_mqtt_protocol_test
+               ota_mqtt_protocol_test.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp)
+target_include_directories(ota_mqtt_protocol_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                        -Wno-unused-parameter)
+
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
 # peer, so the full connect/disconnect/reconnect state machine is exercised here,
@@ -501,6 +511,7 @@ if(BUILD_TESTING)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
+  add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
