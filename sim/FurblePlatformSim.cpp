@@ -190,8 +190,9 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   prefs.end();
 
   // The runner checks this sidecar after the simulated power-off process exits.
-  // It is intentionally a host-only seam: the persisted keys are read back
-  // from the same Preferences store before evidence is published.
+  // It is intentionally a host-only seam: both persisted keys are read back
+  // from the same Preferences store before evidence is published. The fresh
+  // process and its scenario assertions prove that the file survived reboot.
   const char *evidencePath = std::getenv("FURBLE_SIM_DEEP_SLEEP_EVIDENCE");
   if (markerWritten > 0 && evidencePath != nullptr && evidencePath[0] != '\0') {
     Preferences verify;

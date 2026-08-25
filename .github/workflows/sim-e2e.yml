@@ -156,6 +156,9 @@ jobs:
           FURBLE_SIM_DEEP_SLEEP_PREFS: ${{ github.workspace }}/sim/.pio/furble-sim-deep-sleep-cycle.bin
         run: sh sim/scripts/run-deep-sleep.sh
 
+      - name: Test deep-sleep runner failure boundaries
+        run: sh sim/scripts/test-deep-sleep-runner.sh
+
       # Assert the compact pages fit the panel. overflow-sweep.txt runs at the
       # default Normal font; text-size-overflow-large.txt and
       # text-size-overflow-small.txt repeat the compact-page fit assertions with

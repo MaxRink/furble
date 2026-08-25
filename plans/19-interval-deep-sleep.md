@@ -336,8 +336,10 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   persistence check. The start fixture uses a 16 second delay with a 10 second
   threshold and waits through the full delay before the simulated shutdown. The
   runner verifies a host-only evidence sidecar showing that both the resume blob
-  and timed-wake marker were readable after the first process exited, and bounds
-  that process with a portable 30 second watchdog.
+  and timed-wake marker were readable before the first process exited. The fresh
+  process and its resume assertions prove those keys survived the process
+  boundary. The runner bounds the first process with a portable 30 second
+  watchdog.
 - Timer layout coverage is capability-aware in both deterministic scenarios and
   the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
   Sleep and Sleep Threshold rows are added. The unsupported StickC hides those

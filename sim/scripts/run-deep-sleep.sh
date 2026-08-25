@@ -8,6 +8,21 @@ PREFS=${FURBLE_SIM_DEEP_SLEEP_PREFS:-"$ROOT/.pio/furble-sim-deep-sleep-cycle.bin
 EVIDENCE=${FURBLE_SIM_DEEP_SLEEP_EVIDENCE:-"$PREFS.ready"}
 START_TIMEOUT=${FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT:-30}
 
+case "$START_TIMEOUT" in
+  ''|*[!0-9]*)
+    echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+timeout_digits=$START_TIMEOUT
+while [ "${timeout_digits#0}" != "$timeout_digits" ]; do
+  timeout_digits=${timeout_digits#0}
+done
+if [ -z "$timeout_digits" ]; then
+  echo "FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT must be a positive integer" >&2
+  exit 2
+fi
+
 if [ ! -x "$SIM" ]; then
   echo "Simulator binary not found: $SIM" >&2
   exit 1
@@ -27,9 +42,10 @@ run_start() {
   (
     sleep "$START_TIMEOUT"
     if kill -0 "$sim_pid" 2>/dev/null; then
-      : > "$timeout_marker"
-      kill "$sim_pid" 2>/dev/null || :
-      kill -KILL "$sim_pid" 2>/dev/null || :
+      if kill "$sim_pid" 2>/dev/null; then
+        : > "$timeout_marker"
+        kill -KILL "$sim_pid" 2>/dev/null || :
+      fi
     fi
   ) &
   watcher_pid=$!
@@ -51,14 +67,21 @@ run_start() {
   return "$sim_status"
 }
 
-# The first invocation exits at the simulated timed shutdown. The second keeps
-# the NVS file and therefore sees both the persisted resume record and wake
-# marker, exactly like app_main after a PMIC power-on.
+# The first invocation exits at the simulated timed shutdown. Its sidecar was
+# written only after the simulator read both keys back before _Exit. The second
+# process keeps the NVS file and its scenario assertions prove that the keys
+# survived the process boundary and that the resume shot completed.
 unset FURBLE_SIM_PRESERVE_PREFS
 rm -f "$EVIDENCE"
 run_start
-if [ ! -s "$EVIDENCE" ]; then
-  echo "Timed-sleep start did not persist both resume state and wake marker" >&2
+expected_evidence=resume_and_timed_wake_persisted
+if evidence=$(cat "$EVIDENCE" 2>/dev/null); then
+  :
+else
+  evidence=
+fi
+if [ "$evidence" != "$expected_evidence" ]; then
+  echo "Timed-sleep start did not verify the expected pre-exit persistence evidence" >&2
   exit 1
 fi
 export FURBLE_SIM_PRESERVE_PREFS=1
