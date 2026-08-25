@@ -37,23 +37,23 @@ target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-for
                                                  -Wno-unused-parameter)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
 
-# MQTT loopback harness. It compiles the production MQTT implementation with
-# host-only dependency shims and a mock esp-mqtt client that emits the real
-# connected/data events. No broker or network interface is used.
-add_executable(mqtt_test
+# In-process MQTT broker model. It compiles the production MQTT implementation
+# with host-only dependency shims and a deterministic client/broker seam. It
+# models subscriptions, retained delivery, and client state without a socket.
+add_executable(mqtt_host_broker_test
                mqtt_test.cpp
                ${HOST_MQTT_DIR}/cJSON.cpp
                ${HOST_MQTT_DIR}/mqtt_client_mock.cpp
                ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
                ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
-target_include_directories(mqtt_test BEFORE PRIVATE
+target_include_directories(mqtt_host_broker_test BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include)
-target_compile_definitions(mqtt_test PRIVATE FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1
-                                             FURBLE_VERSION="host-test")
-target_compile_options(mqtt_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                         -Wno-unused-parameter)
-target_link_libraries(mqtt_test PRIVATE Threads::Threads)
+target_compile_definitions(mqtt_host_broker_test PRIVATE
+                           FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1 FURBLE_VERSION="host-test")
+target_compile_options(mqtt_host_broker_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                       -Wno-unused-parameter)
+target_link_libraries(mqtt_host_broker_test PRIVATE Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
 target_link_libraries(fujifilm_camera_test PRIVATE furble_host_camera)
@@ -320,7 +320,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
-  add_test(NAME mqtt-loopback COMMAND mqtt_test)
+  add_test(NAME mqtt-host-broker COMMAND mqtt_host_broker_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)

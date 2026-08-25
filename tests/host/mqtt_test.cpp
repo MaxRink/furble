@@ -18,7 +18,7 @@
 namespace {
 
 [[noreturn]] void fail(const std::string &message) {
-  std::cerr << "mqtt_test: " << message << '\n';
+  std::cerr << "mqtt_host_broker_test: " << message << '\n';
   std::exit(EXIT_FAILURE);
 }
 
@@ -44,6 +44,13 @@ const host_mqtt::PublishedMessage &latestPublishedTopic(const std::string &topic
   return *found;
 }
 
+size_t discoveryCount(void) {
+  const auto &messages = host_mqtt::published();
+  return static_cast<size_t>(std::count_if(
+      messages.begin(), messages.end(),
+      [](const auto &message) { return message.topic.rfind("homeassistant/device/", 0) == 0; }));
+}
+
 const cJSON *objectItem(const cJSON *object, const char *name) {
   const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, name);
   require(item != nullptr, std::string("missing JSON member ") + name);
@@ -67,12 +74,7 @@ void assertDiscoveryPayloads(const std::string &root_topic, const std::string &c
   const std::string hub_topic = "homeassistant/device/furble_hub-42/config";
   const std::string camera_topic = "homeassistant/device/furble_hub-42_" + camera_id + "/config";
 
-  const auto &messages = host_mqtt::published();
-  const size_t discovery_count =
-      static_cast<size_t>(std::count_if(messages.begin(), messages.end(), [](const auto &message) {
-        return message.topic.rfind("homeassistant/device/", 0) == 0;
-      }));
-  require(discovery_count == 2, "expected one hub and one camera discovery publication");
+  require(discoveryCount() == 2, "expected one hub and one camera discovery publication");
 
   const auto &hub_message = publishedTopic(hub_topic);
   require(hub_message.retain, "hub discovery must be retained");
@@ -154,10 +156,33 @@ int main(void) {
           "Home Assistant status was not subscribed");
 
   const auto &online = publishedTopic(root_topic + "/status");
-  require(online.payload == "online" && online.retain, "online status publication is wrong");
+  require(online.payload == "online" && online.qos == 1 && online.retain,
+          "online status publication is wrong");
   assertDiscoveryPayloads(root_topic, camera_id);
 
   const size_t command_count = Control::commands().size();
+  host_mqtt::deliver(root_topic + "/other", "press");
+  require(Control::commands().size() == command_count,
+          "unsubscribed MQTT topic reached command routing");
+
+  host_mqtt::deliverFragmented(root_topic + "/cmd/shutter", "press", 0, 10);
+  require(Control::commands().size() == command_count,
+          "fragmented MQTT command reached command routing");
+
+  host_mqtt::deliver(root_topic + "/cmd/shutter", "");
+  require(latestPublishedTopic(root_topic + "/state/error").payload == "unknown shutter command",
+          "empty shutter command was not rejected");
+
+  host_mqtt::deliver(root_topic + "/cmd/shutter", "hold 60001");
+  require(latestPublishedTopic(root_topic + "/state/error").payload
+              == "shutter hold must be 0-60000 ms",
+          "oversized hold command was not rejected");
+
+  host_mqtt::deliver(root_topic + "/cmd/location", "not-json");
+  require(
+      latestPublishedTopic(root_topic + "/state/error").payload == "location payload is not JSON",
+      "malformed location payload was not rejected");
+
   host_mqtt::deliver(root_topic + "/cmd/shutter", " press ");
   require(Control::commands().size() == command_count + 1,
           "inbound shutter press did not reach Control");
@@ -174,6 +199,50 @@ int main(void) {
   require(latestPublishedTopic(root_topic + "/state/shutter").payload == "idle",
           "shutter release did not publish idle state");
 
-  std::cout << "mqtt host loopback: PASS\n";
+  Control::setState(Control::STATE_IDLE);
+  const size_t gated_command_count = Control::commands().size();
+  host_mqtt::deliver(root_topic + "/cmd/shutter", "press");
+  require(Control::commands().size() == gated_command_count,
+          "command reached Control while it was not active");
+  require(latestPublishedTopic(root_topic + "/state/error").payload == "shutter press rejected",
+          "inactive Control state was not rejected");
+  Control::setState(Control::STATE_ACTIVE);
+
+  const size_t before_status = discoveryCount();
+  host_mqtt::brokerPublish("homeassistant/status", "online", 0, true);
+  require(discoveryCount() == before_status + 2,
+          "retained Home Assistant status did not republish discovery");
+
+  mqtt.disconnect();
+  mqtt.hostTaskStep();
+  require(!mqtt.isConnected(), "MQTT disconnect did not clear connected state");
+  const size_t offline_command_count = Control::commands().size();
+  host_mqtt::deliver(root_topic + "/cmd/shutter", "press");
+  require(Control::commands().size() == offline_command_count,
+          "offline MQTT client accepted a command");
+
+  mqtt.reloadSetting();
+  mqtt.hostTaskStep();
+  require(host_mqtt::startCount() == 2 && mqtt.isConnected(),
+          "MQTT client did not reconnect after reload");
+  require(discoveryCount() >= before_status + 4,
+          "retained Home Assistant status was not delivered on reconnect");
+
+  mqtt.disconnect();
+  mqtt.hostTaskStep();
+  host_mqtt::reset();
+  esp_mqtt_client_config_t config = {};
+  auto *client = esp_mqtt_client_init(&config);
+  require(client != nullptr, "first raw MQTT fixture did not initialize");
+  require(esp_mqtt_client_init(&config) == nullptr,
+          "duplicate MQTT init overwrote the active client");
+  require(esp_mqtt_client_destroy(client) == ESP_OK, "first raw MQTT fixture did not destroy");
+  host_mqtt::reset();
+  client = esp_mqtt_client_init(&config);
+  require(client != nullptr, "second raw MQTT fixture did not initialize");
+  require(esp_mqtt_client_destroy(client) == ESP_OK, "second raw MQTT fixture did not destroy");
+  host_mqtt::reset();
+
+  std::cout << "mqtt in-process broker: PASS\n";
   return EXIT_SUCCESS;
 }

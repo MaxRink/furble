@@ -97,6 +97,11 @@ const std::vector<PublishedMessage> &published(void);
 const std::vector<Subscription> &subscriptions(void);
 int startCount(void);
 void deliver(const std::string &topic, const std::string &payload);
+void deliverFragmented(const std::string &topic,
+                       const std::string &payload,
+                       int current_data_offset,
+                       int total_data_len);
+void brokerPublish(const std::string &topic, const std::string &payload, int qos, bool retain);
 
 }  // namespace host_mqtt
 

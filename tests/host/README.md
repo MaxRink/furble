@@ -37,3 +37,18 @@ UndefinedBehaviorSanitizer. Run a seed directly:
 
 The CI job runs five fixed seeds plus two seed-pinned regression guards for the
 FujifilmBasic missing-shutter findings, both now fixed and passing.
+
+## MQTT host broker model
+
+`mqtt_host_broker_test` compiles the production MQTT module with host-only
+dependency shims. Its deterministic in-process broker model enforces client
+started/connected state, MQTT `+` and `#` subscription matching, retained
+message delivery, and records outgoing QoS and retain flags. It has no socket,
+TLS stack, broker persistence, QoS handshake, or concurrency model, so those
+properties still require an integration or hardware gate.
+
+Run it with the full host harness:
+
+```sh
+ctest --test-dir /tmp/furble-host-build -R mqtt-host-broker --output-on-failure
+```
