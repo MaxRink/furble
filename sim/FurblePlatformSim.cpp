@@ -8,6 +8,7 @@
 
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleWatchdog.h"
 #include "Scan.h"
 #include "clock.h"
 #include "driver.h"
@@ -18,8 +19,8 @@ namespace Furble {
 namespace {
 
 #if defined(FURBLE_M5STICKS3)
-constexpr uint8_t WDT_TIMEOUT_S = 10;
-constexpr uint32_t WDT_FEED_PERIOD_MS = 1000;
+using Watchdog::PM1_FEED_PERIOD_MS;
+using Watchdog::PM1_TIMEOUT_S;
 #endif
 
 }  // namespace
@@ -114,7 +115,7 @@ void Platform::watchdogEnable(bool enable) {
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
 
-  const uint8_t timeout = enable ? WDT_TIMEOUT_S : 0;
+  const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     return;
   }
@@ -131,7 +132,7 @@ void Platform::watchdogFeed(void) {
   }
 
   const uint32_t now = tick();
-  if (now - m_WatchdogLastFeed < WDT_FEED_PERIOD_MS) {
+  if (now - m_WatchdogLastFeed < PM1_FEED_PERIOD_MS) {
     return;
   }
   m_WatchdogLastFeed = now;

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "FurbleOTA.h"
+#include "FurbleWatchdog.h"
 
 namespace OTA = Furble::OTA;
 
@@ -533,8 +534,7 @@ bool testRollbackHealthTimingContract() {
   // The StickS3 PM1 watchdog is currently 10 seconds. Keep this explicit
   // regression guard until runtime rollback integration either lengthens the
   // watchdog or deliberately shortens the health window.
-  constexpr uint32_t stickS3WatchdogMs = 10000;
-  check(!OTA::validationWindowFitsWatchdog(stickS3WatchdogMs),
+  check(!OTA::validationWindowFitsWatchdog(Furble::Watchdog::PM1_TIMEOUT_MS),
         "the current 10 second StickS3 watchdog cannot cover the 30 second window");
 
   return g_Failures == before;

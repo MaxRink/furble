@@ -13,13 +13,14 @@
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
+#include "FurbleWatchdog.h"
 
 namespace Furble {
 
 #if defined(FURBLE_M5STICKS3)
 namespace {
-constexpr uint8_t WDT_TIMEOUT_S = 10;  // Keep the feed period below one third of this timeout.
-constexpr uint32_t WDT_FEED_PERIOD_MS = 1000;
+using Watchdog::PM1_FEED_PERIOD_MS;
+using Watchdog::PM1_TIMEOUT_S;
 }  // namespace
 #endif
 
@@ -92,7 +93,7 @@ void Platform::watchdogEnable(bool enable) {
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
 
-  const uint8_t timeout = enable ? WDT_TIMEOUT_S : 0;
+  const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     ESP_LOGE(LOG_TAG, "Failed to set M5PM1 watchdog to %u seconds", static_cast<unsigned>(timeout));
     return;
@@ -100,7 +101,7 @@ void Platform::watchdogEnable(bool enable) {
 
   if (enable) {
     m_WatchdogEnabled = true;
-    ESP_LOGI(LOG_TAG, "M5PM1 watchdog armed for %u seconds", static_cast<unsigned>(WDT_TIMEOUT_S));
+    ESP_LOGI(LOG_TAG, "M5PM1 watchdog armed for %u seconds", static_cast<unsigned>(PM1_TIMEOUT_S));
   } else {
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog disabled");
   }
@@ -112,7 +113,7 @@ void Platform::watchdogFeed(void) {
   }
 
   const uint32_t now = tick();
-  if (now - m_WatchdogLastFeed < WDT_FEED_PERIOD_MS) {
+  if (now - m_WatchdogLastFeed < PM1_FEED_PERIOD_MS) {
     return;
   }
   m_WatchdogLastFeed = now;
