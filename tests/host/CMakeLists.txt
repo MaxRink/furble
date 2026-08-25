@@ -56,9 +56,17 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
 target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
 
-add_executable(battery_status_test battery_status_test.cpp)
-target_include_directories(battery_status_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(battery_status_test PRIVATE -Wall -Wextra -Werror)
+# The PMIC is a separate chip from the ESP32. Its watchdog and download lock
+# therefore survive an ESP32 reset and must be modeled as retained state.
+add_executable(pmic_recovery_test
+               pmic_recovery_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp)
+target_include_directories(pmic_recovery_test PRIVATE
+                           ${FURBLE_ROOT}/sim/shim
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/include)
+target_compile_options(pmic_recovery_test PRIVATE -Wall -Wextra -Werror
+                                                       -Wno-unused-parameter)
 
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
@@ -523,7 +531,6 @@ if(BUILD_TESTING)
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
-  add_test(NAME battery-status COMMAND battery_status_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
 
@@ -548,6 +555,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
   add_test(NAME ethernet-transport COMMAND ethernet_test)
