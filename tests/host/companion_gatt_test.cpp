@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 
+#include "CameraList.h"
 #include "Device.h"
 #include "FujifilmBasic.h"
 #include "FujifilmVirtualCamera.h"
@@ -36,6 +37,7 @@ constexpr const char *LOCATION_UUID = "b57f4f5e-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *STATUS_UUID = "b57f4f60-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
+constexpr const char *CAMERAS_UUID = "b57f4f63-087b-4740-b71d-8262cf26ebbc";
 
 using Furble::CompanionService;
 using Furble::Control;
@@ -76,12 +78,6 @@ bool sameGeotag(const FujifilmVirtualCamera &peer,
   const auto &actual = peer.lastGeotag();
   return actual.size() == expected.size()
          && std::equal(actual.begin(), actual.end(), expected.begin());
-}
-
-std::shared_ptr<Furble::FujifilmBasic> makeCamera(FujifilmVirtualCamera &peer) {
-  NimBLEDevice::setMockPeer(&peer);
-  const NimBLEAdvertisedDevice advertisement = peer.advertisement();
-  return std::make_shared<Furble::FujifilmBasic>(&advertisement);
 }
 
 void startControlTask(void) {
@@ -137,6 +133,10 @@ class MockCentral final: public Furble::CompanionTransport {
       m_Service->handleTrigger(value.data(), value.size());
       return true;
     }
+    if (std::strcmp(uuid, CAMERAS_UUID) == 0) {
+      m_Service->handleCameras(value.data(), value.size());
+      return true;
+    }
     return false;
   }
 
@@ -151,6 +151,7 @@ class MockCentral final: public Furble::CompanionTransport {
 
   void clearEvents(void) {
     m_Indications.clear();
+    m_CameraEvents.clear();
     m_HaveStatus = false;
   }
 
@@ -163,18 +164,26 @@ class MockCentral final: public Furble::CompanionTransport {
   uint16_t getMaxPayload(void) const override { return 244; }
 
   void notify(uint8_t charId, const uint8_t *data, size_t len) override {
-    if (charId != Furble::COMPANION_CHAR_STATUS || data == nullptr || len != sizeof(m_Status)) {
+    if (data == nullptr) {
       return;
     }
-    std::memcpy(&m_Status, data, sizeof(m_Status));
-    m_HaveStatus = true;
+    if (charId == Furble::COMPANION_CHAR_STATUS && len == sizeof(m_Status)) {
+      std::memcpy(&m_Status, data, sizeof(m_Status));
+      m_HaveStatus = true;
+    } else if (charId == Furble::COMPANION_CHAR_CAMERAS) {
+      m_CameraEvents.emplace_back(data, data + len);
+    }
   }
 
   void indicate(uint8_t charId, const uint8_t *data, size_t len) override {
-    if (charId != Furble::COMPANION_CHAR_SETTINGS || data == nullptr) {
+    if (data == nullptr) {
       return;
     }
-    m_Indications.emplace_back(data, data + len);
+    if (charId == Furble::COMPANION_CHAR_SETTINGS) {
+      m_Indications.emplace_back(data, data + len);
+    } else if (charId == Furble::COMPANION_CHAR_CAMERAS) {
+      m_CameraEvents.emplace_back(data, data + len);
+    }
   }
 
   void error(uint8_t, uint8_t) override {}
@@ -182,6 +191,8 @@ class MockCentral final: public Furble::CompanionTransport {
   bool haveStatus(void) const { return m_HaveStatus; }
 
   const std::vector<std::vector<uint8_t>> &indications(void) const { return m_Indications; }
+
+  const std::vector<std::vector<uint8_t>> &cameraEvents(void) const { return m_CameraEvents; }
 
  private:
   CompanionService *m_Service = nullptr;
@@ -191,6 +202,7 @@ class MockCentral final: public Furble::CompanionTransport {
   bool m_HaveStatus = false;
   CompanionService::companion_status_t m_Status = {};
   std::vector<std::vector<uint8_t>> m_Indications;
+  std::vector<std::vector<uint8_t>> m_CameraEvents;
 };
 
 class ConcurrentStatusTransport final: public Furble::CompanionTransport {
@@ -293,8 +305,18 @@ void testCompanionGattFlow(void) {
 
   FujifilmVirtualCamera first(firstConfig);
   FujifilmVirtualCamera second(secondConfig);
-  auto firstCamera = makeCamera(first);
-  auto secondCamera = makeCamera(second);
+  const NimBLEAdvertisedDevice firstAdvertisement = first.advertisement();
+  const NimBLEAdvertisedDevice secondAdvertisement = second.advertisement();
+  Furble::CameraList::clear();
+  check(Furble::CameraList::match(&firstAdvertisement),
+        "first virtual camera enters the shared CameraList");
+  check(Furble::CameraList::match(&secondAdvertisement),
+        "second virtual camera enters the shared CameraList");
+  check(Furble::CameraList::size() == 2, "CameraList exposes both saved-camera candidates");
+  auto firstCamera = Furble::CameraList::get(0);
+  auto secondCamera = Furble::CameraList::get(1);
+  Furble::CameraList::save(firstCamera.get());
+  Furble::CameraList::save(secondCamera.get());
   NimBLEDevice::setMockPeerForAddress(first.config().address, &first);
   NimBLEDevice::setMockPeerForAddress(second.config().address, &second);
 
@@ -330,6 +352,44 @@ void testCompanionGattFlow(void) {
   check(status.camera_total == 2, "status reports both selected cameras");
   check(status.camera_connected == 2, "status reports both connected cameras");
   check(status.control_state == 4, "status reports the active Control state");
+
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {0, 0xff}),
+        "cameras characteristic accepts the list operation");
+  check(central.cameraEvents().size() == 3,
+        "camera list emits one record per saved camera plus an end marker");
+  if (central.cameraEvents().size() == 3) {
+    const auto &firstRecord = central.cameraEvents()[0];
+    check(
+        firstRecord.size() == sizeof(CompanionService::companion_camera_record_t) + firstRecord[7],
+        "camera record framing is header plus bounded name bytes");
+    check(firstRecord[0] == 0 && firstRecord[1] != 0xff,
+          "camera list record carries an OK status and stable id");
+    const auto &end = central.cameraEvents()[2];
+    check(end.size() == sizeof(CompanionService::companion_camera_record_t) && end[0] == 0
+              && end[1] == 0xff,
+          "camera list terminates with the reserved id marker");
+  }
+
+  central.setSecurity(false, false);
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {3, 1}),
+        "unauthenticated cameras write reaches the service gate");
+  service.notifyCameras(true);
+  check(central.cameraEvents().empty(), "unauthenticated cameras write has no indication");
+
+  central.setSecurity(true, true);
+  central.clearEvents();
+  Furble::Settings::setBool(Furble::Settings::MULTICONNECT, true);
+  check(central.write(CAMERAS_UUID, {1, 0xfe}), "unknown camera operation is handled");
+  check(central.cameraEvents().size() == 1 && central.cameraEvents()[0][0] == 1
+            && central.cameraEvents()[0][1] == 0xfe,
+        "unknown camera id returns the explicit UNKNOWN_ID status");
+
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {3, 1}), "authenticated camera selection operation is handled");
+  check(central.cameraEvents().size() >= 2,
+        "selection returns an acknowledgement and a refreshed camera record");
 
   check(first.requestGeotag(), "first camera accepts a geotag request");
   check(second.requestGeotag(), "second camera accepts a geotag request");

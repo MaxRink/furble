@@ -144,7 +144,6 @@ bool Settings::appliesImmediately(type_t type) {
     case TEXT_SIZE:
     case INTERVAL:
     case TOUCH_CALIBRATION:
-    case MULTISELECT:
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
@@ -196,7 +195,6 @@ bool Settings::isDangerous(type_t type) {
     case GPS_ASSIST:
     case INTERVAL:
     case MULTICONNECT:
-    case MULTISELECT:
     case RECONNECT:
     case RECON_BACKOFF:
     case FAUXNY:
@@ -299,21 +297,6 @@ interval_t Settings::load<interval_t>(type_t type) {
   prefs.end();
 
   return interval;
-}
-
-template <>
-Settings::multiselect_t Settings::load<Settings::multiselect_t>(type_t type) {
-  const auto &setting = get(type);
-  multiselect_t selection = {};
-
-  m_Prefs.begin(setting.nvs_namespace, true);
-  const size_t len = m_Prefs.get(setting.key, &selection, sizeof(selection));
-  if ((len != sizeof(selection)) || (selection.count > MULTISELECT_MAX)) {
-    selection = {};
-  }
-  m_Prefs.end();
-
-  return selection;
 }
 
 template <>
@@ -544,11 +527,6 @@ void Settings::init(void) {
           save<bool>(setting.type, true);
           break;
 #endif
-        case MULTISELECT:
-        {
-          multiselect_t selection = {};
-          save<multiselect_t>(setting.type, selection);
-        } break;
         case GPS:
         case IMU:
         case GPS_NMEA:

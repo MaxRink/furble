@@ -36,7 +36,9 @@ void upsertIndex(std::vector<IndexEntry> &entries, const IndexEntry &entry);
  * This walks them in order and assigns fresh ids above the highest id already
  * present, so an upgraded device exposes stable ids without losing any saved
  * camera. The walk is deterministic, so the same stored order yields the same
- * ids on every boot until the next save persists them.
+ * ids on every boot until the next save persists them. If all nonzero byte
+ * values are already consumed, remaining entries retain zero rather than
+ * reusing an id that belongs to another camera.
  */
 void assignCameraIds(std::vector<IndexEntry> &entries);
 

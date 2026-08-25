@@ -508,7 +508,7 @@ bool CompanionService::applyCameraSelection(void) {
 }
 
 void CompanionService::notifyCameras(bool force) {
-  if (!m_Transport.isConnected()) {
+  if (!m_Transport.isConnected() || !m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
     return;
   }
 
@@ -724,7 +724,6 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::BULB:
     case Settings::TOUCH_CALIBRATION:
     case Settings::GPX_PERIOD:
-    case Settings::MULTISELECT:
       return SETTING_BLOB;
   }
   return SETTING_BLOB;
@@ -820,7 +819,6 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::BULB:
     case Settings::TOUCH_CALIBRATION:
     case Settings::GPX_PERIOD:
-    case Settings::MULTISELECT:
       return false;
   }
   return false;

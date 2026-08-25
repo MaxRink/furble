@@ -89,11 +89,9 @@ void assignCameraIds(std::vector<IndexEntry> &entries) {
     }
   }
   for (auto &entry : entries) {
-    if (entry.camera_id == 0) {
+    if ((entry.camera_id == 0) && (next <= 0xff)) {
       entry.camera_id = static_cast<uint8_t>(next);
-      if (next < 0xff) {
-        next++;
-      }
+      next++;
     }
   }
 }

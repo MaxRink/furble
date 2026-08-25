@@ -140,14 +140,6 @@ class Settings {
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
-  static constexpr size_t MULTISELECT_MAX = 8;
-  static constexpr size_t MULTISELECT_NAME_MAX = 16;
-
-  typedef struct __attribute__((packed)) {
-    char name[MULTISELECT_MAX][MULTISELECT_NAME_MAX];
-    uint8_t count;
-  } multiselect_t;
-
   /** Default maximum CPU frequency in MHz, matches Platform. */
   static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
 

@@ -5,6 +5,7 @@
 // production wire metadata and type names visible to FurbleCompanionService,
 // while the values live in typed in-memory maps instead of NVS.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -27,7 +28,6 @@ class Settings {
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
-    IMU,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -61,12 +61,19 @@ class Settings {
     BUTTON_MODE,
     AUTO_OFF,
     LOW_BATT,
-    AUTO_OFF_CHARGING,
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
     BATTERY_SAVER,
   } type_t;
+
+  static constexpr size_t MULTISELECT_MAX = 8;
+  static constexpr size_t MULTISELECT_NAME_MAX = 16;
+
+  typedef struct {
+    char name[MULTISELECT_MAX][MULTISELECT_NAME_MAX];
+    uint8_t count;
+  } multiselect_t;
 
   typedef struct {
     type_t type;
@@ -107,6 +114,11 @@ class Settings {
     typedValues<T>()[type] = value;
   }
 
+  template <type_t S>
+  static void save(const typename storage_type<S>::type &value) {
+    save<typename storage_type<S>::type>(S, value);
+  }
+
   static bool sleepConnEffective(void) { return load<bool>(SLEEP_CONN); }
   static bool connSaverEffective(void) { return load<bool>(CONN_SAVER); }
   static bool reconBackoffEffective(void) { return load<bool>(RECON_BACKOFF); }
@@ -137,8 +149,18 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 };
 
 template <>
-struct Furble::Settings::storage_type<Furble::Settings::IMU> {
+struct Furble::Settings::storage_type<Furble::Settings::MULTICONNECT> {
   using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::RECONNECT> {
+  using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MULTISELECT> {
+  using type = multiselect_t;
 };
 
 #endif

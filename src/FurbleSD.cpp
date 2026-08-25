@@ -174,8 +174,6 @@ bool validMultiselect(const Settings::multiselect_t &value) {
   if (value.count > Settings::MULTISELECT_MAX) {
     return false;
   }
-
-  // Every name slot must be null terminated so later string use is safe.
   for (size_t i = 0; i < Settings::MULTISELECT_MAX; i++) {
     bool terminated = false;
     for (size_t j = 0; j < Settings::MULTISELECT_NAME_MAX; j++) {
@@ -280,8 +278,12 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     }
 
     case Settings::MULTISELECT:
-      // Runtime camera selection, not a user preference worth backing up.
-      return false;
+    {
+      const Settings::multiselect_t selection =
+          Settings::load<Settings::multiselect_t>(setting.type);
+      value = sizedHex(&selection, sizeof(selection));
+      return true;
+    }
   }
   return false;
 }
@@ -509,8 +511,14 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     }
 
     case Settings::MULTISELECT:
-      // Runtime camera selection, not a user preference worth restoring.
-      return false;
+    {
+      Settings::multiselect_t selection = {};
+      if (!decodeSizedHex(text, &selection, sizeof(selection)) || !validMultiselect(selection)) {
+        return false;
+      }
+      Settings::save<Settings::multiselect_t>(setting.type, selection);
+      return true;
+    }
   }
   return false;
 }

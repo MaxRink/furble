@@ -177,6 +177,12 @@ void testAssignCameraIds() {
   assignCameraIds(settled);
   check(settled[0].camera_id == 5 && settled[1].camera_id == 6,
         "assignCameraIds leaves fully numbered entries untouched");
+
+  std::vector<IndexEntry> exhausted = {makeEntry("last", 1), makeEntry("overflow", 2)};
+  exhausted[0].camera_id = 0xff;
+  assignCameraIds(exhausted);
+  check(exhausted[0].camera_id == 0xff && exhausted[1].camera_id == 0,
+        "assignCameraIds never reuses an id after the byte range is exhausted");
 }
 
 void testMigrationFullFlow() {

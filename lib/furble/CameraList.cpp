@@ -42,24 +42,35 @@ bool CameraList::containsCameraId(const std::vector<index_entry_t> &index, uint8
 
 uint8_t CameraList::allocateCameraId(const std::vector<index_entry_t> &index) {
   // Persisted counter, never handed back below what it has already reached.
-  uint16_t next = m_Prefs.get<uint8_t>(FURBLE_PREF_NEXT_ID, 1);
+  uint8_t persistedNext = 1;
+  if (m_Prefs.get(FURBLE_PREF_NEXT_ID, &persistedNext, sizeof(persistedNext))
+      != sizeof(persistedNext)) {
+    persistedNext = 1;
+  }
+  uint16_t next = persistedNext;
   while ((next <= 0xff) && ((next == 0) || containsCameraId(index, static_cast<uint8_t>(next)))) {
     next++;
   }
   if ((next == 0) || (next > 0xff)) {
-    // 255 saved cameras is not reachable on this hardware. Wrap defensively.
-    next = 1;
+    // Zero is reserved for an unsaved camera. Never wrap and reuse a live id.
+    return 0;
   }
   uint16_t following = static_cast<uint16_t>(next + 1);
   if (following > 0xff) {
     following = 0xff;
   }
-  m_Prefs.put<uint8_t>(FURBLE_PREF_NEXT_ID, static_cast<uint8_t>(following));
+  const uint8_t persistedFollowing = static_cast<uint8_t>(following);
+  m_Prefs.put(FURBLE_PREF_NEXT_ID, &persistedFollowing, sizeof(persistedFollowing));
   return static_cast<uint8_t>(next);
 }
 
 void CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
-  uint16_t floor = m_Prefs.get<uint8_t>(FURBLE_PREF_NEXT_ID, 1);
+  uint8_t persistedFloor = 1;
+  if (m_Prefs.get(FURBLE_PREF_NEXT_ID, &persistedFloor, sizeof(persistedFloor))
+      != sizeof(persistedFloor)) {
+    persistedFloor = 1;
+  }
+  uint16_t floor = persistedFloor;
   for (const auto &entry : index) {
     if (entry.camera_id >= floor) {
       floor = static_cast<uint16_t>(entry.camera_id + 1);
@@ -71,7 +82,8 @@ void CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
   if (floor > 0xff) {
     floor = 0xff;
   }
-  m_Prefs.put<uint8_t>(FURBLE_PREF_NEXT_ID, static_cast<uint8_t>(floor));
+  const uint8_t persistedFloorValue = static_cast<uint8_t>(floor);
+  m_Prefs.put(FURBLE_PREF_NEXT_ID, &persistedFloorValue, sizeof(persistedFloorValue));
 }
 
 void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
