@@ -726,6 +726,17 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
   }
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
 
+  // Callers may retain the address of a client that self-deleted or was
+  // already reclaimed. Establish ownership before reading any member through
+  // that possibly stale pointer; the previous ordering called isConnected()
+  // and mockRequestDelete() first, which made the documented no-op path a
+  // host-side use-after-free under ASan.
+  const auto live = std::find_if(g_Clients.begin(), g_Clients.end(),
+                                 [client](const auto &owned) { return owned.get() == client; });
+  if (live == g_Clients.end()) {
+    return false;
+  }
+
   // Fuzzer deferred-delete model (NimBLEDevice::setDeferredClientDelete):
   // deleteClient() on a still-connected client does not free synchronously. It
   // marks the client for self-delete on its next disconnect and returns, leaving
