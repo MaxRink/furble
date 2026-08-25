@@ -43,9 +43,10 @@ FujifilmBasic missing-shutter findings, both now fixed and passing.
 `mqtt_host_broker_test` compiles the production MQTT module with host-only
 dependency shims. Its deterministic in-process broker model enforces client
 started/connected state, MQTT `+` and `#` subscription matching, retained
-message delivery, and records outgoing QoS and retain flags. It has no socket,
-TLS stack, broker persistence, QoS handshake, or concurrency model, so those
-properties still require an integration or hardware gate.
+message delivery, and records outgoing QoS and retain flags. Invalid wildcard
+filters are rejected, and wildcard filters do not match `$`-prefixed topics.
+It has no socket, TLS stack, broker persistence, QoS handshake, or concurrency
+model, so those properties still require an integration or hardware gate.
 
 Run it with the full host harness:
 
