@@ -54,7 +54,12 @@ Platform &Platform::getInstance(void) {
     instance.m_M5PM1.begin(&M5.In_I2C);
     instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
     instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
-    instance.m_M5PM1.setDownloadLock(true);        // disable BtnPWR long-press enter download mode
+    // Never lock the only recovery path which works when the ESP32 is wedged.
+    // The PMIC setting is retained independently of an ESP32 reset, so this
+    // must be an explicit write followed by a readback on every boot.
+    if (!instance.unlockDownloadRecovery()) {
+      ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
+    }
 #endif
 
     instance.initBattery();
@@ -89,6 +94,63 @@ void Platform::restart(void) {
 }
 
 #if defined(FURBLE_M5STICKS3)
+bool Platform::unlockDownloadRecovery(void) {
+  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
+    ESP_LOGW(LOG_TAG, "Unable to unlock M5PM1 download recovery");
+    return false;
+  }
+
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    ESP_LOGW(LOG_TAG, "Unable to verify M5PM1 download recovery");
+    return false;
+  }
+
+  if (locked) {
+    ESP_LOGE(LOG_TAG, "M5PM1 rejected download recovery unlock");
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "M5PM1 long-press download recovery enabled");
+  return true;
+}
+
+bool Platform::prepareFlash(void) {
+  // A serial upload can spend longer than the normal 10 second PMIC window
+  // in ROM download mode. The caller must be a deliberate local console user;
+  // the regular runtime watchdog is restored on the next application boot.
+  watchdogEnable(false);
+  uint8_t watchdogCount = 1;
+  if (!m5pm1Access(
+          [this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+      || watchdogCount != 0) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog did not verify disabled for flash");
+    return false;
+  }
+
+  if (!unlockDownloadRecovery()) {
+    watchdogEnable(true);
+    return false;
+  }
+
+  ESP_LOGW(LOG_TAG,
+           "M5PM1 watchdog disabled for flash; upload now, or run 'flash cancel'");
+  return true;
+}
+
+bool Platform::downloadRecoveryUnlocked(void) {
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+void Platform::cancelFlashPreparation(void) {
+  watchdogEnable(true);
+  ESP_LOGI(LOG_TAG, "M5PM1 watchdog restored after cancelled flash");
+}
+
 void Platform::watchdogEnable(bool enable) {
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
