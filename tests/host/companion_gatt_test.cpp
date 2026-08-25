@@ -487,10 +487,80 @@ void testCompanionGattFlow(void) {
     Furble::CameraList::load();
     check((Furble::CameraList::getSaveCount() == 1) || (Furble::CameraList::getSaveCount() == 2),
           "deferred reclamation fault leaves a readable journal state");
+    if (boundary >= 6) {
+      check(!Furble::hostPreferencesHasKey(firstKey.c_str()),
+            "boot retries safe reclamation after an interrupted delete");
+    }
     if (Furble::hostPreferencesHasKey(firstKey.c_str())) {
       check(Furble::CameraList::getSaveCount() >= 1,
             "a retained blob remains available after a reclamation fault");
     }
+  }
+
+  // A new camera blob has its own pending intent. Every cut from intent write
+  // through index publication and intent clear must either recover the prior
+  // state or remove the unreferenced blob on the next boot.
+  const std::string newKey =
+      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(firstCamera->getAddress()));
+  for (size_t boundary = 1; boundary <= 8; boundary++) {
+    Furble::hostPreferencesClearStorage();
+    Furble::CameraList::clear();
+    Furble::hostPreferencesFailAfter(boundary);
+    Furble::CameraList::save(firstCamera.get());
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::clear();
+    Furble::CameraList::load();
+    check(!Furble::hostPreferencesHasKey("pending_blob"),
+          "new-save intent is cleared or recovered after reboot");
+    if (boundary < 8) {
+      check(Furble::CameraList::getSaveCount() == 0,
+            "pre-commit new save does not publish an index");
+      check(!Furble::hostPreferencesHasKey(newKey.c_str()),
+            "pre-commit new save orphan is reclaimed on reboot");
+    } else {
+      check(Furble::CameraList::getSaveCount() == 1,
+            "committed new save survives the intent-clear boundary");
+      check(Furble::hostPreferencesHasKey(newKey.c_str()),
+            "committed new save retains its serialized blob");
+    }
+  }
+
+  // Boot cleanup itself is idempotent if the blob delete or intent clear is
+  // interrupted. Build an orphaned intent, cut each cleanup mutation, then
+  // reboot once more to finish the operation.
+  for (size_t boundary = 1; boundary <= 2; boundary++) {
+    Furble::hostPreferencesClearStorage();
+    Furble::CameraList::clear();
+    Furble::hostPreferencesFailAfter(4);
+    Furble::CameraList::save(firstCamera.get());
+    Furble::hostPreferencesResetFaults();
+    check(Furble::hostPreferencesHasKey("pending_blob"),
+          "fault fixture leaves a pending new-save intent");
+    Furble::hostPreferencesFailAfter(boundary);
+    Furble::CameraList::load();
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::clear();
+    Furble::CameraList::load();
+    check(!Furble::hostPreferencesHasKey("pending_blob"),
+          "reboot retries interrupted pending-intent cleanup");
+    check(!Furble::hostPreferencesHasKey(newKey.c_str()),
+          "reboot cleanup removes the unreferenced new blob");
+  }
+
+  // Repeated failures before publication must not accumulate unbounded new
+  // camera blobs or intents. The same key is deliberately reused here to
+  // model retries after a reboot.
+  Furble::hostPreferencesClearStorage();
+  for (size_t attempt = 0; attempt < 12; attempt++) {
+    Furble::hostPreferencesFailAfter(4);
+    Furble::CameraList::save(firstCamera.get());
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::clear();
+    Furble::CameraList::load();
+    check(!Furble::hostPreferencesHasKey("pending_blob"),
+          "repeated failed new saves leave no pending intent");
+    check(!Furble::hostPreferencesHasKey(newKey.c_str()),
+          "repeated failed new saves leave no orphan blob");
   }
 
   Furble::hostPreferencesClearStorage();

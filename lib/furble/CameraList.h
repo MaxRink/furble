@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "Camera.h"
@@ -94,6 +95,10 @@ class CameraList {
    * that id back to the next saved camera. Requires m_Prefs open for writing.
    */
   static bool syncCameraIdFloor(const std::vector<index_entry_t> &index);
+  static bool writePendingBlob(const char *name);
+  static bool pendingBlobName(std::string &name);
+  static void recoverPendingBlob(void);
+  static bool clearPendingBlob(void);
   static bool enqueueReclaim(const char *name);
   static void reclaimSafeBlobs(void);
 

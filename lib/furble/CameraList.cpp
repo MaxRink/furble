@@ -30,6 +30,7 @@
 #define FURBLE_INDEX_SLOT_MAGIC 0x46524C49U
 // Monotonic id allocator, persisted alongside the index in the same namespace.
 #define FURBLE_PREF_NEXT_ID "cam_next_id"
+#define FURBLE_PREF_PENDING_BLOB "pending_blob"
 #define FURBLE_PREF_RECLAIM "reclaim"
 #define FURBLE_RECLAIM_SLOTS 2
 #define FURBLE_RECLAIM_NAME_BYTES 16
@@ -48,6 +49,7 @@ static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_HEADER));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_CRC));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_SLOT_B_COMMIT));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_NEXT_ID));
+static_assert(Preferences::validNvsKey(FURBLE_PREF_PENDING_BLOB));
 static_assert(Preferences::validNvsKey(FURBLE_PREF_RECLAIM));
 
 std::mutex CameraList::m_Mutex;
@@ -74,6 +76,12 @@ struct index_slot_keys_t {
 struct reclaim_queue_t {
   char names[FURBLE_RECLAIM_SLOTS][FURBLE_RECLAIM_NAME_BYTES];
 };
+
+struct pending_blob_t {
+  char name[FURBLE_RECLAIM_NAME_BYTES];
+};
+
+static_assert(sizeof(pending_blob_t) == FURBLE_RECLAIM_NAME_BYTES, "pending blob layout changed");
 
 static_assert(sizeof(reclaim_queue_t) == 32, "reclaim queue layout changed");
 
@@ -217,6 +225,22 @@ bool slotReferences(Preferences &prefs, size_t slot, const char *name) {
   return false;
 }
 
+bool durableSlotReferences(Preferences &prefs, size_t slot, const char *name) {
+  std::vector<uint8_t> bytes;
+  uint32_t generation = 0;
+  if (readSlot(prefs, slot, bytes, generation) != slot_state_t::VALID) {
+    return false;
+  }
+  std::vector<CameraListProtocol::IndexEntry> entries;
+  if (!CameraListProtocol::decodeIndex(bytes.data(), bytes.size(),
+                                       CameraListProtocol::IndexFormat::CURRENT, entries)) {
+    return false;
+  }
+  return std::any_of(entries.begin(), entries.end(), [name](const auto &entry) {
+    return std::strncmp(entry.name, name, FURBLE_RECLAIM_NAME_BYTES) == 0;
+  });
+}
+
 }  // namespace
 
 std::vector<std::shared_ptr<Furble::Camera>> CameraList::m_ConnectList;
@@ -291,6 +315,63 @@ bool CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
   }
   return m_Prefs.put(FURBLE_PREF_NEXT_ID, &persistedFloorValue, sizeof(persistedFloorValue))
          == sizeof(persistedFloorValue);
+}
+
+bool CameraList::writePendingBlob(const char *name) {
+  if (name == nullptr || !Preferences::validNvsKey(name)) {
+    return false;
+  }
+  pending_blob_t pending = {};
+  std::strncpy(pending.name, name, sizeof(pending.name) - 1);
+  return m_Prefs.put(FURBLE_PREF_PENDING_BLOB, &pending, sizeof(pending)) == sizeof(pending);
+}
+
+bool CameraList::pendingBlobName(std::string &name) {
+  name.clear();
+  const size_t bytes = m_Prefs.getBytesLength(FURBLE_PREF_PENDING_BLOB);
+  if (bytes == 0) {
+    return true;
+  }
+  if (bytes != sizeof(pending_blob_t)) {
+    return false;
+  }
+  pending_blob_t pending = {};
+  if (m_Prefs.get(FURBLE_PREF_PENDING_BLOB, &pending, sizeof(pending)) != sizeof(pending)
+      || pending.name[0] == '\0'
+      || ::strnlen(pending.name, sizeof(pending.name)) >= sizeof(pending.name)
+      || !Preferences::validNvsKey(pending.name)) {
+    return false;
+  }
+  name.assign(pending.name);
+  return true;
+}
+
+bool CameraList::clearPendingBlob(void) {
+  if (!m_Prefs.isKey(FURBLE_PREF_PENDING_BLOB)) {
+    return true;
+  }
+  return m_Prefs.remove(FURBLE_PREF_PENDING_BLOB);
+}
+
+void CameraList::recoverPendingBlob(void) {
+  std::string name;
+  if (!pendingBlobName(name)) {
+    return;
+  }
+  if (name.empty()) {
+    return;
+  }
+  if (durableSlotReferences(m_Prefs, 0, name.c_str())
+      || durableSlotReferences(m_Prefs, 1, name.c_str())) {
+    (void)clearPendingBlob();
+    return;
+  }
+  // Deleting first and clearing the intent second is idempotent across a cut
+  // at either boundary. A retained intent is harmless if the delete happened.
+  if (m_Prefs.isKey(name.c_str()) && !m_Prefs.remove(name.c_str())) {
+    return;
+  }
+  (void)clearPendingBlob();
 }
 
 bool CameraList::enqueueReclaim(const char *name) {
@@ -567,6 +648,7 @@ void CameraList::save(const Furble::Camera *camera) {
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     return;
   }
+  recoverPendingBlob();
   std::vector<index_entry_t> index = load_index();
   // Persist the migrated ids into the counter floor before adding anything.
   if (!syncCameraIdFloor(index)) {
@@ -584,7 +666,8 @@ void CameraList::save(const Furble::Camera *camera) {
       break;
     }
   }
-  if (entry.camera_id == 0) {
+  const bool newCamera = entry.camera_id == 0;
+  if (newCamera) {
     entry.camera_id = allocateCameraId(index);
     if (entry.camera_id == 0) {
       m_Prefs.end();
@@ -597,13 +680,19 @@ void CameraList::save(const Furble::Camera *camera) {
   size_t dbytes = camera->getSerialisedBytes();
   std::vector<uint8_t> dbuffer(dbytes, 0);
   if (camera->serialise(dbuffer.data(), dbytes)) {
+    if (newCamera && !writePendingBlob(entry.name)) {
+      m_Prefs.end();
+      return;
+    }
     // Store the entry and the index if serialisation succeeds
     if (m_Prefs.put(entry.name, dbuffer.data(), dbytes) != dbytes) {
       m_Prefs.end();
       return;
     }
     ESP_LOGI(LOG_TAG, "Saved %s", entry.name);
-    save_index(index);
+    if (save_index(index) && newCamera) {
+      (void)clearPendingBlob();
+    }
     ESP_LOGI(LOG_TAG, "Index entries: %d", index.size());
   }
 
@@ -670,6 +759,8 @@ void CameraList::load(void) {
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     return;
   }
+  recoverPendingBlob();
+  reclaimSafeBlobs();
   bool migrated = false;
   std::vector<index_entry_t> index = load_index(&migrated);
   if (migrated) {

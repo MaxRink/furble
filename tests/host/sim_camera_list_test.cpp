@@ -54,6 +54,17 @@ int main(void) {
   check(CameraList::getCameraId(loadedFirst.get()) == 1, "first id survives reload");
   check(CameraList::getCameraId(loadedSecond.get()) == 2, "second id survives reload");
 
+  // Clearing the connectable list must not discard the persisted record
+  // identity. Re-saving the original object after a clear is a no-op, just as
+  // the production address-keyed list is.
+  CameraList::clear();
+  CameraList::save(first.get());
+  check(CameraList::getSaveCount() == 2, "clear and re-save do not duplicate a camera");
+  check(CameraList::getCameraId(first.get()) == 1,
+        "clear and re-save retain the original stable id");
+  CameraList::load();
+  loadedFirst = CameraList::get(0);
+
   CameraList::remove(loadedFirst.get());
   check(CameraList::getSaveCount() == 1, "remove deletes only one saved entry");
   CameraList::clear();

@@ -13,11 +13,18 @@ namespace {
 std::vector<std::shared_ptr<Camera>> cameras;
 struct saved_camera_t {
   std::string name;
+  uint64_t address;
   uint8_t id;
 };
 
 std::vector<saved_camera_t> savedCameras;
-std::vector<std::pair<const Camera *, uint8_t>> cameraIds;
+struct camera_identity_t {
+  const Camera *camera;
+  uint64_t address;
+  uint8_t id;
+};
+
+std::vector<camera_identity_t> cameraIds;
 std::mutex camerasMutex;
 uint16_t nextCameraId = 1;
 
@@ -38,8 +45,16 @@ void CameraList::save(const Camera *camera) {
   }
 
   const std::lock_guard<std::mutex> lock(camerasMutex);
+  const uint64_t address = camera->getAddress();
   for (const auto &entry : cameraIds) {
-    if (entry.first == camera) {
+    if ((entry.camera == camera) || (entry.address == address)) {
+      return;
+    }
+  }
+
+  for (const auto &saved : savedCameras) {
+    if (saved.address == address) {
+      cameraIds.push_back({camera, address, saved.id});
       return;
     }
   }
@@ -48,8 +63,8 @@ void CameraList::save(const Camera *camera) {
   if (id == 0) {
     return;
   }
-  savedCameras.push_back({camera->getName(), id});
-  cameraIds.emplace_back(camera, id);
+  savedCameras.push_back({camera->getName(), address, id});
+  cameraIds.push_back({camera, address, id});
 }
 
 void CameraList::remove(Camera *camera) {
@@ -64,8 +79,8 @@ void CameraList::remove(Camera *camera) {
     }
 
     for (auto idIt = cameraIds.begin(); idIt != cameraIds.end(); ++idIt) {
-      if (idIt->first == camera) {
-        const uint8_t id = idIt->second;
+      if (idIt->camera == camera) {
+        const uint8_t id = idIt->id;
         cameraIds.erase(idIt);
         for (auto savedIt = savedCameras.begin(); savedIt != savedCameras.end(); ++savedIt) {
           if (savedIt->id == id) {
@@ -86,8 +101,8 @@ void CameraList::load(void) {
   cameras.clear();
   cameraIds.clear();
   for (const auto &saved : savedCameras) {
-    auto camera = std::make_shared<Camera>(saved.name);
-    cameraIds.emplace_back(camera.get(), saved.id);
+    auto camera = std::make_shared<Camera>(saved.name, saved.address);
+    cameraIds.push_back({camera.get(), saved.address, saved.id});
     cameras.push_back(std::move(camera));
   }
 }
@@ -129,8 +144,8 @@ uint8_t CameraList::getCameraId(const Camera *camera) {
   }
   const std::lock_guard<std::mutex> lock(camerasMutex);
   for (const auto &entry : cameraIds) {
-    if (entry.first == camera) {
-      return entry.second;
+    if (entry.camera == camera) {
+      return entry.id;
     }
   }
   return 0;
