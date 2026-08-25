@@ -22,8 +22,9 @@ lock for its lifetime. On the M5StickS3 no lock is needed.
 
 For a development build, `version` reports `dev+g<revision>`, where the suffix
 is Git's unambiguous abbreviation of the checked-out commit (at least eight
-characters). Explicit release versions remain unchanged. The same identity is
-shown on the About page and exposed through companion BLE Device Information.
+characters). A tracked, staged, or non-ignored untracked change adds `.dirty`.
+Explicit release versions remain unchanged. The same identity is shown on the
+About page and exposed through companion BLE Device Information.
 
 ## Command summary
 

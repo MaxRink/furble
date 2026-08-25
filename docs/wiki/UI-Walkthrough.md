@@ -239,7 +239,8 @@ A read-only page: firmware version, device ID, build date, IDF version, uptime,
 free heap, and reset reason.
 
 Development firmware shows `dev+g<revision>` so a bench result can be tied to
-its checked-out commit. Explicit release versions are shown unchanged.
+its checked-out commit. Dirty checkouts append `.dirty`. Explicit release
+versions are shown unchanged.
 
 ### Power
 

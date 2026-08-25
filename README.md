@@ -206,8 +206,9 @@ can parse it with a split on the first colon.
 
 Development builds identify their source as `dev+g<revision>` in the About
 page, companion BLE Device Information, and the `version` command. The revision
-is Git's unambiguous abbreviation of at least eight characters; explicit
-release versions are shown unchanged.
+is Git's unambiguous abbreviation of at least eight characters. A dirty checkout
+adds the deterministic `.dirty` suffix; explicit release versions are shown
+unchanged.
 
 ```
 version                             firmware and IDF version

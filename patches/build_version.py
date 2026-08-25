@@ -25,7 +25,12 @@ def resolve_version(
 
   try:
     revision = run_git(["rev-parse", "--short=8", "HEAD"], project_dir)
+    dirty = run_git(
+        ["status", "--porcelain=v1", "--untracked-files=all"], project_dir
+    )
   except (OSError, subprocess.CalledProcessError):
     return requested
 
-  return f"dev+g{revision}" if revision else requested
+  if not revision:
+    return requested
+  return f"dev+g{revision}{'.dirty' if dirty else ''}"
