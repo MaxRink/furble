@@ -109,8 +109,9 @@ are:
 - **GPS Data**: the live GPS page.
 - **Disconnect**: drop the camera and return to the main menu.
 
-There is no spirit level or IMU page in this build. That feature is not present
-on the current firmware.
+When enabled under Settings > Sensors, Connected includes the Level spirit-level
+page and Diagnostics includes the live IMU readout. The simulator injects
+deterministic samples through the same production sensor seam.
 
 ### Remote
 

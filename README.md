@@ -23,6 +23,8 @@ What this fork adds over upstream right now:
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
 - A host SDL simulator for the UI, plus an Android companion app
+- A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
+  under Settings > Sensors; the Level page appears while connected.
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or

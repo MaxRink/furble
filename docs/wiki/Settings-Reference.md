@@ -40,8 +40,8 @@ Which physical button is which:
 | M5Stack Core, Core2, Tough | BtnA (left) | BtnB (middle) | BtnC (right) |
 
 Settings menu at a glance (in on-screen order): Display, Features, Infrared,
-GPS, Timer, Theme, Text size, Bluetooth, About, Power, Feedback, Diagnostics,
-Storage.
+Sensors, GPS, Timer, Theme, Text size, Bluetooth, About, Power, Feedback,
+Diagnostics, Storage.
 
 ## Part 1: Settings reference
 
@@ -208,6 +208,17 @@ Submenu: `Settings` > `Diagnostics`. Read-only pages:
 - Power state: frequency, sleep, power lock rows, tickless idle, Dump locks
   button.
 - BLE: live BLE status row.
+
+### Sensors
+
+Submenu: `Settings` > `Sensors`.
+
+| Setting | Default | Values | Applies | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| IMU | Off | On, Off | Restart | Enables the spirit level and live IMU diagnostics. Stored as wire ID 45. Press Restart after changing it. |
+
+When enabled, `Connected` contains **Level** and `Settings` > `Diagnostics`
+contains the live **IMU** page.
 
 ### Storage
 
