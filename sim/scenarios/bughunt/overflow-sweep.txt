@@ -1,5 +1,8 @@
 # Report content-overflow (content taller than viewport) for every reachable
 # page. Run against each panel class to surface layout overflow, worst on 80x160.
+# This is an overflow audit, not a second route-identity test: the page matrix
+# owns route reachability assertions. Each route prints its page and overflow
+# state, while compact pages carry a hard fit assertion.
 #
 # Some pages are compact and must always fit the panel: the home menu, the
 # display page and the timer settings list. Those carry an "assert ui.overflow
@@ -11,12 +14,42 @@
 # sub-pages) hold more rows than a short panel can show, so they scroll by
 # design. Those pages only print their overflow state, they are not asserted.
 seed fauxny true
+seed saved_camera true
 seed gps true
 wait 300
 # Home menu: must fit on every panel.
 print ui.page
 print ui.overflow
 assert ui.overflow no
+
+# Short camera and capability roots. Optional capability flags are enabled by
+# the CI job, so these routes are present on every matrix build.
+action nav connect
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav scan
+wait 300
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav delete
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action page ir
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action page power_off
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+
 action page settings
 wait 100
 # Display page: short, must fit on every panel.
@@ -38,8 +71,45 @@ wait 100
 print ui.page
 print ui.overflow
 action page settings
+action nav infrared
+wait 100
+print ui.page
+print ui.overflow
+action page settings
 action nav gps
 wait 100
+print ui.page
+print ui.overflow
+action nav gps_rate
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav gps_sentences
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav gps_constellation
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav gps_power
+wait 100
+print ui.page
+print ui.overflow
+action nav gps_assist
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav gps_data
+wait 300
+print ui.page
+print ui.overflow
+action nav nmea
+wait 300
 print ui.page
 print ui.overflow
 action page settings
@@ -49,11 +119,42 @@ wait 100
 print ui.page
 print ui.overflow
 assert ui.overflow no
+action nav interval_count
+wait 100
+print ui.page
+print ui.overflow
+action nav interval_delay
+wait 100
+print ui.page
+print ui.overflow
+action nav interval_shutter
+wait 100
+print ui.page
+print ui.overflow
+action nav interval_wait
+wait 100
+print ui.page
+print ui.overflow
+action nav theme
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav text_size
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
 action page settings
 action nav bluetooth
 wait 100
 print ui.page
 print ui.overflow
+action nav tx_power
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
 action page settings
 action nav about
 wait 100
@@ -61,6 +162,25 @@ print ui.page
 print ui.overflow
 action page settings
 action nav power
+wait 100
+print ui.page
+print ui.overflow
+action page settings
+action nav feedback
+wait 100
+print ui.page
+print ui.overflow
+action nav feedback_events
+wait 100
+print ui.page
+print ui.overflow
+action nav feedback_volume
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action page settings
+action nav storage
 wait 100
 print ui.page
 print ui.overflow
@@ -88,4 +208,62 @@ action nav battery
 wait 100
 print ui.page
 print ui.overflow
+
+# Connected-session pages. The remote controls and run pages are compact, so
+# assert their fit as well. Cameras and the GPS remote page are printed because
+# their content legitimately varies with camera/GPS state and panel height.
+home
+action connect
+wait 1800
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action page shutter
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action page bulb
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav bulb_duration
+wait 100
+print ui.page
+print ui.overflow
+action page bulb
+action bulb-start
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action bulb-stop
+wait 100
+action page cameras
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action page remote_timer
+wait 100
+print ui.page
+print ui.overflow
+action page remote_gps
+wait 100
+print ui.page
+print ui.overflow
+action page remote_disconnect
+wait 100
+print ui.page
+print ui.overflow
+action page connected
+wait 100
+action intervalometer
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action stop
+wait 100
 exit

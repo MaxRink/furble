@@ -120,9 +120,10 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-invalid.sh
 
-      # The layout overflow the sweep asserts against only happens on the
-      # shortest panel, so build a second simulator for the M5StickC 80x160
-      # panel. Its own build dir keeps the 135x240 binary above intact.
+      # Build a second simulator for the M5StickC 80x160 panel. Its own build
+      # dir keeps the 135x240 binary above intact. The full overflow sweep runs
+      # after the 320x240 build below, so all three representative geometries
+      # share one deterministic page list.
       - name: Build 80x160 (M5StickC) simulator
         env:
           FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
@@ -132,25 +133,19 @@ jobs:
           FURBLE_SIM_M5GFX_BOARD: board_M5StickC
         run: sh sim/build.sh
 
-      # Assert the compact pages fit the panel. overflow-sweep.txt runs at the
-      # default Normal font; text-size-overflow-large.txt and
+      # Assert the compact pages fit the panel at alternate text sizes.
+      # text-size-overflow-large.txt and
       # text-size-overflow-small.txt repeat the compact-page fit assertions with
       # the global Text size setting seeded to Large and Small, so the theme font
-      # scaling is layout-verified too. Run all three on the 135x240 binary from
-      # above and on the 80x160 binary. Both panels must pass, and the 80x160 run
-      # is the one with teeth: it fails if the narrow-panel layout regresses so
-      # the home menu or timer page overflows again at any font size. The
-      # text-size scenarios are scoped to these two narrow non-touch panels on
-      # purpose. On the 320x240 M5Stack Core, which packs a larger font into the
-      # same 240 px height, some settings pages already scroll by design at
-      # Normal, so a compact-fit assertion does not hold there.
+      # scaling is layout-verified too. The text-size scenarios stay scoped to
+      # the two narrow non-touch panels because the Core intentionally scrolls
+      # more settings content at its larger font.
       - name: Assert narrow-panel layout fits (135x240 and 80x160)
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: |
           SCENARIOS="
-          ${{ github.workspace }}/sim/scenarios/bughunt/overflow-sweep.txt
           ${{ github.workspace }}/sim/scenarios/bughunt/text-size-overflow-large.txt
           ${{ github.workspace }}/sim/scenarios/bughunt/text-size-overflow-small.txt
           "
@@ -209,6 +204,25 @@ jobs:
             echo "=== $build: page-matrix ==="
             "${{ github.workspace }}/sim/$build/furble-sim" \
               --script "${{ github.workspace }}/sim/scenarios/bughunt/page-matrix.txt"
+          done
+
+      # Overflow audit for every reachable page. The page matrix above owns
+      # route identity and scroll-end checks; this sweep owns the expected
+      # compact-page fit assertions and prints overflow diagnostics for every
+      # intentional-scroll route. Keep the same scenario across all three
+      # panel classes so a geometry-specific defect cannot hide in one job.
+      - name: Sweep overflow on every page (135x240, 80x160, 320x240)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_IR: 1
+          FURBLE_SIM_FEEDBACK: 1
+          FURBLE_SIM_SD: 1
+        run: |
+          for build in build build-stickc build-core; do
+            echo "=== $build: overflow-sweep ==="
+            "${{ github.workspace }}/sim/$build/furble-sim" \
+              --script "${{ github.workspace }}/sim/scenarios/bughunt/overflow-sweep.txt"
           done
 
       # Connection-state coverage on every panel width: a mid-session drop must be
