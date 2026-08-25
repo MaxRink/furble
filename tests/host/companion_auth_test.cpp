@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -212,6 +213,30 @@ void require(bool condition, const char *message) {
   }
 }
 
+std::string fixtureField(const std::string &path, const char *name) {
+  std::ifstream input(path);
+  require(input.good(), "companion auth fixture could not be opened");
+  const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  const std::string key = std::string("\"") + name + "\"";
+  const size_t keyPos = text.find(key);
+  require(keyPos != std::string::npos, "companion auth fixture field is missing");
+  const size_t valueStart = text.find('"', text.find(':', keyPos) + 1);
+  require(valueStart != std::string::npos, "companion auth fixture value is missing");
+  const size_t valueEnd = text.find('"', valueStart + 1);
+  require(valueEnd != std::string::npos, "companion auth fixture value is unterminated");
+  return text.substr(valueStart + 1, valueEnd - valueStart - 1);
+}
+
+std::vector<uint8_t> decodeHex(const std::string &hex) {
+  require((hex.size() % 2) == 0, "companion auth fixture hex has odd length");
+  std::vector<uint8_t> bytes;
+  bytes.reserve(hex.size() / 2);
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    bytes.push_back(static_cast<uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
+  }
+  return bytes;
+}
+
 std::array<uint8_t, Furble::CompanionAuth::RESPONSE_SIZE> responseFor(
     const std::string &password,
     const std::array<uint8_t, Furble::CompanionAuth::NONCE_SIZE> &nonce) {
@@ -293,9 +318,15 @@ void testAuthGate(void) {
   require(auth.isAuthenticated(), "empty password did not authenticate the connection");
   require(!auth.begin(nonce), "empty password unexpectedly started a challenge");
   require(auth.allowsProtected(), "empty password rejected the protected request");
+
+  auth.onConnected();
+  require(!auth.setPassword(std::string(64, 'x')),
+          "passwords over the 63-byte firmware limit are rejected");
+  require(auth.isPasswordSet() == false,
+          "an over-length password cannot replace the active secret");
 }
 
-void testHmacVector(void) {
+void testHmacVector(const std::string &fixturePath) {
   constexpr char key[] = "key";
   constexpr char message[] = "The quick brown fox jumps over the lazy dog";
   constexpr uint8_t expected[Furble::CompanionAuth::HMAC_SIZE] = {
@@ -310,13 +341,24 @@ void testHmacVector(void) {
           "HMAC vector calculation failed");
   require(std::equal(actual.begin(), actual.end(), expected),
           "host HMAC shim does not match SHA-256 HMAC");
+
+  const auto nonce = decodeHex(fixtureField(fixturePath, "nonce"));
+  const auto proof = decodeHex(fixtureField(fixturePath, "proof"));
+  require(nonce.size() == Furble::CompanionAuth::NONCE_SIZE && proof.size() == 18,
+          "companion auth fixture sizes are invalid");
+  std::array<uint8_t, Furble::CompanionAuth::NONCE_SIZE> nonceArray = {};
+  std::copy(nonce.begin(), nonce.end(), nonceArray.begin());
+  const auto response = responseFor(fixtureField(fixturePath, "password_utf8"), nonceArray);
+  require(std::equal(response.begin(), response.end(), proof.begin() + 2),
+          "firmware HMAC does not match the shared companion fixture");
 }
 
 }  // namespace
 
-int main(void) {
+int main(int argc, char **argv) {
   try {
-    testHmacVector();
+    require(argc == 2, "companion_auth_test requires its canonical fixture path");
+    testHmacVector(argv[1]);
     testAuthGate();
   } catch (const std::exception &error) {
     std::cerr << "companion_auth_test: FAIL: " << error.what() << '\n';
