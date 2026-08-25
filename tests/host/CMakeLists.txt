@@ -105,6 +105,12 @@ target_include_directories(gesture_detector_test BEFORE PRIVATE
                            ${FURBLE_ROOT}/include)
 target_compile_options(gesture_detector_test PRIVATE -Wall -Wextra -Werror)
 
+add_executable(headless_ui_contract_test headless_ui_contract_test.cpp)
+target_include_directories(headless_ui_contract_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_definitions(headless_ui_contract_test PRIVATE FURBLE_NO_DISPLAY)
+target_compile_options(headless_ui_contract_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME headless-ui-contract COMMAND headless_ui_contract_test)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE

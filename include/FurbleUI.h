@@ -26,6 +26,9 @@ class UI {
   static bool isBatteryCharging(void);
   static uint8_t getIntervalometerState(void);
   static uint16_t getIntervalometerRemaining(void);
+  // Settings writes may notify the UI from shared console code. Headless
+  // builds have no UI task, so the notification is intentionally a no-op.
+  static void notifyGestureSettingsChanged(void) {}
 
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the headless loop to carry out. */

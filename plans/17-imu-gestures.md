@@ -105,7 +105,8 @@ Detector design:
 
 Wake behaviour:
 
-- On a gesture matching `IMU_WAKE`, call the same display wake path PR12 uses,
+- On a gesture matching `IMU_WAKE`, call the display sleep/wake state machine
+  already integrated from PR12,
   and reset the LVGL inactivity counter so `processInactivity()`
   (`src/FurbleUI.cpp:2094-2112`) does not immediately dim again.
 - A wake gesture must never also fire the shutter. Gate `IMU_TRIG` on the display
@@ -142,8 +143,8 @@ from our own on-board measurement.
 
 ## Dependencies
 
-- PR12 (display off). Without it there is no off state to wake from, and the
-  wake gesture only restores brightness.
+- Repaired PR28 (display off). The display sleep/wake state machine is present
+  in this branch; gesture wake must use its shared power-lock and panel path.
 - PR16 (IMU enable). Hard dependency. `M5.Imu` returns nothing useful when
   `cfg.internal_imu` is false.
 - Independent of PR18, but both read the same accelerometer stream. If both are
@@ -222,7 +223,8 @@ Implemented:
   The detector runs at 50 Hz only when a gesture feature is enabled and the
   effective IMU setting is on.
 - Added Settings -> Sensors entries for Wake Gesture and Double-Tap Shutter.
-  Both entries are disabled when the effective IMU setting is off. The page
+  Their menu entry, roller, and switch are disabled when the effective IMU or
+  live sensor availability is off; polling also stops in that state. The page
   includes the false-trigger warning.
 - Added the Connected and Remote page checks, intervalometer guard, display
   wake hook, inactivity reset, refractory period, and short shutter command
@@ -235,10 +237,9 @@ Implemented:
 
 Deviations:
 
-- This branch is based on PR16 and does not contain the PR12 display-off state.
-  The current wake hook calls `M5.Display.wakeup()`, restores the configured
-  brightness, and triggers LVGL activity. Rebase it onto the PR12 wake helper
-  when the branches are combined.
+- This branch is based on repaired PR28 and includes the PR12 display-off
+  state. Gesture wake calls the shared `UI::wakeDisplay()` path, restores the
+  configured brightness when waking from off/dim, and triggers LVGL activity.
 - Poll power cost and hardware behavior are not measured yet. Hardware
   verification is pending.
 

@@ -25,11 +25,6 @@ set(furble_sources
     FurbleTimeKeeper.cpp
     FurbleTimeKeeperPolicy.cpp
     ../lib/furble/protocol/ProvisionTLV.cpp
-    FurbleSpinValue.cpp
-    FurbleUI.cpp
-    FurbleUIBulb.cpp
-    FurbleUIGesture.cpp
-    FurbleUIIntervalometer.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake
@@ -42,6 +37,7 @@ if(NOT FURBLE_NO_DISPLAY)
        FurbleUI.cpp
        FurbleUIAudit.cpp
        FurbleUIBulb.cpp
+       FurbleUIGesture.cpp
        FurbleUIIntervalometer.cpp)
 endif()
 

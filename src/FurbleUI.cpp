@@ -2657,6 +2657,7 @@ void UI::simScenarioActionOnUi(const char *action) {
         {"bulb_duration",     m_BulbDurationStr    },
         {"bulb",              m_RemoteBulb         },
         {"settings",          m_SettingsStr        },
+        {"sensors",           m_SensorsStr         },
         {"display",           m_DisplayStr         },
         {"features",          m_FeaturesStr        },
         {"sensors",           m_SensorsStr         },
@@ -2690,6 +2691,7 @@ void UI::simScenarioActionOnUi(const char *action) {
         {"battery",           m_BatteryStr         },
         {"storage",           m_StorageStr         },
         {"imu",               m_IMUDataStr         },
+        {"wake_gesture",      m_WakeGestureStr     },
         {"level",             m_LevelStr           },
     };
     const auto found = buttons.find(name);
@@ -3880,6 +3882,18 @@ std::string UI::simQueryState(const char *key) {
       return "no";
     }
     return lv_obj_has_flag(entry->second.button, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
+  }
+
+  if (query == "imu_gesture_controls_enabled") {
+    if (m_IMUGestureWidgets.empty()) {
+      return "no";
+    }
+    for (const auto *widget : m_IMUGestureWidgets) {
+      if (lv_obj_has_state(widget, LV_STATE_DISABLED)) {
+        return "no";
+      }
+    }
+    return "yes";
   }
 
   // Number of LVGL invalidation events since the last invalidate.reset action.
@@ -5773,6 +5787,7 @@ void UI::addWakeGestureMenu(const menu_t &parent) {
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
+  m_IMUGestureWidgets.push_back(roller);
 #if !defined(FURBLE_M5COREX)
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
@@ -8136,6 +8151,20 @@ void UI::gestureUpdate(lv_timer_t *timer) {
 }
 
 void UI::pollGesture(void) {
+  const bool imuEnabled = M5.Imu.isEnabled() && Settings::load<Settings::IMU>();
+  if (!imuEnabled) {
+    // Sensor availability can change independently of the IMU setting while
+    // this page is open. Keep every gesture control disabled and stop polling
+    // so an unplugged/failed sensor does not burn the gesture timer forever.
+    showIMUGestureWidgets(false);
+    if (m_GestureTimer != nullptr) {
+      lv_timer_del(m_GestureTimer);
+      m_GestureTimer = nullptr;
+    }
+    m_GestureDetector.reset();
+    return;
+  }
+  showIMUGestureWidgets(true);
   GestureDetector::gesture_t gesture;
   if (m_GestureDetector.poll(m_DoubleTapShutter, gesture)) {
     handleGesture(gesture);
