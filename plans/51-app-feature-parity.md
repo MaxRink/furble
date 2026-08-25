@@ -9,7 +9,7 @@ implemented. The camera phase remains design only.
   restart metadata. The settings layer also owns dangerous-write metadata.
 - Settings list records keep the v1 reader layout. The trailing flags byte uses
   bit 0 as the inverse of `appliesImmediately`. Bit 1 marks `COMPANION`,
-  `TX_POWER`, `SLEEP_CONN` and `CPU_FREQ`.
+  `TX_POWER`, `TX_ADAPTIVE` (wire ID 28), `SLEEP_CONN` and `CPU_FREQ`.
 - The capability characteristic is `b57f4f64-087b-4740-b71d-8262cf26ebbc`.
   Its capability version is 1, its wire version is 2, and it advertises only
   feature bit 0 for settings v2. The Cameras characteristic is not included.
@@ -183,12 +183,13 @@ Some settings can sever or degrade the very link that carries the write.
 |---|---|
 | COMPANION | turning it off disconnects the companion and stops advertising |
 | TX_POWER | lowering it can drop the link margin below usable at range |
+| TX_ADAPTIVE | adaptive changes can alter the link margin during the connection |
 | SLEEP_CONN | changes connection timing behavior under light sleep |
 | CPU_FREQ | changes timing margins for the BLE stack under load |
 
 Rules:
 
-1. These four carry flags bit 1. The app shows a two-step confirm that states
+1. These five carry flags bit 1. The app shows a two-step confirm that states
    the consequence in one sentence before writing.
 2. Ordering guarantee: the firmware always sends the settings indication
    response before applying a link-affecting change. `handleSettings` already
