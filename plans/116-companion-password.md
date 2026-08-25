@@ -24,7 +24,9 @@ stacked PRs.
 - A successful password write revokes the current session before its settings
   acknowledgement, and the new password requires a fresh challenge.
 - Replaced in-memory password and HMAC buffers are erased with volatile stores
-  so optimized builds cannot discard the clearing writes.
+  so optimized builds cannot discard the clearing writes. The password is held
+  in a fixed 64-byte buffer, and the 63-byte limit is measured over UTF-8
+  bytes, not Unicode scalar count or display characters.
 - Settings writes and trigger commands require both the existing encrypted,
   bonded BLE link and successful companion-password authentication. Location
   updates remain available on the encrypted companion link because they are an
@@ -38,6 +40,9 @@ stacked PRs.
 - `tests/host/companion_auth_test.cpp` covers the HMAC vector, challenge state,
   wrong responses, replay, failure limit, disconnect reset, and empty-password
   fallback.
+- `tests/protocol/golden/companion_auth.json` is the canonical begin,
+  challenge, nonce, proof, and result fixture consumed by firmware, Android,
+  and Apple conformance tests.
 - `tests/host/companion_gatt_test.cpp` drives the AUTH characteristic through a
   mock central and verifies encrypted pre-auth denial, wrong and replayed HMAC
   responses, fresh-session reset, successful settings and trigger writes, and
