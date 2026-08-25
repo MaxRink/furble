@@ -97,10 +97,10 @@ bool initializeTransport(Ethernet::Transport &transport,
     g_IP.clear();
   }
 
-  const Ethernet::Transport::EventCallback eventCallback = [lifecycleEpoch](
-      Ethernet::Transport::Event event, const std::string &ip) {
-    handleTransportEvent(event, ip, lifecycleEpoch);
-  };
+  const Ethernet::Transport::EventCallback eventCallback =
+      [lifecycleEpoch](Ethernet::Transport::Event event, const std::string &ip) {
+        handleTransportEvent(event, ip, lifecycleEpoch);
+      };
 
   if (!transport.init(eventCallback) || !transport.start()) {
     {
@@ -241,8 +241,8 @@ class EspEthTransport final: public Ethernet::Transport {
     }
     m_EthHandlerRegistered = true;
 
-    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
-                                     &EspEthTransport::eventHandler, this);
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler,
+                                     this);
     if (err != ESP_OK) {
       logError("Ethernet IP event registration", err);
       stop();
@@ -250,8 +250,8 @@ class EspEthTransport final: public Ethernet::Transport {
     }
     m_IpGotHandlerRegistered = true;
 
-    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP,
-                                     &EspEthTransport::eventHandler, this);
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &EspEthTransport::eventHandler,
+                                     this);
     if (err != ESP_OK) {
       logError("Ethernet IP-loss event registration", err);
       stop();
@@ -281,8 +281,7 @@ class EspEthTransport final: public Ethernet::Transport {
       m_IpGotHandlerRegistered = false;
     }
     if (m_IpLostHandlerRegistered) {
-      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_LOST_IP,
-                                   &EspEthTransport::eventHandler);
+      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_LOST_IP, &EspEthTransport::eventHandler);
       m_IpLostHandlerRegistered = false;
     }
     if (m_EthHandlerRegistered) {

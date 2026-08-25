@@ -104,8 +104,7 @@ int main(void) {
   check(mock.startCalls() == 2, "restart starts the transport again");
   check(mock.callbackGenerationCount() == 2, "restart installs a new callback generation");
   mock.emitQueuedEventFromGeneration(0, Furble::Ethernet::Transport::Event::LINK_UP);
-  mock.emitQueuedEventFromGeneration(0, Furble::Ethernet::Transport::Event::GOT_IP,
-                                     "203.0.113.8");
+  mock.emitQueuedEventFromGeneration(0, Furble::Ethernet::Transport::Event::GOT_IP, "203.0.113.8");
   check(!Furble::Ethernet::isConnected(), "a queued old-generation event cannot revive a restart");
   check(Furble::Ethernet::getIP().empty(), "old-generation IP cannot mutate restart state");
   check(callbackCount == 3, "old-generation events do not notify network-up");
