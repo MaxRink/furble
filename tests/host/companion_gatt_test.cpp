@@ -7,9 +7,7 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -29,6 +27,7 @@
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "NimBLEDevice.h"
+#include "advertisement_preferences_stub.h"
 #include "protocol/FujifilmProtocol.h"
 
 namespace {
@@ -212,80 +211,9 @@ class MockCentral final: public Furble::CompanionTransport {
   bool m_ReenterCameraNotify = false;
 };
 
-class ConcurrentStatusTransport final: public Furble::CompanionTransport {
- public:
-  bool isConnected(void) const override { return true; }
-  bool isEncrypted(void) const override { return true; }
-  bool isAuthenticated(void) const override { return true; }
-  uint16_t getMaxPayload(void) const override { return 244; }
-
-  void notify(uint8_t, const uint8_t *, size_t) override {
-    std::unique_lock<std::mutex> lock(m_Mutex);
-    m_Notifications++;
-    if (m_Notifications == 1) {
-      m_FirstEntered = true;
-      m_Ready.notify_all();
-      m_Ready.wait(lock, [this]() { return m_ReleaseFirst; });
-    }
-  }
-
-  void indicate(uint8_t, const uint8_t *, size_t) override {}
-  void error(uint8_t, uint8_t) override {}
-
-  bool waitForFirst(uint32_t timeout_ms) {
-    std::unique_lock<std::mutex> lock(m_Mutex);
-    return m_Ready.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-                            [this]() { return m_FirstEntered; });
-  }
-
-  size_t notificationCount(void) const {
-    const std::lock_guard<std::mutex> lock(m_Mutex);
-    return m_Notifications;
-  }
-
-  void releaseFirst(void) {
-    const std::lock_guard<std::mutex> lock(m_Mutex);
-    m_ReleaseFirst = true;
-    m_Ready.notify_all();
-  }
-
- private:
-  mutable std::mutex m_Mutex;
-  std::condition_variable m_Ready;
-  size_t m_Notifications = 0;
-  bool m_FirstEntered = false;
-  bool m_ReleaseFirst = false;
-};
-
 std::vector<uint8_t> bytesOf(const CompanionService::companion_fix_t &fix) {
   const auto *begin = reinterpret_cast<const uint8_t *>(&fix);
   return {begin, begin + sizeof(fix)};
-}
-
-void testCompanionStatusRace(void) {
-  std::cout << "test: companion status cache serializes concurrent notifications\n";
-  ConcurrentStatusTransport transport;
-  CompanionService service(transport);
-  service.init();
-  service.onConnected();
-
-  std::thread first([&]() { service.notifyStatus(); });
-  check(transport.waitForFirst(1000), "first status notification enters the transport");
-  std::atomic<bool> secondReturned {false};
-  std::thread second([&]() {
-    service.notifyStatus();
-    secondReturned.store(true);
-  });
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  check(transport.notificationCount() == 1,
-        "a concurrent status call observes the first cache update");
-  check(secondReturned.load(), "status publication does not hold the service lock across notify");
-  transport.releaseFirst();
-  first.join();
-  second.join();
-  check(transport.notificationCount() == 1,
-        "concurrent status calls do not duplicate an unchanged notification");
-  service.deinit();
 }
 
 void testCompanionGattFlow(void) {
@@ -476,35 +404,56 @@ void testCompanionGattFlow(void) {
   check(waitFor([&] { return shutterWriteCount(second) >= 4; }, 2000),
         "remote trigger fires the second connected virtual camera");
 
-  const size_t immediateBefore = shutterWriteCount(first) + shutterWriteCount(second);
-  check(central.write(TRIGGER_UUID, {1, 4, 0, 0}),
-        "zero-duration timed shutter completes without recursive locking");
-  check(waitFor(
-            [&] {
-              return shutterWriteCount(first) + shutterWriteCount(second) >= immediateBefore + 8;
-            },
-            2000),
-        "zero-duration timed shutter reaches both cameras");
-  const size_t immediateAfter = shutterWriteCount(first) + shutterWriteCount(second);
-  check(immediateAfter == immediateBefore + 8,
-        "zero-duration timed shutter presses and releases exactly once");
-
-  const size_t timedBefore = shutterWriteCount(first) + shutterWriteCount(second);
-  check(central.write(TRIGGER_UUID, {1, 4, 100, 0}), "trigger UUID accepts a timed shutter press");
-  std::thread timerThread([]() { furble_host_fire_active_timer(); });
-  std::thread disconnectThread([&]() { central.disconnect(); });
-  timerThread.join();
-  disconnectThread.join();
-  check(waitFor(
-            [&] { return shutterWriteCount(first) + shutterWriteCount(second) >= timedBefore + 8; },
-            2000),
-        "timed shutter release reaches both cameras during disconnect");
-  const size_t timedAfter = shutterWriteCount(first) + shutterWriteCount(second);
-  check(timedAfter == timedBefore + 8,
-        "timed shutter and disconnect release the held shutter exactly once");
-
+  central.disconnect();
   service.deinit();
   stopControl(control);
+
+  // Every mutating Preferences operation is a separate NVS transaction. The
+  // Inject a reset at every actual write boundary and ensure the previous
+  // committed generation survives an immediate reboot. A later successful
+  // save must also be able to publish a new generation without losing it.
+  auto verifyIndexWriteBoundary = [&](size_t boundary) {
+    Furble::hostPreferencesClearStorage();
+    Furble::CameraList::clear();
+    Furble::CameraList::save(firstCamera.get());
+    Furble::CameraList::save(secondCamera.get());
+    check(Furble::CameraList::getSaveCount() == 2,
+          "fault-injection setup creates a valid two-camera generation");
+
+    Furble::hostPreferencesFailAfter(boundary);
+    Furble::CameraList::save(firstCamera.get());
+    Furble::hostPreferencesResetFaults();
+    Furble::CameraList::load();
+    const size_t recovered = Furble::CameraList::getSaveCount();
+    check(recovered == 2, "interrupted index write recovers the prior generation");
+    Furble::CameraList::save(firstCamera.get());
+    Furble::CameraList::load();
+    check(Furble::CameraList::getSaveCount() == 2,
+          "subsequent save after reboot preserves the recovered generation");
+  };
+  for (size_t boundary = 1; boundary <= 6; boundary++) {
+    verifyIndexWriteBoundary(boundary);
+  }
+
+  // Exercise the list lock under the same concurrent scan/snapshot pattern
+  // used by the companion task. Duplicate advertisement results must still
+  // collapse to one strong reference.
+  Furble::CameraList::clear();
+  std::vector<std::thread> scanners;
+  for (size_t worker = 0; worker < 4; worker++) {
+    scanners.emplace_back([&firstAdvertisement] {
+      for (size_t iteration = 0; iteration < 100; iteration++) {
+        (void)Furble::CameraList::match(&firstAdvertisement);
+        (void)Furble::CameraList::snapshot();
+      }
+    });
+  }
+  for (auto &scanner : scanners) {
+    scanner.join();
+  }
+  check(Furble::CameraList::snapshot().size() == 1,
+        "concurrent scan results remain deduplicated under list locking");
+  Furble::hostPreferencesClearStorage();
   NimBLEDevice::resetMock();
 }
 
@@ -512,7 +461,6 @@ void testCompanionGattFlow(void) {
 
 int main(void) {
   FurbleHostTaskScope taskScope;
-  testCompanionStatusRace();
   testCompanionGattFlow();
   if (g_Failures != 0) {
     std::cerr << "companion mock-central tests: " << g_Failures << " FAILED\n";

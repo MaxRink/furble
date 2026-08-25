@@ -335,10 +335,10 @@ std::vector<CompanionService::camera_snapshot_t> CompanionService::getCameraSnap
   const bool multiconnect = Settings::load<Settings::MULTICONNECT>();
   const Settings::multiselect_t selection = Settings::load<Settings::MULTISELECT>();
   const std::shared_ptr<Camera> connecting = control.getConnectingCamera();
+  const auto cameras = CameraList::snapshot();
 
   std::vector<camera_snapshot_t> snapshots;
-  for (size_t n = 0; n < CameraList::size(); n++) {
-    std::shared_ptr<Camera> camera = CameraList::get(n);
+  for (const auto &camera : cameras) {
     const uint8_t cameraId = CameraList::getCameraId(camera.get());
     if (cameraId == 0) {
       continue;
@@ -441,13 +441,13 @@ bool CompanionService::updateCameraSelection(uint8_t cameraId, bool selected) {
   if (cameraId == 0xff) {
     if (!selected) {
       selection = {};
-      for (size_t n = 0; n < CameraList::size(); n++) {
-        CameraList::get(n)->setActive(false);
+      for (const auto &camera : CameraList::snapshot()) {
+        camera->setActive(false);
       }
     } else {
       selection = {};
-      for (size_t n = 0; n < CameraList::size(); n++) {
-        std::shared_ptr<Camera> camera = CameraList::get(n);
+      const auto cameras = CameraList::snapshot();
+      for (const auto &camera : cameras) {
         if (CameraList::getCameraId(camera.get()) == 0) {
           continue;
         }
@@ -455,15 +455,13 @@ bool CompanionService::updateCameraSelection(uint8_t cameraId, bool selected) {
           return false;
         }
       }
-      for (size_t n = 0; n < CameraList::size(); n++) {
-        std::shared_ptr<Camera> camera = CameraList::get(n);
+      for (const auto &camera : cameras) {
         camera->setActive(CameraList::getCameraId(camera.get()) != 0);
       }
     }
   } else {
     std::shared_ptr<Camera> selectedCamera = nullptr;
-    for (size_t n = 0; n < CameraList::size(); n++) {
-      std::shared_ptr<Camera> camera = CameraList::get(n);
+    for (const auto &camera : CameraList::snapshot()) {
       if (CameraList::getCameraId(camera.get()) == cameraId) {
         selectedCamera = camera;
         break;
@@ -497,8 +495,7 @@ bool CompanionService::applyCameraSelection(void) {
 
   const Settings::multiselect_t selection = Settings::load<Settings::MULTISELECT>();
   bool anySelected = false;
-  for (size_t n = 0; n < CameraList::size(); n++) {
-    std::shared_ptr<Camera> camera = CameraList::get(n);
+  for (const auto &camera : CameraList::snapshot()) {
     const bool selected = (CameraList::getCameraId(camera.get()) != 0)
                           && selectionContains(selection, camera->getName());
     camera->setActive(selected);
@@ -644,15 +641,13 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
       return;
     }
   } else {
-    for (size_t n = 0; n < CameraList::size(); n++) {
-      std::shared_ptr<Camera> camera = CameraList::get(n);
+    for (const auto &camera : CameraList::snapshot()) {
       camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
     }
   }
 
   size_t active = 0;
-  for (size_t n = 0; n < CameraList::size(); n++) {
-    std::shared_ptr<Camera> camera = CameraList::get(n);
+  for (const auto &camera : CameraList::snapshot()) {
     if (camera->isActive()) {
       control.addActive(camera);
       active++;

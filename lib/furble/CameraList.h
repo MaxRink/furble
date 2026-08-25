@@ -52,6 +52,9 @@ class CameraList {
    */
   static size_t size(void);
 
+  /** Return a strong-reference snapshot safe to iterate without holding the list lock. */
+  static std::vector<std::shared_ptr<Furble::Camera>> snapshot(void);
+
   /**
    * Clear connectable devices.
    */
@@ -90,7 +93,7 @@ class CameraList {
    * Called from the write paths so a delete of the highest id can never hand
    * that id back to the next saved camera. Requires m_Prefs open for writing.
    */
-  static void syncCameraIdFloor(const std::vector<index_entry_t> &index);
+  static bool syncCameraIdFloor(const std::vector<index_entry_t> &index);
 
   /**
    * List of connectable devices.
