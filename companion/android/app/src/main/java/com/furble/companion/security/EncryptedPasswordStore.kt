@@ -16,7 +16,13 @@ import javax.crypto.spec.GCMParameterSpec
  * is non-exportable, so a copied preferences file cannot be decrypted on
  * another device. Password values and plaintext are never logged.
  */
-class EncryptedPasswordStore(context: Context) {
+interface PasswordStore {
+    fun read(): String?
+    fun write(password: String)
+    fun clear()
+}
+
+class EncryptedPasswordStore(context: Context) : PasswordStore {
     companion object {
         private const val PREFS = "companion_auth"
         private const val CIPHERTEXT = "password_ciphertext"
@@ -29,7 +35,7 @@ class EncryptedPasswordStore(context: Context) {
     private val preferences = context.applicationContext
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun read(): String? {
+    override fun read(): String? {
         val encoded = preferences.getString(CIPHERTEXT, null) ?: return null
         return runCatching {
             val packed = Base64.decode(encoded, Base64.NO_WRAP)
@@ -48,7 +54,7 @@ class EncryptedPasswordStore(context: Context) {
         }
     }
 
-    fun write(password: String) {
+    override fun write(password: String) {
         require(password.isNotEmpty())
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
@@ -66,7 +72,7 @@ class EncryptedPasswordStore(context: Context) {
         }
     }
 
-    fun clear() {
+    override fun clear() {
         preferences.edit().remove(CIPHERTEXT).apply()
     }
 

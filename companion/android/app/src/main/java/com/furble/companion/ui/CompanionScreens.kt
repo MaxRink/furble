@@ -142,7 +142,7 @@ private fun CompanionShell(
 ) {
     var selectedScreen by rememberSaveable { mutableStateOf(CompanionScreen.STATUS) }
     val visibleScreens = CompanionScreen.entries.filter { screen ->
-        screen != CompanionScreen.SETTINGS || state.settingsSupported
+        screen != CompanionScreen.SETTINGS || state.settingsSupported && state.protectedReady()
     }
     LaunchedEffect(state.settingsSupported) {
         if (!state.settingsSupported && selectedScreen == CompanionScreen.SETTINGS) {
@@ -221,7 +221,7 @@ private fun StatusScreen(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
+        if (state.authSupported) item {
             Spacer(Modifier.height(4.dp))
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -729,7 +729,7 @@ private fun TriggerScreen(
     onReleaseAll: () -> Unit,
 ) {
     var holdText by rememberSaveable { mutableStateOf("1000") }
-    val ready = state.connection == ConnectionState.READY
+    val ready = state.connection == ConnectionState.READY && state.protectedReady()
     DisposableEffect(Unit) {
         onDispose { onReleaseAll() }
     }

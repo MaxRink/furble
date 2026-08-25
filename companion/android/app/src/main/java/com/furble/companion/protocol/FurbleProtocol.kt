@@ -347,7 +347,9 @@ object FurbleProtocol {
         require(key.size in 1..COMPANION_PASSWORD_MAX) {
             "Companion password must be 1..$COMPANION_PASSWORD_MAX UTF-8 bytes"
         }
-        return hmacSha256(key, nonce).copyOf(AUTH_RESPONSE_SIZE).also {
+        val digest = hmacSha256(key, nonce)
+        return digest.copyOf(AUTH_RESPONSE_SIZE).also {
+            digest.fill(0)
             key.fill(0)
         }
     }

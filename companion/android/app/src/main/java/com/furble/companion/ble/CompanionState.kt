@@ -36,6 +36,7 @@ data class CompanionUiState(
     val association: AssociationState = AssociationState(),
     val connection: ConnectionState = ConnectionState.NO_ASSOCIATION,
     val auth: AuthState = AuthState.UNKNOWN,
+    val authSupported: Boolean = false,
     val storedPassword: Boolean = false,
     val status: FurbleProtocol.StatusSnapshot? = null,
     val capability: FurbleProtocol.CapabilitySnapshot? = null,
@@ -57,3 +58,6 @@ data class PendingSettingConfirmation(
     val record: FurbleProtocol.SettingRecord,
     val value: ByteArray,
 )
+
+fun CompanionUiState.protectedReady(): Boolean = !authSupported ||
+    auth == AuthState.AUTHENTICATED || auth == AuthState.NOT_REQUIRED

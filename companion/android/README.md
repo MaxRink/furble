@@ -26,6 +26,13 @@ characteristic (`b57f4f64-087b-4740-b71d-8262cf26ebbc`) reports capability
 version 1, wire version 2 and feature bit 0. Older firmware keeps Settings
 hidden.
 
+The AUTH characteristic is optional during discovery. Legacy companion
+firmware without AUTH remains usable for existing unprotected operations;
+the password UI and password-gated operations appear only when AUTH is
+present. Password protection therefore requires the PR166 firmware service
+implementation, while this app remains backward-compatible with older
+services.
+
 The location encoder keeps the named fields in the document's order. The
 declared `companion_fix_t` size is 42 bytes, but those packed fields add up to
 41 bytes. To preserve the declared size without moving `age_ms`, the app
