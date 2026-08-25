@@ -125,8 +125,7 @@ bool Platform::prepareFlash(void) {
     return false;
   }
   uint8_t watchdogCount = 1;
-  if (!m5pm1Access(
-          [this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
       || watchdogCount != 0) {
     ESP_LOGE(LOG_TAG, "M5PM1 watchdog did not verify disabled for flash");
     (void)watchdogEnable(true);
@@ -140,8 +139,7 @@ bool Platform::prepareFlash(void) {
     return false;
   }
 
-  ESP_LOGW(LOG_TAG,
-           "M5PM1 watchdog disabled for flash; upload now, or run 'flash cancel'");
+  ESP_LOGW(LOG_TAG, "M5PM1 watchdog disabled for flash; upload now, or run 'flash cancel'");
   return true;
 }
 
@@ -175,8 +173,7 @@ bool Platform::watchdogEnable(bool enable) {
   uint8_t count = enable ? 0 : 1;
   if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
       || (enable ? count == 0 : count != 0)) {
-    ESP_LOGE(LOG_TAG, "Failed to verify M5PM1 watchdog %s",
-             enable ? "armed" : "disabled");
+    ESP_LOGE(LOG_TAG, "Failed to verify M5PM1 watchdog %s", enable ? "armed" : "disabled");
     return false;
   }
 

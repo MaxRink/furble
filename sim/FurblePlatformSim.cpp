@@ -137,8 +137,7 @@ bool Platform::prepareFlash(void) {
     return false;
   }
   uint8_t watchdogCount = 1;
-  if (!m5pm1Access(
-          [this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
       || watchdogCount != 0) {
     (void)watchdogEnable(true);
     return false;
