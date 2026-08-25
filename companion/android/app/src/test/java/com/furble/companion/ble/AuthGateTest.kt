@@ -49,4 +49,16 @@ class AuthGateTest {
         queued!!.invoke()
         assertTrue(observed!!.contentEquals("saved password".toByteArray()))
     }
+
+    @Test
+    fun canceledAuthGenerationRejectsQueuedAndStaleResults() {
+        val tracker = AuthAttemptTracker()
+        val first = tracker.begin()
+        assertTrue(tracker.accepts(first))
+        tracker.cancel()
+        assertFalse(tracker.accepts(first))
+        val second = tracker.begin()
+        assertFalse(tracker.accepts(first))
+        assertTrue(tracker.accepts(second))
+    }
 }

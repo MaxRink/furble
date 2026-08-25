@@ -21,6 +21,23 @@ internal class AuthInputDispatcher(private val post: (() -> Unit) -> Unit) {
     }
 }
 
+internal class AuthAttemptTracker {
+    private var generation = 0L
+    private var activeGeneration: Long? = null
+
+    fun begin(): Long {
+        activeGeneration = ++generation
+        return generation
+    }
+
+    fun cancel() {
+        activeGeneration = null
+        generation++
+    }
+
+    fun accepts(candidate: Long): Boolean = activeGeneration == candidate && candidate == generation
+}
+
 /**
  * One event-driven GATT session. Every ATT operation waits for its callback
  * before the next response-bearing operation starts.
@@ -62,8 +79,8 @@ class GattConnection(
     private var mtu = 23
     private var authPassword: ByteArray? = null
     private var authChallengePending = false
+    private val authAttemptTracker = AuthAttemptTracker()
     private var authGeneration = 0L
-    private var authAttemptGeneration: Long? = null
 
     fun connect() {
         handler.post {
@@ -92,8 +109,7 @@ class GattConnection(
 
     fun cancelAuthentication() {
         handler.post {
-            authGeneration++
-            authAttemptGeneration = null
+            authAttemptTracker.cancel()
             operations.removeAll { it is Operation.WriteCharacteristic && it.characteristic.uuid == FurbleProtocol.AUTH_UUID }
             clearAuthSecrets()
         }
@@ -169,7 +185,7 @@ class GattConnection(
             authPassword?.fill(0)
             authPassword = passwordUtf8.copyOf()
             authChallengePending = true
-            authAttemptGeneration = ++authGeneration
+            authGeneration = authAttemptTracker.begin()
             enqueueCharacteristicWrite(
                 uuid = FurbleProtocol.AUTH_UUID,
                 value = FurbleProtocol.encodeAuthBegin(),
@@ -296,7 +312,6 @@ class GattConnection(
                 value = value.copyOf(),
                 writeType = writeType,
                 waitForCallback = waitForCallback,
-                authGeneration = if (uuid == FurbleProtocol.AUTH_UUID) authGeneration else 0L,
             ),
         )
         pump()
@@ -399,7 +414,7 @@ class GattConnection(
 
     private fun dispatchAuth(value: ByteArray) {
         if (value.size == FurbleProtocol.AUTH_NONCE_SIZE && authChallengePending) {
-            if (authAttemptGeneration != authGeneration) return
+            if (!authAttemptTracker.accepts(authGeneration)) return
             val password = authPassword ?: run {
                 listener.onError("furble sent an AUTH challenge without a password")
                 return
@@ -424,9 +439,8 @@ class GattConnection(
             return
         }
         if (value.size == 1) {
-            if (authAttemptGeneration != authGeneration) return
+            if (!authAttemptTracker.accepts(authGeneration)) return
             listener.onAuthResult(value[0].toInt() and 0xff)
-            authAttemptGeneration = null
             clearAuthSecrets()
         } else {
             listener.onError("furble sent an invalid AUTH indication")
@@ -438,7 +452,7 @@ class GattConnection(
         authPassword?.fill(0)
         authPassword = null
         authChallengePending = false
-        authAttemptGeneration = null
+        authAttemptTracker.cancel()
     }
 
     private sealed interface Operation {
@@ -452,7 +466,6 @@ class GattConnection(
             val value: ByteArray,
             val writeType: Int,
             val waitForCallback: Boolean,
-            val authGeneration: Long,
         ) : Operation
 
         data class WriteDescriptor(
