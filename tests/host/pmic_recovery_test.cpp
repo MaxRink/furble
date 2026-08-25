@@ -25,10 +25,8 @@ int main() {
   check(first.begin(nullptr) == M5PM1_OK, "first PMIC begin succeeds");
 
   bool locked = true;
-  check(first.getDownloadLock(&locked) == M5PM1_ERROR,
-        "first transaction wakes an idle PMIC");
-  check(first.getDownloadLock(&locked) == M5PM1_OK && !locked,
-        "download recovery starts unlocked");
+  check(first.getDownloadLock(&locked) == M5PM1_ERROR, "first transaction wakes an idle PMIC");
+  check(first.getDownloadLock(&locked) == M5PM1_OK && !locked, "download recovery starts unlocked");
 
   check(first.setDownloadLock(true) == M5PM1_ERROR,
         "lock write wakes the PMIC after an idle access");
@@ -60,8 +58,7 @@ int main() {
   check(verified.wdtSet(2) == M5PM1_OK, "watchdog arm succeeds after retry");
 
   M5PM1 watchdogAfterReset;
-  check(watchdogAfterReset.begin(nullptr) == M5PM1_OK,
-        "watchdog PMIC instance begins");
+  check(watchdogAfterReset.begin(nullptr) == M5PM1_OK, "watchdog PMIC instance begins");
   setClockMillis(1999);
   check(!watchdogAfterReset.watchdogExpired(), "retained watchdog has not expired early");
   setClockMillis(2000);
@@ -93,12 +90,9 @@ int main() {
         "download lock read recovers after injected failure");
 
   M5PM1::failNextForTest(true, false, false, false);
-  check(faults.wdtSet(0) == M5PM1_ERROR,
-        "watchdog disable wake precedes injected failure");
-  check(faults.wdtSet(0) == M5PM1_ERROR,
-        "watchdog disable reports injected write failure");
-  check(faults.wdtSet(0) == M5PM1_OK,
-        "watchdog disable recovers after injected write failure");
+  check(faults.wdtSet(0) == M5PM1_ERROR, "watchdog disable wake precedes injected failure");
+  check(faults.wdtSet(0) == M5PM1_ERROR, "watchdog disable reports injected write failure");
+  check(faults.wdtSet(0) == M5PM1_OK, "watchdog disable recovers after injected write failure");
 
   M5PM1::failNextForTest(false, true, false, false);
   uint8_t faultCount = 0;
@@ -112,10 +106,8 @@ int main() {
   // A failed restoration must not be mistaken for an armed watchdog. The
   // retained PMIC state remains disabled until a verified arm succeeds.
   M5PM1::failNextForTest(true, false, false, false);
-  check(faults.wdtSet(2) == M5PM1_ERROR,
-        "watchdog restore wake precedes injected failure");
-  check(faults.wdtSet(2) == M5PM1_ERROR,
-        "watchdog restore reports injected failure");
+  check(faults.wdtSet(2) == M5PM1_ERROR, "watchdog restore wake precedes injected failure");
+  check(faults.wdtSet(2) == M5PM1_ERROR, "watchdog restore reports injected failure");
   faultCount = 1;
   check(faults.wdtGetCount(&faultCount) == M5PM1_OK && faultCount == 0,
         "failed watchdog restore leaves the watchdog disabled and observable");
