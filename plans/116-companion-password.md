@@ -1,7 +1,8 @@
 # 116 - Companion password authentication
 
-Status: implemented in the firmware. The real BLE handshake and Android client
-integration remain hardware and app validation work.
+Status: implemented in the firmware. The real BLE handshake remains a hardware
+gate. Android AUTH/HMAC/password-entry integration is a stacked blocker for
+feature release and is intentionally not part of this firmware PR.
 
 ## Implementation state
 
@@ -23,6 +24,9 @@ integration remain hardware and app validation work.
   bonded BLE link and successful companion-password authentication. Location
   updates remain available on the encrypted companion link because they are an
   external-fix input rather than a camera-control operation.
+- Provisioning applies the dedicated `companionPassword` field to the same NVS
+  setting as wire id 46. A bundle must not supply both forms, and malformed or
+  duplicate password records are rejected before any setting is written.
 
 ## Validation
 
@@ -36,10 +40,17 @@ integration remain hardware and app validation work.
 - The host settings round-trip table covers the new string setting and its NVS
   and SD serialization paths.
 - `tests/protocol` covers the AUTH UUID and the wire-id 46 settings fixtures.
-- The remaining gate is a real BLE handshake with an Android or equivalent GATT
-  client on an M5StickS3. The client must verify that settings and trigger writes
-  fail before the HMAC response, succeed after it, and fail again after
+- Host provisioning tests cover wire-id 46 schema acceptance, malformed
+  lengths, dedicated-field persistence, duplicate-source rejection, and
+  preflight rollback of the password when another setting is invalid.
+- The remaining hardware gate is a real BLE handshake with an equivalent GATT
+  client on an M5StickS3. The client must verify that settings and trigger
+  writes fail before the HMAC response, succeed after it, and fail again after
   disconnect and reconnect until a new nonce is answered.
+- The checked-in Android companion does not yet discover AUTH, subscribe to
+  AUTH indications, compute HMAC, or collect the password. That stacked app
+  blocker must be resolved and validated before password-protected companion
+  connections can ship to users.
 
 ## Compatibility and security notes
 
