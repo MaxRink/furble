@@ -5,6 +5,7 @@
 #include <utility>
 
 #if defined(ESP_PLATFORM) && defined(FURBLE_ETHERNET)
+#include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <esp_eth.h>
 #include <esp_eth_mac_spi.h>
@@ -26,14 +27,17 @@ bool g_Initialized = false;
 bool g_LinkUp = false;
 bool g_Connected = false;
 std::string g_IP;
+uint64_t g_LifecycleEpoch = 0;
 
-void handleTransportEvent(Ethernet::Transport::Event event, const std::string &ip) {
+void handleTransportEvent(Ethernet::Transport::Event event,
+                          const std::string &ip,
+                          uint64_t lifecycleEpoch) {
   Ethernet::NetworkUpCallback callback;
   std::string callbackIP;
 
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
-    if (!g_Initialized) {
+    if (!g_Initialized || lifecycleEpoch != g_LifecycleEpoch) {
       return;
     }
 
@@ -62,6 +66,11 @@ void handleTransportEvent(Ethernet::Transport::Event event, const std::string &i
           }
         }
         break;
+
+      case Ethernet::Transport::Event::IP_LOST:
+        g_Connected = false;
+        g_IP.clear();
+        break;
     }
   }
 
@@ -72,6 +81,7 @@ void handleTransportEvent(Ethernet::Transport::Event event, const std::string &i
 
 bool initializeTransport(Ethernet::Transport &transport,
                          std::unique_ptr<Ethernet::Transport> ownedTransport) {
+  uint64_t lifecycleEpoch;
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
     if (g_Initialized) {
@@ -80,21 +90,23 @@ bool initializeTransport(Ethernet::Transport &transport,
 
     g_OwnedTransport = std::move(ownedTransport);
     g_Transport = &transport;
+    lifecycleEpoch = ++g_LifecycleEpoch;
     g_Initialized = true;
     g_LinkUp = false;
     g_Connected = false;
     g_IP.clear();
   }
 
-  const Ethernet::Transport::EventCallback eventCallback = [](Ethernet::Transport::Event event,
-                                                              const std::string &ip) {
-    handleTransportEvent(event, ip);
+  const Ethernet::Transport::EventCallback eventCallback = [lifecycleEpoch](
+      Ethernet::Transport::Event event, const std::string &ip) {
+    handleTransportEvent(event, ip, lifecycleEpoch);
   };
 
   if (!transport.init(eventCallback) || !transport.start()) {
     {
       std::lock_guard<std::mutex> lock(g_StateMutex);
       g_Initialized = false;
+      ++g_LifecycleEpoch;
       g_Transport = nullptr;
       g_LinkUp = false;
       g_Connected = false;
@@ -137,7 +149,15 @@ class EspEthTransport final: public Ethernet::Transport {
     busConfig.quadwp_io_num = -1;
     busConfig.quadhd_io_num = -1;
 
-    esp_err_t err = spi_bus_initialize(SPI2_HOST, &busConfig, SPI_DMA_CH_AUTO);
+    esp_err_t err = gpio_install_isr_service(0);
+    if (err == ESP_OK) {
+      m_GpioIsrServiceOwned = true;
+    } else if (err != ESP_ERR_INVALID_STATE) {
+      logError("GPIO ISR service installation", err);
+      return false;
+    }
+
+    err = spi_bus_initialize(SPI2_HOST, &busConfig, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
       logError("SPI bus initialization", err);
       return false;
@@ -221,14 +241,23 @@ class EspEthTransport final: public Ethernet::Transport {
     }
     m_EthHandlerRegistered = true;
 
-    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler,
-                                     this);
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                     &EspEthTransport::eventHandler, this);
     if (err != ESP_OK) {
       logError("Ethernet IP event registration", err);
       stop();
       return false;
     }
-    m_IpHandlerRegistered = true;
+    m_IpGotHandlerRegistered = true;
+
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP,
+                                     &EspEthTransport::eventHandler, this);
+    if (err != ESP_OK) {
+      logError("Ethernet IP-loss event registration", err);
+      stop();
+      return false;
+    }
+    m_IpLostHandlerRegistered = true;
 
     return true;
   }
@@ -247,9 +276,14 @@ class EspEthTransport final: public Ethernet::Transport {
   }
 
   void stop(void) override {
-    if (m_IpHandlerRegistered) {
+    if (m_IpGotHandlerRegistered) {
       esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler);
-      m_IpHandlerRegistered = false;
+      m_IpGotHandlerRegistered = false;
+    }
+    if (m_IpLostHandlerRegistered) {
+      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_LOST_IP,
+                                   &EspEthTransport::eventHandler);
+      m_IpLostHandlerRegistered = false;
     }
     if (m_EthHandlerRegistered) {
       esp_event_handler_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler);
@@ -279,6 +313,10 @@ class EspEthTransport final: public Ethernet::Transport {
     if (m_SpiBusInitialized) {
       spi_bus_free(SPI2_HOST);
       m_SpiBusInitialized = false;
+    }
+    if (m_GpioIsrServiceOwned) {
+      gpio_uninstall_isr_service();
+      m_GpioIsrServiceOwned = false;
     }
     std::lock_guard<std::mutex> lock(m_CallbackMutex);
     m_Callback = nullptr;
@@ -322,6 +360,10 @@ class EspEthTransport final: public Ethernet::Transport {
         esp_ip4addr_ntoa(&gotIp->ip_info.ip, ip, sizeof(ip));
       }
       callback(Event::GOT_IP, ip);
+      return;
+    }
+    if ((eventBase == IP_EVENT) && (eventId == IP_EVENT_ETH_LOST_IP)) {
+      callback(Event::IP_LOST, "");
     }
   }
 
@@ -334,7 +376,9 @@ class EspEthTransport final: public Ethernet::Transport {
   esp_eth_netif_glue_handle_t m_NetifGlue = nullptr;
   bool m_SpiBusInitialized = false;
   bool m_EthHandlerRegistered = false;
-  bool m_IpHandlerRegistered = false;
+  bool m_IpGotHandlerRegistered = false;
+  bool m_IpLostHandlerRegistered = false;
+  bool m_GpioIsrServiceOwned = false;
 };
 
 #endif
@@ -390,6 +434,7 @@ void Ethernet::stop(void) {
       return;
     }
     g_Initialized = false;
+    ++g_LifecycleEpoch;
     g_LinkUp = false;
     g_Connected = false;
     g_IP.clear();
