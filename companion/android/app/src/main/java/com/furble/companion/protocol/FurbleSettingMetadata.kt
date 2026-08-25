@@ -71,6 +71,26 @@ object FurbleSettingMetadata {
         option(7, "All"),
     )
 
+    private val gpsAssistanceOptions = listOf(
+        option(0, "Off"),
+        option(1, "Position and time"),
+        option(2, "Position, time and cache"),
+    )
+
+    private val autoOffOptions = listOf(
+        option(0, "Never"),
+        option(5, "5 mins"),
+        option(10, "10 mins"),
+        option(30, "30 mins"),
+        option(60, "60 mins"),
+    )
+
+    private val textSizeOptions = listOf(
+        option(0, "Small"),
+        option(1, "Normal"),
+        option(2, "Large"),
+    )
+
     private val metadata = listOf(
         SettingMetadata(1, "brightness", "Brightness", "Display", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.RANGE, range = SettingRange(16, 240, 16)),
@@ -91,12 +111,14 @@ object FurbleSettingMetadata {
             SettingEditorKind.ENUM, options = displayOffOptions),
         SettingMetadata(3, "theme", "Theme", "Display", FurbleProtocol.SettingType.STRING,
             SettingEditorKind.THEME, stringOptions = listOf("Dark", "Default", "Mono Furble")),
+        SettingMetadata(40, "text_size", "Text size", "Display", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM, options = textSizeOptions),
         SettingMetadata(4, "tx_power", "TX Power", "Bluetooth", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM,
             options = listOf(option(0, "Low (P3)"), option(1, "Medium (P6)"), option(2, "High (P9)")),
             dangerous = true),
         SettingMetadata(28, "tx_adaptive", "Adaptive", "Bluetooth", FurbleProtocol.SettingType.BOOL,
-            SettingEditorKind.SWITCH),
+            SettingEditorKind.SWITCH, dangerous = true),
         SettingMetadata(5, "gps", "GPS", "GPS", FurbleProtocol.SettingType.BOOL,
             SettingEditorKind.SWITCH),
         SettingMetadata(6, "gps_baud", "GPS Baud", "GPS", FurbleProtocol.SettingType.UINT32,
@@ -126,6 +148,10 @@ object FurbleSettingMetadata {
                 option(15, "15 s"),
             ),
         ),
+        SettingMetadata(
+            41, "gps_assist", "GPS Assistance", "GPS", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM, options = gpsAssistanceOptions,
+        ),
         SettingMetadata(7, "interval", "Interval", "Intervalometer", FurbleProtocol.SettingType.BLOB,
             SettingEditorKind.INTERVAL),
         SettingMetadata(8, "multiconnect", "Multi-Connect", "Connections", FurbleProtocol.SettingType.BOOL,
@@ -140,6 +166,12 @@ object FurbleSettingMetadata {
             SettingEditorKind.SWITCH),
         SettingMetadata(12, "companion", "Companion", "Connections", FurbleProtocol.SettingType.BOOL,
             SettingEditorKind.SWITCH, dangerous = true),
+        SettingMetadata(30, "preset_picker", "Preset Picker", "Connections", FurbleProtocol.SettingType.BOOL,
+            SettingEditorKind.SWITCH),
+        SettingMetadata(
+            27, "button_mode", "Button Mode", "Controls", FurbleProtocol.SettingType.STRING,
+            SettingEditorKind.ENUM, stringOptions = listOf("two-button", "one-button"),
+        ),
         SettingMetadata(17, "cpu_freq", "CPU Speed", "Power", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM,
             options = listOf(option(80, "80 MHz"), option(160, "160 MHz"), option(240, "240 MHz")),
@@ -163,6 +195,24 @@ object FurbleSettingMetadata {
                 option(120, "120 secs"),
             ),
             range = SettingRange(0, 120, 30, "seconds")),
+        SettingMetadata(
+            37, "auto_off", "Auto off", "Power", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM, options = autoOffOptions,
+        ),
+        SettingMetadata(
+            38, "low_batt", "Low battery", "Power", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM,
+            options = listOf(option(0, "None"), option(1, "Warn"), option(2, "Warn then off")),
+        ),
+        SettingMetadata(39, "sd_gpx", "GPX Logging", "GPS", FurbleProtocol.SettingType.BOOL,
+            SettingEditorKind.SWITCH),
+        SettingMetadata(44, "boot_splash", "Boot screen", "Display", FurbleProtocol.SettingType.BOOL,
+            SettingEditorKind.SWITCH),
+        SettingMetadata(
+            36, "display_mode", "Display Mode", "Display", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM,
+            options = listOf(option(0, "GUI"), option(1, "Console")),
+        ),
         SettingMetadata(29, "conn_saver", "Connection power save", "Bluetooth", FurbleProtocol.SettingType.BOOL,
             SettingEditorKind.SWITCH),
         SettingMetadata(31, "ir", "Infrared", "Infrared", FurbleProtocol.SettingType.BOOL,

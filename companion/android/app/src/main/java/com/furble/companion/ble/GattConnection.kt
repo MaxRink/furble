@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattService
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.furble.companion.protocol.FurbleGattContract
 import com.furble.companion.protocol.FurbleProtocol
 import java.util.ArrayDeque
 import java.util.UUID
@@ -140,10 +141,37 @@ class GattConnection(
             fail("The furble companion service is missing a required characteristic")
             return
         }
+        if (!hasProperties(
+                locationCharacteristic,
+                FurbleGattContract.LOCATION_PROPERTIES,
+            ) || !hasProperties(
+                statusCharacteristic,
+                FurbleGattContract.STATUS_PROPERTIES,
+            ) || !hasProperties(
+                settingsCharacteristic,
+                FurbleGattContract.SETTINGS_PROPERTIES,
+            ) || !hasProperties(
+                triggerCharacteristic,
+                FurbleGattContract.TRIGGER_PROPERTIES,
+            ) || (capabilityCharacteristic != null && !hasProperties(
+                capabilityCharacteristic,
+                FurbleGattContract.CAPABILITY_PROPERTIES,
+            ))
+        ) {
+            fail("The furble companion service has incompatible characteristic properties")
+            return
+        }
         if (!gatt.requestMtu(256)) {
             fail("The phone could not request the required BLE MTU")
         }
     }
+
+    private fun hasProperties(
+        characteristic: BluetoothGattCharacteristic?,
+        required: Int,
+    ): Boolean = characteristic?.let {
+        FurbleGattContract.supports(it.properties, required)
+    } == true
 
     private fun onMtuChanged(negotiatedMtu: Int, status: Int) {
         if (status != BluetoothGatt.GATT_SUCCESS || negotiatedMtu < 45) {

@@ -49,8 +49,8 @@ typed values through the existing settings characteristic. The interval blob
 is four packed little-endian `{uint16 value, uint8 unit}` parts.
 
 Settings list flag bit 0 is interpreted as restart required. Bit 1 marks the
-four link-affecting settings and opens a two-step confirmation before a write:
-COMPANION, TX_POWER, SLEEP_CONN and CPU_FREQ.
+five link-affecting settings and opens a two-step confirmation before a write:
+COMPANION, TX_POWER, TX_ADAPTIVE, SLEEP_CONN and CPU_FREQ.
 
 ## Runtime behavior
 

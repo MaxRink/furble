@@ -165,6 +165,7 @@ object FurbleProtocol {
             get() = when (id) {
                 12 -> "Turning Companion off disconnects this app and stops furble advertising."
                 4 -> "Lowering TX power can drop the Bluetooth link."
+                28 -> "Adaptive TX power can change the Bluetooth link margin."
                 20 -> "This changes connection timing while the device sleeps."
                 17 -> "Changing CPU frequency can affect BLE timing under load."
                 else -> null
@@ -239,6 +240,7 @@ object FurbleProtocol {
         val version = buffer.get().u8()
         if (version < PROTOCOL_VERSION) return null
         val flags = buffer.get().u8()
+        if (flags and (LOCATION_VALID or TIME_VALID or ALTITUDE_VALID).inv() != 0) return null
         val satellites = buffer.get().u8()
         val accuracy = buffer.get().u8().let { if (it == 255) null else it }
         val latitude = buffer.getDouble()
@@ -316,12 +318,12 @@ object FurbleProtocol {
             "Unknown trigger operation: $operation"
         }
         require(holdMs in 0..0xFFFF) { "hold_ms must fit in uint16" }
-        return ByteBuffer.allocate(TRIGGER_PACKET_SIZE)
+        val buffer = ByteBuffer.allocate(if (operation == TriggerOperation.TIMED_SHUTTER) 4 else 2)
             .order(ByteOrder.LITTLE_ENDIAN)
             .put(PROTOCOL_VERSION.toByte())
             .put(operation.toByte())
-            .putShort(holdMs.toShort())
-            .array()
+        if (operation == TriggerOperation.TIMED_SHUTTER) buffer.putShort(holdMs.toShort())
+        return buffer.array()
     }
 
     fun encodeSettingsListRequest(): ByteArray = encodeSettingsRequest(SettingsOperation.LIST, 0, byteArrayOf())
@@ -370,11 +372,31 @@ object FurbleProtocol {
         // acknowledgement omits it. This is the primary parse, matching the
         // firmware fixtures in tests/protocol.
         val length = bytes[3].u8()
-        if (length <= bytes.size - 4) {
-            val value = bytes.copyOfRange(4, 4 + length)
-            val hasTrailingFlags = id != 0xFF && bytes.size > 4 + length
-            val flags = if (hasTrailingFlags) bytes[4 + length].u8() else 0
-            return SettingsResponse(status, id, type, value, flags, hasTrailingFlags || id == 0xFF)
+        val valueEnd = 4 + length
+        if (id == 0xFF && type == SettingType.BLOB && length == 0 &&
+            bytes.contentEquals(byteArrayOf(0, 0xFF.toByte(), SettingType.BLOB.toByte(), 0, 0))
+        ) {
+            return SettingsResponse(status, id, type, byteArrayOf(), 0, isListRecord = true)
+        }
+        if (valueEnd == bytes.size) {
+            return SettingsResponse(
+                status = status,
+                id = id,
+                type = type,
+                value = bytes.copyOfRange(4, valueEnd),
+                flags = 0,
+                isListRecord = false,
+            )
+        }
+        if (id != 0xFF && valueEnd + 1 == bytes.size) {
+            return SettingsResponse(
+                status = status,
+                id = id,
+                type = type,
+                value = bytes.copyOfRange(4, valueEnd),
+                flags = bytes[valueEnd].u8(),
+                isListRecord = true,
+            )
         }
 
         // Strict fallback for the retired flags-before-length prototype form
