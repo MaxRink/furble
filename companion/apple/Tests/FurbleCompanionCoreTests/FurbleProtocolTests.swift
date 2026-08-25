@@ -112,6 +112,22 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertThrowsError(try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15)))
   }
 
+  func testAuthProofMatchesAndroidFirmwareGoldenVector() throws {
+    #if canImport(CryptoKit)
+    let nonce = Data((0..<16).map(UInt8.init))
+    let password = Data("correct horse battery staple".utf8)
+    let proof = Data(HMAC<SHA256>.authenticationCode(
+      for: nonce, using: SymmetricKey(data: password)).prefix(16))
+    let packet = try FurbleProtocol.encodeAuthProof(proof)
+    XCTAssertEqual(packet, Data([
+      1, 1, 0xc5, 0xdf, 0xbf, 0x65, 0x5b, 0xbc, 0xd0, 0x90,
+      0xec, 0xb1, 0xa5, 0xbf, 0x71, 0x68, 0xb8, 0x43
+    ]))
+    #else
+    throw XCTSkip("CryptoKit is unavailable on this host")
+    #endif
+  }
+
   func testHmacCorrectProofAuthenticatesAndCannotBeReplayed() throws {
     var auth = try FurbleAuthSession(password: "secret")
     _ = try auth.begin(nonce: Data(repeating: 7, count: 16))
