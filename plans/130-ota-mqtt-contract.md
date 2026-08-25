@@ -30,7 +30,7 @@ key id, and version. The injected sink's `begin()` must compare the requested
 partition capacity with the actual inactive partition. The injected
 `ReplayStore` loads the installed counter floor before `BEGIN`, rejects counters
 less than or equal to it, and atomically reserves the strictly greater counter
-at `BEGIN`. The reservation is a durable, owner-bound lifecycle record:
+after the sink accepts the manifest. The reservation is a durable, owner-bound lifecycle record:
 `reserved -> staged -> consumed/cleared`. Only the owner session and counter
 may advance it, and a single outstanding reservation globally blocks another
 session from beginning. This prevents a lower-counter session from activating
@@ -46,9 +46,14 @@ the sink's irreversible `activate()`. If activation fails, the sink
 aborts/discards the staged image and recovery retries only with a new signed
 counter. If power is lost between consumption and activation, the old image
 boots safely and the update is retried with a newer counter. After reboot, the platform must explicitly call
-  `recoverAbandonedReservation()` once it has discarded any staged image; this
-  clears the owner while preserving the consumed floor. This ordering means a reboot cannot accept a stale signed
-update, even if activation fails after the floor is durable. This PR
+  `recoverAbandonedReservation()` once it has discarded any staged image; the
+  production Session performs this once during construction. This clears the
+  owner while preserving the consumed floor. This ordering means a reboot cannot accept a stale signed
+update, even if activation fails after the floor is durable. The one persistent
+production Session performs abandoned-reservation recovery during construction
+before accepting BEGIN. A valid signing key can still burn counters by
+submitting an update that is later aborted; key custody and counter exhaustion
+are operational controls. This PR
 never treats metadata presence as authentication and never permits an unsigned
 update.
 
@@ -74,7 +79,7 @@ update.
   for exact duplicate verification; otherwise a same-range retry fails closed.
 - A sink rejection, including `begin()`, failed final verification, or activation
   failure aborts the sink and makes the session terminal. Replay-store load or
-  reservation failure fails closed before `begin()` reaches the sink. A
+ reservation failure fails closed after sink cleanup. A
   successful reservation remains consumed even when the sink later fails. The
   platform adapter must implement `ReplayStore` as an atomic journal/CAS record
   and recover the last complete floor after reboot. Callers must keep a Session

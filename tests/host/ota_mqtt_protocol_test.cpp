@@ -394,8 +394,9 @@ void testSinkAndVerificationFailures() {
       "sink can reject a manifest before writes");
   expect(rejectedSession.state() == OTA::State::Error, "begin failure is terminal");
   expect(rejected.abortCalls == 1, "begin failure aborts a partially initialized sink");
-  expect(rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::Replay,
-         "failed begin counter remains reserved after terminal failure");
+  expect(
+      rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::SinkRejected,
+      "failed begin does not consume a counter before sink readiness");
 
   FakeSink persistenceFailure;
   FakeReplayStore failedStore;
@@ -405,9 +406,9 @@ void testSinkAndVerificationFailures() {
   expect(failedCommit.onMessage(good, begin(manifest(failedId, 1))).error
              == OTA::Error::ReplayStoreFailed,
          "failed counter reservation is explicit");
-  expect(failedCommit.state() == OTA::State::Idle,
-         "counter reservation failure leaves the session retryable");
-  expect(persistenceFailure.abortCalls == 0, "failed reservation never starts the sink");
+  expect(failedCommit.state() == OTA::State::Error,
+         "counter reservation failure is terminal after sink cleanup");
+  expect(persistenceFailure.abortCalls == 1, "failed reservation aborts the prepared sink");
   expect(failedStore.floor == 0, "failed replay-floor persistence leaves floor unchanged");
 
   FakeSink activationFailure;

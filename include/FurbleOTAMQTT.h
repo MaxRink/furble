@@ -175,7 +175,8 @@ class Sink {
  * reserveFloor() is an atomic compare-and-swap persistence operation: it
  * succeeds only when expectedFloor is still stored and nextFloor is strictly
  * greater and no other reservation is outstanding. Reservation happens at
- * BEGIN, so an aborted or failed update cannot reuse its signed counter. The
+ * BEGIN, after the sink accepts the manifest, so an aborted or failed update
+ * cannot reuse its signed counter while sink setup failures cannot burn one. The
  * owner token prevents another session from completing this reservation.
  * markStaged(), completeReservation(), and abandonReservation() are atomic
  * owner-and-counter CAS transitions. completeReservation() consumes the
@@ -263,6 +264,7 @@ class Session {
   uint32_t m_TerminalSequence = 0;
   bool m_Dispatching = false;
   bool m_ReservationActive = false;
+  bool m_ReplayRecoveryChecked = false;
 };
 
 static_assert(sizeof(Session) <= OTA_SESSION_BUDGET_BYTES,

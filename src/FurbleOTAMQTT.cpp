@@ -420,7 +420,10 @@ const char *errorString(Error error) {
   return "unknown";
 }
 
-Session::Session(Sink &sink, ReplayStore &replayStore) : m_Sink(sink), m_ReplayStore(replayStore) {}
+Session::Session(Sink &sink, ReplayStore &replayStore)
+    : m_Sink(sink),
+      m_ReplayStore(replayStore),
+      m_ReplayRecoveryChecked(m_ReplayStore.recoverAbandonedReservation()) {}
 
 Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length) {
   if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
@@ -472,6 +475,12 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
       }
       return reject(Error::Busy);
     }
+    // Construction performs the one-time post-reboot recovery before this
+    // session can accept BEGIN. A production transport owns one persistent
+    // Session instance; concurrent callers must serialize through it.
+    if (!m_ReplayRecoveryChecked) {
+      return reject(Error::ReplayStoreFailed);
+    }
     uint32_t installedFloor = 0;
     if (!m_ReplayStore.loadFloor(installedFloor)) {
       return reject(Error::ReplayStoreFailed);
@@ -479,16 +488,26 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     if (message.manifest.rollbackCounter <= installedFloor) {
       return reject(Error::Replay);
     }
-    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter,
-                                    message.manifest.sessionId)) {
-      return reject(Error::ReplayStoreFailed);
-    }
-    m_ReservationActive = true;
     m_Manifest = message.manifest;
     m_BeginSequence = message.sequence;
     if (!m_Sink.begin(message.manifest)) {
-      return terminalFailure(Error::SinkRejected);
+      // begin() may have partially prepared the inactive target before
+      // reporting failure; always give the adapter its cleanup seam.
+      m_Sink.abort();
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      m_LastError = Error::SinkRejected;
+      return reject(Error::SinkRejected);
     }
+    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter,
+                                    message.manifest.sessionId)) {
+      m_Sink.abort();
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      m_LastError = Error::ReplayStoreFailed;
+      return reject(Error::ReplayStoreFailed);
+    }
+    m_ReservationActive = true;
     m_RangeCount = 0;
     m_ReceivedBytes = 0;
     m_State = State::Receiving;
