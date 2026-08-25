@@ -682,7 +682,7 @@ UI::UI(const interval_t &interval)
   addMainMenu();
 
   setPresetPicker(Settings::load<Settings::PRESET_PICKER>());
-  showIMUGestureWidgets(M5.Imu.isEnabled() && Settings::load<Settings::IMU>());
+  showIMUGestureWidgets(imuEnabledForUI() && Settings::load<Settings::IMU>());
   updateGestureTimer();
 
   m_GPS.startService();
@@ -1654,7 +1654,7 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         [](lv_event_t *e) {
           auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
           notifyGestureSettingsChanged();
-          ui->showIMUGestureWidgets(M5.Imu.isEnabled() && Settings::load<Settings::IMU>());
+          ui->showIMUGestureWidgets(imuEnabledForUI() && Settings::load<Settings::IMU>());
           ui->updateGestureTimer();
         },
         LV_EVENT_VALUE_CHANGED, this);
@@ -5772,7 +5772,7 @@ void UI::addSensorsMenu(const menu_t &parent) {
   lv_obj_add_event_cb(
       restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
 
-  showIMUGestureWidgets(M5.Imu.isEnabled() && Settings::load<Settings::IMU>());
+  showIMUGestureWidgets(imuEnabledForUI() && Settings::load<Settings::IMU>());
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
@@ -8126,7 +8126,7 @@ void UI::updateGestureTimer(void) {
   }
   m_DoubleTapShutter = Settings::load<Settings::IMU_TRIG>();
 
-  const bool imuEnabled = M5.Imu.isEnabled() && Settings::load<Settings::IMU>();
+  const bool imuEnabled = imuEnabledForUI() && Settings::load<Settings::IMU>();
   const bool gesturesEnabled = imuEnabled && ((m_WakeGesture != 0) || m_DoubleTapShutter);
   showIMUGestureWidgets(imuEnabled);
 
@@ -8151,7 +8151,7 @@ void UI::gestureUpdate(lv_timer_t *timer) {
 }
 
 void UI::pollGesture(void) {
-  const bool imuEnabled = M5.Imu.isEnabled() && Settings::load<Settings::IMU>();
+  const bool imuEnabled = imuEnabledForUI() && Settings::load<Settings::IMU>();
   if (!imuEnabled) {
     // Sensor availability can change independently of the IMU setting while
     // this page is open. Keep every gesture control disabled and stop polling

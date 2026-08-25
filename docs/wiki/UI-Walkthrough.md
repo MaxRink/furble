@@ -190,6 +190,9 @@ unavailable. The deterministic `sim/scenarios/e2e/imu-gesture-gating.txt` and
 `imu-gesture-shutter.txt` scenarios cover this state and the shutter path on
 all three simulator panel sizes.
 
+![Sensors settings](../img/settings-sensors.png)
+![Wake gesture settings](../img/settings-wake-gesture.png)
+
 ### Infrared
 
 The Infrared submenu holds the Infrared on/off switch and the IR Protocol roller

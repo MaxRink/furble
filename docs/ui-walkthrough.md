@@ -373,6 +373,9 @@ sensor becomes unavailable. `imu-gesture-shutter.txt` checks the real shutter
 path and refractory period; the same scenarios are run for the 80x160,
 135x240, and 320x240 simulator panels.
 
+![Sensors settings](img/settings-sensors.png)
+![Wake gesture settings](img/settings-wake-gesture.png)
+
 ### Storage
 
 ![Storage settings](img/settings-storage.png)

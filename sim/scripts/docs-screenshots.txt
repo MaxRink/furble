@@ -12,6 +12,9 @@
 seed fauxny true
 seed gps true
 seed saved_camera true
+seed imu true
+seed imu_wake 1
+seed imu_trigger true
 wait 500
 
 # Main menu. A saved camera is seeded so the Connect and Delete entries enable.
@@ -57,6 +60,16 @@ print ui.page
 action nav features
 wait 350
 capture settings-features
+print ui.page
+
+action nav sensors
+wait 350
+capture settings-sensors
+print ui.page
+
+action nav wake_gesture
+wait 350
+capture settings-wake-gesture
 print ui.page
 
 # Infrared submenu, visible because the harness reports an IR LED present.
