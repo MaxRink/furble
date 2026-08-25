@@ -803,6 +803,9 @@ std::string queryValue(const std::string &key) {
   if (key == "platform.watchdog") {
     return watchdogState();
   }
+  if (key == "platform.download_lock") {
+    return downloadLockState();
+  }
   if (key == "clock.ms") {
     return std::to_string(clockMillis());
   }

@@ -41,6 +41,14 @@ Platform &Platform::getInstance(void) {
 
 #if defined(FURBLE_M5STICKS3)
     instance.m_M5PM1.begin(nullptr);
+    // Seed the retained state with the unsafe value used by older firmware.
+    // Two calls model the required wake retry. The production boot path below
+    // must clear and verify it, so removing that path makes the scenario fail.
+    instance.m_M5PM1.setDownloadLock(true);
+    instance.m_M5PM1.setDownloadLock(true);
+    if (!instance.unlockDownloadRecovery()) {
+      ESP_LOGE("platform", "M5PM1 download recovery remains unavailable");
+    }
 #endif
 
     // The SDL panel always attaches a mouse-driven touch device, so
@@ -109,6 +117,48 @@ bool Platform::powerOff(void) {
   Sim::notePowerOff();
   return true;
 }
+
+#if defined(FURBLE_M5STICKS3)
+bool Platform::unlockDownloadRecovery(void) {
+  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
+    return false;
+  }
+
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+bool Platform::prepareFlash(void) {
+  watchdogEnable(false);
+  uint8_t watchdogCount = 1;
+  if (!m5pm1Access(
+          [this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+      || watchdogCount != 0) {
+    return false;
+  }
+
+  if (!unlockDownloadRecovery()) {
+    watchdogEnable(true);
+    return false;
+  }
+  return true;
+}
+
+bool Platform::downloadRecoveryUnlocked(void) {
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+void Platform::cancelFlashPreparation(void) {
+  watchdogEnable(true);
+}
+#endif
 
 void Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
@@ -208,6 +258,15 @@ const char *watchdogState(void) {
     return "expired";
   }
   return platform.m_WatchdogEnabled ? "armed" : "disabled";
+#else
+  return "unavailable";
+#endif
+}
+
+const char *downloadLockState(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  return platform.downloadRecoveryUnlocked() ? "unlocked" : "locked";
 #else
   return "unavailable";
 #endif

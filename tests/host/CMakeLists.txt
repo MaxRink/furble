@@ -56,6 +56,18 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
 target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
 
+# The PMIC is a separate chip from the ESP32. Its watchdog and download lock
+# therefore survive an ESP32 reset and must be modeled as retained state.
+add_executable(pmic_recovery_test
+               pmic_recovery_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp)
+target_include_directories(pmic_recovery_test PRIVATE
+                           ${FURBLE_ROOT}/sim/shim
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/include)
+target_compile_options(pmic_recovery_test PRIVATE -Wall -Wextra -Werror
+                                                       -Wno-unused-parameter)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE

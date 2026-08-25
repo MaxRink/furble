@@ -293,6 +293,8 @@ The other namespaces are:
 - `platform.power_off` reports `yes` after production `UI::doPowerOff()` reaches
   the simulator power-off seam. The simulator records the request instead of
   terminating the process, so the scenario can assert shutdown ordering.
+- `platform.download_lock` reports the StickS3 PMIC long-press download lock as
+  `unlocked` or `locked`. Firmware boot is required to leave this `unlocked`.
 
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.
