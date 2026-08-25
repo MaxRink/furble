@@ -17,8 +17,8 @@ import javax.crypto.spec.GCMParameterSpec
  * another device. Password values and plaintext are never logged.
  */
 interface PasswordStore {
-    fun read(): String?
-    fun write(password: String)
+    fun read(): ByteArray?
+    fun write(password: ByteArray)
     fun clear()
 }
 
@@ -35,7 +35,7 @@ class EncryptedPasswordStore(context: Context) : PasswordStore {
     private val preferences = context.applicationContext
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    override fun read(): String? {
+    override fun read(): ByteArray? {
         val encoded = preferences.getString(CIPHERTEXT, null) ?: return null
         return runCatching {
             val packed = Base64.decode(encoded, Base64.NO_WRAP)
@@ -44,7 +44,7 @@ class EncryptedPasswordStore(context: Context) : PasswordStore {
             val ciphertext = packed.copyOfRange(IV_SIZE, packed.size)
             Cipher.getInstance(TRANSFORMATION).run {
                 init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_SIZE_BITS, iv))
-                String(doFinal(ciphertext), Charsets.UTF_8)
+                doFinal(ciphertext)
             }
         }.getOrElse {
             // A restored preferences file has no matching Keystore key. Do not
@@ -54,11 +54,11 @@ class EncryptedPasswordStore(context: Context) : PasswordStore {
         }
     }
 
-    override fun write(password: String) {
+    override fun write(password: ByteArray) {
         require(password.isNotEmpty())
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        val plaintext = password.toByteArray(Charsets.UTF_8)
+        val plaintext = password.copyOf()
         try {
             val ciphertext = cipher.doFinal(plaintext)
             val packed = ByteBuffer.allocate(cipher.iv.size + ciphertext.size)

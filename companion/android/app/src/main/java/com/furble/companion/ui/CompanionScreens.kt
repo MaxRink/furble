@@ -57,6 +57,7 @@ import com.furble.companion.MainViewModel
 import com.furble.companion.ble.CompanionUiState
 import com.furble.companion.ble.ConnectionState
 import com.furble.companion.ble.AuthState
+import com.furble.companion.ble.protectedReady
 import com.furble.companion.permissions.PermissionSnapshot
 import com.furble.companion.protocol.FurbleProtocol
 import com.furble.companion.protocol.SettingEditorKind
@@ -144,8 +145,8 @@ private fun CompanionShell(
     val visibleScreens = CompanionScreen.entries.filter { screen ->
         screen != CompanionScreen.SETTINGS || state.settingsSupported && state.protectedReady()
     }
-    LaunchedEffect(state.settingsSupported) {
-        if (!state.settingsSupported && selectedScreen == CompanionScreen.SETTINGS) {
+    LaunchedEffect(state.settingsSupported, state.protectedReady()) {
+        if ((!state.settingsSupported || !state.protectedReady()) && selectedScreen == CompanionScreen.SETTINGS) {
             selectedScreen = CompanionScreen.STATUS
         }
     }
@@ -327,7 +328,7 @@ private fun AuthenticationCard(
             )
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it.take(FurbleProtocol.COMPANION_PASSWORD_MAX) },
+                onValueChange = { password = FurbleProtocol.truncateUtf8(it) },
                 label = { Text("Password") },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -335,6 +336,7 @@ private fun AuthenticationCard(
                 enabled = state.connection == ConnectionState.READY && state.auth != AuthState.DROPPED,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text("${password.toByteArray(Charsets.UTF_8).size}/${FurbleProtocol.COMPANION_PASSWORD_MAX} UTF-8 bytes")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {

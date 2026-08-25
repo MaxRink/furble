@@ -58,7 +58,10 @@ class CompanionRepository(
                 LOCATION_INTERVAL_KEY,
                 DEFAULT_LOCATION_INTERVAL_SECONDS,
             ),
-            storedPassword = passwordStore.read() != null,
+            storedPassword = passwordStore.read().let { value ->
+                value?.fill(0)
+                value != null
+            },
         ),
     )
     val state: StateFlow<CompanionUiState> = _state.asStateFlow()
@@ -70,7 +73,7 @@ class CompanionRepository(
     private var gattConnection: GattConnection? = null
     private var pendingSettingId: Int? = null
     private val pendingSettingValues = mutableMapOf<Int, ByteArray>()
-    private var pendingPassword: CharArray? = null
+    private var pendingPassword: ByteArray? = null
     private var connectionGeneration = 0L
     private var pendingPasswordGeneration = 0L
     private var locationProvider: FusedLocationProvider? = null
@@ -385,6 +388,11 @@ class CompanionRepository(
     fun confirmPendingSetting() {
         handler.post {
             val pending = _state.value.pendingSettingConfirmation ?: return@post
+            if (!_state.value.protectedReady() || _state.value.connection != ConnectionState.READY) {
+                _state.update { it.copy(pendingSettingConfirmation = null) }
+                setError("Authentication or connection was lost; setting change canceled")
+                return@post
+            }
             _state.update { it.copy(pendingSettingConfirmation = null) }
             sendSetting(pending.record.id, pending.value)
         }
@@ -430,16 +438,19 @@ class CompanionRepository(
                 return@post
             }
             _state.update { it.copy(auth = AuthState.AUTHENTICATING, error = null) }
-            pendingPassword?.fill('\u0000')
-            pendingPassword = password.toCharArray()
+            pendingPassword?.fill(0)
+            val passwordBytes = password.toByteArray(Charsets.UTF_8)
+            pendingPassword = passwordBytes.copyOf()
             pendingPasswordGeneration = connectionGeneration
-            gattConnection?.authenticate(password)
+            gattConnection?.authenticate(passwordBytes)
+            passwordBytes.fill(0)
         }
     }
 
     fun forgetPassword() {
+        triggerController.releaseAll()
         passwordStore.clear()
-        pendingPassword?.fill('\u0000')
+        pendingPassword?.fill(0)
         pendingPassword = null
         pendingPasswordGeneration = ++connectionGeneration
         gattConnection?.cancelAuthentication()
@@ -480,7 +491,7 @@ class CompanionRepository(
         connectionGeneration++
         pendingSettingId = null
         pendingSettingValues.clear()
-        pendingPassword?.fill('\u0000')
+        pendingPassword?.fill(0)
         pendingPassword = null
         _state.update {
             it.copy(
@@ -518,7 +529,10 @@ class CompanionRepository(
                             settingsLoading = true,
                         )
                     }
-                    if (savedPassword != null && authSupported) session.authenticate(savedPassword)
+                    if (savedPassword != null) {
+                        if (authSupported) session.authenticate(savedPassword)
+                        savedPassword.fill(0)
+                    }
                     syncLocationUpdates()
                 }
 
@@ -542,12 +556,14 @@ class CompanionRepository(
 
                 override fun onAuthAvailability(supported: Boolean) {
                     if (gattConnection !== session) return
+                    if (!supported || _state.value.auth == AuthState.AUTHENTICATED) triggerController.releaseAll()
                     _state.update {
                         it.copy(
                             authSupported = supported,
                             auth = if (supported) AuthState.UNKNOWN else AuthState.NOT_REQUIRED,
                         )
                     }
+                    _state.update { it.copy(pendingSettingConfirmation = null) }
                 }
 
                 override fun onAuthResult(result: Int) {
@@ -558,29 +574,31 @@ class CompanionRepository(
                             if (_state.value.settingsSupported) requestSettings()
                             // The candidate is saved only after firmware accepts it.
                             pendingPassword?.takeIf { pendingPasswordGeneration == connectionGeneration }?.let {
-                                passwordStore.write(String(it))
-                                it.fill('\u0000')
+                                passwordStore.write(it)
+                                it.fill(0)
                                 pendingPassword = null
                                 _state.update { state -> state.copy(storedPassword = true) }
                             }
                         }
                         FurbleProtocol.AUTH_RESULT_NOT_REQUIRED -> {
-                            pendingPassword?.fill('\u0000')
+                            pendingPassword?.fill(0)
                             pendingPassword = null
                             _state.update { it.copy(auth = AuthState.NOT_REQUIRED) }
                         }
                         FurbleProtocol.AUTH_RESULT_DROPPED -> {
-                            pendingPassword?.fill('\u0000')
+                            triggerController.releaseAll()
+                            pendingPassword?.fill(0)
                             pendingPassword = null
                             passwordStore.clear()
-                            _state.update { it.copy(auth = AuthState.DROPPED, storedPassword = false) }
+                            _state.update { it.copy(auth = AuthState.DROPPED, storedPassword = false, pendingSettingConfirmation = null) }
                             setError("furble rejected three passwords and disconnected")
                         }
                         FurbleProtocol.AUTH_RESULT_REJECTED -> {
-                            pendingPassword?.fill('\u0000')
+                            triggerController.releaseAll()
+                            pendingPassword?.fill(0)
                             pendingPassword = null
                             passwordStore.clear()
-                            _state.update { it.copy(auth = AuthState.REJECTED, storedPassword = false) }
+                            _state.update { it.copy(auth = AuthState.REJECTED, storedPassword = false, pendingSettingConfirmation = null) }
                             setError("furble rejected the companion password")
                         }
                         else -> setError(FurbleProtocol.authResultLabel(result))
@@ -593,7 +611,7 @@ class CompanionRepository(
                     gattConnection = null
                     pendingSettingId = null
                     pendingSettingValues.clear()
-                    pendingPassword?.fill('\u0000')
+                    pendingPassword?.fill(0)
                     pendingPassword = null
                     pendingPasswordGeneration = ++connectionGeneration
                     triggerController.onLinkLost()
@@ -684,7 +702,7 @@ class CompanionRepository(
         connectionGeneration++
         pendingSettingId = null
         pendingSettingValues.clear()
-        pendingPassword?.fill('\u0000')
+        pendingPassword?.fill(0)
         pendingPassword = null
         triggerController.onLinkLost()
         if (clearData) {

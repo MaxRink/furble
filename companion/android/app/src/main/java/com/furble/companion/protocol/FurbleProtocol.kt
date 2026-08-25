@@ -341,16 +341,14 @@ object FurbleProtocol {
     /** Firmware sends the first 16 bytes of HMAC-SHA256(password, nonce). */
     fun encodeAuthBegin(): ByteArray = byteArrayOf(AUTH_BEGIN.toByte())
 
-    fun encodeAuthResponse(password: CharSequence, nonce: ByteArray): ByteArray {
+    fun encodeAuthResponse(passwordUtf8: ByteArray, nonce: ByteArray): ByteArray {
         require(nonce.size == AUTH_NONCE_SIZE) { "AUTH nonce must be 16 bytes" }
-        val key = password.toString().toByteArray(Charsets.UTF_8)
-        require(key.size in 1..COMPANION_PASSWORD_MAX) {
+        require(passwordUtf8.size in 1..COMPANION_PASSWORD_MAX) {
             "Companion password must be 1..$COMPANION_PASSWORD_MAX UTF-8 bytes"
         }
-        val digest = hmacSha256(key, nonce)
+        val digest = hmacSha256(passwordUtf8, nonce)
         return digest.copyOf(AUTH_RESPONSE_SIZE).also {
             digest.fill(0)
-            key.fill(0)
         }
     }
 
@@ -367,6 +365,29 @@ object FurbleProtocol {
         AUTH_RESULT_DROPPED -> "Too many attempts; furble disconnected"
         AUTH_RESULT_NOT_REQUIRED -> "Password not required"
         else -> "Unknown authentication result ($result)"
+    }
+
+    fun truncateUtf8(value: String, maxBytes: Int = COMPANION_PASSWORD_MAX): String {
+        require(maxBytes >= 0)
+        var remaining = maxBytes
+        var offset = 0
+        while (offset < value.length) {
+            if (Character.isSurrogate(value[offset]) &&
+                (!Character.isHighSurrogate(value[offset]) || offset + 1 >= value.length ||
+                    !Character.isLowSurrogate(value[offset + 1]))
+            ) break
+            val codePoint = value.codePointAt(offset)
+            val encodedLength = when {
+                codePoint <= 0x7f -> 1
+                codePoint <= 0x7ff -> 2
+                codePoint <= 0xffff -> 3
+                else -> 4
+            }
+            if (encodedLength > remaining) break
+            remaining -= encodedLength
+            offset += Character.charCount(codePoint)
+        }
+        return value.substring(0, offset)
     }
 
     fun encodeSettingsListRequest(): ByteArray = encodeSettingsRequest(SettingsOperation.LIST, 0, byteArrayOf())

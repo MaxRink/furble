@@ -190,7 +190,7 @@ class FurbleProtocolTest {
 
     @Test
     fun metadataCoversEveryCurrentWireIdAndUnknownRowsStayReadOnly() {
-        assertEquals(33, FurbleSettingMetadata.byWireId.size)
+        assertEquals(42, FurbleSettingMetadata.byWireId.size)
         assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
         assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
         assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
@@ -216,7 +216,7 @@ class FurbleProtocolTest {
         assertArrayEquals(byteArrayOf(0x01), FurbleProtocol.encodeAuthBegin())
 
         val nonce = ByteArray(FurbleProtocol.AUTH_NONCE_SIZE) { it.toByte() }
-        val response = FurbleProtocol.encodeAuthResponse("correct horse battery staple", nonce)
+        val response = FurbleProtocol.encodeAuthResponse("correct horse battery staple".toByteArray(), nonce)
 
         assertEquals(FurbleProtocol.AUTH_RESPONSE_SIZE, response.size)
         assertArrayEquals(
@@ -251,16 +251,24 @@ class FurbleProtocolTest {
     @Test
     fun authRejectsWrongNonceAndPasswordWireLengths() {
         assertThrows(IllegalArgumentException::class.java) {
-            FurbleProtocol.encodeAuthResponse("pw", ByteArray(15))
+            FurbleProtocol.encodeAuthResponse("pw".toByteArray(), ByteArray(15))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            FurbleProtocol.encodeAuthResponse("", ByteArray(16))
+            FurbleProtocol.encodeAuthResponse(byteArrayOf(), ByteArray(16))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            FurbleProtocol.encodeAuthResponse("x".repeat(64), ByteArray(16))
+            FurbleProtocol.encodeAuthResponse("x".repeat(64).toByteArray(), ByteArray(16))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            FurbleProtocol.encodeAuthResponse("é".repeat(32), ByteArray(16))
+            FurbleProtocol.encodeAuthResponse("é".repeat(32).toByteArray(), ByteArray(16))
         }
+    }
+
+    @Test
+    fun utf8PasswordInputStopsAtCompleteCodePointBoundary() {
+        val value = "é".repeat(31) + "a" + "🙂"
+        val truncated = FurbleProtocol.truncateUtf8(value)
+        assertEquals(63, truncated.toByteArray(Charsets.UTF_8).size)
+        assertEquals("é".repeat(31) + "a", truncated)
     }
 }

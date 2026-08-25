@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private class FakePasswordStore : PasswordStore {
-    private var value: String? = null
-    override fun read(): String? = value
-    override fun write(password: String) { value = password }
+    private var value: ByteArray? = null
+    override fun read(): ByteArray? = value?.copyOf()
+    override fun write(password: ByteArray) { value = password.copyOf() }
     override fun clear() { value = null }
 }
 
@@ -29,7 +29,7 @@ class AuthGateTest {
     @Test
     fun forgettingFakePasswordCannotRestoreIt() {
         val store = FakePasswordStore()
-        store.write("secret")
+        store.write("secret".toByteArray())
         assertTrue(store.read() != null)
         store.clear()
         assertNull(store.read())

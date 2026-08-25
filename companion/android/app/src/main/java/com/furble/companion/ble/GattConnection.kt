@@ -52,8 +52,10 @@ class GattConnection(
     private var currentOperation: Operation? = null
     private var isReady = false
     private var mtu = 23
-    private var authPassword: CharArray? = null
+    private var authPassword: ByteArray? = null
     private var authChallengePending = false
+    private var authGeneration = 0L
+    private var authAttemptGeneration: Long? = null
 
     fun connect() {
         handler.post {
@@ -81,7 +83,12 @@ class GattConnection(
     }
 
     fun cancelAuthentication() {
-        handler.post { clearAuthSecrets() }
+        handler.post {
+            authGeneration++
+            authAttemptGeneration = null
+            operations.removeAll { it is Operation.WriteCharacteristic && it.characteristic.uuid == FurbleProtocol.AUTH_UUID }
+            clearAuthSecrets()
+        }
     }
 
     fun writeLocation(bytes: ByteArray) {
@@ -133,15 +140,13 @@ class GattConnection(
     }
 
     /** Starts the firmware challenge. The password is held only until its HMAC is sent. */
-    fun authenticate(password: CharSequence) {
+    fun authenticate(passwordUtf8: ByteArray) {
         handler.post {
             if (!isReady) {
                 listener.onError("furble is not ready for authentication")
                 return@post
             }
-            val candidate = password.toString()
-            val byteLength = candidate.toByteArray(Charsets.UTF_8).size
-            if (byteLength !in 1..FurbleProtocol.COMPANION_PASSWORD_MAX) {
+            if (passwordUtf8.size !in 1..FurbleProtocol.COMPANION_PASSWORD_MAX) {
                 listener.onError("Companion password must be 1..${FurbleProtocol.COMPANION_PASSWORD_MAX} UTF-8 bytes")
                 return@post
             }
@@ -149,8 +154,10 @@ class GattConnection(
                 listener.onError("The furble does not expose its AUTH characteristic")
                 return@post
             }
-            authPassword = candidate.toCharArray()
+            authPassword?.fill(0)
+            authPassword = passwordUtf8.copyOf()
             authChallengePending = true
+            authAttemptGeneration = ++authGeneration
             enqueueCharacteristicWrite(
                 uuid = FurbleProtocol.AUTH_UUID,
                 value = FurbleProtocol.encodeAuthBegin(),
@@ -273,6 +280,7 @@ class GattConnection(
                 value = value.copyOf(),
                 writeType = writeType,
                 waitForCallback = waitForCallback,
+                authGeneration = if (uuid == FurbleProtocol.AUTH_UUID) authGeneration else 0L,
             ),
         )
         pump()
@@ -375,6 +383,7 @@ class GattConnection(
 
     private fun dispatchAuth(value: ByteArray) {
         if (value.size == FurbleProtocol.AUTH_NONCE_SIZE && authChallengePending) {
+            if (authAttemptGeneration != authGeneration) return
             val password = authPassword ?: run {
                 listener.onError("furble sent an AUTH challenge without a password")
                 return
@@ -382,13 +391,13 @@ class GattConnection(
             authPassword = null
             authChallengePending = false
             val response = try {
-                FurbleProtocol.encodeAuthResponse(String(password), value)
+                FurbleProtocol.encodeAuthResponse(password, value)
             } catch (error: IllegalArgumentException) {
-                password.fill('\u0000')
+                password.fill(0)
                 listener.onError(error.message ?: "Invalid furble AUTH challenge")
                 return
             }
-            password.fill('\u0000')
+            password.fill(0)
             enqueueCharacteristicWrite(
                 uuid = FurbleProtocol.AUTH_UUID,
                 value = response,
@@ -399,7 +408,9 @@ class GattConnection(
             return
         }
         if (value.size == 1) {
+            if (authAttemptGeneration != authGeneration) return
             listener.onAuthResult(value[0].toInt() and 0xff)
+            authAttemptGeneration = null
             clearAuthSecrets()
         } else {
             listener.onError("furble sent an invalid AUTH indication")
@@ -408,9 +419,10 @@ class GattConnection(
     }
 
     private fun clearAuthSecrets() {
-        authPassword?.fill('\u0000')
+        authPassword?.fill(0)
         authPassword = null
         authChallengePending = false
+        authAttemptGeneration = null
     }
 
     private sealed interface Operation {
@@ -424,6 +436,7 @@ class GattConnection(
             val value: ByteArray,
             val writeType: Int,
             val waitForCallback: Boolean,
+            val authGeneration: Long,
         ) : Operation
 
         data class WriteDescriptor(
