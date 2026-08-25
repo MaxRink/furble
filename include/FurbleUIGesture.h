@@ -16,6 +16,16 @@ class GestureDetector {
   /** Read one accelerometer sample and report at most one gesture. */
   bool poll(bool doubleTap, gesture_t &gesture);
 
+  /**
+   * Classify one accelerometer sample at an explicit time.
+   *
+   * This is the shared, deterministic seam used by the simulator and host
+   * tests. The hardware-facing poll() method only acquires a sample and
+   * delegates here, so protocol and gesture state-machine coverage does not
+   * require an IMU attached.
+   */
+  bool sample(float x, float y, float z, uint32_t now, bool doubleTap, gesture_t &gesture);
+
   /** Clear all detector state. */
   void reset(void);
 
@@ -33,7 +43,7 @@ class GestureDetector {
   void recordGesture(uint32_t now);
 
   bool m_Ready = false;
-  float m_LastMagnitude = 0.0f;
+  float m_BaselineMagnitude = 1.0f;
   float m_ShakeEwma = 0.0f;
   uint8_t m_ShakeSamples = 0;
   bool m_ShakeReported = false;

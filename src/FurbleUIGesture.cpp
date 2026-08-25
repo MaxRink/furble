@@ -5,6 +5,9 @@
 #include <esp_timer.h>
 
 #include "FurbleUIGesture.h"
+#if defined(FURBLE_SIM)
+#include "driver.h"
+#endif
 
 namespace Furble {
 
@@ -14,7 +17,7 @@ bool GestureDetector::elapsed(uint32_t now, uint32_t start, uint32_t duration) {
 
 void GestureDetector::reset(void) {
   m_Ready = false;
-  m_LastMagnitude = 0.0f;
+  m_BaselineMagnitude = 1.0f;
   m_ShakeEwma = 0.0f;
   m_ShakeSamples = 0;
   m_ShakeReported = false;
@@ -34,6 +37,17 @@ void GestureDetector::recordGesture(uint32_t now) {
 }
 
 bool GestureDetector::poll(bool doubleTap, gesture_t &gesture) {
+#if defined(FURBLE_SIM)
+  if (!Furble::Sim::imuEnabled()) {
+    return false;
+  }
+
+  Furble::Sim::imuUpdate();
+  float accel[3];
+  if (!Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2])) {
+    return false;
+  }
+#else
   if (!M5.Imu.isEnabled()) {
     return false;
   }
@@ -43,13 +57,31 @@ bool GestureDetector::poll(bool doubleTap, gesture_t &gesture) {
   if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
     return false;
   }
+#endif
 
   const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-  const float magnitude =
-      std::sqrt((accel[0] * accel[0]) + (accel[1] * accel[1]) + (accel[2] * accel[2]));
+  return sample(accel[0], accel[1], accel[2], now, doubleTap, gesture);
+}
+
+bool GestureDetector::sample(float x,
+                             float y,
+                             float z,
+                             uint32_t now,
+                             bool doubleTap,
+                             gesture_t &gesture) {
+  if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+    return false;
+  }
+
+  const float magnitude = std::sqrt((x * x) + (y * y) + (z * z));
+  // Reject impossible/overflowed host or sensor values without allowing them
+  // to poison the baseline or create a false shutter event.
+  if (!std::isfinite(magnitude) || (magnitude > 16.0f)) {
+    return false;
+  }
 
   if (!m_Ready) {
-    m_LastMagnitude = magnitude;
+    m_BaselineMagnitude = magnitude;
     m_ShakeEwma = 0.0f;
     m_Ready = true;
     return false;
@@ -57,17 +89,16 @@ bool GestureDetector::poll(bool doubleTap, gesture_t &gesture) {
 
   const bool inRefractory = m_HasGesture && !elapsed(now, m_LastGestureAt, REFRACTORY_MS);
 
-  if (m_PendingTap && elapsed(now, m_PendingTapAt, DOUBLE_TAP_MAX_MS)) {
+  if (m_PendingTap && (static_cast<uint32_t>(now - m_PendingTapAt) > DOUBLE_TAP_MAX_MS)) {
     m_PendingTap = false;
     if (doubleTap && !inRefractory) {
       recordGesture(now);
       gesture = gesture_t::TAP;
-      m_LastMagnitude = magnitude;
       return true;
     }
   }
 
-  const float deviation = std::fabs(magnitude - 1.0f);
+  const float deviation = std::fabs(magnitude - m_BaselineMagnitude);
   m_ShakeEwma = (0.5f * deviation) + (0.5f * m_ShakeEwma);
   if (deviation > SHAKE_THRESHOLD) {
     m_ShakeSamples = std::min<uint8_t>(m_ShakeSamples + 1, SHAKE_SAMPLES);
@@ -83,15 +114,11 @@ bool GestureDetector::poll(bool doubleTap, gesture_t &gesture) {
     if (!inRefractory) {
       recordGesture(now);
       gesture = gesture_t::SHAKE;
-      m_LastMagnitude = magnitude;
       return true;
     }
   }
 
-  const float delta = std::fabs(magnitude - m_LastMagnitude);
-  m_LastMagnitude = magnitude;
-
-  if (!m_TapCandidate && !inRefractory && (delta > TAP_THRESHOLD)) {
+  if (!m_TapCandidate && !inRefractory && (deviation >= TAP_THRESHOLD)) {
     m_TapCandidate = true;
     m_TapStarted = now;
   }
@@ -99,7 +126,7 @@ bool GestureDetector::poll(bool doubleTap, gesture_t &gesture) {
   if (m_TapCandidate) {
     if (elapsed(now, m_TapStarted, TAP_WINDOW_MS)) {
       m_TapCandidate = false;
-    } else if (delta < TAP_RELEASE_THRESHOLD) {
+    } else if (deviation <= TAP_RELEASE_THRESHOLD) {
       m_TapCandidate = false;
       if (!doubleTap) {
         recordGesture(now);
@@ -119,6 +146,13 @@ bool GestureDetector::poll(bool doubleTap, gesture_t &gesture) {
       m_PendingTap = true;
       m_PendingTapAt = now;
     }
+  }
+
+  // Follow slow changes in the measured gravity magnitude only while the
+  // signal is quiet. This preserves tap thresholds across sensor calibration
+  // differences without teaching the baseline an impulse.
+  if (!m_TapCandidate && !m_PendingTap && (deviation < TAP_RELEASE_THRESHOLD)) {
+    m_BaselineMagnitude = (0.95f * m_BaselineMagnitude) + (0.05f * magnitude);
   }
 
   return false;

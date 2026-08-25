@@ -97,6 +97,14 @@ target_include_directories(pmic_recovery_test PRIVATE
 target_compile_options(pmic_recovery_test PRIVATE -Wall -Wextra -Werror
                                                        -Wno-unused-parameter)
 
+add_executable(gesture_detector_test
+               gesture_detector_test.cpp
+               ${FURBLE_ROOT}/src/FurbleUIGesture.cpp)
+target_include_directories(gesture_detector_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/gesture_stubs
+                           ${FURBLE_ROOT}/include)
+target_compile_options(gesture_detector_test PRIVATE -Wall -Wextra -Werror)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE
