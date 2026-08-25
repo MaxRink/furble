@@ -1554,10 +1554,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     } else {
       lv_obj_set_width(label, LV_PCT(100));
     }
-    // Menu titles use deterministic left-aligned clipping instead of a moving
-    // marquee; this keeps the beginning readable on narrow panels and stable in
-    // captures.
-    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_STATE_TRICKLE);
@@ -1590,9 +1587,8 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   // labels makes compact pages taller and regresses their fit. The gesture
   // label is the deliberate exception because its full name is part of the
   // narrow-panel UI contract and gets its own row below.
-  lv_label_set_long_mode(label,
-                         setting == Settings::IMU_TRIG ? LV_LABEL_LONG_WRAP
-                                                       : LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_label_set_long_mode(
+      label, setting == Settings::IMU_TRIG ? LV_LABEL_LONG_WRAP : LV_LABEL_LONG_SCROLL_CIRCULAR);
   if (setting == Settings::IMU_TRIG) {
     lv_obj_set_width(label, LV_PCT(100));
   }
@@ -7649,10 +7645,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
  * Add a labelled roller row to a menu page.
  *
  * The row is sized to its content so the page keeps flowing, a full height row
- * pushes later rows off screen and stops the page scrolling. Roller labels wrap
- * instead of using LVGL's circular horizontal marquee: that animation can leave
- * a deterministic screenshot at an arbitrary clipped offset and obscures the
- * setting name on narrow panels.
+ * pushes later rows off screen and stops the page scrolling.
  */
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options) {
   lv_obj_t *cont = lv_menu_cont_create(page);
@@ -7661,7 +7654,7 @@ static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *opt
 
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, text);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *roller = lv_roller_create(cont);

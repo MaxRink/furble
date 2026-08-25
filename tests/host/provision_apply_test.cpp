@@ -93,8 +93,7 @@ void testValidatedApplyAndRuntimeHooks() {
         "validated button mode setting is persisted");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
         "validated IMU wake setting is persisted");
-  check(Furble::Settings::load<bool>(Furble::Settings::IMU),
-        "validated IMU setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU), "validated IMU setting is persisted");
   check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
         "validated IMU trigger setting is persisted");
 }
