@@ -113,6 +113,133 @@ on:
       self.assertNotEqual(result.returncode, 0)
       self.assertIn("new.yml: has no workflow_dispatch trigger", result.stderr)
 
+  def test_multiline_flow_mapping_keeps_branch_filter_structural(self):
+    errors = self.lint(
+        """name: test
+on: {
+  pull_request: {branches: [master], paths: [src/**]},
+  workflow_dispatch: {}
+}
+"""
+    )
+    self.assertIn("pull_request has a base-branch filter", errors)
+
+  def test_top_level_trigger_alias_is_resolved(self):
+    errors = self.lint(
+        """name: test
+triggers: &events
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+on: *events
+"""
+    )
+    self.assertEqual(errors, [])
+    self.assertEqual(
+        CHECKER.event_blocks(
+            [
+                "triggers: &events",
+                "  pull_request:",
+                "    paths: [src/**]",
+                "  workflow_dispatch:",
+                "on: *events",
+            ]
+        )["pull_request"].keys,
+        frozenset({"paths"}),
+    )
+
+  def test_anchored_pull_request_configuration_is_resolved(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request: &pull_request
+    branches-ignore: [master]
+    paths: [src/**]
+  workflow_dispatch:
+"""
+    )
+    self.assertIn("pull_request has a base-branch filter", errors)
+
+  def test_literal_run_text_does_not_grant_pull_request_write(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+jobs:
+  test:
+    steps:
+      - run: |
+          echo "pull_request:"
+          echo "pull-requests: write"
+"""
+    )
+    self.assertEqual(errors, [])
+
+  def test_folded_run_text_does_not_grant_pull_request_write(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+jobs:
+  test:
+    steps:
+      - run: >-
+          echo "pull_request:"
+          echo "pull-requests: write"
+"""
+    )
+    self.assertEqual(errors, [])
+
+  def test_yaml_parse_failure_is_fatal(self):
+    with tempfile.TemporaryDirectory(prefix="furble-ci-workflow-") as root:
+      workflow_root = Path(root) / ".github" / "workflows"
+      workflow_root.mkdir(parents=True)
+      (workflow_root / "broken.yml").write_text(
+          "name: broken\non: [\n", encoding="utf-8"
+      )
+      result = subprocess.run(
+          [sys.executable, str(CHECKER_PATH), "--root", root],
+          check=False,
+          capture_output=True,
+          text=True,
+      )
+      self.assertNotEqual(result.returncode, 0)
+      self.assertIn("broken.yml: YAML parse failed", result.stderr)
+
+  def test_pull_request_target_is_rejected_even_without_pull_request(self):
+    errors = self.lint(
+        """name: unsafe
+on:
+  pull_request_target:
+  workflow_dispatch:
+"""
+    )
+    self.assertIn("uses pull_request_target", errors)
+
+  def test_duplicate_yaml_keys_are_fatal(self):
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yml", encoding="utf-8"
+    ) as workflow:
+      workflow.write("name: test\non: {}\non: {}\n")
+      workflow.flush()
+      with self.assertRaises(CHECKER.WorkflowParseError):
+        CHECKER.lint_workflow(Path(workflow.name))
+
+  def test_block_event_with_flow_configuration_is_structural(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request: {branches-ignore: [master], paths: [src/**]}
+  workflow_dispatch: {}
+"""
+    )
+    self.assertIn("pull_request has a base-branch filter", errors)
+    self.assertNotIn("pull_request has no path filter", errors)
+
 
 if __name__ == "__main__":
   unittest.main()

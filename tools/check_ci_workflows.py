@@ -1,25 +1,91 @@
 #!/usr/bin/env python3
 """Check that pull-request validation workflows are safe for stacked PRs.
 
-The checker intentionally has no third-party YAML dependency. It parses the
-small workflow-trigger subset needed here while preserving GitHub's treatment
-of the YAML 1.1-looking key ``on`` as a string.
+The checker uses PyYAML's structural loader instead of matching YAML text.
+``BaseLoader`` deliberately leaves scalar values as strings, so the YAML 1.1
+loader quirk that turns an unquoted ``on`` key into ``True`` cannot hide a
+workflow trigger. Anchors, aliases, and multiline flow collections are
+resolved by the loader before policy checks run.
 """
 
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import json
 from pathlib import Path
 import sys
+from typing import Any
+
+try:
+  import yaml
+except ImportError as error:  # pragma: no cover - exercised in CI setup
+  raise SystemExit(
+      "PyYAML is required by check_ci_workflows.py; install "
+      ".github/workflows/ci-checker-requirements.txt"
+  ) from error
 
 
-@dataclass(frozen=True)
-class MappingEntry:
-  path: tuple[str, ...]
-  key: str
-  value: str
+class WorkflowParseError(ValueError):
+  """A workflow could not be parsed as one YAML mapping document."""
+
+
+class WorkflowLoader(yaml.BaseLoader):
+  """BaseLoader with duplicate mapping keys rejected explicitly."""
+
+
+def _construct_mapping(
+    loader: WorkflowLoader, node: yaml.MappingNode, deep: bool = False
+) -> dict[str, Any]:
+  if not isinstance(node, yaml.MappingNode):
+    raise yaml.constructor.ConstructorError(
+        None, None, "expected a mapping node", node.start_mark
+    )
+  mapping: dict[str, Any] = {}
+  merged: list[Mapping[str, Any]] = []
+  for key_node, value_node in node.value:
+    key = loader.construct_object(key_node, deep=deep)
+    if not isinstance(key, str):
+      raise yaml.constructor.ConstructorError(
+          "while constructing a mapping",
+          node.start_mark,
+          "workflow mapping keys must be strings",
+          key_node.start_mark,
+      )
+    if key == "<<":
+      merge_value = loader.construct_object(value_node, deep=deep)
+      merge_values = (
+          merge_value
+          if isinstance(merge_value, Sequence)
+          and not isinstance(merge_value, (str, bytes))
+          else [merge_value]
+      )
+      if not all(isinstance(item, Mapping) for item in merge_values):
+        raise yaml.constructor.ConstructorError(
+            "while constructing a mapping",
+            node.start_mark,
+            "workflow merge aliases must refer to mappings",
+            value_node.start_mark,
+        )
+      merged.extend(merge_values)
+      continue
+    if key in mapping:
+      raise yaml.constructor.ConstructorError(
+          "while constructing a mapping",
+          node.start_mark,
+          f"found duplicate workflow key {key!r}",
+          key_node.start_mark,
+      )
+    mapping[key] = loader.construct_object(value_node, deep=deep)
+  for merge in reversed(merged):
+    for key, value in merge.items():
+      mapping.setdefault(key, value)
+  return mapping
+
+
+WorkflowLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping
+)
 
 
 @dataclass(frozen=True)
@@ -29,254 +95,88 @@ class EventBlock:
   keys: frozenset[str]
 
 
-def _strip_comment(value: str) -> str:
-  quote = ""
-  escaped = False
-  for index, char in enumerate(value):
-    if quote == '"' and escaped:
-      escaped = False
-      continue
-    if quote == '"' and char == "\\":
-      escaped = True
-      continue
-    if char in "'\"":
-      if not quote:
-        quote = char
-      elif quote == char:
-        quote = ""
-    elif char == "#" and not quote and (
-        index == 0 or value[index - 1].isspace()
-    ):
-      return value[:index].rstrip()
-  return value.rstrip()
+def _load_text(text: str) -> dict[str, Any]:
+  try:
+    document = yaml.load(text, Loader=WorkflowLoader)
+  except yaml.YAMLError as error:
+    raise WorkflowParseError(f"YAML parse failed: {error}") from error
+  if not isinstance(document, dict):
+    raise WorkflowParseError("workflow document must be a mapping")
+  return document
 
 
-def _decode_key(value: str) -> str:
-  value = value.strip()
-  if len(value) >= 2 and value[0] == value[-1]:
-    if value[0] == "'":
-      return value[1:-1].replace("''", "'")
-    if value[0] == '"':
-      try:
-        decoded = json.loads(value)
-      except json.JSONDecodeError:
-        return value[1:-1]
-      return decoded if isinstance(decoded, str) else value
-  return value
+def _load_workflow(path: Path) -> dict[str, Any]:
+  try:
+    text = path.read_text(encoding="utf-8")
+  except OSError as error:
+    raise WorkflowParseError(f"cannot read workflow: {error}") from error
+  return _load_text(text)
 
 
-def _key_line(line: str) -> tuple[int, str, str] | None:
-  """Parse one plain/quoted YAML mapping key line.
-
-  Workflow keys are simple names, but locating the colon outside quotes also
-  handles quoted ``on`` and event/config keys without depending on indentation
-  being exactly two or four spaces.
-  """
-
-  indent = len(line) - len(line.lstrip(" "))
-  if "\t" in line[:indent]:
-    return None
-  content = _strip_comment(line[indent:]).strip()
-  if not content or content.startswith("-"):
-    return None
-  quote = ""
-  escaped = False
-  colon = None
-  for index, char in enumerate(content):
-    if quote == '"' and escaped:
-      escaped = False
-      continue
-    if quote == '"' and char == "\\":
-      escaped = True
-      continue
-    if char in "'\"":
-      if not quote:
-        quote = char
-      elif quote == char:
-        quote = ""
-    elif char == ":" and not quote:
-      if index + 1 == len(content) or content[index + 1].isspace():
-        colon = index
-        break
-  if colon is None:
-    return None
-  return indent, _decode_key(content[:colon]), content[colon + 1 :].strip()
+def _document_from_source(
+    source: Mapping[str, Any] | Sequence[str]
+) -> dict[str, Any]:
+  if isinstance(source, Mapping):
+    return dict(source)
+  return _load_text("\n".join(source))
 
 
-def _split_flow(value: str) -> list[str]:
-  """Split a flow collection at commas outside nested collections/quotes."""
-
-  result: list[str] = []
-  start = 0
-  quote = ""
-  escaped = False
-  depth = 0
-  for index, char in enumerate(value):
-    if quote == '"' and escaped:
-      escaped = False
-      continue
-    if quote == '"' and char == "\\":
-      escaped = True
-      continue
-    if char in "'\"":
-      if not quote:
-        quote = char
-      elif quote == char:
-        quote = ""
-    elif not quote and char in "[{":
-      depth += 1
-    elif not quote and char in "]}":
-      depth -= 1
-    elif not quote and char == "," and depth == 0:
-      result.append(value[start:index].strip())
-      start = index + 1
-  result.append(value[start:].strip())
-  return [item for item in result if item]
-
-
-def _split_flow_colon(value: str) -> tuple[str, str] | None:
-  quote = ""
-  escaped = False
-  depth = 0
-  for index, char in enumerate(value):
-    if quote == '"' and escaped:
-      escaped = False
-      continue
-    if quote == '"' and char == "\\":
-      escaped = True
-      continue
-    if char in "'\"":
-      if not quote:
-        quote = char
-      elif quote == char:
-        quote = ""
-    elif not quote and char in "[{":
-      depth += 1
-    elif not quote and char in "]}":
-      depth -= 1
-    elif char == ":" and not quote and depth == 0:
-      return value[:index], value[index + 1 :]
-  return None
-
-
-def _flow_pairs(value: str) -> list[tuple[str, str]]:
-  value = value.strip()
-  if not (value.startswith("{") and value.endswith("}")):
-    return []
-  pairs: list[tuple[str, str]] = []
-  for item in _split_flow(value[1:-1]):
-    parts = _split_flow_colon(item)
-    if parts is not None:
-      key, nested = parts
-      pairs.append((_decode_key(key), nested.strip()))
-  return pairs
-
-
-def _block_entries(
-    lines: list[str], trigger_index: int, trigger_key: str
-) -> list[MappingEntry]:
-  entries: list[MappingEntry] = []
-  stack: list[tuple[int, str]] = [(0, trigger_key)]
-  block_scalar_indent: int | None = None
-  for line in lines[trigger_index + 1 :]:
-    if not line.strip():
-      continue
-    indent = len(line) - len(line.lstrip(" "))
-    if indent == 0:
-      break
-    if block_scalar_indent is not None:
-      if indent > block_scalar_indent:
-        continue
-      block_scalar_indent = None
-    parsed = _key_line(line)
-    if parsed is None:
-      continue
-    indent, key, value = parsed
-    while stack and indent <= stack[-1][0]:
-      stack.pop()
-    path = tuple(item[1] for item in stack)
-    entries.append(MappingEntry(path, key, value))
-    if value in ("|", ">", "|-", ">-", "|+", ">+"):
-      block_scalar_indent = indent
-    elif not value:
-      stack.append((indent, key))
-  return entries
-
-
-def _all_entries(lines: list[str]) -> list[MappingEntry]:
-  """Collect mapping entries in the workflow using their real nesting."""
-
-  entries: list[MappingEntry] = []
-  stack: list[tuple[int, str]] = []
-  block_scalar_indent: int | None = None
-  for line in lines:
-    if not line.strip():
-      continue
-    indent = len(line) - len(line.lstrip(" "))
-    if block_scalar_indent is not None:
-      if indent > block_scalar_indent:
-        continue
-      block_scalar_indent = None
-    parsed = _key_line(line)
-    if parsed is None:
-      continue
-    indent, key, value = parsed
-    while stack and indent <= stack[-1][0]:
-      stack.pop()
-    entries.append(MappingEntry(tuple(item[1] for item in stack), key, value))
-    if value in ("|", ">", "|-", ">-", "|+", ">+"):
-      block_scalar_indent = indent
-    elif not value:
-      stack.append((indent, key))
-  return entries
-
-
-def event_blocks(lines: list[str]) -> dict[str, EventBlock]:
-  """Return trigger events using structural indentation and flow parsing."""
-
-  trigger_index = None
-  trigger_value = ""
-  for index, line in enumerate(lines):
-    parsed = _key_line(line)
-    if parsed is not None and parsed[0] == 0 and parsed[1] == "on":
-      trigger_index = index
-      trigger_value = parsed[2]
-      break
-  if trigger_index is None:
-    return {}
-
+def _event_blocks(document: Mapping[str, Any]) -> dict[str, EventBlock]:
+  trigger = document.get("on")
   blocks: dict[str, EventBlock] = {}
-  if trigger_value.startswith("[") and trigger_value.endswith("]"):
-    for item in _split_flow(trigger_value[1:-1]):
-      blocks[_decode_key(item)] = EventBlock(frozenset())
-    return blocks
-  if trigger_value.startswith("{"):
-    for event, config in _flow_pairs(trigger_value):
-      blocks[event] = EventBlock(
-          frozenset(key for key, _ in _flow_pairs(config))
+  if isinstance(trigger, Mapping):
+    for event, configuration in trigger.items():
+      if not isinstance(event, str):
+        continue
+      keys = (
+          frozenset(key for key in configuration if isinstance(key, str))
+          if isinstance(configuration, Mapping)
+          else frozenset()
       )
-    return blocks
-
-  for entry in _block_entries(lines, trigger_index, "on"):
-    if len(entry.path) == 1 and entry.path[0] == "on":
-      blocks.setdefault(entry.key, EventBlock(frozenset()))
-    elif len(entry.path) == 2 and entry.path[0] == "on":
-      event = entry.path[1]
-      current = blocks.get(event, EventBlock(frozenset()))
-      blocks[event] = EventBlock(current.keys | {entry.key})
+      blocks[event] = EventBlock(keys)
+  elif isinstance(trigger, Sequence) and not isinstance(trigger, (str, bytes)):
+    for event in trigger:
+      if isinstance(event, str):
+        blocks[event] = EventBlock(frozenset())
   return blocks
 
 
-def _workflow_paths(workflow_root: Path) -> list[Path]:
-  return sorted(
-      [*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml")]
-  )
+def event_blocks(
+    source: Mapping[str, Any] | Sequence[str]
+) -> dict[str, EventBlock]:
+  """Return trigger events using YAML structure, including aliases."""
+
+  return _event_blocks(_document_from_source(source))
 
 
-def lint_workflow(path: Path) -> list[str]:
-  lines = path.read_text(encoding="utf-8").splitlines()
-  blocks = event_blocks(lines)
+def _permission_requests_write(document: Mapping[str, Any]) -> bool:
+  """Return whether a semantic permissions mapping grants PR write access."""
+
+  def visit(value: Any) -> bool:
+    if isinstance(value, Mapping):
+      for key, nested in value.items():
+        if key == "permissions":
+          if nested == "write-all":
+            return True
+          if isinstance(nested, Mapping) and nested.get("pull-requests") in (
+              "write",
+              "write-all",
+          ):
+            return True
+        if visit(nested):
+          return True
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+      return any(visit(item) for item in value)
+    return False
+
+  return visit(document)
+
+
+def _lint_document(document: Mapping[str, Any]) -> list[str]:
+  blocks = _event_blocks(document)
   errors: list[str] = []
+  if "pull_request_target" in blocks:
+    errors.append("uses pull_request_target")
   if "pull_request" not in blocks:
     return errors
   pull_request = blocks["pull_request"]
@@ -286,19 +186,21 @@ def lint_workflow(path: Path) -> list[str]:
     errors.append("pull_request has no path filter")
   if "workflow_dispatch" not in blocks:
     errors.append("has no workflow_dispatch trigger")
-  write_permission = False
-  for entry in _all_entries(lines):
-    if entry.key == "pull-requests" and _decode_key(entry.value) == "write":
-      write_permission = True
-    if entry.key == "permissions":
-      if any(
-          key == "pull-requests" and _decode_key(value) == "write"
-          for key, value in _flow_pairs(entry.value)
-      ):
-        write_permission = True
-  if write_permission:
+  if _permission_requests_write(document):
     errors.append("requests pull-requests: write for pull_request runs")
   return errors
+
+
+def _workflow_paths(workflow_root: Path) -> list[Path]:
+  return sorted(
+      [*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml")]
+  )
+
+
+def lint_workflow(path: Path) -> list[str]:
+  """Lint one workflow, raising WorkflowParseError on invalid YAML."""
+
+  return _lint_document(_load_workflow(path))
 
 
 def main() -> int:
@@ -314,13 +216,17 @@ def main() -> int:
   failures: list[str] = []
   checked = 0
   for path in _workflow_paths(workflow_root):
-    if "pull_request" not in event_blocks(
-        path.read_text(encoding="utf-8").splitlines()
-    ):
-      continue
-    checked += 1
-    for error in lint_workflow(path):
+    try:
+      document = _load_workflow(path)
+    except WorkflowParseError as error:
       failures.append(f"{path.name}: {error}")
+      continue
+    blocks = _event_blocks(document)
+    if "pull_request" in blocks:
+      checked += 1
+    failures.extend(
+        f"{path.name}: {error}" for error in _lint_document(document)
+    )
   if failures:
     print("CI workflow trigger check failed:", file=sys.stderr)
     for failure in failures:
