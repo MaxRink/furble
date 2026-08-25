@@ -137,8 +137,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   private func authenticate() {
-    guard let authCharacteristic = characteristic(FurbleProtocol.UUIDs.auth),
-      let password = try? credentialStore.readPassword(), !password.isEmpty else {
+    guard let authCharacteristic = characteristic(FurbleProtocol.UUIDs.auth) else {
       fail(.authenticationUnavailable)
       return
     }
@@ -164,13 +163,15 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
         fail(.authenticationFailed)
         return
       }
-      let commands = state.didAuthenticationAccepted()
+      let commands = result == FurbleProtocol.authResultNotRequired
+        ? state.didAuthenticationNotRequired()
+        : state.didAuthenticationAccepted()
       phase = state.phase
       subscribe(commands)
       return
     }
     guard data.count == FurbleProtocol.authNonceSize + 2,
-      let password = try? credentialStore.readPassword(), !password.isEmpty,
+      let password = try? credentialStore.readPassword(), let password, !password.isEmpty,
       let authCharacteristic = characteristic(FurbleProtocol.UUIDs.auth) else {
       fail(.authenticationUnavailable)
       return

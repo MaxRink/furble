@@ -5,6 +5,46 @@ import CryptoKit
 #endif
 
 final class FurbleProtocolTests: XCTestCase {
+  private func canonicalFixture(_ name: String) throws -> Data {
+    var root = URL(fileURLWithPath: #filePath)
+    for _ in 0..<4 { root.deleteLastPathComponent() }
+    let url = root.appendingPathComponent("tests/protocol/golden/companion_auth.json")
+    let text = try String(contentsOf: url, encoding: .utf8)
+    let pattern = "\"\(name)\"\\s*:\\s*\"([^\"]+)\""
+    let regex = try NSRegularExpression(pattern: pattern)
+    let range = NSRange(text.startIndex..<text.endIndex, in: text)
+    guard let match = regex.firstMatch(in: text, range: range),
+      let valueRange = Range(match.range(at: 1), in: text) else {
+      throw FurbleProtocol.Error.malformed
+    }
+    let value = String(text[valueRange])
+    var data = Data()
+    for index in stride(from: 0, to: value.count, by: 2) {
+      let start = value.index(value.startIndex, offsetBy: index)
+      let end = value.index(start, offsetBy: 2)
+      guard let byte = UInt8(value[start..<end], radix: 16) else {
+        throw FurbleProtocol.Error.malformed
+      }
+      data.append(byte)
+    }
+    return data
+  }
+
+  func testCanonicalAuthFixtureIsConsumed() throws {
+    XCTAssertEqual(FurbleProtocol.authBegin(), try canonicalFixture("begin"))
+    let nonce = try canonicalFixture("nonce")
+    XCTAssertEqual(try FurbleProtocol.decodeAuthChallenge(try canonicalFixture("challenge")), nonce)
+    #if canImport(CryptoKit)
+    let password = Data("correct horse battery staple".utf8)
+    let proof = Data(HMAC<SHA256>.authenticationCode(
+      for: nonce, using: SymmetricKey(data: password)).prefix(16))
+    XCTAssertEqual(try FurbleProtocol.encodeAuthProof(proof), try canonicalFixture("proof"))
+    #else
+    throw XCTSkip("CryptoKit is unavailable on this host")
+    #endif
+    XCTAssertEqual(try FurbleProtocol.decodeAuthResult(try canonicalFixture("result_authenticated")), 1)
+  }
+
   func testLocationRoundTripUsesFrozen42ByteLayout() throws {
     let fix = FurbleProtocol.LocationFix(
       positionValid: true, timeValid: true, altitudeValid: true,
@@ -98,6 +138,11 @@ final class FurbleProtocolTests: XCTestCase {
     _ = try auth.begin(nonce: nonce)
     XCTAssertThrowsError(try auth.verify(proof: Data(repeating: 0, count: 16)))
     XCTAssertEqual(auth.state, .lockedOut)
+  }
+
+  func testPasswordUsesFirmwareUtf8ByteLimit() {
+    XCTAssertThrowsError(try FurbleAuthSession(password: String(repeating: "é", count: 32)))
+    XCTAssertNoThrow(try FurbleAuthSession(password: String(repeating: "é", count: 31) + "a"))
   }
 
   func testAuthPacketsHaveExplicitOperationsAndFixedLengths() throws {

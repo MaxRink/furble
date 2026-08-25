@@ -41,6 +41,34 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus, .subscribeSettings])
   }
 
+  func testPasswordlessResultCompletesOnlyAfterFirmwareNotRequired() {
+    var machine = CompanionStateMachine()
+    _ = machine.start(bluetoothAvailable: true)
+    _ = machine.didFindPeripheral()
+    _ = machine.didConnect()
+    _ = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: true)
+    _ = machine.didReadCapability(Data([1, 2, 3, 0, 0, 0]))
+    XCTAssertEqual(machine.didAuthenticationNotRequired(),
+      [.subscribeStatus, .readStatus, .subscribeSettings, .subscribeCameras])
+    XCTAssertEqual(machine.phase, .ready)
+  }
+
+  func testPrivilegedCommandsRequireTheirAdvertisedCapability() throws {
+    var machine = CompanionStateMachine()
+    _ = machine.start(bluetoothAvailable: true)
+    _ = machine.didFindPeripheral()
+    _ = machine.didConnect()
+    _ = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: true)
+    _ = machine.didReadCapability(Data([1, 2, 2, 0, 0, 0]))
+    _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))
+    _ = machine.didAuthenticationAccepted()
+    XCTAssertThrowsError(try machine.privileged(.writeSettings(Data([0]))) )
+    XCTAssertThrowsError(try machine.privileged(.writeCamera(Data([0, 0xff]))) )
+    XCTAssertNoThrow(try machine.privileged(.writeTrigger(Data([1, 1]))) )
+  }
+
   func testDisconnectClearsSensitiveStateAndReconnects() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)

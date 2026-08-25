@@ -445,13 +445,17 @@ public struct FurbleAuthSession: Sendable {
   public private(set) var state: State = .awaitingChallenge
   public private(set) var failures = 0
   public let maxFailures: Int
-  private let password: Data
+  private var password: SecretBytes
   private var nonce: Data?
 
   public init(password: String, maxFailures: Int = 3) throws {
     guard !password.isEmpty else { throw FurbleProtocol.Error.authenticationUnavailable }
     guard maxFailures > 0 else { throw FurbleProtocol.Error.invalidValue("maxFailures") }
-    self.password = Data(password.utf8)
+    let bytes = Array(password.utf8)
+    guard bytes.count <= 63 else {
+      throw FurbleProtocol.Error.invalidValue("password exceeds 63 UTF-8 bytes")
+    }
+    self.password = SecretBytes(bytes)
     self.maxFailures = maxFailures
   }
 
@@ -461,18 +465,20 @@ public struct FurbleAuthSession: Sendable {
     guard state != .authenticated else { throw FurbleProtocol.Error.authenticationRequired }
     self.nonce = nonce
     state = .challenged
-    return try Self.proof(password: password, nonce: nonce)
+    return try Self.proof(password: password.bytes, nonce: nonce)
   }
 
   public mutating func verify(proof: Data) throws {
     guard state == .challenged, let nonce else { throw FurbleProtocol.Error.authenticationRequired }
-    let expected = try Self.proof(password: password, nonce: nonce)
+    var expected = try Self.proof(password: password.bytes, nonce: nonce)
     self.nonce = nil
     guard proof.count == expected.count, Self.constantTimeEqual(proof, expected) else {
+      expected.resetBytes(in: 0..<expected.count)
       failures += 1
       state = failures >= maxFailures ? .lockedOut : .awaitingChallenge
       throw FurbleProtocol.Error.authenticationFailed
     }
+    expected.resetBytes(in: 0..<expected.count)
     state = .authenticated
   }
 
@@ -490,12 +496,12 @@ public struct FurbleAuthSession: Sendable {
   }
 
   #if canImport(CryptoKit)
-  private static func proof(password: Data, nonce: Data) throws -> Data {
-    let mac = HMAC<SHA256>.authenticationCode(for: nonce, using: SymmetricKey(data: password))
+  private static func proof(password: [UInt8], nonce: Data) throws -> Data {
+    let mac = HMAC<SHA256>.authenticationCode(for: nonce, using: SymmetricKey(data: Data(password)))
     return Data(mac.prefix(FurbleProtocol.authProofSize))
   }
   #else
-  private static func proof(password: Data, nonce: Data) throws -> Data {
+  private static func proof(password: [UInt8], nonce: Data) throws -> Data {
     throw FurbleProtocol.Error.authenticationUnavailable
   }
   #endif
@@ -505,5 +511,22 @@ public struct FurbleAuthSession: Sendable {
     var result: UInt8 = 0
     for (left, right) in zip(lhs, rhs) { result |= left ^ right }
     return result == 0
+  }
+}
+
+/// A single owner for the password bytes. Struct copies of the auth session
+/// retain this object, and deinit wipes the storage instead of leaving an
+/// immutable Data value in a copied session.
+private final class SecretBytes: @unchecked Sendable {
+  var bytes: [UInt8]
+
+  init(_ bytes: [UInt8]) { self.bytes = bytes }
+
+  deinit { wipe() }
+
+  func wipe() {
+    bytes.withUnsafeMutableBufferPointer { buffer in
+      for index in buffer.indices { buffer[index] = 0 }
+    }
   }
 }

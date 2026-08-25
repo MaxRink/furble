@@ -170,6 +170,22 @@ public struct CompanionStateMachine: Sendable {
     return commands
   }
 
+  /// Completes the AUTH exchange when firmware has no configured password.
+  /// The result indication is still required. A missing local credential is
+  /// not itself permission to skip the firmware handshake.
+  public mutating func didAuthenticationNotRequired() -> [CompanionCommand] {
+    guard phase == .awaitingAuthentication, hasAuth, capability != nil else {
+      _ = fail(.authenticationFailed)
+      return []
+    }
+    auth = nil
+    phase = .ready
+    var commands: [CompanionCommand] = [.subscribeStatus, .readStatus]
+    if hasSettings { commands.append(.subscribeSettings) }
+    if hasCameras { commands.append(.subscribeCameras) }
+    return commands
+  }
+
   public mutating func didAuthenticationRejected() -> CompanionCommand? {
     _ = fail(.authenticationFailed)
     return .disconnect
@@ -202,8 +218,19 @@ public struct CompanionStateMachine: Sendable {
 
   public func privileged(_ command: CompanionCommand) throws -> CompanionCommand {
     guard phase == .ready else { throw FurbleProtocol.Error.authenticationRequired }
-    guard hasSettings || hasTrigger || hasCameras else {
-      throw FurbleProtocol.Error.authenticationUnavailable
+    switch command {
+    case .writeSettings:
+      guard hasSettings, capability?.supportsSettings == true else {
+        throw FurbleProtocol.Error.authenticationUnavailable
+      }
+    case .writeTrigger:
+      guard hasTrigger else { throw FurbleProtocol.Error.authenticationUnavailable }
+    case .writeCamera:
+      guard hasCameras, capability?.supportsCameras == true else {
+        throw FurbleProtocol.Error.authenticationUnavailable
+      }
+    default:
+      break
     }
     return command
   }
