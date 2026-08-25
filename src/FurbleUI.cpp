@@ -8175,8 +8175,19 @@ void UI::handleGesture(GestureDetector::gesture_t gesture) {
 }
 
 void UI::wakeDisplayFromGesture(void) {
-  M5.Display.wakeup();
-  M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+  // Use the same panel/APB/PMIC state machine as button wake. Directly calling
+  // M5.Display.wakeup() leaves m_DisplayOff, icon timers and power locks out of
+  // sync on the display-off path.
+  const bool wasOff = m_DisplayOff;
+  const bool wasDim = m_DisplayState == DisplayState::DIM;
+  wakeDisplay();
+  if (wasOff || wasDim) {
+    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+    m_DisplayState = DisplayState::ACTIVE;
+#if defined(FURBLE_SIM)
+    Sim::profilerSetDisplayState("on");
+#endif
+  }
   if (m_Display != nullptr) {
     lv_display_trigger_activity(m_Display);
   }
