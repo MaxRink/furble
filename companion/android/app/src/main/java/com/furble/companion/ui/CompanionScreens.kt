@@ -50,11 +50,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.furble.companion.MainViewModel
 import com.furble.companion.ble.CompanionUiState
 import com.furble.companion.ble.ConnectionState
+import com.furble.companion.ble.AuthState
 import com.furble.companion.permissions.PermissionSnapshot
 import com.furble.companion.protocol.FurbleProtocol
 import com.furble.companion.protocol.SettingEditorKind
@@ -178,6 +180,8 @@ private fun CompanionShell(
                     onConnect = viewModel::connectAssociatedDevice,
                     onLocationEnabled = viewModel::setLocationEnabled,
                     onLocationInterval = viewModel::setLocationInterval,
+                    onAuthenticate = viewModel::authenticate,
+                    onForgetPassword = viewModel::forgetPassword,
                 )
                 CompanionScreen.SETTINGS -> SettingsScreen(
                     state = state,
@@ -207,6 +211,8 @@ private fun StatusScreen(
     onConnect: () -> Unit,
     onLocationEnabled: (Boolean) -> Unit,
     onLocationInterval: (Int) -> Unit,
+    onAuthenticate: (String) -> Unit,
+    onForgetPassword: () -> Unit,
 ) {
     var intervalText by remember(state.locationIntervalSeconds) {
         mutableStateOf(state.locationIntervalSeconds.toString())
@@ -243,6 +249,13 @@ private fun StatusScreen(
                     }
                 }
             }
+        }
+        item {
+            AuthenticationCard(
+                state = state,
+                onAuthenticate = onAuthenticate,
+                onForgetPassword = onForgetPassword,
+            )
         }
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -294,6 +307,48 @@ private fun StatusScreen(
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun AuthenticationCard(
+    state: CompanionUiState,
+    onAuthenticate: (String) -> Unit,
+    onForgetPassword: () -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Companion password", style = MaterialTheme.typography.titleMedium)
+            Text(state.auth.displayName())
+            Text(
+                "The password is optional on furble. It is sent only as an HMAC challenge response and is stored encrypted with Android Keystore after acceptance.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it.take(FurbleProtocol.COMPANION_PASSWORD_MAX) },
+                label = { Text("Password") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true,
+                enabled = state.connection == ConnectionState.READY && state.auth != AuthState.DROPPED,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        onAuthenticate(password)
+                        password = ""
+                    },
+                    enabled = password.isNotEmpty() && state.connection == ConnectionState.READY &&
+                        state.auth != AuthState.AUTHENTICATING && state.auth != AuthState.DROPPED,
+                ) { Text("Authenticate") }
+                if (state.storedPassword) {
+                    OutlinedButton(onClick = onForgetPassword) { Text("Forget") }
+                }
+            }
+        }
     }
 }
 
@@ -750,6 +805,15 @@ private fun ConnectionState.displayName(): String = when (this) {
     ConnectionState.READY -> "Connected"
     ConnectionState.PERMISSION_DENIED -> "Permission denied"
     ConnectionState.ERROR -> "Error"
+}
+
+private fun AuthState.displayName(): String = when (this) {
+    AuthState.UNKNOWN -> "Not authenticated in this session"
+    AuthState.AUTHENTICATING -> "Authenticating…"
+    AuthState.AUTHENTICATED -> "Authenticated"
+    AuthState.NOT_REQUIRED -> "Password not required"
+    AuthState.REJECTED -> "Password rejected. Retry with the current password."
+    AuthState.DROPPED -> "Locked for this connection after three failures"
 }
 
 private fun Int.displayGpsSource(): String = when (this) {

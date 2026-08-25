@@ -3,6 +3,8 @@ package com.furble.companion.protocol
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /** Wire contract copied from plans/50-companion-app-design.md. */
 object FurbleProtocol {
@@ -16,6 +18,15 @@ object FurbleProtocol {
     const val STATUS_PACKET_SIZE = 20
     const val TRIGGER_PACKET_SIZE = 4
     const val CAPABILITY_PACKET_SIZE = 6
+    const val AUTH_NONCE_SIZE = 16
+    const val AUTH_RESPONSE_SIZE = 16
+    const val AUTH_BEGIN = 0x01
+    const val AUTH_RESULT_AUTHENTICATED = 0x01
+    const val AUTH_RESULT_REJECTED = 0x02
+    const val AUTH_RESULT_DROPPED = 0x03
+    const val AUTH_RESULT_NOT_REQUIRED = 0x04
+    const val AUTH_ATT_ERROR = 0x80
+    const val COMPANION_PASSWORD_MAX = 63
 
     // The frozen firmware UUID base from include/FurbleCompanion.h. Only the
     // first 32-bit field changes per characteristic.
@@ -24,6 +35,7 @@ object FurbleProtocol {
     val STATUS_UUID: UUID = UUID.fromString("b57f4f60-087b-4740-b71d-8262cf26ebbc")
     val SETTINGS_UUID: UUID = UUID.fromString("b57f4f61-087b-4740-b71d-8262cf26ebbc")
     val TRIGGER_UUID: UUID = UUID.fromString("b57f4f62-087b-4740-b71d-8262cf26ebbc")
+    val AUTH_UUID: UUID = UUID.fromString("b57f4f63-087b-4740-b71d-8262cf26ebbc")
     val CAPABILITY_UUID: UUID = UUID.fromString("b57f4f64-087b-4740-b71d-8262cf26ebbc")
 
     const val LOCATION_VALID: Int = 1 shl 0
@@ -324,6 +336,35 @@ object FurbleProtocol {
             .put(operation.toByte())
         if (operation == TriggerOperation.TIMED_SHUTTER) buffer.putShort(holdMs.toShort())
         return buffer.array()
+    }
+
+    /** Firmware sends the first 16 bytes of HMAC-SHA256(password, nonce). */
+    fun encodeAuthBegin(): ByteArray = byteArrayOf(AUTH_BEGIN.toByte())
+
+    fun encodeAuthResponse(password: CharSequence, nonce: ByteArray): ByteArray {
+        require(nonce.size == AUTH_NONCE_SIZE) { "AUTH nonce must be 16 bytes" }
+        val key = password.toString().toByteArray(Charsets.UTF_8)
+        require(key.size in 1..COMPANION_PASSWORD_MAX) {
+            "Companion password must be 1..$COMPANION_PASSWORD_MAX UTF-8 bytes"
+        }
+        return hmacSha256(key, nonce).copyOf(AUTH_RESPONSE_SIZE).also {
+            key.fill(0)
+        }
+    }
+
+    /** Public for host golden-vector tests. The returned digest is always 32 bytes. */
+    fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key, "HmacSHA256"))
+        return mac.doFinal(message)
+    }
+
+    fun authResultLabel(result: Int): String = when (result) {
+        AUTH_RESULT_AUTHENTICATED -> "Authenticated"
+        AUTH_RESULT_REJECTED -> "Password rejected"
+        AUTH_RESULT_DROPPED -> "Too many attempts; furble disconnected"
+        AUTH_RESULT_NOT_REQUIRED -> "Password not required"
+        else -> "Unknown authentication result ($result)"
     }
 
     fun encodeSettingsListRequest(): ByteArray = encodeSettingsRequest(SettingsOperation.LIST, 0, byteArrayOf())

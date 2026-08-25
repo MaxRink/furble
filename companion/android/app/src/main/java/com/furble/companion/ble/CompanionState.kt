@@ -15,6 +15,15 @@ enum class ConnectionState {
     ERROR,
 }
 
+enum class AuthState {
+    UNKNOWN,
+    AUTHENTICATING,
+    AUTHENTICATED,
+    NOT_REQUIRED,
+    REJECTED,
+    DROPPED,
+}
+
 data class AssociationState(
     val associated: Boolean = false,
     val address: String? = null,
@@ -26,6 +35,8 @@ data class AssociationState(
 data class CompanionUiState(
     val association: AssociationState = AssociationState(),
     val connection: ConnectionState = ConnectionState.NO_ASSOCIATION,
+    val auth: AuthState = AuthState.UNKNOWN,
+    val storedPassword: Boolean = false,
     val status: FurbleProtocol.StatusSnapshot? = null,
     val capability: FurbleProtocol.CapabilitySnapshot? = null,
     val settingsSupported: Boolean = false,

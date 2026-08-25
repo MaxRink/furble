@@ -25,6 +25,7 @@ import com.furble.companion.location.FusedLocationProvider
 import com.furble.companion.permissions.AppPermissions
 import com.furble.companion.permissions.PermissionSnapshot
 import com.furble.companion.protocol.FurbleProtocol
+import com.furble.companion.security.EncryptedPasswordStore
 import java.util.regex.Pattern
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,7 @@ class CompanionRepository(context: Context) {
 
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences("companion", Context.MODE_PRIVATE)
+    private val passwordStore = EncryptedPasswordStore(appContext)
     private val handler = Handler(Looper.getMainLooper())
     private val companionDeviceManager =
         appContext.getSystemService(CompanionDeviceManager::class.java)
@@ -52,6 +54,7 @@ class CompanionRepository(context: Context) {
                 LOCATION_INTERVAL_KEY,
                 DEFAULT_LOCATION_INTERVAL_SECONDS,
             ),
+            storedPassword = passwordStore.read() != null,
         ),
     )
     val state: StateFlow<CompanionUiState> = _state.asStateFlow()
@@ -63,6 +66,7 @@ class CompanionRepository(context: Context) {
     private var gattConnection: GattConnection? = null
     private var pendingSettingId: Int? = null
     private val pendingSettingValues = mutableMapOf<Int, ByteArray>()
+    private var pendingPassword: String? = null
     private var locationProvider: FusedLocationProvider? = null
 
     private val triggerController = DeadManTriggerController(
@@ -397,6 +401,28 @@ class CompanionRepository(context: Context) {
 
     fun clearError() = _state.update { it.copy(error = null) }
 
+    fun authenticate(password: String) {
+        handler.post {
+            val length = password.toByteArray(Charsets.UTF_8).size
+            if (length !in 1..FurbleProtocol.COMPANION_PASSWORD_MAX) {
+                setError("Companion password must be 1..${FurbleProtocol.COMPANION_PASSWORD_MAX} UTF-8 bytes")
+                return@post
+            }
+            if (_state.value.connection != ConnectionState.READY) {
+                setError("Connect to furble before authenticating")
+                return@post
+            }
+            _state.update { it.copy(auth = AuthState.AUTHENTICATING, error = null) }
+            pendingPassword = password
+            gattConnection?.authenticate(password)
+        }
+    }
+
+    fun forgetPassword() {
+        passwordStore.clear()
+        _state.update { it.copy(storedPassword = false, auth = AuthState.UNKNOWN) }
+    }
+
     private fun ensureBondAndConnect() {
         val address = associationAddress ?: return
         val device = try {
@@ -430,9 +456,11 @@ class CompanionRepository(context: Context) {
         gattConnection?.close()
         pendingSettingId = null
         pendingSettingValues.clear()
+        pendingPassword = null
         _state.update {
             it.copy(
                 connection = ConnectionState.CONNECTING,
+                auth = AuthState.UNKNOWN,
                 status = null,
                 capability = null,
                 settingsSupported = false,
@@ -453,7 +481,16 @@ class CompanionRepository(context: Context) {
 
                 override fun onReady() {
                     if (gattConnection !== session) return
-                    _state.update { it.copy(connection = ConnectionState.READY, settingsLoading = true) }
+                    val savedPassword = passwordStore.read()
+                    _state.update {
+                        it.copy(
+                            connection = ConnectionState.READY,
+                            auth = if (savedPassword == null) AuthState.UNKNOWN else AuthState.AUTHENTICATING,
+                            storedPassword = savedPassword != null,
+                            settingsLoading = true,
+                        )
+                    }
+                    if (savedPassword != null) session.authenticate(savedPassword)
                     syncLocationUpdates()
                 }
 
@@ -475,6 +512,44 @@ class CompanionRepository(context: Context) {
                     handleSettingsResponse(response)
                 }
 
+                override fun onAuthResult(result: Int) {
+                    if (gattConnection !== session) return
+                    when (result) {
+                        FurbleProtocol.AUTH_RESULT_AUTHENTICATED -> {
+                            _state.update { it.copy(auth = AuthState.AUTHENTICATED) }
+                            // The candidate is saved only after firmware accepts it.
+                            pendingPassword?.let {
+                                passwordStore.write(it)
+                                pendingPassword = null
+                                _state.update { state -> state.copy(storedPassword = true) }
+                            }
+                        }
+                        FurbleProtocol.AUTH_RESULT_NOT_REQUIRED -> {
+                            pendingPassword = null
+                            _state.update { it.copy(auth = AuthState.NOT_REQUIRED) }
+                        }
+                        FurbleProtocol.AUTH_RESULT_DROPPED -> {
+                            pendingPassword = null
+                            passwordStore.clear()
+                            _state.update { it.copy(auth = AuthState.DROPPED, storedPassword = false) }
+                            setError("furble rejected three passwords and disconnected")
+                        }
+                        FurbleProtocol.AUTH_RESULT_REJECTED -> {
+                            pendingPassword = null
+                            passwordStore.clear()
+                            _state.update { it.copy(auth = AuthState.REJECTED, storedPassword = false) }
+                            setError("furble rejected the companion password")
+                        }
+                        else -> setError(FurbleProtocol.authResultLabel(result))
+                    }
+                }
+
+                override fun onAuthenticationRequired() {
+                    if (gattConnection !== session) return
+                    _state.update { it.copy(auth = AuthState.UNKNOWN) }
+                    setError("furble requires its companion password before this action")
+                }
+
                 override fun onDisconnected() {
                     if (gattConnection !== session) return
                     gattConnection = null
@@ -485,6 +560,7 @@ class CompanionRepository(context: Context) {
                     _state.update {
                         it.copy(
                             connection = if (devicePresent) ConnectionState.ASSOCIATED else ConnectionState.OUT_OF_RANGE,
+                            auth = AuthState.UNKNOWN,
                             status = null,
                             capability = null,
                             settingsSupported = false,
@@ -565,6 +641,7 @@ class CompanionRepository(context: Context) {
         gattConnection = null
         pendingSettingId = null
         pendingSettingValues.clear()
+        pendingPassword = null
         triggerController.onLinkLost()
         if (clearData) {
             _state.update {

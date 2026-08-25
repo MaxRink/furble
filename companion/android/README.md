@@ -52,6 +52,15 @@ Settings list flag bit 0 is interpreted as restart required. Bit 1 marks the
 five link-affecting settings and opens a two-step confirmation before a write:
 COMPANION, TX_POWER, TX_ADAPTIVE, SLEEP_CONN and CPU_FREQ.
 
+The password gate uses the firmware AUTH characteristic
+`b57f4f63-087b-4740-b71d-8262cf26ebbc`. The app subscribes to indications before
+declaring the GATT session ready. It writes `01`, receives a 16-byte nonce,
+then writes the first 16 bytes of HMAC-SHA256(password UTF-8, nonce). A result
+indication is one byte: `01` authenticated, `02` rejected, `03` dropped after
+three failures, or `04` not required. A successful password is stored as
+AES-GCM ciphertext under a non-exportable Android Keystore key. App backup is
+disabled, and the password is never logged or sent as a setting value.
+
 ## Runtime behavior
 
 Pairing uses `CompanionDeviceManager` filters for the companion service UUID
