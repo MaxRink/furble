@@ -26,9 +26,19 @@ class ToolingVersionTest(unittest.TestCase):
             "actions/download-artifact": "v8",
         }
         for action, version in expected.items():
-            versions = re.findall(
-                rf"uses: {re.escape(action)}@(v\d+)(?:\s|$)", workflow_text
+            # Workflows pin actions to immutable SHAs and retain the major
+            # version in a trailing comment. Accept the readable vN form too
+            # so this check verifies policy rather than one spelling.
+            matches = re.finditer(
+                rf"uses: {re.escape(action)}@([^\s]+)(?:\s+#\s*(v\d+))?",
+                workflow_text,
             )
+            versions = [
+                match.group(1)
+                if match.group(1).startswith("v")
+                else match.group(2)
+                for match in matches
+            ]
             self.assertTrue(versions, f"No {action} references found")
             self.assertEqual(versions, [version] * len(versions))
 

@@ -1,0 +1,10 @@
+# Shared production sources. Keep this list identical for ESP, sim, and Nordic
+# builds once the platform extraction begins.
+lib/furble/protocol/AdvertisementProtocol.cpp
+lib/furble/protocol/AdvertisementProtocol.h
+lib/furble/protocol/CameraListProtocol.cpp
+lib/furble/protocol/CameraListProtocol.h
+lib/furble/protocol/FujifilmProtocol.cpp
+lib/furble/protocol/FujifilmProtocol.h
+lib/furble/protocol/ProvisionTLV.cpp
+lib/furble/protocol/ProvisionTLV.h

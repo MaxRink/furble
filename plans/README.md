@@ -151,6 +151,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [125-esp-optimization-program.md](125-esp-optimization-program.md) | Measurement-first ESP-IDF, radio, power, memory, UI, dependency, security, and release optimization program |
+| [127-nordic-port-baseline.md](127-nordic-port-baseline.md) | Simulator-gated portability boundary and Nordic silicon port baseline |
 
 ## Design documents
 
