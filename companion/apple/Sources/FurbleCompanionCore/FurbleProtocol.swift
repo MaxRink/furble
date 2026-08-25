@@ -501,7 +501,10 @@ public struct FurbleAuthSession: Sendable {
   private mutating func clearNonce() {
     if nonce != nil {
       nonce!.withUnsafeMutableBytes { buffer in
-        buffer.initialize(repeating: 0)
+        let bytes = buffer.bindMemory(to: UInt8.self)
+        for index in 0..<bytes.count {
+          bytes[index] = 0
+        }
       }
     }
     nonce = nil
