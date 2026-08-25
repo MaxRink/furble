@@ -459,6 +459,17 @@ void testCompanionGattFlow(void) {
   check(service.isPasswordAuthenticated(), "service reports the authenticated session");
 
   central.clearEvents();
+  const std::vector<uint8_t> malformedPassword {2, 46, 3, 'a', 0, 'b'};
+  check(central.write(SETTINGS_UUID, malformedPassword),
+        "malformed password setting reaches the companion service");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD)
+            == "test companion",
+        "embedded NUL password is not persisted");
+  check(central.indications().size() == 1 && central.indications()[0].size() == 4
+            && central.indications()[0][0] == 2,
+        "embedded NUL password is rejected with a bad-length response");
+
+  central.clearEvents();
   check(central.write(SETTINGS_UUID, {2, 1, 1, 87}),
         "settings UUID accepts an authenticated write TLV for Brightness");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 87,

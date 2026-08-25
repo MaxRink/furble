@@ -546,6 +546,10 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       if ((type == Settings::COMPANION_PASSWORD) && (length > COMPANION_PASSWORD_MAX)) {
         return false;
       }
+      if ((type == Settings::COMPANION_PASSWORD) && (length != 0)
+          && (std::memchr(value, '\0', length) != nullptr)) {
+        return false;
+      }
       const std::string v(reinterpret_cast<const char *>(value), length);
       if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
