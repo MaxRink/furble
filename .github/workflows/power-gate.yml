@@ -13,7 +13,6 @@ name: Power model gate
       - master
       - combined
   pull_request:
-    branches: [master]
     paths:
       - 'src/**'
       - 'include/**'
@@ -24,6 +23,7 @@ name: Power model gate
       - 'tools/power-model/**'
       - 'tools/gen_lv_conf.py'
       - '.github/workflows/power-gate.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

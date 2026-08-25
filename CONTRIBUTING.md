@@ -40,6 +40,13 @@ traps.
 
 ## Testing
 
+Validation workflows use path filters and run for pull requests stacked on any
+base branch. To validate a branch manually, open the Actions tab, select the
+workflow, choose **Run workflow**, and select the branch. Android dispatches
+run unit tests and an APK build by default; enable `run_emulator` when the
+slower emulator smoke test is needed. CI checks this trigger policy with
+`python3 tools/check_ci_workflows.py`.
+
 - Host tests compile the production camera code with plain clang or g++, no
   radio or ESP-IDF needed:
 

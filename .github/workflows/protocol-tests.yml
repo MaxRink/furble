@@ -10,6 +10,7 @@ name: Companion protocol tests
       - lib/furble/**
       - companion/android/**/protocol/**
       - tests/protocol/**
+      - .github/workflows/protocol-tests.yml
   pull_request:
     paths:
       - include/FurbleCompanion.h
@@ -19,6 +20,8 @@ name: Companion protocol tests
       - lib/furble/**
       - companion/android/**/protocol/**
       - tests/protocol/**
+      - .github/workflows/protocol-tests.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
