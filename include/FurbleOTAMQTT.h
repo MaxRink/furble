@@ -178,7 +178,10 @@ class Sink {
  * BEGIN, so an aborted or failed update cannot reuse its signed counter. The
  * owner token prevents another session from completing this reservation.
  * markStaged(), completeReservation(), and abandonReservation() are atomic
- * owner-and-counter CAS transitions. recoverAbandonedReservation() is called
+ * owner-and-counter CAS transitions. completeReservation() consumes the
+ * reservation before irreversible boot-partition activation; activation
+ * failure therefore leaves the old image selected but never blocks the floor.
+ * recoverAbandonedReservation() is called
  * by the platform after reboot when staged data is known to be abandoned; it
  * clears the owner while preserving the consumed floor.
  * Flash/NVS adapters must journal this record before acknowledging it and

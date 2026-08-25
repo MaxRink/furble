@@ -574,16 +574,21 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     if (!m_ReplayStore.markStaged(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
       return terminalFailure(Error::ReplayStoreFailed);
     }
-    if (!m_Sink.activate()) {
-      return terminalFailure(Error::SinkRejected);
-    }
     if (!m_ReplayStore.completeReservation(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
-      m_Sink.abort();
-      m_State = State::Error;
-      m_TerminalSequence = 0;
-      return reject(Error::ReplayStoreFailed);
+      // Boot-partition selection is irreversible in this process. Consume the
+      // replay reservation before crossing that boundary; otherwise a
+      // completion failure after activation leaves an already-selected image
+      // with a permanently active journal owner. The image is still staged,
+      // fully verified and unselected here, so abort remains safe.
+      return terminalFailure(Error::ReplayStoreFailed);
     }
     m_ReservationActive = false;
+    if (!m_Sink.activate()) {
+      // The old image remains selected when activation fails. The counter is
+      // intentionally consumed, so recovery must use a strictly newer signed
+      // update rather than retrying an ambiguous activation.
+      return terminalFailure(Error::SinkRejected);
+    }
     m_State = State::Done;
     m_TerminalSequence = message.sequence;
     m_LastError = Error::None;

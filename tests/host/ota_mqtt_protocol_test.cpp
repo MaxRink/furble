@@ -141,6 +141,7 @@ class FakeReplayStore final: public OTA::ReplayStore {
   bool loadResult = true;
   bool reserveResult = true;
   bool lifecycleResult = true;
+  bool completeResult = true;
   size_t loadCalls = 0;
   size_t reserveCalls = 0;
   bool outstanding = false;
@@ -178,7 +179,7 @@ class FakeReplayStore final: public OTA::ReplayStore {
   }
 
   bool completeReservation(const OTA::SessionId &reservationOwner, uint32_t counter) override {
-    if (!lifecycleResult || !outstanding || !staged || owner != reservationOwner
+    if (!lifecycleResult || !completeResult || !outstanding || !staged || owner != reservationOwner
         || reservedCounter != counter) {
       return false;
     }
@@ -429,6 +430,32 @@ void testSinkAndVerificationFailures() {
   expect(activationReboot.onMessage(good, begin(manifest(activationId, 1))).error
              == OTA::Error::Replay,
          "activation failure cannot replay the reserved counter after reboot");
+
+  FakeSink completionFailureSink;
+  FakeReplayStore completionFailureStore;
+  completionFailureStore.completeResult = false;
+  OTA::Session completionFailure(completionFailureSink, completionFailureStore);
+  const OTA::SessionId completionId = id(104);
+  expect(completionFailure.onMessage(good, begin(manifest(completionId, 1))).accepted,
+         "completion-failure case begins");
+  expect(completionFailure.onMessage(good, chunk(completionId, 0, {4}, 2)).accepted,
+         "completion-failure case receives image");
+  expect(completionFailure.onMessage(good, control(OTA::Kind::Commit, completionId, 3)).error
+             == OTA::Error::ReplayStoreFailed,
+         "completion failure is reported before irreversible activation");
+  expect(completionFailureSink.activateCalls == 0,
+         "completion failure never selects the boot partition");
+  expect(completionFailureSink.abortCalls == 1,
+         "completion failure aborts the still-unselected staged image");
+  expect(!completionFailureStore.outstanding,
+         "failed journal completion consumes the counter without leaving a live owner");
+  expect(completionFailureStore.recoverAbandonedReservation(),
+         "reboot recovery clears the abandoned reservation");
+  OTA::Session completionRetry(completionFailureSink, completionFailureStore);
+  const OTA::SessionId completionRetryId = id(105);
+  expect(completionRetry.onMessage(good, begin(manifest(completionRetryId, 2))).accepted,
+         "recovery permits a newer counter after completion failure");
+  completionRetry.onMessage(good, control(OTA::Kind::Abort, completionRetryId, 4));
 
   FakeSink unavailableSink;
   FakeReplayStore unavailableStore;

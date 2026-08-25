@@ -31,7 +31,7 @@ partition capacity with the actual inactive partition. The injected
 `ReplayStore` loads the installed counter floor before `BEGIN`, rejects counters
 less than or equal to it, and atomically reserves the strictly greater counter
 at `BEGIN`. The reservation is a durable, owner-bound lifecycle record:
-`reserved -> staged -> activated/cleared`. Only the owner session and counter
+`reserved -> staged -> consumed/cleared`. Only the owner session and counter
 may advance it, and a single outstanding reservation globally blocks another
 session from beginning. This prevents a lower-counter session from activating
 after a higher-counter session has reserved its update. The reservation is a
@@ -41,9 +41,11 @@ this as a journaled compare-and-swap, so two sessions racing to reserve a
 counter cannot both succeed. Its `finalize()` verifies the
 signature over these canonical bytes using the key-id trust anchor and verifies
 the complete digest, but does not activate the image yet. On commit, the session
-stages the verified image and calls the sink's `activate()`. If activation fails,
-the sink aborts/discards the staged image and recovery retries only with a new
-  signed counter. After reboot, the platform must explicitly call
+stages the verified image, consumes the replay reservation, and only then calls
+the sink's irreversible `activate()`. If activation fails, the sink
+aborts/discards the staged image and recovery retries only with a new signed
+counter. If power is lost between consumption and activation, the old image
+boots safely and the update is retried with a newer counter. After reboot, the platform must explicitly call
   `recoverAbandonedReservation()` once it has discarded any staged image; this
   clears the owner while preserving the consumed floor. This ordering means a reboot cannot accept a stale signed
 update, even if activation fails after the floor is durable. This PR
