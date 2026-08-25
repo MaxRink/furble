@@ -34,4 +34,19 @@ class AuthGateTest {
         store.clear()
         assertNull(store.read())
     }
+
+    @Test
+    fun authInputSurvivesAsyncBoundaryAfterCallerWipesBuffer() {
+        var queued: (() -> Unit)? = null
+        var observed: ByteArray? = null
+        val dispatcher = AuthInputDispatcher { queued = it }
+        val callerBuffer = "saved password".toByteArray()
+        dispatcher.submit(callerBuffer) {
+            observed = it.copyOf()
+            it.fill(0)
+        }
+        callerBuffer.fill(0)
+        queued!!.invoke()
+        assertTrue(observed!!.contentEquals("saved password".toByteArray()))
+    }
 }

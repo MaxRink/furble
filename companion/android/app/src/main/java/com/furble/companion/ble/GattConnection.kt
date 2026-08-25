@@ -14,6 +14,13 @@ import com.furble.companion.protocol.FurbleProtocol
 import java.util.ArrayDeque
 import java.util.UUID
 
+internal class AuthInputDispatcher(private val post: (() -> Unit) -> Unit) {
+    fun submit(input: ByteArray, consume: (ByteArray) -> Unit) {
+        val owned = input.copyOf()
+        post { consume(owned) }
+    }
+}
+
 /**
  * One event-driven GATT session. Every ATT operation waits for its callback
  * before the next response-bearing operation starts.
@@ -38,6 +45,7 @@ class GattConnection(
 
     private val appContext = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
+    private val authInputDispatcher = AuthInputDispatcher { task -> handler.post { task() } }
     private val operations = ArrayDeque<Operation>()
     private val callback = Callback()
 
@@ -141,18 +149,22 @@ class GattConnection(
 
     /** Starts the firmware challenge. The password is held only until its HMAC is sent. */
     fun authenticate(passwordUtf8: ByteArray) {
-        handler.post {
+        authInputDispatcher.submit(passwordUtf8, ::authenticateOwned)
+    }
+
+    private fun authenticateOwned(passwordUtf8: ByteArray) {
+        try {
             if (!isReady) {
                 listener.onError("furble is not ready for authentication")
-                return@post
+                return
             }
             if (passwordUtf8.size !in 1..FurbleProtocol.COMPANION_PASSWORD_MAX) {
                 listener.onError("Companion password must be 1..${FurbleProtocol.COMPANION_PASSWORD_MAX} UTF-8 bytes")
-                return@post
+                return
             }
             if (authCharacteristic == null) {
                 listener.onError("The furble does not expose its AUTH characteristic")
-                return@post
+                return
             }
             authPassword?.fill(0)
             authPassword = passwordUtf8.copyOf()
@@ -164,6 +176,10 @@ class GattConnection(
                 writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
                 waitForCallback = true,
             )
+        } finally {
+            // Once copied into authPassword or the queued operation, the
+            // dispatch-owned input is no longer needed.
+            passwordUtf8.fill(0)
         }
     }
 
