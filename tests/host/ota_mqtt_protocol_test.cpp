@@ -32,9 +32,11 @@ OTA::SessionId id(uint8_t seed) {
 OTA::Manifest manifest(const OTA::SessionId &session, uint32_t imageSize = 10) {
   OTA::Manifest value;
   value.sessionId = session;
+  value.keyId[0] = 0x7a;
   value.imageSize = imageSize;
   value.partitionSize = imageSize + 1024;
   value.version = {'d', 'e', 'v', '-', '1'};
+  value.rollbackCounter = 17;
   value.digest[0] = 0x42;
   value.signatureAlgorithm = OTA::SignatureAlgorithm::Ed25519;
   value.signature.assign(OTA::SIGNATURE_BYTES, 0xa5);
@@ -77,11 +79,13 @@ class FakeSink final: public OTA::Sink {
  public:
   bool beginResult = true;
   bool writeResult = true;
+  bool matchesResult = true;
   bool finalizeResult = true;
   size_t beginCalls = 0;
   size_t writeCalls = 0;
   size_t finalizeCalls = 0;
   size_t abortCalls = 0;
+  size_t matchesCalls = 0;
   OTA::Manifest lastManifest;
   std::vector<uint8_t> image;
 
@@ -102,6 +106,18 @@ class FakeSink final: public OTA::Sink {
     }
     std::copy(data, data + length, image.begin() + offset);
     return true;
+  }
+
+  bool matches(uint32_t offset, const uint8_t *data, size_t length, uint32_t checksum) override {
+    matchesCalls++;
+    if (!matchesResult) {
+      return false;
+    }
+    if ((offset > image.size()) || (length > (image.size() - offset))) {
+      return false;
+    }
+    return (OTA::crc32(data, length) == checksum)
+           && std::equal(data, data + length, image.begin() + offset);
   }
 
   bool finalize(const OTA::Manifest &) override {
@@ -142,7 +158,7 @@ void testCodecAndMalformedInputs() {
   OTA::Message unchanged = decodedBegin;
   // Signature bytes are opaque here. Corrupt the declared signature length,
   // which must fail structurally before a crypto verifier is reached.
-  wire[29 + 42] = 63;
+  wire[29 + 54] = 63;
   expect(!OTA::decode(wire.data(), wire.size(), unchanged, &error),
          "signature length corruption is rejected");
   expect(unchanged.manifest == value, "failed decode leaves output unchanged");
@@ -188,6 +204,8 @@ void testDeliveryPolicyAndChunkLedger() {
 
   expect(session.onMessage({0, false, false}, begin(value)).error == OTA::Error::InvalidQoS,
          "QoS 0 is rejected");
+  expect(session.onMessage({3, false, false}, begin(value)).error == OTA::Error::InvalidQoS,
+         "QoS above 2 is rejected");
   expect(session.onMessage({1, true, false}, begin(value)).error == OTA::Error::RetainedMessage,
          "retained begin is rejected");
   expect(session.onMessage(good, begin(value)).accepted, "signed begin is accepted");
@@ -206,6 +224,7 @@ void testDeliveryPolicyAndChunkLedger() {
   expect(session.onMessage({1, false, true}, first).duplicate,
          "exact duplicate chunk is idempotent");
   expect(sink.writeCalls == 2, "duplicate chunk is not written twice");
+  expect(sink.matchesCalls == 1, "duplicate bytes are checked by the sink");
 
   const OTA::Message overlap = chunk(sessionId, 4, {4, 5}, 4);
   expect(session.onMessage(good, overlap).error == OTA::Error::ChunkOverlap,
@@ -223,6 +242,16 @@ void testDeliveryPolicyAndChunkLedger() {
   expect(session.onMessage({1, false, true}, commit).duplicate, "duplicate commit is idempotent");
   expect(session.onMessage(good, begin(value)).error == OTA::Error::Replay,
          "terminal session cannot be replayed");
+
+  const OTA::SessionId secondTerminal = id(61);
+  OTA::Manifest secondManifest = manifest(secondTerminal, 1);
+  expect(session.onMessage(good, begin(secondManifest)).accepted,
+         "second session can begin after the first terminal session");
+  expect(session.onMessage(good, control(OTA::Kind::Abort, secondTerminal, 2)).error
+             == OTA::Error::Aborted,
+         "second session aborts");
+  expect(session.onMessage(good, begin(value)).error == OTA::Error::Replay,
+         "older terminal session remains replay protected");
 
   const OTA::SessionId newId = id(60);
   OTA::Manifest newManifest = manifest(newId, 4);
@@ -262,6 +291,10 @@ void testSinkAndVerificationFailures() {
   expect(
       rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::SinkRejected,
       "sink can reject a manifest before writes");
+  expect(rejectedSession.state() == OTA::State::Error, "begin failure is terminal");
+  expect(rejected.abortCalls == 1, "begin failure aborts a partially initialized sink");
+  expect(rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::Replay,
+         "failed begin cannot be retried with the same session id");
 
   OTA::Manifest unsignedManifest = manifest(id(110));
   unsignedManifest.signature.clear();
@@ -272,12 +305,116 @@ void testSinkAndVerificationFailures() {
   expect(error.code == OTA::Error::InvalidSignature, "unsigned manifest reports invalid signature");
 }
 
+void testSequenceAndBoundedResourceRules() {
+  std::cout << "test: sequence uniqueness, sink-backed retry, and bounded ledger\n";
+  const OTA::MessageMeta good {1, false, false};
+  const OTA::SessionId sessionId = id(150);
+  FakeSink sink;
+  OTA::Session session(sink);
+  OTA::Manifest value = manifest(sessionId, 3);
+  OTA::Message zeroBegin = begin(value);
+  zeroBegin.sequence = 0;
+  expect(session.onMessage(good, zeroBegin).error == OTA::Error::InvalidSequence,
+         "zero begin sequence is rejected");
+  expect(session.onMessage(good, begin(value)).accepted, "sequence case begins");
+  expect(session.onMessage(good, chunk(sessionId, 0, {1}, 2)).accepted,
+         "first sequence is accepted");
+  expect(session.onMessage(good, chunk(sessionId, 1, {2}, 2)).error == OTA::Error::Replay,
+         "a sequence cannot be reused for another range");
+  expect(session.onMessage(good, chunk(sessionId, 0, {1}, 3)).error == OTA::Error::ChunkOverlap,
+         "same range with another sequence is not an idempotent retry");
+  expect(
+      session.onMessage(good, control(OTA::Kind::Commit, sessionId, 2)).error == OTA::Error::Replay,
+      "a chunk sequence cannot be reused by commit");
+  expect(
+      session.onMessage(good, control(OTA::Kind::Abort, sessionId, 4)).error == OTA::Error::Aborted,
+      "sequence case aborts");
+
+  FakeSink noReadback;
+  noReadback.matchesResult = false;
+  OTA::Session noReadbackSession(noReadback);
+  const OTA::SessionId noReadbackId = id(151);
+  expect(noReadbackSession.onMessage(good, begin(manifest(noReadbackId, 1))).accepted,
+         "readback case begins");
+  expect(noReadbackSession.onMessage(good, chunk(noReadbackId, 0, {9}, 2)).accepted,
+         "readback case writes");
+  expect(noReadbackSession.onMessage({1, false, true}, chunk(noReadbackId, 0, {9}, 2)).error
+             == OTA::Error::ChunkOverlap,
+         "duplicate fails closed without sink readback");
+
+  FakeSink bounded;
+  OTA::Session boundedSession(bounded);
+  const OTA::SessionId boundedId = id(152);
+  expect(boundedSession.onMessage(good, begin(manifest(boundedId, OTA::MAX_CHUNKS + 1))).accepted,
+         "bounded ledger case begins");
+  for (size_t offset = 0; offset < OTA::MAX_CHUNKS; offset++) {
+    expect(boundedSession
+               .onMessage(good,
+                          chunk(boundedId, static_cast<uint32_t>(offset),
+                                {static_cast<uint8_t>(offset)}, static_cast<uint32_t>(offset + 2)))
+               .accepted,
+           "bounded ledger accepts a range within its cap");
+  }
+  expect(boundedSession.onMessage(good, chunk(boundedId, OTA::MAX_CHUNKS, {0}, OTA::MAX_CHUNKS + 2))
+                 .error
+             == OTA::Error::ChunkLedgerFull,
+         "bounded ledger rejects the range beyond its cap");
+}
+
+void testTerminalReplayWindow() {
+  std::cout << "test: bounded multi-session terminal replay window\n";
+  FakeSink sink;
+  OTA::Session session(sink);
+  const OTA::MessageMeta good {2, false, false};
+  std::array<OTA::SessionId, OTA::MAX_TERMINAL_SESSIONS + 1> ids {};
+  for (size_t index = 0; index < ids.size(); index++) {
+    ids[index] = id(static_cast<uint8_t>(170 + index));
+    expect(session.onMessage(good, begin(manifest(ids[index], 1))).accepted,
+           "terminal window session begins");
+    expect(session.onMessage(good, control(OTA::Kind::Abort, ids[index], 2)).error
+               == OTA::Error::Aborted,
+           "terminal window session closes");
+  }
+  for (size_t index = 1; index < ids.size(); index++) {
+    expect(session.onMessage(good, begin(manifest(ids[index], 1))).error == OTA::Error::Replay,
+           "recent terminal session is replay protected");
+  }
+  expect(session.onMessage(good, begin(manifest(ids[0], 1))).accepted,
+         "bounded window explicitly permits an evicted oldest session");
+}
+
+void testCanonicalSignatureBytes() {
+  std::cout << "test: canonical signature bytes and nested session binding\n";
+  const OTA::Manifest value = manifest(id(130));
+  std::vector<uint8_t> first;
+  std::vector<uint8_t> second;
+  OTA::ErrorInfo error;
+  expect(OTA::canonicalSignedBytes(value, first, &error), "canonical bytes are available");
+  OTA::Manifest changed = value;
+  changed.rollbackCounter++;
+  expect(OTA::canonicalSignedBytes(changed, second, &error),
+         "changed manifest has canonical bytes");
+  expect(first != second, "rollback counter changes signed bytes");
+
+  FakeSink sink;
+  OTA::Session session(sink);
+  const OTA::MessageMeta good {1, false, false};
+  expect(session.onMessage(good, begin(value)).accepted, "canonical case begins");
+  OTA::Message nested = chunk(value.sessionId, 0, {1}, 2);
+  nested.chunk.sessionId = id(131);
+  expect(session.onMessage(good, nested).error == OTA::Error::WrongSession,
+         "nested chunk session cannot differ from envelope session");
+}
+
 }  // namespace
 
 int main() {
   testCodecAndMalformedInputs();
   testDeliveryPolicyAndChunkLedger();
   testSinkAndVerificationFailures();
+  testCanonicalSignatureBytes();
+  testSequenceAndBoundedResourceRules();
+  testTerminalReplayWindow();
   if (failures != 0) {
     std::cerr << failures << " failure(s)\n";
     return 1;

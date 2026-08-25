@@ -1,6 +1,6 @@
 # 130 - OTA-over-MQTT signed transfer contract
 
-Status: implementation slice on fork/master `15650b2` (PR #213). This is the
+Status: implementation slice on fork/master `ef8aca7` (follow-up to PR #213). This is the
 transport-neutral contract that can land before the WiFi and MQTT transports.
 It is deliberately separate from #66 and #161 so their rebases do not make the
 OTA safety policy unreviewable.
@@ -15,31 +15,45 @@ verified.
 ## Wire contract
 
 Each MQTT payload is a little-endian `FOA1` envelope with a kind, 128-bit
-session id, sequence number, and exact body length. `BEGIN` carries a non-empty
-version, image length, partition capacity, non-zero SHA-256 digest, and a
-64-byte Ed25519 or ECDSA-P256 signature. `CHUNK` carries an offset, up to 4096
-bytes, and CRC-32. `COMMIT` and `ABORT` have empty bodies. Unknown kinds,
-truncation, length arithmetic overflow, unsigned manifests, invalid digest
-metadata, and bad checksums are rejected before a sink is called.
+session id, non-zero sequence number, and exact body length. `BEGIN` carries a
+non-empty version, image length, partition capacity, non-zero SHA-256 digest,
+an 8-byte key id, a monotonic rollback counter, and a 64-byte Ed25519 or
+ECDSA-P256 signature. The signature is raw `r || s` for ECDSA, not DER. `CHUNK`
+carries an offset, up to 4096 bytes, and CRC-32. `COMMIT` and `ABORT` have empty
+bodies. Unknown kinds, truncation, length arithmetic overflow, unsigned
+manifests, invalid digest/key metadata, and bad checksums are rejected before a
+sink is called.
 
-The signature and digest are metadata at this layer. The injected sink's
-`finalize()` must verify both and make the image bootable. This PR never treats
-presence of metadata as authentication and never permits an unsigned update.
+`canonicalSignedBytes()` emits a deterministic `FOM1` byte string containing
+the session, image and partition sizes, rollback counter, digest, algorithm,
+key id, and version. The injected sink's `begin()` must compare the requested
+partition capacity with the actual inactive partition and reject a rollback
+counter below its stored floor. Its `finalize()` must verify the signature over
+these canonical bytes using the key-id trust anchor, verify the complete digest,
+and make the image bootable. This PR never treats metadata presence as
+authentication and never permits an unsigned update.
 
 ## Delivery policy
 
-- Every message requires MQTT QoS 1 or 2 and `retain == false`. Retained OTA
+- Every message requires MQTT QoS exactly 1 or 2 and `retain == false`. Retained OTA
   commands are rejected to prevent a broker replay on reconnect.
-- A duplicate `BEGIN` with the identical session and manifest is idempotent.
-  A duplicate chunk is idempotent only when its offset, length, checksum, and
-  bytes all match. A duplicate commit or abort is idempotent after its terminal
-  result. A terminal session id cannot be replayed as a new update.
+- A duplicate `BEGIN` with the identical session, manifest, and sequence is
+  idempotent. A duplicate chunk is idempotent only when its sequence, offset,
+  length, checksum, and sink-backed bytes all match. A duplicate commit or abort
+  is idempotent only when its terminal sequence matches. Sequence numbers are
+  unique within a session, while chunks may arrive out of order. A bounded
+  eight-entry terminal-session window prevents replay across recent sessions.
 - Chunks may arrive out of order. Partial overlaps are rejected, so a retry
   cannot replace bytes already accepted by the sink. Image and partition bounds
   are checked with widened arithmetic. `COMMIT` requires contiguous coverage
-  from byte zero through the exact image length.
-- A sink rejection or failed final verification aborts the sink and makes the
-  session terminal. The later adapter can implement the sink with the landed
+  from byte zero through the exact image length. The in-memory ledger stores
+  only up to 4096 range records and never copies image bytes. A flash-backed
+  sink implements `matches()` for exact duplicate verification; otherwise a
+  same-range retry fails closed.
+- A sink rejection, including `begin()`, or failed final verification aborts the
+  sink and makes the session terminal. A bounded eight-entry terminal window is
+  deliberate: replay protection is guaranteed for the retained window without
+  unbounded RAM. The later adapter can implement the sink with the landed
   `OTA::Engine`; this contract does not duplicate its state machine.
 
 ## Verification

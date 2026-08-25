@@ -1,6 +1,5 @@
 #include "FurbleOTAMQTT.h"
 
-#include <algorithm>
 #include <cstring>
 #include <iterator>
 
@@ -10,9 +9,10 @@ namespace MQTT {
 
 namespace {
 
-constexpr uint8_t MAGIC[] = {0x46, 0x4f, 0x41, 0x31};  // "FOA1"
+constexpr uint8_t MAGIC[] = {0x46, 0x4f, 0x41, 0x31};         // "FOA1"
+constexpr uint8_t SIGNED_MAGIC[] = {0x46, 0x4f, 0x4d, 0x31};  // "FOM1"
 constexpr size_t HEADER_BYTES = 4 + 1 + SESSION_ID_BYTES + 4 + 4;
-constexpr size_t BEGIN_FIXED_BYTES = 1 + 4 + 4 + DIGEST_BYTES + 1 + 2;
+constexpr size_t BEGIN_FIXED_BYTES = 1 + 4 + 4 + DIGEST_BYTES + 1 + KEY_ID_BYTES + 4 + 2;
 constexpr size_t CHUNK_FIXED_BYTES = 4 + 2 + 4;
 
 void setError(ErrorInfo *error, Error code, size_t offset) {
@@ -39,6 +39,10 @@ bool allZero(const uint8_t *data, size_t length) {
     }
   }
   return true;
+}
+
+bool isZero(const KeyId &keyId) {
+  return allZero(keyId.data(), keyId.size());
 }
 
 uint32_t read32(const uint8_t *data) {
@@ -90,6 +94,10 @@ bool validateManifestWire(const Manifest &manifest, Error &error) {
     error = Error::InvalidDigest;
     return false;
   }
+  if (isZero(manifest.keyId)) {
+    error = Error::InvalidManifest;
+    return false;
+  }
   if (!isSignatureAlgorithm(manifest.signatureAlgorithm)) {
     error = Error::UnsupportedSignature;
     return false;
@@ -101,12 +109,29 @@ bool validateManifestWire(const Manifest &manifest, Error &error) {
   return true;
 }
 
+void appendCanonical(std::vector<uint8_t> &out, const Manifest &manifest) {
+  out.insert(out.end(), std::begin(SIGNED_MAGIC), std::end(SIGNED_MAGIC));
+  out.insert(out.end(), manifest.sessionId.begin(), manifest.sessionId.end());
+  append32(out, manifest.imageSize);
+  append32(out, manifest.partitionSize);
+  append32(out, manifest.rollbackCounter);
+  out.insert(out.end(), manifest.digest.begin(), manifest.digest.end());
+  out.push_back(static_cast<uint8_t>(manifest.signatureAlgorithm));
+  out.insert(out.end(), manifest.keyId.begin(), manifest.keyId.end());
+  out.push_back(static_cast<uint8_t>(manifest.version.size()));
+  out.insert(out.end(), manifest.version.begin(), manifest.version.end());
+}
+
 bool appendHeader(const Message &message,
                   uint32_t bodyLength,
                   std::vector<uint8_t> &out,
                   ErrorInfo *error) {
   if (!isKind(static_cast<uint8_t>(message.kind))) {
     setError(error, Error::UnsupportedKind, 4);
+    return false;
+  }
+  if (message.sequence == 0) {
+    setError(error, Error::InvalidSequence, 9 + SESSION_ID_BYTES);
     return false;
   }
   if (bodyLength > UINT32_MAX - HEADER_BYTES) {
@@ -124,8 +149,9 @@ bool appendHeader(const Message &message,
 }  // namespace
 
 bool Manifest::operator==(const Manifest &other) const {
-  return (sessionId == other.sessionId) && (imageSize == other.imageSize)
+  return (sessionId == other.sessionId) && (keyId == other.keyId) && (imageSize == other.imageSize)
          && (partitionSize == other.partitionSize) && (digest == other.digest)
+         && (rollbackCounter == other.rollbackCounter)
          && (signatureAlgorithm == other.signatureAlgorithm) && (signature == other.signature)
          && (version == other.version);
 }
@@ -133,6 +159,21 @@ bool Manifest::operator==(const Manifest &other) const {
 bool Chunk::operator==(const Chunk &other) const {
   return (sessionId == other.sessionId) && (offset == other.offset) && (data == other.data)
          && (checksum == other.checksum);
+}
+
+bool canonicalSignedBytes(const Manifest &manifest, std::vector<uint8_t> &out, ErrorInfo *error) {
+  Error manifestError = Error::None;
+  if (!validateManifestWire(manifest, manifestError)) {
+    setError(error, manifestError, 0);
+    return false;
+  }
+  std::vector<uint8_t> canonical;
+  canonical.reserve(4 + SESSION_ID_BYTES + 4 + 4 + 4 + DIGEST_BYTES + 1 + KEY_ID_BYTES + 1
+                    + manifest.version.size());
+  appendCanonical(canonical, manifest);
+  out = std::move(canonical);
+  setError(error, Error::None, 0);
+  return true;
 }
 
 uint32_t crc32(const uint8_t *data, size_t length) {
@@ -183,7 +224,7 @@ bool decode(const uint8_t *data, size_t length, Message &out, ErrorInfo *error) 
       return false;
     }
     const size_t versionLength = body[0];
-    const size_t signatureLength = read16(body + 1 + 4 + 4 + DIGEST_BYTES + 1);
+    const size_t signatureLength = read16(body + 1 + 4 + 4 + DIGEST_BYTES + 1 + KEY_ID_BYTES + 4);
     const size_t expected = BEGIN_FIXED_BYTES + versionLength + signatureLength;
     if (expected != bodyLength) {
       setError(error, expected > bodyLength ? Error::Truncated : Error::Malformed,
@@ -195,6 +236,8 @@ bool decode(const uint8_t *data, size_t length, Message &out, ErrorInfo *error) 
     decoded.manifest.partitionSize = read32(body + 5);
     std::memcpy(decoded.manifest.digest.data(), body + 9, DIGEST_BYTES);
     decoded.manifest.signatureAlgorithm = static_cast<SignatureAlgorithm>(body[41]);
+    std::memcpy(decoded.manifest.keyId.data(), body + 42, KEY_ID_BYTES);
+    decoded.manifest.rollbackCounter = read32(body + 42 + KEY_ID_BYTES);
     decoded.manifest.version.assign(body + BEGIN_FIXED_BYTES,
                                     body + BEGIN_FIXED_BYTES + versionLength);
     decoded.manifest.signature.assign(body + BEGIN_FIXED_BYTES + versionLength, body + expected);
@@ -241,6 +284,10 @@ bool decode(const uint8_t *data, size_t length, Message &out, ErrorInfo *error) 
 bool encode(const Message &message, std::vector<uint8_t> &out, ErrorInfo *error) {
   std::vector<uint8_t> encoded;
   if (message.kind == Kind::Begin) {
+    if (message.sequence == 0) {
+      setError(error, Error::InvalidSequence, 9 + SESSION_ID_BYTES);
+      return false;
+    }
     Manifest manifest = message.manifest;
     if (manifest.sessionId != message.sessionId) {
       setError(error, Error::WrongSession, 5);
@@ -265,6 +312,8 @@ bool encode(const Message &message, std::vector<uint8_t> &out, ErrorInfo *error)
     append32(encoded, manifest.partitionSize);
     encoded.insert(encoded.end(), manifest.digest.begin(), manifest.digest.end());
     encoded.push_back(static_cast<uint8_t>(manifest.signatureAlgorithm));
+    encoded.insert(encoded.end(), manifest.keyId.begin(), manifest.keyId.end());
+    append32(encoded, manifest.rollbackCounter);
     append16(encoded, static_cast<uint16_t>(manifest.signature.size()));
     encoded.insert(encoded.end(), manifest.version.begin(), manifest.version.end());
     encoded.insert(encoded.end(), manifest.signature.begin(), manifest.signature.end());
@@ -343,6 +392,8 @@ const char *errorString(Error error) {
       return "replay";
     case Error::WrongSession:
       return "wrong_session";
+    case Error::InvalidSequence:
+      return "invalid_sequence";
     case Error::InvalidChunk:
       return "invalid_chunk";
     case Error::ChunkTooLarge:
@@ -353,6 +404,8 @@ const char *errorString(Error error) {
       return "chunk_checksum";
     case Error::ChunkOverlap:
       return "chunk_overlap";
+    case Error::ChunkLedgerFull:
+      return "chunk_ledger_full";
     case Error::SinkRejected:
       return "sink_rejected";
     case Error::Incomplete:
@@ -368,7 +421,7 @@ const char *errorString(Error error) {
 Session::Session(Sink &sink) : m_Sink(sink) {}
 
 Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length) {
-  if (meta.qos < MIN_QOS) {
+  if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
     return reject(Error::InvalidQoS);
   }
   if (meta.retained) {
@@ -383,7 +436,7 @@ Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size
 }
 
 Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
-  if (meta.qos < MIN_QOS) {
+  if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
     return reject(Error::InvalidQoS);
   }
   if (meta.retained) {
@@ -391,6 +444,9 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
   }
 
   if (message.kind == Kind::Begin) {
+    if (message.sequence == 0) {
+      return reject(Error::InvalidSequence);
+    }
     Error manifestError = Error::None;
     if (!validateManifest(message.manifest, manifestError)
         || (message.manifest.sessionId != message.sessionId)) {
@@ -398,19 +454,21 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
                                                                     : manifestError);
     }
     if (m_State == State::Receiving || m_State == State::Verifying) {
-      if (sameSession(message.sessionId) && (message.manifest == m_Manifest)) {
+      if (sameSession(message.sessionId) && (message.manifest == m_Manifest)
+          && (message.sequence == m_BeginSequence)) {
         return {true, true, m_State, Error::None};
       }
       return reject(Error::Busy);
     }
-    if (m_HasLastSession && (message.sessionId == m_LastSession)) {
+    if (terminalSession(message.sessionId)) {
       return reject(Error::Replay);
     }
-    if (!m_Sink.begin(message.manifest)) {
-      return reject(Error::SinkRejected);
-    }
     m_Manifest = message.manifest;
-    m_Ranges.clear();
+    m_BeginSequence = message.sequence;
+    if (!m_Sink.begin(message.manifest)) {
+      return terminalFailure(Error::SinkRejected);
+    }
+    m_RangeCount = 0;
     m_ReceivedBytes = 0;
     m_State = State::Receiving;
     m_LastError = Error::None;
@@ -418,9 +476,15 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
   }
 
   if (message.kind == Kind::Chunk) {
+    if (message.chunk.sessionId != message.sessionId) {
+      return reject(Error::WrongSession);
+    }
     Error chunkError = Error::None;
     if (!validateChunk(message.chunk, chunkError)) {
       return reject(chunkError);
+    }
+    if (message.sequence == 0) {
+      return reject(Error::InvalidSequence);
     }
     if (m_State != State::Receiving) {
       return reject(m_State == State::Idle ? Error::Busy : Error::Replay);
@@ -429,11 +493,14 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
       return reject(Error::WrongSession);
     }
     const uint32_t length = static_cast<uint32_t>(message.chunk.data.size());
-    for (const Range &range : m_Ranges) {
+    for (size_t index = 0; index < m_RangeCount; index++) {
+      const Range &range = m_Ranges[index];
       const uint64_t oldEnd = static_cast<uint64_t>(range.offset) + range.length;
       const uint64_t newEnd = static_cast<uint64_t>(message.chunk.offset) + length;
       if ((range.offset == message.chunk.offset) && (range.length == length)) {
-        if ((range.checksum == message.chunk.checksum) && (range.data == message.chunk.data)) {
+        if ((range.sequence == message.sequence) && (range.checksum == message.chunk.checksum)
+            && m_Sink.matches(message.chunk.offset, message.chunk.data.data(), length,
+                              message.chunk.checksum)) {
           return {true, true, m_State, Error::None};
         }
         return reject(Error::ChunkOverlap);
@@ -442,14 +509,17 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
         return reject(Error::ChunkOverlap);
       }
     }
-    if (!m_Sink.write(message.chunk.offset, message.chunk.data.data(), length)) {
-      m_Sink.abort();
-      m_State = State::Error;
-      m_LastSession = m_Manifest.sessionId;
-      m_HasLastSession = true;
-      return reject(Error::SinkRejected);
+    if (sequenceUsed(message.sequence)) {
+      return reject(Error::Replay);
     }
-    m_Ranges.push_back({message.chunk.offset, length, message.chunk.checksum, message.chunk.data});
+    if (m_RangeCount == m_Ranges.size()) {
+      return reject(Error::ChunkLedgerFull);
+    }
+    if (!m_Sink.write(message.chunk.offset, message.chunk.data.data(), length)) {
+      return terminalFailure(Error::SinkRejected);
+    }
+    m_Ranges[m_RangeCount++] = {message.chunk.offset, length, message.chunk.checksum,
+                                message.sequence};
     m_ReceivedBytes += length;
     m_LastError = Error::None;
     return {true, false, m_State, Error::None};
@@ -459,41 +529,55 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
     return reject(m_State == State::Idle ? Error::Busy : Error::WrongSession);
   }
   if (message.kind == Kind::Commit) {
+    if (message.sequence == 0) {
+      return reject(Error::InvalidSequence);
+    }
     if (m_State == State::Done) {
-      return {true, true, m_State, Error::None};
+      return (message.sequence == m_TerminalSequence) ? Outcome {true, true, m_State, Error::None}
+                                                      : reject(Error::Replay);
     }
     if (m_State != State::Receiving) {
-      return reject(m_State == State::Aborted ? Error::Replay : Error::Busy);
+      return reject((m_State == State::Aborted) || (m_State == State::Error) ? Error::Replay
+                                                                             : Error::Busy);
+    }
+    if (sequenceUsed(message.sequence)) {
+      return reject(Error::Replay);
     }
     if (!hasCompleteImage()) {
       return reject(Error::Incomplete);
     }
     m_State = State::Verifying;
     if (!m_Sink.finalize(m_Manifest)) {
-      m_Sink.abort();
-      m_State = State::Error;
-      m_LastSession = m_Manifest.sessionId;
-      m_HasLastSession = true;
-      return reject(Error::VerificationFailed);
+      return terminalFailure(Error::VerificationFailed);
     }
     m_State = State::Done;
-    m_LastSession = m_Manifest.sessionId;
-    m_HasLastSession = true;
+    m_TerminalKind = Kind::Commit;
+    m_TerminalSequence = message.sequence;
+    rememberTerminalSession(m_Manifest.sessionId);
     m_LastError = Error::None;
     return {true, false, m_State, Error::None};
   }
 
   if (message.kind == Kind::Abort) {
+    if (message.sequence == 0) {
+      return reject(Error::InvalidSequence);
+    }
     if (m_State == State::Aborted) {
-      return {true, true, m_State, Error::None};
+      return (message.sequence == m_TerminalSequence) ? Outcome {true, true, m_State, Error::None}
+                                                      : reject(Error::Replay);
     }
     if ((m_State != State::Receiving) && (m_State != State::Verifying)) {
-      return reject(m_State == State::Done ? Error::Replay : Error::Busy);
+      return reject((m_State == State::Done) || (m_State == State::Error) ? Error::Replay
+                                                                          : Error::Busy);
+    }
+    if (sequenceUsed(message.sequence)) {
+      return reject(Error::Replay);
     }
     m_Sink.abort();
     m_State = State::Aborted;
-    m_LastSession = m_Manifest.sessionId;
-    m_HasLastSession = true;
+    m_TerminalKind = Kind::Abort;
+    m_TerminalSequence = message.sequence;
+    rememberTerminalSession(m_Manifest.sessionId);
     m_LastError = Error::Aborted;
     return {true, false, m_State, Error::Aborted};
   }
@@ -524,6 +608,48 @@ Outcome Session::reject(Error error) {
 
 bool Session::sameSession(const SessionId &id) const {
   return (m_State != State::Idle) && (id == m_Manifest.sessionId);
+}
+
+bool Session::sequenceUsed(uint32_t sequence) const {
+  if (sequence == m_BeginSequence) {
+    return true;
+  }
+  for (size_t index = 0; index < m_RangeCount; index++) {
+    if (m_Ranges[index].sequence == sequence) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Session::terminalSession(const SessionId &id) const {
+  for (size_t index = 0; index < m_TerminalSessionCount; index++) {
+    if (m_TerminalSessions[index] == id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void Session::rememberTerminalSession(const SessionId &id) {
+  if (terminalSession(id)) {
+    return;
+  }
+  if (m_TerminalSessionCount < m_TerminalSessions.size()) {
+    m_TerminalSessions[m_TerminalSessionCount++] = id;
+    return;
+  }
+  m_TerminalSessions[m_TerminalSessionCursor] = id;
+  m_TerminalSessionCursor = (m_TerminalSessionCursor + 1) % m_TerminalSessions.size();
+}
+
+Outcome Session::terminalFailure(Error error) {
+  m_Sink.abort();
+  m_State = State::Error;
+  m_TerminalKind = Kind::Abort;
+  m_TerminalSequence = 0;
+  rememberTerminalSession(m_Manifest.sessionId);
+  return reject(error);
 }
 
 bool Session::validateManifest(const Manifest &manifest, Error &error) const {
@@ -566,15 +692,19 @@ bool Session::hasCompleteImage() const {
   if (m_ReceivedBytes != m_Manifest.imageSize) {
     return false;
   }
-  std::vector<Range> sorted = m_Ranges;
-  std::sort(sorted.begin(), sorted.end(),
-            [](const Range &left, const Range &right) { return left.offset < right.offset; });
   uint32_t next = 0;
-  for (const Range &range : sorted) {
-    if (range.offset != next) {
+  for (size_t position = 0; position < m_RangeCount; position++) {
+    size_t match = m_RangeCount;
+    for (size_t index = 0; index < m_RangeCount; index++) {
+      if (m_Ranges[index].offset == next) {
+        match = index;
+        break;
+      }
+    }
+    if (match == m_RangeCount) {
       return false;
     }
-    next += range.length;
+    next += m_Ranges[match].length;
   }
   return next == m_Manifest.imageSize;
 }
