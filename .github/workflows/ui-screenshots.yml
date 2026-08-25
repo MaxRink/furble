@@ -21,10 +21,10 @@ name: UI screenshots
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
       - '.github/workflows/ui-screenshots.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   ui-screenshots:
@@ -130,68 +130,5 @@ jobs:
           path: ${{ runner.temp }}/ui-screenshots
           if-no-files-found: error
 
-      # Artifact URLs cannot be embedded as inline PR images, and the job
-      # summary is scoped to the workflow run. Keep one marker-based comment
-      # with the artifact link and use the summary for the per-screen table.
-      - name: Update sticky PR comment
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        env:
-          SCREEN_NAMES: ${{ env.UI_SCREEN_NAMES }}
-        with:
-          script: |
-            const marker = '<!-- furble-ui-screenshots -->';
-            const { owner, repo } = context.repo;
-            const runId = context.runId;
-            const artifacts = await github.paginate(
-              github.rest.actions.listWorkflowRunArtifacts,
-              { owner, repo, run_id: runId, per_page: 100 },
-            );
-            const artifact = artifacts.find((item) => item.name === 'ui-screenshots');
-            if (!artifact) {
-              core.setFailed('The ui-screenshots artifact was not found.');
-              return;
-            }
-
-            const artifactUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${runId}/artifacts/${artifact.id}`;
-            const names = (process.env.SCREEN_NAMES || '').split('\n').filter(Boolean);
-            const rows = names.map((name) => {
-              const screen = name.replace(/^m5stick-s3-/, '').replace(/\.png$/, '');
-              return `| \`${screen}\` | \`m5stick-s3 135x240\` | \`${name}\` |`;
-            }).join('\n');
-            const body = [
-              marker,
-              '## UI screenshots',
-              '',
-              `Captured ${names.length} screens from the M5StickS3 135x240 board class.`,
-              '',
-              `[Download the ui-screenshots artifact](${artifactUrl})`,
-              '',
-              '| Screen | Board class | PNG |',
-              '| --- | --- | --- |',
-              rows,
-              '',
-              'The workflow summary contains the same table for this run.',
-            ].join('\n');
-
-            const comments = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number: context.issue.number, per_page: 100 },
-            );
-            const existing = comments.find(
-              (comment) => comment.body && comment.body.includes(marker),
-            );
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+      # The summary and artifact are available to PR reviewers without a
+      # write-capable token. This keeps fork pull requests read-only.

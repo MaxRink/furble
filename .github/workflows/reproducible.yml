@@ -23,7 +23,6 @@ on:
       - "requirements.txt"
       - ".github/workflows/reproducible.yml"
   pull_request:
-    branches: [master]
     paths:
       - "platformio.ini"
       - "sim/platformio.ini"
@@ -43,6 +42,7 @@ on:
       - ".github/workflows/ui-screenshots.yml"
       - "requirements.txt"
       - ".github/workflows/reproducible.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read

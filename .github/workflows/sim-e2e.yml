@@ -23,6 +23,7 @@ name: Simulator end-to-end
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
       - '.github/workflows/sim-e2e.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

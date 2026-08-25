@@ -6,11 +6,16 @@ on:
       - master
       - combined
   pull_request:
-    branches: [master]
+    paths-ignore:
+      - 'companion/android/**'
+      - 'plans/**'
+      - 'web-installer/**'
+      - 'README.md'
+      - '**/*.md'
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   changes:
@@ -129,6 +134,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check workflow trigger coverage
+        run: python3 tools/check_ci_workflows.py
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -357,7 +365,6 @@ jobs:
     name: Report firmware size on the PR
     permissions:
       contents: read
-      pull-requests: write
       actions: read
     needs:
       - changes
@@ -549,47 +556,13 @@ jobs:
               output.write("SIZE_REPORT_EOF\n")
           PY
 
-      - name: Create or update sticky PR comment
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      - name: Add firmware size report to job summary
         env:
           REPORT_BODY: ${{ steps.render.outputs.body }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const marker = '<!-- furble-firmware-size-report -->';
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const body = process.env.REPORT_BODY;
-            if (!body) {
-              core.setFailed('The rendered firmware size report was empty.');
-              return;
-            }
-
-            const comments = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number, per_page: 100 }
-            );
-            const existing = comments.find(
-              (comment) => typeof comment.body === 'string' && comment.body.includes(marker)
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
-              core.info(`Updated firmware size comment ${existing.id}.`);
-            } else {
-              const created = await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
-              core.info(`Created firmware size comment ${created.data.id}.`);
-            }
+        run: |
+          set -euo pipefail
+          test -n "$REPORT_BODY"
+          printf '%s\n' "$REPORT_BODY" >> "$GITHUB_STEP_SUMMARY"
 
   success:
     if: always()

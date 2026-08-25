@@ -20,6 +20,10 @@ CLAUDE.md whose directory it touches.
 - Quirk: the global git fsmonitor breaks the first TinyGPSPlus install in each
   fresh libdeps dir. Re-run the same pio command once. Worktree-isolated agents
   cannot export `GIT_CONFIG_*` to work around it.
+- CI validation workflows use path filters rather than pull request base-branch
+  filters, so stacked PRs run without retargeting. Safe validation workflows
+  also expose `workflow_dispatch`; use the Actions tab to select a branch.
+  Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
   documented env, including the non-CI `esp32-s3-headless` env. A new settings
   enum value must be added in five places or the headless build fails

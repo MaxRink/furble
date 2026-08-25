@@ -15,3 +15,7 @@ docs in the same PR. The doc surface to change-type mapping is the
 
 A PR that changes behavior without its doc update is incomplete. Verify every doc
 claim against the code, not against a plan doc.
+
+CI trigger changes must keep validation workflows usable for stacked pull
+requests. Keep pull request jobs path-filtered and read-only for fork safety,
+and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.

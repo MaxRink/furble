@@ -19,6 +19,7 @@ name: Companion protocol tests
       - lib/furble/**
       - companion/android/**/protocol/**
       - tests/protocol/**
+  workflow_dispatch:
 
 permissions:
   contents: read
