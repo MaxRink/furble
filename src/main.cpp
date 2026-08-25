@@ -14,6 +14,9 @@
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
+#if defined(FURBLE_ETHERNET)
+#include "FurbleEthernet.h"
+#endif
 #if defined(FURBLE_NO_DISPLAY)
 #include "FurbleGPS.h"
 #endif
@@ -245,7 +248,11 @@ void app_main() {
   // The display is up now, so the boot splash can cover the rest of init. It
   // reads its own enable, draws through M5GFX, and every hook self-gates. The
   // stage count below must match the number of step() calls before finish().
-  Furble::BootScreen::begin(6);
+  Furble::BootScreen::begin(6
+#if defined(FURBLE_ETHERNET)
+                            + 1
+#endif
+  );
 
   Furble::IR::init();
   Furble::BootScreen::step("Infrared");
@@ -269,6 +276,13 @@ void app_main() {
   Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
   Furble::BootScreen::step("Companion");
+
+#if defined(FURBLE_ETHERNET)
+  if (!Furble::Ethernet::init()) {
+    ESP_LOGE(LOG_TAG, "Waveshare Ethernet initialization failed.");
+  }
+  Furble::BootScreen::step("Ethernet");
+#endif
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);

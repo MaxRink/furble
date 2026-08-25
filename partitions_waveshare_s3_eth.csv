@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,   Size, Flags
+# The board has 16 MB flash. Keep two 6 MiB OTA slots for the headless network
+# image and leave the remaining flash available for future board-local data.
+nvs,      data, nvs,     0x9000,   24K,
+otadata,  data, ota,     0xf000,   8K,
+phy_init, data, phy,     0x11000,  4K,
+ota_0,    app,  ota_0,   0x20000,  6M,
+ota_1,    app,  ota_1,   0x620000, 6M,
