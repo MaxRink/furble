@@ -13,6 +13,10 @@ uint32_t clockMillis(void) {
   return nowMillis.load();
 }
 
+void setClockMillis(uint32_t milliseconds) {
+  nowMillis.store(milliseconds);
+}
+
 void advanceClock(uint32_t milliseconds) {
   nowMillis.fetch_add(milliseconds);
 }

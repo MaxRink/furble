@@ -1,0 +1,11 @@
+# Keep the PM1 deadline on the far side of the uint32_t wrap. The first assert
+# catches an absolute comparison that treats a wrapped deadline as already due.
+seed clock_ms 4294962295
+seed watchdog true
+assert platform.watchdog armed
+
+# A single stall avoids the normal update path feeding the watchdog between
+# intermediate assertions. The PM1 deadline is crossed after the uint32 wrap.
+stall 11000
+assert platform.watchdog expired
+exit

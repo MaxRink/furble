@@ -48,7 +48,7 @@ struct OwnerData {
   uint64_t release_count = 0;
   uint64_t total_hold_ms = 0;
   std::map<std::string, uint64_t> histogram;
-  std::deque<uint64_t> active_starts;
+  std::deque<uint32_t> active_starts;
 };
 
 struct LockData {
@@ -58,7 +58,7 @@ struct LockData {
   uint64_t release_count = 0;
   uint64_t unbalanced_release_count = 0;
   uint64_t total_hold_ms = 0;
-  uint64_t active_start_ms = 0;
+  uint32_t active_start_ms = 0;
   std::map<std::string, uint64_t> histogram;
   std::map<std::string, OwnerData> owners;
 };
@@ -84,8 +84,8 @@ struct ProfilerState {
   std::mutex mutex;
   bool started = false;
   std::string scenario;
-  uint64_t window_start_ms = 0;
-  uint64_t last_time_ms = 0;
+  uint32_t window_start_ms = 0;
+  uint32_t last_time_ms = 0;
 
   std::map<std::string, uint64_t> timer_fires;
   uint64_t invalidated_area_pixels = 0;
@@ -233,16 +233,11 @@ void ensureLock(int lock_type, const char *lock_name) {
   }
 }
 
-void integrateLocked(uint64_t now) {
+void integrateLocked(uint32_t now) {
   if (!state.started) {
     return;
   }
-  if (now < state.last_time_ms) {
-    state.last_time_ms = now;
-    return;
-  }
-
-  const uint64_t elapsed = now - state.last_time_ms;
+  const uint32_t elapsed = clockElapsed(now, state.last_time_ms);
   if (elapsed == 0) {
     return;
   }
@@ -270,7 +265,7 @@ void integrateLocked(uint64_t now) {
   state.last_time_ms = now;
 }
 
-void resetCountersLocked(uint64_t now) {
+void resetCountersLocked(uint32_t now) {
   state.window_start_ms = now;
   state.last_time_ms = now;
   state.timer_fires.clear();
@@ -338,17 +333,17 @@ void ensureStartedLocked(void) {
   }
 }
 
-uint64_t activeHold(const LockData &lock, uint64_t now) {
+uint64_t activeHold(const LockData &lock, uint32_t now) {
   if (lock.count == 0) {
     return lock.total_hold_ms;
   }
-  return lock.total_hold_ms + (now - lock.active_start_ms);
+  return lock.total_hold_ms + clockElapsed(now, lock.active_start_ms);
 }
 
-uint64_t activeOwnerHold(const OwnerData &owner, uint64_t now) {
+uint64_t activeOwnerHold(const OwnerData &owner, uint32_t now) {
   uint64_t total = owner.total_hold_ms;
-  for (const uint64_t start : owner.active_starts) {
-    total += now - start;
+  for (const uint32_t start : owner.active_starts) {
+    total += clockElapsed(now, start);
   }
   return total;
 }
@@ -359,20 +354,20 @@ uint64_t reportDuration(uint64_t milliseconds) {
 }
 
 std::map<std::string, uint64_t> currentHistogram(const std::map<std::string, uint64_t> &histogram,
-                                                 uint64_t active_start,
+                                                 uint32_t active_start,
                                                  uint32_t count,
-                                                 uint64_t now) {
+                                                 uint32_t now) {
   auto result = histogram;
   if (count > 0) {
-    addHistogram(result, reportDuration(now - active_start));
+    addHistogram(result, reportDuration(clockElapsed(now, active_start)));
   }
   return result;
 }
 
-std::map<std::string, uint64_t> currentOwnerHistogram(const OwnerData &owner, uint64_t now) {
+std::map<std::string, uint64_t> currentOwnerHistogram(const OwnerData &owner, uint32_t now) {
   auto result = owner.histogram;
-  for (const uint64_t start : owner.active_starts) {
-    addHistogram(result, reportDuration(now - start));
+  for (const uint32_t start : owner.active_starts) {
+    addHistogram(result, reportDuration(clockElapsed(now, start)));
   }
   return result;
 }
@@ -537,9 +532,9 @@ void writeDouble(std::ostream &output, double value) {
 
 void writeReportLocked(const std::filesystem::path &path,
                        const std::string &scenario,
-                       uint64_t now) {
+                       uint32_t now) {
   integrateLocked(now);
-  const uint64_t duration_ms = now >= state.window_start_ms ? now - state.window_start_ms : 0;
+  const uint64_t duration_ms = clockElapsed(now, state.window_start_ms);
   const uint64_t safe_duration_ms = std::max<uint64_t>(duration_ms, 1);
   const CurrentModel model = loadCurrentModel();
 
@@ -802,7 +797,7 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "\n}\n";
 }
 
-void resetWindowLocked(uint64_t now) {
+void resetWindowLocked(uint32_t now) {
   integrateLocked(now);
   resetCountersLocked(now);
 }
@@ -932,7 +927,7 @@ void profilerPowerConfig(int max_frequency_mhz, int min_frequency_mhz, bool ligh
 void profilerPowerLockAcquire(int lock_type, const char *lock_name, const char *owner) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  const uint64_t now = clockMillis();
+  const uint32_t now = clockMillis();
   integrateLocked(now);
   ensureLock(lock_type, lock_name);
   auto &data = state.locks[lock_type];
@@ -953,7 +948,7 @@ void profilerPowerLockAcquire(int lock_type, const char *lock_name, const char *
 void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *owner) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  const uint64_t now = clockMillis();
+  const uint32_t now = clockMillis();
   integrateLocked(now);
   ensureLock(lock_type, lock_name);
   auto &data = state.locks[lock_type];
@@ -966,7 +961,7 @@ void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *
   data.count--;
   data.release_count++;
   if (data.count == 0) {
-    const uint64_t held = now - data.active_start_ms;
+    const uint64_t held = clockElapsed(now, data.active_start_ms);
     data.total_hold_ms += held;
     addHistogram(data.histogram, held);
   }
@@ -979,7 +974,7 @@ void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *
   auto &owner_data = owner_found->second;
   owner_data.release_count++;
   if (!owner_data.active_starts.empty()) {
-    const uint64_t held = now - owner_data.active_starts.back();
+    const uint64_t held = clockElapsed(now, owner_data.active_starts.back());
     owner_data.active_starts.pop_back();
     owner_data.total_hold_ms += held;
     addHistogram(owner_data.histogram, held);

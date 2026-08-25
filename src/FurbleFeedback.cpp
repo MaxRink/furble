@@ -3,6 +3,7 @@
 #include <esp_log.h>
 
 #include "FurbleFeedback.h"
+#include "FurbleTime.h"
 
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
@@ -222,7 +223,7 @@ uint8_t Feedback::eventMask(event_t event) {
 }
 
 bool Feedback::isDue(uint32_t now, uint32_t deadline) {
-  return static_cast<int32_t>(now - deadline) >= 0;
+  return Time::deadlineReached(now, deadline);
 }
 
 void Feedback::signal(event_t event, bool force) {
