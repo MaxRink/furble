@@ -440,8 +440,10 @@ boot:
 6. **Heap floor.** `esp_get_free_heap_size()` above a per board threshold. Pick
    the threshold from a measured master build minus a margin, do not invent a
    number. This catches an image that boots but has no room to connect a camera.
-7. **No panic reset.** `esp_reset_reason()` is not `ESP_RST_PANIC`,
-   `ESP_RST_TASK_WDT`, `ESP_RST_INT_WDT` or `ESP_RST_WDT`.
+7. **Safe reset cause.** Map every `esp_reset_reason_t` value. Power-on,
+   software restart, and deep-sleep wake are allowed; unknown, external-pin,
+   panic, watchdog, brownout, SDIO, USB, JTAG, eFuse, power-glitch, and CPU
+   lockup causes fail closed.
 
 What is deliberately **not** in the check:
 
@@ -463,9 +465,11 @@ so a developer build behaves exactly as it does today.
 
 Interaction with `plans/26-pm1-watchdog.md`: the M5PM1 hardware watchdog on the
 StickS3 and the rollback timer both exist to catch a wedged device, at different
-layers. They do not conflict but the watchdog timeout must be longer than the 30
-second health window, or a slow-but-healthy boot gets reset before it can
-validate. Check this if PR26 has landed.
+layers. They do not conflict in principle, but the landed 10 second PM1
+watchdog is currently shorter than the planned 30 second health window.
+Runtime rollback integration is blocked until the watchdog is lengthened
+beyond that window or the window is deliberately shortened, otherwise a slow
+healthy boot can reset before validation.
 
 ---
 
@@ -473,7 +477,7 @@ validate. Check this if PR26 has landed.
 
 ## Goal
 
-Move all five environments to a two slot OTA layout, enable rollback, and pull
+Move all six release environments to a two slot OTA layout, enable rollback, and pull
 firmware from a signed HTTPS URL over WiFi.
 
 ## Scope
@@ -983,9 +987,10 @@ Stage 34a-1 is implemented on `feat/34-ota-partitions`.
   boot.
 - `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` is enabled in all five release
   sdkconfigs as specified for 34a-1. `CONFIG_APP_ROLLBACK_ENABLE=y` also
-  appears in all five regenerated files: it is an auto-generated deprecated
+  appears in all six regenerated files: it is an auto-generated deprecated
   mirror of `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`, not an independent
-  setting. No OTA delivery or health-check source code was added.
+  setting. No runtime OTA delivery or health-check integration was added. The
+  later host-only policy seam is tracked under plan 125.
 - The raw app image offset moved from `0x10000` to `0x20000`. Anyone flashing
   with a scripted `esptool` invocation must update the app offset, and the
   release notes should carry a line saying so.

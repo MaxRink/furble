@@ -396,3 +396,25 @@ add a regression test. Do not stack another optimization on a failing one.
 
 This plan is documentation only. Existing feature plans remain authoritative
 for behavior. The first implementation PR is 125.1.
+
+## OTA rollback health policy slice
+
+The host-testable policy slice is implemented alongside the transport engine.
+`OTA::evaluateBootHealth()` consumes value-only observations for NVS, platform,
+BLE, the control task, the UI or headless service loop, heap floor, reset reason,
+and the ESP-IDF rollback state. It requests exactly one of no action, waiting
+for health, marking a pending image valid, or marking it invalid and rebooting
+for rollback. Failed gates wait until an explicit validation deadline; they do
+not reject an image merely because startup is still in progress. Host tests
+cover every health gate, every documented reset and rollback state, stable
+diagnostic names, read failures, and settled images that must not be rewritten.
+
+The evaluator deliberately does not call ESP-IDF, inspect hardware, start a
+timer, or reboot. Runtime integration remains a separate hardware-gated slice:
+`app_main` must collect the probes after control and UI or headless service are
+alive, repeatedly call the evaluator through the plan 34 thirty-second window,
+log the stable failure name before a rollback reboot, and invoke the matching
+`esp_ota_mark_app_*` API. That integration is not implemented by this slice and
+is blocked because the landed 10 second PM1 watchdog is shorter than the
+planned window. No simulator or hardware claim is made for those probes until
+deterministic fakes and an on-device run exist.

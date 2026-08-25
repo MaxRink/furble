@@ -2,6 +2,22 @@
 
 #include <cstring>
 
+#if defined(ESP_PLATFORM)
+#include <esp_flash_partitions.h>
+#include <esp_system.h>
+
+static_assert(ESP_RST_UNKNOWN == 0 && ESP_RST_POWERON == 1 && ESP_RST_EXT == 2 && ESP_RST_SW == 3
+                  && ESP_RST_PANIC == 4 && ESP_RST_INT_WDT == 5 && ESP_RST_TASK_WDT == 6
+                  && ESP_RST_WDT == 7 && ESP_RST_DEEPSLEEP == 8 && ESP_RST_BROWNOUT == 9
+                  && ESP_RST_SDIO == 10 && ESP_RST_USB == 11 && ESP_RST_JTAG == 12
+                  && ESP_RST_EFUSE == 13 && ESP_RST_PWR_GLITCH == 14 && ESP_RST_CPU_LOCKUP == 15,
+              "Update resetReasonFromIdf() for the selected ESP-IDF");
+static_assert(ESP_OTA_IMG_NEW == 0U && ESP_OTA_IMG_PENDING_VERIFY == 1U && ESP_OTA_IMG_VALID == 2U
+                  && ESP_OTA_IMG_INVALID == 3U && ESP_OTA_IMG_ABORTED == 4U
+                  && ESP_OTA_IMG_UNDEFINED == 0xFFFFFFFFU,
+              "Update rollbackStateFromIdf() for the selected ESP-IDF");
+#endif
+
 namespace Furble {
 namespace OTA {
 
@@ -23,6 +39,159 @@ uint8_t percentage(size_t bytesDownloaded, size_t totalBytes) {
 }  // namespace
 
 Engine::Engine(Transport &transport) : m_Transport(transport) {}
+
+ResetReason resetReasonFromIdf(int reasonValue) {
+  switch (reasonValue) {
+    case 1:
+      return ResetReason::PowerOn;
+    case 2:
+      return ResetReason::ExternalPin;
+    case 3:
+      return ResetReason::Software;
+    case 4:
+      return ResetReason::Panic;
+    case 5:
+      return ResetReason::InterruptWatchdog;
+    case 6:
+      return ResetReason::TaskWatchdog;
+    case 7:
+      return ResetReason::OtherWatchdog;
+    case 8:
+      return ResetReason::DeepSleep;
+    case 9:
+      return ResetReason::Brownout;
+    case 10:
+      return ResetReason::Sdio;
+    case 11:
+      return ResetReason::Usb;
+    case 12:
+      return ResetReason::Jtag;
+    case 13:
+      return ResetReason::Efuse;
+    case 14:
+      return ResetReason::PowerGlitch;
+    case 15:
+      return ResetReason::CpuLockup;
+    case 0:
+    default:
+      return ResetReason::Unknown;
+  }
+}
+
+RollbackState rollbackStateFromIdf(bool readSucceeded, uint32_t stateValue) {
+  if (!readSucceeded) {
+    return RollbackState::ReadError;
+  }
+  switch (stateValue) {
+    case 0U:
+      return RollbackState::New;
+    case 1U:
+      return RollbackState::PendingVerify;
+    case 2U:
+      return RollbackState::Valid;
+    case 3U:
+      return RollbackState::Invalid;
+    case 4U:
+      return RollbackState::Aborted;
+    case UINT32_MAX:
+      return RollbackState::Undefined;
+    default:
+      return RollbackState::ReadError;
+  }
+}
+
+BootDecision evaluateBootHealth(const BootHealth &health) {
+  switch (health.rollbackState) {
+    case RollbackState::ReadError:
+      return {health.validationDeadlineReached ? BootAction::MarkInvalidRollbackAndReboot
+                                               : BootAction::WaitForHealth,
+              BootFailure::StateRead};
+    case RollbackState::New:
+      return {health.validationDeadlineReached ? BootAction::MarkInvalidRollbackAndReboot
+                                               : BootAction::WaitForHealth,
+              BootFailure::UnexpectedState};
+    case RollbackState::Undefined:
+    case RollbackState::Valid:
+    case RollbackState::Invalid:
+    case RollbackState::Aborted:
+      return {BootAction::NoAction, BootFailure::NotPending};
+    case RollbackState::PendingVerify:
+      break;
+  }
+
+  BootFailure failure = BootFailure::None;
+  if (!health.nvsReady) {
+    failure = BootFailure::Nvs;
+  } else if (!health.platformReady) {
+    failure = BootFailure::Platform;
+  } else if (!health.bleReady) {
+    failure = BootFailure::Ble;
+  } else if (!health.controlReady) {
+    failure = BootFailure::Control;
+  } else if (health.serviceTicks < BootHealth::MIN_SERVICE_TICKS) {
+    failure = BootFailure::ServiceLoop;
+  } else if ((health.heapFloor == 0) || (health.freeHeap < health.heapFloor)) {
+    failure = BootFailure::Heap;
+  } else {
+    switch (health.resetReason) {
+      case ResetReason::PowerOn:
+      case ResetReason::Software:
+      case ResetReason::DeepSleep:
+        break;
+      case ResetReason::Unknown:
+      case ResetReason::ExternalPin:
+      case ResetReason::Brownout:
+      case ResetReason::Panic:
+      case ResetReason::TaskWatchdog:
+      case ResetReason::InterruptWatchdog:
+      case ResetReason::OtherWatchdog:
+      case ResetReason::Sdio:
+      case ResetReason::Usb:
+      case ResetReason::Jtag:
+      case ResetReason::Efuse:
+      case ResetReason::PowerGlitch:
+      case ResetReason::CpuLockup:
+        failure = BootFailure::UnsafeReset;
+        break;
+    }
+  }
+
+  if (failure == BootFailure::None) {
+    return {BootAction::MarkValid, BootFailure::None};
+  }
+  if (!health.validationDeadlineReached) {
+    return {BootAction::WaitForHealth, failure};
+  }
+  return {BootAction::MarkInvalidRollbackAndReboot, failure};
+}
+
+const char *bootFailureName(BootFailure failure) {
+  switch (failure) {
+    case BootFailure::None:
+      return "none";
+    case BootFailure::NotPending:
+      return "not-pending";
+    case BootFailure::StateRead:
+      return "state-read";
+    case BootFailure::UnexpectedState:
+      return "unexpected-state";
+    case BootFailure::Nvs:
+      return "nvs";
+    case BootFailure::Platform:
+      return "platform";
+    case BootFailure::Ble:
+      return "ble";
+    case BootFailure::Control:
+      return "control";
+    case BootFailure::ServiceLoop:
+      return "service-loop";
+    case BootFailure::Heap:
+      return "heap";
+    case BootFailure::UnsafeReset:
+      return "unsafe-reset";
+  }
+  return "unknown";
+}
 
 bool Engine::begin(const char *url, size_t resumeOffset) {
   if (busy()) {

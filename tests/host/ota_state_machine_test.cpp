@@ -398,6 +398,198 @@ bool testUnknownSizeAndApplyFailure() {
   return g_Failures == before;
 }
 
+bool testRollbackHealthContract() {
+  std::cout << "test: pending OTA images require every boot health gate\n";
+  const int before = g_Failures;
+
+  OTA::BootHealth healthy;
+  healthy.rollbackState = OTA::RollbackState::PendingVerify;
+  healthy.nvsReady = true;
+  healthy.platformReady = true;
+  healthy.bleReady = true;
+  healthy.controlReady = true;
+  healthy.serviceTicks = OTA::BootHealth::MIN_SERVICE_TICKS;
+  healthy.freeHeap = 50000;
+  healthy.heapFloor = 40000;
+  healthy.resetReason = OTA::ResetReason::PowerOn;
+  const OTA::BootDecision accepted = OTA::evaluateBootHealth(healthy);
+  check(accepted.action == OTA::BootAction::MarkValid, "a healthy pending image is marked valid");
+  check(accepted.failure == OTA::BootFailure::None, "healthy boot has no failure");
+
+  for (const OTA::ResetReason reason : {OTA::ResetReason::Software, OTA::ResetReason::DeepSleep}) {
+    OTA::BootHealth restart = healthy;
+    restart.resetReason = reason;
+    check(OTA::evaluateBootHealth(restart).action == OTA::BootAction::MarkValid,
+          "a non-crash restart can confirm a healthy image");
+  }
+
+  const auto expectFailure = [](OTA::BootHealth input, OTA::BootFailure expectedFailure,
+                                const char *message) {
+    const OTA::BootDecision waiting = OTA::evaluateBootHealth(input);
+    check(waiting.action == OTA::BootAction::WaitForHealth,
+          "a failed gate waits during the validation window");
+    check(waiting.failure == expectedFailure, "waiting preserves the diagnostic reason");
+    input.validationDeadlineReached = true;
+    const OTA::BootDecision expired = OTA::evaluateBootHealth(input);
+    check(expired.action == OTA::BootAction::MarkInvalidRollbackAndReboot, message);
+    check(expired.failure == expectedFailure, "rollback preserves the diagnostic reason");
+  };
+
+  OTA::BootHealth failed = healthy;
+  failed.nvsReady = false;
+  expectFailure(failed, OTA::BootFailure::Nvs, "NVS failure rolls back at the deadline");
+  failed = healthy;
+  failed.platformReady = false;
+  expectFailure(failed, OTA::BootFailure::Platform, "platform failure rolls back at the deadline");
+  failed = healthy;
+  failed.bleReady = false;
+  expectFailure(failed, OTA::BootFailure::Ble, "BLE failure rolls back at the deadline");
+  failed = healthy;
+  failed.controlReady = false;
+  expectFailure(failed, OTA::BootFailure::Control,
+                "control task failure rolls back at the deadline");
+  failed = healthy;
+  failed.serviceTicks = OTA::BootHealth::MIN_SERVICE_TICKS - 1;
+  expectFailure(failed, OTA::BootFailure::ServiceLoop,
+                "service loop failure rolls back at the deadline");
+  failed = healthy;
+  failed.freeHeap = failed.heapFloor - 1;
+  expectFailure(failed, OTA::BootFailure::Heap, "heap floor failure rolls back at the deadline");
+  failed = healthy;
+  failed.heapFloor = 0;
+  expectFailure(failed, OTA::BootFailure::Heap, "missing heap floor rolls back at the deadline");
+  for (const OTA::ResetReason reason :
+       {OTA::ResetReason::Unknown, OTA::ResetReason::ExternalPin, OTA::ResetReason::Brownout,
+        OTA::ResetReason::Panic, OTA::ResetReason::TaskWatchdog,
+        OTA::ResetReason::InterruptWatchdog, OTA::ResetReason::OtherWatchdog,
+        OTA::ResetReason::Sdio, OTA::ResetReason::Usb, OTA::ResetReason::Jtag,
+        OTA::ResetReason::Efuse, OTA::ResetReason::PowerGlitch, OTA::ResetReason::CpuLockup}) {
+    failed = healthy;
+    failed.resetReason = reason;
+    expectFailure(failed, OTA::BootFailure::UnsafeReset,
+                  "unsafe or unknown reset rolls back conservatively at the deadline");
+  }
+
+  return g_Failures == before;
+}
+
+bool testRollbackHealthNoOpOutsidePending() {
+  std::cout << "test: rollback health does not rewrite settled images\n";
+  const int before = g_Failures;
+
+  OTA::BootHealth input;
+  input.resetReason = OTA::ResetReason::Panic;
+  for (const OTA::RollbackState state :
+       {OTA::RollbackState::Undefined, OTA::RollbackState::Valid, OTA::RollbackState::Invalid,
+        OTA::RollbackState::Aborted}) {
+    input.rollbackState = state;
+    const OTA::BootDecision settled = OTA::evaluateBootHealth(input);
+    check(settled.action == OTA::BootAction::NoAction,
+          "a settled image is not changed by health validation");
+    check(settled.failure == OTA::BootFailure::NotPending,
+          "settled image reports that validation is not pending");
+  }
+
+  input.rollbackState = OTA::RollbackState::ReadError;
+  check(OTA::evaluateBootHealth(input).action == OTA::BootAction::WaitForHealth,
+        "a rollback-state read error remains retryable");
+  check(OTA::evaluateBootHealth(input).failure == OTA::BootFailure::StateRead,
+        "a rollback-state read error is diagnosed distinctly");
+  input.validationDeadlineReached = true;
+  check(OTA::evaluateBootHealth(input).action == OTA::BootAction::MarkInvalidRollbackAndReboot,
+        "a rollback-state read error fails closed at the deadline");
+  input.rollbackState = OTA::RollbackState::New;
+  input.validationDeadlineReached = false;
+  check(OTA::evaluateBootHealth(input).action == OTA::BootAction::WaitForHealth,
+        "an unexpected NEW state remains retryable");
+  check(OTA::evaluateBootHealth(input).failure == OTA::BootFailure::UnexpectedState,
+        "an unexpected NEW state is diagnosed distinctly");
+  input.validationDeadlineReached = true;
+  check(OTA::evaluateBootHealth(input).action == OTA::BootAction::MarkInvalidRollbackAndReboot,
+        "an unexpected NEW state fails closed at the deadline");
+
+  return g_Failures == before;
+}
+
+bool testEspIdfAdaptersAndDiagnostics() {
+  std::cout << "test: ESP-IDF values and boot diagnostics have exhaustive stable mappings\n";
+  const int before = g_Failures;
+
+  struct ResetCase {
+    int raw;
+    OTA::ResetReason expected;
+  };
+  const ResetCase resetCases[] = {
+      {0,  OTA::ResetReason::Unknown          },
+      {1,  OTA::ResetReason::PowerOn          },
+      {2,  OTA::ResetReason::ExternalPin      },
+      {3,  OTA::ResetReason::Software         },
+      {4,  OTA::ResetReason::Panic            },
+      {5,  OTA::ResetReason::InterruptWatchdog},
+      {6,  OTA::ResetReason::TaskWatchdog     },
+      {7,  OTA::ResetReason::OtherWatchdog    },
+      {8,  OTA::ResetReason::DeepSleep        },
+      {9,  OTA::ResetReason::Brownout         },
+      {10, OTA::ResetReason::Sdio             },
+      {11, OTA::ResetReason::Usb              },
+      {12, OTA::ResetReason::Jtag             },
+      {13, OTA::ResetReason::Efuse            },
+      {14, OTA::ResetReason::PowerGlitch      },
+      {15, OTA::ResetReason::CpuLockup        },
+  };
+  for (const ResetCase &entry : resetCases) {
+    check(OTA::resetReasonFromIdf(entry.raw) == entry.expected,
+          "each documented ESP-IDF reset reason is mapped");
+  }
+  check(OTA::resetReasonFromIdf(99) == OTA::ResetReason::Unknown,
+        "future reset reasons fail closed as unknown");
+
+  struct RollbackCase {
+    uint32_t raw;
+    OTA::RollbackState expected;
+  };
+  const RollbackCase rollbackCases[] = {
+      {0U,          OTA::RollbackState::New          },
+      {1U,          OTA::RollbackState::PendingVerify},
+      {2U,          OTA::RollbackState::Valid        },
+      {3U,          OTA::RollbackState::Invalid      },
+      {4U,          OTA::RollbackState::Aborted      },
+      {0xFFFFFFFFU, OTA::RollbackState::Undefined    },
+  };
+  for (const RollbackCase &entry : rollbackCases) {
+    check(OTA::rollbackStateFromIdf(true, entry.raw) == entry.expected,
+          "each documented ESP-IDF OTA state is mapped");
+  }
+  check(OTA::rollbackStateFromIdf(false, 1U) == OTA::RollbackState::ReadError,
+        "a failed OTA-state read is never mistaken for pending verification");
+  check(OTA::rollbackStateFromIdf(true, 99U) == OTA::RollbackState::ReadError,
+        "future OTA states fail closed as a read error");
+
+  struct FailureCase {
+    OTA::BootFailure failure;
+    const char *name;
+  };
+  const FailureCase failureCases[] = {
+      {OTA::BootFailure::None,            "none"            },
+      {OTA::BootFailure::NotPending,      "not-pending"     },
+      {OTA::BootFailure::StateRead,       "state-read"      },
+      {OTA::BootFailure::UnexpectedState, "unexpected-state"},
+      {OTA::BootFailure::Nvs,             "nvs"             },
+      {OTA::BootFailure::Platform,        "platform"        },
+      {OTA::BootFailure::Ble,             "ble"             },
+      {OTA::BootFailure::Control,         "control"         },
+      {OTA::BootFailure::ServiceLoop,     "service-loop"    },
+      {OTA::BootFailure::Heap,            "heap"            },
+      {OTA::BootFailure::UnsafeReset,     "unsafe-reset"    },
+  };
+  for (const FailureCase &entry : failureCases) {
+    check(std::string(OTA::bootFailureName(entry.failure)) == entry.name,
+          "every boot failure has a stable diagnostic name");
+  }
+
+  return g_Failures == before;
+}
+
 }  // namespace
 
 int main() {
@@ -411,6 +603,9 @@ int main() {
   testCheckAndResumeFailuresAbort();
   testDownloadInvariants();
   testUnknownSizeAndApplyFailure();
+  testRollbackHealthContract();
+  testRollbackHealthNoOpOutsidePending();
+  testEspIdfAdaptersAndDiagnostics();
 
   if (g_Failures != 0) {
     std::cout << "ota state machine harness: FAIL (" << g_Failures << " checks)\n";

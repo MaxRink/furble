@@ -73,6 +73,100 @@ struct Snapshot {
   size_t resumeOffset = 0;
 };
 
+/** OTA boot state reported by the ESP-IDF rollback API. */
+enum class RollbackState : uint8_t {
+  ReadError,
+  Undefined,
+  New,
+  PendingVerify,
+  Valid,
+  Invalid,
+  Aborted,
+};
+
+/** Reset causes that make a pending image unsafe to confirm. */
+enum class ResetReason : uint8_t {
+  Unknown,
+  PowerOn,
+  ExternalPin,
+  Software,
+  DeepSleep,
+  Brownout,
+  Panic,
+  TaskWatchdog,
+  InterruptWatchdog,
+  OtherWatchdog,
+  Sdio,
+  Usb,
+  Jtag,
+  Efuse,
+  PowerGlitch,
+  CpuLockup,
+};
+
+/** Convert the raw ESP-IDF reset reason without exposing ESP headers to host tests. */
+ResetReason resetReasonFromIdf(int reasonValue);
+
+/** Convert esp_ota_get_state_partition() output; false means the read failed. */
+RollbackState rollbackStateFromIdf(bool readSucceeded, uint32_t stateValue);
+
+/** Side effect requested after evaluating a pending image. */
+enum class BootAction : uint8_t {
+  NoAction,
+  WaitForHealth,
+  MarkValid,
+  MarkInvalidRollbackAndReboot,
+};
+
+/** First failed gate in the rollback health contract. */
+enum class BootFailure : uint8_t {
+  None,
+  NotPending,
+  StateRead,
+  UnexpectedState,
+  Nvs,
+  Platform,
+  Ble,
+  Control,
+  ServiceLoop,
+  Heap,
+  UnsafeReset,
+};
+
+/**
+ * Hardware-independent observations needed before confirming an OTA image.
+ *
+ * The firmware caller supplies these observations from its existing init and
+ * task seams. Keeping the policy value-only makes the rollback decision
+ * deterministic in host tests and prevents a premature mark-valid call from
+ * being hidden in app_main().
+ */
+struct BootHealth {
+  static constexpr uint32_t MIN_SERVICE_TICKS = 100;
+
+  RollbackState rollbackState = RollbackState::ReadError;
+  bool nvsReady = false;
+  bool platformReady = false;
+  bool bleReady = false;
+  bool controlReady = false;
+  uint32_t serviceTicks = 0;
+  size_t freeHeap = 0;
+  size_t heapFloor = 0;
+  ResetReason resetReason = ResetReason::Unknown;
+  bool validationDeadlineReached = false;
+};
+
+struct BootDecision {
+  BootAction action = BootAction::NoAction;
+  BootFailure failure = BootFailure::None;
+};
+
+/** Evaluate the rollback health contract without performing hardware actions. */
+BootDecision evaluateBootHealth(const BootHealth &health);
+
+/** Stable diagnostic label for logging the decision before any reboot action. */
+const char *bootFailureName(BootFailure failure);
+
 /**
  * Transport-independent OTA lifecycle controller.
  *
