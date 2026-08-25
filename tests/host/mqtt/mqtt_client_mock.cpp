@@ -38,6 +38,10 @@ bool topicMatches(const std::string &filter, const std::string &topic) {
 
   const auto filter_levels = levels(filter);
   const auto topic_levels = levels(topic);
+  if (!topic.empty() && (topic.front() == '$')
+      && ((filter_levels.front() == "+") || (filter_levels.front() == "#"))) {
+    return false;
+  }
   size_t n = 0;
   for (; n < filter_levels.size(); n++) {
     if (filter_levels[n] == "#") {
@@ -49,6 +53,28 @@ bool topicMatches(const std::string &filter, const std::string &topic) {
     }
   }
   return n == topic_levels.size();
+}
+
+bool validFilter(const std::string &filter) {
+  if (filter.empty()) {
+    return false;
+  }
+  size_t start = 0;
+  while (true) {
+    const size_t end = filter.find('/', start);
+    const std::string level =
+        filter.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    if ((level.find('+') != std::string::npos) && (level != "+")) {
+      return false;
+    }
+    if ((level.find('#') != std::string::npos) && ((level != "#") || (end != std::string::npos))) {
+      return false;
+    }
+    if (end == std::string::npos) {
+      return true;
+    }
+    start = end + 1;
+  }
 }
 
 bool subscribed(const std::string &topic) {
@@ -101,6 +127,12 @@ void retainMessage(const std::string &topic, const std::string &payload, int qos
   }
   const auto found = std::find_if(g_Retained.begin(), g_Retained.end(),
                                   [&](const auto &message) { return message.topic == topic; });
+  if (payload.empty()) {
+    if (found != g_Retained.end()) {
+      g_Retained.erase(found);
+    }
+    return;
+  }
   if (found == g_Retained.end()) {
     g_Retained.push_back({topic, payload, qos, true});
   } else {
@@ -136,6 +168,11 @@ int startCount(void) {
   return g_StartCount;
 }
 
+bool hasRetained(const std::string &topic) {
+  return std::any_of(g_Retained.begin(), g_Retained.end(),
+                     [&](const auto &message) { return message.topic == topic; });
+}
+
 void deliver(const std::string &topic, const std::string &payload) {
   deliverToClient(g_Client, topic, payload);
 }
@@ -150,6 +187,22 @@ void deliverFragmented(const std::string &topic,
 void brokerPublish(const std::string &topic, const std::string &payload, int qos, bool retain) {
   retainMessage(topic, payload, qos, retain);
   deliverToClient(g_Client, topic, payload);
+}
+
+void dropConnection(void) {
+  if ((g_Client == nullptr) || !g_Client->started || !g_Client->connected) {
+    return;
+  }
+  g_Client->connected = false;
+  emit(g_Client, MQTT_EVENT_DISCONNECTED);
+}
+
+void restoreConnection(void) {
+  if ((g_Client == nullptr) || !g_Client->started || g_Client->connected) {
+    return;
+  }
+  g_Client->connected = true;
+  emit(g_Client, MQTT_EVENT_CONNECTED);
 }
 
 }  // namespace host_mqtt
@@ -202,6 +255,7 @@ extern "C" esp_err_t esp_mqtt_client_destroy(esp_mqtt_client_handle_t client) {
   }
   if (g_Client == client) {
     g_Client = nullptr;
+    g_Subscriptions.clear();
   }
   delete client;
   return ESP_OK;
@@ -210,10 +264,16 @@ extern "C" esp_err_t esp_mqtt_client_destroy(esp_mqtt_client_handle_t client) {
 extern "C" int esp_mqtt_client_subscribe(esp_mqtt_client_handle_t client,
                                          const char *topic,
                                          int qos) {
-  if ((client == nullptr) || (topic == nullptr)) {
+  if ((client == nullptr) || (topic == nullptr) || !validFilter(topic)) {
     return -1;
   }
-  g_Subscriptions.push_back({topic, qos});
+  const auto existing =
+      std::find_if(g_Subscriptions.begin(), g_Subscriptions.end(), [&](const auto &subscription) {
+        return subscription.topic == topic && subscription.qos == qos;
+      });
+  if (existing == g_Subscriptions.end()) {
+    g_Subscriptions.push_back({topic, qos});
+  }
   if (client->started && client->connected) {
     const auto retained = g_Retained;
     for (const auto &message : retained) {

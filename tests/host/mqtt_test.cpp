@@ -17,6 +17,15 @@
 
 namespace {
 
+int g_RawDataEvents = 0;
+
+void rawHandler(void *, esp_event_base_t, int32_t, void *event_data) {
+  const auto *event = static_cast<const esp_mqtt_event_t *>(event_data);
+  if ((event != nullptr) && (event->event_id == MQTT_EVENT_DATA)) {
+    g_RawDataEvents++;
+  }
+}
+
 [[noreturn]] void fail(const std::string &message) {
   std::cerr << "mqtt_host_broker_test: " << message << '\n';
   std::exit(EXIT_FAILURE);
@@ -213,6 +222,28 @@ int main(void) {
   require(discoveryCount() == before_status + 2,
           "retained Home Assistant status did not republish discovery");
 
+  host_mqtt::dropConnection();
+  require(!mqtt.isConnected(), "unexpected broker loss did not clear connected state");
+  const size_t lost_command_count = Control::commands().size();
+  host_mqtt::deliver(root_topic + "/cmd/shutter", "press");
+  require(Control::commands().size() == lost_command_count,
+          "command reached MQTT after unexpected broker loss");
+  host_mqtt::restoreConnection();
+  require(mqtt.isConnected(), "broker reconnect event did not restore connected state");
+  require(host_mqtt::subscriptions().size() == 2,
+          "reconnect duplicated MQTT subscriptions in one clean session");
+
+  require(host_mqtt::hasRetained("homeassistant/device/furble_hub-42/config"),
+          "hub discovery was not retained");
+  require(host_mqtt::hasRetained("homeassistant/device/furble_hub-42_camera-7/config"),
+          "camera discovery was not retained");
+  mqtt.clearDiscovery();
+  mqtt.hostTaskStep();
+  require(!host_mqtt::hasRetained("homeassistant/device/furble_hub-42/config"),
+          "empty retained hub discovery did not delete the broker record");
+  require(!host_mqtt::hasRetained("homeassistant/device/furble_hub-42_camera-7/config"),
+          "empty retained camera discovery did not delete the broker record");
+
   mqtt.disconnect();
   mqtt.hostTaskStep();
   require(!mqtt.isConnected(), "MQTT disconnect did not clear connected state");
@@ -234,12 +265,31 @@ int main(void) {
   esp_mqtt_client_config_t config = {};
   auto *client = esp_mqtt_client_init(&config);
   require(client != nullptr, "first raw MQTT fixture did not initialize");
+  require(esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, rawHandler, nullptr) == ESP_OK,
+          "first raw MQTT fixture did not register");
+  require(esp_mqtt_client_start(client) == ESP_OK, "first raw MQTT fixture did not start");
+  require(esp_mqtt_client_subscribe(client, "old/#", 1) > 0,
+          "first raw MQTT fixture did not subscribe");
   require(esp_mqtt_client_init(&config) == nullptr,
           "duplicate MQTT init overwrote the active client");
   require(esp_mqtt_client_destroy(client) == ESP_OK, "first raw MQTT fixture did not destroy");
   host_mqtt::reset();
   client = esp_mqtt_client_init(&config);
   require(client != nullptr, "second raw MQTT fixture did not initialize");
+  require(esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, rawHandler, nullptr) == ESP_OK,
+          "second raw MQTT fixture did not register");
+  require(esp_mqtt_client_start(client) == ESP_OK, "second raw MQTT fixture did not start");
+  host_mqtt::brokerPublish("old/topic", "stale", 1, false);
+  require(g_RawDataEvents == 0, "subscriptions leaked from the destroyed MQTT fixture");
+  require(esp_mqtt_client_subscribe(client, "bad/#/filter", 1) < 0,
+          "invalid MQTT # filter was accepted");
+  require(esp_mqtt_client_subscribe(client, "bad+filter", 1) < 0,
+          "invalid MQTT + filter was accepted");
+  require(esp_mqtt_client_subscribe(client, "#", 1) > 0, "valid MQTT # filter was rejected");
+  host_mqtt::brokerPublish("$SYS/status", "hidden", 0, false);
+  require(g_RawDataEvents == 0, "wildcard subscription matched an MQTT $ topic");
+  host_mqtt::brokerPublish("app/status", "visible", 0, false);
+  require(g_RawDataEvents == 1, "valid wildcard subscription did not match an app topic");
   require(esp_mqtt_client_destroy(client) == ESP_OK, "second raw MQTT fixture did not destroy");
   host_mqtt::reset();
 
