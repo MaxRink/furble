@@ -1,22 +1,33 @@
 #include <cassert>
 #include <cstdint>
-#include <cstdio>
 #include <map>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "FurbleRestartMarker.h"
 
 using Storage = Furble::RestartMarkerStorage;
 
+struct Operation {
+  std::string kind;
+  std::string key;
+  size_t ordinal;
+};
+
 class FaultStorage final: public Storage {
  public:
   std::map<std::string, uint32_t> values;
-  int failAt = -1;
-  int calls = 0;
+  std::vector<Operation> trace;
+  std::set<std::string> failLabels;
 
-  bool fail(void) { return failAt >= 0 && calls++ == failAt; }
+  bool shouldFail(const char *kind, const char *key) {
+    const std::string label = std::string(kind) + ":" + key;
+    trace.push_back({kind, key, trace.size()});
+    return failLabels.count(label) != 0;
+  }
   result read(const char *key, uint32_t &value) override {
-    if (fail())
+    if (shouldFail("read", key))
       return result::ERROR;
     const auto it = values.find(key);
     if (it == values.end())
@@ -25,17 +36,17 @@ class FaultStorage final: public Storage {
     return result::PRESENT;
   }
   result write(const char *key, uint32_t value) override {
-    const bool error = fail();
+    const bool error = shouldFail("write", key);
     values[key] = value;
     return error ? result::ERROR : result::SUCCESS;
   }
   result remove(const char *key) override {
-    const bool error = fail();
+    const bool error = shouldFail("remove", key);
     values.erase(key);
     return error ? result::ERROR : result::SUCCESS;
   }
   result exists(const char *key) override {
-    if (fail())
+    if (shouldFail("exists", key))
       return result::ERROR;
     return values.count(key) != 0 ? result::PRESENT : result::ABSENT;
   }
@@ -44,67 +55,72 @@ class FaultStorage final: public Storage {
 static FaultStorage armedStorage(void) {
   FaultStorage storage;
   assert(Furble::RestartMarker::mark(storage));
-  storage.calls = 0;
+  storage.trace.clear();
   return storage;
 }
 
+static std::string label(const Operation &operation) {
+  return operation.kind + ":" + operation.key;
+}
+
+static void assertTrace(const std::vector<Operation> &trace,
+                        const std::vector<std::string> &expected) {
+  assert(trace.size() == expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    assert(trace[i].ordinal == i);
+    assert(label(trace[i]) == expected[i]);
+  }
+}
+
 int main() {
-  FaultStorage storage = armedStorage();
-  assert(Furble::RestartMarker::consume(storage));
-  storage.calls = 0;
-  assert(!Furble::RestartMarker::consume(storage));
-
-  // With an empty generation, mark has four operations before it can return
-  // success: pending write/readback and commit write/readback.
-  for (int boundary = 0; boundary < 4; ++boundary) {
+  // Derive the complete successful mark schedule and fault every observed
+  // boundary, including the final commit readback (ordinal 4).
+  FaultStorage markProbe;
+  assert(Furble::RestartMarker::mark(markProbe));
+  assertTrace(markProbe.trace, {"exists:cr_boot_gen", "write:cr_pending", "read:cr_pending",
+                                "write:cr_commit", "read:cr_commit"});
+  for (const auto &operation : markProbe.trace) {
     FaultStorage fault;
-    fault.failAt = boundary;
+    fault.failLabels.insert(label(operation));
     assert(!Furble::RestartMarker::mark(fault));
-    fault.failAt = -1;
-    fault.calls = 0;
-    if (Furble::RestartMarker::consume(fault)) {
-      std::fprintf(stderr, "unexpected second fast boundary %d\\n", boundary);
-      return 1;
-    }
+    fault.failLabels.clear();
+    fault.trace.clear();
+    assert(!Furble::RestartMarker::consume(fault));
   }
 
-  // Fault every consume operation after a successful mark, including the
-  // reviewer boundaries 0, 6 and 8, then simulate the next boot.
-  for (int boundary = 0; boundary < 9; ++boundary) {
+  // Derive the complete successful consume schedule and fault each labeled
+  // operation, including the final pending existence check (ordinal 9).
+  FaultStorage consumeProbe = armedStorage();
+  assert(Furble::RestartMarker::consume(consumeProbe));
+  assertTrace(consumeProbe.trace,
+              {"exists:cr_boot_gen", "write:cr_boot_gen", "read:cr_boot_gen", "exists:cr_poison",
+               "read:cr_pending", "read:cr_commit", "remove:cr_commit", "exists:cr_commit",
+               "remove:cr_pending", "exists:cr_pending"});
+  for (const auto &operation : consumeProbe.trace) {
     FaultStorage fault = armedStorage();
-    fault.failAt = boundary;
-    if (Furble::RestartMarker::consume(fault)) {
-      std::fprintf(stderr, "unexpected second consume boundary %d\\n", boundary);
-      return 1;
-    }
-    fault.failAt = -1;
-    fault.calls = 0;
-    if (Furble::RestartMarker::consume(fault)) {
-      std::fprintf(stderr, "unexpected reboot fast boundary %d\\n", boundary);
-      return 1;
-    }
+    fault.failLabels.insert(label(operation));
+    assert(!Furble::RestartMarker::consume(fault));
+    fault.failLabels.clear();
+    fault.trace.clear();
+    assert(!Furble::RestartMarker::consume(fault));
   }
 
-  // Regression for the poison-recovery resurrection: b1 is the injected
-  // failure, b2 is the poison recovery boot, and b3 must remain false.
-  FaultStorage regression = armedStorage();
-  regression.failAt = 0;
-  assert(!Furble::RestartMarker::consume(regression));  // b1
-  regression.failAt = -1;
-  regression.calls = 0;
-  assert(!Furble::RestartMarker::consume(regression));  // b2
-  regression.calls = 0;
-  assert(!Furble::RestartMarker::consume(regression));  // b3
+  // Target the poison write by its label, not by a positional magic bound.
+  FaultStorage poison = armedStorage();
+  poison.failLabels = {"exists:cr_poison", "write:cr_poison"};
+  assert(!Furble::RestartMarker::consume(poison));
+  bool poisonWriteSeen = false;
+  for (const auto &operation : poison.trace) {
+    poisonWriteSeen |= label(operation) == "write:cr_poison";
+  }
+  assert(poisonWriteSeen);
+  poison.failLabels.clear();
+  poison.trace.clear();
+  assert(!Furble::RestartMarker::consume(poison));
+  poison.trace.clear();
+  assert(!Furble::RestartMarker::consume(poison));
+  poison.trace.clear();
+  assert(!Furble::RestartMarker::consume(poison));
 
-  // If the poison write itself fails, every later boot still advances the
-  // generation and cannot resurrect the old marker.
-  FaultStorage poisonWrite = armedStorage();
-  poisonWrite.failAt = 4;
-  assert(!Furble::RestartMarker::consume(poisonWrite));
-  poisonWrite.failAt = -1;
-  poisonWrite.calls = 0;
-  assert(!Furble::RestartMarker::consume(poisonWrite));
-  poisonWrite.calls = 0;
-  assert(!Furble::RestartMarker::consume(poisonWrite));
   return 0;
 }
