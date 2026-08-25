@@ -21,7 +21,9 @@ using Furble::CameraListProtocol::decodeIndex;
 using Furble::CameraListProtocol::encodeIndex;
 using Furble::CameraListProtocol::INDEX_ENTRY_BYTES;
 using Furble::CameraListProtocol::INDEX_NAME_BYTES;
+using Furble::CameraListProtocol::indexChecksum;
 using Furble::CameraListProtocol::IndexEntry;
+using Furble::CameraListProtocol::IndexFormat;
 using Furble::CameraListProtocol::LEGACY_INDEX_ENTRY_BYTES;
 using Furble::CameraListProtocol::upsertIndex;
 
@@ -118,6 +120,70 @@ void testRejects() {
   // A null pointer with a nonzero length is a programming error, not empty.
   check(!decodeIndex(nullptr, INDEX_ENTRY_BYTES, decoded),
         "decodeIndex rejects a null pointer with a nonzero length");
+}
+
+std::vector<uint8_t> makeLegacyBlob(const std::vector<std::pair<std::string, uint32_t>> &items);
+
+void testAmbiguousLengthRequiresSchema() {
+  const auto legacy = makeLegacyBlob({
+      {"legacy-00", 0x10},
+      {"legacy-01", 0x11},
+      {"legacy-02", 0x12},
+      {"legacy-03", 0x13},
+      {"legacy-04", 0x14},
+      {"legacy-05", 0x15},
+      {"legacy-06", 0x16},
+      {"legacy-07", 0x17},
+      {"legacy-08", 0x18},
+      {"legacy-09", 0x19},
+      {"legacy-10", 0x1a},
+      {"legacy-11", 0x1b},
+      {"legacy-12", 0x1c},
+      {"legacy-13", 0x1d},
+      {"legacy-14", 0x1e},
+      {"legacy-15", 0x1f},
+      {"legacy-16", 0x20},
+      {"legacy-17", 0x21},
+      {"legacy-18", 0x22},
+      {"legacy-19", 0x23},
+      {"legacy-20", 0x24},
+  });
+  check(legacy.size() == 20 * 21, "legacy ambiguity probe has the shared 420-byte length");
+
+  std::vector<IndexEntry> decoded;
+  check(!decodeIndex(legacy.data(), legacy.size(), decoded),
+        "ambiguous 420-byte index is rejected without schema metadata");
+  check(decodeIndex(legacy.data(), legacy.size(), IndexFormat::LEGACY, decoded),
+        "explicit legacy schema decodes every record");
+  check(decoded.size() == 21 && std::memcmp(decoded.back().name, "legacy-20", 9) == 0,
+        "explicit legacy decoding preserves all 21 records");
+  assignCameraIds(decoded);
+  check(decoded.front().camera_id == 1 && decoded.back().camera_id == 21,
+        "legacy migration assigns monotonic ids without dropping records");
+  std::vector<uint8_t> migrated;
+  check(encodeIndex(decoded, migrated)
+            && decodeIndex(migrated.data(), migrated.size(), IndexFormat::CURRENT, decoded),
+        "migrated legacy index is explicitly readable as current format");
+
+  std::vector<IndexEntry> current(20);
+  for (size_t i = 0; i < current.size(); ++i) {
+    current[i] = makeEntry("current-camera", 0x100 + static_cast<uint32_t>(i));
+    current[i].camera_id = static_cast<uint8_t>(i + 1);
+  }
+  current.back() = makeEntry("1234567890123456", 0x1ff);
+  current.back().camera_id = 0xff;
+  std::vector<uint8_t> currentBytes;
+  check(encodeIndex(current, currentBytes) && currentBytes.size() == 20 * 21,
+        "current ambiguity probe has the shared 420-byte length");
+  check(decodeIndex(currentBytes.data(), currentBytes.size(), IndexFormat::CURRENT, decoded),
+        "explicit current schema decodes every record");
+  check(decoded.size() == 20 && decoded.back().camera_id == 0xff
+            && std::memcmp(decoded.back().name, "1234567890123456", INDEX_NAME_BYTES) == 0,
+        "explicit current decoding preserves max name and id values");
+  const uint32_t checksum = indexChecksum(currentBytes.data(), currentBytes.size());
+  currentBytes[17] ^= 0x80;
+  check(indexChecksum(currentBytes.data(), currentBytes.size()) != checksum,
+        "corrupting a record changes the persisted index checksum");
 }
 
 // Build a pre-id index blob: fixed width name then a little endian type, with
@@ -233,6 +299,7 @@ int main() {
   testWireLayout();
   testEmpty();
   testRejects();
+  testAmbiguousLengthRequiresSchema();
   testUpsert();
   testLegacyMigration();
   testAssignCameraIds();

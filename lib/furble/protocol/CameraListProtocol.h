@@ -15,6 +15,11 @@ constexpr size_t INDEX_ENTRY_BYTES = INDEX_NAME_BYTES + sizeof(uint32_t) + sizeo
 // firmware has no id byte, so decodeIndex migrates it and leaves camera_id 0.
 constexpr size_t LEGACY_INDEX_ENTRY_BYTES = INDEX_NAME_BYTES + sizeof(uint32_t);
 
+enum class IndexFormat : uint8_t {
+  LEGACY = 0,
+  CURRENT = 1,
+};
+
 struct __attribute__((packed)) IndexEntry {
   char name[INDEX_NAME_BYTES];
   uint32_t type;
@@ -26,7 +31,12 @@ static_assert(sizeof(IndexEntry) == INDEX_ENTRY_BYTES, "Unexpected camera index 
 std::string addressKey(uint64_t address);
 
 bool encodeIndex(const std::vector<IndexEntry> &entries, std::vector<uint8_t> &bytes);
+uint32_t indexChecksum(const uint8_t *data, size_t bytes);
 bool decodeIndex(const uint8_t *data, size_t bytes, std::vector<IndexEntry> &entries);
+bool decodeIndex(const uint8_t *data,
+                 size_t bytes,
+                 IndexFormat format,
+                 std::vector<IndexEntry> &entries);
 void upsertIndex(std::vector<IndexEntry> &entries, const IndexEntry &entry);
 
 /**

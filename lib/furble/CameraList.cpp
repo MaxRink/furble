@@ -16,6 +16,9 @@
 #include "protocol/CameraListProtocol.h"
 
 #define FURBLE_PREF_INDEX "index"
+#define FURBLE_PREF_INDEX_FORMAT "index_format"
+#define FURBLE_PREF_INDEX_CHECKSUM "index_crc"
+#define FURBLE_INDEX_FORMAT_CURRENT 1
 // Monotonic id allocator, persisted alongside the index in the same namespace.
 #define FURBLE_PREF_NEXT_ID "cam_next_id"
 
@@ -101,9 +104,15 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
     std::vector<uint8_t> bytes;
     if (CameraListProtocol::encodeIndex(encoded, bytes)) {
       m_Prefs.put(FURBLE_PREF_INDEX, bytes.data(), bytes.size());
+      const uint8_t format = FURBLE_INDEX_FORMAT_CURRENT;
+      m_Prefs.put(FURBLE_PREF_INDEX_FORMAT, &format, sizeof(format));
+      const uint32_t checksum = CameraListProtocol::indexChecksum(bytes.data(), bytes.size());
+      m_Prefs.put(FURBLE_PREF_INDEX_CHECKSUM, &checksum, sizeof(checksum));
     }
   } else {
     m_Prefs.remove(FURBLE_PREF_INDEX);
+    m_Prefs.remove(FURBLE_PREF_INDEX_FORMAT);
+    m_Prefs.remove(FURBLE_PREF_INDEX_CHECKSUM);
   }
 }
 
@@ -116,7 +125,19 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
       std::vector<uint8_t> buffer(bytes, 0x00);
       std::vector<CameraListProtocol::IndexEntry> decoded;
       m_Prefs.get(FURBLE_PREF_INDEX, buffer.data(), bytes);
-      if (CameraListProtocol::decodeIndex(buffer.data(), bytes, decoded)) {
+      uint8_t format = 0;
+      const bool hasFormat =
+          m_Prefs.get(FURBLE_PREF_INDEX_FORMAT, &format, sizeof(format)) == sizeof(format);
+      const auto indexFormat = hasFormat ? CameraListProtocol::IndexFormat::CURRENT
+                                         : CameraListProtocol::IndexFormat::LEGACY;
+      uint32_t storedChecksum = 0;
+      const bool checksumValid =
+          m_Prefs.get(FURBLE_PREF_INDEX_CHECKSUM, &storedChecksum, sizeof(storedChecksum))
+              == sizeof(storedChecksum)
+          && storedChecksum == CameraListProtocol::indexChecksum(buffer.data(), bytes);
+      const bool integrityValid = !hasFormat || checksumValid;
+      if ((!hasFormat || format == FURBLE_INDEX_FORMAT_CURRENT) && integrityValid
+          && CameraListProtocol::decodeIndex(buffer.data(), bytes, indexFormat, decoded)) {
         // A blob written before ids existed decodes with camera_id zero. Give
         // those entries stable ids in memory so an upgraded device exposes them
         // immediately, without losing any saved camera.

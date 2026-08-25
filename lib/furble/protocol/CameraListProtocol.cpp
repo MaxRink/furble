@@ -33,22 +33,53 @@ bool encodeIndex(const std::vector<IndexEntry> &entries, std::vector<uint8_t> &b
   return true;
 }
 
+uint32_t indexChecksum(const uint8_t *data, size_t bytes) {
+  uint32_t checksum = 0xffffffffU;
+  for (size_t i = 0; i < bytes; i++) {
+    checksum ^= data[i];
+    for (unsigned bit = 0; bit < 8; bit++) {
+      checksum = (checksum >> 1) ^ (0xedb88320U & (0U - (checksum & 1U)));
+    }
+  }
+  return checksum ^ 0xffffffffU;
+}
+
 bool decodeIndex(const uint8_t *data, size_t bytes, std::vector<IndexEntry> &entries) {
   entries.clear();
   if (bytes != 0 && data == nullptr) {
     return false;
   }
+  if (bytes == 0) {
+    return true;
+  }
 
-  // Prefer the current layout. Fall back to the legacy id-less layout so an
-  // index written by older firmware still loads instead of being discarded.
-  // Camera lists are far smaller than lcm(20, 21) entries, so the two sizes
-  // never alias in practice.
-  size_t entrySize = 0;
-  if (bytes % INDEX_ENTRY_BYTES == 0) {
-    entrySize = INDEX_ENTRY_BYTES;
-  } else if (bytes % LEGACY_INDEX_ENTRY_BYTES == 0) {
-    entrySize = LEGACY_INDEX_ENTRY_BYTES;
-  } else {
+  // Most lengths identify one layout, but the least common multiple is a real
+  // possibility. Never infer the format from record contents in that case.
+  const bool currentAligned = (bytes % INDEX_ENTRY_BYTES) == 0;
+  const bool legacyAligned = (bytes % LEGACY_INDEX_ENTRY_BYTES) == 0;
+  if (currentAligned == legacyAligned) {
+    // A length such as 420 is divisible by both layouts. There is no safe
+    // content heuristic for that case, so require the caller to provide the
+    // persisted schema selected by CameraList migration.
+    return false;
+  }
+
+  return decodeIndex(data, bytes, currentAligned ? IndexFormat::CURRENT : IndexFormat::LEGACY,
+                     entries);
+}
+
+bool decodeIndex(const uint8_t *data,
+                 size_t bytes,
+                 IndexFormat format,
+                 std::vector<IndexEntry> &entries) {
+  entries.clear();
+  if (bytes != 0 && data == nullptr) {
+    return false;
+  }
+
+  const size_t entrySize =
+      (format == IndexFormat::CURRENT) ? INDEX_ENTRY_BYTES : LEGACY_INDEX_ENTRY_BYTES;
+  if ((bytes % entrySize) != 0) {
     return false;
   }
 
