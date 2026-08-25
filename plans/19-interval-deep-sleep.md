@@ -333,7 +333,11 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   timed-power-off fallback, and assert unsupported-board gating. The unsupported
   scenario runs on the M5StickC simulator build. `.github/workflows/sim-e2e.yml`
   runs this complete runner on every simulator CI job, including the two-process
-  persistence check.
+  persistence check. The start fixture uses a 16 second delay with a 10 second
+  threshold and waits through the full delay before the simulated shutdown. The
+  runner verifies a host-only evidence sidecar showing that both the resume blob
+  and timed-wake marker were readable after the first process exited, and bounds
+  that process with a portable 30 second watchdog.
 - Timer layout coverage is capability-aware in both deterministic scenarios and
   the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
   Sleep and Sleep Threshold rows are added. The unsupported StickC hides those

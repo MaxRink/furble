@@ -1,5 +1,7 @@
 #include <cstdlib>
 
+#include <fstream>
+
 #include <M5GFX.h>
 #include <M5Unified.h>
 #include <SDL2/SDL.h>
@@ -184,8 +186,24 @@ bool Platform::powerOffUntil(uint32_t seconds) {
 
   Preferences prefs;
   prefs.begin(FURBLE_STR, false);
-  prefs.put<bool>("sim_timed_wake", true);
+  const size_t markerWritten = prefs.put<bool>("sim_timed_wake", true);
   prefs.end();
+
+  // The runner checks this sidecar after the simulated power-off process exits.
+  // It is intentionally a host-only seam: the persisted keys are read back
+  // from the same Preferences store before evidence is published.
+  const char *evidencePath = std::getenv("FURBLE_SIM_DEEP_SLEEP_EVIDENCE");
+  if (markerWritten > 0 && evidencePath != nullptr && evidencePath[0] != '\0') {
+    Preferences verify;
+    verify.begin(FURBLE_STR, true);
+    const bool marker = verify.get<bool>("sim_timed_wake", false);
+    const bool resume = verify.isKey("ivl_resume");
+    verify.end();
+    if (marker && resume) {
+      std::ofstream evidence(evidencePath, std::ios::trunc);
+      evidence << "resume_and_timed_wake_persisted\n";
+    }
+  }
 
   // A real timed power-off does not return. Exit after the marker and NVS
   // resume state are durable. The follow-up simulator invocation represents
