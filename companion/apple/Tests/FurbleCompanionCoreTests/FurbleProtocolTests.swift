@@ -7,8 +7,15 @@ import CryptoKit
 final class FurbleProtocolTests: XCTestCase {
   private func canonicalFixture(_ name: String) throws -> Data {
     var root = URL(fileURLWithPath: #filePath)
-    for _ in 0..<4 { root.deleteLastPathComponent() }
-    let url = root.appendingPathComponent("tests/protocol/golden/companion_auth.json")
+    let relativePath = "tests/protocol/golden/companion_auth.json"
+    var url = root.appendingPathComponent(relativePath)
+    for _ in 0..<8 where !FileManager.default.fileExists(atPath: url.path) {
+      root.deleteLastPathComponent()
+      url = root.appendingPathComponent(relativePath)
+    }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      throw FurbleProtocol.Error.malformed
+    }
     let text = try String(contentsOf: url, encoding: .utf8)
     let pattern = "\"\(name)\"\\s*:\\s*\"([^\"]+)\""
     let regex = try NSRegularExpression(pattern: pattern)

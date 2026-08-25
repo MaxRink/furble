@@ -61,7 +61,9 @@ final class CompanionStateMachineTests: XCTestCase {
     _ = machine.didConnect()
     _ = machine.didDiscover(serviceFound: true, status: true, settings: true,
       trigger: true, auth: true, cameras: true)
-    _ = machine.didReadCapability(Data([1, 2, 2, 0, 0, 0]))
+    // No settings or cameras feature bits: only the discovered trigger
+    // characteristic is available for a privileged command.
+    _ = machine.didReadCapability(Data([1, 2, 0, 0, 0, 0]))
     _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))
     _ = machine.didAuthenticationAccepted()
     XCTAssertThrowsError(try machine.privileged(.writeSettings(Data([0]))) )
