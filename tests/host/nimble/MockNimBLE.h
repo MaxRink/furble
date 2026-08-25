@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "NimBLEScan.h"
 #include "esp_log.h"
 
 enum esp_power_level_t : int8_t {
@@ -61,6 +62,7 @@ extern "C" int ble_gap_conn_cancel(void);
 class NimBLEUUID {
  public:
   NimBLEUUID();
+  explicit NimBLEUUID(uint16_t shortUuid);
   NimBLEUUID(uint32_t first, uint16_t second, uint16_t third, uint64_t tail);
   explicit NimBLEUUID(const char *uuid);
   explicit NimBLEUUID(const std::string &uuid);
@@ -106,6 +108,7 @@ class NimBLEAttValue {
   size_t size() const;
   size_t length() const;
   const char *c_str() const;
+  operator std::string() const;
   uint8_t operator[](size_t index) const;
 
  private:
@@ -166,6 +169,10 @@ class NimBLERemoteCharacteristic {
   const NimBLEUUID &getUUID() const;
   uint16_t getHandle() const;
   bool canWrite() const;
+  bool canRead() const;
+  bool canIndicate() const;
+  bool canNotify() const;
+  bool canWriteNoResponse() const;
   bool writeValue(const uint8_t *data, size_t length, bool response);
   bool writeValue(const char *data, size_t length, bool response);
   bool writeValue(const NimBLEAttValue &value, bool response);
@@ -200,6 +207,11 @@ class NimBLEConnInfo {
   uint16_t getConnInterval() const;
   uint16_t getConnLatency() const;
   uint16_t getConnTimeout() const;
+  bool isEncrypted() const;
+  bool isAuthenticated() const;
+  bool isBonded() const;
+  uint8_t getSecKeySize() const;
+  const NimBLEAddress &getAddress() const;
 
  private:
   uint16_t m_Interval;
@@ -213,6 +225,10 @@ class NimBLEClientCallbacks {
   virtual void onConnect(NimBLEClient *client);
   virtual void onDisconnect(NimBLEClient *client, int reason);
   virtual bool onConnParamsUpdateRequest(NimBLEClient *client, const ble_gap_upd_params *params);
+  virtual void onPassKeyEntry(NimBLEConnInfo &connInfo);
+  virtual uint32_t onPassKeyDisplay(NimBLEConnInfo &connInfo);
+  virtual void onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin);
+  virtual void onAuthenticationComplete(NimBLEConnInfo &connInfo);
 };
 
 class NimBLEClient {
@@ -353,6 +369,8 @@ class NimBLEAdvertisedDevice {
     return value;
   }
   bool haveManufacturerData() const;
+  bool haveServiceUUID() const;
+  NimBLEUUID getServiceUUID() const;
   bool isAdvertisingService(const NimBLEUUID &service) const;
   int getRSSI() const;
 
@@ -386,6 +404,11 @@ class NimBLEDevice {
   // client that already self-deleted (or was already reclaimed) is a safe no-op
   // that returns false. This is what makes the leak fix double-free safe.
   static bool deleteClient(NimBLEClient *client);
+  static bool deleteBond(const NimBLEAddress &address);
+  static bool isBonded(const NimBLEAddress &address);
+  static bool setMTU(uint16_t mtu);
+  static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
+  static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
   static void setMockPeer(NimBLEMockPeer *peer);
   // Route a client to a peer by the advertised BLE address. The single-peer
   // setter remains the fallback used by existing tests; address routing lets

@@ -101,10 +101,10 @@ void CameraList::save(const Furble::Camera *camera) {
   add_index(index, entry);
 
   size_t dbytes = camera->getSerialisedBytes();
-  uint8_t dbuffer[dbytes] = {0};
-  if (camera->serialise(dbuffer, dbytes)) {
+  std::vector<uint8_t> dbuffer(dbytes, 0);
+  if (camera->serialise(dbuffer.data(), dbytes)) {
     // Store the entry and the index if serialisation succeeds
-    m_Prefs.put(entry.name, dbuffer, dbytes);
+    m_Prefs.put(entry.name, dbuffer.data(), dbytes);
     ESP_LOGI(LOG_TAG, "Saved %s", entry.name);
     save_index(index);
     ESP_LOGI(LOG_TAG, "Index entries: %d", index.size());
@@ -154,52 +154,52 @@ void CameraList::load(void) {
     if (dbytes == 0) {
       continue;
     }
-    uint8_t dbuffer[dbytes] = {0};
-    m_Prefs.get(i.name, dbuffer, dbytes);
+    std::vector<uint8_t> dbuffer(dbytes, 0);
+    m_Prefs.get(i.name, dbuffer.data(), dbytes);
 
     switch (i.type) {
       case Camera::Type::FUJIFILM_BASIC:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::FujifilmBasic>(static_cast<const void *>(dbuffer), dbytes));
+        m_ConnectList.push_back(std::make_shared<Furble::FujifilmBasic>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::CANON_EOS_SMART:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::CanonEOSSmart>(static_cast<const void *>(dbuffer), dbytes));
+        m_ConnectList.push_back(std::make_shared<Furble::CanonEOSSmart>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::CANON_EOS_REMOTE:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::CanonEOSRemote>(static_cast<const void *>(dbuffer), dbytes));
+        m_ConnectList.push_back(std::make_shared<Furble::CanonEOSRemote>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::MOBILE_DEVICE:
         ESP_LOGW(FURBLE_STR, "MobileDevice support has been removed.");
         break;
       case Camera::Type::FAUXNY:
         m_ConnectList.push_back(
-            std::make_shared<Furble::FauxNY>(static_cast<const void *>(dbuffer), dbytes));
+            std::make_shared<Furble::FauxNY>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::NIKON:
         m_ConnectList.push_back(
-            std::make_shared<Furble::Nikon>(static_cast<const void *>(dbuffer), dbytes));
+            std::make_shared<Furble::Nikon>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::SONY:
         m_ConnectList.push_back(
-            std::make_shared<Furble::Sony>(static_cast<const void *>(dbuffer), dbytes));
+            std::make_shared<Furble::Sony>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::RICOH:
         m_ConnectList.push_back(
-            std::make_shared<Furble::Ricoh>(static_cast<const void *>(dbuffer), dbytes));
+            std::make_shared<Furble::Ricoh>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::FUJIFILM_SECURE:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::FujifilmSecure>(static_cast<const void *>(dbuffer), dbytes));
+        m_ConnectList.push_back(std::make_shared<Furble::FujifilmSecure>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::PANASONIC_LUMIX:
         m_ConnectList.push_back(
-            std::make_unique<Furble::Lumix>(static_cast<const void *>(dbuffer), dbytes));
+            std::make_unique<Furble::Lumix>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::DJI_OSMO:
         m_ConnectList.push_back(
-            std::make_unique<Furble::DJIOsmo>(static_cast<const void *>(dbuffer), dbytes));
+            std::make_unique<Furble::DJIOsmo>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
     }
   }
@@ -231,6 +231,10 @@ std::shared_ptr<Furble::Camera> CameraList::get(size_t n) {
 }
 
 bool CameraList::match(const NimBLEAdvertisedDevice *pDevice) {
+  if (pDevice == nullptr) {
+    return false;
+  }
+
   // Ensure we only match one instance of each camera by address.
   const NimBLEAddress addr = pDevice->getAddress();
   for (auto &c : m_ConnectList) {
@@ -261,6 +265,7 @@ bool CameraList::match(const NimBLEAdvertisedDevice *pDevice) {
     return true;
   } else if (Lumix::matches(pDevice)) {
     m_ConnectList.push_back(std::make_unique<Furble::Lumix>(pDevice));
+    return true;
   } else if (DJIOsmo::matches(pDevice)) {
     m_ConnectList.push_back(std::make_unique<Furble::DJIOsmo>(pDevice));
     return true;

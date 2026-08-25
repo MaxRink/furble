@@ -208,6 +208,13 @@ formatting checks pass. Hardware testing is not applicable to parser vectors or
 the deterministic FauxNY scan seam. Only the Fujifilm path remains eligible for
 physical camera validation, and no Fujifilm radio was exercised by this slice.
 
+The subsequent audit found one production dispatch gap in the newly added
+Lumix path: `CameraList::match` appended a Lumix camera but did not return a
+match result. The branch now reports success, and null scan callbacks are
+ignored before address de-duplication. The parser host suite remains the
+hardware-independent guard for truncated, unknown, vendor-specific, and
+boundary-length records.
+
 Effort: 2 to 3 days for Fujifilm, 5 to 8 days for all vendors.
 
 ### Tier B: mock NimBLE client layer

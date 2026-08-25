@@ -115,6 +115,11 @@ bool eraseClient(NimBLEClient *client) {
 
 NimBLEUUID::NimBLEUUID() : m_Bytes {} {}
 
+NimBLEUUID::NimBLEUUID(uint16_t shortUuid) : NimBLEUUID() {
+  m_Bytes[0] = static_cast<uint8_t>(shortUuid >> 8);
+  m_Bytes[1] = static_cast<uint8_t>(shortUuid & 0xff);
+}
+
 NimBLEUUID::NimBLEUUID(uint32_t first, uint16_t second, uint16_t third, uint64_t tail)
     : m_Bytes(uuidBytes(first, second, third, tail)) {}
 
@@ -212,6 +217,10 @@ const char *NimBLEAttValue::c_str() const {
   return m_String.c_str();
 }
 
+NimBLEAttValue::operator std::string() const {
+  return std::string(reinterpret_cast<const char *>(m_Data.data()), m_Data.size());
+}
+
 uint8_t NimBLEAttValue::operator[](size_t index) const {
   return m_Data[index];
 }
@@ -245,6 +254,21 @@ uint16_t NimBLERemoteCharacteristic::getHandle() const {
 bool NimBLERemoteCharacteristic::canWrite() const {
   return (m_Client != nullptr) && (m_Client->getPeer() != nullptr)
          && m_Client->getPeer()->canWrite(m_Service, m_Characteristic);
+}
+
+bool NimBLERemoteCharacteristic::canIndicate() const {
+  return true;
+}
+
+bool NimBLERemoteCharacteristic::canRead() const {
+  return true;
+}
+
+bool NimBLERemoteCharacteristic::canNotify() const {
+  return true;
+}
+bool NimBLERemoteCharacteristic::canWriteNoResponse() const {
+  return true;
 }
 
 bool NimBLERemoteCharacteristic::writeValue(const uint8_t *data, size_t length, bool response) {
@@ -323,6 +347,23 @@ uint16_t NimBLEConnInfo::getConnTimeout() const {
   return m_Timeout;
 }
 
+bool NimBLEConnInfo::isEncrypted() const {
+  return true;
+}
+bool NimBLEConnInfo::isAuthenticated() const {
+  return true;
+}
+bool NimBLEConnInfo::isBonded() const {
+  return true;
+}
+uint8_t NimBLEConnInfo::getSecKeySize() const {
+  return 16;
+}
+const NimBLEAddress &NimBLEConnInfo::getAddress() const {
+  static const NimBLEAddress address;
+  return address;
+}
+
 void NimBLEClientCallbacks::onConnect(NimBLEClient *client) {
   (void)client;
 }
@@ -338,6 +379,13 @@ bool NimBLEClientCallbacks::onConnParamsUpdateRequest(NimBLEClient *client,
   (void)params;
   return true;
 }
+
+void NimBLEClientCallbacks::onPassKeyEntry(NimBLEConnInfo &) {}
+uint32_t NimBLEClientCallbacks::onPassKeyDisplay(NimBLEConnInfo &) {
+  return 0;
+}
+void NimBLEClientCallbacks::onConfirmPasskey(NimBLEConnInfo &, uint32_t) {}
+void NimBLEClientCallbacks::onAuthenticationComplete(NimBLEConnInfo &) {}
 
 NimBLEClient::NimBLEClient() = default;
 
@@ -644,6 +692,14 @@ bool NimBLEAdvertisedDevice::haveManufacturerData() const {
   return m_Manufacturer.size() > 0;
 }
 
+bool NimBLEAdvertisedDevice::haveServiceUUID() const {
+  return !m_Services.empty();
+}
+
+NimBLEUUID NimBLEAdvertisedDevice::getServiceUUID() const {
+  return m_Services.empty() ? NimBLEUUID() : m_Services.front();
+}
+
 bool NimBLEAdvertisedDevice::isAdvertisingService(const NimBLEUUID &service) const {
   for (const auto &advertised : m_Services) {
     if (advertised == service) {
@@ -762,6 +818,21 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
   // reclaimed, so a double delete is safe.
   return eraseClient(client);
 }
+
+bool NimBLEDevice::deleteBond(const NimBLEAddress &) {
+  return true;
+}
+
+bool NimBLEDevice::isBonded(const NimBLEAddress &) {
+  return false;
+}
+
+bool NimBLEDevice::setMTU(uint16_t) {
+  return true;
+}
+
+void NimBLEDevice::injectPassKey(NimBLEConnInfo &, uint32_t) {}
+void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool) {}
 
 size_t NimBLEDevice::liveClientCount() {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
