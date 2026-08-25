@@ -77,6 +77,13 @@ class BleGapPatchTest(unittest.TestCase):
     if(CONFIG_APP_REPRODUCIBLE_BUILD)
         list(APPEND compile_options \"-fdebug-prefix-map=${idf_path}=/IDF\")
         list(APPEND compile_options \"-fdebug-prefix-map=${PROJECT_DIR}=/IDF_PROJECT\")
+        list(APPEND compile_options \"-fdebug-prefix-map=${BUILD_DIR}=/IDF_BUILD\")
+        foreach(component_name ${build_components})
+            idf_component_get_property(component_dir ${component_name} COMPONENT_DIR)
+            string(TOUPPER ${component_name} component_name_uppercase)
+            set(substituted_path \"/COMPONENT_${component_name_uppercase}_DIR\")
+            list(APPEND compile_options \"-fdebug-prefix-map=${component_dir}=${substituted_path}\")
+        endforeach()
     endif()
 endfunction()
 """,

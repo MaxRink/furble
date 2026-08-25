@@ -185,6 +185,11 @@ def prepare_platformio_core(
   return environment
 
 
+def stable_project_path(project: Path) -> Path:
+  """Make a project path absolute without resolving symlink spelling."""
+  return Path(os.path.abspath(os.fspath(project)))
+
+
 def build_once(
     project: Path,
     environment_name: str,
@@ -192,12 +197,11 @@ def build_once(
     version: str,
     inherited_environment: dict[str, str],
 ) -> BuildResult:
-  # macOS exposes /tmp as a symlink to /private/tmp. Resolve the checkout
-  # before handing it to PlatformIO so CMake's project path and the ESP-IDF
-  # prefix-map path use the same spelling. Without this, the ELF debug string
-  # table retains the checkout-specific /private/tmp path and also changes the
-  # app ELF SHA256 embedded in firmware.bin.
-  project = project.resolve()
+  # Preserve the lexical /tmp spelling. PlatformIO's ESP-IDF builder derives
+  # object paths from both lexical and real paths; resolving /tmp to
+  # /private/tmp can make two distinct source identities collide. The
+  # framework prefix-map patch handles both spellings in compiler/debug flags.
+  project = stable_project_path(project)
   child_environment = dict(inherited_environment)
   child_environment.update(
       {
