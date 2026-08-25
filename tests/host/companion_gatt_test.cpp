@@ -155,6 +155,8 @@ class MockCentral final: public Furble::CompanionTransport {
     m_HaveStatus = false;
   }
 
+  void reenterCameraNotifyOnce(void) { m_ReenterCameraNotify = true; }
+
   bool isConnected(void) const override { return m_Connected; }
 
   bool isEncrypted(void) const override { return m_Encrypted; }
@@ -172,6 +174,10 @@ class MockCentral final: public Furble::CompanionTransport {
       m_HaveStatus = true;
     } else if (charId == Furble::COMPANION_CHAR_CAMERAS) {
       m_CameraEvents.emplace_back(data, data + len);
+      if (m_ReenterCameraNotify && (m_Service != nullptr)) {
+        m_ReenterCameraNotify = false;
+        m_Service->notifyCameras(false);
+      }
     }
   }
 
@@ -203,6 +209,7 @@ class MockCentral final: public Furble::CompanionTransport {
   CompanionService::companion_status_t m_Status = {};
   std::vector<std::vector<uint8_t>> m_Indications;
   std::vector<std::vector<uint8_t>> m_CameraEvents;
+  bool m_ReenterCameraNotify = false;
 };
 
 class ConcurrentStatusTransport final: public Furble::CompanionTransport {
@@ -387,6 +394,7 @@ void testCompanionGattFlow(void) {
         "unknown camera id returns the explicit UNKNOWN_ID status");
 
   central.clearEvents();
+  central.reenterCameraNotifyOnce();
   check(central.write(CAMERAS_UUID, {3, 1}), "authenticated camera selection operation is handled");
   check(central.cameraEvents().size() >= 2,
         "selection returns an acknowledgement and a refreshed camera record");

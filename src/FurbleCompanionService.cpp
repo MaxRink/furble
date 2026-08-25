@@ -514,33 +514,37 @@ void CompanionService::notifyCameras(bool force) {
 
   const std::vector<camera_snapshot_t> snapshots = getCameraSnapshots();
   const uint64_t now = nowMs();
-  const bool rateAllowed =
-      (m_LastCameraNotificationMs == 0) || ((now - m_LastCameraNotificationMs) >= 1000);
-  if (!force && !rateAllowed) {
-    return;
-  }
-
   std::vector<const camera_snapshot_t *> changed;
-  for (const auto &snapshot : snapshots) {
-    const auto previous = std::find_if(
-        m_LastCameraSnapshots.begin(), m_LastCameraSnapshots.end(),
-        [&snapshot](const auto &item) { return item.camera_id == snapshot.camera_id; });
-    if (force || !m_HaveLastCameraSnapshots || (previous == m_LastCameraSnapshots.end())
-        || !cameraSnapshotEqual(snapshot, *previous)) {
-      changed.push_back(&snapshot);
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    const bool rateAllowed =
+        (m_LastCameraNotificationMs == 0) || ((now - m_LastCameraNotificationMs) >= 1000);
+    if (!force && !rateAllowed) {
+      return;
     }
+
+    for (const auto &snapshot : snapshots) {
+      const auto previous = std::find_if(
+          m_LastCameraSnapshots.begin(), m_LastCameraSnapshots.end(),
+          [&snapshot](const auto &item) { return item.camera_id == snapshot.camera_id; });
+      if (force || !m_HaveLastCameraSnapshots || (previous == m_LastCameraSnapshots.end())
+          || !cameraSnapshotEqual(snapshot, *previous)) {
+        changed.push_back(&snapshot);
+      }
+    }
+
+    // Publish the cache before invoking transport callbacks. A callback may
+    // synchronously re-enter notifyCameras, and the re-entry must see the
+    // same immutable baseline without racing this vector.
+    m_LastCameraSnapshots = snapshots;
+    m_HaveLastCameraSnapshots = true;
+    m_LastCameraNotificationMs = now;
   }
 
   for (const auto *snapshot : changed) {
     std::vector<uint8_t> record;
     appendCameraRecord(record, *snapshot);
     m_Transport.notify(COMPANION_CHAR_CAMERAS, record.data(), record.size());
-  }
-
-  if (!changed.empty() || force) {
-    m_LastCameraSnapshots = snapshots;
-    m_HaveLastCameraSnapshots = true;
-    m_LastCameraNotificationMs = now;
   }
 }
 
