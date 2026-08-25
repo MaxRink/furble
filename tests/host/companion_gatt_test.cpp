@@ -37,7 +37,7 @@ constexpr const char *LOCATION_UUID = "b57f4f5e-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *STATUS_UUID = "b57f4f60-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
-constexpr const char *AUTH_UUID = "b57f4f63-087b-4740-b71d-8262cf26ebbc";
+constexpr const char *AUTH_UUID = "b57f4f6f-087b-4740-b71d-8262cf26ebbc";
 
 using Furble::CompanionService;
 using Furble::Control;
@@ -251,7 +251,10 @@ std::vector<uint8_t> authResponse(const std::string &password, const std::vector
                                       digest.size())) {
     return {};
   }
-  return {digest.begin(), digest.begin() + Furble::CompanionAuth::RESPONSE_SIZE};
+  std::vector<uint8_t> packet {CompanionService::AUTH_VERSION, CompanionService::AUTH_OP_PROOF};
+  packet.insert(packet.end(), digest.begin(),
+                digest.begin() + Furble::CompanionAuth::RESPONSE_SIZE);
+  return packet;
 }
 
 std::vector<uint8_t> bytesOf(const CompanionService::companion_fix_t &fix) {
@@ -264,7 +267,8 @@ void testAuthDisconnectRace(void) {
   Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "race password");
   AuthRaceTransport transport;
   CompanionService service {transport};
-  const std::vector<uint8_t> begin {CompanionService::AUTH_BEGIN};
+  const std::vector<uint8_t> begin {CompanionService::AUTH_VERSION,
+                                    CompanionService::AUTH_OP_BEGIN};
 
   for (size_t iteration = 0; iteration < 500; iteration++) {
     service.onConnected();
@@ -409,37 +413,48 @@ void testCompanionGattFlow(void) {
         "password gate rejects encrypted settings with an ATT auth error");
 
   central.clearEvents();
-  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
         "AUTH begin reaches the companion service");
   check(central.authIndications().size() == 1
-            && central.authIndications()[0].size() == Furble::CompanionAuth::NONCE_SIZE,
+            && central.authIndications()[0].size() == Furble::CompanionService::AUTH_CHALLENGE_SIZE
+            && central.authIndications()[0][0] == Furble::CompanionService::AUTH_VERSION
+            && central.authIndications()[0][1] == Furble::CompanionService::AUTH_OP_BEGIN,
         "AUTH begin returns one fresh nonce");
-  const auto nonce =
-      central.authIndications().empty() ? std::vector<uint8_t> {} : central.authIndications()[0];
+  const auto nonce = central.authIndications().empty()
+                         ? std::vector<uint8_t> {}
+                         : std::vector<uint8_t>(central.authIndications()[0].begin() + 2,
+                                                central.authIndications()[0].end());
   auto wrong = authResponse("wrong password", nonce);
   check(central.write(AUTH_UUID, wrong), "wrong HMAC reaches the companion service");
-  check(central.authIndications().size() == 2 && central.authIndications()[1].size() == 1
-            && central.authIndications()[1][0] == Furble::CompanionService::AUTH_RESULT_REJECTED,
+  check(central.authIndications().size() == 2
+            && central.authIndications()[1].size() == Furble::CompanionService::AUTH_RESULT_SIZE
+            && central.authIndications()[1][2] == Furble::CompanionService::AUTH_RESULT_REJECTED,
         "wrong HMAC is rejected");
   check(!service.isPasswordAuthenticated(), "wrong HMAC does not authenticate the session");
 
   auto replay = authResponse("test companion", nonce);
   check(central.write(AUTH_UUID, replay), "replayed response reaches the companion service");
-  check(central.authIndications().size() == 3 && central.authIndications()[2].size() == 1
-            && central.authIndications()[2][0] == Furble::CompanionService::AUTH_RESULT_REJECTED,
+  check(central.authIndications().size() == 3
+            && central.authIndications()[2].size() == Furble::CompanionService::AUTH_RESULT_SIZE
+            && central.authIndications()[2][2] == Furble::CompanionService::AUTH_RESULT_REJECTED,
         "replayed response for a consumed nonce is rejected");
   check(!service.isPasswordAuthenticated(), "replayed response does not authenticate the session");
 
   central.clearEvents();
-  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
         "a failed authentication can request a new nonce");
-  const auto freshNonce =
-      central.authIndications().empty() ? std::vector<uint8_t> {} : central.authIndications()[0];
+  const auto freshNonce = central.authIndications().empty()
+                              ? std::vector<uint8_t> {}
+                              : std::vector<uint8_t>(central.authIndications()[0].begin() + 2,
+                                                     central.authIndications()[0].end());
   const auto correct = authResponse("test companion", freshNonce);
   check(central.write(AUTH_UUID, correct), "correct HMAC reaches the companion service");
   check(
-      central.authIndications().size() == 2 && central.authIndications()[1].size() == 1
-          && central.authIndications()[1][0] == Furble::CompanionService::AUTH_RESULT_AUTHENTICATED,
+      central.authIndications().size() == 2
+          && central.authIndications()[1].size() == Furble::CompanionService::AUTH_RESULT_SIZE
+          && central.authIndications()[1][2] == Furble::CompanionService::AUTH_RESULT_AUTHENTICATED,
       "correct HMAC authenticates the session");
   check(service.isPasswordAuthenticated(), "service reports the authenticated session");
 
@@ -468,10 +483,13 @@ void testCompanionGattFlow(void) {
         "password rotation returns one compact acknowledgement");
 
   central.clearEvents();
-  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
         "password rotation issues a fresh challenge");
-  const auto rotatedNonce =
-      central.authIndications().empty() ? std::vector<uint8_t> {} : central.authIndications()[0];
+  const auto rotatedNonce = central.authIndications().empty()
+                                ? std::vector<uint8_t> {}
+                                : std::vector<uint8_t>(central.authIndications()[0].begin() + 2,
+                                                       central.authIndications()[0].end());
   check(central.write(AUTH_UUID, authResponse(rotatedPassword, rotatedNonce)),
         "rotated password response reaches the companion service");
   check(service.isPasswordAuthenticated(), "rotated password authenticates the session");
@@ -498,31 +516,37 @@ void testCompanionGattFlow(void) {
             == (static_cast<uint16_t>(Furble::COMPANION_CHAR_SETTINGS) << 8
                 | Furble::CompanionService::AUTH_ATT_ERROR),
         "new-session settings are rejected with an ATT auth error");
-  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
         "new session can request a fresh nonce after disconnect");
   check(central.authIndications().size() == 1
-            && central.authIndications()[0].size() == Furble::CompanionAuth::NONCE_SIZE,
+            && central.authIndications()[0].size() == Furble::CompanionService::AUTH_CHALLENGE_SIZE,
         "new session receives a nonce instead of reusing the old challenge");
   central.disconnect();
   check(!service.isPasswordAuthenticated(), "disconnect clears password authentication");
   central.connect();
   central.setSecurity(true, true);
   central.clearEvents();
-  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
         "failure-limit session can request a nonce");
-  const auto failureNonce =
-      central.authIndications().empty() ? std::vector<uint8_t> {} : central.authIndications()[0];
+  const auto failureNonce = central.authIndications().empty()
+                                ? std::vector<uint8_t> {}
+                                : std::vector<uint8_t>(central.authIndications()[0].begin() + 2,
+                                                       central.authIndications()[0].end());
   const auto badResponse = authResponse("wrong password", failureNonce);
   for (uint8_t attempt = 0; attempt < Furble::CompanionAuth::MAX_FAILURES; attempt++) {
     check(central.write(AUTH_UUID, badResponse), "failed HMAC reaches the companion service");
     if (attempt + 1 < Furble::CompanionAuth::MAX_FAILURES) {
-      check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_BEGIN}),
+      check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                      Furble::CompanionService::AUTH_OP_BEGIN}),
             "failure-limit session issues a fresh nonce");
     }
   }
   check(!central.isConnected(), "three failed HMAC responses disconnect the central");
-  check(central.authIndications().size() == 6 && central.authIndications().back().size() == 1
-            && central.authIndications().back()[0] == Furble::CompanionService::AUTH_RESULT_DROPPED,
+  check(central.authIndications().size() == 6
+            && central.authIndications().back().size() == Furble::CompanionService::AUTH_RESULT_SIZE
+            && central.authIndications().back()[2] == Furble::CompanionService::AUTH_RESULT_DROPPED,
         "failure-limit session reports a dropped authentication result");
   service.deinit();
   stopControl(control);

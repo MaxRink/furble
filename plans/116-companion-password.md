@@ -1,18 +1,23 @@
 # 116 - Companion password authentication
 
 Status: implemented in the firmware. The real BLE handshake remains a hardware
-gate. Android AUTH/HMAC/password-entry integration is a stacked blocker for
-feature release and is intentionally not part of this firmware PR.
+gate. Android and Apple clients use the same versioned packet contract in their
+stacked PRs.
 
 ## Implementation state
 
 - `Settings::COMPANION_PASSWORD` is an optional write-only string setting. It is
   stored in the existing `furble` NVS namespace and uses wire id 46. Wire id 45
   remains reserved for the IMU setting on the branch that introduced it.
-- The companion AUTH characteristic issues a fresh 16-byte connection-local
-  nonce. The client returns the first 16 bytes of HMAC-SHA256(password, nonce).
-  Comparison is constant time. The password is never listed or read back over
-  the companion protocol.
+- The companion AUTH characteristic is
+  `b57f4f6f-087b-4740-b71d-8262cf26ebbc`. Derived value `0x63` is reserved for
+  the Cameras characteristic from plans 50/51. AUTH packets are versioned:
+  begin write `[version=1, op=0]`, challenge indication `[1, 0, nonce16]`,
+  proof write `[1, 1, hmac16]`, and result indication `[1, 2, result]`.
+  The result values are 1 authenticated, 2 rejected, 3 dropped, and 4 not
+  required. The client returns the first 16 bytes of HMAC-SHA256(password,
+  nonce). Comparison is constant time. The password is never listed or read
+  back over the companion protocol.
 - Three failed responses drop the companion connection. Disconnect and password
   reload clear the nonce and authentication state. An empty password preserves
   the pre-authentication behavior.
@@ -47,10 +52,9 @@ feature release and is intentionally not part of this firmware PR.
   client on an M5StickS3. The client must verify that settings and trigger
   writes fail before the HMAC response, succeed after it, and fail again after
   disconnect and reconnect until a new nonce is answered.
-- The checked-in Android companion does not yet discover AUTH, subscribe to
-  AUTH indications, compute HMAC, or collect the password. That stacked app
-  blocker must be resolved and validated before password-protected companion
-  connections can ship to users.
+- Android and Apple must reject unknown versions, operations, lengths, or result
+  values. Both subscribe for indications before sending begin, and only mark a
+  session ready after the framed result indication accepts the proof.
 
 ## Compatibility and security notes
 
