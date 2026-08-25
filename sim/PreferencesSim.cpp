@@ -309,6 +309,38 @@ bool Preferences::isKey(const char *key) {
   return values.find(fullKey(_handle, key)) != values.end();
 }
 
+Preferences::status Preferences::readU32(const char *key, uint32_t &value) {
+  if (!_started || key == nullptr) {
+    return status::ERROR;
+  }
+  std::lock_guard<std::mutex> lock(values_mutex);
+  loadValues();
+  const auto found = values.find(fullKey(_handle, key));
+  if (found == values.end()) {
+    return status::NOT_FOUND;
+  }
+  if (found->second.string_value || found->second.bytes.size() != sizeof(value)) {
+    return status::ERROR;
+  }
+  std::memcpy(&value, found->second.bytes.data(), sizeof(value));
+  return status::OK;
+}
+
+Preferences::status Preferences::removeKey(const char *key) {
+  if (!_started || _readOnly || key == nullptr) {
+    return status::ERROR;
+  }
+  std::lock_guard<std::mutex> lock(values_mutex);
+  loadValues();
+  const auto found = values.find(fullKey(_handle, key));
+  if (found == values.end()) {
+    return status::NOT_FOUND;
+  }
+  values.erase(found);
+  saveValues();
+  return status::OK;
+}
+
 size_t Preferences::getBytesLength(const char *key) {
   if (!_started || key == nullptr) {
     return 0;

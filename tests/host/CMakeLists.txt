@@ -439,6 +439,15 @@ target_compile_options(ble_registration_cleanup_test PRIVATE
                        -Wno-unused-lambda-capture -Wno-sign-compare)
 target_link_libraries(ble_registration_cleanup_test PRIVATE Threads::Threads)
 
+add_executable(sim_preferences_api_contract_test
+               sim_preferences_api_contract_test.cpp
+               ${FURBLE_ROOT}/sim/PreferencesSim.cpp)
+target_include_directories(sim_preferences_api_contract_test
+                           PRIVATE ${FURBLE_ROOT}/lib/preferences)
+target_compile_options(sim_preferences_api_contract_test PRIVATE -Wall -Wextra -Werror
+                                                                 -Wno-unused-parameter)
+target_link_libraries(sim_preferences_api_contract_test PRIVATE Threads::Threads)
+
 # Exercise the real NVS/Preferences settings path against a typed in-memory
 # NVS stub. The test also includes the production SD settings helpers so every
 # table row is checked through both the firmware store and the SD import/export
@@ -1012,6 +1021,7 @@ if(BUILD_TESTING)
   add_test(NAME saved-scan-delivery COMMAND saved_scan_delivery_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
+  add_test(NAME sim-preferences-api-contract COMMAND sim_preferences_api_contract_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
