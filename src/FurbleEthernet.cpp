@@ -232,32 +232,31 @@ class EspEthTransport final: public Ethernet::Transport {
       return false;
     }
 
-    err = esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler,
-                                     this);
+    err = esp_event_handler_instance_register(
+        ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler, this, &m_EthHandlerInstance);
     if (err != ESP_OK) {
       logError("Ethernet event registration", err);
       stop();
       return false;
     }
-    m_EthHandlerRegistered = true;
 
-    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler,
-                                     this);
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                              &EspEthTransport::eventHandler, this,
+                                              &m_IpGotHandlerInstance);
     if (err != ESP_OK) {
       logError("Ethernet IP event registration", err);
       stop();
       return false;
     }
-    m_IpGotHandlerRegistered = true;
 
-    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &EspEthTransport::eventHandler,
-                                     this);
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_ETH_LOST_IP,
+                                              &EspEthTransport::eventHandler, this,
+                                              &m_IpLostHandlerInstance);
     if (err != ESP_OK) {
       logError("Ethernet IP-loss event registration", err);
       stop();
       return false;
     }
-    m_IpLostHandlerRegistered = true;
 
     return true;
   }
@@ -276,17 +275,29 @@ class EspEthTransport final: public Ethernet::Transport {
   }
 
   void stop(void) override {
-    if (m_IpGotHandlerRegistered) {
-      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler);
-      m_IpGotHandlerRegistered = false;
+    if (m_IpGotHandlerInstance != nullptr) {
+      const esp_err_t err = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                                                  m_IpGotHandlerInstance);
+      if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        logError("Ethernet GOT_IP event unregistration", err);
+      }
+      m_IpGotHandlerInstance = nullptr;
     }
-    if (m_IpLostHandlerRegistered) {
-      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_LOST_IP, &EspEthTransport::eventHandler);
-      m_IpLostHandlerRegistered = false;
+    if (m_IpLostHandlerInstance != nullptr) {
+      const esp_err_t err = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_LOST_IP,
+                                                                  m_IpLostHandlerInstance);
+      if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        logError("Ethernet IP-loss event unregistration", err);
+      }
+      m_IpLostHandlerInstance = nullptr;
     }
-    if (m_EthHandlerRegistered) {
-      esp_event_handler_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler);
-      m_EthHandlerRegistered = false;
+    if (m_EthHandlerInstance != nullptr) {
+      const esp_err_t err =
+          esp_event_handler_instance_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, m_EthHandlerInstance);
+      if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        logError("Ethernet event unregistration", err);
+      }
+      m_EthHandlerInstance = nullptr;
     }
     if (m_EthHandle != nullptr) {
       esp_eth_stop(m_EthHandle);
@@ -374,9 +385,9 @@ class EspEthTransport final: public Ethernet::Transport {
   esp_netif_t *m_Netif = nullptr;
   esp_eth_netif_glue_handle_t m_NetifGlue = nullptr;
   bool m_SpiBusInitialized = false;
-  bool m_EthHandlerRegistered = false;
-  bool m_IpGotHandlerRegistered = false;
-  bool m_IpLostHandlerRegistered = false;
+  esp_event_handler_instance_t m_EthHandlerInstance = nullptr;
+  esp_event_handler_instance_t m_IpGotHandlerInstance = nullptr;
+  esp_event_handler_instance_t m_IpLostHandlerInstance = nullptr;
   bool m_GpioIsrServiceOwned = false;
 };
 
