@@ -69,27 +69,36 @@ class ReproPrefixMapTest(unittest.TestCase):
       self.assertEqual(path.read_text(encoding="utf-8"), original)
 
   def test_atomic_failures_leave_original_and_clean_temporary(self):
-    fake_temporary = mock.MagicMock()
-    fake_temporary.name = "/nonexistent/.prefix_map.cmake.write-failure"
-    fake_temporary.__enter__.return_value = fake_temporary
-    fake_temporary.write.side_effect = OSError("write failed")
-    failures = {
-        "write": mock.patch("repro_prefix_map.tempfile.NamedTemporaryFile",
-                            return_value=fake_temporary),
-        "fsync": mock.patch("repro_prefix_map.os.fsync", side_effect=OSError("fsync failed")),
-        "chmod": mock.patch("repro_prefix_map.os.chmod", side_effect=OSError("chmod failed")),
-        "replace": mock.patch("repro_prefix_map.os.replace", side_effect=OSError("replace failed")),
-    }
-    for failure in failures.values():
-      with self.subTest(failure=failure):
+    def assert_failure_is_atomic(failure):
+      with failure:
         with tempfile.TemporaryDirectory() as directory:
           path = Path(directory) / "prefix_map.cmake"
           path.write_text(PREFIX_MAP, encoding="utf-8")
-          with failure:
-            with self.assertRaises(OSError):
-              apply(path)
+          with self.assertRaises(OSError):
+            apply(path)
           self.assertEqual(path.read_text(encoding="utf-8"), PREFIX_MAP)
           self.assertEqual(list(path.parent.glob(f".{path.name}.*")), [])
+
+    with self.subTest(failure="write"):
+      fake_temporary = mock.MagicMock()
+      fake_temporary.name = "/nonexistent/.prefix_map.cmake.write-failure"
+      fake_temporary.__enter__.return_value = fake_temporary
+      fake_temporary.write.side_effect = OSError("write failed")
+      assert_failure_is_atomic(
+          mock.patch(
+              "repro_prefix_map.tempfile.NamedTemporaryFile",
+              return_value=fake_temporary,
+          )
+      )
+
+    for operation in ("fsync", "chmod", "replace"):
+      with self.subTest(failure=operation):
+        assert_failure_is_atomic(
+            mock.patch(
+                f"repro_prefix_map.os.{operation}",
+                side_effect=OSError(f"{operation} failed"),
+            )
+        )
 
   def test_directory_fsync_unsupported_does_not_report_after_replace(self):
     with tempfile.TemporaryDirectory() as directory:
