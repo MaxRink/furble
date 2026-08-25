@@ -158,7 +158,8 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
 
   private func handleAuth(_ data: Data) {
     if let result = try? FurbleProtocol.decodeAuthResult(data) {
-      guard result else {
+      guard result == FurbleProtocol.authResultAuthenticated ||
+        result == FurbleProtocol.authResultNotRequired else {
         _ = state.didAuthenticationRejected()
         fail(.authenticationFailed)
         return

@@ -19,6 +19,13 @@ public enum FurbleProtocol {
   public static let capabilityPacketSize = 6
   public static let authNonceSize = 16
   public static let authProofSize = 16
+  public static let authChallengePacketSize = 2 + authNonceSize
+  public static let authProofPacketSize = 2 + authProofSize
+  public static let authResultPacketSize = 3
+  public static let authResultAuthenticated: UInt8 = 1
+  public static let authResultRejected: UInt8 = 2
+  public static let authResultDropped: UInt8 = 3
+  public static let authResultNotRequired: UInt8 = 4
   public static let maxPayloadSize = 512
 
   public enum UUIDs {
@@ -30,8 +37,7 @@ public enum FurbleProtocol {
     public static let capability = "b57f4f64-087b-4740-b71d-8262cf26ebbc"
     public static let otaControl = "b57f4f6d-087b-4740-b71d-8262cf26ebbc"
     public static let otaData = "b57f4f6e-087b-4740-b71d-8262cf26ebbc"
-    /// Reserved by the Apple client for the password challenge follow-up.
-    /// A client must not treat a missing Auth characteristic as success.
+    /// Authentication is separate from the cameras characteristic at 0x63.
     public static let auth = "b57f4f6f-087b-4740-b71d-8262cf26ebbc"
     public static let cameras = "b57f4f63-087b-4740-b71d-8262cf26ebbc"
   }
@@ -319,12 +325,14 @@ public enum FurbleProtocol {
     return Data([version, AuthOperation.proof.rawValue]) + proof
   }
 
-  public static func decodeAuthResult(_ data: Data) throws -> Bool {
+  public static func decodeAuthResult(_ data: Data) throws -> UInt8 {
     guard data.count == 3, data[0] == version, data[1] == AuthOperation.result.rawValue else {
       throw Error.malformed
     }
-    guard data[2] == 0 || data[2] == 1 else { throw Error.malformed }
-    return data[2] == 0
+    guard data[2] >= authResultAuthenticated && data[2] <= authResultNotRequired else {
+      throw Error.malformed
+    }
+    return data[2]
   }
 
   public static func settingsListRequest() -> Data { settingsRequest(op: 0, id: 0, value: Data()) }

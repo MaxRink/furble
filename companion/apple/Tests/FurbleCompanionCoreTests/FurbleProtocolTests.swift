@@ -106,9 +106,9 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertEqual(try FurbleProtocol.decodeAuthChallenge(challenge), Data(repeating: 9, count: 16))
     let proof = try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 16))
     XCTAssertEqual(proof.count, 18)
-    XCTAssertTrue(try FurbleProtocol.decodeAuthResult(Data([1, 2, 0])))
-    XCTAssertFalse(try FurbleProtocol.decodeAuthResult(Data([1, 2, 1])))
-    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([1, 2, 2])))
+    XCTAssertEqual(try FurbleProtocol.decodeAuthResult(Data([1, 2, 1])), 1)
+    XCTAssertEqual(try FurbleProtocol.decodeAuthResult(Data([1, 2, 4])), 4)
+    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([1, 2, 0])))
     XCTAssertThrowsError(try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15)))
   }
 
