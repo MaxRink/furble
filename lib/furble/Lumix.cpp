@@ -30,17 +30,14 @@ namespace {
 constexpr uint32_t GPS_EPOCH_OFFSET = 315964800;
 
 time_t toUnixTime(const Camera::timesync_t &timesync) {
-  struct tm time = {
-      .tm_sec = static_cast<int>(timesync.second),
-      .tm_min = static_cast<int>(timesync.minute),
-      .tm_hour = static_cast<int>(timesync.hour),
-      .tm_mday = static_cast<int>(timesync.day),
-      .tm_mon = static_cast<int>(timesync.month - 1),
-      .tm_year = static_cast<int>(timesync.year - 1900),
-      .tm_wday = 0,
-      .tm_yday = 0,
-      .tm_isdst = -1,
-  };
+  struct tm time {};
+  time.tm_sec = static_cast<int>(timesync.second);
+  time.tm_min = static_cast<int>(timesync.minute);
+  time.tm_hour = static_cast<int>(timesync.hour);
+  time.tm_mday = static_cast<int>(timesync.day);
+  time.tm_mon = static_cast<int>(timesync.month - 1);
+  time.tm_year = static_cast<int>(timesync.year - 1900);
+  time.tm_isdst = -1;
   return mktime(&time);
 }
 

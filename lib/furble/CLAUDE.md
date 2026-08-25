@@ -88,6 +88,9 @@ protocol core.
   real hardware, all other vendors must be declared untested. Every camera or
   protocol PR must also cite its data source as a real URL, not a name mention:
   a capture log, vendor doc, open-source implementation, or datasheet.
+- Zero-initialize libc calendar structs before assigning portable fields.
+  Linux `struct tm` has extension fields that partial designated initializers
+  leave diagnostically visible under the host harness `-Werror` build.
 - The Fujifilm X100VI Secure golden GATT handshake (STATUS values, identity
   write, registration-accept notifications, shutter sequence) is recorded in
   `plans/95-engineering-lessons.md`. Cite it instead of re-capturing.

@@ -71,6 +71,10 @@ The Android settings portion is implemented. The app now:
   entries and continues above any existing id, and the ids survive a re-encode
   round trip. The protocol conformance goldens for the MULTISELECT setting were
   regenerated for the 12-byte blob wire form.
+- The expanded Linux host target exposed a partial `struct tm` initialization
+  in the existing Lumix geotag path. The record is now zero-initialized before
+  assigning its portable fields, so glibc extension fields cannot fail the
+  companion harness under `-Werror`. The complete host suite passes 49/49.
 - Hardware verification of the phone round-trip is still outstanding because the
   companion tab that consumes this characteristic (step 4) is not built yet.
 
