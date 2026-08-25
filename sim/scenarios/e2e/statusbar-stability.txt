@@ -5,9 +5,9 @@
 #
 # ui.battery_drift is the battery icon x minus the anchor captured on its first
 # read here, so 0 means it has not moved from its baseline position. The battery
-# rides a left-packed status row, so on the narrow 80x160 panel it slides as
-# icons appear. Those cross-icon-state checks remain xassert until it is fixed;
-# the 135x240 and 320x240 panels XPASS because they have enough slack.
+# rides a left-packed status row, so it can slide as icons appear. The current
+# matrix XPASSes on 135x240 and 320x240 but still reports drift on 80x160; keep
+# these cross-icon-state checks as xassert until all three panels pass.
 #
 # ui.bt_icon reports the status-row Bluetooth icon: "hidden" when connected or
 # idle, "red" when it marks a reconnect.

@@ -14,9 +14,8 @@ just did not assert them:
    (mid-connect peer reset), owned by PR #155 (fix/connect-crash-mid-drop).
 
 This plan closes the sim-coverage gaps that let this class escape. It is tooling
-and regression coverage only, no product fixes. Some new assertions fail today,
-exposing the gaps the product PRs fix; they are marked WILL_FAIL (xassert) so
-they flip to passing once the fixes land.
+and regression coverage only, no product fixes. The remaining known gaps are
+marked WILL_FAIL (xassert) so they do not hide the passing guards.
 
 ## What landed
 
@@ -61,17 +60,18 @@ connected / reconnecting / GPS matrix on all three panel widths. New query seams
 
 WILL_FAIL (xassert) lines:
 
-- `ui.bt_icon red` during a reconnect: the icon appears but is not recoloured red
-  in the status row (only the shutter-page banner is). WILL_FAIL on every panel
-  until the red-status-BT fix.
-- `ui.battery_drift 0` in a state whose icon set differs from the baseline: on
-  the 80x160 panel the battery slides a couple of pixels right when the reconnect
-  or GPS icon appears (anchor 52 to 54, and to 80 with both). WILL_FAIL on
-  80x160; on 135x240 and 320x240 there is enough slack that it does not move, so
-  those XPASS. Battery-anchor fix.
+- `ui.page_banner yes` on the Bulb page: it is still carried only by the shared
+  status-row reconnect icon until a dedicated Bulb-page banner lands.
 
-Same-icon-set states keep hard `assert ui.battery_drift 0` on every panel, so a
-regression that moved the battery without an icon change turns red.
+- `ui.battery_drift 0` when the icon set differs from the baseline: the audit
+  XPASSes on 135x240 and 320x240, and XFAILs on 80x160. Keep these lines as
+  xassert until the exact expectation passes consistently on all three panels.
+
+The battery block has a coarse right-edge anchor from PR #156, but the exact
+icon-x check still reports panel-specific movement: the audit XPASSes on
+135x240 and 320x240, and XFAILs on 80x160. The separate
+`battery_pinned` scenario allows a four-pixel layout tolerance and passes on
+all three; it does not replace this exact-drift guard.
 
 ### 3. Connect-handshake fault fuzzing
 
@@ -112,11 +112,11 @@ to consume it and be added to the ops table once #155 merges.
 | assertion                          | panels        | pending fix                       |
 |------------------------------------|---------------|-----------------------------------|
 | `ui.page_banner yes` on Bulb       | all           | bulb-page reconnect banner        |
-| `ui.bt_icon red` on reconnect      | all           | red status-row BT icon (PR #156)  |
-| `ui.battery_drift 0` off-baseline  | 80x160 only   | battery top-right anchor (PR #156)|
+| `ui.battery_drift 0` off-baseline  | 80x160        | exact battery top-right anchor |
 
 PR #156 (feat/reconnect-ui-polish) carries the red status-row BT icon and the
-top-right battery anchor, so those two flip green when it lands; the bulb-page
-banner is a still-open follow-up. The mid-connect crash class is exercised by the
+coarse top-right battery anchor; the exact-drift guard still exposes residual
+panel-specific movement. The Bulb-page banner remains a follow-up. The
+mid-connect crash class is exercised by the
 handshake-phase fuzzing here and fully reproduced by PR #155's own host/ASan
 regression test.

@@ -230,10 +230,10 @@ jobs:
       # (connstate-page-sweep), and the status row must stay stable across the
       # disconnected / connected / reconnecting / GPS matrix (statusbar-stability).
       # Both also run on the default 135x240 binary through run-e2e.sh above; here
-      # they run on the 80x160 and 320x240 binaries too, where the narrow-panel
-      # battery anchor and the wider-panel layout differ. WILL_FAIL lines
-      # (`xassert`) keep the run green while tracking the bulb-page reconnect
-      # banner and the 80x160 battery anchor. The red BT icon is a hard guard.
+      # they run on the 80x160 and 320x240 binaries too, where the panel layouts
+      # differ. WILL_FAIL lines (`xassert`) keep the run green while tracking
+      # the bulb-page reconnect banner and the exact battery anchor. The red BT
+      # icon is a hard guard.
       - name: Assert connection-state coverage (135x240, 80x160, 320x240)
         env:
           SDL_VIDEODRIVER: dummy
