@@ -20,6 +20,8 @@
   <string>furble companion can send your current location to furble for camera geotagging when you enable phone GPS.</string>
   <key>NSLocationUsageDescription</key>
   <string>furble companion can send your current location to furble for camera geotagging when you enable location sharing.</string>
+  <key>NSLocationAlwaysUsageDescription</key>
+  <string>furble companion can keep sending location fixes during an explicitly enabled tracking session.</string>
   <key>FurbleKeychainAccessGroup</key>
   <string>$(AppIdentifierPrefix)com.furble.companion.shared</string>
 </dict>
