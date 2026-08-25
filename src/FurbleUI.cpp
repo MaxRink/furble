@@ -1586,10 +1586,13 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
 
   lv_obj_t *label = lv_label_create(obj);
   lv_label_set_text(label, s.name);
-  // Settings names must remain fully readable in deterministic screenshots and
-  // on narrow panels. A circular marquee can capture midway through a label and
-  // leave its first characters clipped; wrapping preserves the whole name.
-  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  // Keep the established marquee behavior for ordinary settings: wrapping all
+  // labels makes compact pages taller and regresses their fit. The gesture
+  // label is the deliberate exception because its full name is part of the
+  // narrow-panel UI contract and gets its own row below.
+  lv_label_set_long_mode(label,
+                         setting == Settings::IMU_TRIG ? LV_LABEL_LONG_WRAP
+                                                       : LV_LABEL_LONG_SCROLL_CIRCULAR);
   if (setting == Settings::IMU_TRIG) {
     lv_obj_set_width(label, LV_PCT(100));
   }
