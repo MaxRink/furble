@@ -28,14 +28,18 @@ sink is called.
 the session, image and partition sizes, rollback counter, digest, algorithm,
 key id, and version. The injected sink's `begin()` must compare the requested
 partition capacity with the actual inactive partition. The injected
-`ReplayStore` loads the installed counter floor before `BEGIN`; counters less
-than or equal to that floor are rejected. Its `finalize()` verifies the
+`ReplayStore` loads the installed counter floor before `BEGIN`, rejects counters
+less than or equal to it, and atomically reserves the strictly greater counter
+at `BEGIN`. The reservation is a durable tombstone: aborts, sink failures, and
+reboots cannot reuse that signed counter, while any later greater counter stays
+valid. The store must implement this as a journaled compare-and-swap, so two
+sessions racing to reserve a counter cannot both succeed. Its `finalize()` verifies the
 signature over these canonical bytes using the key-id trust anchor and verifies
-the complete digest, but does not activate the image yet. On commit, the
-session atomically persists the strictly greater counter floor, then calls the
-sink's `activate()`. A persistence or activation failure aborts the sink and
-terminates the session. This ordering means a reboot cannot accept a stale
-signed update, even if activation fails after the floor is durable. This PR
+the complete digest, but does not activate the image yet. On commit, the session
+stages the verified image and calls the sink's `activate()`. If activation fails,
+the sink aborts/discards the staged image and recovery retries only with a new
+signed counter. This ordering means a reboot cannot accept a stale signed
+update, even if activation fails after the floor is durable. This PR
 never treats metadata presence as authentication and never permits an unsigned
 update.
 
@@ -53,16 +57,20 @@ update.
   cannot replace bytes already accepted by the sink. Image and partition bounds
   are checked with widened arithmetic. `COMMIT` requires contiguous coverage
   from byte zero through the exact image length. The in-memory ledger stores
-  only compact range metadata and never copies image bytes. Its default 256
-  entries consume at most the explicit 4096-byte small-target budget and can
-  be lowered at compile time with `FURBLE_OTA_LEDGER_ENTRIES`; exhausting the
-  configured ledger fails closed. A flash-backed sink implements `matches()`
+  only compact range metadata and never copies image bytes. Its default 64
+  entries consume at most the explicit 1024-byte ledger budget, and the total
+  persistent `Session` object is compile-time limited to 2048 bytes. The count
+  can be lowered at compile time with `FURBLE_OTA_LEDGER_ENTRIES`; exhausting
+  the configured ledger fails closed. A flash-backed sink implements `matches()`
   for exact duplicate verification; otherwise a same-range retry fails closed.
-- A sink rejection, including `begin()`, failed final verification, replay-store
-  failure, or activation failure aborts the sink and makes the session terminal.
-  Replay-store load failure fails closed before `begin()` reaches the sink. The
+- A sink rejection, including `begin()`, failed final verification, or activation
+  failure aborts the sink and makes the session terminal. Replay-store load or
+  reservation failure fails closed before `begin()` reaches the sink. A
+  successful reservation remains consumed even when the sink later fails. The
   platform adapter must implement `ReplayStore` as an atomic journal/CAS record
-  and recover the last complete floor after reboot. The later adapter can
+  and recover the last complete floor after reboot. Callers must keep a Session
+  in persistent task/static storage and serialize all `onMessage` calls; a
+  reentrant callback is rejected with `Busy`. The later adapter can
   implement the sink with the landed `OTA::Engine`; this contract does not
   duplicate its state machine.
 
@@ -74,7 +82,8 @@ truncated payloads, digest/signature metadata, QoS and retained policy,
 out-of-order delivery, exact duplicate delivery, overlap and bounds rejection,
 incomplete commit, abort, sink/replay-store failures, sequence reuse, bounded
 ledger exhaustion, persistent anti-rollback across more than eight sessions,
-and reboot replay rejection. The same source
+same-process and reboot replay after abort/sink/activation failure, competing
+counter reservations, and the persistent object-size budget. The same source
 is included by the firmware build and is dependency-free, so the simulator and
 Nordic port can reuse it without ESP-IDF headers.
 

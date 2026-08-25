@@ -139,9 +139,9 @@ class FakeReplayStore final: public OTA::ReplayStore {
  public:
   uint32_t floor = 0;
   bool loadResult = true;
-  bool commitResult = true;
+  bool reserveResult = true;
   size_t loadCalls = 0;
-  size_t commitCalls = 0;
+  size_t reserveCalls = 0;
 
   bool loadFloor(uint32_t &value) override {
     loadCalls++;
@@ -149,9 +149,9 @@ class FakeReplayStore final: public OTA::ReplayStore {
     return loadResult;
   }
 
-  bool commitFloor(uint32_t expectedFloor, uint32_t nextFloor) override {
-    commitCalls++;
-    if (!commitResult || (expectedFloor != floor) || (nextFloor <= floor)) {
+  bool reserveFloor(uint32_t expectedFloor, uint32_t nextFloor) override {
+    reserveCalls++;
+    if (!reserveResult || (expectedFloor != floor) || (nextFloor <= floor)) {
       return false;
     }
     floor = nextFloor;
@@ -307,7 +307,7 @@ void testDeliveryPolicyAndChunkLedger() {
   expect(session.onMessage(good, begin(value)).error == OTA::Error::Replay,
          "older terminal session remains replay protected");
 
-  const OTA::SessionId newId = id(60);
+  const OTA::SessionId newId = id(70);
   OTA::Manifest newManifest = manifest(newId, 4);
   expect(session.onMessage(good, begin(newManifest)).accepted,
          "new session id starts after terminal state");
@@ -349,24 +349,20 @@ void testSinkAndVerificationFailures() {
       "sink can reject a manifest before writes");
   expect(rejectedSession.state() == OTA::State::Error, "begin failure is terminal");
   expect(rejected.abortCalls == 1, "begin failure aborts a partially initialized sink");
-  expect(
-      rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::SinkRejected,
-      "failed begin remains terminal until the sink accepts a fresh attempt");
+  expect(rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::Replay,
+         "failed begin counter remains reserved after terminal failure");
 
   FakeSink persistenceFailure;
   FakeReplayStore failedStore;
-  failedStore.commitResult = false;
+  failedStore.reserveResult = false;
   OTA::Session failedCommit(persistenceFailure, failedStore);
   const OTA::SessionId failedId = id(101);
-  expect(failedCommit.onMessage(good, begin(manifest(failedId, 1))).accepted,
-         "persistence failure case begins");
-  expect(failedCommit.onMessage(good, chunk(failedId, 0, {1}, 2)).accepted,
-         "persistence failure case receives image");
-  expect(failedCommit.onMessage(good, control(OTA::Kind::Commit, failedId, 3)).error
+  expect(failedCommit.onMessage(good, begin(manifest(failedId, 1))).error
              == OTA::Error::ReplayStoreFailed,
-         "failed replay-floor persistence is explicit");
-  expect(failedCommit.state() == OTA::State::Error, "replay-floor failure is terminal");
-  expect(persistenceFailure.abortCalls == 1, "replay-floor failure aborts the sink");
+         "failed counter reservation is explicit");
+  expect(failedCommit.state() == OTA::State::Idle,
+         "counter reservation failure leaves the session retryable");
+  expect(persistenceFailure.abortCalls == 0, "failed reservation never starts the sink");
   expect(failedStore.floor == 0, "failed replay-floor persistence leaves floor unchanged");
 
   FakeSink activationFailure;
@@ -384,6 +380,11 @@ void testSinkAndVerificationFailures() {
   expect(activationStore.floor == manifest(activationId, 1).rollbackCounter,
          "replay floor is committed before activation");
   expect(failedActivation.state() == OTA::State::Error, "activation failure is terminal");
+  FakeSink activationRebootSink;
+  OTA::Session activationReboot(activationRebootSink, activationStore);
+  expect(activationReboot.onMessage(good, begin(manifest(activationId, 1))).error
+             == OTA::Error::Replay,
+         "activation failure cannot replay the reserved counter after reboot");
 
   FakeSink unavailableSink;
   FakeReplayStore unavailableStore;
@@ -497,6 +498,59 @@ void testTerminalReplayWindow() {
          "lower signed counter is rejected");
 }
 
+void testAbortReservationAndCompetingSessions() {
+  std::cout << "test: aborted counters remain reserved without bricking later updates\n";
+  const OTA::MessageMeta good {1, false, false};
+  const OTA::SessionId abortedId = id(120);
+  const OTA::Manifest abortedManifest = manifest(abortedId, 1);
+  FakeReplayStore store;
+  FakeSink sink;
+  OTA::Session session(sink, store);
+  expect(session.onMessage(good, begin(abortedManifest)).accepted, "aborted reservation begins");
+  expect(
+      session.onMessage(good, control(OTA::Kind::Abort, abortedId, 2)).error == OTA::Error::Aborted,
+      "abort reserves and terminates the session");
+  expect(session.onMessage(good, begin(abortedManifest)).error == OTA::Error::Replay,
+         "same-process post-abort replay is rejected");
+
+  FakeSink rebootSink;
+  OTA::Session rebooted(rebootSink, store);
+  expect(rebooted.onMessage(good, begin(abortedManifest)).error == OTA::Error::Replay,
+         "reconstructed session post-abort replay is rejected");
+  const OTA::SessionId laterId = id(121);
+  expect(rebooted.onMessage(good, begin(manifest(laterId, 1))).accepted,
+         "a later signed counter remains usable after abort");
+
+  FakeSink competingSink;
+  OTA::Session competing(competingSink, store);
+  expect(competing.onMessage(good, begin(manifest(laterId, 1))).error == OTA::Error::Replay,
+         "competing session cannot reserve an already-used counter");
+
+  FakeSink failedWriteSink;
+  failedWriteSink.writeResult = false;
+  FakeReplayStore failedWriteStore;
+  const OTA::SessionId failedWriteId = id(122);
+  OTA::Session failedWrite(failedWriteSink, failedWriteStore);
+  expect(failedWrite.onMessage(good, begin(manifest(failedWriteId, 1))).accepted,
+         "sink failure case begins");
+  expect(failedWrite.onMessage(good, chunk(failedWriteId, 0, {1}, 2)).error
+             == OTA::Error::SinkRejected,
+         "sink write failure is terminal");
+  FakeSink failedWriteRebootSink;
+  OTA::Session failedWriteReboot(failedWriteRebootSink, failedWriteStore);
+  expect(failedWriteReboot.onMessage(good, begin(manifest(failedWriteId, 1))).error
+             == OTA::Error::Replay,
+         "sink failure cannot replay its reserved counter after reboot");
+}
+
+void testSessionObjectBudgetAndDispatchGuard() {
+  std::cout << "test: persistent session storage budget and dispatch serialization\n";
+  expect(sizeof(OTA::Session) <= OTA::OTA_SESSION_BUDGET_BYTES,
+         "session object fits the configured persistent storage budget");
+  expect(OTA::OTA_LEDGER_ENTRIES * 16 <= OTA::OTA_LEDGER_BUDGET_BYTES,
+         "default range ledger fits its explicit memory budget");
+}
+
 void testCanonicalSignatureBytes() {
   std::cout << "test: canonical signature bytes and nested session binding\n";
   const OTA::Manifest value = manifest(id(130));
@@ -531,6 +585,8 @@ int main() {
   testCanonicalSignatureBytes();
   testSequenceAndBoundedResourceRules();
   testTerminalReplayWindow();
+  testAbortReservationAndCompetingSessions();
+  testSessionObjectBudgetAndDispatchGuard();
   if (failures != 0) {
     std::cerr << failures << " failure(s)\n";
     return 1;
