@@ -1,63 +1,88 @@
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <map>
+#include <string>
 
 #include "FurbleRestartMarker.h"
 
-using Furble::RestartMarker;
-using Furble::RestartMarkerStorage;
+using Storage = Furble::RestartMarkerStorage;
 
-class FaultStorage final: public RestartMarkerStorage {
+class FaultStorage final: public Storage {
  public:
+  std::map<std::string, uint32_t> values;
   int failAt = -1;
   int calls = 0;
-  std::map<const char *, uint32_t> values;
 
-  bool trip(void) { return failAt >= 0 && calls++ == failAt; }
-  bool read(const char *key, uint32_t &value) override {
-    if (trip())
-      return false;
-    auto it = values.find(key);
+  bool fail(void) { return failAt >= 0 && calls++ == failAt; }
+  result read(const char *key, uint32_t &value) override {
+    if (fail())
+      return result::ERROR;
+    const auto it = values.find(key);
     if (it == values.end())
-      return false;
+      return result::ABSENT;
     value = it->second;
-    return true;
+    return result::PRESENT;
   }
-  bool write(const char *key, uint32_t value) override {
-    const bool fail = trip();
-    values[key] = value;  // A reset can occur after the NVS write commits.
-    return !fail;
+  result write(const char *key, uint32_t value) override {
+    const bool error = fail();
+    values[key] = value;
+    return error ? result::ERROR : result::SUCCESS;
   }
-  bool remove(const char *key) override {
-    const bool fail = trip();
+  result remove(const char *key) override {
+    const bool error = fail();
     values.erase(key);
-    return !fail;
+    return error ? result::ERROR : result::SUCCESS;
   }
-  bool exists(const char *key) override {
-    if (trip())
-      return false;
-    return values.find(key) != values.end();
+  result exists(const char *key) override {
+    if (fail())
+      return result::ERROR;
+    return values.count(key) != 0 ? result::PRESENT : result::ABSENT;
   }
 };
 
-int main() {
+static FaultStorage armedStorage(void) {
   FaultStorage storage;
-  assert(RestartMarker::mark(storage));
-  assert(RestartMarker::consume(storage));
-  assert(!RestartMarker::consume(storage));
+  assert(Furble::RestartMarker::mark(storage));
+  storage.calls = 0;
+  return storage;
+}
 
-  // Every write/read boundary in arming is fail-closed after the simulated
-  // reset. A subsequent boot may advance the generation, but cannot use the
-  // half-written token as a clean restart.
-  for (int boundary = 0; boundary < 8; ++boundary) {
+int main() {
+  FaultStorage storage = armedStorage();
+  assert(Furble::RestartMarker::consume(storage));
+  storage.calls = 0;
+  assert(!Furble::RestartMarker::consume(storage));
+
+  // With an empty generation, mark has four operations before it can return
+  // success: pending write/readback and commit write/readback.
+  for (int boundary = 0; boundary < 4; ++boundary) {
     FaultStorage fault;
     fault.failAt = boundary;
-    const bool armed = RestartMarker::mark(fault);
-    if (!armed) {
-      fault.failAt = -1;
-      assert(!RestartMarker::consume(fault));
+    assert(!Furble::RestartMarker::mark(fault));
+    fault.failAt = -1;
+    fault.calls = 0;
+    if (Furble::RestartMarker::consume(fault)) {
+      std::fprintf(stderr, "unexpected second fast boundary %d\\n", boundary);
+      return 1;
     }
   }
 
+  // Fault every consume operation after a successful mark, including the
+  // reviewer boundaries 0, 6 and 8, then simulate the next boot.
+  for (int boundary = 0; boundary < 10; ++boundary) {
+    FaultStorage fault = armedStorage();
+    fault.failAt = boundary;
+    if (Furble::RestartMarker::consume(fault)) {
+      std::fprintf(stderr, "unexpected second consume boundary %d\\n", boundary);
+      return 1;
+    }
+    fault.failAt = -1;
+    fault.calls = 0;
+    if (Furble::RestartMarker::consume(fault)) {
+      std::fprintf(stderr, "unexpected reboot fast boundary %d\\n", boundary);
+      return 1;
+    }
+  }
   return 0;
 }

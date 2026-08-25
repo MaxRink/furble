@@ -13,17 +13,23 @@ namespace {
 class PreferencesRestartStorage final: public RestartMarkerStorage {
  public:
   explicit PreferencesRestartStorage(Preferences &prefs) : m_Prefs(prefs) {}
-  bool read(const char *key, uint32_t &value) override {
+  result read(const char *key, uint32_t &value) override {
     if (!m_Prefs.isKey(key))
-      return false;
+      return result::ABSENT;
     value = m_Prefs.get<uint32_t>(key, 0);
-    return true;
+    return result::PRESENT;
   }
-  bool write(const char *key, uint32_t value) override {
-    return m_Prefs.put<uint32_t>(key, value) == sizeof(value);
+  result write(const char *key, uint32_t value) override {
+    return m_Prefs.put<uint32_t>(key, value) == sizeof(value) ? result::SUCCESS : result::ERROR;
   }
-  bool remove(const char *key) override { return !m_Prefs.isKey(key) || m_Prefs.remove(key); }
-  bool exists(const char *key) override { return m_Prefs.isKey(key); }
+  result remove(const char *key) override {
+    if (!m_Prefs.isKey(key))
+      return result::ABSENT;
+    return m_Prefs.remove(key) ? result::SUCCESS : result::ERROR;
+  }
+  result exists(const char *key) override {
+    return m_Prefs.isKey(key) ? result::PRESENT : result::ABSENT;
+  }
 
  private:
   Preferences &m_Prefs;
