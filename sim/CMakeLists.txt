@@ -71,6 +71,7 @@ file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 # Keep this firmware source list in sync with sim/build.sh.
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
+    "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"

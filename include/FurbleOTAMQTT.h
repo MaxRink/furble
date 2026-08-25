@@ -17,8 +17,13 @@ constexpr size_t SIGNATURE_BYTES = 64;
 constexpr size_t MAX_VERSION_BYTES = 63;
 constexpr size_t MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 constexpr size_t MAX_CHUNK_BYTES = 4096;
-constexpr size_t MAX_CHUNKS = (MAX_IMAGE_BYTES + MAX_CHUNK_BYTES - 1) / MAX_CHUNK_BYTES;
-constexpr size_t MAX_TERMINAL_SESSIONS = 8;
+constexpr size_t OTA_LEDGER_BUDGET_BYTES = 4096;
+#ifndef FURBLE_OTA_LEDGER_ENTRIES
+#define FURBLE_OTA_LEDGER_ENTRIES 256
+#endif
+constexpr size_t OTA_LEDGER_ENTRIES = FURBLE_OTA_LEDGER_ENTRIES;
+static_assert((OTA_LEDGER_ENTRIES > 0) && ((OTA_LEDGER_ENTRIES * 16) <= OTA_LEDGER_BUDGET_BYTES),
+              "OTA ledger exceeds the small-target memory budget");
 constexpr uint8_t MIN_QOS = 1;
 constexpr uint8_t MAX_QOS = 2;
 
@@ -60,6 +65,7 @@ enum class Error : uint8_t {
   InvalidPartitionSize,
   InvalidSignature,
   InvalidDigest,
+  ReplayStoreFailed,
   InvalidQoS,
   RetainedMessage,
   Busy,
@@ -154,9 +160,27 @@ class Sink {
    * closed as an overlap.
    */
   virtual bool matches(uint32_t offset, const uint8_t *data, size_t length, uint32_t checksum) = 0;
-  /** Verify the complete digest and signature, then make the image bootable. */
+  /** Verify and stage the complete digest/signature without activating it. */
   virtual bool finalize(const Manifest &manifest) = 0;
+  /** Activate the verified image after the replay floor is durably committed. */
+  virtual bool activate() = 0;
   virtual void abort() = 0;
+};
+
+/**
+ * Durable anti-rollback storage owned by the platform adapter.
+ *
+ * loadFloor() must return the installed signed-update counter. commitFloor()
+ * is an atomic compare-and-swap persistence operation: it succeeds only when
+ * expectedFloor is still stored and nextFloor is strictly greater. A failed
+ * commit must not report success. Flash/NVS adapters must journal this record
+ * before acknowledging it and recover the last complete record after reboot.
+ */
+class ReplayStore {
+ public:
+  virtual ~ReplayStore() = default;
+  virtual bool loadFloor(uint32_t &floor) = 0;
+  virtual bool commitFloor(uint32_t expectedFloor, uint32_t nextFloor) = 0;
 };
 
 struct Outcome {
@@ -170,13 +194,14 @@ struct Outcome {
  * MQTT delivery policy and bounded chunk ledger shared by firmware and host/sim.
  *
  * All OTA messages require QoS 1 or 2 and must be non-retained. A duplicate
- * begin or exact duplicate chunk is idempotent. Retained messages and replay
- * of a terminal session are rejected. Chunks may arrive out of order, but
- * overlapping ranges are rejected so the sink never sees ambiguous bytes.
+ * begin or exact duplicate chunk is idempotent. Retained messages and signed
+ * updates at or below the durable replay floor are rejected. Chunks may arrive
+ * out of order, but overlapping ranges are rejected so the sink never sees
+ * ambiguous bytes.
  */
 class Session {
  public:
-  explicit Session(Sink &sink);
+  Session(Sink &sink, ReplayStore &replayStore);
 
   Outcome onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length);
   Outcome onMessage(const MessageMeta &meta, const Message &message);
@@ -200,23 +225,20 @@ class Session {
   bool validateChunk(const Chunk &chunk, Error &error) const;
   bool hasCompleteImage() const;
   bool sequenceUsed(uint32_t sequence) const;
-  bool terminalSession(const SessionId &id) const;
-  void rememberTerminalSession(const SessionId &id);
   Outcome terminalFailure(Error error);
 
   Sink &m_Sink;
+  ReplayStore &m_ReplayStore;
   State m_State = State::Idle;
   Error m_LastError = Error::None;
   Manifest m_Manifest {};
-  std::array<Range, MAX_CHUNKS> m_Ranges {};
+  static_assert(sizeof(Range) == 16, "OTA range metadata must remain compact");
+  std::array<Range, OTA_LEDGER_ENTRIES> m_Ranges {};
   size_t m_RangeCount = 0;
   size_t m_ReceivedBytes = 0;
   uint32_t m_BeginSequence = 0;
-  Kind m_TerminalKind = Kind::Begin;
   uint32_t m_TerminalSequence = 0;
-  std::array<SessionId, MAX_TERMINAL_SESSIONS> m_TerminalSessions {};
-  size_t m_TerminalSessionCount = 0;
-  size_t m_TerminalSessionCursor = 0;
+  uint32_t m_InstalledFloor = 0;
 };
 
 uint32_t crc32(const uint8_t *data, size_t length);

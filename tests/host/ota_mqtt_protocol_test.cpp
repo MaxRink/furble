@@ -36,7 +36,7 @@ OTA::Manifest manifest(const OTA::SessionId &session, uint32_t imageSize = 10) {
   value.imageSize = imageSize;
   value.partitionSize = imageSize + 1024;
   value.version = {'d', 'e', 'v', '-', '1'};
-  value.rollbackCounter = 17;
+  value.rollbackCounter = session[0];
   value.digest[0] = 0x42;
   value.signatureAlgorithm = OTA::SignatureAlgorithm::Ed25519;
   value.signature.assign(OTA::SIGNATURE_BYTES, 0xa5);
@@ -86,6 +86,8 @@ class FakeSink final: public OTA::Sink {
   size_t finalizeCalls = 0;
   size_t abortCalls = 0;
   size_t matchesCalls = 0;
+  bool activateResult = true;
+  size_t activateCalls = 0;
   OTA::Manifest lastManifest;
   std::vector<uint8_t> image;
 
@@ -125,7 +127,36 @@ class FakeSink final: public OTA::Sink {
     return finalizeResult;
   }
 
+  bool activate() override {
+    activateCalls++;
+    return activateResult;
+  }
+
   void abort() override { abortCalls++; }
+};
+
+class FakeReplayStore final: public OTA::ReplayStore {
+ public:
+  uint32_t floor = 0;
+  bool loadResult = true;
+  bool commitResult = true;
+  size_t loadCalls = 0;
+  size_t commitCalls = 0;
+
+  bool loadFloor(uint32_t &value) override {
+    loadCalls++;
+    value = floor;
+    return loadResult;
+  }
+
+  bool commitFloor(uint32_t expectedFloor, uint32_t nextFloor) override {
+    commitCalls++;
+    if (!commitResult || (expectedFloor != floor) || (nextFloor <= floor)) {
+      return false;
+    }
+    floor = nextFloor;
+    return true;
+  }
 };
 
 OTA::Message roundTrip(const OTA::Message &message) {
@@ -194,10 +225,33 @@ void testCodecAndMalformedInputs() {
          "unknown signature reports unsupported signature");
 }
 
+void testMalformedFuzz() {
+  std::cout << "test: 200k malformed OTA payloads\n";
+  uint32_t random = 0x7f4a7c15U;
+  for (size_t iteration = 0; iteration < 200000; iteration++) {
+    random ^= random << 13;
+    random ^= random >> 17;
+    random ^= random << 5;
+    const size_t length = random % 256;
+    std::vector<uint8_t> payload(length);
+    for (uint8_t &value : payload) {
+      random ^= random << 13;
+      random ^= random >> 17;
+      random ^= random << 5;
+      value = static_cast<uint8_t>(random);
+    }
+    OTA::Message output;
+    OTA::ErrorInfo error;
+    OTA::decode(payload.data(), payload.size(), output, &error);
+  }
+  expect(true, "malformed payload fuzz completed");
+}
+
 void testDeliveryPolicyAndChunkLedger() {
   std::cout << "test: QoS, retained replay, ordering, duplicates, and bounds\n";
   FakeSink sink;
-  OTA::Session session(sink);
+  FakeReplayStore store;
+  OTA::Session session(sink, store);
   const OTA::SessionId sessionId = id(20);
   const OTA::Manifest value = manifest(sessionId);
   const OTA::MessageMeta good {1, false, false};
@@ -272,7 +326,8 @@ void testSinkAndVerificationFailures() {
   OTA::Manifest value = manifest(sessionId);
   FakeSink sink;
   sink.finalizeResult = false;
-  OTA::Session session(sink);
+  FakeReplayStore store;
+  OTA::Session session(sink, store);
   const OTA::MessageMeta good {2, false, false};
   expect(session.onMessage(good, begin(value)).accepted, "verification case begins");
   expect(session.onMessage(good, chunk(sessionId, 0, {0, 1, 2, 3, 4}, 2)).accepted,
@@ -287,14 +342,57 @@ void testSinkAndVerificationFailures() {
 
   FakeSink rejected;
   rejected.beginResult = false;
-  OTA::Session rejectedSession(rejected);
+  FakeReplayStore rejectedStore;
+  OTA::Session rejectedSession(rejected, rejectedStore);
   expect(
       rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::SinkRejected,
       "sink can reject a manifest before writes");
   expect(rejectedSession.state() == OTA::State::Error, "begin failure is terminal");
   expect(rejected.abortCalls == 1, "begin failure aborts a partially initialized sink");
-  expect(rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::Replay,
-         "failed begin cannot be retried with the same session id");
+  expect(
+      rejectedSession.onMessage(good, begin(manifest(id(100)))).error == OTA::Error::SinkRejected,
+      "failed begin remains terminal until the sink accepts a fresh attempt");
+
+  FakeSink persistenceFailure;
+  FakeReplayStore failedStore;
+  failedStore.commitResult = false;
+  OTA::Session failedCommit(persistenceFailure, failedStore);
+  const OTA::SessionId failedId = id(101);
+  expect(failedCommit.onMessage(good, begin(manifest(failedId, 1))).accepted,
+         "persistence failure case begins");
+  expect(failedCommit.onMessage(good, chunk(failedId, 0, {1}, 2)).accepted,
+         "persistence failure case receives image");
+  expect(failedCommit.onMessage(good, control(OTA::Kind::Commit, failedId, 3)).error
+             == OTA::Error::ReplayStoreFailed,
+         "failed replay-floor persistence is explicit");
+  expect(failedCommit.state() == OTA::State::Error, "replay-floor failure is terminal");
+  expect(persistenceFailure.abortCalls == 1, "replay-floor failure aborts the sink");
+  expect(failedStore.floor == 0, "failed replay-floor persistence leaves floor unchanged");
+
+  FakeSink activationFailure;
+  activationFailure.activateResult = false;
+  FakeReplayStore activationStore;
+  OTA::Session failedActivation(activationFailure, activationStore);
+  const OTA::SessionId activationId = id(102);
+  expect(failedActivation.onMessage(good, begin(manifest(activationId, 1))).accepted,
+         "activation failure case begins");
+  expect(failedActivation.onMessage(good, chunk(activationId, 0, {1}, 2)).accepted,
+         "activation failure case receives image");
+  expect(failedActivation.onMessage(good, control(OTA::Kind::Commit, activationId, 3)).error
+             == OTA::Error::SinkRejected,
+         "activation failure is explicit");
+  expect(activationStore.floor == manifest(activationId, 1).rollbackCounter,
+         "replay floor is committed before activation");
+  expect(failedActivation.state() == OTA::State::Error, "activation failure is terminal");
+
+  FakeSink unavailableSink;
+  FakeReplayStore unavailableStore;
+  unavailableStore.loadResult = false;
+  OTA::Session unavailable(unavailableSink, unavailableStore);
+  expect(unavailable.onMessage(good, begin(manifest(id(103), 1))).error
+             == OTA::Error::ReplayStoreFailed,
+         "unavailable replay storage fails closed before sink begin");
+  expect(unavailableSink.beginCalls == 0, "unavailable replay storage never starts the sink");
 
   OTA::Manifest unsignedManifest = manifest(id(110));
   unsignedManifest.signature.clear();
@@ -310,7 +408,8 @@ void testSequenceAndBoundedResourceRules() {
   const OTA::MessageMeta good {1, false, false};
   const OTA::SessionId sessionId = id(150);
   FakeSink sink;
-  OTA::Session session(sink);
+  FakeReplayStore store;
+  OTA::Session session(sink, store);
   OTA::Manifest value = manifest(sessionId, 3);
   OTA::Message zeroBegin = begin(value);
   zeroBegin.sequence = 0;
@@ -332,7 +431,8 @@ void testSequenceAndBoundedResourceRules() {
 
   FakeSink noReadback;
   noReadback.matchesResult = false;
-  OTA::Session noReadbackSession(noReadback);
+  FakeReplayStore noReadbackStore;
+  OTA::Session noReadbackSession(noReadback, noReadbackStore);
   const OTA::SessionId noReadbackId = id(151);
   expect(noReadbackSession.onMessage(good, begin(manifest(noReadbackId, 1))).accepted,
          "readback case begins");
@@ -343,11 +443,13 @@ void testSequenceAndBoundedResourceRules() {
          "duplicate fails closed without sink readback");
 
   FakeSink bounded;
-  OTA::Session boundedSession(bounded);
+  FakeReplayStore boundedStore;
+  OTA::Session boundedSession(bounded, boundedStore);
   const OTA::SessionId boundedId = id(152);
-  expect(boundedSession.onMessage(good, begin(manifest(boundedId, OTA::MAX_CHUNKS + 1))).accepted,
+  expect(boundedSession.onMessage(good, begin(manifest(boundedId, OTA::OTA_LEDGER_ENTRIES + 1)))
+             .accepted,
          "bounded ledger case begins");
-  for (size_t offset = 0; offset < OTA::MAX_CHUNKS; offset++) {
+  for (size_t offset = 0; offset < OTA::OTA_LEDGER_ENTRIES; offset++) {
     expect(boundedSession
                .onMessage(good,
                           chunk(boundedId, static_cast<uint32_t>(offset),
@@ -355,32 +457,44 @@ void testSequenceAndBoundedResourceRules() {
                .accepted,
            "bounded ledger accepts a range within its cap");
   }
-  expect(boundedSession.onMessage(good, chunk(boundedId, OTA::MAX_CHUNKS, {0}, OTA::MAX_CHUNKS + 2))
+  expect(boundedSession
+                 .onMessage(good, chunk(boundedId, OTA::OTA_LEDGER_ENTRIES, {0},
+                                        OTA::OTA_LEDGER_ENTRIES + 2))
                  .error
              == OTA::Error::ChunkLedgerFull,
          "bounded ledger rejects the range beyond its cap");
 }
 
 void testTerminalReplayWindow() {
-  std::cout << "test: bounded multi-session terminal replay window\n";
+  std::cout << "test: persistent anti-rollback survives many sessions and reboot\n";
   FakeSink sink;
-  OTA::Session session(sink);
+  FakeReplayStore store;
+  OTA::Session session(sink, store);
   const OTA::MessageMeta good {2, false, false};
-  std::array<OTA::SessionId, OTA::MAX_TERMINAL_SESSIONS + 1> ids {};
+  std::array<OTA::SessionId, 10> ids {};
   for (size_t index = 0; index < ids.size(); index++) {
     ids[index] = id(static_cast<uint8_t>(170 + index));
     expect(session.onMessage(good, begin(manifest(ids[index], 1))).accepted,
-           "terminal window session begins");
-    expect(session.onMessage(good, control(OTA::Kind::Abort, ids[index], 2)).error
-               == OTA::Error::Aborted,
-           "terminal window session closes");
+           "persistent session begins");
+    expect(session.onMessage(good, chunk(ids[index], 0, {1}, 2)).accepted,
+           "persistent session receives image");
+    expect(session.onMessage(good, control(OTA::Kind::Commit, ids[index], 3)).accepted,
+           "persistent session commits");
   }
-  for (size_t index = 1; index < ids.size(); index++) {
-    expect(session.onMessage(good, begin(manifest(ids[index], 1))).error == OTA::Error::Replay,
-           "recent terminal session is replay protected");
+
+  FakeSink rebootSink;
+  OTA::Session rebooted(rebootSink, store);
+  for (const OTA::SessionId &sessionId : ids) {
+    expect(rebooted.onMessage(good, begin(manifest(sessionId, 1))).error == OTA::Error::Replay,
+           "all stale signed sessions remain rejected after reboot");
   }
-  expect(session.onMessage(good, begin(manifest(ids[0], 1))).accepted,
-         "bounded window explicitly permits an evicted oldest session");
+  OTA::Manifest stale = manifest(id(250), 1);
+  stale.rollbackCounter = store.floor;
+  expect(rebooted.onMessage(good, begin(stale)).error == OTA::Error::Replay,
+         "equal signed counter is rejected");
+  stale.rollbackCounter = store.floor - 1;
+  expect(rebooted.onMessage(good, begin(stale)).error == OTA::Error::Replay,
+         "lower signed counter is rejected");
 }
 
 void testCanonicalSignatureBytes() {
@@ -397,7 +511,8 @@ void testCanonicalSignatureBytes() {
   expect(first != second, "rollback counter changes signed bytes");
 
   FakeSink sink;
-  OTA::Session session(sink);
+  FakeReplayStore store;
+  OTA::Session session(sink, store);
   const OTA::MessageMeta good {1, false, false};
   expect(session.onMessage(good, begin(value)).accepted, "canonical case begins");
   OTA::Message nested = chunk(value.sessionId, 0, {1}, 2);
@@ -410,6 +525,7 @@ void testCanonicalSignatureBytes() {
 
 int main() {
   testCodecAndMalformedInputs();
+  testMalformedFuzz();
   testDeliveryPolicyAndChunkLedger();
   testSinkAndVerificationFailures();
   testCanonicalSignatureBytes();

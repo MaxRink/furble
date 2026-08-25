@@ -27,11 +27,17 @@ sink is called.
 `canonicalSignedBytes()` emits a deterministic `FOM1` byte string containing
 the session, image and partition sizes, rollback counter, digest, algorithm,
 key id, and version. The injected sink's `begin()` must compare the requested
-partition capacity with the actual inactive partition and reject a rollback
-counter below its stored floor. Its `finalize()` must verify the signature over
-these canonical bytes using the key-id trust anchor, verify the complete digest,
-and make the image bootable. This PR never treats metadata presence as
-authentication and never permits an unsigned update.
+partition capacity with the actual inactive partition. The injected
+`ReplayStore` loads the installed counter floor before `BEGIN`; counters less
+than or equal to that floor are rejected. Its `finalize()` verifies the
+signature over these canonical bytes using the key-id trust anchor and verifies
+the complete digest, but does not activate the image yet. On commit, the
+session atomically persists the strictly greater counter floor, then calls the
+sink's `activate()`. A persistence or activation failure aborts the sink and
+terminates the session. This ordering means a reboot cannot accept a stale
+signed update, even if activation fails after the floor is durable. This PR
+never treats metadata presence as authentication and never permits an unsigned
+update.
 
 ## Delivery policy
 
@@ -41,20 +47,24 @@ authentication and never permits an unsigned update.
   idempotent. A duplicate chunk is idempotent only when its sequence, offset,
   length, checksum, and sink-backed bytes all match. A duplicate commit or abort
   is idempotent only when its terminal sequence matches. Sequence numbers are
-  unique within a session, while chunks may arrive out of order. A bounded
-  eight-entry terminal-session window prevents replay across recent sessions.
+  unique within a session, while chunks may arrive out of order. Anti-replay is
+  provided by the durable monotonic counter, not by a finite session-ID cache.
 - Chunks may arrive out of order. Partial overlaps are rejected, so a retry
   cannot replace bytes already accepted by the sink. Image and partition bounds
   are checked with widened arithmetic. `COMMIT` requires contiguous coverage
   from byte zero through the exact image length. The in-memory ledger stores
-  only up to 4096 range records and never copies image bytes. A flash-backed
-  sink implements `matches()` for exact duplicate verification; otherwise a
-  same-range retry fails closed.
-- A sink rejection, including `begin()`, or failed final verification aborts the
-  sink and makes the session terminal. A bounded eight-entry terminal window is
-  deliberate: replay protection is guaranteed for the retained window without
-  unbounded RAM. The later adapter can implement the sink with the landed
-  `OTA::Engine`; this contract does not duplicate its state machine.
+  only compact range metadata and never copies image bytes. Its default 256
+  entries consume at most the explicit 4096-byte small-target budget and can
+  be lowered at compile time with `FURBLE_OTA_LEDGER_ENTRIES`; exhausting the
+  configured ledger fails closed. A flash-backed sink implements `matches()`
+  for exact duplicate verification; otherwise a same-range retry fails closed.
+- A sink rejection, including `begin()`, failed final verification, replay-store
+  failure, or activation failure aborts the sink and makes the session terminal.
+  Replay-store load failure fails closed before `begin()` reaches the sink. The
+  platform adapter must implement `ReplayStore` as an atomic journal/CAS record
+  and recover the last complete floor after reboot. The later adapter can
+  implement the sink with the landed `OTA::Engine`; this contract does not
+  duplicate its state machine.
 
 ## Verification
 
@@ -62,7 +72,9 @@ authentication and never permits an unsigned update.
 `src/FurbleOTAMQTT.cpp` directly and covers codec round trips, malformed and
 truncated payloads, digest/signature metadata, QoS and retained policy,
 out-of-order delivery, exact duplicate delivery, overlap and bounds rejection,
-incomplete commit, abort, sink failures, and terminal replay. The same source
+incomplete commit, abort, sink/replay-store failures, sequence reuse, bounded
+ledger exhaustion, persistent anti-rollback across more than eight sessions,
+and reboot replay rejection. The same source
 is included by the firmware build and is dependency-free, so the simulator and
 Nordic port can reuse it without ESP-IDF headers.
 

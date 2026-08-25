@@ -382,6 +382,8 @@ const char *errorString(Error error) {
       return "invalid_signature";
     case Error::InvalidDigest:
       return "invalid_digest";
+    case Error::ReplayStoreFailed:
+      return "replay_store_failed";
     case Error::InvalidQoS:
       return "invalid_qos";
     case Error::RetainedMessage:
@@ -418,7 +420,7 @@ const char *errorString(Error error) {
   return "unknown";
 }
 
-Session::Session(Sink &sink) : m_Sink(sink) {}
+Session::Session(Sink &sink, ReplayStore &replayStore) : m_Sink(sink), m_ReplayStore(replayStore) {}
 
 Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length) {
   if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
@@ -460,11 +462,16 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
       }
       return reject(Error::Busy);
     }
-    if (terminalSession(message.sessionId)) {
+    uint32_t installedFloor = 0;
+    if (!m_ReplayStore.loadFloor(installedFloor)) {
+      return reject(Error::ReplayStoreFailed);
+    }
+    if (message.manifest.rollbackCounter <= installedFloor) {
       return reject(Error::Replay);
     }
     m_Manifest = message.manifest;
     m_BeginSequence = message.sequence;
+    m_InstalledFloor = installedFloor;
     if (!m_Sink.begin(message.manifest)) {
       return terminalFailure(Error::SinkRejected);
     }
@@ -550,10 +557,14 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
     if (!m_Sink.finalize(m_Manifest)) {
       return terminalFailure(Error::VerificationFailed);
     }
+    if (!m_ReplayStore.commitFloor(m_InstalledFloor, m_Manifest.rollbackCounter)) {
+      return terminalFailure(Error::ReplayStoreFailed);
+    }
+    if (!m_Sink.activate()) {
+      return terminalFailure(Error::SinkRejected);
+    }
     m_State = State::Done;
-    m_TerminalKind = Kind::Commit;
     m_TerminalSequence = message.sequence;
-    rememberTerminalSession(m_Manifest.sessionId);
     m_LastError = Error::None;
     return {true, false, m_State, Error::None};
   }
@@ -575,9 +586,7 @@ Outcome Session::onMessage(const MessageMeta &meta, const Message &message) {
     }
     m_Sink.abort();
     m_State = State::Aborted;
-    m_TerminalKind = Kind::Abort;
     m_TerminalSequence = message.sequence;
-    rememberTerminalSession(m_Manifest.sessionId);
     m_LastError = Error::Aborted;
     return {true, false, m_State, Error::Aborted};
   }
@@ -622,33 +631,10 @@ bool Session::sequenceUsed(uint32_t sequence) const {
   return false;
 }
 
-bool Session::terminalSession(const SessionId &id) const {
-  for (size_t index = 0; index < m_TerminalSessionCount; index++) {
-    if (m_TerminalSessions[index] == id) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void Session::rememberTerminalSession(const SessionId &id) {
-  if (terminalSession(id)) {
-    return;
-  }
-  if (m_TerminalSessionCount < m_TerminalSessions.size()) {
-    m_TerminalSessions[m_TerminalSessionCount++] = id;
-    return;
-  }
-  m_TerminalSessions[m_TerminalSessionCursor] = id;
-  m_TerminalSessionCursor = (m_TerminalSessionCursor + 1) % m_TerminalSessions.size();
-}
-
 Outcome Session::terminalFailure(Error error) {
   m_Sink.abort();
   m_State = State::Error;
-  m_TerminalKind = Kind::Abort;
   m_TerminalSequence = 0;
-  rememberTerminalSession(m_Manifest.sessionId);
   return reject(error);
 }
 
