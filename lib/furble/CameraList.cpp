@@ -293,6 +293,7 @@ bool CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
          == sizeof(persistedFloorValue);
 }
 
+<<<<<<< HEAD
 bool CameraList::enqueueReclaim(const char *name) {
   std::vector<std::string> names;
   if (!readReclaimQueue(m_Prefs, names)) {
@@ -334,6 +335,8 @@ void CameraList::reclaimSafeBlobs(void) {
   }
 }
 
+=======
+>>>>>>> 3c57769 (fix(camera): persist safe ids and reclaim removed blobs)
 bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   std::vector<CameraListProtocol::IndexEntry> encoded;
   encoded.reserve(index.size());
@@ -400,7 +403,10 @@ bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   if (m_Prefs.put(keys.commit, &nextGeneration, sizeof(nextGeneration)) != sizeof(nextGeneration)) {
     return false;
   }
+<<<<<<< HEAD
   reclaimSafeBlobs();
+=======
+>>>>>>> 3c57769 (fix(camera): persist safe ids and reclaim removed blobs)
   return true;
 }
 
@@ -637,6 +643,7 @@ void CameraList::remove(Furble::Camera *camera) {
     }
   }
 
+<<<<<<< HEAD
   if (!removed) {
     m_Prefs.end();
     return;
@@ -651,8 +658,30 @@ void CameraList::remove(Furble::Camera *camera) {
     return;
   }
   (void)save_index(index);
+=======
+  // Publish the new index before garbage-collecting the old blob. A power
+  // cut therefore leaves the previous generation and all referenced data
+  // intact; an erase failure merely leaves an unreachable stale blob.
+  // The old generation remains recoverable until the new commit marker is
+  // durable. Only then is the now-unreferenced camera blob reclaimed.
+  const bool committed = removed && save_index(index);
+
+  // Reclaiming is deliberately deferred until after the new index commit.
+  // This leaves an unreachable blob only if the later erase itself fails.
+>>>>>>> 3c57769 (fix(camera): persist safe ids and reclaim removed blobs)
 
   m_Prefs.end();
+
+  if (committed) {
+    // Deleting after publication is power-cut safe: the committed index no
+    // longer references this key, while a cut before publication leaves the
+    // old generation and its blob intact.
+    // (The Preferences handle is closed above, so reopen for this one key.)
+    if (m_Prefs.begin(FURBLE_STR, false)) {
+      m_Prefs.remove(entry.name);
+      m_Prefs.end();
+    }
+  }
 
   // delete bond whether needed or not
   NimBLEDevice::deleteBond(camera->getAddress());
