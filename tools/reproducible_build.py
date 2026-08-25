@@ -64,6 +64,11 @@ def check_inputs(root: Path) -> None:
 
   requirements = (root / "requirements.txt").read_text(encoding="utf-8")
   platformio = (root / "platformio.ini").read_text(encoding="utf-8")
+  sim_platformio = (root / "sim" / "platformio.ini").read_text(encoding="utf-8")
+  sim_workflows = {
+      name: (root / ".github" / "workflows" / name).read_text(encoding="utf-8")
+      for name in ("sim-e2e.yml", "power-gate.yml", "ui-screenshots.yml")
+  }
   component_manifest = (root / "src" / "idf_component.yml").read_text(encoding="utf-8")
   expected = {
       "platformio": (requirements, f"platformio=={lock.get('platformio', '')}"),
@@ -87,6 +92,22 @@ def check_inputs(root: Path) -> None:
       for key, (text, needle) in expected.items()
       if not lock.get(key) or needle not in text
   ]
+  aligned = {
+      "sim-M5GFX": (sim_platformio, f"M5GFX@{lock.get('M5GFX', '')}"),
+      "sim-M5Unified": (sim_platformio, f"M5Unified@{lock.get('M5Unified', '')}"),
+  }
+  for workflow_name, workflow in sim_workflows.items():
+    aligned[f"{workflow_name}-M5GFX"] = (
+        workflow,
+        f"clone_tag m5stack/M5GFX {lock.get('M5GFX', '')} M5GFX",
+    )
+    aligned[f"{workflow_name}-M5Unified"] = (
+        workflow,
+        f"clone_tag m5stack/M5Unified {lock.get('M5Unified', '')} M5Unified",
+    )
+  missing.extend(
+      key for key, (text, needle) in aligned.items() if not needle or needle not in text
+  )
   if missing:
     raise RuntimeError("locked build inputs do not match project files: " + ", ".join(missing))
   print("Locked build inputs verified from", LOCK_NAME)
