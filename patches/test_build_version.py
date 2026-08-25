@@ -9,6 +9,23 @@ from build_version import resolve_version
 
 
 class BuildVersionTest(unittest.TestCase):
+  def test_dev_version_matches_checked_out_revision(self):
+    project_dir = Path(__file__).resolve().parents[1]
+    try:
+      revision = subprocess.check_output(
+          ["git", "rev-parse", "--short=8", "HEAD"],
+          cwd=project_dir,
+          stderr=subprocess.DEVNULL,
+          text=True,
+      ).strip()
+    except (OSError, subprocess.CalledProcessError):
+      self.skipTest("the source tree has no usable Git metadata")
+
+    self.assertTrue(revision)
+    self.assertEqual(
+        resolve_version("dev", project_dir), f"dev+g{revision}"
+    )
+
   def test_dev_version_includes_short_revision(self):
     def fake_git(args: list[str], project_dir: Path) -> str:
       self.assertEqual(args, ["rev-parse", "--short=8", "HEAD"])
