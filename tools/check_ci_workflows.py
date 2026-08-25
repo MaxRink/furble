@@ -124,7 +124,13 @@ def _document_from_source(
 def _event_blocks(document: Mapping[str, Any]) -> dict[str, EventBlock]:
   trigger = document.get("on")
   blocks: dict[str, EventBlock] = {}
-  if isinstance(trigger, Mapping):
+  if isinstance(trigger, str):
+    # GitHub accepts the shorthand ``on: pull_request`` form in addition to
+    # the sequence and mapping forms below. Treat it as one configured event
+    # so the same stacked-PR and security policy applies to every syntax.
+    if trigger:
+      blocks[trigger] = EventBlock(frozenset())
+  elif isinstance(trigger, Mapping):
     for event, configuration in trigger.items():
       if not isinstance(event, str):
         continue

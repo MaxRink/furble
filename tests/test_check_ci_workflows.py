@@ -80,6 +80,49 @@ on: {"pull_request": {"branches": [master], "paths": [src/**]}, "workflow_dispat
         frozenset({"paths"}),
     )
 
+  def test_scalar_pull_request_target_is_rejected(self):
+    errors = self.lint(
+        """name: unsafe
+on: pull_request_target
+"""
+    )
+    self.assertIn("uses pull_request_target", errors)
+
+  def test_scalar_pull_request_requires_paths_and_dispatch(self):
+    errors = self.lint(
+        """name: incomplete
+on: pull_request
+"""
+    )
+    self.assertIn("pull_request has no path filter", errors)
+    self.assertIn("has no workflow_dispatch trigger", errors)
+
+  def test_mixed_sequence_trigger_events_are_structural(self):
+    errors = self.lint(
+        """name: unsafe
+on: [pull_request_target, workflow_dispatch]
+"""
+    )
+    self.assertIn("uses pull_request_target", errors)
+
+  def test_sequence_pull_request_requires_paths_but_has_dispatch(self):
+    errors = self.lint(
+        """name: incomplete
+on: [pull_request, workflow_dispatch]
+"""
+    )
+    self.assertIn("pull_request has no path filter", errors)
+    self.assertNotIn("has no workflow_dispatch trigger", errors)
+
+  def test_sequence_alias_target_is_rejected(self):
+    errors = self.lint(
+        """name: unsafe
+events: &events [pull_request_target, workflow_dispatch]
+on: *events
+"""
+    )
+    self.assertIn("uses pull_request_target", errors)
+
   def test_write_pull_request_permission_is_structural(self):
     errors = self.lint(
         """name: test
