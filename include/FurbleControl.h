@@ -201,7 +201,6 @@ class Control {
     bool infiniteReconnect;
     bool reconnectBackoff;
     uint32_t reconnectAttempt;
-    bool freshConnect;
     bool adaptiveActive;
     int userPowerLevel;
     int adaptivePowerLevel;

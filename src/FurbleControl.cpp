@@ -179,6 +179,7 @@ Control &Control::getInstance(void) {
     instance.m_Power = Settings::load<esp_power_level_t>(Settings::TX_POWER);
     instance.m_AdaptivePower = instance.m_Power;
     if (Settings::consumeCleanRestart()) {
+      const std::lock_guard<std::mutex> lock(instance.m_Mutex);
       instance.m_NextConnectOrigin = reconnect_origin_t::FURBLE;
     }
   }
@@ -249,6 +250,11 @@ Control::state_t Control::connectAll(void) {
     m_ConnectCamera = camera;
     if (!camera->connect(m_Power, timeout)) {
       failcount++;
+      // A peer/link reset during any handshake phase invalidates a clean
+      // teardown token. The callback records this on Camera itself.
+      if (camera->peerDroppedDuringConnect()) {
+        m_ConnectOrigin = reconnect_origin_t::PEER;
+      }
       break;
     } else {
       m_ConnectCamera = nullptr;
@@ -580,12 +586,14 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     // teardown. The watchdog is fed each slice and no mutex is held across it.
     const TickType_t start = xTaskGetTickCount();
     const TickType_t timeout = pdMS_TO_TICKS(DISCONNECT_WAIT_MAX_MS);
-    while (!targetTasksStopped()) {
+    bool teardownStopped = targetTasksStopped();
+    while (!teardownStopped) {
       if (xTaskGetTickCount() - start >= timeout) {
         break;
       }
       Platform::getInstance().watchdogFeed();
       vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
+      teardownStopped = targetTasksStopped();
     }
 
     // Hand the stopped targets to the drain set and return at once: getState() is
@@ -613,7 +621,9 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       // The next explicit connect follows this controlled teardown. Keep the
       // token under the same mutex used by connectAll() so a concurrent manual
       // request cannot misclassify a peer drop as furble-initiated.
-      m_NextConnectOrigin = reconnect_origin_t::FURBLE;
+      // A fast token is valid only after every target teardown completed. A
+      // timeout is conservatively treated as a peer-originated retry.
+      m_NextConnectOrigin = teardownStopped ? reconnect_origin_t::FURBLE : reconnect_origin_t::PEER;
     }
     setState(STATE_IDLE);
     return true;
@@ -795,7 +805,6 @@ Control::debug_state_t Control::getDebugState(void) const {
   snapshot.infiniteReconnect = m_InfiniteReconnect;
   snapshot.reconnectBackoff = m_ReconnectBackoff;
   snapshot.reconnectAttempt = m_ReconnectAttempt;
-  snapshot.freshConnect = (m_ConnectOrigin == reconnect_origin_t::FURBLE);
 
   const std::lock_guard<std::mutex> lock(m_Mutex);
   snapshot.targetCount = m_Targets.size();

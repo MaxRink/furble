@@ -17,10 +17,10 @@
 // mid-session peer drop whose first reconnect attempt fails and asserts the
 // 2.5 s first-retry backoff is still honoured.
 //
-// Mutation check: revert delayMs() to ignore the furbleInitiated flag (always
-// FIRST_RETRY_MS at attempt 0), or drop the m_FreshConnect wiring in
-// connectAll(), and Test A's fast bound fails because the fresh reconnect waits
-// the full 2.5 s. That is the test's tooth.
+// Mutation check: revert delayMs() to ignore the queued origin (always
+// FIRST_RETRY_MS at attempt 0), and Test A's fast bound fails because the fresh
+// reconnect waits the full 2.5 s. The handshake-reset test similarly catches
+// any implementation that trusts a caller-supplied clean origin.
 
 #include <chrono>
 #include <cstdint>
@@ -220,7 +220,10 @@ bool testPeerResetDuringHandshakeKeepsBackoff() {
   control.addActive(camera);
 
   const auto start = std::chrono::steady_clock::now();
-  control.connectAll(true, Control::reconnect_origin_t::PEER);
+  // Deliberately present a clean-origin token. The virtual peer resets the
+  // link during the real handshake; Camera's callback must override it to
+  // PEER before the retry is scheduled.
+  control.connectAll(true, Control::reconnect_origin_t::FURBLE);
   // Remove the fault after the first attempt has had time to reach the
   // identify write. The retry itself must still honor the peer wait.
   std::this_thread::sleep_for(std::chrono::milliseconds(250));

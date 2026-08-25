@@ -162,7 +162,8 @@ void Control::setConnSaver(bool enabled) {
   (void)enabled;
 }
 
-void Control::connectAll(bool infiniteReconnect) {
+void Control::connectAll(bool infiniteReconnect, reconnect_origin_t origin) {
+  (void)origin;
   m_InfiniteReconnect = infiniteReconnect;
   m_ConnectCamera = nullptr;
   for (const auto &target : m_Targets) {

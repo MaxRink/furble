@@ -2,6 +2,7 @@
 #include <nvs_flash.h>
 
 #include "FurbleBatterySaver.h"
+#include "FurbleRestartMarker.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
@@ -9,8 +10,25 @@
 namespace Furble {
 
 namespace {
-constexpr const char *CLEAN_RESTART_KEY = "clean_restart";
-}
+class PreferencesRestartStorage final: public RestartMarkerStorage {
+ public:
+  explicit PreferencesRestartStorage(Preferences &prefs) : m_Prefs(prefs) {}
+  bool read(const char *key, uint32_t &value) override {
+    if (!m_Prefs.isKey(key))
+      return false;
+    value = m_Prefs.get<uint32_t>(key, 0);
+    return true;
+  }
+  bool write(const char *key, uint32_t value) override {
+    return m_Prefs.put<uint32_t>(key, value) == sizeof(value);
+  }
+  bool remove(const char *key) override { return !m_Prefs.isKey(key) || m_Prefs.remove(key); }
+  bool exists(const char *key) override { return m_Prefs.isKey(key); }
+
+ private:
+  Preferences &m_Prefs;
+};
+}  // namespace
 
 // The board-conditional text size policy in FurbleTextSize.h uses raw values so
 // it stays dependency free for the host tests. Pin those values to the enum so
@@ -592,7 +610,8 @@ bool Settings::markCleanRestart(void) {
     return false;
   }
 
-  const bool written = m_Prefs.put(CLEAN_RESTART_KEY, true) != 0;
+  PreferencesRestartStorage storage(m_Prefs);
+  const bool written = RestartMarker::mark(storage);
   m_Prefs.end();
   return written;
 }
@@ -602,12 +621,10 @@ bool Settings::consumeCleanRestart(void) {
     return false;
   }
 
-  const bool marked = m_Prefs.get(CLEAN_RESTART_KEY, false);
-  // If the marker cannot be removed, do not trust it. Leaving it behind would
-  // incorrectly make a later crash boot look like another clean restart.
-  const bool consumed = !marked || m_Prefs.remove(CLEAN_RESTART_KEY);
+  PreferencesRestartStorage storage(m_Prefs);
+  const bool consumed = RestartMarker::consume(storage);
   m_Prefs.end();
-  return marked && consumed;
+  return consumed;
 }
 
 bool Settings::batterySaver(void) {
