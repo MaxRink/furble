@@ -52,8 +52,16 @@ private struct ContentView: View {
             .font(.footnote)
         }
         Section("Trigger") {
-          Button("Shutter") { try? client.trigger(.shutterRelease) }
-          Button("Focus") { try? client.trigger(.focusRelease) }
+          HStack {
+            Button("Press shutter") { try? client.trigger(.shutterPress) }
+            Button("Release shutter") { try? client.trigger(.shutterRelease) }
+          }
+          HStack {
+            Button("Press focus") { try? client.trigger(.focusPress) }
+            Button("Release focus") { try? client.trigger(.focusRelease) }
+          }
+          Text("Release a held trigger before leaving the app. The firmware also releases held outputs when the link is lost.")
+            .font(.footnote)
         }
       }
       .navigationTitle("furble companion")
