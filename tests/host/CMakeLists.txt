@@ -455,6 +455,15 @@ if(BUILD_TESTING)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
+
+  add_executable(vendor_protocol_conformance_test
+                 vendor_protocol_conformance_test.cpp
+                 ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+                 ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+  target_include_directories(vendor_protocol_conformance_test
+                             PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+  target_compile_options(vendor_protocol_conformance_test PRIVATE -Wall -Wextra -Werror)
+  add_test(NAME vendor-protocol-conformance COMMAND vendor_protocol_conformance_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
