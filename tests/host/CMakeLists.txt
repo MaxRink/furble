@@ -557,6 +557,13 @@ target_include_directories(reconnect_backoff_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(reconnect_backoff_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                       -Wno-unused-parameter)
 
+# Pure two-phase clean-restart marker logic. The storage seam lets this suite
+# inject reset/read/write/remove faults without pulling in ESP-IDF NVS.
+add_executable(restart_marker_test restart_marker_test.cpp)
+target_include_directories(restart_marker_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(restart_marker_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                      -Wno-unused-parameter)
+
 # Pure Battery Saver override arithmetic from include/FurbleBatterySaver.h. No
 # BLE or NVS dependency, so it needs no furble sources on its link line.
 add_executable(battery_saver_test battery_saver_test.cpp)
@@ -1042,6 +1049,7 @@ if(BUILD_TESTING)
   add_test(NAME control-teardown-wedge COMMAND control_teardown_wedge_test)
   set_tests_properties(control-teardown-wedge PROPERTIES TIMEOUT 60)
   add_test(NAME reconnect-initiator COMMAND reconnect_initiator_test)
+  add_test(NAME restart-marker COMMAND restart_marker_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)

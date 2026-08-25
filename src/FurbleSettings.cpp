@@ -606,24 +606,26 @@ void Settings::init(void) {
 }
 
 bool Settings::markCleanRestart(void) {
-  if (!m_Prefs.begin(FURBLE_STR, false)) {
+  Preferences prefs;
+  if (!prefs.begin(FURBLE_STR, false)) {
     return false;
   }
 
-  PreferencesRestartStorage storage(m_Prefs);
+  PreferencesRestartStorage storage(prefs);
   const bool written = RestartMarker::mark(storage);
-  m_Prefs.end();
+  prefs.end();
   return written;
 }
 
 bool Settings::consumeCleanRestart(void) {
-  if (!m_Prefs.begin(FURBLE_STR, false)) {
+  Preferences prefs;
+  if (!prefs.begin(FURBLE_STR, false)) {
     return false;
   }
 
-  PreferencesRestartStorage storage(m_Prefs);
+  PreferencesRestartStorage storage(prefs);
   const bool consumed = RestartMarker::consume(storage);
-  m_Prefs.end();
+  prefs.end();
   return consumed;
 }
 

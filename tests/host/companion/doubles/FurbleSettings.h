@@ -110,6 +110,7 @@ class Settings {
   static bool sleepConnEffective(void) { return load<bool>(SLEEP_CONN); }
   static bool connSaverEffective(void) { return load<bool>(CONN_SAVER); }
   static bool reconBackoffEffective(void) { return load<bool>(RECON_BACKOFF); }
+  static bool consumeCleanRestart(void) { return false; }
 
   // Scenario setup helpers. The assertions read the same Settings::load path
   // that CompanionService::saveSetting writes.
