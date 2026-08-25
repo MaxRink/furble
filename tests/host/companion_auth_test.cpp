@@ -325,6 +325,19 @@ void testAuthGate(void) {
           "passwords over the 63-byte firmware limit are rejected");
   require(auth.isPasswordSet() == false,
           "an over-length password cannot replace the active secret");
+  auth.onConnected();
+  require(!auth.isAuthenticated(),
+          "an over-length persisted password must not become an empty-password bypass");
+  require(!auth.begin(nonce), "an invalid persisted password must not start a challenge");
+  require(!auth.allowsProtected(), "an invalid persisted password must fail closed");
+  require(auth.setPassword("recovered password"),
+          "a valid password must recover from an invalid persisted value");
+  auth.onConnected();
+  require(auth.begin(nonce), "a recovered password did not start a challenge");
+  require(!auth.setPassword(std::string("bad\0password", 12)),
+          "passwords containing NUL must be rejected");
+  auth.onConnected();
+  require(!auth.allowsProtected(), "a NUL-containing persisted password must fail closed");
 }
 
 void testHmacVector(const std::string &fixturePath) {

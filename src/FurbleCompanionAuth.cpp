@@ -16,22 +16,32 @@ CompanionAuth::~CompanionAuth() {
 bool CompanionAuth::setPassword(const std::string &password) {
   // std::string capacity cannot be wiped portably. Keep the secret in a fixed
   // 64-byte buffer so every byte is erased on replacement and destruction.
-  if (password.size() > PASSWORD_MAX) {
+  if ((password.size() > PASSWORD_MAX)
+      || (std::find(password.begin(), password.end(), '\0') != password.end())) {
+    secureZero(m_Password.data(), m_Password.size());
+    m_PasswordLen = 0;
+    m_PasswordInvalid = true;
+    m_Failures = 0;
+    clearChallenge();
+    m_State = state_t::UNAUTHENTICATED;
     return false;
   }
   secureZero(m_Password.data(), m_Password.size());
   std::copy(password.begin(), password.end(), m_Password.begin());
   m_PasswordLen = password.size();
+  m_PasswordInvalid = false;
   m_Failures = 0;
   clearChallenge();
-  m_State = m_PasswordLen == 0 ? state_t::AUTHENTICATED : state_t::UNAUTHENTICATED;
+  m_State = (!m_PasswordInvalid && (m_PasswordLen == 0)) ? state_t::AUTHENTICATED
+                                                          : state_t::UNAUTHENTICATED;
   return true;
 }
 
 void CompanionAuth::onConnected(void) {
   m_Failures = 0;
   clearChallenge();
-  m_State = m_PasswordLen == 0 ? state_t::AUTHENTICATED : state_t::UNAUTHENTICATED;
+  m_State = (!m_PasswordInvalid && (m_PasswordLen == 0)) ? state_t::AUTHENTICATED
+                                                          : state_t::UNAUTHENTICATED;
 }
 
 void CompanionAuth::onDisconnected(void) {
@@ -42,6 +52,9 @@ void CompanionAuth::onDisconnected(void) {
 
 bool CompanionAuth::begin(std::array<uint8_t, NONCE_SIZE> &nonce) {
   nonce.fill(0);
+  if (m_PasswordInvalid) {
+    return false;
+  }
   if (m_PasswordLen == 0) {
     m_State = state_t::AUTHENTICATED;
     return false;
@@ -62,6 +75,9 @@ bool CompanionAuth::begin(std::array<uint8_t, NONCE_SIZE> &nonce) {
 }
 
 CompanionAuth::response_t CompanionAuth::respond(const uint8_t *response, size_t len) {
+  if (m_PasswordInvalid) {
+    return response_t::REJECTED;
+  }
   if (m_PasswordLen == 0) {
     m_State = state_t::AUTHENTICATED;
     return response_t::NOT_REQUIRED;

@@ -72,6 +72,8 @@ class CompanionAuth {
   nonce_fn_t m_NonceGenerator;
   std::array<uint8_t, NONCE_SIZE> m_Nonce = {};
   bool m_HaveNonce = false;
+  // A malformed persisted value must not become an empty-password bypass.
+  bool m_PasswordInvalid = false;
   state_t m_State = state_t::UNAUTHENTICATED;
   uint8_t m_Failures = 0;
 };
