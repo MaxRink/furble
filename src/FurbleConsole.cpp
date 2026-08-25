@@ -1893,6 +1893,42 @@ int cmdReboot(int argc, char **argv) {
   return 0;
 }
 
+/**
+ * Make a deliberate serial upload safe against the external PMIC watchdog.
+ *
+ * This command is intentionally available only in developer-console builds.
+ * A release image has no unattended serial control surface. Its physical
+ * long-press recovery path remains available and is the documented fallback
+ * when the application cannot answer.
+ */
+int cmdFlash(int argc, char **argv) {
+#if !defined(FURBLE_M5STICKS3)
+  (void)argc;
+  (void)argv;
+  return fail("flash preparation is only supported on the StickS3");
+#else
+  if ((argc == 2) && !strcasecmp(argv[1], "prepare")) {
+    if (!Platform::getInstance().prepareFlash()) {
+      return fail("PMIC flash preparation failed; use the physical long-press recovery path");
+    }
+    printf("flash.ready: true\n");
+    printf("flash.watchdog: disabled\n");
+    printf("flash.download_recovery: unlocked\n");
+    fflush(stdout);
+    return 0;
+  }
+
+  if ((argc == 2) && !strcasecmp(argv[1], "cancel")) {
+    Platform::getInstance().cancelFlashPreparation();
+    printf("flash.ready: false\n");
+    printf("flash.watchdog: armed\n");
+    return 0;
+  }
+
+  return fail("usage: flash prepare | cancel");
+#endif
+}
+
 /** Build a command table entry, argtable is unused, every command parses argv. */
 constexpr esp_console_cmd_t command(const char *name,
                                     const char *help,
@@ -1935,6 +1971,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
             cmdDebug),
+    command("flash", "flash prepare | cancel", cmdFlash),
     command("reboot", "Restart the device", cmdReboot),
 };
 

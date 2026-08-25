@@ -500,3 +500,25 @@ rate-limited feed path. `watchdog-stall.txt` proves ordinary virtual time keeps
 the watchdog armed and a scripted 11 second UI stall expires the independent
 PM1 deadline. Physical reset signaling and post-reset rail state still require
 the on-device checks above.
+
+## Flash recovery hardening, 2026-08-25
+
+The PMIC button configuration is retained outside the ESP32 reset domain. The
+old `setDownloadLock(true)` therefore survived a reset and disabled the only
+manual recovery path. Boot now writes `setDownloadLock(false)` and reads it back
+through the normal PMIC wake retry helper. A failed write or verification is
+reported as an error instead of being treated as safe.
+
+The PMIC watchdog also keeps counting while the ESP32 ROM is receiving a flash.
+Developer-console builds provide `flash prepare`, which disarms the watchdog,
+verifies the download lock is clear, and prints machine-readable acknowledgements.
+`tools/flash_prepare.py` requires all acknowledgements before invoking PlatformIO.
+It never attempts an unattended upload when the application is wedged. A
+cancelled preflight is repaired with `flash cancel` or a reboot. The physical
+long-press recovery procedure remains the fallback for release images and dead
+applications.
+
+The simulator retains the PMIC watchdog and download lock across
+`M5PM1::begin()`. `pmic-flash-recovery.txt` enforces an unlocked boot state, and
+`tests/host/pmic_recovery_test.cpp` covers persistence, the idle wake retry, and
+watchdog expiry during a simulated ROM download.
