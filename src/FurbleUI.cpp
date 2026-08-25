@@ -1554,7 +1554,10 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     } else {
       lv_obj_set_width(label, LV_PCT(100));
     }
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    // Menu titles use deterministic left-aligned clipping instead of a moving
+    // marquee; this keeps the beginning readable on narrow panels and stable in
+    // captures.
+    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_STATE_TRICKLE);
@@ -1567,6 +1570,12 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
   lv_obj_t *obj = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW_WRAP);
+
+  // Give the long gesture label its own line. Keeping the switch beside it
+  // leaves too little width on 135x240 and causes ugly character-level wraps.
+  if (setting == Settings::IMU_TRIG) {
+    lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_COLUMN);
+  }
 
   if (symbol) {
     lv_obj_t *icon = lv_image_create(obj);
@@ -1581,6 +1590,9 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
   // on narrow panels. A circular marquee can capture midway through a label and
   // leave its first characters clipped; wrapping preserves the whole name.
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  if (setting == Settings::IMU_TRIG) {
+    lv_obj_set_width(label, LV_PCT(100));
+  }
   lv_obj_set_flex_grow(label, 1);
 
   lv_obj_t *sw = lv_switch_create(obj);
@@ -5780,7 +5792,18 @@ void UI::addSensorsMenu(const menu_t &parent) {
 }
 
 void UI::addWakeGestureMenu(const menu_t &parent) {
+#if defined(FURBLE_M5STICKS3) || defined(FURBLE_M5STICKC)
+  // The page header has only about 80 px between the back button and status
+  // icons on the narrow panels. Keep it fully readable; the Sensors row and
+  // walkthrough provide the complete feature name.
+  constexpr const char *wakeTitle = "Wake";
+#else
+  constexpr const char *wakeTitle = nullptr;
+#endif
   menu_t &menu = addMenu(m_WakeGestureStr, NULL, true, parent);
+#if defined(FURBLE_M5STICKS3) || defined(FURBLE_M5STICKC)
+  lv_menu_set_page_title(menu.page, wakeTitle);
+#endif
   m_IMUGestureWidgets.push_back(menu.button);
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
@@ -5794,9 +5817,10 @@ void UI::addWakeGestureMenu(const menu_t &parent) {
 #if !defined(FURBLE_M5COREX)
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  // The page itself is already vertically constrained; auto-scrolling the page
+  // to the focused roller leaves captures and encoder entry at arbitrary offsets.
   lv_roller_set_options(roller, m_WakeGestureOptions, LV_ROLLER_MODE_NORMAL);
-  lv_roller_set_visible_row_count(roller, 2);
+  lv_roller_set_visible_row_count(roller, 3);
 
   uint8_t wake = Settings::load<Settings::IMU_WAKE>();
   if (wake > 3) {
