@@ -169,16 +169,17 @@ uint8_t CameraList::allocateCameraId(const std::vector<index_entry_t> &index) {
     persistedNext = 1;
   }
   uint16_t next = persistedNext;
-  while ((next <= 0xff) && ((next == 0) || containsCameraId(index, static_cast<uint8_t>(next)))) {
+  while ((next <= 0xfe) && ((next == 0) || containsCameraId(index, static_cast<uint8_t>(next)))) {
     next++;
   }
-  if ((next == 0) || (next > 0xff)) {
-    // Zero is reserved for an unsaved camera. Never wrap and reuse a live id.
+  if ((next == 0) || (next > 0xfe)) {
+    // Zero is reserved for an unsaved camera and 0xff is the all-cameras
+    // protocol marker. Never wrap or reuse a live id.
     return 0;
   }
   uint16_t following = static_cast<uint16_t>(next + 1);
-  if (following > 0xff) {
-    following = 0xff;
+  if (following > 0xfe) {
+    following = 0xfe;
   }
   const uint8_t persistedFollowing = static_cast<uint8_t>(following);
   if (m_Prefs.put(FURBLE_PREF_NEXT_ID, &persistedFollowing, sizeof(persistedFollowing))
@@ -211,7 +212,7 @@ bool CameraList::syncCameraIdFloor(const std::vector<index_entry_t> &index) {
          == sizeof(persistedFloorValue);
 }
 
-void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
+bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   std::vector<CameraListProtocol::IndexEntry> encoded;
   encoded.reserve(index.size());
   for (const auto &entry : index) {
@@ -224,7 +225,7 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
 
   std::vector<uint8_t> bytes;
   if (!CameraListProtocol::encodeIndex(encoded, bytes)) {
-    return;
+    return false;
   }
 
   uint32_t generation[2] = {};
@@ -237,7 +238,7 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
       && (generation[0] == generation[1]
           || (!generationNewer(generation[0], generation[1])
               && !generationNewer(generation[1], generation[0])))) {
-    return;
+    return true;
   }
   size_t active = valid[1] && (!valid[0] || generationNewer(generation[1], generation[0])) ? 1 : 0;
   const size_t target = valid[0] || valid[1] ? (active ^ 1U) : 0;
@@ -254,10 +255,10 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   const uint8_t emptyMarker = 0;
   if (bytes.empty()) {
     if (m_Prefs.put(keys.blob, &emptyMarker, sizeof(emptyMarker)) != sizeof(emptyMarker)) {
-      return;
+      return false;
     }
   } else if (m_Prefs.put(keys.blob, bytes.data(), bytes.size()) != bytes.size()) {
-    return;
+    return false;
   }
 
   index_slot_header_t header = {
@@ -268,19 +269,23 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
       {0, 0, 0}
   };
   if (m_Prefs.put(keys.header, &header, sizeof(header)) != sizeof(header)) {
-    return;
+    return false;
   }
   const uint32_t checksum = CameraListProtocol::indexChecksum(bytes.data(), bytes.size());
   if (m_Prefs.put(keys.crc, &checksum, sizeof(checksum)) != sizeof(checksum)) {
-    return;
+    return false;
   }
   if (m_Prefs.put(keys.commit, &nextGeneration, sizeof(nextGeneration)) != sizeof(nextGeneration)) {
-    return;
+    return false;
   }
+  return true;
 }
 
-std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
+std::vector<CameraList::index_entry_t> CameraList::load_index(bool *migrated) {
   std::vector<index_entry_t> index;
+  if (migrated != nullptr) {
+    *migrated = false;
+  }
 
   if (anySlotKey(m_Prefs)) {
     std::vector<uint8_t> selectedBytes;
@@ -312,13 +317,33 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
                                            CameraListProtocol::IndexFormat::CURRENT, decoded)) {
         return index;
       }
+      for (size_t i = 0; i < decoded.size(); i++) {
+        if (decoded[i].camera_id == 0xff) {
+          return index;
+        }
+        for (size_t j = i + 1; j < decoded.size(); j++) {
+          if ((decoded[i].camera_id != 0) && (decoded[i].camera_id == decoded[j].camera_id)) {
+            return index;
+          }
+        }
+      }
+      const bool needsMigration = std::any_of(decoded.begin(), decoded.end(),
+                                              [](const auto &item) { return item.camera_id == 0; });
       CameraListProtocol::assignCameraIds(decoded);
+      if (std::any_of(decoded.begin(), decoded.end(), [](const auto &item) {
+            return item.camera_id == 0 || item.camera_id == 0xff;
+          })) {
+        return index;
+      }
       for (const auto &item : decoded) {
         index_entry_t entry = {};
         memcpy(entry.name, item.name, sizeof(entry.name));
         entry.type = static_cast<Camera::Type>(item.type);
         entry.camera_id = item.camera_id;
         index.push_back(entry);
+      }
+      if (migrated != nullptr) {
+        *migrated = needsMigration;
       }
       return index;
     }
@@ -369,7 +394,14 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
         // A blob written before ids existed decodes with camera_id zero. Give
         // those entries stable ids in memory so an upgraded device exposes them
         // immediately, without losing any saved camera.
+        const bool needsMigration = std::any_of(
+            decoded.begin(), decoded.end(), [](const auto &item) { return item.camera_id == 0; });
         CameraListProtocol::assignCameraIds(decoded);
+        if (std::any_of(decoded.begin(), decoded.end(), [](const auto &item) {
+              return item.camera_id == 0 || item.camera_id == 0xff;
+            })) {
+          return index;
+        }
         ESP_LOGI(LOG_TAG, "Index entries: %d", decoded.size());
         for (const auto &item : decoded) {
           index_entry_t entry = {};
@@ -378,6 +410,9 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
           entry.camera_id = item.camera_id;
           ESP_LOGI(LOG_TAG, "Loading index entry: %s", entry.name);
           index.push_back(entry);
+        }
+        if (migrated != nullptr) {
+          *migrated = needsMigration;
         }
       }
     }
@@ -468,11 +503,13 @@ void CameraList::remove(Furble::Camera *camera) {
   index_entry_t entry;
   fillSaveEntry(entry, camera);
 
+  bool removed = false;
   size_t i = 0;
   for (i = 0; i < index.size(); i++) {
     if (strcmp(index[i].name, entry.name) == 0) {
       ESP_LOGI(LOG_TAG, "Deleting: %s", entry.name);
       index.erase(index.begin() + i);
+      removed = true;
       break;
     }
   }
@@ -480,13 +517,25 @@ void CameraList::remove(Furble::Camera *camera) {
   // Publish the new index before garbage-collecting the old blob. A power
   // cut therefore leaves the previous generation and all referenced data
   // intact; an erase failure merely leaves an unreachable stale blob.
-  save_index(index);
+  // The old generation remains recoverable until the new commit marker is
+  // durable. Only then is the now-unreferenced camera blob reclaimed.
+  const bool committed = removed && save_index(index);
 
-  // Camera blobs are intentionally retained as deferred garbage. Removing
-  // them here would require observing the commit result and would reintroduce
-  // a power-loss window between index publication and data reclamation.
+  // Reclaiming is deliberately deferred until after the new index commit.
+  // This leaves an unreachable blob only if the later erase itself fails.
 
   m_Prefs.end();
+
+  if (committed) {
+    // Deleting after publication is power-cut safe: the committed index no
+    // longer references this key, while a cut before publication leaves the
+    // old generation and its blob intact.
+    // (The Preferences handle is closed above, so reopen for this one key.)
+    if (m_Prefs.begin(FURBLE_STR, false)) {
+      m_Prefs.remove(entry.name);
+      m_Prefs.end();
+    }
+  }
 
   // delete bond whether needed or not
   NimBLEDevice::deleteBond(camera->getAddress());
@@ -501,10 +550,19 @@ void CameraList::remove(Furble::Camera *camera) {
  */
 void CameraList::load(void) {
   const std::lock_guard<std::mutex> prefsLock(m_PrefsMutex);
-  if (!m_Prefs.begin(FURBLE_STR, true)) {
+  if (!m_Prefs.begin(FURBLE_STR, false)) {
     return;
   }
-  std::vector<index_entry_t> index = load_index();
+  bool migrated = false;
+  std::vector<index_entry_t> index = load_index(&migrated);
+  if (migrated) {
+    // Advance the floor before publishing migrated IDs. A cut between these
+    // operations can only leak unused IDs; it cannot permit a collision.
+    if (!syncCameraIdFloor(index) || !save_index(index)) {
+      m_Prefs.end();
+      return;
+    }
+  }
   std::vector<std::shared_ptr<Furble::Camera>> loaded;
   for (const auto &i : index) {
     size_t dbytes = m_Prefs.getBytesLength(i.name);

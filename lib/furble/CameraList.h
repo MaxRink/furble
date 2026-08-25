@@ -81,8 +81,8 @@ class CameraList {
   } index_entry_t;
 
   static void fillSaveEntry(index_entry_t &entry, const Camera *camera);
-  static std::vector<index_entry_t> load_index(void);
-  static void save_index(std::vector<index_entry_t> &index);
+  static std::vector<index_entry_t> load_index(bool *migrated = nullptr);
+  static bool save_index(std::vector<index_entry_t> &index);
   static void add_index(std::vector<index_entry_t> &index, index_entry_t &entry);
   static uint8_t allocateCameraId(const std::vector<index_entry_t> &index);
   static bool containsCameraId(const std::vector<index_entry_t> &index, uint8_t cameraId);

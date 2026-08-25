@@ -245,10 +245,15 @@ void testAssignCameraIds() {
         "assignCameraIds leaves fully numbered entries untouched");
 
   std::vector<IndexEntry> exhausted = {makeEntry("last", 1), makeEntry("overflow", 2)};
-  exhausted[0].camera_id = 0xff;
+  exhausted[0].camera_id = 0xfe;
   assignCameraIds(exhausted);
-  check(exhausted[0].camera_id == 0xff && exhausted[1].camera_id == 0,
+  check(exhausted[0].camera_id == 0xfe && exhausted[1].camera_id == 0,
         "assignCameraIds never reuses an id after the byte range is exhausted");
+
+  std::vector<IndexEntry> reserved = {makeEntry("reserved", 1)};
+  reserved[0].camera_id = 0;
+  assignCameraIds(reserved);
+  check(reserved[0].camera_id == 1, "id allocation starts at one, not the unsaved marker");
 }
 
 void testMigrationFullFlow() {
