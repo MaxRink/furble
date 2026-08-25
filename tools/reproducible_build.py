@@ -220,6 +220,14 @@ def _require_private_directory(path: Path, label: str) -> None:
     raise RuntimeError(f"incomplete isolated {label}: {path}")
 
 
+def _remove_isolated_entry(path: Path) -> None:
+  """Remove one stale entry owned by the isolated PlatformIO core."""
+  if path.is_symlink() or path.is_file():
+    path.unlink()
+  elif path.is_dir():
+    shutil.rmtree(path)
+
+
 def _manifest_identity(package: Path, names: tuple[str, ...]) -> tuple[str, str] | None:
   """Return a package identity only when all available metadata agrees.
 
@@ -339,8 +347,13 @@ def prepare_platformio_core(
   if cached_platform is not None:
     platform, requirements = cached_platform
     platform_target = _contained_child(platforms, platform_name, "isolated platform name")
-    if platform_target.is_symlink() and platform_target.resolve() != platform.resolve():
-      platform_target.unlink()
+    if platform_target.is_symlink():
+      if platform_target.resolve() != platform.resolve():
+        _remove_isolated_entry(platform_target)
+    elif platform_target.exists() and _platform_cache(
+        platform_target, platform_name, platform_version
+    ) is None:
+      _remove_isolated_entry(platform_target)
     if not platform_target.exists() and not platform_target.is_symlink():
       platform_target.symlink_to(platform, target_is_directory=True)
 
@@ -361,28 +374,39 @@ def prepare_platformio_core(
         package, target = package_paths[package_name]
         exact_version = lock.get("framework", "") if package_name == "framework-espidf" else ""
         if not _package_matches(package, package_name, requirement, exact_version):
-          if target.is_symlink():
-            target.unlink()
+          if target.is_symlink() or target.exists():
+            _remove_isolated_entry(target)
           continue
         if package_name == "framework-espidf":
           # The framework patch mutates files in-place; never leave a link to
           # the shared cache, even when it resolves to the same source.
           if target.is_symlink():
-            target.unlink()
+            _remove_isolated_entry(target)
+          elif target.exists() and not _package_matches(
+              target, package_name, requirement, exact_version
+          ):
+            _remove_isolated_entry(target)
           if not target.exists():
             shutil.copytree(package, target)
           continue
         if target.is_symlink() and target.resolve() != package.resolve():
-          target.unlink()
+          _remove_isolated_entry(target)
+        elif target.exists() and not target.is_symlink() and not _package_matches(
+            target, package_name, requirement
+        ):
+          _remove_isolated_entry(target)
         if not target.exists() and not target.is_symlink():
           target.symlink_to(package, target_is_directory=True)
   elif separator:
     # A prior interrupted invocation may have left a stale link in the
-    # temporary core. Remove only that link; real directories are left for the
-    # installer to diagnose rather than deleting user data unexpectedly.
+    # temporary core. Remove stale entries only inside that isolated core.
     platform_target = _contained_child(platforms, platform_name, "isolated platform name")
     if platform_target.is_symlink():
-      platform_target.unlink()
+      _remove_isolated_entry(platform_target)
+    elif platform_target.exists() and _platform_cache(
+        platform_target, platform_name, platform_version
+    ) is None:
+      _remove_isolated_entry(platform_target)
 
   environment = dict(inherited_environment)
   environment.update(

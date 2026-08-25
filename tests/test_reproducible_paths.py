@@ -79,6 +79,43 @@ class ReproduciblePathTest(unittest.TestCase):
           (Path(environment["PLATFORMIO_PLATFORMS_DIR"]) / "espressif32").is_symlink()
       )
 
+  def test_stale_isolated_directories_are_replaced(self):
+    with tempfile.TemporaryDirectory() as directory:
+      root = Path(directory)
+      base = root / "base"
+      (base / "platforms").mkdir(parents=True)
+      (base / "packages").mkdir(parents=True)
+      platform = base / "platforms" / "espressif32"
+      self._metadata(platform, "espressif32", "6.13.0", platform=True)
+      (platform / "platform.json").write_text(
+          json.dumps({
+              "name": "espressif32",
+              "version": "6.13.0",
+              "packages": {"framework-espidf": {"version": "~3.50503.0"}},
+          }),
+          encoding="utf-8",
+      )
+      framework = base / "packages" / "framework-espidf"
+      self._metadata(framework, "framework-espidf", "3.50503.0")
+      project = self._project(root / "project")
+      build = root / "build"
+      isolated = build / "pio-core"
+      (isolated / "platforms" / "espressif32").mkdir(parents=True)
+      (isolated / "platforms" / "espressif32" / "stale").write_text("bad")
+      (isolated / "packages" / "framework-espidf").mkdir(parents=True)
+      (isolated / "packages" / "framework-espidf" / "stale").write_text("bad")
+
+      environment = MODULE.prepare_platformio_core(
+          build, {"PLATFORMIO_CORE_DIR": str(base)}, project=project
+      )
+      platform_target = Path(environment["PLATFORMIO_PLATFORMS_DIR"]) / "espressif32"
+      framework_target = Path(environment["PLATFORMIO_PACKAGES_DIR"]) / "framework-espidf"
+      self.assertTrue(platform_target.is_symlink())
+      self.assertEqual(platform_target.resolve(), platform.resolve())
+      self.assertFalse(framework_target.is_symlink())
+      self.assertTrue((framework_target / "package.json").is_file())
+      self.assertFalse((framework_target / "stale").exists())
+
   def test_exact_platform_reuses_only_matching_dependencies(self):
     with tempfile.TemporaryDirectory() as directory:
       root = Path(directory)
