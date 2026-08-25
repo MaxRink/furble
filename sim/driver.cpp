@@ -191,6 +191,11 @@ bool booleanSeedValue(const std::string &value) {
 }
 
 void validateSeed(const std::string &name, const std::string &value) {
+  if (name == "clock_ms") {
+    parseUnsigned(value);
+    return;
+  }
+
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate", "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power", "scan_mode",
@@ -798,6 +803,9 @@ std::string queryValue(const std::string &key) {
   if (key == "platform.watchdog") {
     return watchdogState();
   }
+  if (key == "clock.ms") {
+    return std::to_string(clockMillis());
+  }
 
   std::cerr << "Unknown assert key: " << key << '\n';
   std::exit(2);
@@ -1000,6 +1008,10 @@ void configure(int argc, char **argv) {
   if (!script.empty()) {
     scenarioName = std::filesystem::path(script).stem().string();
     readScript(script);
+    const auto clock = scenarioSettings.find("clock_ms");
+    if (clock != scenarioSettings.end()) {
+      setClockMillis(parseUnsigned(clock->second));
+    }
   }
 }
 
@@ -1023,7 +1035,7 @@ void driverTick(void) {
 
   const uint32_t now = clockMillis();
   if (pressedKey != SDLK_UNKNOWN) {
-    if (now < releaseAt) {
+    if (!clockDeadlineReached(now, releaseAt)) {
       return;
     }
     pushKey(pressedKey, false);
@@ -1037,7 +1049,7 @@ void driverTick(void) {
       if (!waiting) {
         waitUntil = now + step.milliseconds;
         waiting = true;
-      } else if (now >= waitUntil) {
+      } else if (clockDeadlineReached(now, waitUntil)) {
         waiting = false;
         ++stepIndex;
       }

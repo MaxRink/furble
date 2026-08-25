@@ -42,7 +42,8 @@ class M5PM1 {
 
   int wdtFeed(void) {
     return access([this]() {
-      if (m_WatchdogArmed && Furble::Sim::clockMillis() >= m_WatchdogDeadline) {
+      if (m_WatchdogArmed
+          && Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(), m_WatchdogDeadline)) {
         m_WatchdogExpired = true;
         return;
       }
@@ -98,11 +99,14 @@ class M5PM1 {
 
   bool watchdogExpired(void) const {
     return m_WatchdogExpired
-           || (m_WatchdogArmed && Furble::Sim::clockMillis() >= m_WatchdogDeadline);
+           || (m_WatchdogArmed
+               && Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(),
+                                                    m_WatchdogDeadline));
   }
 
   bool timerExpired(void) const {
-    return m_TimerArmed && Furble::Sim::clockMillis() >= m_TimerDeadline;
+    return m_TimerArmed
+           && Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(), m_TimerDeadline);
   }
 
   bool isShutdown(void) const { return m_Shutdown; }

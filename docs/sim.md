@@ -136,12 +136,17 @@ text after a comment are ignored. Each line starts with one verb.
 `assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
 `ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
 
+The `clock.ms` query reports the current virtual millisecond clock.
+
 ### Effective `seed` names
 
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
 `auto_off`, and `low_batt`.
+
+`clock_ms` seeds the simulator's uint32 millisecond clock before platform
+initialization. It is intended for deterministic wrap-boundary scenarios.
 
 Battery seeds select the initial deterministic platform sample:
 `battery_level` (0 to 100), `battery_voltage` (millivolts),
