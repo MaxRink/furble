@@ -308,7 +308,7 @@ void CompanionService::handleAuth(const uint8_t *data, size_t len) {
   uint8_t wireResult = AUTH_RESULT_REJECTED;
   bool challenge = false;
   bool disconnect = false;
-  if ((len == 1) && (data[0] == AUTH_BEGIN)) {
+  if ((len == 2) && (data[0] == AUTH_VERSION) && (data[1] == AUTH_OP_BEGIN)) {
     const std::lock_guard<std::mutex> lock(m_AuthMutex);
     if (m_Auth.begin(nonce)) {
       challenge = true;
@@ -317,9 +317,11 @@ void CompanionService::handleAuth(const uint8_t *data, size_t len) {
                                       : (m_Auth.isAuthenticated() ? AUTH_RESULT_NOT_REQUIRED
                                                                   : AUTH_RESULT_REJECTED);
     }
-  } else {
+  } else if ((len >= 2) && (data[0] == AUTH_VERSION) && (data[1] == AUTH_OP_PROOF)) {
     const std::lock_guard<std::mutex> lock(m_AuthMutex);
-    const CompanionAuth::response_t result = m_Auth.respond(data, len);
+    const CompanionAuth::response_t result =
+        m_Auth.respond(len == AUTH_PROOF_PACKET_SIZE ? data + 2 : nullptr,
+                       len == AUTH_PROOF_PACKET_SIZE ? CompanionAuth::RESPONSE_SIZE : 0);
     wireResult =
         result == CompanionAuth::response_t::AUTHENTICATED
             ? AUTH_RESULT_AUTHENTICATED
@@ -328,12 +330,26 @@ void CompanionService::handleAuth(const uint8_t *data, size_t len) {
                    : (result == CompanionAuth::response_t::NOT_REQUIRED ? AUTH_RESULT_NOT_REQUIRED
                                                                         : AUTH_RESULT_REJECTED));
     disconnect = result == CompanionAuth::response_t::DROPPED;
+  } else {
+    // Unknown versions, operations, and lengths consume the outstanding
+    // challenge as a failed proof. This prevents malformed retries from
+    // reusing one nonce indefinitely.
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    const CompanionAuth::response_t result = m_Auth.respond(nullptr, 0);
+    wireResult =
+        result == CompanionAuth::response_t::DROPPED ? AUTH_RESULT_DROPPED : AUTH_RESULT_REJECTED;
+    disconnect = result == CompanionAuth::response_t::DROPPED;
   }
 
   if (challenge) {
-    m_Transport.indicate(COMPANION_CHAR_AUTH, nonce.data(), nonce.size());
+    std::array<uint8_t, AUTH_CHALLENGE_SIZE> packet = {};
+    packet[0] = AUTH_VERSION;
+    packet[1] = AUTH_OP_BEGIN;
+    std::copy(nonce.begin(), nonce.end(), packet.begin() + 2);
+    m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
   } else {
-    m_Transport.indicate(COMPANION_CHAR_AUTH, &wireResult, sizeof(wireResult));
+    const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT, wireResult};
+    m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
   }
   if (disconnect) {
     m_Transport.disconnect();

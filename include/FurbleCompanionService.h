@@ -54,7 +54,15 @@ class CompanionService {
   static constexpr uint8_t CAPABILITY_VERSION = 1;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = 1U << 0;
   static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
-  static constexpr uint8_t AUTH_BEGIN = 0x01;
+  static constexpr uint8_t AUTH_VERSION = 0x01;
+  static constexpr uint8_t AUTH_OP_BEGIN = 0x00;
+  static constexpr uint8_t AUTH_OP_PROOF = 0x01;
+  static constexpr uint8_t AUTH_OP_RESULT = 0x02;
+  static constexpr size_t AUTH_CHALLENGE_SIZE = 2 + CompanionAuth::NONCE_SIZE;
+  static constexpr size_t AUTH_PROOF_PACKET_SIZE = 2 + CompanionAuth::RESPONSE_SIZE;
+  static constexpr size_t AUTH_RESULT_SIZE = 3;
+  // Kept as a source-compatible alias for host rigs that only initiate auth.
+  static constexpr uint8_t AUTH_BEGIN = AUTH_OP_BEGIN;
   static constexpr uint8_t AUTH_RESULT_AUTHENTICATED = 0x01;
   static constexpr uint8_t AUTH_RESULT_REJECTED = 0x02;
   static constexpr uint8_t AUTH_RESULT_DROPPED = 0x03;
