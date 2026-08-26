@@ -229,6 +229,11 @@ reboot
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
 
+On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
+voltage as unknown and current as unavailable. It does not infer USB or
+optional PoE power from Ethernet link state. The optional PoE HAT has no
+software-readable presence or negotiation signal.
+
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once, settings the UI caches when it starts do not. `settings get` and
 `settings set` say which of the two a setting is.

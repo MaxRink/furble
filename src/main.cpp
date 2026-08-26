@@ -9,6 +9,7 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleBatteryStatus.h"
 #include "FurbleBootScreen.h"
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
@@ -33,23 +34,32 @@ namespace Furble {
 // the UI task, the headless build has no UI so it reads M5.Power directly and
 // reports an idle intervalometer.
 int32_t UI::getBatteryLevel(void) {
-  return M5.Power.getBatteryLevel();
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::level(caps.level, M5.Power.getBatteryLevel());
 }
 
 int16_t UI::getBatteryVoltage(void) {
-  return M5.Power.getBatteryVoltage();
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::voltage(caps.voltage, M5.Power.getBatteryVoltage());
 }
 
 int32_t UI::getBatteryCurrent(void) {
-  return M5.Power.getBatteryCurrent();
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::current(caps.current, M5.Power.getBatteryCurrent());
 }
 
 int16_t UI::getBatteryVBUSVoltage(void) {
-  return M5.Power.getVBUSVoltage();
+#if defined(FURBLE_WAVESHARE_S3_ETH)
+  // The board exposes no software-readable VBUS/PoE telemetry.
+  return BatteryStatus::vbus(false, 0);
+#else
+  return BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
+#endif
 }
 
 bool UI::isBatteryCharging(void) {
-  return static_cast<int>(M5.Power.isCharging()) == 1;
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::charging(caps.charging, static_cast<int>(M5.Power.isCharging()) == 1);
 }
 
 uint8_t UI::getIntervalometerState(void) {

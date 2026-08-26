@@ -1243,9 +1243,12 @@ int cmdStatus(int argc, char **argv) {
   printf("uptime: %llu\n", esp_timer_get_time() / 1000000ULL);
   printf("heap: %lu\n", esp_get_free_heap_size());
   printf("heap_min: %lu\n", esp_get_minimum_free_heap_size());
-  printf("battery: %ld\n", static_cast<long>(M5.Power.getBatteryLevel()));
-  printf("voltage: %ld\n", static_cast<long>(M5.Power.getBatteryVoltage()));
-  printf("current: %ld\n", static_cast<long>(M5.Power.getBatteryCurrent()));
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+  const auto battery = platform.readBattery();
+  printf("battery: %ld\n", caps.level ? static_cast<long>(battery.level) : -1L);
+  printf("voltage: %ld\n", caps.voltage ? static_cast<long>(battery.voltage) : -1L);
+  printf("current: %ld\n", caps.current ? static_cast<long>(battery.current) : 0L);
   return 0;
 }
 
