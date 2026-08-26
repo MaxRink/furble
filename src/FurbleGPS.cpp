@@ -5,7 +5,6 @@
 #include <TinyGPS++.h>
 #include <esp_timer.h>
 
-#include <sys/time.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -26,6 +25,7 @@
 #include "FurblePower.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
@@ -1109,11 +1109,6 @@ void GPS::updateAidCache(const Camera::gps_t &gps, const Camera::timesync_t &tim
     }
   }
 
-  struct timeval tv = {
-      .tv_sec = static_cast<time_t>(utc_seconds),
-      .tv_usec = static_cast<suseconds_t>(timesync.centisecond * 10000),
-  };
-  settimeofday(&tv, nullptr);
 }
 
 bool GPS::sendAidIni(void) {
@@ -1301,6 +1296,15 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
     return false;
   }
 
+  if (fix.time_valid) {
+    (void)TimeKeeper::getInstance().updateUtc(
+        TimeSource::COMPANION, static_cast<uint16_t>(fix.timesync.year),
+        static_cast<uint8_t>(fix.timesync.month), static_cast<uint8_t>(fix.timesync.day),
+        static_cast<uint8_t>(fix.timesync.hour), static_cast<uint8_t>(fix.timesync.minute),
+        static_cast<uint8_t>(fix.timesync.second), static_cast<uint8_t>(fix.timesync.centisecond),
+        5000);
+  }
+
   const uint64_t now_ms = esp_timer_get_time() / 1000;
   const std::lock_guard<std::mutex> lock(m_ExternalMutex);
   m_ExternalFix = fix;
@@ -1338,6 +1342,13 @@ void GPS::update(void) {
         status.year,   status.month,  status.day,         status.hour,
         status.minute, status.second, status.centisecond,
     };
+    if (status.date_valid && status.time_valid) {
+      (void)TimeKeeper::getInstance().updateUtc(
+          TimeSource::GPS, static_cast<uint16_t>(timesync.year),
+          static_cast<uint8_t>(timesync.month), static_cast<uint8_t>(timesync.day),
+          static_cast<uint8_t>(timesync.hour), static_cast<uint8_t>(timesync.minute),
+          static_cast<uint8_t>(timesync.second), static_cast<uint8_t>(timesync.centisecond), 1000);
+    }
     updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(std::min<uint32_t>(status.satellites, 255u));
     altitudeValid = status.altitude_valid;

@@ -43,6 +43,7 @@
 #include "FurbleProvision.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 
@@ -872,6 +873,47 @@ int gpsStatus(void) {
   printf("sentences: %lu\n", status.sentences_passed);
   printf("failed: %lu\n", status.sentences_failed);
   printf("raw: %s\n", boolStr(g_GPSRaw));
+  return 0;
+}
+
+const char *timeSourceName(TimeSource source) {
+  switch (source) {
+    case TimeSource::NVS:
+      return "nvs";
+    case TimeSource::RTC:
+      return "rtc";
+    case TimeSource::COMPANION:
+      return "companion";
+    case TimeSource::GPS:
+      return "gps";
+    case TimeSource::NTP:
+      return "ntp";
+    default:
+      return "none";
+  }
+}
+
+int cmdTime(int argc, char **argv) {
+  auto &keeper = TimeKeeper::getInstance();
+  if ((argc >= 2) && !strcmp(argv[1], "flush")) {
+    if (argc != 2) {
+      return fail("usage: time flush");
+    }
+    keeper.flush();
+    printf("time: flushed\n");
+    return 0;
+  }
+  if ((argc >= 2) && strcmp(argv[1], "status")) {
+    return fail("usage: time status | flush");
+  }
+  const auto status = keeper.status();
+  printf("valid: %s\n", boolStr(status.valid));
+  printf("epoch_us: %llu\n", static_cast<unsigned long long>(status.epoch_us));
+  printf("uncertainty_ms: %lu\n", static_cast<unsigned long>(status.uncertainty_ms));
+  printf("source: %s\n", timeSourceName(status.source));
+  printf("rtc: %s\n", boolStr(status.rtc_available));
+  printf("rtc_battery_backed: %s\n", boolStr(status.rtc_battery_backed));
+  printf("nvs_writes: %lu\n", static_cast<unsigned long>(status.nvs_write_count));
   return 0;
 }
 
@@ -1952,6 +1994,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
+    command("time", "time status | flush", cmdTime),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
     command("provision", "provision <hex|base64 TLV blob>", cmdProvision),
     command("ui", "ui audit", cmdUI),

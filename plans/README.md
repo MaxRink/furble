@@ -128,6 +128,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [68-flasher-debug-firmware.md](68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
+| [139-persistent-time.md](139-persistent-time.md) | RTC, NVS, GPS, NTP, and companion wall-clock retention policy |
 | [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
 | [113-per-board-ota-slots.md](113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
 | [114-provision-parser.md](114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |

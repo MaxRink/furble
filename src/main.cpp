@@ -25,6 +25,7 @@
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
 
 #if defined(FURBLE_NO_DISPLAY)
@@ -254,6 +255,7 @@ void app_main() {
   // decide cfg.internal_spk ahead of M5.begin()
   Furble::Settings::init();
   Furble::Platform::init();
+  Furble::TimeKeeper::init();
 
   // The display is up now, so the boot splash can cover the rest of init. It
   // reads its own enable, draws through M5GFX, and every hook self-gates. The
