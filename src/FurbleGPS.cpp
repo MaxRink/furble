@@ -1108,7 +1108,6 @@ void GPS::updateAidCache(const Camera::gps_t &gps, const Camera::timesync_t &tim
       m_AidCacheWriteValid = false;
     }
   }
-
 }
 
 bool GPS::sendAidIni(void) {

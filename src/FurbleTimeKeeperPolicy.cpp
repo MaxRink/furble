@@ -83,8 +83,7 @@ uint32_t predictedUncertaintyMs(const TimeSample &sample, uint64_t monotonic_ms)
       elapsed > (std::numeric_limits<uint64_t>::max() - 999999ULL) / UNCERTAINTY_GROWTH_PPM
           ? std::numeric_limits<uint64_t>::max()
           : (elapsed * UNCERTAINTY_GROWTH_PPM + 999999ULL) / 1000000ULL;
-  if (growth >= MAX_UNCERTAINTY_MS
-      || sample.uncertainty_ms > MAX_UNCERTAINTY_MS - growth) {
+  if (growth >= MAX_UNCERTAINTY_MS || sample.uncertainty_ms > MAX_UNCERTAINTY_MS - growth) {
     return MAX_UNCERTAINTY_MS;
   }
   return sample.uncertainty_ms + static_cast<uint32_t>(growth);
@@ -176,8 +175,8 @@ bool decode(const uint8_t *buffer, size_t length, TimeSample &sample) {
   WireRecord record = {};
   std::memcpy(&record, buffer, sizeof(record));
   if (record.magic != RECORD_MAGIC || record.version != RECORD_VERSION
-      || record.size != sizeof(record)
-      || record.reserved[0] != 0 || record.reserved[1] != 0 || record.reserved[2] != 0
+      || record.size != sizeof(record) || record.reserved[0] != 0 || record.reserved[1] != 0
+      || record.reserved[2] != 0
       || crc32(reinterpret_cast<const uint8_t *>(&record), sizeof(record) - sizeof(record.crc))
              != record.crc) {
     return false;

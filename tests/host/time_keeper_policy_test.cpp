@@ -9,12 +9,12 @@ using Furble::TimeSample;
 using Furble::TimeSource;
 using namespace Furble::TimeKeeperPolicy;
 
-#define CHECK(condition)                                                                          \
-  do {                                                                                           \
-    if (!(condition)) {                                                                           \
-      std::fprintf(stderr, "check failed at %s:%d: %s\n", __FILE__, __LINE__, #condition);     \
-      return 1;                                                                                  \
-    }                                                                                            \
+#define CHECK(condition)                                                                   \
+  do {                                                                                     \
+    if (!(condition)) {                                                                    \
+      std::fprintf(stderr, "check failed at %s:%d: %s\n", __FILE__, __LINE__, #condition); \
+      return 1;                                                                            \
+    }                                                                                      \
   } while (false)
 
 int main() {
@@ -44,13 +44,12 @@ int main() {
   CHECK(predictedUncertaintyMs(ntp, 24004000) == ntp.uncertainty_ms + 2400U);
   CHECK(!shouldPersist(&ntp, {ntp.epoch_us + 1000000ULL, 500, TimeSource::NTP, 5000}, 5000));
   CHECK(shouldPersist(&ntp, {ntp.epoch_us + 60000000ULL * 1000ULL, 500, TimeSource::NTP, 5000},
-                     5000));
+                      5000));
   CHECK(shouldPersist(&nvs, gps, 3000));
   const uint64_t expiry_ms =
       (static_cast<uint64_t>(MAX_UNCERTAINTY_MS) * 1000000ULL) / UNCERTAINTY_GROWTH_PPM;
   CHECK(!validAt(ntp, ntp.monotonic_ms + expiry_ms));
-  CHECK(predictedUncertaintyMs(ntp, std::numeric_limits<uint64_t>::max())
-        == MAX_UNCERTAINTY_MS);
+  CHECK(predictedUncertaintyMs(ntp, std::numeric_limits<uint64_t>::max()) == MAX_UNCERTAINTY_MS);
   CHECK(predictedEpochUs(ntp, std::numeric_limits<uint64_t>::max())
         == std::numeric_limits<uint64_t>::max());
   CHECK(predictedEpochUs(ntp, ntp.monotonic_ms - 1) == ntp.epoch_us);

@@ -2,8 +2,8 @@
 
 ## Status
 
-Implemented in the isolated `feat/persistent-time` work tree. This plan adds
-one shared policy for NTP, GPS, companion, RTC, and NVS time. It does not make
+Implemented in the isolated `feat/persistent-time-policy` work tree. This plan
+adds one shared policy for NTP, GPS, companion, RTC, and NVS time. It does not make
 the monotonic timer a wall clock. Durations continue to use the monotonic tick.
 
 ## Hardware findings
@@ -41,6 +41,10 @@ source, and its monotonic observation point.
 - Companion time is accepted above RTC/NVS, with a wider uncertainty budget.
 - RTC seeds a boot when the board exposes one and also seeds the ESP system
   wall clock.
+- BM8563-equipped StickC, StickC-Plus, and Core2 boards retain calendar time
+  across reboot and power loss through their backed RTC. StickS3 M5PM1 has no
+  calendar RTC, so its NVS value is an explicitly stale fallback until NTP,
+  GPS, or companion time corrects it.
 - NVS is a CRC32 and versioned record. A restore adds one hour of explicit
   uncertainty because power-off duration is unknown. Records outside the
   seven-day uncertainty budget are rejected.
@@ -70,7 +74,9 @@ The GPS aiding cache no longer bypasses this arbitration by writing the system
 clock directly.
 
 The simulator source manifest includes the same policy implementation and the
-full simulator build passes. The host policy test is the deterministic semantic
+full simulator build passes. The current fork master has no WiFi/NTP producer;
+the NTP enum and arbitration path are ready for that existing follow-up. The
+host policy test is the deterministic semantic
 gate for virtual-clock drift, weaker-source rejection, backward-correction
 rejection, persistence rate decisions, and cross-process reboot/power-cycle
 semantics. A UI wall-clock page and stateful simulator reboot action remain
