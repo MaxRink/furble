@@ -35,6 +35,7 @@ About page and exposed through companion BLE Device Information.
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
+| `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
 | `ui` | `ui audit`, dump the current page layout. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
@@ -82,6 +83,18 @@ every setting, its default, and when it applies.
 - `gps config` lists the binary configuration status.
 - `gps aid` sends an assisted-start (AID-INI) hint.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
+
+## time
+
+- `time status` reports the UTC wall-clock estimate, uncertainty, source, RTC
+  capability, and NVS write count.
+- `time flush` persists the current estimate before a planned restart or power
+  removal.
+
+Calendar time is retained across power loss by the backed RTC on StickC,
+StickC-Plus, and Core2 when its backup supply is healthy. StickS3 has no
+battery-backed calendar RTC, so it restores the last NVS value with an explicit
+  uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
 ## shutter and focus
 

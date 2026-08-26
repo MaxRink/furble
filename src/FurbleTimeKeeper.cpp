@@ -70,6 +70,12 @@ bool readRtc(TimeSample &sample) {
   if (!M5.Rtc.getDateTime(&datetime)) {
     return false;
   }
+  // PCF8563 exposes a voltage-low flag when its backup supply has fallen
+  // below the retention threshold. Do not seed the wall clock from a value
+  // that may have stopped during that outage.
+  if (g_RtcBatteryBacked && M5.Rtc.getVoltLow()) {
+    return false;
+  }
 
   uint64_t epochUs = 0;
   if (!TimeKeeperPolicy::utcToEpochUs(
@@ -121,6 +127,11 @@ bool loadPersisted(TimeSample &sample) {
   if (!read || !TimeKeeperPolicy::decode(buffer.data(), length, sample)) {
     return false;
   }
+  // The wire record retains the source that produced the value for forensic
+  // and migration purposes. Once it has crossed a reboot boundary, however,
+  // its authority is only that of an NVS fallback. Keeping GPS/NTP here would
+  // let stale persisted data block fresh RTC or companion corrections.
+  sample.source = TimeSource::NVS;
   sample.monotonic_ms = monotonicMs();
   // A persisted sample has no reliable power-off duration. Carry an explicit
   // uncertainty penalty so stale records eventually fail closed.

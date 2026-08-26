@@ -1287,15 +1287,15 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
     return false;
   }
 
-  if (fix.time_valid
-      && ((fix.timesync.year < 2000) || (fix.timesync.month < 1) || (fix.timesync.month > 12)
-          || (fix.timesync.day < 1) || (fix.timesync.day > 31) || (fix.timesync.hour > 23)
-          || (fix.timesync.minute > 59) || (fix.timesync.second > 59)
-          || (fix.timesync.centisecond > 99))) {
-    return false;
-  }
-
   if (fix.time_valid) {
+    uint64_t epoch_us = 0;
+    if (!TimeKeeperPolicy::utcToEpochUs(
+            static_cast<uint16_t>(fix.timesync.year), static_cast<uint8_t>(fix.timesync.month),
+            static_cast<uint8_t>(fix.timesync.day), static_cast<uint8_t>(fix.timesync.hour),
+            static_cast<uint8_t>(fix.timesync.minute), static_cast<uint8_t>(fix.timesync.second),
+            static_cast<uint8_t>(fix.timesync.centisecond), epoch_us)) {
+      return false;
+    }
     (void)TimeKeeper::getInstance().updateUtc(
         TimeSource::COMPANION, static_cast<uint16_t>(fix.timesync.year),
         static_cast<uint8_t>(fix.timesync.month), static_cast<uint8_t>(fix.timesync.day),
