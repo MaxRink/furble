@@ -22,7 +22,6 @@ class FaultBackend final: public ReplayJournalBackend {
   int failReadSlot = -1;
   bool failWrite = false;
   int failWriteSlot = -1;
-  bool failCommit = false;
   bool tearWrite = false;
   size_t tearLength = JournalReplayStore::RECORD_BYTES;
   size_t truncatedLength = JournalReplayStore::RECORD_BYTES;
@@ -46,32 +45,20 @@ class FaultBackend final: public ReplayJournalBackend {
         || bytes == nullptr || length != JournalReplayStore::RECORD_BYTES) {
       return false;
     }
-    pendingSlot = slot;
-    pending = true;
-    std::memset(staged.data(), 0, staged.size());
+    // A backend write is the persistence boundary. A torn write can leave
+    // only a prefix in the inactive slot, but never touches the old slot.
+    durable[slot].fill(0);
     const size_t copied = tearWrite ? (tearLength < length ? tearLength : length) : length;
-    std::memcpy(staged.data(), bytes, copied);
-    return true;
-  }
-
-  bool commit() override {
-    if (!pending || failCommit) {
-      pending = false;
-      return false;
-    }
-    durable[pendingSlot] = staged;
-    present[pendingSlot] = true;
-    pending = false;
+    std::memcpy(durable[slot].data(), bytes, copied);
+    present[slot] = true;
     return !tearWrite;
   }
 
   void reboot() {
-    pending = false;
     failRead = false;
     failReadSlot = -1;
     failWrite = false;
     failWriteSlot = -1;
-    failCommit = false;
     tearWrite = false;
     tearLength = JournalReplayStore::RECORD_BYTES;
     truncatedLength = JournalReplayStore::RECORD_BYTES;
@@ -82,10 +69,6 @@ class FaultBackend final: public ReplayJournalBackend {
     durable[slot][offset] ^= 0x5a;
   }
 
- private:
-  uint8_t pendingSlot = 0;
-  bool pending = false;
-  std::array<uint8_t, JournalReplayStore::RECORD_BYTES> staged {};
 };
 
 SessionId owner(uint8_t value) {
@@ -153,15 +136,11 @@ void basicTransitions() {
   assert(!store.reserveFloor(UINT32_MAX, 1, second));
 }
 
-void commitAndCorruptionRecovery() {
+void writeAndCorruptionRecovery() {
   const SessionId first = owner(3);
   FaultBackend backend;
   JournalReplayStore store(backend);
-  backend.failCommit = true;
-  assert(!store.reserveFloor(0, 7, first));
-  backend.reboot();
   uint32_t floor = 42;
-  assert(store.loadFloor(floor) && floor == 0);
   backend.failWrite = true;
   assert(!store.reserveFloor(0, 7, first));
   backend.reboot();
@@ -237,7 +216,7 @@ void goldenAndAmbiguousRecords() {
 void tornWriteMatrix() {
   const SessionId first = owner(8);
   for (size_t length = 0; length <= JournalReplayStore::RECORD_BYTES; length++) {
-    // Reserved -> staged publishes slot 1 after slot 0 is known-good.
+    // Reserved -> staged writes slot 1 after slot 0 is known-good.
     FaultBackend backend;
     JournalReplayStore store(backend);
     assert(store.reserveFloor(0, 7, first));
@@ -248,7 +227,7 @@ void tornWriteMatrix() {
     uint32_t floor = 0;
     assert(store.loadFloor(floor) && floor == 7);
 
-    // Staged -> complete publishes slot 0 after slot 1 is known-good.
+    // Staged -> complete writes slot 0 after slot 1 is known-good.
     FaultBackend secondBackend;
     JournalReplayStore second(secondBackend);
     assert(second.reserveFloor(0, 7, first));
@@ -262,7 +241,7 @@ void tornWriteMatrix() {
 }
 
 void faultBoundaries() {
-  for (unsigned boundary = 0; boundary < 3; boundary++) {
+  for (unsigned boundary = 0; boundary < 2; boundary++) {
     FaultBackend backend;
     JournalReplayStore store(backend);
     const SessionId first = owner(static_cast<uint8_t>(10 + boundary));
@@ -270,14 +249,24 @@ void faultBoundaries() {
       backend.failRead = true;
     } else if (boundary == 1) {
       backend.failWrite = true;
-    } else {
-      backend.failCommit = true;
     }
     assert(!store.reserveFloor(0, 11, first));
     backend.reboot();
     uint32_t floor = 99;
     assert(store.loadFloor(floor) && floor == 0);
     assert(store.reserveFloor(0, 11, first));
+  }
+  {
+    FaultBackend backend;
+    JournalReplayStore store(backend);
+    const SessionId first = owner(12);
+    backend.tearWrite = true;
+    backend.tearLength = JournalReplayStore::RECORD_BYTES / 2;
+    assert(!store.reserveFloor(0, 11, first));
+    backend.reboot();
+    uint32_t floor = 99;
+    // There is no complete old slot to recover from, so fail closed.
+    assert(!store.loadFloor(floor));
   }
   for (int slot = 0; slot < 2; slot++) {
     FaultBackend backend;
@@ -400,18 +389,42 @@ void transactionalNvsBackend() {
   uint32_t floor = 0;
   assert(rebooted.loadFloor(floor) && floor == 17);
 
-  // A set_blob is invisible until commit, and a failed commit is discarded.
+  // A set_blob persists one slot immediately. It is visible after a reboot,
+  // even though the adapter still calls nvs_commit for the ESP-IDF API.
   std::array<uint8_t, JournalReplayStore::RECORD_BYTES> scratch {};
   assert(nvs.write(1, scratch.data(), scratch.size()));
   FakeNvs::reboot();
-  assert(nvs.read(1, scratch.data(), scratch.size()) == ReplayJournalBackend::ReadResult::Missing);
-  FakeNvs::failNextCommit();
+  assert(nvs.read(1, scratch.data(), scratch.size()) == ReplayJournalBackend::ReadResult::Ok);
+
+  // A failed set leaves the old complete slot untouched.
+  FakeNvs::failNextSet();
   assert(!rebooted.markStaged(first, 17));
   FakeNvs::reboot();
   assert(rebooted.loadFloor(floor) && floor == 17);
 
-  // A present but truncated blob is corruption and must not be accepted.
+  // A torn set leaves an invalid inactive slot and still preserves the old
+  // complete slot.
+  FakeNvs::tearNextSet(13);
+  assert(!rebooted.markStaged(first, 17));
+  FakeNvs::reboot();
+  assert(rebooted.loadFloor(floor) && floor == 17);
+
+  // A commit can report failure after the one-key update is already durable.
+  // The next boot accepts the complete new record and never lowers the floor.
+  FakeNvs::failNextCommit();
+  assert(!rebooted.markStaged(first, 17));
+  FakeNvs::reboot();
+  assert(rebooted.loadFloor(floor) && floor == 17);
+  assert(rebooted.completeReservation(first, 17));
+
+  // A read failure fails closed because the unread slot could contain a newer
+  // anti-replay floor.
+  FakeNvs::failNextRead(0);
+  assert(!rebooted.loadFloor(floor));
+
+  // Both present slots invalid is also fail closed.
   FakeNvs::truncateSlot(0, 7);
+  FakeNvs::truncateSlot(1, 7);
   assert(!rebooted.loadFloor(floor));
   nvs.end();
 }
@@ -420,7 +433,7 @@ void transactionalNvsBackend() {
 
 int main() {
   basicTransitions();
-  commitAndCorruptionRecovery();
+  writeAndCorruptionRecovery();
   generationRollover();
   goldenAndAmbiguousRecords();
   tornWriteMatrix();

@@ -9,17 +9,18 @@ activate an image. Those integrations remain separate hardware-gated slices.
 `JournalReplayStore` uses two fixed 64-byte records. A record contains magic
 `FRJ1`, format version, byte length, a serial-number generation, the monotonic
 rollback floor, reservation state, owner token, counter, reserved zero bytes,
-and CRC-32. The backend has exactly three operations:
+and CRC-32. The backend has exactly two operations:
 
-1. `read(slot)` reads committed bytes only;
-2. `write(slot)` stages a complete inactive slot;
-3. `commit()` publishes the staged slot atomically.
+1. `read(slot)` reads persisted bytes only;
+2. `write(slot)` persists one complete inactive slot, or reports a failed or
+   torn attempt.
 
-The inactive-slot write plus commit-last ordering means a torn write cannot
-replace the last complete record. On boot, the newest valid generation wins;
-invalid records are ignored when the other slot is valid. An erased pair is
-the initial floor-zero state. If both slots contain bytes but neither validates,
-the adapter fails closed instead of resetting the anti-rollback floor.
+NVS does not provide a transaction spanning both slot keys. The inactive-slot
+write ordering means a torn write cannot replace the last complete record. On
+boot, the newest valid generation wins; an invalid record is ignored when the
+other slot is valid. An erased pair is the initial floor-zero state. If both
+slots contain bytes but neither validates, the adapter fails closed instead of
+resetting the anti-rollback floor.
 
 Generation comparison is wrap-safe. Rollback counters are not wrap-safe: a
 counter must strictly increase and is never wrapped or lowered. `UINT32_MAX`
@@ -41,8 +42,10 @@ host/sim use the same deterministic logic under the small-target budget.
 ## Verification
 
 `ota_replay_store_test` exercises owner/CAS rejection, single reservation,
-commit/write/read faults, corrupt and truncated records, both-slot failure,
-generation rollover, reboot recovery, and 100,000 deterministic randomized
-state-machine steps. The same production journal source is compiled into the
-host test and simulator. `NvsReplayJournalBackend` maps the seam to ESP-IDF
-NVS blobs and `nvs_commit`; the application initializes NVS before `begin()`.
+immediate, torn, failed, and read-failed writes, corrupt and truncated records,
+both-slot failure, generation rollover, reboot recovery, and 100,000
+deterministic randomized state-machine steps. The same production journal
+source is compiled into the host test and simulator. `NvsReplayJournalBackend`
+maps each write to one ESP-IDF NVS blob update followed by `nvs_commit`; it does
+not claim that the commit is a two-slot transaction. The application
+initializes NVS before `begin()`.

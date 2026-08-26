@@ -17,14 +17,16 @@ const char *slotKey(uint8_t slot) {
 
 }  // namespace
 
-NvsReplayJournalBackend::NvsReplayJournalBackend() : m_Handle(0), m_Started(false) {}
+NvsReplayJournalBackend::NvsReplayJournalBackend()
+    : m_Handle(0), m_Started(false), m_Namespace {} {}
 
 NvsReplayJournalBackend::~NvsReplayJournalBackend() {
   end();
 }
 
 bool NvsReplayJournalBackend::begin(const char *namespaceName) {
-  if (m_Started || (namespaceName == nullptr)) {
+  if (m_Started || (namespaceName == nullptr) || (std::strlen(namespaceName) == 0)
+      || (std::strlen(namespaceName) >= sizeof(m_Namespace))) {
     return false;
   }
   nvs_handle_t handle = 0;
@@ -32,6 +34,8 @@ bool NvsReplayJournalBackend::begin(const char *namespaceName) {
     return false;
   }
   m_Handle = static_cast<uint32_t>(handle);
+  std::strncpy(m_Namespace, namespaceName, sizeof(m_Namespace));
+  m_Namespace[sizeof(m_Namespace) - 1] = '\0';
   m_Started = true;
   return true;
 }
@@ -40,6 +44,7 @@ void NvsReplayJournalBackend::end() {
   if (m_Started) {
     nvs_close(static_cast<nvs_handle_t>(m_Handle));
     m_Handle = 0;
+    m_Namespace[0] = '\0';
     m_Started = false;
   }
 }
@@ -76,11 +81,26 @@ bool NvsReplayJournalBackend::write(uint8_t slot, const uint8_t *bytes, size_t l
       || (length != JournalReplayStore::RECORD_BYTES)) {
     return false;
   }
-  return nvs_set_blob(static_cast<nvs_handle_t>(m_Handle), slotKey(slot), bytes, length) == ESP_OK;
-}
+  const nvs_handle_t handle = static_cast<nvs_handle_t>(m_Handle);
+  if (nvs_set_blob(handle, slotKey(slot), bytes, length) == ESP_OK
+      && nvs_commit(handle) == ESP_OK) {
+    return true;
+  }
 
-bool NvsReplayJournalBackend::commit() {
-  return m_Started && (nvs_commit(static_cast<nvs_handle_t>(m_Handle)) == ESP_OK);
+  // NVS has no two-key transaction. Reopen after any failed write so a later
+  // operation cannot mistake an uncommitted value on this handle for
+  // persisted journal state. A commit may have persisted a complete or torn
+  // blob before reporting failure. The CRC and other slot decide recovery.
+  nvs_close(handle);
+  m_Handle = 0;
+  nvs_handle_t reopened = 0;
+  if (nvs_open(m_Namespace, NVS_READWRITE, &reopened) != ESP_OK) {
+    m_Namespace[0] = '\0';
+    m_Started = false;
+    return false;
+  }
+  m_Handle = static_cast<uint32_t>(reopened);
+  return false;
 }
 
 }  // namespace OTA

@@ -28,6 +28,9 @@ namespace FakeNvs {
 void reset();
 void reboot();
 void failNextCommit();
+void failNextSet();
+void tearNextSet(size_t length);
+void failNextRead(uint8_t slot);
 void truncateSlot(uint8_t slot, size_t length);
 }  // namespace FakeNvs
 #endif

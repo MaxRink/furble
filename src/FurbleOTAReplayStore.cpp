@@ -196,10 +196,7 @@ bool JournalReplayStore::publish(const Latest &latest, const Record &next) {
   Record encoded = next;
   encoded.slot = target;
   encodeRecord(encoded, bytes.data(), bytes.size());
-  if (!m_Backend.write(target, bytes.data(), bytes.size())) {
-    return false;
-  }
-  return m_Backend.commit();
+  return m_Backend.write(target, bytes.data(), bytes.size());
 }
 
 bool JournalReplayStore::newerGeneration(uint32_t candidate, uint32_t current) {

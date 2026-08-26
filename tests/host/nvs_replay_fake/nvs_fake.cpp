@@ -11,9 +11,11 @@ struct Blob {
 };
 
 std::array<Blob, 2> committed;
-std::array<Blob, 2> staged;
-bool stagedValid = false;
 bool failCommit = false;
+bool failSet = false;
+bool tearSet = false;
+size_t tearLength = 0;
+int failReadSlot = -1;
 
 int slotFor(const char *key) {
   if (std::strcmp(key, "furble_slot0") == 0)
@@ -37,6 +39,10 @@ extern "C" esp_err_t nvs_get_blob(nvs_handle_t handle, const char *key, void *ou
   if ((handle != 1) || (length == nullptr))
     return ESP_FAIL;
   const int slot = slotFor(key);
+  if (slot == failReadSlot) {
+    failReadSlot = -1;
+    return ESP_FAIL;
+  }
   if (slot < 0 || !committed[slot].present)
     return ESP_ERR_NVS_NOT_FOUND;
   if (out == nullptr) {
@@ -59,12 +65,19 @@ extern "C" esp_err_t nvs_set_blob(nvs_handle_t handle,
   const int slot = slotFor(key);
   if (slot < 0)
     return ESP_FAIL;
-  staged[slot].bytes.fill(0);
-  std::memcpy(staged[slot].bytes.data(), value, length);
-  staged[slot].length = length;
-  staged[slot].present = true;
-  stagedValid = true;
-  return ESP_OK;
+  if (failSet) {
+    failSet = false;
+    return ESP_FAIL;
+  }
+  committed[slot].bytes.fill(0);
+  const size_t copied = tearSet ? (tearLength < length ? tearLength : length) : length;
+  std::memcpy(committed[slot].bytes.data(), value, copied);
+  committed[slot].length = length;
+  committed[slot].present = true;
+  const bool torn = tearSet;
+  tearSet = false;
+  tearLength = 0;
+  return torn ? ESP_FAIL : ESP_OK;
 }
 
 extern "C" esp_err_t nvs_commit(nvs_handle_t handle) {
@@ -72,35 +85,44 @@ extern "C" esp_err_t nvs_commit(nvs_handle_t handle) {
     return ESP_FAIL;
   if (failCommit) {
     failCommit = false;
-    stagedValid = false;
     return ESP_FAIL;
   }
-  if (stagedValid) {
-    for (size_t index = 0; index < committed.size(); index++) {
-      if (staged[index].present)
-        committed[index] = staged[index];
-    }
-  }
-  stagedValid = false;
   return ESP_OK;
 }
 
 namespace FakeNvs {
 void reset() {
   committed = {};
-  staged = {};
-  stagedValid = false;
   failCommit = false;
+  failSet = false;
+  tearSet = false;
+  tearLength = 0;
+  failReadSlot = -1;
 }
 
 void reboot() {
-  staged = {};
-  stagedValid = false;
   failCommit = false;
+  failSet = false;
+  tearSet = false;
+  tearLength = 0;
+  failReadSlot = -1;
 }
 
 void failNextCommit() {
   failCommit = true;
+}
+
+void failNextSet() {
+  failSet = true;
+}
+
+void tearNextSet(size_t length) {
+  tearSet = true;
+  tearLength = length;
+}
+
+void failNextRead(uint8_t slot) {
+  failReadSlot = slot;
 }
 
 void truncateSlot(uint8_t slot, size_t length) {

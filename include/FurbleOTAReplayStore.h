@@ -12,12 +12,12 @@ namespace OTA {
 
 /**
  * The two-slot journal stores only the anti-rollback floor and its one
- * outstanding owner.  The backend is deliberately smaller than an NVS or
- * flash API: reads see committed bytes, write stages one inactive slot, and
- * commit publishes that slot atomically.  A power loss before commit must
- * discard the staged write.  Callers serialize every JournalReplayStore
- * operation (including calls made from callbacks); the class is not a mutex
- * and does not make a non-serialized backend safe.
+ * outstanding owner. The backend is deliberately smaller than an NVS or
+ * flash API: reads return persisted bytes and write attempts one complete
+ * inactive slot. A failed or torn write may leave that slot invalid, but it
+ * must never modify the other slot. Callers serialize every
+ * JournalReplayStore operation (including calls made from callbacks); the
+ * class is not a mutex and does not make a non-serialized backend safe.
  */
 class ReplayJournalBackend {
  public:
@@ -29,10 +29,8 @@ class ReplayJournalBackend {
 
   virtual ~ReplayJournalBackend() = default;
   virtual ReadResult read(uint8_t slot, uint8_t *bytes, size_t length) = 0;
-  /** Stage a complete fixed-size slot. It is not durable until commit(). */
+  /** Persist one complete fixed-size slot, or report a failed or torn attempt. */
   virtual bool write(uint8_t slot, const uint8_t *bytes, size_t length) = 0;
-  /** Publish the most recently staged slot, or fail without publishing it. */
-  virtual bool commit() = 0;
 };
 
 /**
@@ -96,8 +94,9 @@ class JournalReplayStore final: public MQTT::ReplayStore {
 };
 
 /**
- * ESP-IDF NVS backend.  NVS set_blob is staged in RAM and nvs_commit is the
- * publication barrier, matching ReplayJournalBackend's host/sim contract.
+ * ESP-IDF NVS backend. Each write updates exactly one NVS blob and calls
+ * nvs_commit before returning. NVS does not provide a transaction spanning
+ * both slots, so recovery relies on inactive-slot ordering and record CRC.
  * The application must initialize NVS before begin().
  */
 class NvsReplayJournalBackend final: public ReplayJournalBackend {
@@ -110,11 +109,11 @@ class NvsReplayJournalBackend final: public ReplayJournalBackend {
 
   ReadResult read(uint8_t slot, uint8_t *bytes, size_t length) override;
   bool write(uint8_t slot, const uint8_t *bytes, size_t length) override;
-  bool commit() override;
 
  private:
   uint32_t m_Handle;
   bool m_Started;
+  char m_Namespace[16];
 };
 
 }  // namespace OTA
