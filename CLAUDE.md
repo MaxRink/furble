@@ -91,8 +91,9 @@ UI change before approving.
   need a 120 ms dwell between SLPIN and SLPOUT; M5GFX does not enforce it.
 - Never hold the Control mutex across a delay. The reconnect cancel deadlock
   bricked the device (buttons and USB dead) because furble disables all M5PM1
-  power button gestures at boot. Rescue: hold the side button while replugging
-  USB until the green LED flashes, then reflash.
+  power button gestures at boot. A retained `DL_LOCK` is cleared only by true
+  PMIC power loss, not USB unplugging or reset. Restore battery power, hold the
+  side button until the green LED flashes, then reflash.
 - M5PM1 (StickS3 PMIC): the first I2C transaction after its idle sleep fails
   and only wakes it. Always retry once. The status LED stays lit at display off
   unless you clear it: `setLedEnLevel(false)` saves PWR_CFG bit 4.

@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,6 +39,7 @@ jobs:
       FURBLE_VERSION: ${{ github.ref_name }}
       FURBLE_TEST: "0"
       PLATFORM: ${{ matrix.platform }}${{ matrix.variant }}
+      ASSET_BASE_URL: firmware/${{ github.sha }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,7 +83,7 @@ jobs:
       - name: Prepare firmware files
         shell: bash
         run: |
-          firmware_dir="$GITHUB_WORKSPACE/site/firmware"
+          firmware_dir="$GITHUB_WORKSPACE/site/$ASSET_BASE_URL"
           platform="$PLATFORM"
           version="$FURBLE_VERSION"
           mkdir -p "$firmware_dir"
@@ -100,7 +100,7 @@ jobs:
         working-directory: web-installer
         env:
           VERSION: ${{ github.ref_name }}
-          ASSET_BASE_URL: firmware
+          ASSET_BASE_URL: ${{ env.ASSET_BASE_URL }}
         run: |
           python generate-manifest.py > \
             "$GITHUB_WORKSPACE/site/manifest_${PLATFORM}.json"
@@ -135,7 +135,12 @@ jobs:
           merge-multiple: true
 
       - name: Add installer page
-        run: cp web-installer/index.html site/index.html
+        run: |
+          cp web-installer/index.html site/index.html
+          cp web-installer/pmic-preflight.js site/pmic-preflight.js
+
+      - name: Validate installer assets
+        run: python tools/verify_web_installer.py site
 
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5

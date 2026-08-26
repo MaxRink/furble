@@ -80,6 +80,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   running, so CI stays green while the gap is on record. When the fix lands the
   value matches and it prints `XPASS`; promote that line back to `assert` in the
   fix PR so the guard starts enforcing.
+- The StickS3 PMIC model retains the watchdog and download-lock registers across
+  `M5PM1::begin()`, just as the PMIC is independent of an ESP32 reset.
+  `platform.download_lock` exposes the long-press recovery state so a scenario
+  can prove that firmware never leaves manual download recovery locked.
 - `assert-eventually <timeout-ms> <key> <value>` polls a query using a bounded
   monotonic wall-clock timeout while yielding to background simulator tasks.
   It is for cross-task state convergence after virtual time has advanced, not

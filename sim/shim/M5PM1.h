@@ -11,7 +11,52 @@ inline constexpr int M5PM1_ERROR = -1;
 inline constexpr uint8_t M5PM1_GPIO_NUM_0 = 0;
 
 class M5PM1 {
+  struct PersistentState {
+    PersistentState()
+        : downloadLocked(false),
+          watchdogArmed(false),
+          watchdogExpired(false),
+          watchdogSeconds(0),
+          watchdogDeadline(0) {}
+
+    bool downloadLocked;
+    bool watchdogArmed;
+    bool watchdogExpired;
+    uint8_t watchdogSeconds;
+    uint32_t watchdogDeadline;
+  };
+
+  struct Faults {
+    Faults()
+        : failSetWatchdog(false),
+          failReadWatchdog(false),
+          failSetDownloadLock(false),
+          failReadDownloadLock(false) {}
+
+    bool failSetWatchdog;
+    bool failReadWatchdog;
+    bool failSetDownloadLock;
+    bool failReadDownloadLock;
+  };
+
  public:
+  /** Reset the retained PMIC model between independent host tests. */
+  static void resetPersistentStateForTest(void) {
+    m_Persistent = PersistentState();
+    m_Faults = Faults();
+  }
+
+  /** Inject one-shot I2C failures for negative-path host tests. */
+  static void failNextForTest(bool set_watchdog,
+                              bool read_watchdog,
+                              bool set_download_lock,
+                              bool read_download_lock) {
+    m_Faults.failSetWatchdog = set_watchdog;
+    m_Faults.failReadWatchdog = read_watchdog;
+    m_Faults.failSetDownloadLock = set_download_lock;
+    m_Faults.failReadDownloadLock = read_download_lock;
+  }
+
   int begin(void *) {
     m_Shutdown = false;
     m_Idle = true;
@@ -28,26 +73,76 @@ class M5PM1 {
   }
 
   int setDownloadLock(bool value) {
-    return access([this, value]() { m_DownloadLocked = value; });
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failSetDownloadLock)) {
+      return M5PM1_ERROR;
+    }
+    return access([value]() { m_Persistent.downloadLocked = value; });
+  }
+
+  int getDownloadLock(bool *value) {
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failReadDownloadLock)) {
+      return M5PM1_ERROR;
+    }
+    return access([value]() {
+      if (value != nullptr) {
+        *value = m_Persistent.downloadLocked;
+      }
+    });
   }
 
   int wdtSet(uint8_t timeout_seconds) {
-    return access([this, timeout_seconds]() {
-      m_WatchdogSeconds = timeout_seconds;
-      m_WatchdogArmed = timeout_seconds != 0;
-      m_WatchdogExpired = false;
-      m_WatchdogDeadline = Furble::Sim::clockMillis() + timeout_seconds * 1000U;
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failSetWatchdog)) {
+      return M5PM1_ERROR;
+    }
+    return access([timeout_seconds]() {
+      m_Persistent.watchdogSeconds = timeout_seconds;
+      m_Persistent.watchdogArmed = timeout_seconds != 0;
+      m_Persistent.watchdogExpired = false;
+      m_Persistent.watchdogDeadline = Furble::Sim::clockMillis() + timeout_seconds * 1000U;
     });
   }
 
   int wdtFeed(void) {
-    return access([this]() {
-      if (m_WatchdogArmed
-          && Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(), m_WatchdogDeadline)) {
-        m_WatchdogExpired = true;
+    return access([]() {
+      if (m_Persistent.watchdogArmed
+          && Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(),
+                                               m_Persistent.watchdogDeadline)) {
+        m_Persistent.watchdogExpired = true;
         return;
       }
-      m_WatchdogDeadline = Furble::Sim::clockMillis() + m_WatchdogSeconds * 1000U;
+      m_Persistent.watchdogDeadline =
+          Furble::Sim::clockMillis() + m_Persistent.watchdogSeconds * 1000U;
+    });
+  }
+
+  int wdtGetCount(uint8_t *count) {
+    if (m_Idle) {
+      return access([]() {});
+    }
+    if (consumeFault(m_Faults.failReadWatchdog)) {
+      return M5PM1_ERROR;
+    }
+    return access([count]() {
+      if (count == nullptr) {
+        return;
+      }
+      if (!m_Persistent.watchdogArmed
+          || Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(),
+                                               m_Persistent.watchdogDeadline)) {
+        *count = 0;
+        return;
+      }
+      const uint32_t remaining = m_Persistent.watchdogDeadline - Furble::Sim::clockMillis();
+      *count = static_cast<uint8_t>(std::min<uint32_t>(255, (remaining + 999) / 1000));
     });
   }
 
@@ -61,7 +156,7 @@ class M5PM1 {
   int shutdown(void) {
     return access([this]() {
       m_Shutdown = true;
-      m_WatchdogArmed = false;
+      m_Persistent.watchdogArmed = false;
       m_TimerArmed = false;
     });
   }
@@ -98,10 +193,10 @@ class M5PM1 {
   }
 
   bool watchdogExpired(void) const {
-    return m_WatchdogExpired
-           || (m_WatchdogArmed
+    return m_Persistent.watchdogExpired
+           || (m_Persistent.watchdogArmed
                && Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(),
-                                                    m_WatchdogDeadline));
+                                                    m_Persistent.watchdogDeadline));
   }
 
   bool timerExpired(void) const {
@@ -111,7 +206,17 @@ class M5PM1 {
 
   bool isShutdown(void) const { return m_Shutdown; }
 
+  bool downloadRecoveryUnlocked(void) const { return !m_Persistent.downloadLocked; }
+
  private:
+  static bool consumeFault(bool &fault) {
+    if (!fault) {
+      return false;
+    }
+    fault = false;
+    return true;
+  }
+
   template <typename Callback>
   int access(Callback callback) {
     // The first transaction after the PMIC has entered idle only wakes it.
@@ -131,14 +236,12 @@ class M5PM1 {
   bool m_Shutdown = false;
   bool m_SingleResetDisabled = false;
   bool m_DoubleOffDisabled = false;
-  bool m_DownloadLocked = false;
-  bool m_WatchdogArmed = false;
-  bool m_WatchdogExpired = false;
-  uint8_t m_WatchdogSeconds = 0;
-  uint32_t m_WatchdogDeadline = 0;
   bool m_TimerArmed = false;
   uint32_t m_TimerDeadline = 0;
   uint32_t m_BeginMillis = 0;
+
+  inline static PersistentState m_Persistent;
+  inline static Faults m_Faults;
 };
 
 #endif

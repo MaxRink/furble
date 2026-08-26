@@ -48,6 +48,7 @@ About page and exposed through companion BLE Device Information.
 | `feedback` | `feedback test <shutter\|countdown\|connect\|disconnect\|battery>`. |
 | `log` | `log <tag> <level>`, `*` sets all tags. |
 | `debug` | Dump internal state, see below. |
+| `flash` | `prepare` disarms the StickS3 PMIC watchdog and verifies download recovery; `cancel` restores it. |
 | `reboot` | Restart the device. |
 | `help` | List every command. |
 
@@ -107,6 +108,26 @@ the web installer Capture BT debug dump panel.
 
 `debug <target>` dumps internal state for one subsystem: `control`,
 `camera [idx]`, `ble`, `heap`, `tasks`, `power`, `gps`, `settings`, or `all`.
+
+## flash preflight
+
+The StickS3 PMIC watchdog continues running while the ESP32 ROM receives a
+firmware image. At the normal ten-second timeout it can reset the USB device in
+the middle of a slow upload. On a responsive developer build, run the guarded
+preflight and let it start PlatformIO only after the PMIC confirms both safety
+conditions:
+
+```sh
+python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
+  --env m5stick-s3-debug
+```
+
+The preflight accepts no credentials and prints no secret data. If it cannot
+obtain all three acknowledgements (`flash.ready`, a disabled watchdog, and an
+unlocked download path), it refuses to flash. Use the physical long-press
+recovery procedure in the README when the running application is wedged. If an
+upload is cancelled after `flash prepare`, reconnect to the console and run
+`flash cancel`, or reboot so normal startup re-arms the watchdog.
 
 ## Related references
 

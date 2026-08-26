@@ -139,6 +139,13 @@ interface.
 3. Select the device model and click `Install`.
 4. Approve the serial port when the browser asks.
 
+For M5StickS3, the installer first opens the running developer-console image
+and requires all PMIC safety acknowledgements before it offers the firmware
+port. Approve the same port again to continue flashing. If the running image
+does not answer, follow the physical battery-power-loss recovery procedure
+shown by the installer. This prevents a retained PMIC watchdog or download
+lock from making a serial upload unsafe.
+
 If the installer offers to erase the device, decline to keep existing settings
 and paired cameras. Accept the erase when starting from a clean device.
 
@@ -258,13 +265,34 @@ and reboot before attaching a JTAG debugger, because halting the CPU stops the w
 
 If the M5StickS3 is powered off and will not turn on, single click the side button.
 
-If the device is wedged, the screen is dark, and USB is not enumerating:
+If the device is wedged, the screen is dark, and USB is not enumerating, first
+try the PMIC-safe uploader below while the application can still answer. USB
+unplugging alone is not a PMIC reset: an already-set `DL_LOCK` survives an ESP
+reset, a PMIC watchdog reset, and removal of USB power while the battery is
+connected. If the lock is already set and the application cannot clear it, the
+device needs true PMIC power loss (battery disconnect/depletion or service)
+before the side-button recovery can work:
 
-1. Unplug the USB cable.
-2. Press and hold the side button for about two seconds.
+1. Remove battery power or have the battery fully depleted/service-disconnected.
+2. Restore battery power, then press and hold the side button for about two seconds.
 3. When the green LED inside the device flashes, release the button.
-4. Plug the USB cable back in. The port should enumerate.
+4. Connect USB. The port should enumerate in download mode.
 5. Reflash with `pio run -e m5stick-s3 -t upload`.
+
+For a responsive developer-console build, use the PMIC-safe uploader. It
+disarms the external watchdog before entering ROM download mode, verifies that
+the long-press recovery path is unlocked, and starts PlatformIO only after both
+checks pass:
+
+```sh
+python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
+  --env m5stick-s3-debug
+```
+
+If preflight cannot reach the application, it refuses to flash and prints the
+manual recovery steps above. A cancelled preflight should be followed by
+`flash cancel` on the console, or by a reboot, so normal watchdog protection is
+restored.
 
 ## Usage
 
