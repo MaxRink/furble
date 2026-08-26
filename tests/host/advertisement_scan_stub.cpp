@@ -2,6 +2,11 @@
 
 namespace Furble {
 
+class Scan::CallbackProxy {};
+
+Scan::Scan() = default;
+Scan::~Scan() = default;
+
 Scan &Scan::getInstance(void) {
   static Scan instance;
   return instance;

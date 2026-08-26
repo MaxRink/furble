@@ -389,6 +389,8 @@ class NimBLEUtils {
 
 class NimBLEDevice {
  public:
+  static NimBLEServer *createServer();
+  static NimBLEScan *getScan();
   static void init(const std::string &name);
   static bool setPower(int8_t power);
   static bool setPower(int8_t power, NimBLETxPowerType type);
