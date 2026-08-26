@@ -62,6 +62,27 @@ add_executable(time_keeper_policy_test
 target_include_directories(time_keeper_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(time_keeper_policy_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 
+# Exercise the production TimeKeeper and Preferences wrapper against the
+# durable in-memory NVS implementation. The clock and RTC are controllable so
+# reboot, shutdown, and correction-storm wear budgets are deterministic.
+set(TIME_KEEPER_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/time_keeper_stubs)
+add_executable(time_keeper_persistence_test
+               time_keeper_persistence_test.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp
+               ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(time_keeper_persistence_test BEFORE PRIVATE
+                           ${TIME_KEEPER_TEST_STUB_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/settings_stubs
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(time_keeper_persistence_test PRIVATE FURBLE_SIM)
+target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werror
+                                                            -Wno-unused-parameter
+                                                            -Wno-vla-extension)
+
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test
@@ -168,6 +189,7 @@ set(SETTINGS_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/settings_stubs)
 add_executable(settings_nvs_roundtrip_test
                settings_nvs_roundtrip_test.cpp
                settings_nvs_stub.cpp
+               settings_platform_stub.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(settings_nvs_roundtrip_test BEFORE PRIVATE
@@ -561,6 +583,7 @@ if(BUILD_TESTING)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
+  add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
 

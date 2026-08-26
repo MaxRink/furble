@@ -21,6 +21,7 @@ struct Handle {
 std::map<std::string, std::map<std::string, Value>> storage;
 std::map<nvs_handle_t, Handle> handles;
 nvs_handle_t next_handle = 1;
+size_t commit_count = 0;
 
 bool validKey(const char *key) {
   return key != nullptr && key[0] != '\0' && std::strlen(key) <= 15;
@@ -109,7 +110,11 @@ void nvs_close(nvs_handle_t handle) {
 }
 
 esp_err_t nvs_commit(nvs_handle_t handle) {
-  return getHandle(handle) == nullptr ? ESP_ERR_NVS_INVALID_HANDLE : ESP_OK;
+  if (getHandle(handle) == nullptr) {
+    return ESP_ERR_NVS_INVALID_HANDLE;
+  }
+  commit_count++;
+  return ESP_OK;
 }
 
 esp_err_t nvs_erase_all(nvs_handle_t handle) {
@@ -303,6 +308,7 @@ void nvs_test_reset(void) {
   storage.clear();
   handles.clear();
   next_handle = 1;
+  commit_count = 0;
 }
 
 nvs_test_value_type_t nvs_test_value_type(const char *name, const char *key) {
@@ -315,6 +321,10 @@ nvs_test_value_type_t nvs_test_value_type(const char *name, const char *key) {
   }
   const auto value_it = namespace_it->second.find(key);
   return value_it == namespace_it->second.end() ? NVS_TEST_INVALID : value_it->second.type;
+}
+
+size_t nvs_test_commit_count(void) {
+  return commit_count;
 }
 
 }  // extern "C"

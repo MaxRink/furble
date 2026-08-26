@@ -18,6 +18,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
+- `FurbleTimeKeeper`: owns one versioned CRC-protected wall-clock blob. Normal
+  synchronization writes are limited to four per day and no-RTC shutdown
+  checkpoints use a separate three-hour age budget, for a hard maximum of
+  eight per day. Keep every restart and power-off path on the shared flush
+  helper and never add per-tick NVS writes.
 - `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap. The
   parser is owned by GPS and guarded by its mutex; UI and console consumers use
   `getStatusSnapshot()` and must not retain parser references. GPX logging only
