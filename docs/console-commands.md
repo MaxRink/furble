@@ -94,7 +94,7 @@ every setting, its default, and when it applies.
 Calendar time is retained across power loss by the backed RTC on StickC,
 StickC-Plus, and Core2 when its backup supply is healthy. StickS3 has no
 battery-backed calendar RTC, so it restores the last NVS value with an explicit
-  uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
+uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
 ## shutter and focus
 

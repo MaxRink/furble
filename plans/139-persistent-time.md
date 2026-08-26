@@ -51,11 +51,13 @@ source, and its monotonic observation point.
 - Lower-priority sources cannot displace a stronger source. Large backward
   corrections are rejected unless a stronger source supplies them.
 - NVS is written for the first valid source, a meaningful correction, or an
-  age-qualified no-RTC shutdown checkpoint during restart/power-off. Normal
+  age-qualified shutdown checkpoint when no battery-backed calendar RTC is
+  available. An unbacked RTC remains useful across soft resets but does not
+  suppress the power-loss checkpoint. Normal
   sync writes have a six-hour wear guard, which permits at most four logical
   background commits per day. Shutdown checkpoints have a three-and-a-half-hour
-  guard, which keeps the combined hard bound strict in every inclusive rolling
-  24-hour window. GPS service ticks do not write flash.
+  guard, which keeps the combined hard bound to eight writes in every inclusive
+  rolling 24-hour window. GPS service ticks do not write flash.
 - Once running, uncertainty grows at a conservative 100 ppm bound for the
   monotonic oscillator, not at one millisecond per elapsed millisecond. A
   restored NVS record still carries the one-hour unknown-outage penalty, so it

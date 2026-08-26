@@ -23,6 +23,16 @@ void bootWithoutRtc(void) {
   Furble::TimeKeeper::init();
 }
 
+void bootWithUnbackedRtc(void) {
+  M5.board = m5::board_t::board_M5StickS3;
+  M5.Rtc.enabled = true;
+  M5.Rtc.voltageLow = false;
+  M5.Rtc.value.date = {2024, 1, 1};
+  M5.Rtc.value.time = {12, 0, 0};
+  Furble::TimeKeeper::getInstance().resetForTest();
+  Furble::TimeKeeper::init();
+}
+
 bool readDurable(Furble::TimeSample &sample) {
   Furble::Preferences preferences;
   if (!preferences.begin("furble", true) || !preferences.isKey("time_state")) {
@@ -155,6 +165,22 @@ int main() {
     }
     CHECK(inWindow <= 8);
   }
+
+  // RTC availability alone does not imply retention across power loss. An
+  // unbacked calendar RTC still needs the same age-qualified NVS checkpoints.
+  // The old policy wrote the first record, then stopped forever because it
+  // checked availability instead of the backed capability.
+  nvs_test_reset();
+  setTimeMs(0);
+  bootWithUnbackedRtc();
+  CHECK(keeper.status().rtc_available);
+  CHECK(!keeper.status().rtc_battery_backed);
+  setTimeMs(Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
+  keeper.flush();
+  CHECK(nvs_test_commit_count() == 1);
+  setTimeMs(2 * Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
+  keeper.flush();
+  CHECK(nvs_test_commit_count() == 2);
 
   // A failed setter never reaches durable storage. A simulated reboot must
   // therefore come up without a time record.

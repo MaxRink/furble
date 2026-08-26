@@ -313,14 +313,18 @@ void TimeKeeper::flush(void) {
   // checkpoint. RTC register writes have no flash wear concern, so they always
   // bypass the normal RTC interval.
   writeRtc(final.epoch_us, final.monotonic_ms, true);
-  const bool noCalendarRtc = !g_RtcAvailable;
+  // An available RTC is not necessarily retained through a full power loss.
+  // Only a known battery-backed calendar RTC can replace the bounded NVS
+  // checkpoint policy. This keeps an unbacked RTC useful across soft resets
+  // without silently losing wall time when its rail disappears.
+  const bool needsNvsCheckpoint = !g_RtcBatteryBacked;
   const bool checkpointDue = !g_LastNvsWriteValid
                              || (final.monotonic_ms >= g_LastNvsWriteMonotonicMs
                                  && final.monotonic_ms - g_LastNvsWriteMonotonicMs
                                         >= TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
   const bool meaningful = TimeKeeperPolicy::shouldPersist(g_HasPersisted ? &g_Persisted : nullptr,
                                                           final, final.monotonic_ms);
-  if ((noCalendarRtc && checkpointDue) || meaningful) {
+  if ((needsNvsCheckpoint && checkpointDue) || meaningful) {
     (void)savePersisted(final, true);
   }
 }
