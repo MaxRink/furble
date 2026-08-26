@@ -43,11 +43,18 @@ endif()
 # console and esp_driver_usb_serial_jtag are only referenced by the developer
 # console. Nothing references them without FURBLE_CONSOLE, so the linker leaves
 # them out and the release binaries are unchanged.
+set(furble_private_requires
+    console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc)
+if(FURBLE_ETHERNET)
+  list(APPEND furble_private_requires
+       esp_driver_gpio esp_driver_spi esp_eth esp_event esp_netif)
+endif()
+
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES console esp_driver_gpio esp_driver_rmt esp_driver_sdspi esp_driver_spi esp_driver_usb_serial_jtag esp_eth esp_event esp_netif esp_pm fatfs sdmmc)
+                         PRIV_REQUIRES ${furble_private_requires})
 else()
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES console esp_driver_gpio esp_driver_rmt esp_driver_sdspi esp_driver_spi esp_driver_usb_serial_jtag esp_eth esp_event esp_netif esp_pm fatfs sdmmc
+                         PRIV_REQUIRES ${furble_private_requires}
                          REQUIRES icons)
 endif()

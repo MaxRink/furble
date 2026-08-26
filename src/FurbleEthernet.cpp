@@ -154,12 +154,12 @@ class EspEthTransport final: public Ethernet::Transport {
     busConfig.quadhd_io_num = -1;
 
     esp_err_t err = gpio_install_isr_service(0);
-    if (err == ESP_OK) {
-      m_GpioIsrServiceOwned = true;
-    } else if (err != ESP_ERR_INVALID_STATE) {
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
       logError("GPIO ISR service installation", err);
       return false;
     }
+    // This is a process-global service. Leave it installed so another
+    // subsystem can safely add a per-pin handler while Ethernet is active.
 
     err = spi_bus_initialize(SPI2_HOST, &busConfig, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
@@ -328,10 +328,6 @@ class EspEthTransport final: public Ethernet::Transport {
       spi_bus_free(SPI2_HOST);
       m_SpiBusInitialized = false;
     }
-    if (m_GpioIsrServiceOwned) {
-      gpio_uninstall_isr_service();
-      m_GpioIsrServiceOwned = false;
-    }
     std::lock_guard<std::mutex> lock(m_CallbackMutex);
     m_Callback = nullptr;
   }
@@ -392,7 +388,6 @@ class EspEthTransport final: public Ethernet::Transport {
   esp_event_handler_instance_t m_EthHandlerInstance = nullptr;
   esp_event_handler_instance_t m_IpGotHandlerInstance = nullptr;
   esp_event_handler_instance_t m_IpLostHandlerInstance = nullptr;
-  bool m_GpioIsrServiceOwned = false;
 };
 
 #endif
