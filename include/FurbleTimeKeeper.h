@@ -36,6 +36,11 @@ constexpr uint32_t NVS_RESTORE_UNCERTAINTY_MS = 60U * 60U * 1000U;
 constexpr uint32_t UNCERTAINTY_GROWTH_PPM = 100;
 constexpr uint32_t BACKWARD_TOLERANCE_MS = 5000;
 constexpr uint32_t MEANINGFUL_CORRECTION_MS = 60U * 1000U;
+// Normal synchronization writes are limited to four per 24 hours. A graceful
+// shutdown may add a checkpoint after three hours, keeping the hard bound at
+// eight writes per 24 hours even when shutdowns and corrections alternate.
+constexpr uint64_t NVS_NORMAL_MIN_WRITE_INTERVAL_MS = 6ULL * 60ULL * 60ULL * 1000ULL;
+constexpr uint64_t NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS = 3ULL * 60ULL * 60ULL * 1000ULL;
 
 uint8_t sourcePriority(TimeSource source);
 bool valid(const TimeSample &sample);
@@ -98,6 +103,11 @@ class TimeKeeper {
 
   /** Persist a final coherent value before reset or power-off. */
   void flush(void);
+
+#if defined(FURBLE_SIM)
+  /** Reset process state while retaining the simulated NVS store. */
+  void resetForTest(void);
+#endif
 
  private:
   TimeKeeper() = default;

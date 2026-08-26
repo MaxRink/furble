@@ -5,6 +5,7 @@
 #include <mutex>
 
 #include <M5Unified.h>
+#include <esp_log.h>
 #include <esp_timer.h>
 #include <sys/time.h>
 
@@ -17,8 +18,9 @@ namespace {
 constexpr const char *LOG_TAG = "time";
 constexpr const char *NVS_KEY = "time_state";
 constexpr const char *NVS_NAMESPACE = FURBLE_STR;
-constexpr uint64_t NVS_MIN_WRITE_INTERVAL_MS = 5ULL * 60ULL * 1000ULL;
-constexpr uint64_t RTC_MIN_WRITE_INTERVAL_MS = NVS_MIN_WRITE_INTERVAL_MS;
+// RTC register writes do not consume NVS flash and retain their original
+// five-minute synchronization interval.
+constexpr uint64_t RTC_MIN_WRITE_INTERVAL_MS = 5ULL * 60ULL * 1000ULL;
 
 std::mutex g_Mutex;
 bool g_Initialized = false;
@@ -144,9 +146,24 @@ bool loadPersisted(TimeSample &sample) {
   return TimeKeeperPolicy::valid(sample);
 }
 
-bool savePersisted(const TimeSample &sample, bool force) {
-  if (!force && g_LastNvsWriteValid
-      && sample.monotonic_ms - g_LastNvsWriteMonotonicMs < NVS_MIN_WRITE_INTERVAL_MS) {
+bool samePersistedValue(const TimeSample &sample) {
+  return g_HasPersisted && g_Persisted.epoch_us == sample.epoch_us
+         && g_Persisted.uncertainty_ms == sample.uncertainty_ms
+         && g_Persisted.source == sample.source;
+}
+
+bool savePersisted(const TimeSample &sample, bool shutdownCheckpoint) {
+  const uint64_t minimum = shutdownCheckpoint
+                               ? TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS
+                               : TimeKeeperPolicy::NVS_NORMAL_MIN_WRITE_INTERVAL_MS;
+  if (g_LastNvsWriteValid
+      && (sample.monotonic_ms < g_LastNvsWriteMonotonicMs
+          || sample.monotonic_ms - g_LastNvsWriteMonotonicMs < minimum)) {
+    return false;
+  }
+  // A checkpoint can be requested repeatedly by several shutdown paths. Do
+  // not consume an NVS commit when the encoded value is unchanged.
+  if (samePersistedValue(sample)) {
     return false;
   }
   std::array<uint8_t, 64> buffer = {};
@@ -191,6 +208,11 @@ void TimeKeeper::init(void) {
   g_HasPersisted = loadPersisted(persisted);
   if (g_HasPersisted) {
     g_Persisted = persisted;
+    // The persisted record has no trustworthy powered-off duration. Start a
+    // new monotonic age budget at restore, then checkpoint only after the
+    // device has actually been running for the bounded interval.
+    g_LastNvsWriteMonotonicMs = persisted.monotonic_ms;
+    g_LastNvsWriteValid = true;
   }
 
   TimeSample rtc = {};
@@ -287,14 +309,38 @@ void TimeKeeper::flush(void) {
   TimeSample final = g_Current;
   final.epoch_us = TimeKeeperPolicy::predictedEpochUs(g_Current, monotonicMs());
   final.monotonic_ms = monotonicMs();
-  // Unlike normal synchronization ticks, an orderly restart or power-off is
-  // the last chance to commit the calendar RTC. RTC register writes have no
-  // flash wear concern, so the shutdown path bypasses the periodic guard.
+  // An orderly restart or power-off is the last chance to commit a no-RTC
+  // checkpoint. RTC register writes have no flash wear concern, so they always
+  // bypass the normal RTC interval.
   writeRtc(final.epoch_us, final.monotonic_ms, true);
-  if (TimeKeeperPolicy::shouldPersist(g_HasPersisted ? &g_Persisted : nullptr, final,
-                                      final.monotonic_ms)) {
+  const bool noCalendarRtc = !g_RtcAvailable;
+  const bool checkpointDue = !g_LastNvsWriteValid
+                             || (final.monotonic_ms >= g_LastNvsWriteMonotonicMs
+                                 && final.monotonic_ms - g_LastNvsWriteMonotonicMs
+                                        >= TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
+  const bool meaningful = TimeKeeperPolicy::shouldPersist(g_HasPersisted ? &g_Persisted : nullptr,
+                                                          final, final.monotonic_ms);
+  if ((noCalendarRtc && checkpointDue) || meaningful) {
     (void)savePersisted(final, true);
   }
 }
+
+#if defined(FURBLE_SIM)
+void TimeKeeper::resetForTest(void) {
+  std::lock_guard<std::mutex> lock(g_Mutex);
+  g_Initialized = false;
+  g_RtcAvailable = false;
+  g_RtcBatteryBacked = false;
+  g_HasCurrent = false;
+  g_HasPersisted = false;
+  g_Current = {};
+  g_Persisted = {};
+  g_NvsWriteCount = 0;
+  g_LastNvsWriteValid = false;
+  g_LastNvsWriteMonotonicMs = 0;
+  g_LastRtcWriteValid = false;
+  g_LastRtcWriteMonotonicMs = 0;
+}
+#endif
 
 }  // namespace Furble
