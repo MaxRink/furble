@@ -38,6 +38,7 @@ class ReproPrefixMapTest(unittest.TestCase):
     patched = patch_text(PREFIX_MAP)
     self.assertIn("furble_project_real_dir", patched)
     self.assertIn("furble_source_real_dir", patched)
+    self.assertIn("furble_build_real_dir", patched)
     self.assertEqual(patch_text(patched), patched)
 
   def test_marker_alone_or_incomplete_patch_fails_closed(self):
