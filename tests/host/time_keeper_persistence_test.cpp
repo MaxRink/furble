@@ -1,8 +1,10 @@
+#include <array>
 #include <cstdint>
 #include <cstdio>
 
 #include "FurbleTimeKeeper.h"
 #include "M5Unified.h"
+#include "Preferences.h"
 #include "nvs.h"
 
 namespace {
@@ -18,6 +20,20 @@ void bootWithoutRtc(void) {
   M5.Rtc.enabled = false;
   Furble::TimeKeeper::getInstance().resetForTest();
   Furble::TimeKeeper::init();
+}
+
+bool readDurable(Furble::TimeSample &sample) {
+  Furble::Preferences preferences;
+  if (!preferences.begin("furble", true) || !preferences.isKey("time_state")) {
+    preferences.end();
+    return false;
+  }
+  const size_t length = preferences.getBytesLength("time_state");
+  std::array<uint8_t, 64> buffer = {};
+  const bool read =
+      length <= buffer.size() && preferences.get("time_state", buffer.data(), length) == length;
+  preferences.end();
+  return read && Furble::TimeKeeperPolicy::decode(buffer.data(), length, sample);
 }
 
 int check(bool condition, const char *message, int line) {
@@ -61,6 +77,9 @@ int main() {
   setTimeMs(3ULL * 60ULL * 60ULL * 1000ULL);
   keeper.flush();
   CHECK(nvs_test_commit_count() == 2);
+  Furble::TimeSample durable = {};
+  CHECK(readDurable(durable));
+  CHECK(durable.epoch_us == epoch + 3ULL * 60ULL * 60ULL * 1000000ULL);
   keeper.flush();
   CHECK(nvs_test_commit_count() == 2);
 
@@ -106,6 +125,32 @@ int main() {
     keeper.flush();
   }
   CHECK(nvs_test_commit_count() <= 8);
+
+  // A failed setter never reaches durable storage. A simulated reboot must
+  // therefore come up without a time record.
+  nvs_test_reset();
+  setTimeMs(0);
+  bootWithoutRtc();
+  nvs_test_fail_set_on(1);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
+  CHECK(nvs_test_commit_count() == 0);
+  setTimeMs(0);
+  bootWithoutRtc();
+  CHECK(!keeper.status().valid);
+
+  // A power cut during commit discards staged data as the Preferences handle
+  // closes. The next boot sees no partial time blob, then a retry commits it.
+  nvs_test_reset();
+  setTimeMs(0);
+  bootWithoutRtc();
+  nvs_test_fail_commit_on(1);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
+  CHECK(nvs_test_commit_count() == 0);
+  setTimeMs(0);
+  bootWithoutRtc();
+  CHECK(!keeper.status().valid);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
+  CHECK(nvs_test_commit_count() == 1);
 
   // The blob remains one versioned record. A second service instance can
   // restore it through the real Preferences wrapper and continue its budget.
