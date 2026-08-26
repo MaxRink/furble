@@ -1,6 +1,7 @@
 #include "FurbleTimeKeeper.h"
 
 #include <cstring>
+#include <limits>
 
 namespace Furble::TimeKeeperPolicy {
 namespace {
@@ -67,29 +68,59 @@ uint8_t sourcePriority(TimeSource source) {
 }
 
 bool valid(const TimeSample &sample) {
-  const uint64_t seconds = sample.epoch_us / 1000000ULL;
-  return sample.source != TimeSource::NONE && seconds >= MIN_EPOCH_SECONDS
-         && seconds < MAX_EPOCH_SECONDS && sample.uncertainty_ms <= MAX_UNCERTAINTY_MS;
+  return sample.source != TimeSource::NONE && sample.source <= TimeSource::NTP
+         && sample.epoch_us >= MIN_EPOCH_SECONDS * 1000000ULL
+         && sample.epoch_us < MAX_EPOCH_SECONDS * 1000000ULL
+         && sample.uncertainty_ms <= MAX_UNCERTAINTY_MS;
+}
+
+uint32_t predictedUncertaintyMs(const TimeSample &sample, uint64_t monotonic_ms) {
+  if (monotonic_ms <= sample.monotonic_ms) {
+    return sample.uncertainty_ms;
+  }
+  const uint64_t elapsed = monotonic_ms - sample.monotonic_ms;
+  const uint64_t growth =
+      elapsed > (std::numeric_limits<uint64_t>::max() - 999999ULL) / UNCERTAINTY_GROWTH_PPM
+          ? std::numeric_limits<uint64_t>::max()
+          : (elapsed * UNCERTAINTY_GROWTH_PPM + 999999ULL) / 1000000ULL;
+  if (growth >= MAX_UNCERTAINTY_MS
+      || sample.uncertainty_ms > MAX_UNCERTAINTY_MS - growth) {
+    return MAX_UNCERTAINTY_MS;
+  }
+  return sample.uncertainty_ms + static_cast<uint32_t>(growth);
+}
+
+bool validAt(const TimeSample &sample, uint64_t monotonic_ms) {
+  return valid(sample) && predictedUncertaintyMs(sample, monotonic_ms) < MAX_UNCERTAINTY_MS;
 }
 
 uint64_t predictedEpochUs(const TimeSample &sample, uint64_t monotonic_ms) {
   if (monotonic_ms <= sample.monotonic_ms) {
     return sample.epoch_us;
   }
-  return sample.epoch_us + (monotonic_ms - sample.monotonic_ms) * 1000ULL;
+  const uint64_t elapsed = monotonic_ms - sample.monotonic_ms;
+  const uint64_t maxDelta = std::numeric_limits<uint64_t>::max() - sample.epoch_us;
+  if (elapsed > maxDelta / 1000ULL) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return sample.epoch_us + elapsed * 1000ULL;
 }
 
 bool shouldAccept(const TimeSample *current, const TimeSample &candidate, uint64_t monotonic_ms) {
   if (!valid(candidate)) {
     return false;
   }
-  if (current == nullptr || !valid(*current)) {
+  if (current == nullptr || !validAt(*current, monotonic_ms)) {
     return true;
   }
 
   const uint64_t expected = predictedEpochUs(*current, monotonic_ms);
-  const int64_t correction_ms =
-      static_cast<int64_t>(candidate.epoch_us / 1000ULL) - static_cast<int64_t>(expected / 1000ULL);
+  const uint64_t expected_ms_unsigned = expected / 1000ULL;
+  const int64_t expected_ms =
+      expected_ms_unsigned > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())
+          ? std::numeric_limits<int64_t>::max()
+          : static_cast<int64_t>(expected_ms_unsigned);
+  const int64_t correction_ms = static_cast<int64_t>(candidate.epoch_us / 1000ULL) - expected_ms;
   // A lower-priority source cannot move an established wall clock backwards.
   // Higher-priority sources may correct a stale fallback, but never accept a
   // large reverse jump from a source of equal or lower authority.
@@ -109,7 +140,7 @@ bool shouldPersist(const TimeSample *persisted,
   if (!valid(candidate)) {
     return false;
   }
-  if (persisted == nullptr || !valid(*persisted)) {
+  if (persisted == nullptr || !validAt(*persisted, monotonic_ms)) {
     return true;
   }
   if (sourcePriority(candidate.source) > sourcePriority(persisted->source)) {
@@ -146,6 +177,7 @@ bool decode(const uint8_t *buffer, size_t length, TimeSample &sample) {
   std::memcpy(&record, buffer, sizeof(record));
   if (record.magic != RECORD_MAGIC || record.version != RECORD_VERSION
       || record.size != sizeof(record)
+      || record.reserved[0] != 0 || record.reserved[1] != 0 || record.reserved[2] != 0
       || crc32(reinterpret_cast<const uint8_t *>(&record), sizeof(record) - sizeof(record.crc))
              != record.crc) {
     return false;
@@ -172,6 +204,9 @@ bool utcToEpochUs(uint16_t year,
   }
   const uint64_t days = daysFromCivil(year, month, day);
   const uint64_t seconds = days * 86400ULL + hour * 3600ULL + minute * 60ULL + second;
+  if (seconds >= MAX_EPOCH_SECONDS) {
+    return false;
+  }
   epoch_us = seconds * 1000000ULL + centisecond * 10000ULL;
   return true;
 }

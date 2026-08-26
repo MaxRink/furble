@@ -30,12 +30,18 @@ constexpr uint64_t MIN_EPOCH_SECONDS = 1577836800ULL;  // 2020-01-01
 constexpr uint64_t MAX_EPOCH_SECONDS = 4102444800ULL;  // 2100-01-01
 constexpr uint32_t MAX_UNCERTAINTY_MS = 7U * 24U * 60U * 60U * 1000U;
 constexpr uint32_t NVS_RESTORE_UNCERTAINTY_MS = 60U * 60U * 1000U;
+// Bound the free-running ESP timer with a conservative 100 ppm oscillator
+// error.  The elapsed monotonic interval is known; it is not a one-for-one
+// wall-clock uncertainty increase.
+constexpr uint32_t UNCERTAINTY_GROWTH_PPM = 100;
 constexpr uint32_t BACKWARD_TOLERANCE_MS = 5000;
 constexpr uint32_t MEANINGFUL_CORRECTION_MS = 60U * 1000U;
 
 uint8_t sourcePriority(TimeSource source);
 bool valid(const TimeSample &sample);
+bool validAt(const TimeSample &sample, uint64_t monotonic_ms);
 uint64_t predictedEpochUs(const TimeSample &sample, uint64_t monotonic_ms);
+uint32_t predictedUncertaintyMs(const TimeSample &sample, uint64_t monotonic_ms);
 bool shouldAccept(const TimeSample *current, const TimeSample &candidate, uint64_t monotonic_ms);
 bool shouldPersist(const TimeSample *persisted, const TimeSample &candidate, uint64_t monotonic_ms);
 

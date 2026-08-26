@@ -1291,7 +1291,7 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
   if (fix.time_valid
       && ((fix.timesync.year < 2000) || (fix.timesync.month < 1) || (fix.timesync.month > 12)
           || (fix.timesync.day < 1) || (fix.timesync.day > 31) || (fix.timesync.hour > 23)
-          || (fix.timesync.minute > 59) || (fix.timesync.second > 60)
+          || (fix.timesync.minute > 59) || (fix.timesync.second > 59)
           || (fix.timesync.centisecond > 99))) {
     return false;
   }

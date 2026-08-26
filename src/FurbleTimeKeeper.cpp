@@ -18,6 +18,7 @@ constexpr const char *LOG_TAG = "time";
 constexpr const char *NVS_KEY = "time_state";
 constexpr const char *NVS_NAMESPACE = FURBLE_STR;
 constexpr uint64_t NVS_MIN_WRITE_INTERVAL_MS = 5ULL * 60ULL * 1000ULL;
+constexpr uint64_t RTC_MIN_WRITE_INTERVAL_MS = NVS_MIN_WRITE_INTERVAL_MS;
 
 std::mutex g_Mutex;
 bool g_Initialized = false;
@@ -30,6 +31,8 @@ TimeSample g_Persisted = {};
 uint32_t g_NvsWriteCount = 0;
 bool g_LastNvsWriteValid = false;
 uint64_t g_LastNvsWriteMonotonicMs = 0;
+bool g_LastRtcWriteValid = false;
+uint64_t g_LastRtcWriteMonotonicMs = 0;
 
 uint64_t monotonicMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
@@ -78,11 +81,14 @@ bool readRtc(TimeSample &sample) {
   }
   sample = {epochUs, g_RtcBatteryBacked ? 2000U : 10U * 60U * 1000U, TimeSource::RTC,
             monotonicMs()};
-  return TimeKeeperPolicy::valid(sample);
+  return TimeKeeperPolicy::validAt(sample, sample.monotonic_ms);
 }
 
-void writeRtc(uint64_t epochUs) {
+void writeRtc(uint64_t epochUs, uint64_t monotonic_ms) {
   if (!g_RtcAvailable) {
+    return;
+  }
+  if (g_LastRtcWriteValid && monotonic_ms - g_LastRtcWriteMonotonicMs < RTC_MIN_WRITE_INTERVAL_MS) {
     return;
   }
 
@@ -91,8 +97,13 @@ void writeRtc(uint64_t epochUs) {
   if (gmtime_r(&seconds, &utc) == nullptr) {
     return;
   }
+  // M5Unified's RTC setter is void. It writes the calendar registers directly;
+  // record the attempt only after conversion succeeded so a later correction
+  // can retry if conversion ever fails.
   const m5::rtc_datetime_t datetime(utc);
   M5.Rtc.setDateTime(&datetime);
+  g_LastRtcWriteMonotonicMs = monotonic_ms;
+  g_LastRtcWriteValid = true;
 }
 
 bool loadPersisted(TimeSample &sample) {
@@ -203,7 +214,7 @@ bool TimeKeeper::update(TimeSource source, uint64_t epochUs, uint32_t uncertaint
   g_Current = candidate;
   g_HasCurrent = true;
   setSystemTime(epochUs);
-  writeRtc(epochUs);
+  writeRtc(epochUs, candidate.monotonic_ms);
   if (persist) {
     (void)savePersisted(candidate, false);
   }
@@ -228,25 +239,31 @@ bool TimeKeeper::updateUtc(TimeSource source,
 }
 
 TimeKeeper::status_t TimeKeeper::status(void) const {
+  const_cast<TimeKeeper *>(this)->init();
   std::lock_guard<std::mutex> lock(g_Mutex);
   const uint64_t now = monotonicMs();
-  return {g_HasCurrent,
+  return {g_HasCurrent && TimeKeeperPolicy::validAt(g_Current, now),
           g_RtcAvailable,
           g_RtcBatteryBacked,
           g_HasCurrent ? TimeKeeperPolicy::predictedEpochUs(g_Current, now) : 0,
-          g_HasCurrent ? g_Current.uncertainty_ms : 0,
+          g_HasCurrent ? TimeKeeperPolicy::predictedUncertaintyMs(g_Current, now) : 0,
           g_HasCurrent ? g_Current.source : TimeSource::NONE,
           g_NvsWriteCount};
 }
 
 bool TimeKeeper::isValid(void) const {
+  const_cast<TimeKeeper *>(this)->init();
   std::lock_guard<std::mutex> lock(g_Mutex);
-  return g_HasCurrent;
+  return g_HasCurrent && TimeKeeperPolicy::validAt(g_Current, monotonicMs());
 }
 
 uint64_t TimeKeeper::nowEpochUs(void) const {
+  const_cast<TimeKeeper *>(this)->init();
   std::lock_guard<std::mutex> lock(g_Mutex);
-  return g_HasCurrent ? TimeKeeperPolicy::predictedEpochUs(g_Current, monotonicMs()) : 0;
+  const uint64_t now = monotonicMs();
+  return g_HasCurrent && TimeKeeperPolicy::validAt(g_Current, now)
+             ? TimeKeeperPolicy::predictedEpochUs(g_Current, now)
+             : 0;
 }
 
 void TimeKeeper::flush(void) {
