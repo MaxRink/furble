@@ -20,6 +20,9 @@ namespace Furble {
 namespace {
 
 std::mutex g_StateMutex;
+// Serialize transport lifecycle calls. The state mutex cannot cover init(),
+// start(), or stop() because transports may synchronously emit callbacks.
+std::mutex g_LifecycleMutex;
 std::unique_ptr<Ethernet::Transport> g_OwnedTransport;
 Ethernet::Transport *g_Transport = nullptr;
 Ethernet::NetworkUpCallback g_NetworkUpCallback;
@@ -81,6 +84,7 @@ void handleTransportEvent(Ethernet::Transport::Event event,
 
 bool initializeTransport(Ethernet::Transport &transport,
                          std::unique_ptr<Ethernet::Transport> ownedTransport) {
+  std::lock_guard<std::mutex> lifecycleLock(g_LifecycleMutex);
   uint64_t lifecycleEpoch;
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
@@ -436,6 +440,7 @@ void Ethernet::setNetworkUpCallback(NetworkUpCallback callback) {
 }
 
 void Ethernet::stop(void) {
+  std::lock_guard<std::mutex> lifecycleLock(g_LifecycleMutex);
   Ethernet::Transport *transport = nullptr;
   std::unique_ptr<Ethernet::Transport> ownedTransport;
   {
