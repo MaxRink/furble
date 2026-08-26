@@ -60,7 +60,7 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc,
  * Determine if the advertised BLE device is a Fujifilm.
  */
 bool Fujifilm::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice->haveManufacturerData()) {
+  if (pDevice != nullptr && pDevice->haveManufacturerData()) {
     const auto manufacturerData = pDevice->getManufacturerData();
     return FujifilmProtocol::isFujifilmAdvertisement(
         reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length());
