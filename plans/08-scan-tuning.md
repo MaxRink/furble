@@ -172,6 +172,25 @@ Camera testing:
   rescan path with `FujifilmSecure`, so the Fujifilm result in step 6 is the
   closest available evidence for it. State this plainly in the PR body.
 
+## Implementation and simulator audit (2026-08-27)
+
+The scan implementation now uses one stable NimBLE callback, a bounded copied
+advertisement queue, synchronized callback state, and a monotonically
+increasing generation. Callback delivery is UI-task-owned; timeout and cancel
+physically stop the scan, and saved Fujifilm/Nikon scans use the same finite,
+cancel-aware path. `tests/host` compiles the production `Scan.cpp` with fake
+NimBLE and covers worker delivery, overflow, reorder, cancellation, timeout,
+late callbacks, and 1000 sequential scans.
+
+The simulator parity audit is recorded in `sim/CLAUDE.md` and `docs/sim.md`.
+`sim/ScanSim.cpp` substitutes only the radio event source and publishes events
+from a worker; the UI drains them through the production callback handoff.
+Display mode, display flush, timers, and control transitions use production
+methods. M5GFX/SDL, FreeRTOS/ESP-IDF, NimBLE, camera links, UART, PMIC, NVS,
+and optional hardware are explicitly listed lowest-level host seams. The
+distinct-row and watchdog scenarios are contract tests for asynchronous
+delivery and UI responsiveness.
+
 ## References
 
 - [esp-nimble-cpp 2.5.0 NimBLEScan.h](https://raw.githubusercontent.com/h2zero/esp-nimble-cpp/2.5.0/src/NimBLEScan.h)

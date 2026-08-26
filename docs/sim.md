@@ -20,6 +20,24 @@ The default is the M5StickS3 135x240 panel. The Core panel models the 320x240
 Core class used by the simulator; the Stick panels use the non-touch physical
 button layout when `FURBLE_SIM_NO_TOUCH` is set.
 
+## Production-path parity
+
+The simulator's shared-code boundary is audited in [`sim/CLAUDE.md`](../sim/CLAUDE.md).
+In brief, scan startup, generation fencing, queue draining, `CameraList` updates,
+display mode/flush, LVGL timers, and the `Control` state machine are production
+code. `sim/ScanSim.cpp` is only the asynchronous radio event source; its worker
+cannot touch `CameraList` or LVGL. The production `lib/furble/Scan.cpp` is also
+compiled by the host tests against fake NimBLE, so simulator convenience does
+not hide production scan behavior.
+
+M5GFX SDL, FreeRTOS/ESP-IDF calls, NimBLE radio events, camera links, UART/GPS
+bytes, PMIC/power, NVS, and optional IR/feedback/SD hardware are the remaining
+lowest-level host seams. Script actions dispatch real LVGL/control handlers;
+`simulatorHome`/`simulatorBack` and timing-sensitive gesture setup are the
+explicit deterministic input seams. There is no simulator-only display
+rotation or display-policy implementation. Adding a shortcut requires a
+contract scenario and an inventory entry.
+
 ## Build and run
 
 The direct build uses clang, SDL2, M5GFX, M5Unified, TinyGPSPlus, and LVGL.

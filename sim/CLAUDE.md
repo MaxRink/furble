@@ -13,6 +13,43 @@ scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
 as the directory-local contract and keep the reference synchronized with the
 tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 
+## Parity inventory and seam rules
+
+The simulator is a host build of the production UI/control path. The following
+is the complete intentional seam inventory (a new seam needs a contract test
+and an entry here):
+
+| Area | Shared production path | Narrow simulator seam and reason |
+| --- | --- | --- |
+| BLE discovery | `UI::startScan`, `Scan` lifecycle, generation fence, queue drain, `CameraList` update | `sim/ScanSim.cpp` substitutes only the radio/NimBLE event source. Its worker publishes immutable events; it never calls `CameraList` or LVGL. `tests/host` compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
+| Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
+| Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. Actions send the same LVGL events as physical input where possible; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
+| Camera links | Production `Control` state machine and UI connection handlers | `Camera`/`Control` shims provide a deterministic peer and `simDropActiveLink` injects only a link-loss event. No action edits production connection state behind the state machine. |
+| GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
+| Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
+| Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
+| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, and the scan-start probe. These are observability/input seams, not alternate policy. Boot minimum-visible delay is the sole wall-clock-only omission. |
+
+`FURBLE_SIM` conditionals in shared sources are audited at each release:
+`FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h` and
+`FurbleControlSim.cpp` (link-drop injection), `FurbleGPS.cpp` (state/timer
+profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
+(power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
+queries, deterministic input, scan-start probe, UI-task scan materialization,
+disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
+simulator and console alike. `FURBLE_SIM_*` environment variables select only
+host capabilities, captures, preferences, themes, text size, sanitizers, and
+build output; they are not firmware settings.
+
+The DSL verbs are implemented in `sim/driver.cpp`: `wait`/`stall`, key/button
+input, capture, UART faults, GPS restart, home/back, actions, queries/asserts,
+and exit. Every action must either dispatch a real LVGL/control handler or be
+listed above as a lowest-level hardware/event injection. In particular, scan
+delivery is asynchronous and drained by the UI task, while display mode uses
+the real `UI::setDisplayMode` path. The distinct-row and watchdog scenarios
+are parity contract tests; a same-tick fake or worker-side `CameraList` edit is
+a regression.
+
 ## Build entry points
 
 - `sim/build.sh`: the verified direct-clang path on macOS. Run

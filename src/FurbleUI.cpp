@@ -2436,7 +2436,7 @@ void UI::simScenarioAction(const char *action) {
       // Scenario actions execute on the script thread, while this handler is
       // normally entered from the UI task. Give handlers the same mutex
       // ownership as lv_task_handler; startScan temporarily releases it
-      // around the potentially blocking scan.start() call.
+      // around the potentially blocking scan start call.
       m_Mutex.lock();
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
       m_Mutex.unlock();
