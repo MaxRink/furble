@@ -12,6 +12,9 @@ set(furble_sources
     FurbleIR.cpp
     FurbleOTA.cpp
     FurbleOTAMQTT.cpp
+    FurbleOTAPartitionSink.cpp
+    FurbleOTAPartitionSinkESP.cpp
+    FurbleOTAPartitionSinkArduino.cpp
     FurbleOTAReplayStore.cpp
     FurbleOTAReplayStoreNVS.cpp
     FurblePlatform.cpp

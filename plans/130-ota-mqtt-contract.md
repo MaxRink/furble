@@ -30,25 +30,35 @@ key id, and version. The injected sink's `begin()` must compare the requested
 partition capacity with the actual inactive partition. The injected
 `ReplayStore` loads the installed counter floor before `BEGIN`, rejects counters
 less than or equal to it, and atomically reserves the strictly greater counter
-at `BEGIN`. The reservation is a durable, owner-bound lifecycle record:
-`reserved -> staged -> activated/cleared`. Only the owner session and counter
+after the sink accepts the manifest. The reservation is a durable, owner-bound lifecycle record:
+`reserved -> staged -> consumed/cleared`. Only the owner session and counter
 may advance it, and a single outstanding reservation globally blocks another
 session from beginning. This prevents a lower-counter session from activating
 after a higher-counter session has reserved its update. The reservation is a
 durable tombstone: aborts, sink failures, and reboots cannot reuse that signed
 counter, while any later greater counter stays valid. The store must implement
 this as a journaled compare-and-swap, so two sessions racing to reserve a
-counter cannot both succeed. Its `finalize()` verifies the
-signature over these canonical bytes using the key-id trust anchor and verifies
-the complete digest, but does not activate the image yet. On commit, the session
-stages the verified image and calls the sink's `activate()`. If activation fails,
-the sink aborts/discards the staged image and recovery retries only with a new
-  signed counter. After reboot, the platform must explicitly call
-  `recoverAbandonedReservation()` once it has discarded any staged image; this
-  clears the owner while preserving the consumed floor. This ordering means a reboot cannot accept a stale signed
-update, even if activation fails after the floor is durable. This PR
-never treats metadata presence as authentication and never permits an unsigned
-update.
+counter cannot both succeed. A preflight verifier authenticates the complete
+signed manifest metadata, including the declared digest, image and partition
+sizes, rollback counter, session/transfer owner identity, key id, algorithm,
+and version, before `BEGIN` can touch the sink or reserve a counter. Its
+`finalize()` repeats the streamed digest equality and verifier checks, but does
+not activate the image yet. On commit, the session
+stages the verified image, consumes the replay reservation, and only then calls
+the sink's irreversible `activate()`. If activation fails, the sink
+aborts/discards the staged image and recovery retries only with a new signed
+counter. If power is lost between consumption and activation, the old image
+boots safely and the update is retried with a newer counter. After reboot, the
+platform must discard any staged image and call the explicit once-per-boot
+recovery coordinator exactly once. Session construction has no recovery side
+effect, and all sessions for one boot share that coordinator. The deferred #66
+MQTT composition must initialize NVS, construct the trust-store verifier and
+sink, route callback metadata into one Session lifecycle, and wire this
+coordinator before accepting BEGIN. A valid signing key can intentionally burn
+counters by submitting an authenticated update that is later aborted; arbitrary
+signatures cannot. Key custody and counter exhaustion remain operational
+controls. This PR never treats metadata presence as authentication and never
+permits an unsigned update.
 
 ## Delivery policy
 
@@ -70,17 +80,26 @@ update.
   can be lowered at compile time with `FURBLE_OTA_LEDGER_ENTRIES`; exhausting
   the configured ledger fails closed. A flash-backed sink implements `matches()`
   for exact duplicate verification; otherwise a same-range retry fails closed.
-- A sink rejection, including `begin()`, failed final verification, or activation
+- Failed preflight authentication is rejected before the sink or replay store
+  is touched. A sink rejection, including `begin()`, failed final verification, or activation
   failure aborts the sink and makes the session terminal. Replay-store load or
-  reservation failure fails closed before `begin()` reaches the sink. A
+ reservation failure fails closed after sink cleanup. A
   successful reservation remains consumed even when the sink later fails. The
   platform adapter must implement `ReplayStore` as an atomic journal/CAS record
-  and recover the last complete floor after reboot. Callers must keep a Session
-  in persistent task/static storage and serialize all `onMessage` calls; a
+  and recover the last complete floor after reboot. Callers must keep the
+  coordinator and Session in persistent task/static storage and serialize all
+  `onMessage` calls; a
   reentrant callback is rejected with `Busy`; this is a caller serialization
   invariant, not thread safety of the Session object. The later adapter can
   implement the sink with the landed `OTA::Engine`; this contract does not
   duplicate its state machine.
+
+## Integration boundary
+
+This slice intentionally does not add MQTT composition, network authentication,
+NVS initialization, trust-store construction, or production callback wiring.
+Those belong to #66. Until that integration lands, the OTA characteristics stay
+reserved and this shared Session is not a production update path.
 
 ## Verification
 

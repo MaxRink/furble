@@ -135,6 +135,8 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [115-ota-engine.md](115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
 | [130-ota-mqtt-contract.md](130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
+| [131-ota-replay-store.md](131-ota-replay-store.md) | Durable two-slot anti-rollback replay journal |
+| [132-ota-partition-sink.md](132-ota-partition-sink.md) | Ordered, digest-verified inactive-partition sink |
 | [124-sim-incremental-deps.md](124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
 | [127-dev-version-identity.md](127-dev-version-identity.md) | Append an unambiguous short Git revision to development firmware versions while preserving release tags |
 

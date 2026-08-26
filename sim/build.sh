@@ -201,6 +201,7 @@ for source in \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
+  "$ROOT/src/FurbleOTAPartitionSink.cpp" \
   "$ROOT/src/FurbleOTAReplayStore.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleProvision.cpp" \

@@ -1,4 +1,4 @@
-# 131 — durable OTA replay-store adapter
+# 131 - durable OTA replay-store adapter
 
 This slice supplies the durable adapter seam for the `Furble::OTA::MQTT::ReplayStore`
 contract. It deliberately does not subscribe to MQTT, write OTA partitions, or
@@ -32,10 +32,13 @@ is valid terminal exhaustion; no later counter can be represented.
 and consumes the counter immediately. `markStaged` requires the exact owner and
 counter. `completeReservation` and `abandonReservation` clear the owner while
 preserving the consumed floor. `recoverAbandonedReservation` is the reboot
-recovery operation; it clears an active owner without lowering the floor and is
-idempotent when no reservation exists.
+recovery primitive; the transport calls it through one persistent, explicit
+once-per-boot `RecoveryCoordinator`, after discarding any staged image. The
+coordinator makes repeated calls no-ops, so a second same-boot Session cannot
+clear a live owner. Session construction never performs recovery implicitly.
 
-The caller must serialize all operations, including calls made from callbacks.
+The deferred #66 MQTT composition must initialize NVS, own the coordinator for
+the boot, and serialize all operations, including calls made from callbacks.
 The adapter intentionally has no mutex or heap-backed state so firmware and
 host/sim use the same deterministic logic under the small-target budget.
 

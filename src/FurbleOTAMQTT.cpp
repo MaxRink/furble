@@ -51,7 +51,8 @@ uint32_t read32(const uint8_t *data) {
 }
 
 uint16_t read16(const uint8_t *data) {
-  return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+  return static_cast<uint16_t>(static_cast<uint32_t>(data[0])
+                               | (static_cast<uint32_t>(data[1]) << 8));
 }
 
 void append16(std::vector<uint8_t> &out, uint16_t value) {
@@ -420,7 +421,25 @@ const char *errorString(Error error) {
   return "unknown";
 }
 
-Session::Session(Sink &sink, ReplayStore &replayStore) : m_Sink(sink), m_ReplayStore(replayStore) {}
+bool RecoveryCoordinator::recoverAtBoot() {
+  if (m_Attempted) {
+    return m_Ready;
+  }
+  m_Attempted = true;
+  m_Ready = m_ReplayStore.recoverAbandonedReservation();
+  return m_Ready;
+}
+
+bool RecoveryCoordinator::ready() const {
+  return m_Ready;
+}
+
+ReplayStore &RecoveryCoordinator::replayStore() const {
+  return m_ReplayStore;
+}
+
+Session::Session(Sink &sink, ReplayStore &replayStore, RecoveryCoordinator &recovery)
+    : m_Sink(sink), m_ReplayStore(replayStore), m_Recovery(recovery) {}
 
 Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length) {
   if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
@@ -472,6 +491,9 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
       }
       return reject(Error::Busy);
     }
+    if (!m_Recovery.ready() || (&m_Recovery.replayStore() != &m_ReplayStore)) {
+      return reject(Error::ReplayStoreFailed);
+    }
     uint32_t installedFloor = 0;
     if (!m_ReplayStore.loadFloor(installedFloor)) {
       return reject(Error::ReplayStoreFailed);
@@ -479,16 +501,32 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     if (message.manifest.rollbackCounter <= installedFloor) {
       return reject(Error::Replay);
     }
-    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter,
-                                    message.manifest.sessionId)) {
-      return reject(Error::ReplayStoreFailed);
+    if (!m_Sink.authenticate(message.manifest)) {
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      m_LastError = Error::VerificationFailed;
+      return reject(Error::VerificationFailed);
     }
-    m_ReservationActive = true;
     m_Manifest = message.manifest;
     m_BeginSequence = message.sequence;
     if (!m_Sink.begin(message.manifest)) {
-      return terminalFailure(Error::SinkRejected);
+      // begin() may have partially prepared the inactive target before
+      // reporting failure; always give the adapter its cleanup seam.
+      m_Sink.abort();
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      m_LastError = Error::SinkRejected;
+      return reject(Error::SinkRejected);
     }
+    if (!m_ReplayStore.reserveFloor(installedFloor, message.manifest.rollbackCounter,
+                                    message.manifest.sessionId)) {
+      m_Sink.abort();
+      m_State = State::Error;
+      m_TerminalSequence = 0;
+      m_LastError = Error::ReplayStoreFailed;
+      return reject(Error::ReplayStoreFailed);
+    }
+    m_ReservationActive = true;
     m_RangeCount = 0;
     m_ReceivedBytes = 0;
     m_State = State::Receiving;
@@ -574,16 +612,21 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
     if (!m_ReplayStore.markStaged(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
       return terminalFailure(Error::ReplayStoreFailed);
     }
-    if (!m_Sink.activate()) {
-      return terminalFailure(Error::SinkRejected);
-    }
     if (!m_ReplayStore.completeReservation(m_Manifest.sessionId, m_Manifest.rollbackCounter)) {
-      m_Sink.abort();
-      m_State = State::Error;
-      m_TerminalSequence = 0;
-      return reject(Error::ReplayStoreFailed);
+      // Boot-partition selection is irreversible in this process. Consume the
+      // replay reservation before crossing that boundary; otherwise a
+      // completion failure after activation leaves an already-selected image
+      // with a permanently active journal owner. The image is still staged,
+      // fully verified and unselected here, so abort remains safe.
+      return terminalFailure(Error::ReplayStoreFailed);
     }
     m_ReservationActive = false;
+    if (!m_Sink.activate()) {
+      // The old image remains selected when activation fails. The counter is
+      // intentionally consumed, so recovery must use a strictly newer signed
+      // update rather than retrying an ambiguous activation.
+      return terminalFailure(Error::SinkRejected);
+    }
     m_State = State::Done;
     m_TerminalSequence = message.sequence;
     m_LastError = Error::None;
