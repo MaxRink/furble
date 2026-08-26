@@ -68,7 +68,6 @@ class FaultBackend final: public ReplayJournalBackend {
     assert(slot < present.size() && present[slot]);
     durable[slot][offset] ^= 0x5a;
   }
-
 };
 
 SessionId owner(uint8_t value) {
