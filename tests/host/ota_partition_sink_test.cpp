@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 namespace OTA = Furble::OTA::MQTT;
@@ -113,12 +114,66 @@ class FakeVerifier final: public ManifestVerifier {
 
 OTA::Manifest manifest() {
   OTA::Manifest value;
+  value.sessionId[0] = 1;
+  value.keyId[0] = 2;
+  value.version = {'d', 'e', 'v'};
+  value.signature.assign(OTA::SIGNATURE_BYTES, 3);
   value.imageSize = 3;
   value.partitionSize = 1024;
   value.digest = {0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40,
                   0xde, 0x5d, 0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17,
                   0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad};
   return value;
+}
+
+void rejectsMalformedManifestBeforeTargetMutation() {
+  const OTA::Manifest valid = manifest();
+  const std::pair<const char *, OTA::Manifest> cases[] = {
+      {"zero session",
+       [] {
+         OTA::Manifest value = manifest();
+         value.sessionId = {};
+         return value;
+       }()},
+      {"empty version",
+       [] {
+         OTA::Manifest value = manifest();
+         value.version.clear();
+         return value;
+       }()},
+      {"embedded nul version",
+       [] {
+         OTA::Manifest value = manifest();
+         value.version = {'d', '\0', 'v'};
+         return value;
+       }()},
+      {"zero key id",
+       [] {
+         OTA::Manifest value = manifest();
+         value.keyId = {};
+         return value;
+       }()},
+      {"invalid signature size",
+       [] {
+         OTA::Manifest value = manifest();
+         value.signature.pop_back();
+         return value;
+       }()},
+  };
+  for (const auto &entry : cases) {
+    FakeTarget target;
+    FakeVerifier verifier;
+    PartitionSink sink(target, verifier);
+    assert(!sink.begin(entry.second));
+    assert(target.beginCalls == 0);
+    assert(verifier.authenticateCalls == 0);
+  }
+
+  FakeTarget target;
+  FakeVerifier verifier;
+  PartitionSink sink(target, verifier);
+  assert(sink.begin(valid));
+  sink.abort();
 }
 
 void writeImage(PartitionSink &sink) {
@@ -352,6 +407,7 @@ void hashesAcrossBlockBoundaries() {
 
 int main() {
   cleanUpdate();
+  rejectsMalformedManifestBeforeTargetMutation();
   rejectsInvalidRangesAndRetries();
   rejectsBeginAndWriteFaults();
   rejectsUnauthenticatedManifestBeforeTargetMutation();

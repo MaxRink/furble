@@ -1,6 +1,8 @@
 #include "FurbleOTAPartitionSink.h"
 
+#include <array>
 #include <cstring>
+#include <vector>
 
 namespace Furble {
 namespace OTA {
@@ -36,13 +38,24 @@ void writeWord(uint8_t *bytes, uint32_t value) {
   bytes[3] = static_cast<uint8_t>(value);
 }
 
-bool allZero(const MQTT::Digest &digest) {
-  for (const uint8_t byte : digest) {
+template <size_t N>
+bool allZero(const std::array<uint8_t, N> &bytes) {
+  for (const uint8_t byte : bytes) {
     if (byte != 0) {
       return false;
     }
   }
   return true;
+}
+
+bool validVersion(const std::vector<uint8_t> &version) {
+  return !version.empty() && (version.size() <= MQTT::MAX_VERSION_BYTES)
+         && (std::memchr(version.data(), '\0', version.size()) == nullptr);
+}
+
+bool validSignatureAlgorithm(MQTT::SignatureAlgorithm algorithm) {
+  return (algorithm == MQTT::SignatureAlgorithm::EcdsaP256Sha256)
+         || (algorithm == MQTT::SignatureAlgorithm::Ed25519);
 }
 
 }  // namespace
@@ -163,8 +176,11 @@ void PartitionSink::abort() {
 }
 
 bool PartitionSink::validManifest(const MQTT::Manifest &manifest) const {
-  return (manifest.imageSize != 0) && (manifest.partitionSize >= manifest.imageSize)
-         && (manifest.partitionSize <= MQTT::MAX_IMAGE_BYTES) && !allZero(manifest.digest);
+  return (manifest.sessionId != MQTT::SessionId {}) && validVersion(manifest.version)
+         && (manifest.imageSize != 0) && (manifest.partitionSize >= manifest.imageSize)
+         && (manifest.partitionSize <= MQTT::MAX_IMAGE_BYTES) && !allZero(manifest.digest)
+         && !allZero(manifest.keyId) && validSignatureAlgorithm(manifest.signatureAlgorithm)
+         && (manifest.signature.size() == MQTT::SIGNATURE_BYTES);
 }
 
 void PartitionSink::resetState() {
