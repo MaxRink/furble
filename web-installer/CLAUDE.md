@@ -12,8 +12,12 @@ committed.
   partitions.
 - Firmware binary names follow `furble[-part]-$PLATFORM-$VERSION.bin`. Any
   rename must match the release workflow in `.github/workflows/`.
-- `.github/workflows/pages.yml` builds the five release environments on a tag
+- `.github/workflows/pages.yml` builds the six release environments on a tag
   and publishes the page with the generated manifests and binaries.
+- Pages is tag-only. Each deployment stores firmware below a commit-specific
+  `firmware/<sha>/` path so a manifest cannot silently reuse an older build.
+- The Pages deploy validates all manifests and referenced binaries before
+  publishing. Keep that check green when changing artifact names or paths.
 
 ## Debug variant
 
