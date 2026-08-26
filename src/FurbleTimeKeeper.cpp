@@ -90,11 +90,12 @@ bool readRtc(TimeSample &sample) {
   return TimeKeeperPolicy::validAt(sample, sample.monotonic_ms);
 }
 
-void writeRtc(uint64_t epochUs, uint64_t monotonic_ms) {
+void writeRtc(uint64_t epochUs, uint64_t monotonic_ms, bool force) {
   if (!g_RtcAvailable) {
     return;
   }
-  if (g_LastRtcWriteValid && monotonic_ms - g_LastRtcWriteMonotonicMs < RTC_MIN_WRITE_INTERVAL_MS) {
+  if (!force && g_LastRtcWriteValid
+      && monotonic_ms - g_LastRtcWriteMonotonicMs < RTC_MIN_WRITE_INTERVAL_MS) {
     return;
   }
 
@@ -225,7 +226,7 @@ bool TimeKeeper::update(TimeSource source, uint64_t epochUs, uint32_t uncertaint
   g_Current = candidate;
   g_HasCurrent = true;
   setSystemTime(epochUs);
-  writeRtc(epochUs, candidate.monotonic_ms);
+  writeRtc(epochUs, candidate.monotonic_ms, false);
   if (persist) {
     (void)savePersisted(candidate, false);
   }
@@ -286,6 +287,10 @@ void TimeKeeper::flush(void) {
   TimeSample final = g_Current;
   final.epoch_us = TimeKeeperPolicy::predictedEpochUs(g_Current, monotonicMs());
   final.monotonic_ms = monotonicMs();
+  // Unlike normal synchronization ticks, an orderly restart or power-off is
+  // the last chance to commit the calendar RTC. RTC register writes have no
+  // flash wear concern, so the shutdown path bypasses the periodic guard.
+  writeRtc(final.epoch_us, final.monotonic_ms, true);
   if (TimeKeeperPolicy::shouldPersist(g_HasPersisted ? &g_Persisted : nullptr, final,
                                       final.monotonic_ms)) {
     (void)savePersisted(final, true);

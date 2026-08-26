@@ -60,9 +60,11 @@ source, and its monotonic observation point.
   is a fail-closed validity bound.
 
 RTC register writes use the void M5Unified setter and are rate-limited to one
-attempt per five minutes. M5Unified's `rtc_datetime_t` uses UTC calendar fields;
-the implementation converts with `gmtime_r`, and the supported 2020-2100 policy
-range is inside its documented 1900-2099 calendar-year representation.
+attempt per five minutes during normal synchronization. An orderly shutdown
+flush commits the final calendar value immediately. M5Unified's
+`rtc_datetime_t` uses UTC calendar fields; the implementation converts with
+`gmtime_r`, and the supported 2020-2100 policy range is inside its documented
+1900-2099 calendar-year representation.
 
 ## Verification
 
