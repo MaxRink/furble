@@ -21,6 +21,7 @@ REALPATH_DECLARATIONS = (
 )
 REALPATH_MACRO = '        list(APPEND compile_options "-fmacro-prefix-map=${furble_source_real_dir}=.")\n'
 REALPATH_MACRO_IDF = '        list(APPEND compile_options "-fmacro-prefix-map=${furble_idf_real_dir}=/IDF")\n'
+MACRO_BUILD = '        list(APPEND compile_options "-fmacro-prefix-map=${BUILD_DIR}=/IDF_BUILD")\n'
 REALPATH_MACRO_BUILD = '        list(APPEND compile_options "-fmacro-prefix-map=${furble_build_real_dir}=/IDF_BUILD")\n'
 REALPATH_DEBUG = (
     '        list(APPEND compile_options "-fdebug-prefix-map=${furble_idf_real_dir}=/IDF")\n'
@@ -43,6 +44,8 @@ def _validate_patched(source: str) -> None:
     raise RuntimeError("ESP-IDF prefix-map realpath debug mapping is invalid")
   if source.count(REALPATH_MACRO_IDF) != 1:
     raise RuntimeError("ESP-IDF prefix-map realpath IDF macro mapping is invalid")
+  if source.count(MACRO_BUILD) != 1:
+    raise RuntimeError("ESP-IDF prefix-map build macro mapping is invalid")
   if source.count(REALPATH_MACRO_BUILD) != 1:
     raise RuntimeError("ESP-IDF prefix-map realpath build macro mapping is invalid")
   if source.count(REALPATH_COMPONENT) != 1:
@@ -77,6 +80,7 @@ def patch_text(source: str) -> str:
       MACRO_ANCHOR
       + REALPATH_MACRO
       + REALPATH_MACRO_IDF
+      + MACRO_BUILD
       + REALPATH_MACRO_BUILD,
       1,
   )
