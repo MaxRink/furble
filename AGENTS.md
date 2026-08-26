@@ -18,6 +18,8 @@ claim against the code, not against a plan doc.
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
+Manual PlatformIO dispatches must run the complete firmware matrix. Do not
+derive a comparison range from repository root commits.
 
 Development builds using `FURBLE_VERSION=dev` identify the checkout as
 `dev+g<unambiguous-hash>` and append `.dirty` for tracked, staged, or

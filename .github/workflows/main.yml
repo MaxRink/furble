@@ -39,28 +39,34 @@ jobs:
           CURRENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            base_sha="$PR_BASE_SHA"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # A manual run is an explicit request for the complete matrix. It
+            # has no meaningful base SHA, so path filtering is not applicable.
+            firmware_changed=true
           else
-            base_sha="$PUSH_BEFORE_SHA"
-          fi
-          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
-            base_sha="$(git rev-list --max-parents=0 "$CURRENT_SHA")"
-          fi
+            if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              base_sha="$PR_BASE_SHA"
+            else
+              base_sha="$PUSH_BEFORE_SHA"
+            fi
+            if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+              base_sha="$(git hash-object -t tree /dev/null)"
+            fi
 
-          firmware_changed=false
-          changed_paths="$(git diff --name-only --no-renames "$base_sha" "$CURRENT_SHA")"
-          while IFS= read -r path; do
-            [[ -z "$path" ]] && continue
-            case "$path" in
-              companion/android/*|plans/*|web-installer/*|README.md|*.md)
-                ;;
-              *)
-                firmware_changed=true
-                break
-                ;;
-            esac
-          done <<< "$changed_paths"
+            firmware_changed=false
+            changed_paths="$(git diff --name-only --no-renames "$base_sha" "$CURRENT_SHA")"
+            while IFS= read -r path; do
+              [[ -z "$path" ]] && continue
+              case "$path" in
+                companion/android/*|plans/*|web-installer/*|README.md|*.md)
+                  ;;
+                *)
+                  firmware_changed=true
+                  break
+                  ;;
+              esac
+            done <<< "$changed_paths"
+          fi
 
           echo "Firmware paths changed: $firmware_changed"
           echo "firmware=$firmware_changed" >> "$GITHUB_OUTPUT"
