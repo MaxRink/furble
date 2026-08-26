@@ -136,6 +136,11 @@ text after a comment are ignored. Each line starts with one verb.
 `assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
 `ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
 
+The scenario-only `scan_distinct` seed makes the asynchronous scan worker
+publish two distinct FauxNY advertisements. The
+`scan-distinct-rows-heartbeat.txt` scenario checks that both rows are drained
+on the UI task while the watchdog remains armed.
+
 The `clock.ms` query reports the current virtual millisecond clock.
 
 ### Effective `seed` names

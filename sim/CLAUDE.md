@@ -51,8 +51,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 - Exception: `gps.txt` renders the TinyGPSPlus fix age from the real host
   clock, so `gps.png` is not byte-reproducible and must not be a golden
   baseline as-is.
-- The fake scan delivers its result and the scan end callback in the same
-  `update()` tick. The fake UART captures all writes and models receiver
+- The fake scan publishes two advertisement events and a scan end from a
+  background host worker. `processPendingCallbacks()` drains them on the UI
+  task, so the fake never mutates `CameraList` or touches LVGL from its worker.
+  The fake UART captures all writes and models receiver
   replies with `uart-mode ack|nack|timeout|malformed|partial|write-error`.
   Inject UART driver events with `uart-event data|fifo|buffer|break|parity|frame|pattern`.
   Dump writes with the `uart-dump` script verb. These controls exercise the
@@ -107,6 +109,14 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
   to assert that a repeated fake advertisement does not add a second row.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
+- The `scan_start_probe` boolean seed enables a concurrent callback-shaped
+  probe during scan startup. `scan.start_probe_blocked` reports whether that
+  callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
+  boundary.
+- The `scan_distinct` scenario-only boolean makes the asynchronous scan worker
+  publish two distinct FauxNY advertisements. The
+  `scan-distinct-rows-heartbeat.txt` scenario asserts both rows and the live
+  watchdog after the UI task drains them.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA

@@ -52,6 +52,7 @@
 
 #if defined(FURBLE_SIM)
 #include "power_profiler.h"
+#include "driver.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 
 namespace {
@@ -2432,7 +2433,13 @@ void UI::simScenarioAction(const char *action) {
     }
     lv_obj_t *button = entry->second.button;
     if (button != nullptr) {
+      // Scenario actions execute on the script thread, while this handler is
+      // normally entered from the UI task. Give handlers the same mutex
+      // ownership as lv_task_handler; startScan temporarily releases it
+      // around the potentially blocking scan.start() call.
+      m_Mutex.lock();
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+      m_Mutex.unlock();
     }
     return;
   }
@@ -3974,13 +3981,37 @@ void UI::serviceRequests(void) {
           }
 
           scan.clear();
+#if defined(FURBLE_SIM)
+          scan.setStartProbe([]() {
+            m_Mutex.lock();
+            m_Mutex.unlock();
+          });
+#endif
+
+          // NimBLEScan::start() is asynchronous on the usual NimBLE build,
+          // but some controller/library combinations wait while bringing the
+          // scan up. Scan callbacks enqueue immutable events. The UI task
+          // drains and applies them below, so no LVGL access occurs on the
+          // NimBLE task.
+          m_Mutex.unlock();
           scan.start(
               [](void *param) {
                 auto *menu = static_cast<menu_t *>(param);
-                // Called asynchronously from the NimBLE scan thread.
-                m_Mutex.lock();
+#if defined(FURBLE_SIM)
+                // ScanSim only publishes events. Materialize its FauxNY test
+                // row here so CameraList remains UI-task owned, and coalesce
+                // duplicate advertisements by address/list membership.
+                const bool isNewSimAdvertisement =
+                    CameraList::size() == 0
+                    || (Sim::scenarioSettingIsTrue("scan_distinct")
+                        && Scan::getInstance().currentResultId() == 1);
+                if (isNewSimAdvertisement) {
+                  CameraList::addFauxNY();
+                  updateItems(*menu);
+                }
+#else
                 updateItems(*menu);
-                m_Mutex.unlock();
+#endif
               },
               &menu);
         } else {
@@ -4187,8 +4218,8 @@ void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state
 void UI::rebuildCamerasPage(menu_t &menu) {
   // Deliberately unlocked. Every caller (the page-change dispatch and the
   // camerasUpdate timer) already runs inside lv_task_handler() with m_Mutex
-  // held by UI::task, and std::mutex is not recursive. updateItems differs
-  // because the NimBLE scan thread calls it and must lock first.
+  // held by UI::task, and std::mutex is not recursive. Scan events are drained
+  // on this task before they reach updateItems.
   lv_obj_clean(menu.page);
 
   auto &control = Control::getInstance();
@@ -4634,20 +4665,37 @@ void UI::startScan(void) {
   scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
 
   scan.clear();
+#if defined(FURBLE_SIM)
+  scan.setStartProbe([]() {
+    m_Mutex.lock();
+    m_Mutex.unlock();
+  });
+#endif
+
+  // Keep the UI mutex out of the scan-start call. NimBLE normally returns
+  // immediately, but controller startup can block on some IDF/library
+  // combinations. Scan callbacks only enqueue immutable events; the UI task
+  // drains and applies them below.
+  m_Mutex.unlock();
   scan.start(
       [](void *param) {
         auto *menu = static_cast<menu_t *>(param);
-        // Can be called asychronously from NimBLE scan thread,
-        m_Mutex.lock();
+#if defined(FURBLE_SIM)
+        const bool isNewSimAdvertisement =
+            CameraList::size() == 0
+            || (Sim::scenarioSettingIsTrue("scan_distinct")
+                && Scan::getInstance().currentResultId() == 1);
+        if (isNewSimAdvertisement) {
+          CameraList::addFauxNY();
+          updateItems(*menu);
+        }
+#else
         updateItems(*menu);
-        m_Mutex.unlock();
+#endif
       },
       &menu,
       [](void *) {
-        // Can be called asychronously from NimBLE scan thread,
-        m_Mutex.lock();
         lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
-        m_Mutex.unlock();
       });
 
   m_ConnectContext.menuName = m_ScanStr;
@@ -7384,6 +7432,7 @@ void UI::task(void) {
 #if defined(FURBLE_CONSOLE)
     serviceRequests();
 #endif
+    Scan::getInstance().processPendingCallbacks();
     if (!m_DisplayConsole) {
       handleLockScreen();
 #if defined(FURBLE_SIM)

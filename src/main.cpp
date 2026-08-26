@@ -230,6 +230,7 @@ static void vUITask(void *param) {
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
 #endif
+    Scan::getInstance().processPendingCallbacks();
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
       GPS::getInstance().update();
