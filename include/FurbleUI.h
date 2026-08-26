@@ -262,6 +262,10 @@ class UI {
   } diagnostics_t;
 
   typedef struct {
+    // The top-level window is pixel-sized by lv_win_create. It does not follow
+    // later display resolution changes automatically, so level rotation must
+    // resize it with the panel or the landscape page remains portrait-width.
+    lv_obj_t *root;
     lv_obj_t *surface;
     lv_obj_t *bubble;
     // Fixed reference ring at the exact centre of the circle. The moving bubble

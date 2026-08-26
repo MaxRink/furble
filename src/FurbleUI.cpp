@@ -3685,6 +3685,29 @@ std::string UI::simQueryState(const char *key) {
   if (query == "level_side_x") {
     return std::to_string(m_Level.sideBubbleX);
   }
+  if (query == "level_root_width") {
+    return m_Level.root != nullptr ? std::to_string(lv_obj_get_width(m_Level.root)) : "none";
+  }
+  if (query == "level_root_height") {
+    return m_Level.root != nullptr ? std::to_string(lv_obj_get_height(m_Level.root)) : "none";
+  }
+  if (query == "level_side_on_screen") {
+    if (m_Level.sideBubble == nullptr || lv_obj_has_flag(m_Level.sideTube, LV_OBJ_FLAG_HIDDEN)) {
+      return "no";
+    }
+    lv_area_t bubbleArea;
+    lv_obj_get_coords(m_Level.sideBubble, &bubbleArea);
+    lv_display_t *display = lv_display_get_default();
+    if (display == nullptr) {
+      return "no";
+    }
+    const int32_t width = lv_display_get_horizontal_resolution(display);
+    const int32_t height = lv_display_get_vertical_resolution(display);
+    return (bubbleArea.x1 >= 0 && bubbleArea.y1 >= 0 && bubbleArea.x2 < width
+            && bubbleArea.y2 < height)
+               ? "yes"
+               : "no";
+  }
   if (query == "level_has_side") {
     return m_Level.sideTube != nullptr ? "yes" : "no";
   }
@@ -4616,6 +4639,8 @@ void UI::addLevelMenu(const menu_t &parent) {
   // entry reads at a glance and is no longer the only iconless Connected item.
   menu_t &menu = addMenu(m_LevelStr, &icon_adjust, true, parent);
 
+  m_Level.root = m_Root;
+
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
   lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
@@ -4790,19 +4815,6 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   // panel rotation and the forced full repaint only run when the orientation
   // actually changes.
   const bool orientationChanged = (rotation != level->rotation);
-#if defined(FURBLE_SIM)
-  // SDL has no DMA controller, so LVGL software rotation is safe here and lets a
-  // scenario verify the orientation state machine and the relayout.
-  if (display != nullptr && orientationChanged) {
-    lv_display_rotation_t target = LV_DISPLAY_ROTATION_0;
-    if (rotation == 90) {
-      target = LV_DISPLAY_ROTATION_90;
-    } else if (rotation == 270) {
-      target = LV_DISPLAY_ROTATION_270;
-    }
-    lv_display_set_rotation(display, target);
-  }
-#else
   // On the real StickS3 the LVGL software rotation path corrupts the screen: it
   // rotates pixels in the draw buffer but does not coordinate with the panel DMA
   // flush, so a rotated frame tears against the old stride and only recovers when
@@ -4819,8 +4831,12 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   // pre-rotation pixels. The periodic bubble updates that follow only invalidate
   // small regions, so the right half never recovered.
   //
-  // PENDING HARDWARE RETEST: the rotated flush cannot be exercised in the SDL
-  // simulator, only on device.
+  // The SDL M5GFX framebuffer implements the same panel-rotation API. Keep the
+  // simulator on this path too: LVGL software rotation previously let its
+  // logical width grow to 240 while the simulated panel remained 135 pixels
+  // wide. Captures silently cropped the far half, including the moving bubble.
+  // Matching the firmware path makes panel geometry and complete rotated-frame
+  // capture testable on the host. Physical DMA still needs an on-device check.
   if (display != nullptr && orientationChanged) {
     // Captured once at build time while the panel is in its portrait default.
     static const uint8_t baseRotation = M5.Display.getRotation();
@@ -4834,13 +4850,20 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
       lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
     }
   }
-#endif
 
   // Landscape swaps the panel width and height. The value labels stay on both
   // orientations, the circle is the flat readout, the tube is the side readout.
   const bool landscape = (rotation != 0);
   const int32_t effWidth = landscape ? level->baseHeight : level->baseWidth;
   const int32_t effHeight = landscape ? level->baseWidth : level->baseHeight;
+
+  // lv_win_create snapshots its parent's pixel dimensions instead of using
+  // percentages. Resize the root window whenever the level changes the display
+  // resolution. Without this, the panel becomes 240x135 but every page remains
+  // 135 pixels wide, clipping the landscape tube and its moving bubble.
+  if (level->root != nullptr) {
+    lv_obj_set_size(level->root, effWidth, effHeight);
+  }
 
   if (landscape) {
     lv_obj_add_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
@@ -4892,7 +4915,6 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
     lv_obj_update_layout(cont);
   }
 
-#if !defined(FURBLE_SIM)
   // The panel, the LVGL resolution, every widget and the button overlay now all
   // describe the new orientation. Force one synchronous full repaint so the
   // entire rotated width is written in a single pass, then drain the DMA so the
@@ -4902,7 +4924,6 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
     lv_refr_now(display);
     M5.Display.waitDMA();
   }
-#endif
 }
 
 void UI::applyLevelSample(level_t *level, const float accel[3]) {

@@ -386,7 +386,10 @@ layout. Use these deterministic controls in scenarios:
 
 The `imu.*` actions feed the shared simulated `M5.Imu` surface. Queries include
 `imu_accel_x`, `imu_accel_y`, `imu_accel_z`, `level_bubble_x`,
-`level_bubble_y`, `level_rotation`, `level_side_visible`, and `ui.overflow`.
+`level_bubble_y`, `level_rotation`, `level_side_visible`, `level_root_width`,
+`level_root_height`, `level_side_on_screen`, and `ui.overflow`. The root-size
+and on-screen queries verify that a landscape panel resize reaches the
+pixel-sized top-level window and that the moving tube bubble is not clipped.
 Checked-in scenarios cover the setting gate, live diagnostics, portrait and
 rotated level layouts, redraw stability, and overflow on all three panel sizes:
 `e2e/imu-gating.txt`, `e2e/imu-diagnostics.txt`, `e2e/level-spirit.txt`,

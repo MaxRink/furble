@@ -438,15 +438,22 @@ and that returning to portrait leaves the rest of the UI upright.
 
 New `simQueryState` keys: `level_rotation` reports the active page rotation in
 degrees, and `level_side_visible` reports whether the side tube is currently
-shown. `level_has_side` still reports whether the tube widget exists.
+shown. `level_root_width`, `level_root_height`, and `level_side_on_screen`
+prove the rotated display resolution reaches the pixel-sized top-level window
+and the complete moving bubble stays inside the framebuffer. This caught a
+real defect where the simulated panel became 240 pixels wide while the root
+window stayed at its original 135 pixels. `level_has_side` still reports
+whether the tube widget exists.
 
 - `sim/scenarios/e2e/level-spirit.txt` was rewritten for v3. It asserts the flat
   page opens in portrait with the tube hidden, a 6 degree roll drives the circle
-  bubble 19 px while staying portrait, a 70 degree right roll flips to rotation
+  bubble 18 px while staying portrait, a 70 degree right roll flips to rotation
   90 and shows the tube pinned near the rim, a 70 degree left roll flips to
   rotation 270, and returning near flat restores portrait and hides the tube.
   Overflow stays no in both orientations. Reverting the sensitivity mapping to
-  the old linear curve fails the 19 px assert.
+  the old linear curve fails the 18 px assert. The landscape checks also fail
+  if the root window retains portrait geometry or either extreme bubble
+  position is clipped.
 - `sim/scenarios/bughunt/overflow-sweep.txt` still asserts the flat level page
   fits. Verified no overflow on 80x160, 135x240 and 320x240, and a landscape
   probe confirmed the flipped page also fits on all three.

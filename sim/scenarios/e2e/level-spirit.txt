@@ -31,6 +31,8 @@ assert ui.overflow no
 
 # The flat page opens in portrait: bullseye and target shown, side tube hidden.
 assert ui.level_rotation 0
+assert ui.level_root_width 135
+assert ui.level_root_height 240
 assert ui.level_bubble_visible yes
 assert ui.level_target_visible yes
 assert ui.level_side_visible no
@@ -77,6 +79,9 @@ assert ui.level_side_visible yes
 assert ui.level_bubble_visible no
 assert ui.level_target_visible no
 assert ui.level_side_x 97
+assert ui.level_root_width 240
+assert ui.level_root_height 135
+assert ui.level_side_on_screen yes
 assert ui.overflow no
 
 # Hysteresis hold: 50 degrees is inside the band, so the landscape orientation is
@@ -91,12 +96,34 @@ action imu.roll -70
 wait 200
 assert ui.level_rotation 270
 assert ui.level_side_x -97
+assert ui.level_root_width 240
+assert ui.level_root_height 135
+assert ui.level_side_on_screen yes
+
+# Leaving while still rotated must restore the whole application to portrait,
+# including the pixel-sized root window. This is the real user exit path, not
+# just another accelerometer sample.
+back
+wait 120
+assert ui.page main
+assert ui.level_rotation 0
+assert ui.level_root_width 135
+assert ui.level_root_height 240
+
+action nav level
+wait 120
+assert ui.page level
+assert ui.level_rotation 270
+assert ui.level_root_width 240
+assert ui.level_root_height 135
 
 # Back near flat, below the 45 degree exit: return to portrait, hide the tube and
 # show the bullseye and target again.
 action imu.roll 40
 wait 200
 assert ui.level_rotation 0
+assert ui.level_root_width 135
+assert ui.level_root_height 240
 assert ui.level_side_visible no
 assert ui.level_bubble_visible yes
 assert ui.level_target_visible yes

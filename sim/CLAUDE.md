@@ -271,6 +271,11 @@ a regression.
   disabled setting and hides both optional pages. The spirit level filter,
   sensitivity curve and auto-rotate all run on the injected sample.
   `imu_accel_x/y/z` read the rendered Diagnostics > IMU live label back.
+  `level_root_width/height` expose the pixel-sized top-level window after panel
+  rotation, and `level_side_on_screen` verifies the complete moving bubble lies
+  inside the active display. Keep these guards with the numeric bubble-offset
+  checks: an offset can be correct while a stale portrait-width root clips the
+  widget from the landscape framebuffer.
 - Redraw-storm probe: the `invalidate.reset` action zeroes a counter fed by the
   LVGL `LV_EVENT_INVALIDATE_AREA` hook (`profilerInvalidationProbeCount` in
   `sim/power_profiler.cpp`), and `ui.invalidate_count` reports events since the
