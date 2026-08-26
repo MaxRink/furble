@@ -37,10 +37,11 @@ constexpr uint32_t UNCERTAINTY_GROWTH_PPM = 100;
 constexpr uint32_t BACKWARD_TOLERANCE_MS = 5000;
 constexpr uint32_t MEANINGFUL_CORRECTION_MS = 60U * 1000U;
 // Normal synchronization writes are limited to four per 24 hours. A graceful
-// shutdown may add a checkpoint after three hours, keeping the hard bound at
-// eight writes per 24 hours even when shutdowns and corrections alternate.
+// shutdown may add a checkpoint after three and a half hours. The fractional
+// margin keeps the hard bound strict for inclusive rolling 24-hour windows.
 constexpr uint64_t NVS_NORMAL_MIN_WRITE_INTERVAL_MS = 6ULL * 60ULL * 60ULL * 1000ULL;
-constexpr uint64_t NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS = 3ULL * 60ULL * 60ULL * 1000ULL;
+constexpr uint64_t NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS =
+    3ULL * 60ULL * 60ULL * 1000ULL + 30ULL * 60ULL * 1000ULL;
 
 uint8_t sourcePriority(TimeSource source);
 bool valid(const TimeSample &sample);
