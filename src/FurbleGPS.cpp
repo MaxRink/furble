@@ -1288,6 +1288,19 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
   }
 
   if (fix.time_valid) {
+    // The public snapshot uses unsigned int fields, while the companion wire
+    // representation narrows them. Reject values that cannot be represented
+    // before converting so malformed direct callers cannot wrap into a valid
+    // calendar tuple.
+    if (fix.timesync.year > std::numeric_limits<uint16_t>::max()
+        || fix.timesync.month > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.day > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.hour > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.minute > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.second > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.centisecond > std::numeric_limits<uint8_t>::max()) {
+      return false;
+    }
     uint64_t epoch_us = 0;
     if (!TimeKeeperPolicy::utcToEpochUs(
             static_cast<uint16_t>(fix.timesync.year), static_cast<uint8_t>(fix.timesync.month),
