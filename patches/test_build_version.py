@@ -2,6 +2,7 @@
 """Regression tests for development firmware version resolution."""
 
 import os
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -165,8 +166,21 @@ class BuildVersionTest(unittest.TestCase):
 
     requested = "v3.9.1+build metadata"
     self.assertEqual(
-        resolve_version(requested, Path("/repo"), unexpected_git), requested
+      resolve_version(requested, Path("/repo"), unexpected_git), requested
     )
+
+  def test_firmware_builds_use_the_version_adapter_once(self):
+    platformio = Path(__file__).parents[1] / "platformio.ini"
+    config = platformio.read_text(encoding="utf-8")
+    furble = re.search(r"(?ms)^\[furble\]\n(.*?)(?=^\[|\Z)", config)
+    self.assertIsNotNone(furble)
+    self.assertNotIn("FURBLE_VERSION", furble.group(1))
+    waveshare_debug = re.search(
+        r"(?ms)^\[env:waveshare-s3-eth-debug\]\n(.*?)(?=^\[|\Z)",
+        config,
+    )
+    self.assertIsNotNone(waveshare_debug)
+    self.assertIn("pre:patches/version.py", waveshare_debug.group(1))
 
 
 if __name__ == "__main__":
