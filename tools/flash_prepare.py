@@ -48,7 +48,7 @@ def prepare(port: str, baud: int, timeout: float) -> bool:
                 # Echoing the complete line is useful for an audit trail and
                 # contains no credentials.
                 print(line)
-                if line.startswith("flash.ready:"):
+                if line.startswith(("flash.ready:", "flash.watchdog:", "flash.download_recovery:")):
                     seen.add(line)
 
             return {
