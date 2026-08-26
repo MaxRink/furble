@@ -4014,6 +4014,7 @@ void UI::serviceRequests(void) {
 #endif
               },
               &menu);
+          m_Mutex.lock();
         } else {
           Scan::getInstance().stop();
         }
@@ -4697,6 +4698,7 @@ void UI::startScan(void) {
       [](void *) {
         lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
       });
+  m_Mutex.lock();
 
   m_ConnectContext.menuName = m_ScanStr;
 }
