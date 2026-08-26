@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 
 #include "FurbleTimeKeeper.h"
 #include "M5Unified.h"
@@ -76,10 +77,14 @@ int main() {
 
   setTimeMs(3ULL * 60ULL * 60ULL * 1000ULL);
   keeper.flush();
+  CHECK(nvs_test_commit_count() == 1);
+  setTimeMs(Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
+  keeper.flush();
   CHECK(nvs_test_commit_count() == 2);
   Furble::TimeSample durable = {};
   CHECK(readDurable(durable));
-  CHECK(durable.epoch_us == epoch + 3ULL * 60ULL * 60ULL * 1000000ULL);
+  CHECK(durable.epoch_us
+        == epoch + Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS * 1000ULL);
   keeper.flush();
   CHECK(nvs_test_commit_count() == 2);
 
@@ -91,7 +96,7 @@ int main() {
   CHECK(keeper.status().source == Furble::TimeSource::NVS);
   keeper.flush();
   CHECK(nvs_test_commit_count() == 2);
-  setTimeMs(3ULL * 60ULL * 60ULL * 1000ULL);
+  setTimeMs(Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
   keeper.flush();
   CHECK(nvs_test_commit_count() == 3);
 
@@ -115,16 +120,41 @@ int main() {
   setTimeMs(0);
   bootWithoutRtc();
   CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
-  for (uint64_t slot = 1; slot <= 7; slot++) {
+  std::vector<uint64_t> commitTimes = {0};
+  for (uint64_t slot = 1; slot <= 6; slot++) {
     setTimeMs(slot * Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
+    const size_t before = nvs_test_commit_count();
     CHECK(keeper.update(
         Furble::TimeSource::GPS,
         epoch + slot * Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS * 1000ULL
             + 120000000ULL,
         1000));
     keeper.flush();
+    if (nvs_test_commit_count() != before) {
+      commitTimes.push_back(now_us / 1000);
+    }
   }
-  CHECK(nvs_test_commit_count() <= 8);
+  CHECK(nvs_test_commit_count() == 7);
+
+  // The exact 24-hour boundary is intentionally not eligible. A later
+  // checkpoint is allowed, and every inclusive rolling window stays bounded.
+  setTimeMs(24ULL * 60ULL * 60ULL * 1000ULL);
+  keeper.flush();
+  CHECK(nvs_test_commit_count() == 7);
+  setTimeMs(24ULL * 60ULL * 60ULL * 1000ULL
+            + Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
+  keeper.flush();
+  CHECK(nvs_test_commit_count() == 8);
+  commitTimes.push_back(now_us / 1000);
+  for (size_t first = 0; first < commitTimes.size(); first++) {
+    size_t inWindow = 0;
+    for (size_t current = first; current < commitTimes.size(); current++) {
+      if (commitTimes[current] - commitTimes[first] <= 24ULL * 60ULL * 60ULL * 1000ULL) {
+        inWindow++;
+      }
+    }
+    CHECK(inWindow <= 8);
+  }
 
   // A failed setter never reaches durable storage. A simulated reboot must
   // therefore come up without a time record.
