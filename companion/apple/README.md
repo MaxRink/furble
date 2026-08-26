@@ -11,13 +11,19 @@ SwiftUI source set that is generated into two native app targets:
 The package target `FurbleCompanionCore` is the host-testable part. It covers
 the frozen little-endian location, status, capability, settings and camera
 records, strict length validation, the HMAC challenge state machine, Keychain
-credential storage, and a deterministic BLE connection state machine.
+credential storage, deterministic BLE connection state, and paired trigger
+press/release state.
 
 The app refuses to enter `ready` when the Auth characteristic is missing. There
 is no insecure password or BLE-security downgrade. The firmware Auth
 characteristic from the follow-up companion security slice must land before a
 physical Apple link can be used. Capability bit 1 is reserved for the cameras
 characteristic, matching plans/51 and the firmware cameras slice.
+
+Shutter and focus are hold controls. A touch sends one press packet and its
+matching release packet when the touch ends or the view disappears. The
+host-tested hold state suppresses duplicate presses and restores state after a
+failed write so a transient Bluetooth error can be retried safely.
 
 On first launch, or after choosing **Change password**, the shared iOS/macOS
 SwiftUI screen accepts a password and confirmation through secure fields. It

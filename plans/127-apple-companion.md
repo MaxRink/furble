@@ -19,7 +19,8 @@ XcodeGen release documented in the companion README.
   negotiation before status, settings, cameras or trigger operations become
   available. A missing Auth characteristic is an error, never a downgrade.
 - CoreBluetooth central adapter with state restoration, MTU-safe payload
-  bounds, status notifications, reconnect state, and explicit trigger writes.
+  bounds, status notifications, reconnect state, and paired press/release
+  trigger writes for shutter and focus.
 - Opt-in Core Location bridge that emits UTC fixes with age and accuracy, and
   never starts location updates merely because a device is paired.
 - Shared SwiftUI iOS/macOS app source plus platform privacy usage strings.

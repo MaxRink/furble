@@ -25,7 +25,7 @@ jobs:
   apple-project:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Select pinned Xcode
         run: |
           sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
@@ -66,7 +66,7 @@ jobs:
   swift-package:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Select pinned Xcode
         run: |
           sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"

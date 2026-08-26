@@ -118,6 +118,29 @@ final class FurbleProtocolTests: XCTestCase {
       Data([1, 4, 0x34, 0x12]))
   }
 
+  func testTriggerHoldStatePairsEveryPressWithOneRelease() {
+    var state = TriggerHoldState()
+    XCTAssertEqual(state.pressShutter(), .shutterPress)
+    XCTAssertNil(state.pressShutter())
+    XCTAssertEqual(state.releaseShutter(), .shutterRelease)
+    XCTAssertNil(state.releaseShutter())
+    XCTAssertEqual(state.pressFocus(), .focusPress)
+    XCTAssertEqual(state.releaseAll(), [.focusRelease])
+    XCTAssertFalse(state.shutterHeld)
+    XCTAssertFalse(state.focusHeld)
+  }
+
+  func testTriggerHoldStateRestoresStateAfterFailedWrite() {
+    var state = TriggerHoldState()
+    let press = state.pressShutter()
+    XCTAssertEqual(press, .shutterPress)
+    state.restore(after: .shutterPress)
+    XCTAssertFalse(state.shutterHeld)
+    XCTAssertEqual(state.pressShutter(), .shutterPress)
+    state.restore(after: .shutterRelease)
+    XCTAssertTrue(state.shutterHeld)
+  }
+
   func testSettingsTlvRoundTripsAndRejectsTrailingBytes() throws {
     XCTAssertEqual(FurbleProtocol.settingsListRequest(), Data([0, 0, 0]))
     let setting = try FurbleProtocol.settingsSet(id: 7, value: Data([0xff]))

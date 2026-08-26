@@ -66,20 +66,58 @@ private struct ContentView: View {
             .font(.footnote)
         }
         Section("Trigger") {
-          HStack {
-            Button("Press shutter") { try? client.trigger(.shutterPress) }
-            Button("Release shutter") { try? client.trigger(.shutterRelease) }
-          }
-          HStack {
-            Button("Press focus") { try? client.trigger(.focusPress) }
-            Button("Release focus") { try? client.trigger(.focusRelease) }
-          }
-          Text("Release a held trigger before leaving the app. The firmware also releases held outputs when the link is lost.")
+          HoldTriggerButton(
+            title: "Hold shutter",
+            onPress: { try? client.pressShutter() },
+            onRelease: { try? client.releaseShutter() })
+          HoldTriggerButton(
+            title: "Hold focus",
+            onPress: { try? client.pressFocus() },
+            onRelease: { try? client.releaseFocus() })
+          Text("Each hold sends one press and one matching release. Leaving the app releases both outputs. The firmware also releases held outputs when the link is lost.")
             .font(.footnote)
         }
       }
       .navigationTitle("furble companion")
+      .onDisappear { try? client.releaseAllTriggers() }
     }
+  }
+}
+
+/// A platform-neutral SwiftUI gesture wrapper. DragGesture with zero minimum
+/// distance reports the initial touch and the terminal release on both iOS and
+/// macOS, unlike a tap which cannot represent a held focus or shutter output.
+private struct HoldTriggerButton: View {
+  let title: String
+  let onPress: () -> Void
+  let onRelease: () -> Void
+  @State private var isPressed = false
+
+  var body: some View {
+    Text(title)
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, 8)
+      .contentShape(Rectangle())
+      .background(isPressed ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12))
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+      .accessibilityAddTraits(.isButton)
+      .gesture(
+        DragGesture(minimumDistance: 0)
+          .onChanged { _ in
+            guard !isPressed else { return }
+            isPressed = true
+            onPress()
+          }
+          .onEnded { _ in
+            releaseIfNeeded()
+          })
+      .onDisappear { releaseIfNeeded() }
+  }
+
+  private func releaseIfNeeded() {
+    guard isPressed else { return }
+    isPressed = false
+    onRelease()
   }
 }
 

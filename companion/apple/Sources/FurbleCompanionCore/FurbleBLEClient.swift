@@ -21,6 +21,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private var characteristics: [CBUUID: CBCharacteristic] = [:]
   private var reconnectAttempt = 0
   private var authBeginPending = false
+  private var triggerHold = TriggerHoldState()
 
   public init(credentialStore: FurbleCredentialStore = KeychainCredentialStore()) {
     self.credentialStore = credentialStore
@@ -40,6 +41,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
+    triggerHold = TriggerHoldState()
     error = nil
     state = CompanionStateMachine()
     phase = .idle
@@ -81,6 +83,46 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     }
     guard write(data, to: characteristic, type: .withResponse) else {
       throw FurbleProtocol.Error.payloadTooLarge
+    }
+  }
+
+  public func pressShutter() throws {
+    try sendHeldTrigger(triggerHold.pressShutter())
+  }
+
+  public func releaseShutter() throws {
+    try sendHeldTrigger(triggerHold.releaseShutter())
+  }
+
+  public func pressFocus() throws {
+    try sendHeldTrigger(triggerHold.pressFocus())
+  }
+
+  public func releaseFocus() throws {
+    try sendHeldTrigger(triggerHold.releaseFocus())
+  }
+
+  public func releaseAllTriggers() throws {
+    let operations = triggerHold.releaseAll()
+    var firstError: Error?
+    for operation in operations {
+      do {
+        try trigger(operation)
+      } catch {
+        triggerHold.restore(after: operation)
+        if firstError == nil { firstError = error }
+      }
+    }
+    if let firstError { throw firstError }
+  }
+
+  private func sendHeldTrigger(_ operation: FurbleProtocol.TriggerOperation?) throws {
+    guard let operation else { return }
+    do {
+      try trigger(operation)
+    } catch {
+      triggerHold.restore(after: operation)
+      throw error
     }
   }
 
@@ -248,6 +290,7 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
+    triggerHold = TriggerHoldState()
     authBeginPending = false
     if central.state == .poweredOn { beginScan() }
   }
