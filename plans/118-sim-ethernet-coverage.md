@@ -1,9 +1,10 @@
 # 118 - Sim Ethernet coverage
 
-Status: host lifecycle coverage implemented on PR #170's Ethernet seam. The
-test links the production `src/FurbleEthernet.cpp` and drives a deterministic
-W5500-shaped transport without ESP-IDF, a broker, or hardware. MQTT startup
-ordering remains a follow-up when the MQTT host seam lands.
+Status: implemented. The host test links the production
+`src/FurbleEthernet.cpp` and drives a deterministic W5500-shaped transport
+without ESP-IDF, a broker, or hardware. It covers IP loss, repeated lifecycle
+generations, stale callbacks, and init/start/stop races. MQTT startup ordering
+remains a follow-up when the MQTT host seam lands.
 
 The implementation is intentionally narrower than the original design: PR
 #170 already provides the production Ethernet seam, so the host test covers
@@ -30,12 +31,26 @@ In scope, under `tests/host/eth/` (host-only):
   link-down and reconnect.
 - The existing `ethernet_test` links the real `src/FurbleEthernet.cpp` against
   `MockEthNetif` and asserts link/IP ordering, empty and stale IP rejection,
-  duplicate suppression, clean stop, restart, and deterministic init/start
-  failure recovery.
+  duplicate suppression, IP loss, clean stop, repeated restart generations,
+  stale callback rejection, deterministic init/start failure recovery, and
+  stop racing init or start.
+- Production transport lifecycle calls are serialized outside the state lock.
+  Callbacks carry a lifecycle epoch so queued events from a stopped transport
+  cannot mutate a later instance.
+- ESP-IDF event registrations are instance-scoped and include
+  `IP_EVENT_ETH_LOST_IP`. The process-global GPIO ISR service remains installed
+  after first use so Ethernet shutdown cannot remove handlers owned by another
+  subsystem.
+- The Waveshare release image joins reproducible-build CI. Its CMake component
+  dependencies are gated to the Ethernet environment, so display boards do not
+  gain unused Ethernet dependencies.
 
 Out of scope:
 
-- The W5500 SPI bring-up, pin table and PoE. Hardware-only, `plans/42`.
+- The W5500 SPI bring-up and pin table. Hardware-only, `plans/42`.
+- PoE negotiation and power-source detection. The base board has no built-in
+  PoE and the optional PoE HAT exposes no MCU-readable presence or negotiation
+  signal. Firmware must not infer PoE from Ethernet link state.
 - TLS to a real broker. `plans/42` verification.
 
 ## Files to change
@@ -69,6 +84,11 @@ None. Test-only. `plans/42` owns any Ethernet settings.
   with no IP cannot reach a broker). Assert the ordering explicitly.
 - Mock fidelity to the `esp_eth` / `esp_netif` event contract; cite the IDF
   `esp_eth` reference `plans/42` lists.
+- The GPIO ISR service is process-global. Uninstalling it during Ethernet stop
+  could remove per-pin handlers registered by another subsystem. ESP-IDF
+  documents `gpio_install_isr_service()` as a global service and reports
+  `ESP_ERR_INVALID_STATE` when it already exists:
+  https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/peripherals/gpio.html
 
 ## Codex self-verification (headless)
 
@@ -79,9 +99,10 @@ ctest --test-dir build/host-tests -R ethernet-transport --output-on-failure
 ```
 
 Exit 0 proves the Ethernet seam orders link-up before got-IP, rejects invalid
-or stale addresses, suppresses duplicate notifications, and recovers from
-driver initialization/start failures without a W5500 or wire. MQTT startup on
-the callback remains covered by plan 117.
+or stale addresses, suppresses duplicate notifications, survives IP loss and
+repeated lifecycle generations, rejects stopped-generation callbacks, and
+serializes shutdown against driver initialization/start without a W5500 or
+wire. MQTT startup on the callback remains covered by plan 117.
 
 ## Residual (Claude / hardware) verification
 

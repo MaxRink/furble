@@ -22,16 +22,17 @@ All contributions will continue to pass through human review before acceptance.
 
 furble is an ESP-IDF 5.x project built with PlatformIO. It is not Arduino.
 
-There are five release board environments: `m5stick-c`, `m5stick-c-plus`,
-`m5stick-s3`, `m5stack-core`, and `m5stack-core2`. Each has a matching `-debug`
-environment that adds verbose logging and the USB serial console. CI and
-releases build the five release environments only.
+There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
+`m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has
+a matching `-debug` environment that adds verbose logging and the USB serial
+console. CI and releases build the six release environments only.
 
 Every build needs the `FURBLE_VERSION` and `FURBLE_TEST` variables:
 
 ```sh
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug -t upload
+FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e waveshare-s3-eth
 ```
 
 Development builds report `dev+g<unambiguous-hash>`. A tracked, staged, or
@@ -39,9 +40,13 @@ non-ignored untracked change appends `.dirty`; ignored-only changes do not.
 Explicit release versions remain unchanged. See `CLAUDE.md` for the complete
 build identity guidance.
 
-A settings enum change must be applied consistently across all five committed
-`sdkconfig.<env>` files, never for just one env. See `CLAUDE.md` for the build
-traps.
+A settings configuration change must be applied consistently across all six
+committed release `sdkconfig.<env>` files, never for just one env. See
+`CLAUDE.md` for the build traps.
+
+Board-specific ESP-IDF component dependencies need both a compiler define and
+a CMake profile argument. CMake resolves components before conditional C++
+compilation. See the Waveshare Ethernet environment for the established form.
 
 ## Testing
 

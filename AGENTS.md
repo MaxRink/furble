@@ -20,6 +20,9 @@ requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 Manual PlatformIO dispatches must run the complete firmware matrix. Do not
 derive a comparison range from repository root commits.
+Gate board-specific ESP-IDF component dependencies with a CMake profile
+argument as well as a compiler define. Otherwise every board resolves those
+components before conditional C++ compilation can remove them.
 
 Development builds using `FURBLE_VERSION=dev` identify the checkout as
 `dev+g<unambiguous-hash>` and append `.dirty` for tracked, staged, or
