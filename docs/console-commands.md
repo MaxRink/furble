@@ -45,6 +45,11 @@ lock for its lifetime. On the M5StickS3 no lock is needed.
 | `reboot` | Restart the device. |
 | `help` | List every command. |
 
+On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
+voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
+or optional PoE power from Ethernet link state because the optional PoE HAT has
+no software-readable presence or negotiation signal.
+
 ## settings
 
 - `settings list` prints every setting as `key: value`.

@@ -286,6 +286,11 @@ Reuse the plan 50 status and trigger characteristics unchanged.
 
 ## Implementation status
 
+- Follow-up PR #221 gates headless battery, charging, and VBUS status through
+  explicit board capabilities. The base board and its optional PoE HAT report
+  unknown power-source state rather than M5Unified fallback readings. The
+  behavior is covered by the host battery-status test and does not require a
+  physical PoE observation.
 - `boards/waveshare-esp32-s3-eth.json` describes the 16 MB flash and octal
   PSRAM board instead of borrowing the 8 MB, no-PSRAM DevKit profile.
 - `partitions_waveshare_s3_eth.csv` keeps NVS at `0x9000`, otadata at `0xf000`,
