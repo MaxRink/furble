@@ -110,6 +110,10 @@ UI change before approving.
   invalidation logger are the diagnosis tools.
 - PSRAM (S3): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
+- ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
+  association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
+  the upstream fix is present in the pinned SDK. Capability heap diagnostics
+  do not require it.
 - Full detail and more findings live in `plans/95-engineering-lessons.md`. Read
   the matching section before you touch that area.
 - Settings are called from the UI and background tasks. Each NVS transaction
