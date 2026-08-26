@@ -283,6 +283,48 @@ on:
     self.assertIn("pull_request has a base-branch filter", errors)
     self.assertNotIn("pull_request has no path filter", errors)
 
+  def test_firmware_filter_requires_full_manual_dispatch(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+jobs:
+  changes:
+    steps:
+      - id: filter
+        run: |
+          firmware_changed=false
+          changed_paths="$(git diff --name-only "$PR_BASE_SHA" "$CURRENT_SHA")"
+"""
+    )
+    self.assertIn(
+        "firmware change filter does not fully build manual dispatches", errors
+    )
+
+  def test_firmware_filter_rejects_multiple_root_fallback(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+jobs:
+  changes:
+    steps:
+      - id: filter
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            firmware_changed=true
+          fi
+          base_sha="$(git rev-list --max-parents=0 "$CURRENT_SHA")"
+"""
+    )
+    self.assertIn(
+        "firmware change filter can produce multiple base SHAs", errors
+    )
+
 
 if __name__ == "__main__":
   unittest.main()

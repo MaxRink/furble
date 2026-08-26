@@ -14,6 +14,7 @@ import argparse
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -194,6 +195,46 @@ def _lint_document(document: Mapping[str, Any]) -> list[str]:
     errors.append("has no workflow_dispatch trigger")
   if _permission_requests_write(document):
     errors.append("requests pull-requests: write for pull_request runs")
+  errors.extend(_lint_firmware_change_filter(document))
+  return errors
+
+
+def _lint_firmware_change_filter(document: Mapping[str, Any]) -> list[str]:
+  """Check the optional firmware path filter used by the main workflow."""
+
+  jobs = document.get("jobs")
+  if not isinstance(jobs, Mapping):
+    return []
+  changes = jobs.get("changes")
+  if not isinstance(changes, Mapping):
+    return []
+  steps = changes.get("steps")
+  if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes)):
+    return []
+  filter_step = next(
+      (
+          step
+          for step in steps
+          if isinstance(step, Mapping) and step.get("id") == "filter"
+      ),
+      None,
+  )
+  if not isinstance(filter_step, Mapping):
+    return []
+  script = filter_step.get("run")
+  if not isinstance(script, str):
+    return ["firmware change filter has no shell script"]
+
+  errors: list[str] = []
+  dispatch_full_build = re.search(
+      r'if\s+\[\[\s+"\$EVENT_NAME"\s+==\s+"workflow_dispatch"\s+\]\]'
+      r"[\s\S]*?firmware_changed=true",
+      script,
+  )
+  if dispatch_full_build is None:
+    errors.append("firmware change filter does not fully build manual dispatches")
+  if "rev-list --max-parents=0" in script:
+    errors.append("firmware change filter can produce multiple base SHAs")
   return errors
 
 

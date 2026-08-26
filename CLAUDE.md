@@ -26,6 +26,8 @@ CLAUDE.md whose directory it touches.
 - CI validation workflows use path filters rather than pull request base-branch
   filters, so stacked PRs run without retargeting. Safe validation workflows
   also expose `workflow_dispatch`; use the Actions tab to select a branch.
+  Manual PlatformIO dispatches always run the complete firmware matrix because
+  a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
   documented env, including the non-CI `esp32-s3-headless` env. A new settings
