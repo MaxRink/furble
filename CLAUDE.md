@@ -17,6 +17,9 @@ CLAUDE.md whose directory it touches.
   those changes consistently across all five files, never for just one env.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`
+- The PlatformIO version adapter expands the exact `dev` value to
+  `dev+g<short-revision>`, adding `.dirty` for tracked, staged, or non-ignored
+  untracked changes. Explicit release and experiment versions are unchanged.
 - Quirk: the global git fsmonitor breaks the first TinyGPSPlus install in each
   fresh libdeps dir. Re-run the same pio command once. Worktree-isolated agents
   cannot export `GIT_CONFIG_*` to work around it.

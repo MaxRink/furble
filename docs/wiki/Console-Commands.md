@@ -13,6 +13,12 @@ pio device monitor -e m5stick-s3-debug
 Log output shares the port, so `log * warn` is usually the first thing worth
 typing. Every command prints one fact per line as `key: value`.
 
+For a development build, `version` reports `dev+g<revision>`, where the suffix
+is Git's unambiguous abbreviation of the checked-out commit (at least eight
+characters). A tracked, staged, or non-ignored untracked change adds `.dirty`.
+Explicit release versions remain unchanged. The same identity is shown on the
+About page and exposed through companion BLE Device Information.
+
 ## Command summary
 
 | Command | What it does |
