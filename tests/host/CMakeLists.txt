@@ -56,6 +56,10 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
 target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
 
+add_executable(battery_status_test battery_status_test.cpp)
+target_include_directories(battery_status_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(battery_status_test PRIVATE -Wall -Wextra -Werror)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE
@@ -519,6 +523,7 @@ if(BUILD_TESTING)
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
+  add_test(NAME battery-status COMMAND battery_status_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
 
