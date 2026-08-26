@@ -39,6 +39,9 @@ class MockEthNetif final: public Furble::Ethernet::Transport {
   void blockInit(void);
   void waitForInitEntered(void);
   void releaseInit(void);
+  void blockStart(void);
+  void waitForStartEntered(void);
+  void releaseStart(void);
 
   int initCalls(void) const { return m_InitCalls; }
   int startCalls(void) const { return m_StartCalls; }
@@ -58,6 +61,10 @@ class MockEthNetif final: public Furble::Ethernet::Transport {
   std::condition_variable m_InitGateCondition;
   bool m_BlockInit = false;
   bool m_InitEntered = false;
+  std::mutex m_StartGateMutex;
+  std::condition_variable m_StartGateCondition;
+  bool m_BlockStart = false;
+  bool m_StartEntered = false;
 };
 
 }  // namespace FurbleHost

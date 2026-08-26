@@ -50,6 +50,26 @@ int main(void) {
   check(!Furble::Ethernet::isConnected(), "concurrent stop leaves Ethernet disconnected");
   Furble::Ethernet::stop();
 
+  FurbleHost::MockEthNetif concurrentStart;
+  concurrentStart.blockStart();
+  bool concurrentStartResult = false;
+  std::thread startThread([&] {
+    concurrentStartResult = Furble::Ethernet::init(concurrentStart);
+  });
+  concurrentStart.waitForStartEntered();
+  std::thread stopDuringStartThread([] { Furble::Ethernet::stop(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  const bool stoppedBeforeStartReleased = concurrentStart.stopCalls() != 0;
+  concurrentStart.releaseStart();
+  startThread.join();
+  stopDuringStartThread.join();
+  check(!stoppedBeforeStartReleased,
+        "stop waits for an in-flight transport start before releasing it");
+  check(concurrentStartResult, "the serialized concurrent start succeeds");
+  check(concurrentStart.stopCalls() == 1, "the concurrent start stop cleans up once");
+  check(!Furble::Ethernet::isConnected(), "stop during start leaves Ethernet disconnected");
+  Furble::Ethernet::stop();
+
   FurbleHost::MockEthNetif initFailure;
   initFailure.setInitResult(false);
   check(!Furble::Ethernet::init(initFailure), "an Ethernet init failure is reported");
