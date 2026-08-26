@@ -368,7 +368,9 @@ class Control {
   reconnect_origin_t m_ConnectOrigin = reconnect_origin_t::PEER;
   // Origin token for the next explicit connect request. Guarded by m_Mutex so
   // disconnect() and connectAll() cannot race or lose the clean teardown cause.
-  reconnect_origin_t m_NextConnectOrigin = reconnect_origin_t::PEER;
+  // Before any disconnect has occurred there is no stale peer session to
+  // wait out, so the first connect is a furble-originated cycle as well.
+  reconnect_origin_t m_NextConnectOrigin = reconnect_origin_t::FURBLE;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

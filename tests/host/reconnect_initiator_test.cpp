@@ -105,14 +105,10 @@ bool testFurbleInitiatedReconnectIsFast() {
     return false;
   }
 
-  // Establish the origin token through the production interactive disconnect
-  // path. A later AUTO request must consume that token, rather than treating
-  // every explicit connect call as fresh.
-  control.disconnect();
-  control.addActive(camera);
-
   // Fail the very first connect attempt so the first-retry path is exercised at
-  // attempt 0. The next attempt then succeeds.
+  // attempt 0. This is the first connection since boot, so it must use the
+  // same fast path as a reconnect after a completed furble disconnect. The
+  // next attempt then succeeds.
   NimBLEDevice::setConnectFailCount(1);
 
   const auto start = std::chrono::steady_clock::now();
