@@ -20,6 +20,12 @@ The console distorts power measurements, so do not take power numbers from a
 build that contains it. On the ESP32 boards the console holds an APB frequency
 lock for its lifetime. On the M5StickS3 no lock is needed.
 
+For a development build, `version` reports `dev+g<revision>`, where the suffix
+is Git's unambiguous abbreviation of the checked-out commit (at least eight
+characters). A tracked, staged, or non-ignored untracked change adds `.dirty`.
+Explicit release versions remain unchanged. The same identity is shown on the
+About page and exposed through companion BLE Device Information.
+
 ## Command summary
 
 | Command | What it does |
@@ -42,8 +48,14 @@ lock for its lifetime. On the M5StickS3 no lock is needed.
 | `feedback` | `feedback test <shutter\|countdown\|connect\|disconnect\|battery>`. |
 | `log` | `log <tag> <level>`, `*` sets all tags. |
 | `debug` | Dump internal state, see below. |
+| `flash` | `prepare` disarms the StickS3 PMIC watchdog and verifies download recovery; `cancel` restores it. |
 | `reboot` | Restart the device. |
 | `help` | List every command. |
+
+On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
+voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
+or optional PoE power from Ethernet link state because the optional PoE HAT has
+no software-readable presence or negotiation signal.
 
 ## settings
 
@@ -96,6 +108,26 @@ the web installer Capture BT debug dump panel.
 
 `debug <target>` dumps internal state for one subsystem: `control`,
 `camera [idx]`, `ble`, `heap`, `tasks`, `power`, `gps`, `settings`, or `all`.
+
+## flash preflight
+
+The StickS3 PMIC watchdog continues running while the ESP32 ROM receives a
+firmware image. At the normal ten-second timeout it can reset the USB device in
+the middle of a slow upload. On a responsive developer build, run the guarded
+preflight and let it start PlatformIO only after the PMIC confirms both safety
+conditions:
+
+```sh
+python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
+  --env m5stick-s3-debug
+```
+
+The preflight accepts no credentials and prints no secret data. If it cannot
+obtain all three acknowledgements (`flash.ready`, a disabled watchdog, and an
+unlocked download path), it refuses to flash. Use the physical long-press
+recovery procedure in the README when the running application is wedged. If an
+upload is cancelled after `flash prepare`, reconnect to the console and run
+`flash cancel`, or reboot so normal startup re-arms the watchdog.
 
 ## Related references
 

@@ -41,6 +41,14 @@ Platform &Platform::getInstance(void) {
 
 #if defined(FURBLE_M5STICKS3)
     instance.m_M5PM1.begin(nullptr);
+    // Seed the retained state with the unsafe value used by older firmware.
+    // Two calls model the required wake retry. The production boot path below
+    // must clear and verify it, so removing that path makes the scenario fail.
+    instance.m_M5PM1.setDownloadLock(true);
+    instance.m_M5PM1.setDownloadLock(true);
+    if (!instance.unlockDownloadRecovery()) {
+      ESP_LOGE("platform", "M5PM1 download recovery remains unavailable");
+    }
 #endif
 
     // The SDL panel always attaches a mouse-driven touch device, so
@@ -110,18 +118,70 @@ bool Platform::powerOff(void) {
   return true;
 }
 
-void Platform::watchdogEnable(bool enable) {
+#if defined(FURBLE_M5STICKS3)
+bool Platform::unlockDownloadRecovery(void) {
+  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
+    return false;
+  }
+
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+bool Platform::prepareFlash(void) {
+  if (!watchdogEnable(false)) {
+    (void)watchdogEnable(true);
+    return false;
+  }
+  uint8_t watchdogCount = 1;
+  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+      || watchdogCount != 0) {
+    (void)watchdogEnable(true);
+    return false;
+  }
+
+  if (!unlockDownloadRecovery()) {
+    (void)watchdogEnable(true);
+    return false;
+  }
+  return true;
+}
+
+bool Platform::downloadRecoveryUnlocked(void) {
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+bool Platform::cancelFlashPreparation(void) {
+  return watchdogEnable(true);
+}
+#endif
+
+bool Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
 
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
-    return;
+    return false;
+  }
+  uint8_t count = enable ? 0 : 1;
+  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
+      || (enable ? count == 0 : count != 0)) {
+    return false;
   }
   m_WatchdogEnabled = enable;
+  return true;
 #else
   (void)enable;
+  return true;
 #endif
 }
 
@@ -208,6 +268,15 @@ const char *watchdogState(void) {
     return "expired";
   }
   return platform.m_WatchdogEnabled ? "armed" : "disabled";
+#else
+  return "unavailable";
+#endif
+}
+
+const char *downloadLockState(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  return platform.downloadRecoveryUnlocked() ? "unlocked" : "locked";
 #else
   return "unavailable";
 #endif

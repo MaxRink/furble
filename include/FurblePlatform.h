@@ -90,10 +90,8 @@ class Platform {
    */
   void update(void);
 
-  /**
-   * Enable or disable the M5PM1 hardware watchdog.
-   */
-  void watchdogEnable(bool enable);
+  /** Set and verify the StickS3 PMIC watchdog state. */
+  bool watchdogEnable(bool enable);
 
   /** Disconnect cameras and disable restart-sensitive hardware before reset. */
   void prepareRestart(void);
@@ -185,6 +183,25 @@ class Platform {
    */
   uint32_t getBatteryFailCount(void);
 
+#if defined(FURBLE_M5STICKS3)
+  /**
+   * Prepare the StickS3 for an intentional serial flash.
+   *
+   * This is only exposed by the developer console. It disables the PMIC
+   * watchdog and verifies that the PMIC will still accept its long-press
+   * download recovery gesture.
+   */
+  bool prepareFlash(void);
+
+  /** Read back whether the PMIC long-press recovery path is unlocked. */
+  bool downloadRecoveryUnlocked(void);
+
+  /**
+   * Undo prepareFlash after an upload was cancelled.
+   */
+  bool cancelFlashPreparation(void);
+#endif
+
  private:
 #if defined(FURBLE_SIM)
   friend const char *Sim::watchdogState(void);
@@ -228,6 +245,11 @@ class Platform {
    * Record which battery measurements this board supports.
    */
   void initBattery(void);
+
+#if defined(FURBLE_M5STICKS3)
+  /** Ensure the PMIC long-press download recovery path is not locked. */
+  bool unlockDownloadRecovery(void);
+#endif
 
   M5PM1 m_M5PM1;
 

@@ -171,6 +171,9 @@ Submenu: `Settings` > `Bluetooth`.
 
 Submenu: `Settings` > `About`. A read-only page: firmware version, device ID,
 build date, IDF version, uptime, heap, and reset reason. No stored settings.
+Development firmware shows `dev+g<revision>` and appends `.dirty` when the
+checkout has tracked, staged, or non-ignored untracked changes. Explicit release
+versions are shown unchanged.
 
 ### Power
 

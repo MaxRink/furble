@@ -293,6 +293,9 @@ The list runs slightly past the screen. Scrolling down shows the last row:
 A read-only page: firmware version, device ID, build date, IDF version, uptime,
 free heap, and reset reason. It scrolls; these frames show the lower rows:
 
+Development firmware shows `dev+g<revision>` and appends `.dirty` for a dirty
+checkout. Explicit release versions are shown unchanged.
+
 | | |
 | :--- | :--- |
 | ![](img/scroll/default/about-2.png) | ![](img/scroll/default/about-3.png) |

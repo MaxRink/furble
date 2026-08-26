@@ -56,6 +56,18 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
 target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
 
+# The PMIC is a separate chip from the ESP32. Its watchdog and download lock
+# therefore survive an ESP32 reset and must be modeled as retained state.
+add_executable(pmic_recovery_test
+               pmic_recovery_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp)
+target_include_directories(pmic_recovery_test PRIVATE
+                           ${FURBLE_ROOT}/sim/shim
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/include)
+target_compile_options(pmic_recovery_test PRIVATE -Wall -Wextra -Werror
+                                                       -Wno-unused-parameter)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE
@@ -104,6 +116,17 @@ target_compile_options(advertisement_dispatch_test PRIVATE
                        -Wno-sign-compare -Wno-format -Wno-error
                        -Wno-unused-parameter)
 target_link_libraries(advertisement_dispatch_test PRIVATE Threads::Threads)
+
+# Keep the host Ethernet test tied to the firmware source manifest. The test
+# links the production implementation directly, so this configure-time guard
+# catches the failure mode that matters here: a firmware build which forgets
+# to compile the implementation at all.
+file(STRINGS ${FURBLE_ROOT}/src/CMakeLists.txt FURBLE_SOURCE_LINES
+     REGEX "^[ \\t]*FurbleEthernet\\.cpp[ \\t]*$")
+if(NOT FURBLE_SOURCE_LINES)
+  message(FATAL_ERROR
+          "src/CMakeLists.txt must include FurbleEthernet.cpp in its production source list")
+endif()
 
 # Pure logic unit suites. These link their production source directly instead
 # of the mock BLE library because the modules under test have no BLE or NVS
@@ -268,6 +291,30 @@ target_include_directories(sim_power_profiler_test PRIVATE ${FURBLE_ROOT}/includ
                                                            ${FURBLE_ROOT}/sim)
 target_compile_options(sim_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
+
+# Link the host regression against the production Ethernet implementation.
+# The source-manifest guard above ensures this test cannot silently drift away
+# from the firmware source list which owns the link.
+add_executable(ethernet_test
+               ethernet_test.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/eth/MockEthNetif.cpp
+               ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
+target_include_directories(ethernet_test PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_options(ethernet_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                             -Wno-unused-parameter)
+target_link_libraries(ethernet_test PRIVATE Threads::Threads)
+
+# Test-only power/source model for the Waveshare board. The real board has no
+# software-readable PoE HAT or negotiated-power signal, so this fixture keeps
+# HAT, PoE, link, and USB observations explicit and independent.
+add_executable(poe_power_model_test
+               poe_power_model_test.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/eth/PoEPowerModel.cpp)
+target_include_directories(poe_power_model_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(poe_power_model_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                     -Wno-unused-parameter)
 
 # Transport-independent OTA lifecycle. The production state machine is linked
 # directly, while the host test supplies a mock for the ESP-IDF transport seam.
@@ -523,8 +570,11 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
+  add_test(NAME ethernet-transport COMMAND ethernet_test)
+  add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)

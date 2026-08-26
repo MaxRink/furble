@@ -1514,8 +1514,9 @@ On-device checks not run this pass, blocked:
 
 - The M5StickS3 was bricked during the combined image camera walk (a disconnect
   during connect hang de-enumerated USB, see plans/25). Recovery needs the
-  physical rescue, hold the side button while replugging USB until the green LED
-  flashes, then reflash. The headless image was therefore not flashed.
+  physical rescue, remove battery power first if PMIC `DL_LOCK` is retained,
+  restore it, then hold the side button until the green LED flashes and reflash.
+  The headless image was therefore not flashed.
 
 Owed on the user checklist, once the device is recovered and the headless image
 is flashed:

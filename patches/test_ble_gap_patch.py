@@ -63,6 +63,32 @@ class BleGapPatchTest(unittest.TestCase):
       project_dir = Path(directory) / "project"
       framework_dir = Path(directory) / "framework"
       (project_dir / "patches").mkdir(parents=True)
+      prefix_map = framework_dir / "tools" / "cmake" / "prefix_map.cmake"
+      prefix_map.parent.mkdir(parents=True)
+      prefix_map.write_text(
+          """function(__generate_prefix_map compile_options_var)
+    set(compile_options)
+    idf_build_get_property(idf_path IDF_PATH)
+    idf_build_get_property(build_components BUILD_COMPONENTS)
+    if(CONFIG_COMPILER_HIDE_PATHS_MACROS)
+        list(APPEND compile_options \"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}=.\")
+        list(APPEND compile_options \"-fmacro-prefix-map=${idf_path}=/IDF\")
+    endif()
+    if(CONFIG_APP_REPRODUCIBLE_BUILD)
+        list(APPEND compile_options \"-fdebug-prefix-map=${idf_path}=/IDF\")
+        list(APPEND compile_options \"-fdebug-prefix-map=${PROJECT_DIR}=/IDF_PROJECT\")
+        list(APPEND compile_options \"-fdebug-prefix-map=${BUILD_DIR}=/IDF_BUILD\")
+        foreach(component_name ${build_components})
+            idf_component_get_property(component_dir ${component_name} COMPONENT_DIR)
+            string(TOUPPER ${component_name} component_name_uppercase)
+            set(substituted_path \"/COMPONENT_${component_name_uppercase}_DIR\")
+            list(APPEND compile_options \"-fdebug-prefix-map=${component_dir}=${substituted_path}\")
+        endforeach()
+    endif()
+endfunction()
+""",
+          encoding="utf-8",
+      )
       calls = []
 
       fake_module = types.ModuleType("ble_gap_patch")

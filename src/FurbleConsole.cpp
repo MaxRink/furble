@@ -1243,9 +1243,12 @@ int cmdStatus(int argc, char **argv) {
   printf("uptime: %llu\n", esp_timer_get_time() / 1000000ULL);
   printf("heap: %lu\n", esp_get_free_heap_size());
   printf("heap_min: %lu\n", esp_get_minimum_free_heap_size());
-  printf("battery: %ld\n", static_cast<long>(M5.Power.getBatteryLevel()));
-  printf("voltage: %ld\n", static_cast<long>(M5.Power.getBatteryVoltage()));
-  printf("current: %ld\n", static_cast<long>(M5.Power.getBatteryCurrent()));
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+  const auto battery = platform.readBattery();
+  printf("battery: %ld\n", caps.level ? static_cast<long>(battery.level) : -1L);
+  printf("voltage: %ld\n", caps.voltage ? static_cast<long>(battery.voltage) : -1L);
+  printf("current: %ld\n", caps.current ? static_cast<long>(battery.current) : 0L);
   return 0;
 }
 
@@ -1890,6 +1893,44 @@ int cmdReboot(int argc, char **argv) {
   return 0;
 }
 
+/**
+ * Make a deliberate serial upload safe against the external PMIC watchdog.
+ *
+ * This command is intentionally available only in developer-console builds.
+ * A release image has no unattended serial control surface. Its physical
+ * long-press recovery path remains available and is the documented fallback
+ * when the application cannot answer.
+ */
+int cmdFlash(int argc, char **argv) {
+#if !defined(FURBLE_M5STICKS3)
+  (void)argc;
+  (void)argv;
+  return fail("flash preparation is only supported on the StickS3");
+#else
+  if ((argc == 2) && !strcasecmp(argv[1], "prepare")) {
+    if (!Platform::getInstance().prepareFlash()) {
+      return fail("PMIC flash preparation failed; use the physical long-press recovery path");
+    }
+    printf("flash.ready: true\n");
+    printf("flash.watchdog: disabled\n");
+    printf("flash.download_recovery: unlocked\n");
+    fflush(stdout);
+    return 0;
+  }
+
+  if ((argc == 2) && !strcasecmp(argv[1], "cancel")) {
+    if (!Platform::getInstance().cancelFlashPreparation()) {
+      return fail("PMIC watchdog restore failed; keep the device powered and use manual recovery");
+    }
+    printf("flash.ready: false\n");
+    printf("flash.watchdog: armed\n");
+    return 0;
+  }
+
+  return fail("usage: flash prepare | cancel");
+#endif
+}
+
 /** Build a command table entry, argtable is unused, every command parses argv. */
 constexpr esp_console_cmd_t command(const char *name,
                                     const char *help,
@@ -1932,6 +1973,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
             cmdDebug),
+    command("flash", "flash prepare | cancel", cmdFlash),
     command("reboot", "Restart the device", cmdReboot),
 };
 

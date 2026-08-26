@@ -1,0 +1,8 @@
+# The PMIC long-press recovery path must be unlocked after every app boot.
+# This catches the old setDownloadLock(true) configuration, including when the
+# PMIC retained that setting across an ESP32 reset.
+seed watchdog true
+wait 400
+assert platform.download_lock unlocked
+assert platform.watchdog armed
+exit

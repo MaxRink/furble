@@ -54,7 +54,12 @@ Platform &Platform::getInstance(void) {
     instance.m_M5PM1.begin(&M5.In_I2C);
     instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
     instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
-    instance.m_M5PM1.setDownloadLock(true);        // disable BtnPWR long-press enter download mode
+    // Never lock the only recovery path which works when the ESP32 is wedged.
+    // The PMIC setting is retained independently of an ESP32 reset, so this
+    // must be an explicit write followed by a readback on every boot.
+    if (!instance.unlockDownloadRecovery()) {
+      ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
+    }
 #endif
 
     instance.initBattery();
@@ -89,14 +94,87 @@ void Platform::restart(void) {
 }
 
 #if defined(FURBLE_M5STICKS3)
-void Platform::watchdogEnable(bool enable) {
+bool Platform::unlockDownloadRecovery(void) {
+  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
+    ESP_LOGW(LOG_TAG, "Unable to unlock M5PM1 download recovery");
+    return false;
+  }
+
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    ESP_LOGW(LOG_TAG, "Unable to verify M5PM1 download recovery");
+    return false;
+  }
+
+  if (locked) {
+    ESP_LOGE(LOG_TAG, "M5PM1 rejected download recovery unlock");
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "M5PM1 long-press download recovery enabled");
+  return true;
+}
+
+bool Platform::prepareFlash(void) {
+  // A serial upload can spend longer than the normal 10 second PMIC window
+  // in ROM download mode. The caller must be a deliberate local console user;
+  // the regular runtime watchdog is restored on the next application boot.
+  if (!watchdogEnable(false)) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog disable failed before flash");
+    (void)watchdogEnable(true);
+    return false;
+  }
+  uint8_t watchdogCount = 1;
+  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+      || watchdogCount != 0) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog did not verify disabled for flash");
+    (void)watchdogEnable(true);
+    return false;
+  }
+
+  if (!unlockDownloadRecovery()) {
+    if (!watchdogEnable(true)) {
+      ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after flash preparation error");
+    }
+    return false;
+  }
+
+  ESP_LOGW(LOG_TAG, "M5PM1 watchdog disabled for flash; upload now, or run 'flash cancel'");
+  return true;
+}
+
+bool Platform::downloadRecoveryUnlocked(void) {
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+bool Platform::cancelFlashPreparation(void) {
+  if (!watchdogEnable(true)) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after cancelled flash");
+    return false;
+  }
+  ESP_LOGI(LOG_TAG, "M5PM1 watchdog restored after cancelled flash");
+  return true;
+}
+
+bool Platform::watchdogEnable(bool enable) {
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
 
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     ESP_LOGE(LOG_TAG, "Failed to set M5PM1 watchdog to %u seconds", static_cast<unsigned>(timeout));
-    return;
+    return false;
+  }
+
+  uint8_t count = enable ? 0 : 1;
+  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
+      || (enable ? count == 0 : count != 0)) {
+    ESP_LOGE(LOG_TAG, "Failed to verify M5PM1 watchdog %s", enable ? "armed" : "disabled");
+    return false;
   }
 
   if (enable) {
@@ -105,6 +183,7 @@ void Platform::watchdogEnable(bool enable) {
   } else {
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog disabled");
   }
+  return true;
 }
 
 void Platform::watchdogFeed(void) {
@@ -320,7 +399,11 @@ void Platform::initBattery(void) {
       break;
 
     default:
-      m_BatteryCaps = {true, false, false, false};
+      // An unrecognized board has no trustworthy battery backend. In
+      // particular, the Waveshare ESP32-S3-ETH is a mains/PoE node with no
+      // battery or PMIC. Do not turn M5Unified's fallback values into a fake
+      // battery percentage.
+      m_BatteryCaps = {false, false, false, false};
       m_BatteryCapacity = 0;
   }
 

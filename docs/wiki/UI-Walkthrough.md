@@ -238,6 +238,10 @@ Pick Small, Normal, or Large, then press Restart to apply.
 A read-only page: firmware version, device ID, build date, IDF version, uptime,
 free heap, and reset reason.
 
+Development firmware shows `dev+g<revision>` so a bench result can be tied to
+its checked-out commit. Dirty checkouts append `.dirty`. Explicit release
+versions are shown unchanged.
+
 ### Power
 
 ![Power settings](img/settings-power.png)

@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +23,20 @@ ARTIFACTS = (
     "partitions.bin",
     "ota_data_initial.bin",
 )
+
+
+def read_lock(root: Path) -> dict[str, str]:
+  """Read the reproducibility lock file into a small, validated mapping."""
+  lock = {}
+  for line in (root / LOCK_NAME).read_text(encoding="utf-8").splitlines():
+    line = line.strip()
+    if not line or line.startswith("#"):
+      continue
+    key, separator, value = line.partition("=")
+    if not separator or not key or not value or key in lock:
+      raise RuntimeError(f"invalid lock entry in {root / LOCK_NAME}: {line!r}")
+    lock[key] = value
+  return lock
 
 
 @dataclass(frozen=True)
@@ -52,15 +68,7 @@ def commit_metadata(root: Path) -> tuple[int, str]:
 
 def check_inputs(root: Path) -> None:
   lock_path = root / LOCK_NAME
-  lock = {}
-  for line in lock_path.read_text(encoding="utf-8").splitlines():
-    line = line.strip()
-    if not line or line.startswith("#"):
-      continue
-    key, separator, value = line.partition("=")
-    if not separator or not key or not value or key in lock:
-      raise RuntimeError(f"invalid lock entry in {lock_path}: {line!r}")
-    lock[key] = value
+  lock = read_lock(root)
 
   requirements = (root / "requirements.txt").read_text(encoding="utf-8")
   platformio = (root / "platformio.ini").read_text(encoding="utf-8")
@@ -130,8 +138,168 @@ def copy_source(source: Path, destination: Path) -> None:
   shutil.copytree(source, destination, ignore=ignore)
 
 
+_VERSION_RE = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+].*)?$")
+
+
+def _version_tuple(version: str) -> tuple[int, int, int] | None:
+  match = _VERSION_RE.fullmatch(version.strip())
+  if not match:
+    return None
+  return tuple(int(part or 0) for part in match.groups())
+
+
+def _version_satisfies(version: str, requirement: str) -> bool:
+  """Match the PlatformIO version forms used by platform manifests.
+
+  This intentionally handles only the small semver subset emitted by the
+  Espressif platform (exact, ~, ^, and comparison operators). Unknown syntax
+  is rejected so a cache entry is never reused on an assumption.
+  """
+  actual = _version_tuple(version)
+  requirement = requirement.strip()
+  if actual is None or not requirement or "||" in requirement or " " in requirement:
+    return False
+  operator = ""
+  for candidate in (">=", "<=", ">", "<", "=", "~", "^"):
+    if requirement.startswith(candidate):
+      operator = candidate
+      requirement = requirement[len(candidate):]
+      break
+  expected = _version_tuple(requirement)
+  if expected is None:
+    return False
+  if operator in ("", "="):
+    return actual == expected
+  if operator == ">=":
+    return actual >= expected
+  if operator == "<=":
+    return actual <= expected
+  if operator == ">":
+    return actual > expected
+  if operator == "<":
+    return actual < expected
+  if operator == "~":
+    return actual >= expected and actual < (expected[0], expected[1] + 1, 0)
+  if operator == "^":
+    return actual >= expected and actual < (expected[0] + 1, 0, 0)
+  return False
+
+
+def _safe_component(value: object, label: str) -> str:
+  """Validate a cache name before using it in a filesystem path."""
+  if (
+      not isinstance(value, str)
+      or not value
+      or value in (".", "..")
+      or "/" in value
+      or "\\" in value
+  ):
+    raise RuntimeError(f"unsafe {label}: {value!r}")
+  return value
+
+
+def _contained_child(root: Path, component: str, label: str) -> Path:
+  """Join one validated component and assert lexical/resolved containment."""
+  child = root / _safe_component(component, label)
+  try:
+    child.relative_to(root)
+    root_real = root.resolve(strict=True)
+    child.parent.resolve(strict=True).relative_to(root_real)
+  except ValueError as error:
+    raise RuntimeError(f"unsafe {label}: {component!r}") from error
+  except OSError as error:
+    raise RuntimeError(f"unavailable {label}: {root}") from error
+  return child
+
+
+def _require_private_directory(path: Path, label: str) -> None:
+  """Reject symlinked isolated directories before following them."""
+  if path.is_symlink():
+    raise RuntimeError(f"isolated {label} must not be a symlink: {path}")
+  if not path.is_dir():
+    raise RuntimeError(f"incomplete isolated {label}: {path}")
+
+
+def _remove_isolated_entry(path: Path) -> None:
+  """Remove one stale entry owned by the isolated PlatformIO core."""
+  if path.is_symlink() or path.is_file():
+    path.unlink()
+  elif path.is_dir():
+    shutil.rmtree(path)
+
+
+def _manifest_identity(package: Path, names: tuple[str, ...]) -> tuple[str, str] | None:
+  """Return a package identity only when all available metadata agrees.
+
+  PlatformIO normally writes both ``.piopm`` and ``package.json`` (or
+  ``platform.json``). Requiring both makes a half-restored cache fall back to
+  the installer instead of creating a symlink that the installer cannot
+  replace.
+  """
+  if not package.is_dir() or package.is_symlink():
+    return None
+  identities = []
+  for name in names:
+    metadata = package / name
+    if not metadata.is_file():
+      return None
+    try:
+      data = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+      return None
+    package_name = data.get("name")
+    version = data.get("version")
+    if not isinstance(package_name, str) or not isinstance(version, str):
+      return None
+    _safe_component(package_name, "cached manifest name")
+    identities.append((package_name, version))
+  if not identities or any(identity != identities[0] for identity in identities[1:]):
+    return None
+  return identities[0]
+
+
+def _platform_cache(
+    source: Path, expected_name: str, expected_version: str
+) -> tuple[Path, dict[str, dict[str, object]]] | None:
+  """Return an exact platform cache and its dependency requirements."""
+  identity = _manifest_identity(source, (".piopm", "platform.json"))
+  if identity != (expected_name, expected_version):
+    return None
+  try:
+    manifest = json.loads((source / "platform.json").read_text(encoding="utf-8"))
+    requirements = manifest["packages"]
+  except (OSError, ValueError, TypeError, KeyError):
+    return None
+  if not isinstance(requirements, dict):
+    return None
+  for package_name in requirements:
+    _safe_component(package_name, "platform package name")
+  return source, requirements
+
+
+def _package_matches(
+    package: Path, name: str, requirement: dict[str, object], exact_version: str = ""
+) -> bool:
+  identity = _manifest_identity(package, (".piopm", "package.json"))
+  if identity is None or identity[0] != name:
+    return False
+  if exact_version and identity[1] != exact_version:
+    return False
+  versions = []
+  primary = requirement.get("version")
+  if isinstance(primary, str):
+    versions.append(primary)
+  alternatives = requirement.get("optionalVersions")
+  if isinstance(alternatives, list):
+    versions.extend(item for item in alternatives if isinstance(item, str))
+  return bool(versions) and any(_version_satisfies(identity[1], item) for item in versions)
+
+
 def prepare_platformio_core(
-    destination: Path, inherited_environment: dict[str, str]
+    destination: Path,
+    inherited_environment: dict[str, str],
+    *,
+    project: Path | None = None,
 ) -> dict[str, str]:
   """Create an isolated PlatformIO core for one reproducibility build.
 
@@ -149,29 +317,96 @@ def prepare_platformio_core(
   core = destination / "pio-core"
   packages = core / "packages"
   platforms = core / "platforms"
+  if destination.is_symlink() or core.is_symlink():
+    raise RuntimeError(f"isolated PlatformIO core must not be a symlink: {core}")
   if core.exists():
-    if not packages.is_dir() or not platforms.is_dir():
-      raise RuntimeError(f"incomplete isolated PlatformIO core: {core}")
+    _require_private_directory(packages, "packages directory")
+    _require_private_directory(platforms, "platforms directory")
   else:
     packages.mkdir(parents=True)
     platforms.mkdir(parents=True)
 
-  source_packages = base_core / "packages"
-  if source_packages.is_dir():
-    for package in source_packages.iterdir():
-      target = packages / package.name
-      if package.name == "framework-espidf" and package.is_dir():
-        if not target.exists():
-          shutil.copytree(package, target)
-      elif not target.exists() and not target.is_symlink():
-        target.symlink_to(package, target_is_directory=package.is_dir())
-
   source_platforms = base_core / "platforms"
-  if source_platforms.is_dir():
-    for platform in source_platforms.iterdir():
-      target = platforms / platform.name
-      if not target.exists() and not target.is_symlink():
-        target.symlink_to(platform, target_is_directory=platform.is_dir())
+  source_packages = base_core / "packages"
+  lock = read_lock(project) if project is not None else {}
+  platform_spec = lock.get("platform", "")
+  platform_name, separator, platform_version = platform_spec.partition("@")
+  if separator:
+    _safe_component(platform_name, "locked platform name")
+  cached_platform = None
+  if separator and source_platforms.is_dir():
+    cached_platform = _platform_cache(
+        _contained_child(source_platforms, platform_name, "platform cache name"),
+        platform_name,
+        platform_version,
+    )
+
+  # A stale platform can make PlatformIO try to replace a symlink in the
+  # isolated core, which fails with EEXIST. Link only the exact locked
+  # platform. If it is absent or partial, let PlatformIO install a clean copy.
+  if cached_platform is not None:
+    platform, requirements = cached_platform
+    platform_target = _contained_child(platforms, platform_name, "isolated platform name")
+    if platform_target.is_symlink():
+      if platform_target.resolve() != platform.resolve():
+        _remove_isolated_entry(platform_target)
+    elif platform_target.exists() and _platform_cache(
+        platform_target, platform_name, platform_version
+    ) is None:
+      _remove_isolated_entry(platform_target)
+    if not platform_target.exists() and not platform_target.is_symlink():
+      platform_target.symlink_to(platform, target_is_directory=True)
+
+    # Dependencies are validated against the exact platform manifest. In
+    # particular, a stale generic package directory must not be linked: the
+    # installer would otherwise need to replace that symlink and hit EEXIST.
+    if source_packages.is_dir():
+      package_paths = {
+          package_name: (
+              _contained_child(source_packages, package_name, "package cache name"),
+              _contained_child(packages, package_name, "isolated package name"),
+          )
+          for package_name in requirements
+      }
+      for package_name, requirement in requirements.items():
+        if not isinstance(requirement, dict):
+          continue
+        package, target = package_paths[package_name]
+        exact_version = lock.get("framework", "") if package_name == "framework-espidf" else ""
+        if not _package_matches(package, package_name, requirement, exact_version):
+          if target.is_symlink() or target.exists():
+            _remove_isolated_entry(target)
+          continue
+        if package_name == "framework-espidf":
+          # The framework patch mutates files in-place; never leave a link to
+          # the shared cache, even when it resolves to the same source.
+          if target.is_symlink():
+            _remove_isolated_entry(target)
+          elif target.exists() and not _package_matches(
+              target, package_name, requirement, exact_version
+          ):
+            _remove_isolated_entry(target)
+          if not target.exists():
+            shutil.copytree(package, target)
+          continue
+        if target.is_symlink() and target.resolve() != package.resolve():
+          _remove_isolated_entry(target)
+        elif target.exists() and not target.is_symlink() and not _package_matches(
+            target, package_name, requirement
+        ):
+          _remove_isolated_entry(target)
+        if not target.exists() and not target.is_symlink():
+          target.symlink_to(package, target_is_directory=True)
+  elif separator:
+    # A prior interrupted invocation may have left a stale link in the
+    # temporary core. Remove stale entries only inside that isolated core.
+    platform_target = _contained_child(platforms, platform_name, "isolated platform name")
+    if platform_target.is_symlink():
+      _remove_isolated_entry(platform_target)
+    elif platform_target.exists() and _platform_cache(
+        platform_target, platform_name, platform_version
+    ) is None:
+      _remove_isolated_entry(platform_target)
 
   environment = dict(inherited_environment)
   environment.update(
@@ -185,6 +420,11 @@ def prepare_platformio_core(
   return environment
 
 
+def stable_project_path(project: Path) -> Path:
+  """Make a project path absolute without resolving symlink spelling."""
+  return Path(os.path.abspath(os.fspath(project)))
+
+
 def build_once(
     project: Path,
     environment_name: str,
@@ -192,6 +432,11 @@ def build_once(
     version: str,
     inherited_environment: dict[str, str],
 ) -> BuildResult:
+  # Preserve the lexical /tmp spelling. PlatformIO's ESP-IDF builder derives
+  # object paths from both lexical and real paths; resolving /tmp to
+  # /private/tmp can make two distinct source identities collide. The
+  # framework prefix-map patch handles both spellings in compiler/debug flags.
+  project = stable_project_path(project)
   child_environment = dict(inherited_environment)
   child_environment.update(
       {
@@ -200,7 +445,9 @@ def build_once(
           "SOURCE_DATE_EPOCH": str(epoch),
       }
   )
-  child_environment = prepare_platformio_core(project.parent, child_environment)
+  child_environment = prepare_platformio_core(
+      project.parent, child_environment, project=project
+  )
   run(
       [
           "platformio",

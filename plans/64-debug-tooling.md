@@ -311,6 +311,14 @@ timer resume check (`src/FurbleUI.cpp:1272-1279`), changed-check guarded
 updates. Task stats stay console-only; a per-task table has no place on an
 80x160 screen.
 
+ESP-IDF 5.5 per-task heap tracking is deliberately disabled in every board
+configuration. The upstream implementation can deadlock two frees on its
+tracking mutex and trip the interrupt watchdog during WiFi association, as
+tracked in [espressif/esp-idf#17519](https://github.com/espressif/esp-idf/issues/17519).
+Furble does not consume that tracker: its diagnostics use the capability heap
+APIs and FreeRTOS run-time counters instead. Comprehensive heap poisoning and
+the allocation-failure gate remain enabled.
+
 ## Pillar 3: BT debug and onboarding modes
 
 ### Honest scope

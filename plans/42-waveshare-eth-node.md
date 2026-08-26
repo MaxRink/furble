@@ -1,6 +1,8 @@
 # 42 - Waveshare ESP32-S3-ETH wired MQTT node and display-less onboarding
 
-Status: design only. No code in this document. Extends the WiFi/MQTT track in
+Status: board profile and Ethernet transport implemented in PR #170. The
+transport is ready for simulator and host verification. Real Waveshare bench
+verification remains outstanding. Extends the WiFi/MQTT track in
 `plans/33-wifi-hub.md` and the companion and security design in
 `plans/50-companion-app-design.md`. Listed as a wired-network-node board in
 `plans/41-alternative-hardware.md`.
@@ -13,9 +15,10 @@ Add the Waveshare ESP32-S3-ETH as a headless wired-Ethernet furble board. Its
 one job is to be a rock-solid Home Assistant MQTT node on a wired link, and to
 have a secure onboarding path even though it has no screen. Wired Ethernet is
 the reliability case that plan 33 wanted: a fixed studio or home install that
-is mains or PoE powered, always on, and driven from Home Assistant.
+may use USB-C/external power or the optional PoE add-on, always on, and driven
+from Home Assistant.
 
-This is a design document. It depends on two pieces of plan 33 landing first:
+The board transport in this PR depends on two pieces of plan 33 landing first:
 
 - The headless build unblock, plan 33a (PR-A). The display-less profile and the
   headless main loop are a hard prerequisite. This board has no display at all.
@@ -23,6 +26,11 @@ This is a design document. It depends on two pieces of plan 33 landing first:
   generic IP-up event and the default netif, not on WiFi, so an Ethernet link
   feeds it the same way a WiFi link does. This is the single cross-dependency
   and it is called out again under Dependencies.
+
+The host seam models the same link-up, DHCP IP, link-down and reconnect events
+without a W5500. It exposes a transport-agnostic network-up callback for the
+MQTT client and rejects empty or stale IP events. MQTT and Home Assistant
+discovery stay owned by plan 33c and are not duplicated in this board PR.
 
 Ethernet is a transport peer of WiFi here, not a competitor. A wired link means
 the plan 33 BLE and WiFi coexistence tax does not apply, so this board is the
@@ -39,7 +47,10 @@ PDF on real hardware before the board profile is trusted.
 - Radios: WiFi and BLE5. Both stay available. BLE is the onboarding channel.
 - Ethernet: Wiznet W5500 over SPI, 10/100. The ESP32-S3 has no internal EMAC,
   so an external SPI MAC plus PHY is mandatory. The W5500 is that part.
-- Power: optional 802.3af PoE module. Do not connect PoE and USB at once.
+- Power: the ESP32-S3-ETH is the base board; the Waveshare PoE Module (B) is an
+  optional external add-on (IEEE 802.3af). The `ESP32-S3-POE-ETH` listing is a
+  board-plus-module bundle, not a different built-in-PoE board. Use one power
+  source at a time during bench testing; do not connect PoE and USB together.
 - No display, no IMU, no RTC, no battery.
 - Buttons: BOOT on GPIO0 is a strapping pin, reused here as the onboarding and
   factory-reset button. It is the only button.
@@ -47,6 +58,22 @@ PDF on real hardware before the board profile is trusted.
 - USB: native USB-Serial/JTAG on GPIO19 and GPIO20. This is the console path.
 - Extras: microSD in 1-line mode, a camera header, a Pico-compatible header.
 - Reserved: GPIO33 to GPIO37 belong to the octal PSRAM. Do not remap them.
+
+## Power-source observability
+
+PoE is not built into the ESP32-S3-ETH base board. The optional module supplies
+the `POE_5V` rail through the PoE expansion header. The published schematic has
+no MCU-readable HAT-presence, PoE-capability, or PoE-negotiation signal, so
+firmware must not claim to detect any of those facts. Ethernet link state is a
+W5500/PHY observation and is not evidence that PoE is available; USB VBUS is a
+separate external-power observation.
+
+Production power-source status therefore remains unknown unless a later board
+revision documents a real sense signal. The host-only `poe-power-model` fixture
+uses explicit independent observations with a no-HAT/PoE-unavailable/link-down/
+USB-absent default. It covers no-HAT USB power, a present/capable HAT without
+negotiated power, negotiated PoE, power loss/recovery, and unknown observations;
+it is not a runtime hardware detector.
 
 ## W5500 SPI pins
 
@@ -126,10 +153,10 @@ sdkconfig deltas from the headless base:
 - `CONFIG_SPIRAM_MODE_OCT` for the octal PSRAM.
 - Keep NimBLE, esp-mqtt, esp_tls and `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`.
 - Drop LVGL and icons through `FURBLE_NO_DISPLAY`.
-- Disable automatic light sleep and hold a fixed APB and CPU frequency. The
-  board is mains or PoE powered, so there is no battery reason to sleep. A fixed
-  frequency also sidesteps the DFS clock-family trap for the W5500 SPI, the same
-  trap the GPS UART hit.
+- Disable automatic light sleep and hold a fixed APB and CPU frequency. This
+  headless Ethernet node has no battery path, regardless of whether its supply
+  is USB/external or the optional PoE add-on. A fixed frequency also sidesteps
+  the DFS clock-family trap for the W5500 SPI, the same trap the GPS UART hit.
 
 ## Subsystems off or stubbed
 
@@ -138,8 +165,10 @@ sdkconfig deltas from the headless base:
 - `M5.begin()` on a bare S3-ETH is the one unproven assumption, the same one
   plan 33a has on a devkit. Fallback: skip M5Unified under
   `FURBLE_WAVESHARE_S3_ETH` and drive `Platform::tick()` from `esp_timer`.
-- No IMU, no M5PM1, no battery. Stub the MQTT state and battery values to
-  external-power and 100 percent.
+- No IMU, no M5PM1, no battery. Do not synthesize a PoE/USB source state or a
+  battery percentage: the source is unknown to firmware unless hardware later
+  provides a documented sense signal. Any MQTT power fields must preserve that
+  unknown rather than claiming external power.
 - GPS default off. There is no Grove port. GPS is optional through the Pico
   header. With light sleep off, the S3 UART clock issue that forces
   `setSleep(false)` elsewhere is moot here.
@@ -255,9 +284,34 @@ Reuse the plan 50 status and trigger characteristics unchanged.
    documented decision, not an oversight, and it also protects the W5500 SPI
    clock.
 
+## Implementation status
+
+- Follow-up PR #221 gates headless battery, charging, and VBUS status through
+  explicit board capabilities. The base board and its optional PoE HAT report
+  unknown power-source state rather than M5Unified fallback readings. The
+  behavior is covered by the host battery-status test and does not require a
+  physical PoE observation.
+- `boards/waveshare-esp32-s3-eth.json` describes the 16 MB flash and octal
+  PSRAM board instead of borrowing the 8 MB, no-PSRAM DevKit profile.
+- `partitions_waveshare_s3_eth.csv` keeps NVS at `0x9000`, otadata at `0xf000`,
+  and provides two 6 MiB OTA slots beginning at `0x20000` and `0x620000`.
+- `Ethernet::init()` is called during application startup after the platform
+  and companion services are ready. It initializes the process-wide netif and
+  event loop idempotently, then starts the W5500 transport.
+- `Ethernet::stop()` unregisters handlers and releases the SPI, MAC, PHY,
+  netif and driver resources. Host tests exercise stop, reinitialization,
+  duplicate IP suppression, stale IP rejection and link loss.
+- PlatformIO CI and release/page matrices build the board and use its 6 MiB
+  slot when reporting firmware size.
+
 ## Verification
 
 Hardware-gated. Needs a physical Waveshare ESP32-S3-ETH board.
+
+The following can be verified without the board: host Ethernet state tests,
+the complete simulator suite, the Waveshare PlatformIO release and debug
+builds, partition image offsets and the web-installer manifest. A real board
+is still required for the gates below.
 
 1. W5500 link comes up and DHCP assigns an address.
 2. `M5.begin()` behaves on a bare S3-ETH, or the `esp_timer` fallback is used.
@@ -269,6 +323,11 @@ Hardware-gated. Needs a physical Waveshare ESP32-S3-ETH board.
 6. Fujifilm shutter trigger fires. Fujifilm is the only vendor available on
    hardware. Other vendors get code review plus the FauxNY test camera and are
    declared untested, per the repo rule.
+7. With no PoE add-on, verify USB-C/external power and Ethernet independently.
+8. With the optional Waveshare PoE Module (B), verify IEEE 802.3af negotiation,
+   link-up, measured `POE_5V`, power loss, and recovery with USB disconnected.
+9. Verify the firmware does not report HAT presence or PoE availability as a
+   sensed fact; those remain unknown in the absence of a documented sense pin.
 
 ## References
 
@@ -278,7 +337,7 @@ the same situation plan 41 records for TinyTronics.
 
 Waveshare ESP32-S3-ETH
 
-- Product page: https://www.waveshare.com/esp32-s3-eth.htm
+- Product page: https://www.waveshare.com/product/iot-communication/wired-comm-converter/esp32-s3-eth.htm
 - Wiki: https://www.waveshare.com/wiki/ESP32-S3-ETH
 - Schematic PDF, the authority for the GPIO pin table:
   https://files.waveshare.com/wiki/ESP32-S3-ETH/ESP32-S3-ETH-Schematic.pdf
@@ -291,6 +350,9 @@ ESP-IDF Ethernet and W5500
   https://github.com/espressif/esp-idf/tree/master/examples/ethernet/basic
 - ethernet_init managed component, lists the W5500 MAC-PHY module:
   https://components.espressif.com/components/espressif/ethernet_init
+- W5500 driver README, which documents the Ethernet MAC/PHY boundary but no
+  PoE power-source sensing:
+  https://github.com/espressif/esp-eth-drivers/blob/master/w5500/README.md
 - espressif/w5500 driver component:
   https://components.espressif.com/components/espressif/w5500
 

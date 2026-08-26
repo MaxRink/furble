@@ -9,11 +9,15 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleBatteryStatus.h"
 #include "FurbleBootScreen.h"
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
+#if defined(FURBLE_ETHERNET)
+#include "FurbleEthernet.h"
+#endif
 #if defined(FURBLE_NO_DISPLAY)
 #include "FurbleGPS.h"
 #endif
@@ -30,23 +34,32 @@ namespace Furble {
 // the UI task, the headless build has no UI so it reads M5.Power directly and
 // reports an idle intervalometer.
 int32_t UI::getBatteryLevel(void) {
-  return M5.Power.getBatteryLevel();
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::level(caps.level, M5.Power.getBatteryLevel());
 }
 
 int16_t UI::getBatteryVoltage(void) {
-  return M5.Power.getBatteryVoltage();
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::voltage(caps.voltage, M5.Power.getBatteryVoltage());
 }
 
 int32_t UI::getBatteryCurrent(void) {
-  return M5.Power.getBatteryCurrent();
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::current(caps.current, M5.Power.getBatteryCurrent());
 }
 
 int16_t UI::getBatteryVBUSVoltage(void) {
-  return M5.Power.getVBUSVoltage();
+#if defined(FURBLE_WAVESHARE_S3_ETH)
+  // The board exposes no software-readable VBUS/PoE telemetry.
+  return BatteryStatus::vbus(false, 0);
+#else
+  return BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
+#endif
 }
 
 bool UI::isBatteryCharging(void) {
-  return static_cast<int>(M5.Power.isCharging()) == 1;
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  return BatteryStatus::charging(caps.charging, static_cast<int>(M5.Power.isCharging()) == 1);
 }
 
 uint8_t UI::getIntervalometerState(void) {
@@ -245,7 +258,11 @@ void app_main() {
   // The display is up now, so the boot splash can cover the rest of init. It
   // reads its own enable, draws through M5GFX, and every hook self-gates. The
   // stage count below must match the number of step() calls before finish().
-  Furble::BootScreen::begin(6);
+  Furble::BootScreen::begin(6
+#if defined(FURBLE_ETHERNET)
+                            + 1
+#endif
+  );
 
   Furble::IR::init();
   Furble::BootScreen::step("Infrared");
@@ -269,6 +286,13 @@ void app_main() {
   Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
   Furble::BootScreen::step("Companion");
+
+#if defined(FURBLE_ETHERNET)
+  if (!Furble::Ethernet::init()) {
+    ESP_LOGE(LOG_TAG, "Waveshare Ethernet initialization failed.");
+  }
+  Furble::BootScreen::step("Ethernet");
+#endif
 
   auto &control = Furble::Control::getInstance();
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);

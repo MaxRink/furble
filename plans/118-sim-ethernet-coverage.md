@@ -1,12 +1,14 @@
 # 118 - Sim Ethernet coverage
 
-Status: design only. Adds host coverage for the wired-Ethernet netif from
-`plans/42-waveshare-eth-node.md`, proving the MQTT client is transport-agnostic.
+Status: host lifecycle coverage implemented on PR #170's Ethernet seam. The
+test links the production `src/FurbleEthernet.cpp` and drives a deterministic
+W5500-shaped transport without ESP-IDF, a broker, or hardware. MQTT startup
+ordering remains a follow-up when the MQTT host seam lands.
 
-**Codex-implementable, but BLOCKED on the FurbleEthernet implementation
-(`plans/42`, NOT started).** This doc includes a **stub-Ethernet slice** Codex
-can build the harness against now, so the transport-agnostic seam is locked in
-before the W5500 driver exists.
+The implementation is intentionally narrower than the original design: PR
+#170 already provides the production Ethernet seam, so the host test covers
+that seam directly. The MQTT callback integration stays with plan 117 because
+PR #170 does not contain the MQTT client.
 
 ## Motivation
 
@@ -24,26 +26,12 @@ client starts on it, all without a W5500.
 In scope, under `tests/host/eth/` (host-only):
 
 - A `MockEthNetif` that stands in for the `esp_eth` + `esp_netif` glue: a test
-  can drive `start()` -> emit `ETHERNET_EVENT_CONNECTED` -> emit
-  `IP_EVENT_ETH_GOT_IP` with a synthetic IP, and `stop()` -> emit
-  `ETHERNET_EVENT_DISCONNECTED`.
-- An `eth_netif_test` that links the real `src/FurbleEthernet.cpp` (once it
-  exists) against `MockEthNetif` and asserts:
-  - `Ethernet::init()` installs the driver, registers `ETH_EVENT` and
-    `IP_EVENT_ETH_GOT_IP`, and starts the netif.
-  - On the got-IP event, the same generic network-up path the MQTT client keys
-    on fires exactly once (assert via the `MockEspMqtt` from `plans/117`: the
-    client's `start` is called after got-IP, never before).
-  - A link-down event stops the client / marks the transport down without
-    tearing the process.
-  - The client is fed identically whether the up-event came from the eth mock or
-    a WiFi mock (parameterise the same test over both transports to prove
-    transport-agnosticism directly).
-- A **stub-Ethernet slice**: a minimal `FurbleEthernet` singleton shaped like
-  `plans/42` describes (`init()`, a got-IP callback into the shared network-up
-  seam) with no `esp_eth` include, host-guarded. Codex builds and passes the
-  harness against this now; the real W5500-backed `FurbleEthernet` swaps in with
-  no test change.
+  can drive `start()` -> link-up -> got-IP with a synthetic address, and then
+  link-down and reconnect.
+- The existing `ethernet_test` links the real `src/FurbleEthernet.cpp` against
+  `MockEthNetif` and asserts link/IP ordering, empty and stale IP rejection,
+  duplicate suppression, clean stop, restart, and deterministic init/start
+  failure recovery.
 
 Out of scope:
 
@@ -52,10 +40,11 @@ Out of scope:
 
 ## Files to change
 
-- New `tests/host/eth/MockEthNetif.{h,cpp}`, `tests/host/eth/eth_netif_test.cpp`.
-- `tests/host/CMakeLists.txt`: `add_executable(eth_netif_test ...)` and
-  `add_test(NAME eth-netif COMMAND eth_netif_test)`.
-- Reuse `tests/host/mqtt/MockEspMqtt` from `plans/117`.
+- New `tests/host/eth/MockEthNetif.{h,cpp}`.
+- `tests/host/CMakeLists.txt` links the mock into the existing
+  `ethernet_test`, registered as `ethernet-transport`.
+- MQTT mock reuse is deferred to plan 117 because that seam is not present on
+  PR #170.
 
 ## Settings and defaults
 
@@ -86,12 +75,13 @@ None. Test-only. `plans/42` owns any Ethernet settings.
 ```
 cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
 cmake --build build/host-tests --parallel 2
-ctest --test-dir build/host-tests -R eth-netif --output-on-failure
+ctest --test-dir build/host-tests -R ethernet-transport --output-on-failure
 ```
 
-Exit 0 proves the eth netif brings up, emits got-IP, and starts the MQTT client
-on it, with no W5500 and no wire. Against the stub slice it proves the harness
-ahead of `plans/42`.
+Exit 0 proves the Ethernet seam orders link-up before got-IP, rejects invalid
+or stale addresses, suppresses duplicate notifications, and recovers from
+driver initialization/start failures without a W5500 or wire. MQTT startup on
+the callback remains covered by plan 117.
 
 ## Residual (Claude / hardware) verification
 

@@ -61,6 +61,9 @@
         <li>
           <label><input type="radio" name="type" value="m5stack-core"/>M5Stack Core</label>
         </li>
+        <li>
+          <label><input type="radio" name="type" value="waveshare-s3-eth"/>Waveshare ESP32-S3-ETH (wired Ethernet)</label>
+        </li>
       </ul>
       <p>
         <label><input type="checkbox" id="debug"/>Debug build (serial console + BT diagnostics)</label>
@@ -68,8 +71,11 @@
       <p class="caption">The debug build is larger and enables the developer
       serial console. Use it to capture diagnostics for bug reports.</p>
       <p class="button-row" align="left">
-        <esp-web-install-button class="invisible"></esp-web-install-button>
+        <esp-web-install-button id="installButton" class="invisible">
+          <button slot="activate" id="installActivate">Connect</button>
+        </esp-web-install-button>
       </p>
+      <p id="pmicStatus" class="status" aria-live="polite"></p>
 
       <details class="bt-dump" id="btDumpPanel">
         <summary>Capture BT debug dump</summary>
@@ -139,6 +145,7 @@
         radio.addEventListener("change", updateManifest));
       document.getElementById('debug').addEventListener("change", updateManifest);
     </script>
+    <script type="module" src="./pmic-preflight.js"></script>
     <script id="bt-dump-script">
       // Web Serial "Capture BT debug dump" panel. Drives the furble debug
       // console (the bt journal, scan and explore commands) over the same USB

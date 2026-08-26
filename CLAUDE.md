@@ -17,9 +17,16 @@ CLAUDE.md whose directory it touches.
   those changes consistently across all five files, never for just one env.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`
+- The PlatformIO version adapter expands the exact `dev` value to
+  `dev+g<short-revision>`, adding `.dirty` for tracked, staged, or non-ignored
+  untracked changes. Explicit release and experiment versions are unchanged.
 - Quirk: the global git fsmonitor breaks the first TinyGPSPlus install in each
   fresh libdeps dir. Re-run the same pio command once. Worktree-isolated agents
   cannot export `GIT_CONFIG_*` to work around it.
+- CI validation workflows use path filters rather than pull request base-branch
+  filters, so stacked PRs run without retargeting. Safe validation workflows
+  also expose `workflow_dispatch`; use the Actions tab to select a branch.
+  Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
   documented env, including the non-CI `esp32-s3-headless` env. A new settings
   enum value must be added in five places or the headless build fails
@@ -84,8 +91,9 @@ UI change before approving.
   need a 120 ms dwell between SLPIN and SLPOUT; M5GFX does not enforce it.
 - Never hold the Control mutex across a delay. The reconnect cancel deadlock
   bricked the device (buttons and USB dead) because furble disables all M5PM1
-  power button gestures at boot. Rescue: hold the side button while replugging
-  USB until the green LED flashes, then reflash.
+  power button gestures at boot. A retained `DL_LOCK` is cleared only by true
+  PMIC power loss, not USB unplugging or reset. Restore battery power, hold the
+  side button until the green LED flashes, then reflash.
 - M5PM1 (StickS3 PMIC): the first I2C transaction after its idle sleep fails
   and only wakes it. Always retry once. The status LED stays lit at display off
   unless you clear it: `setLedEnLevel(false)` saves PWR_CFG bit 4.
@@ -102,6 +110,10 @@ UI change before approving.
   invalidation logger are the diagnosis tools.
 - PSRAM (S3): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
+- ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
+  association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
+  the upstream fix is present in the pinned SDK. Capability heap diagnostics
+  do not require it.
 - Full detail and more findings live in `plans/95-engineering-lessons.md`. Read
   the matching section before you touch that area.
 - Settings are called from the UI and background tasks. Each NVS transaction
