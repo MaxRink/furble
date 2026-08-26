@@ -1,7 +1,10 @@
 #ifndef FURBLE_HOST_MOCK_ETH_NETIF_H
 #define FURBLE_HOST_MOCK_ETH_NETIF_H
 
+#include <atomic>
 #include <cstddef>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -31,9 +34,15 @@ class MockEthNetif final: public Furble::Ethernet::Transport {
   void setInitResult(bool result) { m_InitResult = result; }
   void setStartResult(bool result) { m_StartResult = result; }
 
+  // Hold init() after production publishes the transport, so lifecycle tests
+  // can race stop() against the real initialization sequence.
+  void blockInit(void);
+  void waitForInitEntered(void);
+  void releaseInit(void);
+
   int initCalls(void) const { return m_InitCalls; }
   int startCalls(void) const { return m_StartCalls; }
-  int stopCalls(void) const { return m_StopCalls; }
+  int stopCalls(void) const { return m_StopCalls.load(); }
   bool started(void) const { return m_Started; }
 
  private:
@@ -44,7 +53,11 @@ class MockEthNetif final: public Furble::Ethernet::Transport {
   bool m_Started = false;
   int m_InitCalls = 0;
   int m_StartCalls = 0;
-  int m_StopCalls = 0;
+  std::atomic<int> m_StopCalls = 0;
+  std::mutex m_InitGateMutex;
+  std::condition_variable m_InitGateCondition;
+  bool m_BlockInit = false;
+  bool m_InitEntered = false;
 };
 
 }  // namespace FurbleHost

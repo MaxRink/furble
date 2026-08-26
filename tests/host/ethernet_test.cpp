@@ -1,6 +1,8 @@
 #include <cstdlib>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 
 #include "eth/MockEthNetif.h"
 
@@ -24,6 +26,29 @@ int main(void) {
     callbackCount++;
     callbackIP = ip;
   });
+
+  // stop() must not release a transport while init() is still executing.
+  // The production implementation publishes the transport before calling its
+  // init hook, making this interleaving possible without lifecycle locking.
+  FurbleHost::MockEthNetif concurrent;
+  concurrent.blockInit();
+  bool concurrentInitResult = false;
+  std::thread initThread([&] {
+    concurrentInitResult = Furble::Ethernet::init(concurrent);
+  });
+  concurrent.waitForInitEntered();
+  std::thread stopThread([] { Furble::Ethernet::stop(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  const bool stoppedBeforeInitReleased = concurrent.stopCalls() != 0;
+  concurrent.releaseInit();
+  initThread.join();
+  stopThread.join();
+  check(!stoppedBeforeInitReleased,
+        "stop waits for an in-flight transport init before releasing it");
+  check(concurrentInitResult, "the serialized concurrent init succeeds");
+  check(concurrent.stopCalls() == 1, "the concurrent stop cleans up once init completes");
+  check(!Furble::Ethernet::isConnected(), "concurrent stop leaves Ethernet disconnected");
+  Furble::Ethernet::stop();
 
   FurbleHost::MockEthNetif initFailure;
   initFailure.setInitResult(false);

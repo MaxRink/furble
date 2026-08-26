@@ -8,6 +8,14 @@ bool MockEthNetif::init(EventCallback callback) {
   ++m_InitCalls;
   m_Callback = std::move(callback);
   m_Callbacks.push_back(m_Callback);
+
+  {
+    std::lock_guard<std::mutex> lock(m_InitGateMutex);
+    m_InitEntered = true;
+  }
+  m_InitGateCondition.notify_all();
+  std::unique_lock<std::mutex> lock(m_InitGateMutex);
+  m_InitGateCondition.wait(lock, [this] { return !m_BlockInit; });
   return m_InitResult;
 }
 
@@ -21,8 +29,27 @@ bool MockEthNetif::start(void) {
 }
 
 void MockEthNetif::stop(void) {
-  ++m_StopCalls;
+  m_StopCalls.fetch_add(1);
   m_Started = false;
+}
+
+void MockEthNetif::blockInit(void) {
+  std::lock_guard<std::mutex> lock(m_InitGateMutex);
+  m_BlockInit = true;
+  m_InitEntered = false;
+}
+
+void MockEthNetif::waitForInitEntered(void) {
+  std::unique_lock<std::mutex> lock(m_InitGateMutex);
+  m_InitGateCondition.wait(lock, [this] { return m_InitEntered; });
+}
+
+void MockEthNetif::releaseInit(void) {
+  {
+    std::lock_guard<std::mutex> lock(m_InitGateMutex);
+    m_BlockInit = false;
+  }
+  m_InitGateCondition.notify_all();
 }
 
 void MockEthNetif::emitLinkUp(void) {
