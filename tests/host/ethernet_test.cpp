@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -35,9 +36,18 @@ int main(void) {
   bool concurrentInitResult = false;
   std::thread initThread([&] { concurrentInitResult = Furble::Ethernet::init(concurrent); });
   concurrent.waitForInitEntered();
-  std::thread stopThread([] { Furble::Ethernet::stop(); });
+  std::atomic<bool> stopAttempted = false;
+  std::atomic<bool> stopReturned = false;
+  std::thread stopThread([&] {
+    stopAttempted.store(true, std::memory_order_release);
+    Furble::Ethernet::stop();
+    stopReturned.store(true, std::memory_order_release);
+  });
+  while (!stopAttempted.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  const bool stoppedBeforeInitReleased = concurrent.stopCalls() != 0;
+  const bool stoppedBeforeInitReleased = stopReturned.load(std::memory_order_acquire);
   concurrent.releaseInit();
   initThread.join();
   stopThread.join();
@@ -53,9 +63,18 @@ int main(void) {
   bool concurrentStartResult = false;
   std::thread startThread([&] { concurrentStartResult = Furble::Ethernet::init(concurrentStart); });
   concurrentStart.waitForStartEntered();
-  std::thread stopDuringStartThread([] { Furble::Ethernet::stop(); });
+  stopAttempted.store(false, std::memory_order_release);
+  stopReturned.store(false, std::memory_order_release);
+  std::thread stopDuringStartThread([&] {
+    stopAttempted.store(true, std::memory_order_release);
+    Furble::Ethernet::stop();
+    stopReturned.store(true, std::memory_order_release);
+  });
+  while (!stopAttempted.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  const bool stoppedBeforeStartReleased = concurrentStart.stopCalls() != 0;
+  const bool stoppedBeforeStartReleased = stopReturned.load(std::memory_order_acquire);
   concurrentStart.releaseStart();
   startThread.join();
   stopDuringStartThread.join();
