@@ -1,6 +1,7 @@
 name: Apple companion
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "companion/apple/**"
