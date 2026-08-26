@@ -1,5 +1,5 @@
-#include <cstdlib>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -33,9 +33,7 @@ int main(void) {
   FurbleHost::MockEthNetif concurrent;
   concurrent.blockInit();
   bool concurrentInitResult = false;
-  std::thread initThread([&] {
-    concurrentInitResult = Furble::Ethernet::init(concurrent);
-  });
+  std::thread initThread([&] { concurrentInitResult = Furble::Ethernet::init(concurrent); });
   concurrent.waitForInitEntered();
   std::thread stopThread([] { Furble::Ethernet::stop(); });
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -53,9 +51,7 @@ int main(void) {
   FurbleHost::MockEthNetif concurrentStart;
   concurrentStart.blockStart();
   bool concurrentStartResult = false;
-  std::thread startThread([&] {
-    concurrentStartResult = Furble::Ethernet::init(concurrentStart);
-  });
+  std::thread startThread([&] { concurrentStartResult = Furble::Ethernet::init(concurrentStart); });
   concurrentStart.waitForStartEntered();
   std::thread stopDuringStartThread([] { Furble::Ethernet::stop(); });
   std::this_thread::sleep_for(std::chrono::milliseconds(100));

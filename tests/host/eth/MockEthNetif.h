@@ -2,8 +2,8 @@
 #define FURBLE_HOST_MOCK_ETH_NETIF_H
 
 #include <atomic>
-#include <cstddef>
 #include <condition_variable>
+#include <cstddef>
 #include <mutex>
 #include <string>
 #include <vector>
