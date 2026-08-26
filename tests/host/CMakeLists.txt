@@ -335,6 +335,21 @@ target_include_directories(ota_mqtt_protocol_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# Durable anti-rollback journal. The test supplies a fault-injecting backend,
+# while the production JournalReplayStore and its fixed record format are
+# compiled unchanged for host and simulator.
+add_executable(ota_replay_store_test
+               ota_replay_store_test.cpp
+               nvs_replay_fake/nvs_fake.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAReplayStoreNVS.cpp)
+target_include_directories(ota_replay_store_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/nvs_replay_fake
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(ota_replay_store_test PRIVATE ESP_PLATFORM)
+target_compile_options(ota_replay_store_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                       -Wno-unused-parameter)
+
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
 # peer, so the full connect/disconnect/reconnect state machine is exercised here,
@@ -562,6 +577,7 @@ if(BUILD_TESTING)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
+  add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)

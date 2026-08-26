@@ -12,6 +12,8 @@ set(furble_sources
     FurbleIR.cpp
     FurbleOTA.cpp
     FurbleOTAMQTT.cpp
+    FurbleOTAReplayStore.cpp
+    FurbleOTAReplayStoreNVS.cpp
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleProvision.cpp
