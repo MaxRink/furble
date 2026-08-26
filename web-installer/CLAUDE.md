@@ -19,6 +19,22 @@ committed.
 - The Pages deploy validates all manifests and referenced binaries before
   publishing. Keep that check green when changing artifact names or paths.
 
+## M5StickS3 PMIC preflight
+
+- `pmic-preflight.js` runs the same `flash prepare` handshake as
+  `tools/flash_prepare.py` through Web Serial before the ESP Web Tools dialog
+  opens. It requires exact acknowledgements for readiness, a disabled PMIC
+  watchdog, and unlocked long-press download recovery.
+- The preflight closes its port before replaying the installer activation. ESP
+  Web Tools then requests the same port again for chip detection and flashing.
+  This second permission selection is intentional because two Web Serial
+  readers cannot own the port at once.
+- The page applies this gate only to M5StickS3. Other boards do not have the
+  M5PM1 hazard. If a StickS3 release or wedged image cannot answer, the page
+  refuses to flash and displays the true-power-loss recovery steps.
+- Keep the browser protocol and the terminal helper behaviorally equivalent.
+  Update `tests/test_tooling_versions.py` when either acknowledgement changes.
+
 ## Debug variant
 
 - Each board also ships a debug build from the matching PlatformIO `*-debug`

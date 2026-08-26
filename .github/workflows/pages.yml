@@ -135,7 +135,9 @@ jobs:
           merge-multiple: true
 
       - name: Add installer page
-        run: cp web-installer/index.html site/index.html
+        run: |
+          cp web-installer/index.html site/index.html
+          cp web-installer/pmic-preflight.js site/pmic-preflight.js
 
       - name: Validate installer assets
         run: python tools/verify_web_installer.py site

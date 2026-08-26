@@ -139,6 +139,13 @@ interface.
 3. Select the device model and click `Install`.
 4. Approve the serial port when the browser asks.
 
+For M5StickS3, the installer first opens the running developer-console image
+and requires all PMIC safety acknowledgements before it offers the firmware
+port. Approve the same port again to continue flashing. If the running image
+does not answer, follow the physical battery-power-loss recovery procedure
+shown by the installer. This prevents a retained PMIC watchdog or download
+lock from making a serial upload unsafe.
+
 If the installer offers to erase the device, decline to keep existing settings
 and paired cameras. Accept the erase when starting from a clean device.
 

@@ -516,6 +516,13 @@ cancelled preflight is repaired with `flash cancel` or a reboot. The physical
 long-press recovery procedure remains the fallback for release images and dead
 applications.
 
+The browser installer runs the same three-acknowledgement handshake through
+Web Serial before opening ESP Web Tools for a StickS3. It closes the preflight
+reader before the installer requests the port again. A missing acknowledgement
+stops the browser flow and shows the true-power-loss recovery procedure, so the
+web path does not silently turn an unsafe release-image upload into a reset
+loop.
+
 The simulator retains the PMIC watchdog and download lock across
 `M5PM1::begin()`. `pmic-flash-recovery.txt` enforces an unlocked boot state, and
 `tests/host/pmic_recovery_test.cpp` covers persistence, the idle wake retry, and

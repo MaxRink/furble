@@ -52,6 +52,19 @@ class ToolingVersionTest(unittest.TestCase):
         )
         self.assertNotIn("esp-web-tools@10.2.1", index)
 
+    def test_web_installer_runs_sticks3_pmic_preflight(self):
+        index = (ROOT / "web-installer" / "index.html").read_text()
+        preflight = (ROOT / "web-installer" / "pmic-preflight.js").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text()
+
+        self.assertIn('src="./pmic-preflight.js"', index)
+        self.assertIn('id="installButton"', index)
+        self.assertIn("flash prepare\\n", preflight)
+        self.assertIn("flash.watchdog: disabled", preflight)
+        self.assertIn("flash.download_recovery: unlocked", preflight)
+        self.assertIn("port.close", preflight)
+        self.assertIn("cp web-installer/pmic-preflight.js site/pmic-preflight.js", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
