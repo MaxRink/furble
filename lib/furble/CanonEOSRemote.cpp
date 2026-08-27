@@ -11,7 +11,7 @@ namespace Furble {
 const NimBLEUUID CanonEOSRemote::PRI_SVC_UUID {0x00050000, 0x0000, 0x1000, 0x0000d8492fffa821};
 
 bool CanonEOSRemote::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice->haveServiceUUID()) {
+  if (pDevice != nullptr && pDevice->haveServiceUUID()) {
     auto uuid = pDevice->getServiceUUID();
 
     return (uuid == PRI_SVC_UUID);

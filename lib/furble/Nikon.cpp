@@ -44,7 +44,8 @@ Nikon::~Nikon(void) {
 }
 
 bool Nikon::matchesServiceUUID(const NimBLEAdvertisedDevice *pDevice) {
-  return (pDevice->haveServiceUUID() && (pDevice->getServiceUUID() == NikonBase::SERVICE_UUID));
+  return (pDevice != nullptr && pDevice->haveServiceUUID()
+          && (pDevice->getServiceUUID() == NikonBase::SERVICE_UUID));
 }
 
 /**
@@ -80,15 +81,22 @@ bool Nikon::_connect(void) {
     ESP_LOGI(LOG_TAG, "Scanning");
     // need to scan for advertising camera
     auto &scan = Scan::getInstance();
+    // Do not consume a result left by an earlier reconnect attempt.
+    xQueueReset(m_Queue);
     scan.clear();
     scan.start(this, SCAN_TIME_MS);
     m_Progress += 10;
 
-    // wait up to 60s for camera to appear
-    BaseType_t timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(60000));
+    // Poll in one-second slices so the finite Scan deadline and cancellation
+    // can stop this wait promptly instead of pinning the control task for a
+    // full sixty seconds.
+    BaseType_t timeout = pdFALSE;
+    do {
+      timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(1000));
+    } while (scan.isActive() && !success);
     scan.stop();
 
-    if (timeout == pdFALSE) {
+    if ((timeout == pdFALSE) || !success) {
       ESP_LOGI(LOG_TAG, "Timeout waiting for camera");
       return false;
     }

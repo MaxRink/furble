@@ -670,8 +670,9 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   // have distinct addresses and are all added.
   for (const auto &target : m_Targets) {
     if (target->getCamera()->getAddress() == camera->getAddress()) {
-      ESP_LOGW(LOG_TAG, "Camera '%s' already active, ignoring duplicate connect.",
-               camera->getName().c_str());
+      const bool connected = target->getCamera()->isConnected();
+      ESP_LOGW(LOG_TAG, "Camera '%s' already %s, ignoring duplicate connect.",
+               camera->getName().c_str(), connected ? "active" : "connecting");
       return;
     }
   }

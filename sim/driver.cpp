@@ -210,8 +210,9 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",        "gps_nmea",    "fauxny",       "autoconnect", "reconnect",
-      "sleep_conn", "boot_splash", "connect_fail", "no_touch",    "saved_camera",
+      "gps",       "gps_nmea",     "fauxny",           "autoconnect",
+      "reconnect", "sleep_conn",   "boot_splash",      "connect_fail",
+      "no_touch",  "saved_camera", "scan_start_probe", "scan_distinct",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -710,6 +711,9 @@ std::string queryValue(const std::string &key) {
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
   }
+  if (key == "scan.start_probe_blocked") {
+    return Scan::getInstance().startProbeBlocked() ? "1" : "0";
+  }
   if (prefixed("gps.")) {
     auto &gps = Furble::GPS::getInstance();
     const std::string sub = key.substr(std::char_traits<char>::length("gps."));
@@ -784,6 +788,9 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "platform.power_off") {
     return simulatedPowerOff ? "yes" : "no";
+  }
+  if (key == "platform.light_sleep") {
+    return esp_pm_sim_light_sleep_allowed() ? "yes" : "no";
   }
   if (prefixed("platform.battery.")) {
     const std::string field = key.substr(std::char_traits<char>::length("platform.battery."));

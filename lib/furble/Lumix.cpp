@@ -65,7 +65,7 @@ Lumix::Lumix(const NimBLEAdvertisedDevice *pDevice) : Camera(Type::PANASONIC_LUM
 }
 
 bool Lumix::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (!pDevice->haveManufacturerData()) {
+  if (pDevice == nullptr || !pDevice->haveManufacturerData()) {
     return false;
   }
 

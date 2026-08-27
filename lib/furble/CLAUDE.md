@@ -18,6 +18,14 @@ protocol core.
   but its value stays reserved).
 - `CameraList` handles persistence of paired cameras, `Scan` handles
   advertisement matching and discovery.
+- `Scan` owns one stable NimBLE callback proxy. In the pinned
+  esp-nimble-cpp 2.5.0 source (`NimBLEScan.cpp`, `stop()`), cancellation calls
+  `ble_gap_disc_cancel()` and does not synthesize `onScanEnd`; Apache NimBLE's
+  `ble_gap.h` contract says a successful cancel has fully aborted discovery
+  and permits a new one immediately. The host lock serializes cancellation
+  with GAP dispatch, so no proxy callback remains in flight after `stop()`.
+  Keep the logical generation fence and bounded copied-event queue around that
+  contract. Never run `CameraList` or UI work from the NimBLE host callback.
 - `Camera` exposes connection RSSI and applies the power cap it was given on
   connect. The runtime adaptive level lives in the app layer Control. NimBLE
   transmit power calls take dBm, so map the supported P3, P6 and P9 enum

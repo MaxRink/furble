@@ -24,7 +24,7 @@ void FujifilmBasic::print_token(const token_t &token) {
  * Determine if the advertised BLE device is a Fujifilm basic.
  */
 bool FujifilmBasic::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice->haveManufacturerData()) {
+  if (pDevice != nullptr && pDevice->haveManufacturerData()) {
     const auto manufacturerData = pDevice->getManufacturerData();
     return FujifilmProtocol::matchesBasicAdvertisement(
         reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),

@@ -180,6 +180,53 @@ add_executable(settings_table_test settings_table_test.cpp)
 target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                    -Wno-unused-parameter)
 
+# Compile the production Scan implementation against the host NimBLE double.
+# This catches callback-thread ownership, bounded handoff, generation fencing,
+# expiry, and custom callback lifetime regressions without a radio or UI.
+add_executable(scan_generation_test
+               scan_generation_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp)
+target_include_directories(scan_generation_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(scan_generation_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                        -Wno-unused-parameter)
+target_link_libraries(scan_generation_test PRIVATE Threads::Threads)
+
+# Run saved Fujifilm and Nikon callback objects through the production Scan
+# cancellation barrier. This catches a late callback touching a destroyed
+# camera and proves finite reconnect scans can be cancelled promptly.
+add_executable(saved_scan_cancel_test
+               saved_scan_cancel_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp)
+target_include_directories(saved_scan_cancel_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_options(saved_scan_cancel_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(saved_scan_cancel_test PRIVATE Threads::Threads)
+
 # Exercise the real NVS/Preferences settings path against a typed in-memory
 # NVS stub. The test also includes the production SD settings helpers so every
 # table row is checked through both the firmware store and the SD import/export
@@ -596,6 +643,8 @@ if(BUILD_TESTING)
   add_test(NAME vendor-protocol-conformance COMMAND vendor_protocol_conformance_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+  add_test(NAME scan-generation COMMAND scan_generation_test)
+  add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)

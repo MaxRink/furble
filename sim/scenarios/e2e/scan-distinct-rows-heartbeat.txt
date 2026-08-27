@@ -1,0 +1,18 @@
+# Two distinct advertisements arrive on the worker thread in one UI drain.
+# Both rows must be materialized and the UI/PM1 heartbeat must continue.
+seed fauxny false
+seed scan_distinct true
+seed watchdog true
+seed scan_start_probe true
+wait 300
+
+home
+wait 200
+action nav scan
+wait 500
+assert ui.page scan
+assert-eventually 2000 camera.count 2
+assert-eventually 2000 scan.end_callbacks 1
+assert scan.start_probe_blocked 0
+assert platform.watchdog armed
+exit

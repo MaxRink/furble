@@ -12,7 +12,7 @@ const NimBLEUUID CanonEOSSmart::PRI_SVC_UUID {0x00010000, 0x0000, 0x1000, 0x0000
 constexpr uint8_t CanonEOSSmart::MODE_SHOOT;
 
 bool CanonEOSSmart::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice->haveServiceUUID()) {
+  if (pDevice != nullptr && pDevice->haveServiceUUID()) {
     auto uuid = pDevice->getServiceUUID();
 
     return (uuid == PRI_SVC_UUID);

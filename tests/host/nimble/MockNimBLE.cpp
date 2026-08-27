@@ -83,6 +83,8 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
 // itself needs the lock. It is a recursive mutex because a client freed inline
 // on a clean teardown erases itself while the caller may already hold it.
 std::recursive_mutex g_ClientsMutex;
+NimBLEServer g_Server;
+NimBLEScan g_Scan;
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
@@ -112,6 +114,14 @@ bool eraseClient(NimBLEClient *client) {
 }
 
 }  // namespace
+
+NimBLEServer *NimBLEDevice::createServer() {
+  return &g_Server;
+}
+
+NimBLEScan *NimBLEDevice::getScan() {
+  return &g_Scan;
+}
 
 NimBLEUUID::NimBLEUUID() : m_Bytes {} {}
 

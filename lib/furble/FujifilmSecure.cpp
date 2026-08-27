@@ -20,7 +20,7 @@ const NimBLEUUID FujifilmSecure::PRI_SVC_UUID {0x731893f9, 0x744e, 0x4899, 0xb7e
  * Determine if the advertised BLE device is a Fujifilm secure camera.
  */
 bool FujifilmSecure::matches(const NimBLEAdvertisedDevice *pDevice) {
-  if (!pDevice->haveManufacturerData()) {
+  if (pDevice == nullptr || !pDevice->haveManufacturerData()) {
     return false;
   }
 
@@ -98,6 +98,9 @@ bool FujifilmSecure::_connect(void) {
     ESP_LOGI(LOG_TAG, "Scanning");
     // need to scan for advertising camera
     auto &scan = Scan::getInstance();
+    // Results belong to a logical scan. Do not let an earlier advertisement
+    // satisfy this reconnect before the new scan has observed the camera.
+    xQueueReset(m_Queue);
     scan.clear();
     scan.start(this, SCAN_TIME_MS);
     m_Progress += 5;

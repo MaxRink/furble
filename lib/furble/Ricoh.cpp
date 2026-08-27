@@ -148,6 +148,9 @@ bool Ricoh::nameMatches(const std::string &name) {
 }
 
 bool Ricoh::matches(const NimBLEAdvertisedDevice *pDevice) {
+  if (pDevice == nullptr) {
+    return false;
+  }
   return pDevice->isAdvertisingService(INFO_SVC_UUID)
          || pDevice->isAdvertisingService(CAMERA_SVC_UUID)
          || pDevice->isAdvertisingService(SHOOTING_SVC_UUID)
