@@ -223,6 +223,7 @@ status                              state, targets, uptime, heap, battery, reset
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
+time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write every setting
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets

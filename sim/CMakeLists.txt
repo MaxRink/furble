@@ -82,6 +82,8 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleProvision.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
     "${FURBLE_ROOT}/src/FurbleSpinValue.cpp"
+    "${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp"
+    "${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"

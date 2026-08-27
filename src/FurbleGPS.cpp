@@ -5,7 +5,6 @@
 #include <TinyGPS++.h>
 #include <esp_timer.h>
 
-#include <sys/time.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -26,6 +25,7 @@
 #include "FurblePower.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
@@ -1108,12 +1108,6 @@ void GPS::updateAidCache(const Camera::gps_t &gps, const Camera::timesync_t &tim
       m_AidCacheWriteValid = false;
     }
   }
-
-  struct timeval tv = {
-      .tv_sec = static_cast<time_t>(utc_seconds),
-      .tv_usec = static_cast<suseconds_t>(timesync.centisecond * 10000),
-  };
-  settimeofday(&tv, nullptr);
 }
 
 bool GPS::sendAidIni(void) {
@@ -1293,12 +1287,34 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
     return false;
   }
 
-  if (fix.time_valid
-      && ((fix.timesync.year < 2000) || (fix.timesync.month < 1) || (fix.timesync.month > 12)
-          || (fix.timesync.day < 1) || (fix.timesync.day > 31) || (fix.timesync.hour > 23)
-          || (fix.timesync.minute > 59) || (fix.timesync.second > 60)
-          || (fix.timesync.centisecond > 99))) {
-    return false;
+  if (fix.time_valid) {
+    // The public snapshot uses unsigned int fields, while the companion wire
+    // representation narrows them. Reject values that cannot be represented
+    // before converting so malformed direct callers cannot wrap into a valid
+    // calendar tuple.
+    if (fix.timesync.year > std::numeric_limits<uint16_t>::max()
+        || fix.timesync.month > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.day > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.hour > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.minute > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.second > std::numeric_limits<uint8_t>::max()
+        || fix.timesync.centisecond > std::numeric_limits<uint8_t>::max()) {
+      return false;
+    }
+    uint64_t epoch_us = 0;
+    if (!TimeKeeperPolicy::utcToEpochUs(
+            static_cast<uint16_t>(fix.timesync.year), static_cast<uint8_t>(fix.timesync.month),
+            static_cast<uint8_t>(fix.timesync.day), static_cast<uint8_t>(fix.timesync.hour),
+            static_cast<uint8_t>(fix.timesync.minute), static_cast<uint8_t>(fix.timesync.second),
+            static_cast<uint8_t>(fix.timesync.centisecond), epoch_us)) {
+      return false;
+    }
+    (void)TimeKeeper::getInstance().updateUtc(
+        TimeSource::COMPANION, static_cast<uint16_t>(fix.timesync.year),
+        static_cast<uint8_t>(fix.timesync.month), static_cast<uint8_t>(fix.timesync.day),
+        static_cast<uint8_t>(fix.timesync.hour), static_cast<uint8_t>(fix.timesync.minute),
+        static_cast<uint8_t>(fix.timesync.second), static_cast<uint8_t>(fix.timesync.centisecond),
+        5000);
   }
 
   const uint64_t now_ms = esp_timer_get_time() / 1000;
@@ -1338,6 +1354,13 @@ void GPS::update(void) {
         status.year,   status.month,  status.day,         status.hour,
         status.minute, status.second, status.centisecond,
     };
+    if (status.date_valid && status.time_valid) {
+      (void)TimeKeeper::getInstance().updateUtc(
+          TimeSource::GPS, static_cast<uint16_t>(timesync.year),
+          static_cast<uint8_t>(timesync.month), static_cast<uint8_t>(timesync.day),
+          static_cast<uint8_t>(timesync.hour), static_cast<uint8_t>(timesync.minute),
+          static_cast<uint8_t>(timesync.second), static_cast<uint8_t>(timesync.centisecond), 1000);
+    }
     updateAidCache(dgps, timesync);
     satellites = static_cast<uint8_t>(std::min<uint32_t>(status.satellites, 255u));
     altitudeValid = status.altitude_valid;

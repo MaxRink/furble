@@ -81,6 +81,9 @@ esp_err_t nvs_get_stats(const char *part_name, nvs_stats_t *stats);
 
 void nvs_test_reset(void);
 nvs_test_value_type_t nvs_test_value_type(const char *name, const char *key);
+size_t nvs_test_commit_count(void);
+void nvs_test_fail_set_on(size_t nth_future_call);
+void nvs_test_fail_commit_on(size_t nth_future_call);
 }
 
 #endif

@@ -22,6 +22,8 @@ set(furble_sources
     FurbleProvision.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
+    FurbleTimeKeeper.cpp
+    FurbleTimeKeeperPolicy.cpp
     ../lib/furble/protocol/ProvisionTLV.cpp
     main.cpp)
 

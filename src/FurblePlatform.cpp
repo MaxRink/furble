@@ -12,6 +12,7 @@
 #include "FurblePower.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleWatchdog.h"
 
@@ -75,6 +76,7 @@ void Platform::init(void) {
 }
 
 void Platform::prepareRestart(void) {
+  TimeKeeper::getInstance().flush();
   auto &control = Control::getInstance();
   // forRestart == true: esp_restart() runs immediately after, so a force-
   // complete on timeout is safe here. The reset kills any in-flight BLE
@@ -327,6 +329,7 @@ bool Platform::hasTicklessIdle(void) {
 }
 
 bool Platform::powerOff(void) {
+  TimeKeeper::getInstance().flush();
   // the SD writer task closes the track and unmounts, wait for it to finish
   SD::getInstance().powerOff();
 

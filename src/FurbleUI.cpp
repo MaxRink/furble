@@ -5846,7 +5846,7 @@ void UI::addTextSizeMenu(const menu_t &parent) {
 #if defined(FURBLE_M5STICKS3)
         Platform::getInstance().watchdogEnable(false);
 #endif
-        esp_restart();
+        Platform::getInstance().restart();
       },
       LV_EVENT_CLICKED, roller);
 
@@ -6253,7 +6253,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
 #if defined(FURBLE_M5STICKS3)
         Platform::getInstance().watchdogEnable(false);
 #endif
-        esp_restart();
+        Platform::getInstance().restart();
       },
       LV_EVENT_CLICKED, NULL);
 

@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -724,7 +725,7 @@ void SD::handleTransfer(bool import) {
   if (ok && import) {
     ESP_LOGI(LOG_TAG, "SD settings import complete, restarting.");
     unmount();
-    esp_restart();
+    Platform::getInstance().restart();
   }
 
   if (ok) {

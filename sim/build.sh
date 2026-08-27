@@ -207,6 +207,8 @@ for source in \
   "$ROOT/src/FurbleProvision.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \
   "$ROOT/src/FurbleSpinValue.cpp" \
+  "$ROOT/src/FurbleTimeKeeper.cpp" \
+  "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
