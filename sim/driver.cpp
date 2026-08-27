@@ -213,6 +213,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps",       "gps_nmea",     "fauxny",           "autoconnect",
       "reconnect", "sleep_conn",   "boot_splash",      "connect_fail",
       "no_touch",  "saved_camera", "scan_start_probe", "scan_distinct",
+      "auto_off_charging",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -641,6 +642,7 @@ std::string settingBoolValue(const std::string &name) {
       {"show_title",    Settings::SHOW_TITLE   },
       {"tx_adaptive",   Settings::TX_ADAPTIVE  },
       {"recon_backoff", Settings::RECON_BACKOFF},
+      {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
@@ -792,6 +794,11 @@ std::string queryValue(const std::string &key) {
   if (key == "platform.light_sleep") {
     return esp_pm_sim_light_sleep_allowed() ? "yes" : "no";
   }
+  if (key == "platform.deep_sleep") {
+    // The simulator has no deep-sleep entry point; powerOff is modeled
+    // separately so scenarios can assert both shutdown surfaces.
+    return "no";
+  }
   if (prefixed("platform.battery.")) {
     const std::string field = key.substr(std::char_traits<char>::length("platform.battery."));
     if (field == "level") {
@@ -847,6 +854,7 @@ void applyScenarioSettings(void) {
   saveByte("text_size", Settings::TEXT_SIZE);
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
+  saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("fauxny", Settings::FAUXNY);

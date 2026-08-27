@@ -1,0 +1,13 @@
+# The explicit opt-in permits auto-off on external power after all inactivity
+# and auto-off timers have elapsed, while charging still blocks sleep.
+seed auto_off 1
+seed auto_off_charging true
+seed inactivity 1
+seed display_off 1
+seed battery_charging true
+wait 300
+advance 90000
+assert platform.battery.charging yes
+assert platform.power_off yes
+assert platform.deep_sleep no
+exit

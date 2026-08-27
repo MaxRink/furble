@@ -1,0 +1,13 @@
+# Charging suppresses auto-off by default. Advance beyond both the 30 s
+# display-inactivity timer and the 60 s auto-off timer.
+seed auto_off 1
+seed inactivity 1
+seed display_off 1
+seed battery_charging true
+wait 300
+advance 90000
+assert platform.battery.charging yes
+assert platform.power_off no
+assert platform.deep_sleep no
+assert platform.light_sleep no
+exit

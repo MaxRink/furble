@@ -8,8 +8,13 @@ Rebase notes:
 
 - `AUTO_OFF` is assigned wire_id 37 and `LOW_BATT` wire_id 38, continuing
   after `DISPLAY_MODE` (36) from PR 31.
-- `src/FurbleCompanion.cpp` settingType and settingValue cover both as
-  SETTING_U8.
+- `AUTO_OFF_CHARGING` is a bool at wire_id 43. Wire id 42 remains reserved for
+  timezone work; 43 was free in the current settings table and the audited
+  fetched/open branches. The NVS key is `autooff_charge` (14 characters),
+  within the ESP-IDF 15-character limit. Wire id 45 is intentionally not used
+  because an open IMU/companion branch claims it.
+- `src/FurbleCompanionService.cpp` exposes `AUTO_OFF_CHARGING` as
+  `SETTING_BOOL`; the existing `AUTO_OFF` and `LOW_BATT` remain `SETTING_U8`.
 - The branch's console coverage (uint8 in all four switches, both apply
   immediately) merged onto master's GPS_POWER/GPS_DUTY lists as unions.
 
@@ -147,7 +152,13 @@ Out of scope:
 | `LOW_BATT` | `low_batt` (8 chars) | `FURBLE_STR` | `uint8_t` | 0 none, 1 warn, 2 warn then power off | 0 |
 
 Both defaults reproduce current behaviour exactly. Nothing happens unless the
-user opts in.
+user opts in. Auto-off is suppressed while a board with a charging capability
+reports charging; the `AUTO_OFF_CHARGING` switch explicitly permits it. The
+sampled charging state also owns a `NO_LIGHT_SLEEP` lock, so display-off may
+still happen but automatic CPU/light sleep cannot begin while charging. The
+simulator exposes the charging sample and power-off/light-sleep assertions in
+`autooff-charging-safe.txt` and `autooff-charging-opt-in.txt`; both scripts
+advance beyond the inactivity and auto-off timers.
 
 Auto off roller index to stored minutes:
 
