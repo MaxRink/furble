@@ -277,6 +277,19 @@ Rebase notes:
 
 Review fixes (deep review of the first branch revision):
 
+- Fujifilm Secure registration is the narrow exception to the supervision
+  timeout cap. The callback accepts the camera's initial over-cap request only
+  while the Secure identifier write is in progress; Basic and all steady-state
+  requests remain capped. `Camera::connect()` then requests the bounded FAST
+  profile immediately after the handshake and verifies the live interval,
+  latency, timeout, and link state before reporting success.
+- Ricoh stale-bond recovery is intentionally a safe next-attempt retry: a fresh
+  pairing security failure deletes only the matching local bond and returns
+  failure. Control may issue the next bounded connection attempt, where numeric
+  comparison can complete. Saved reconnects retain their bond on failure. An
+  inline retry from the security callback would re-enter NimBLE while the
+  connect/client lifetime is still owned by the current attempt.
+
 - Connect no longer runs at the idle interval. The idle request on
   `onConnect()` is gone and `Camera::connect()` sets a connect-in-progress
   gate that `maybeSetIdle()` checks, so discovery and subscriptions always run

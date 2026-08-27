@@ -69,10 +69,12 @@ remediation batches. The batch is named in each GATED-ON tag.
   READY-NOW. Also present upstream, see the upstream section.
 - m_Configured as std::atomic<bool>. Low. Replace the volatile bool that
   crosses tasks. Source: plan 96 A3d. GATED-ON: feat/75-false-connected (#93).
-- Stale-bond delete-and-retry. High. On secureConnection failure for a bonded
-  address, delete the bond and retry once. Nothing recovers a stale bond
-  today, so a camera-side pairing delete means permanent reconnect failure.
-  Source: plan 96 A2. READY-NOW.
+- Stale-bond delete-and-retry. High. On a fresh Ricoh pairing security failure
+  for a bonded address, delete only the matching local bond and return failure;
+  the next bounded control retry performs numeric comparison. Saved reconnect
+  failures preserve their bond. The retry stays outside the security callback
+  so NimBLE client/callback lifetime ownership remains safe. Source: plan 96
+  A2. READY-NOW.
 - FujifilmSecure address update from rescan. Medium. Mirror Nikon: update
   m_Address from the advertisement before connecting, re-serialize on success.
   Source: plan 96 A7a, `lib/furble/FujifilmSecure.cpp:69-88, 123-124`.

@@ -41,6 +41,16 @@ protocol core.
   `setConnProfile()` also mirrors the profile into the NimBLE client so peer
   renegotiation counter-proposals carry the current values, not the
   pre-connect ones.
+- Fujifilm Secure's registration identifier write is the only permitted
+  exception to the supervision-timeout cap. `Camera::connect()` immediately
+  requests and verifies the bounded FAST profile after that write, before the
+  session is exposed. Do not broaden the callback exception to Basic or to the
+  rest of a connection attempt.
+- Ricoh fresh pairing treats a bonded-address security failure as a stale local
+  bond: delete that bond and return failure so the next bounded control retry
+  can perform numeric comparison. Saved reconnect failures preserve the bond;
+  do not reconnect inline from the security callback or alter callback/client
+  lifetime ownership.
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out
