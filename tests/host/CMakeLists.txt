@@ -224,8 +224,7 @@ target_include_directories(saved_scan_cancel_test BEFORE PRIVATE
 target_compile_options(saved_scan_cancel_test PRIVATE
                        -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
-                       -Wno-unused-lambda-capture -Wno-sign-compare
-                       -Wno-c++11-narrowing)
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
 target_link_libraries(saved_scan_cancel_test PRIVATE Threads::Threads)
 
 # Exercise the real NVS/Preferences settings path against a typed in-memory
