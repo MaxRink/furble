@@ -27,9 +27,26 @@ void copyText(char *destination, size_t bytes, const std::string &source) {
   destination[length] = '\0';
 }
 
+std::string payloadHex(const uint8_t *data, size_t length) {
+  static constexpr char HEX[] = "0123456789abcdef";
+  if (data == nullptr || length == 0) {
+    return "<empty>";
+  }
+  std::string result;
+  result.reserve(length * 2);
+  for (size_t index = 0; index < length; ++index) {
+    result.push_back(HEX[data[index] >> 4]);
+    result.push_back(HEX[data[index] & 0x0f]);
+  }
+  return result;
+}
+
 void printJournalEvent(const BtDebugEvent &event, void *) {
-  printf("bt.event: %llu kind:%u op:%s result:%s duration_ms:%u reason:%d(%s) gen:%llu ",
+  printf("bt.event: seq:%llu session:%u attempt:%u time:%llu kind:%u phase:%s op:%s result:%s duration_ms:%u reason:%d(%s) gen:%llu ",
+         static_cast<unsigned long long>(event.sequence), static_cast<unsigned>(event.session_id),
+         static_cast<unsigned>(event.attempt_id),
          static_cast<unsigned long long>(event.timestamp_ms), static_cast<unsigned>(event.kind),
+         event.begin ? "begin" : "end",
          event.operation, event.result, static_cast<unsigned>(event.duration_ms), event.reason,
          event.reason_text, static_cast<unsigned long long>(event.generation));
   if (event.address[0] != '\0') {
@@ -52,9 +69,13 @@ void printJournalEvent(const BtDebugEvent &event, void *) {
     printf("state:%s owner:%s physical:%s logical:%s ", event.state, event.owner,
            event.physical ? "true" : "false", event.logical ? "true" : "false");
   }
-  printf("security:%s/%s/%s key:%u payload_len:%u\n", event.encrypted ? "encrypted" : "open",
+  const size_t payload_bytes = std::min<size_t>(event.payload_length, sizeof(event.payload));
+  printf("security:%s/%s/%s key:%u payload_len:%u payload:%s%s rssi:%d name:%s mfr:%s\n",
+         event.encrypted ? "encrypted" : "open",
          event.authenticated ? "authenticated" : "unauthenticated", event.bonded ? "bonded" : "unbonded",
-         static_cast<unsigned>(event.key_size), static_cast<unsigned>(event.payload_length));
+         static_cast<unsigned>(event.key_size), static_cast<unsigned>(event.payload_length),
+         payloadHex(event.payload, payload_bytes).c_str(), event.payload_truncated ? "..." : "",
+         static_cast<int>(event.rssi), event.name, event.manufacturer);
 }
 
 void journalRecord(const char *operation,
@@ -64,18 +85,23 @@ void journalRecord(const char *operation,
                    size_t length,
                    bool success,
                    bool response,
-                   uint64_t started_us) {
+                   uint64_t started_us,
+                   uint32_t attempt_id = 0,
+                   bool begin = false) {
   BtDebugEvent event;
   event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
   event.kind = BtDebugEventKind::GATT;
   event.success = success;
   event.response = response;
+  event.attempt_id = attempt_id;
+  event.begin = begin;
   event.duration_ms = static_cast<uint16_t>(std::min<uint64_t>(
       (static_cast<uint64_t>(esp_timer_get_time()) - started_us) / 1000ULL, UINT16_MAX));
   copyText(event.service_uuid, sizeof(event.service_uuid), service.toString());
   copyText(event.characteristic_uuid, sizeof(event.characteristic_uuid), characteristic.toString());
   copyText(event.operation, sizeof(event.operation), operation);
-  copyText(event.result, sizeof(event.result), success ? "ok" : "failed");
+  copyText(event.result, sizeof(event.result), begin ? "begin" : (success ? "ok" : "failed"));
+  event.payload_truncated = length > sizeof(event.payload);
   event.payload_length = static_cast<uint16_t>(std::min(length, static_cast<size_t>(UINT16_MAX)));
   const size_t payload_bytes = std::min(length, sizeof(event.payload));
   if (data != nullptr && payload_bytes != 0) {
@@ -100,6 +126,7 @@ void Camera::onConnect(NimBLEClient *pClient) {
   event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
   event.kind = BtDebugEventKind::GAP_CONNECT;
   event.success = true;
+  event.attempt_id = m_DebugAttemptId;
   event.address_type = m_Address.getType();
   if (pClient != nullptr) {
     const NimBLEConnInfo info = pClient->getConnInfo();
@@ -136,6 +163,8 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
   BtDebugEvent event;
   event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
   event.kind = BtDebugEventKind::GAP_DISCONNECT;
+  event.success = true;
+  event.attempt_id = m_DebugAttemptId;
   event.reason = reason;
   event.address_type = m_Address.getType();
   if (pClient != nullptr) {
@@ -163,6 +192,10 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
 bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
+#if defined(FURBLE_CONSOLE)
+  m_DebugAttemptId = BtDebugJournal::instance().nextAttempt();
+#endif
+
   {
     // Gate the idle profile out for the whole connection attempt. Discovery
     // and subscription round trips at the idle interval would stretch a two
@@ -178,6 +211,16 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   m_Client = NimBLEDevice::createClient();
   if (m_Client == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to create client");
+#if defined(FURBLE_CONSOLE)
+    BtDebugEvent event;
+    event.kind = BtDebugEventKind::GAP_CONNECT_FAILED;
+    event.attempt_id = m_DebugAttemptId;
+    event.address_type = m_Address.getType();
+    copyText(event.address, sizeof(event.address), m_Address.toString());
+    copyText(event.operation, sizeof(event.operation), "connect");
+    copyText(event.result, sizeof(event.result), "create-client-failed");
+    BtDebugJournal::instance().record(event);
+#endif
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
     m_ConnectInProgress = false;
     m_FujifilmSecureRegistration = false;
@@ -261,6 +304,20 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
              static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
   }
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(m_SecurityModeDefault));
+
+  if (!m_Connected) {
+    ESP_LOGW(LOG_TAG, "Camera connect failed for %s", m_Address.toString().c_str());
+#if defined(FURBLE_CONSOLE)
+    BtDebugEvent event;
+    event.kind = BtDebugEventKind::GAP_CONNECT_FAILED;
+    event.attempt_id = m_DebugAttemptId;
+    event.address_type = m_Address.getType();
+    copyText(event.address, sizeof(event.address), m_Address.toString());
+    copyText(event.operation, sizeof(event.operation), "connect");
+    copyText(event.result, sizeof(event.result), "camera-handshake-failed");
+    BtDebugJournal::instance().record(event);
+#endif
+  }
 
   {
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
@@ -598,7 +655,7 @@ bool Camera::gattWrite(NimBLERemoteCharacteristic *characteristic,
   const NimBLERemoteService *service = characteristic->getRemoteService();
   const NimBLEUUID empty;
   journalRecord("write", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
-                data, length, result, response, started_us);
+                data, length, result, response, started_us, m_DebugAttemptId);
 #endif
 
   return result;
@@ -628,7 +685,7 @@ bool Camera::gattWrite(const NimBLEUUID &service,
 
 #if defined(FURBLE_CONSOLE)
   journalRecord("write", service, characteristic, value.data(), value.size(), result, response,
-                started_us);
+                started_us, m_DebugAttemptId);
 #endif
 
   return result;
@@ -648,11 +705,12 @@ bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue
 #if defined(FURBLE_CONSOLE)
   const NimBLERemoteService *service = characteristic->getRemoteService();
   const NimBLEUUID empty;
+  const bool result = value.size() != 0;
   journalRecord("read", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
-                value.data(), value.size(), true, false, started_us);
+                value.data(), value.size(), result, false, started_us, m_DebugAttemptId);
 #endif
 
-  return true;
+  return value.size() != 0;
 }
 
 bool Camera::gattRead(const NimBLEUUID &service,
@@ -669,11 +727,12 @@ bool Camera::gattRead(const NimBLEUUID &service,
   value = m_Client->getValue(service, characteristic);
 
 #if defined(FURBLE_CONSOLE)
-  journalRecord("read", service, characteristic, value.data(), value.size(), true, false,
-                started_us);
+  const bool result = value.size() != 0;
+  journalRecord("read", service, characteristic, value.data(), value.size(), result, false,
+                started_us, m_DebugAttemptId);
 #endif
 
-  return true;
+  return value.size() != 0;
 }
 
 bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
@@ -686,17 +745,29 @@ bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
 
 #if defined(FURBLE_CONSOLE)
   const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+  const uint32_t attempt_id = m_DebugAttemptId;
+  const NimBLEUUID empty;
+  const NimBLERemoteService *service = characteristic->getRemoteService();
+  const NimBLEUUID service_uuid = service != nullptr ? service->getUUID() : empty;
+  const uint8_t cccd[] = {static_cast<uint8_t>(indicate ? 0x02 : 0x01), 0x00};
+  journalRecord("subscribe", service_uuid, characteristic->getUUID(), cccd, sizeof(cccd), false,
+                response, started_us, attempt_id, true);
 #endif
   const bool result = characteristic->subscribe(
       !indicate,
+#if defined(FURBLE_CONSOLE)
+      [callback, attempt_id](NimBLERemoteCharacteristic *remoteCharacteristic, uint8_t *data,
+                             size_t length,
+#else
       [callback](NimBLERemoteCharacteristic *remoteCharacteristic, uint8_t *data, size_t length,
+#endif
                  bool isNotify) {
 #if defined(FURBLE_CONSOLE)
         const NimBLERemoteService *service = remoteCharacteristic->getRemoteService();
         const NimBLEUUID empty;
         journalRecord(isNotify ? "notify" : "indicate", service != nullptr ? service->getUUID() : empty,
                       remoteCharacteristic->getUUID(), data, length, true, false,
-                      static_cast<uint64_t>(esp_timer_get_time()));
+                      static_cast<uint64_t>(esp_timer_get_time()), attempt_id);
 #endif
         if (callback) {
           callback(remoteCharacteristic, data, length, isNotify);
@@ -704,13 +775,8 @@ bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
       },
       response);
 #if defined(FURBLE_CONSOLE)
-  const NimBLEUUID empty;
-  const NimBLEUUID service = characteristic->getRemoteService() != nullptr
-                                 ? characteristic->getRemoteService()->getUUID()
-                                 : empty;
-  const uint8_t cccd[] = {static_cast<uint8_t>(indicate ? 0x02 : 0x01), 0x00};
-  journalRecord("subscribe", service, characteristic->getUUID(), cccd, sizeof(cccd), result,
-                response, started_us);
+  journalRecord("subscribe", service_uuid, characteristic->getUUID(), cccd, sizeof(cccd), result,
+                response, started_us, attempt_id);
 #endif
   return result;
 }
