@@ -24,6 +24,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     std::string name = "FUJIFILM X100VI";
     NimBLEAddress address = NimBLEAddress(0x112233445566ULL, 0);
     std::array<uint8_t, 4> token = {0xa1, 0xb2, 0xc3, 0xd4};
+    bool secure = false;
+    std::array<uint8_t, 5> serial = {0x01, 0x02, 0x03, 0x04, 0x05};
     std::vector<NimBLEUUID> advertised_services;
   };
 
@@ -115,6 +117,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const std::string &identifier() const;
   bool connected() const;
   void setSecureConnectionResult(bool result);
+  void setRequireLongConnParamsAfterIdentifier(bool require);
   void requestConnParamsDuringConnect(const ble_gap_upd_params &params);
   bool registrationConnParamsAccepted() const;
   bool tokenAccepted() const;
@@ -128,6 +131,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool hasService(const NimBLEUUID &service) const override;
   bool hasCharacteristic(const NimBLEUUID &service,
                          const NimBLEUUID &characteristic) const override;
+  bool discoverCharacteristic(NimBLEClient &client,
+                              const NimBLEUUID &service,
+                              const NimBLEUUID &characteristic) override;
   bool canWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const override;
   bool write(NimBLEClient &client,
              const NimBLEUUID &service,
@@ -186,8 +192,10 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
   bool m_SecureConnectionResult = true;
+  bool m_RequireLongConnParamsAfterIdentifier = false;
+  bool m_ConnParamsNegotiated = false;
   bool m_RequestConnParamsDuringConnect = false;
-  ble_gap_upd_params m_RegistrationConnParams{};
+  ble_gap_upd_params m_RegistrationConnParams {};
   bool m_RegistrationConnParamsAccepted = false;
   bool m_StaleSubscribeSession = false;
   std::vector<NimBLEUUID> m_SuppressedServices;

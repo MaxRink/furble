@@ -329,7 +329,8 @@ const NimBLEUUID &NimBLERemoteService::getUUID() const {
 NimBLERemoteCharacteristic *NimBLERemoteService::getCharacteristic(
     const NimBLEUUID &characteristic) {
   if ((m_Client == nullptr) || (m_Client->getPeer() == nullptr)
-      || !m_Client->getPeer()->hasCharacteristic(m_Service, characteristic)) {
+      || !m_Client->getPeer()->hasCharacteristic(m_Service, characteristic)
+      || !m_Client->getPeer()->discoverCharacteristic(*m_Client, m_Service, characteristic)) {
     return nullptr;
   }
 

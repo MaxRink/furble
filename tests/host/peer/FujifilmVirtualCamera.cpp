@@ -7,6 +7,9 @@ namespace {
 
 const NimBLEUUID PAIR_SERVICE_UUID {0x91f1de68, 0xdff6, 0x466e, 0x8b65ff13b0f16fb8};
 const NimBLEUUID PAIR_CHARACTERISTIC_UUID {0xaba356eb, 0x9633, 0x4e60, 0xb73ff52516dbd671};
+const NimBLEUUID SECURE_ADVERTISED_SERVICE_UUID {0xa9d2b304, 0xe8d6, 0x4902, 0x8336352b772d7597};
+const NimBLEUUID SECURE_PAIR_SERVICE_UUID {0x123d8f06, 0x62a1, 0x4935, 0x9322833c531ee225};
+const NimBLEUUID SECURE_STATUS_CHARACTERISTIC_UUID {0xf557d96b, 0x8284, 0x4667, 0x8793b971c1deca2a};
 const NimBLEUUID IDENTIFIER_CHARACTERISTIC_UUID {0x85b9163e, 0x62d1, 0x49ff, 0xa6f5054b4630d4a1};
 const NimBLEUUID CONFIGURATION_SERVICE_UUID {0x4c0020fe, 0xf3b6, 0x40de, 0xacc977d129067b14};
 const NimBLEUUID CONFIGURATION_NOTIFICATION_UUID {0xf9150137, 0x5d40, 0x4801, 0xa8dcf7fc5b01da50};
@@ -15,6 +18,15 @@ const NimBLEUUID GEOTAG_REQUEST_CHARACTERISTIC_UUID {0xad06c7b7, 0xf41a, 0x46f4,
 const NimBLEUUID CONFIGURATION_INDICATION1_UUID {0xa68e3f66, 0x0fcc, 0x4395, 0x8d4caa980b5877fa};
 const NimBLEUUID CONFIGURATION_INDICATION2_UUID {0xbd17ba04, 0xb76b, 0x4892, 0xa545b73ba1f74dae};
 const NimBLEUUID CONFIGURATION_INDICATION3_UUID {0x049ec406, 0xef75, 0x4205, 0xa39008fe209c51f0};
+const NimBLEUUID SECURE_NOTIFICATION6_UUID {0xe6692c5c, 0xb7cd, 0x44f4, 0x95fceda07ce32560};
+const NimBLEUUID SECURE_NOTIFICATION_SERVICE_UUID {0x4e941240, 0xd01d, 0x46b9, 0xa5ea67636806830b};
+const NimBLEUUID SECURE_NOTIFICATION4_UUID {0xbf6dc9cf, 0x3606, 0x4ec9, 0xa4c8d77576e93ea4};
+const NimBLEUUID SECURE_NOTIFICATION5_UUID {0x75823784, 0xfbb7, 0x4b71, 0xabaecd9a34072e3c};
+const NimBLEUUID SECURE_NOTIFICATION7_UUID {0xaab609c4, 0x94dd, 0x4d89, 0xbc60665d5090b828};
+const NimBLEUUID SECURE_NOTIFICATION8_UUID {0x2a125640, 0x706d, 0x4dd1, 0xb420c0f4ab93c361};
+const NimBLEUUID SECURE_NOTIFICATION9_UUID {0x82a9f452, 0xc5ce, 0x4ef5, 0x82033fc9a47f8171};
+const NimBLEUUID SECURE_NOTIFICATION10_UUID {0xdeef7187, 0x3f43, 0x4364, 0x9e2211a8c8a15951};
+const NimBLEUUID SECURE_SYNC_INTERVAL_UUID {0xc95d91ae, 0xb247, 0x4d6d, 0x86617dd5d6a0f85b};
 const NimBLEUUID SHUTTER_SERVICE_UUID {0x6514eb81, 0x4e8f, 0x458d, 0xaa2ae691336cdfac};
 const NimBLEUUID SHUTTER_CHARACTERISTIC_UUID {0x7fcf49c6, 0x4ff0, 0x4777, 0xa03d1a79166af7a8};
 const NimBLEUUID GEOTAG_SERVICE_UUID {0x3b46ec2b, 0x48ba, 0x41fd, 0xb1b8ed860b60d22b};
@@ -31,15 +43,20 @@ FujifilmVirtualCamera::FujifilmVirtualCamera() : FujifilmVirtualCamera(Config {}
 
 FujifilmVirtualCamera::FujifilmVirtualCamera(const Config &config) : m_Config(config) {
   if (m_Config.advertised_services.empty()) {
-    m_Config.advertised_services.push_back(advertisedServiceUUID());
+    m_Config.advertised_services.push_back(m_Config.secure ? SECURE_ADVERTISED_SERVICE_UUID
+                                                           : advertisedServiceUUID());
   }
 }
 
 NimBLEAdvertisedDevice FujifilmVirtualCamera::advertisement() const {
   NimBLEAdvertisedDevice device;
-  const std::array<uint8_t, 7> manufacturer = {
-      0xd8, 0x04, 0x02, m_Config.token[0], m_Config.token[1], m_Config.token[2], m_Config.token[3],
-  };
+  std::vector<uint8_t> manufacturer = {0xd8, 0x04};
+  if (m_Config.secure) {
+    manufacturer.insert(manufacturer.end(), m_Config.serial.begin(), m_Config.serial.end());
+  } else {
+    manufacturer.push_back(0x02);
+    manufacturer.insert(manufacturer.end(), m_Config.token.begin(), m_Config.token.end());
+  }
 
   device.setAddress(m_Config.address);
   device.setName(m_Config.name);
@@ -214,6 +231,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_DropOnWrite.clear();
   m_DropDuringConnect.clear();
   m_StaleSubscribeSession = false;
+  m_RequireLongConnParamsAfterIdentifier = false;
 }
 
 bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -227,10 +245,10 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
   m_GeotagRequested = false;
   m_Identifier.clear();
   m_LastGeotag.clear();
+  m_ConnParamsNegotiated = false;
   m_Subscriptions.clear();
   if (m_RequestConnParamsDuringConnect) {
-    m_RegistrationConnParamsAccepted =
-        client.mockPeerRequestConnParams(m_RegistrationConnParams);
+    m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(m_RegistrationConnParams);
   }
   return true;
 }
@@ -248,7 +266,9 @@ bool FujifilmVirtualCamera::hasService(const NimBLEUUID &service) const {
   if (isServiceSuppressed(service)) {
     return false;
   }
-  return matches(service, pairServiceUUID()) || matches(service, configurationServiceUUID())
+  return matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
+         || matches(service, configurationServiceUUID())
+         || (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID))
          || matches(service, shutterServiceUUID()) || matches(service, geotagServiceUUID());
 }
 
@@ -257,8 +277,9 @@ bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
   if (isServiceSuppressed(service) || isCharacteristicSuppressed(service, characteristic)) {
     return false;
   }
-  if (matches(service, pairServiceUUID())) {
-    return matches(characteristic, pairCharacteristicUUID())
+  if (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())) {
+    return matches(characteristic,
+                   m_Config.secure ? SECURE_STATUS_CHARACTERISTIC_UUID : pairCharacteristicUUID())
            || matches(characteristic, identifierCharacteristicUUID());
   }
   if (matches(service, configurationServiceUUID())) {
@@ -267,6 +288,16 @@ bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
            || matches(characteristic, configurationNotificationUUID())
            || matches(characteristic, geotagRequestCharacteristicUUID())
            || matches(characteristic, configurationIndication3UUID());
+  }
+  if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)) {
+    return matches(characteristic, SECURE_NOTIFICATION6_UUID)
+           || matches(characteristic, SECURE_NOTIFICATION4_UUID)
+           || matches(characteristic, SECURE_NOTIFICATION5_UUID)
+           || matches(characteristic, SECURE_NOTIFICATION7_UUID)
+           || matches(characteristic, SECURE_NOTIFICATION8_UUID)
+           || matches(characteristic, SECURE_NOTIFICATION9_UUID)
+           || matches(characteristic, SECURE_NOTIFICATION10_UUID)
+           || matches(characteristic, SECURE_SYNC_INTERVAL_UUID);
   }
   if (matches(service, shutterServiceUUID())) {
     return matches(characteristic, shutterCharacteristicUUID());
@@ -277,11 +308,23 @@ bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
   return false;
 }
 
+bool FujifilmVirtualCamera::discoverCharacteristic(NimBLEClient &client,
+                                                   const NimBLEUUID &service,
+                                                   const NimBLEUUID &characteristic) {
+  (void)client;
+  (void)service;
+  (void)characteristic;
+  return true;
+}
+
 bool FujifilmVirtualCamera::canWrite(const NimBLEUUID &service,
                                      const NimBLEUUID &characteristic) const {
-  return (matches(service, pairServiceUUID())
-          && (matches(characteristic, pairCharacteristicUUID())
+  return (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
+          && (matches(characteristic, m_Config.secure ? SECURE_STATUS_CHARACTERISTIC_UUID
+                                                      : pairCharacteristicUUID())
               || matches(characteristic, identifierCharacteristicUUID())))
+         || (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
+             && matches(characteristic, SECURE_SYNC_INTERVAL_UUID))
          || (matches(service, shutterServiceUUID())
              && matches(characteristic, shutterCharacteristicUUID()))
          || (matches(service, geotagServiceUUID())
@@ -320,14 +363,37 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   m_Writes.push_back(write_event);
 
   bool result = false;
-  if (matches(service, pairServiceUUID()) && matches(characteristic, pairCharacteristicUUID())) {
-    const std::vector<uint8_t> expected(m_Config.token.begin(), m_Config.token.end());
-    m_TokenAccepted = (value == expected);
-    result = m_TokenAccepted;
-  } else if (matches(service, pairServiceUUID())
+  if (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
+      && matches(characteristic,
+                 m_Config.secure ? SECURE_STATUS_CHARACTERISTIC_UUID : pairCharacteristicUUID())) {
+    if (m_Config.secure) {
+      result = value.size() == 4;
+    } else {
+      const std::vector<uint8_t> expected(m_Config.token.begin(), m_Config.token.end());
+      m_TokenAccepted = (value == expected);
+      result = m_TokenAccepted;
+    }
+  } else if (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
              && matches(characteristic, identifierCharacteristicUUID())) {
     m_Identifier.assign(value.begin(), value.end());
-    result = m_TokenAccepted;
+    result = m_Config.secure || m_TokenAccepted;
+    if (result && m_RequireLongConnParamsAfterIdentifier && !m_ConnParamsNegotiated) {
+      ble_gap_upd_params params = {};
+      params.itvl_min = 24;
+      params.itvl_max = 40;
+      params.latency = 0;
+      params.supervision_timeout = 2000;
+      m_RegistrationConnParams = params;
+      m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(params);
+      if (!m_RegistrationConnParamsAccepted) {
+        client.mockDropLink(0x08, true);
+        return false;
+      }
+      m_ConnParamsNegotiated = true;
+    }
+  } else if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
+             && matches(characteristic, SECURE_SYNC_INTERVAL_UUID)) {
+    result = value.size() == 2;
   } else if (matches(service, geotagServiceUUID())
              && matches(characteristic, geotagCharacteristicUUID())) {
     m_LastGeotag = value;
@@ -353,9 +419,13 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
 NimBLEAttValue FujifilmVirtualCamera::read(NimBLEClient &client,
                                            const NimBLEUUID &service,
                                            const NimBLEUUID &characteristic) {
-  (void)client;
-  (void)service;
-  (void)characteristic;
+  if (!m_Connected || (m_Client != &client) || !hasCharacteristic(service, characteristic)) {
+    return {};
+  }
+  if (m_Config.secure && matches(service, SECURE_PAIR_SERVICE_UUID)
+      && matches(characteristic, SECURE_STATUS_CHARACTERISTIC_UUID)) {
+    return NimBLEAttValue({0x07, 0x96, 0x00, 0x00});
+  }
   return {};
 }
 
@@ -400,6 +470,10 @@ bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
 
 void FujifilmVirtualCamera::setSecureConnectionResult(bool result) {
   m_SecureConnectionResult = result;
+}
+
+void FujifilmVirtualCamera::setRequireLongConnParamsAfterIdentifier(bool require) {
+  m_RequireLongConnParamsAfterIdentifier = require;
 }
 
 void FujifilmVirtualCamera::requestConnParamsDuringConnect(const ble_gap_upd_params &params) {

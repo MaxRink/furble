@@ -135,6 +135,9 @@ class NimBLEMockPeer {
   virtual bool hasService(const NimBLEUUID &service) const = 0;
   virtual bool hasCharacteristic(const NimBLEUUID &service,
                                  const NimBLEUUID &characteristic) const = 0;
+  virtual bool discoverCharacteristic(NimBLEClient &client,
+                                      const NimBLEUUID &service,
+                                      const NimBLEUUID &characteristic) = 0;
   virtual bool canWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const = 0;
   virtual bool write(NimBLEClient &client,
                      const NimBLEUUID &service,

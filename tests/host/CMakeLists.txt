@@ -17,6 +17,7 @@ set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
 add_library(furble_host_camera STATIC
             ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
             ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+            ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
             ${FURBLE_ROOT}/lib/furble/Camera.cpp
             ${FURBLE_ROOT}/lib/furble/Device.cpp
             ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -151,6 +152,7 @@ add_executable(camera_regression_test
                ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
                ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
                ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
                ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
                ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
                advertisement_scan_stub.cpp
