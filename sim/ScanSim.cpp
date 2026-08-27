@@ -104,7 +104,8 @@ bool Scan::isActive(void) const {
   bool expired = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    expired = m_Active && m_HasDeadline && Sim::clockDeadlineReached(Sim::clockMillis(), m_Deadline);
+    expired =
+        m_Active && m_HasDeadline && Sim::clockDeadlineReached(Sim::clockMillis(), m_Deadline);
     if (!expired) {
       return m_Active;
     }

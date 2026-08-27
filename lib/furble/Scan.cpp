@@ -27,9 +27,7 @@ class Scan::CallbackProxy final: public NimBLEScanCallbacks {
  public:
   explicit CallbackProxy(Scan *owner) : m_Owner(owner) {}
 
-  void onResult(const NimBLEAdvertisedDevice *device) override {
-    m_Owner->onResult(device);
-  }
+  void onResult(const NimBLEAdvertisedDevice *device) override { m_Owner->onResult(device); }
 
   void onScanEnd(const NimBLEScanResults &results, int reason) override {
     m_Owner->onScanEnd(results, reason);
@@ -332,8 +330,7 @@ void Scan::processPendingCallbacks(void) {
     }
     if (event.type == PendingEvent::Type::RESULT) {
       if (CameraList::match(&event.device) && event.callback != nullptr) {
-        ESP_LOGI(LOG_TAG, "RSSI(%s) = %d", event.device.getName().c_str(),
-                 event.device.getRSSI());
+        ESP_LOGI(LOG_TAG, "RSSI(%s) = %d", event.device.getName().c_str(), event.device.getRSSI());
         event.callback(event.privateData);
       }
     } else if (event.callback != nullptr) {

@@ -1,5 +1,5 @@
-#include <cstdlib>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <thread>
 
@@ -44,10 +44,12 @@ int main() {
   const auto testThread = std::this_thread::get_id();
   std::thread::id callbackThread;
   scan.setTimeout(0);
-  scan.start([&rows, &callbackThread](void *) {
-    rows++;
-    callbackThread = std::this_thread::get_id();
-  }, nullptr);
+  scan.start(
+      [&rows, &callbackThread](void *) {
+        rows++;
+        callbackThread = std::this_thread::get_id();
+      },
+      nullptr);
   auto *oldCallbacks = nimble->callbacks();
   std::thread callbackWorker([oldCallbacks, &advertisement]() {
     for (size_t i = 0; i < Scan::MAX_PENDING_RESULTS; ++i) {
@@ -75,8 +77,8 @@ int main() {
   secondGeneration->onResult(&advertisement);
   secondGeneration->onScanEnd(NimBLEScanResults {}, 0);
   scan.processPendingCallbacks();
-  check(rows == Scan::MAX_PENDING_RESULTS + 1,
-        "old generation events cannot feed the new scan", failures);
+  check(rows == Scan::MAX_PENDING_RESULTS + 1, "old generation events cannot feed the new scan",
+        failures);
   check(!scan.isActive(), "current scan ends exactly once", failures);
 
   scan.start([](void *) {}, nullptr);
@@ -111,8 +113,7 @@ int main() {
   // Once end is accepted, a result delivered afterward must not be handed to
   // the saved-camera or discovery consumer.
   size_t reorderedRows = 0;
-  scan.start([&reorderedRows](void *) { ++reorderedRows; }, nullptr,
-             [](void *) {});
+  scan.start([&reorderedRows](void *) { ++reorderedRows; }, nullptr, [](void *) {});
   auto *reorderedCallbacks = nimble->callbacks();
   reorderedCallbacks->onScanEnd(NimBLEScanResults {}, 0);
   reorderedCallbacks->onResult(&advertisement);

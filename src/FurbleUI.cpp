@@ -52,7 +52,6 @@
 
 #if defined(FURBLE_SIM)
 #include "power_profiler.h"
-#include "driver.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 
 namespace {
@@ -4682,10 +4681,9 @@ void UI::startScan(void) {
       [](void *param) {
         auto *menu = static_cast<menu_t *>(param);
 #if defined(FURBLE_SIM)
-        const bool isNewSimAdvertisement =
-            CameraList::size() == 0
-            || (Sim::scenarioSettingIsTrue("scan_distinct")
-                && Scan::getInstance().currentResultId() == 1);
+        const bool isNewSimAdvertisement = CameraList::size() == 0
+                                           || (Sim::scenarioSettingIsTrue("scan_distinct")
+                                               && Scan::getInstance().currentResultId() == 1);
         if (isNewSimAdvertisement) {
           CameraList::addFauxNY();
           updateItems(*menu);
@@ -4694,10 +4692,7 @@ void UI::startScan(void) {
         updateItems(*menu);
 #endif
       },
-      &menu,
-      [](void *) {
-        lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
-      });
+      &menu, [](void *) { lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN); });
   m_Mutex.lock();
 
   m_ConnectContext.menuName = m_ScanStr;

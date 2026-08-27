@@ -1,8 +1,8 @@
 #ifndef FURBLE_SIM_SCAN_H
 #define FURBLE_SIM_SCAN_H
 
-#include <cstdint>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <mutex>
