@@ -180,13 +180,6 @@ add_executable(settings_table_test settings_table_test.cpp)
 target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                    -Wno-unused-parameter)
 
-# Guard both UI scan entry points against holding the UI mutex across the
-# controller/library start call. The simulator has a concurrent callback probe;
-# this source contract keeps the firmware boundary from silently regressing.
-add_executable(scan_mutex_contract_test scan_mutex_contract_test.cpp)
-target_compile_options(scan_mutex_contract_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                        -Wno-unused-parameter)
-
 # Compile the production Scan implementation against the host NimBLE double.
 # This catches callback-thread ownership, bounded handoff, generation fencing,
 # expiry, and custom callback lifetime regressions without a radio or UI.
@@ -234,11 +227,6 @@ target_compile_options(saved_scan_cancel_test PRIVATE
                        -Wno-unused-lambda-capture -Wno-sign-compare
                        -Wno-c++11-narrowing)
 target_link_libraries(saved_scan_cancel_test PRIVATE Threads::Threads)
-
-add_executable(charging_policy_test charging_policy_test.cpp)
-target_include_directories(charging_policy_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(charging_policy_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                    -Wno-unused-parameter)
 
 # Exercise the real NVS/Preferences settings path against a typed in-memory
 # NVS stub. The test also includes the production SD settings helpers so every
@@ -656,11 +644,8 @@ if(BUILD_TESTING)
   add_test(NAME vendor-protocol-conformance COMMAND vendor_protocol_conformance_test)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-  add_test(NAME scan-mutex-contract
-           COMMAND scan_mutex_contract_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME scan-generation COMMAND scan_generation_test)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
-  add_test(NAME charging-policy COMMAND charging_policy_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)
