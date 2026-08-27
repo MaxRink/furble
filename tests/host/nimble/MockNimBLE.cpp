@@ -94,6 +94,8 @@ size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fai
 size_t g_MaxClients = 0;        // 0 means unlimited
 bool g_DeferredDelete = false;  // honour setSelfDelete and defer live deleteClient
 uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
+bool g_Bonded = false;
+size_t g_DeleteBondCount = 0;
 
 // Erase a client from the live pool, freeing it. Caller must not touch the
 // pointer afterwards. Safe to call on a pointer no longer in the pool. Also
@@ -830,11 +832,21 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
 }
 
 bool NimBLEDevice::deleteBond(const NimBLEAddress &) {
+  g_Bonded = false;
+  g_DeleteBondCount++;
   return true;
 }
 
 bool NimBLEDevice::isBonded(const NimBLEAddress &) {
-  return false;
+  return g_Bonded;
+}
+
+void NimBLEDevice::setBonded(bool bonded) {
+  g_Bonded = bonded;
+}
+
+size_t NimBLEDevice::deleteBondCount() {
+  return g_DeleteBondCount;
 }
 
 bool NimBLEDevice::setMTU(uint16_t) {
@@ -911,6 +923,8 @@ void NimBLEDevice::resetMock() {
   g_MaxClients = 0;
   g_DeferredDelete = false;
   g_ConnectDelayMs = 0;
+  g_Bonded = false;
+  g_DeleteBondCount = 0;
 }
 
 NimBLEClient *NimBLEDevice::lastClient() {

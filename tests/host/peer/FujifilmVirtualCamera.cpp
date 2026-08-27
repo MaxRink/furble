@@ -228,6 +228,10 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
   m_Identifier.clear();
   m_LastGeotag.clear();
   m_Subscriptions.clear();
+  if (m_RequestConnParamsDuringConnect) {
+    m_RegistrationConnParamsAccepted =
+        client.mockPeerRequestConnParams(m_RegistrationConnParams);
+  }
   return true;
 }
 
@@ -391,7 +395,20 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
 }
 
 bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
-  return m_Connected && (m_Client == &client);
+  return m_SecureConnectionResult && m_Connected && (m_Client == &client);
+}
+
+void FujifilmVirtualCamera::setSecureConnectionResult(bool result) {
+  m_SecureConnectionResult = result;
+}
+
+void FujifilmVirtualCamera::requestConnParamsDuringConnect(const ble_gap_upd_params &params) {
+  m_RegistrationConnParams = params;
+  m_RequestConnParamsDuringConnect = true;
+}
+
+bool FujifilmVirtualCamera::registrationConnParamsAccepted() const {
+  return m_RegistrationConnParamsAccepted;
 }
 
 bool FujifilmVirtualCamera::updateConnectionParams(NimBLEClient &client,

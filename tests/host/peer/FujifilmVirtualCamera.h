@@ -114,6 +114,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const std::vector<uint8_t> &lastGeotag() const;
   const std::string &identifier() const;
   bool connected() const;
+  void setSecureConnectionResult(bool result);
+  void requestConnParamsDuringConnect(const ble_gap_upd_params &params);
+  bool registrationConnParamsAccepted() const;
   bool tokenAccepted() const;
   bool configured() const;
   bool geotagRequested() const;
@@ -182,6 +185,10 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
+  bool m_SecureConnectionResult = true;
+  bool m_RequestConnParamsDuringConnect = false;
+  ble_gap_upd_params m_RegistrationConnParams{};
+  bool m_RegistrationConnParamsAccepted = false;
   bool m_StaleSubscribeSession = false;
   std::vector<NimBLEUUID> m_SuppressedServices;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;

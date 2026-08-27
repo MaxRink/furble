@@ -408,6 +408,8 @@ class NimBLEDevice {
   static bool deleteClient(NimBLEClient *client);
   static bool deleteBond(const NimBLEAddress &address);
   static bool isBonded(const NimBLEAddress &address);
+  static void setBonded(bool bonded);
+  static size_t deleteBondCount();
   static bool setMTU(uint16_t mtu);
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
   static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
