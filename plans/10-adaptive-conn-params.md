@@ -280,9 +280,12 @@ Review fixes (deep review of the first branch revision):
 - Fujifilm Secure registration is the narrow exception to the supervision
   timeout cap. The callback accepts the camera's initial over-cap request only
   while the Secure identifier write is in progress; Basic and all steady-state
-  requests remain capped. `Camera::connect()` then requests the bounded FAST
-  profile immediately after the handshake and verifies the live interval,
-  latency, timeout, and link state before reporting success.
+  requests remain capped. The Secure handshake then requests the bounded FAST
+  profile immediately after the identifier write and verifies the live
+  interval, latency, timeout, and link state before continuing discovery.
+  Registration also aborts at each GATT boundary when the peer disconnects, so
+  a half-open Secure session cannot continue issuing requests or block control
+  recovery.
 - Ricoh stale-bond recovery is intentionally a safe next-attempt retry: a fresh
   pairing security failure deletes only the matching local bond and returns
   failure. Control may issue the next bounded connection attempt, where numeric

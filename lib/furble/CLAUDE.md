@@ -42,10 +42,13 @@ protocol core.
   renegotiation counter-proposals carry the current values, not the
   pre-connect ones.
 - Fujifilm Secure's registration identifier write is the only permitted
-  exception to the supervision-timeout cap. `Camera::connect()` immediately
+  exception to the supervision-timeout cap. The Secure handshake immediately
   requests and verifies the bounded FAST profile after that write, before the
-  session is exposed. Do not broaden the callback exception to Basic or to the
-  rest of a connection attempt.
+  remaining discovery work. Do not broaden the callback exception to Basic or
+  to the rest of a connection attempt.
+- Secure registration must check link state after every read, write, and
+  subscription boundary. A peer disconnect aborts the handshake immediately;
+  never continue discovery or GATT traffic against a disconnected client.
 - Ricoh fresh pairing treats a bonded-address security failure as a stale local
   bond: delete that bond and return failure so the next bounded control retry
   can perform numeric comparison. Saved reconnect failures preserve the bond;
