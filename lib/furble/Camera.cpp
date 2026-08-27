@@ -6,13 +6,8 @@
 #include <NimBLEUtils.h>
 #include <esp_timer.h>
 
-#if defined(FURBLE_CONSOLE)
-#include <esp_heap_caps.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/portmacro.h>
-#endif
-
 #include "Camera.h"
+#include "BtDebugJournal.h"
 #include "Device.h"
 
 namespace Furble {
@@ -23,127 +18,70 @@ uint32_t connectionTimeMs(void) {
 }
 
 #if defined(FURBLE_CONSOLE)
-
-enum class journal_direction_t : uint8_t {
-  WRITE,
-  WRITE_RESPONSE,
-  READ,
-  NOTIFY,
-  INDICATE,
-};
-
-constexpr uint8_t JOURNAL_FLAG_OK = 1 << 0;
-constexpr uint8_t JOURNAL_FLAG_TRUNCATED = 1 << 1;
-
-#if defined(FURBLE_M5STICKS3)
-constexpr size_t JOURNAL_BYTES = 64 * 1024;
-constexpr size_t JOURNAL_PAYLOAD_BYTES = 64;
-#else
-constexpr size_t JOURNAL_BYTES = 8 * 1024;
-constexpr size_t JOURNAL_PAYLOAD_BYTES = 32;
-#endif
-
-struct journal_record_t {
-  uint32_t timestamp_ms;
-  journal_direction_t direction;
-  uint8_t flags;
-  uint16_t length;
-  uint8_t service_uuid[16];
-  uint8_t characteristic_uuid[16];
-  uint8_t payload[JOURNAL_PAYLOAD_BYTES];
-};
-
-static_assert(sizeof(journal_record_t) == (40 + JOURNAL_PAYLOAD_BYTES),
-              "journal record layout changed");
-
-portMUX_TYPE g_JournalMux = portMUX_INITIALIZER_UNLOCKED;
-uint8_t *g_JournalBuffer = nullptr;
-size_t g_JournalSlots = 0;
-size_t g_JournalCount = 0;
-uint64_t g_JournalWriteSequence = 0;
-uint64_t g_JournalLiveSequence = 0;
-std::atomic_bool g_JournalEnabled = false;
-
-void copyUuid(uint8_t destination[16], const NimBLEUUID &source) {
-  memset(destination, 0, 16);
-  NimBLEUUID uuid = source;
-  if (uuid.bitSize() != 128) {
-    uuid.to128();
+void copyText(char *destination, size_t bytes, const std::string &source) {
+  if (bytes == 0) {
+    return;
   }
+  const size_t length = std::min(bytes - 1, source.size());
+  memcpy(destination, source.data(), length);
+  destination[length] = '\0';
+}
 
-  const uint8_t *value = uuid.getValue();
-  if (value != nullptr) {
-    memcpy(destination, value, 16);
+void printJournalEvent(const BtDebugEvent &event, void *) {
+  printf("bt.event: %llu kind:%u op:%s result:%s duration_ms:%u reason:%d(%s) gen:%llu ",
+         static_cast<unsigned long long>(event.timestamp_ms), static_cast<unsigned>(event.kind),
+         event.operation, event.result, static_cast<unsigned>(event.duration_ms), event.reason,
+         event.reason_text, static_cast<unsigned long long>(event.generation));
+  if (event.address[0] != '\0') {
+    printf("addr:%s type:%u ", event.address, static_cast<unsigned>(event.address_type));
   }
-}
-
-std::string uuidString(const uint8_t value[16]) {
-  return NimBLEUUID(value, 16).toString();
-}
-
-const char *journalDirection(journal_direction_t direction) {
-  switch (direction) {
-    case journal_direction_t::WRITE:
-      return "tx";
-    case journal_direction_t::WRITE_RESPONSE:
-      return "txr";
-    case journal_direction_t::READ:
-      return "rx";
-    case journal_direction_t::NOTIFY:
-      return "nfy";
-    case journal_direction_t::INDICATE:
-      return "ind";
+  if (event.identity[0] != '\0') {
+    printf("identity:%s type:%u ", event.identity, static_cast<unsigned>(event.identity_type));
   }
-  return "?";
+  if (event.service_uuid[0] != '\0' || event.characteristic_uuid[0] != '\0') {
+    printf("svc:%s chr:%s response:%s ", event.service_uuid, event.characteristic_uuid,
+           event.response ? "true" : "false");
+  }
+  if (event.interval_before != 0 || event.interval_after != 0) {
+    printf("conn:%u/%u/%u->%u/%u/%u ", static_cast<unsigned>(event.interval_before),
+           static_cast<unsigned>(event.latency_before), static_cast<unsigned>(event.timeout_before),
+           static_cast<unsigned>(event.interval_after), static_cast<unsigned>(event.latency_after),
+           static_cast<unsigned>(event.timeout_after));
+  }
+  if (event.state[0] != '\0') {
+    printf("state:%s owner:%s physical:%s logical:%s ", event.state, event.owner,
+           event.physical ? "true" : "false", event.logical ? "true" : "false");
+  }
+  printf("security:%s/%s/%s key:%u payload_len:%u\n", event.encrypted ? "encrypted" : "open",
+         event.authenticated ? "authenticated" : "unauthenticated", event.bonded ? "bonded" : "unbonded",
+         static_cast<unsigned>(event.key_size), static_cast<unsigned>(event.payload_length));
 }
 
-void printJournalRecord(const journal_record_t &record) {
-  const std::string service = uuidString(record.service_uuid);
-  const std::string characteristic = uuidString(record.characteristic_uuid);
-  const size_t bytes = std::min<size_t>(record.length, JOURNAL_PAYLOAD_BYTES);
-  const std::string payload = NimBLEUtils::dataToHexString(record.payload, bytes);
-  printf("bt: %lu %s %s %s %u %s%s\n", static_cast<unsigned long>(record.timestamp_ms),
-         journalDirection(record.direction), service.c_str(), characteristic.c_str(),
-         static_cast<unsigned>(record.length), payload.c_str(),
-         (record.flags & JOURNAL_FLAG_TRUNCATED) ? "..." : "");
-}
-
-void journalRecord(journal_direction_t direction,
+void journalRecord(const char *operation,
                    const NimBLEUUID &service,
                    const NimBLEUUID &characteristic,
                    const uint8_t *data,
                    size_t length,
-                   bool success) {
-  if (!g_JournalEnabled.load()) {
-    return;
+                   bool success,
+                   bool response,
+                   uint64_t started_us) {
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::GATT;
+  event.success = success;
+  event.response = response;
+  event.duration_ms = static_cast<uint16_t>(std::min<uint64_t>(
+      (static_cast<uint64_t>(esp_timer_get_time()) - started_us) / 1000ULL, UINT16_MAX));
+  copyText(event.service_uuid, sizeof(event.service_uuid), service.toString());
+  copyText(event.characteristic_uuid, sizeof(event.characteristic_uuid), characteristic.toString());
+  copyText(event.operation, sizeof(event.operation), operation);
+  copyText(event.result, sizeof(event.result), success ? "ok" : "failed");
+  event.payload_length = static_cast<uint16_t>(std::min(length, static_cast<size_t>(UINT16_MAX)));
+  const size_t payload_bytes = std::min(length, sizeof(event.payload));
+  if (data != nullptr && payload_bytes != 0) {
+    memcpy(event.payload, data, payload_bytes);
   }
-
-  journal_record_t record = {};
-  record.timestamp_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-  record.direction = direction;
-  record.flags = success ? JOURNAL_FLAG_OK : 0;
-  record.length = static_cast<uint16_t>(std::min<size_t>(length, UINT16_MAX));
-  copyUuid(record.service_uuid, service);
-  copyUuid(record.characteristic_uuid, characteristic);
-
-  const size_t bytes = std::min(length, JOURNAL_PAYLOAD_BYTES);
-  if (data != nullptr && bytes > 0) {
-    memcpy(record.payload, data, bytes);
-  }
-  if (length > JOURNAL_PAYLOAD_BYTES) {
-    record.flags |= JOURNAL_FLAG_TRUNCATED;
-  }
-
-  portENTER_CRITICAL(&g_JournalMux);
-  if (g_JournalEnabled.load() && (g_JournalBuffer != nullptr) && (g_JournalSlots > 0)) {
-    const size_t slot = g_JournalWriteSequence % g_JournalSlots;
-    memcpy(g_JournalBuffer + (slot * sizeof(record)), &record, sizeof(record));
-    g_JournalWriteSequence++;
-    if (g_JournalCount < g_JournalSlots) {
-      g_JournalCount++;
-    }
-  }
-  portEXIT_CRITICAL(&g_JournalMux);
+  BtDebugJournal::instance().record(event);
 }
 
 #endif
@@ -157,7 +95,23 @@ Camera::~Camera() {
 }
 
 void Camera::onConnect(NimBLEClient *pClient) {
-  (void)pClient;
+#if defined(FURBLE_CONSOLE)
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::GAP_CONNECT;
+  event.success = true;
+  event.address_type = m_Address.getType();
+  if (pClient != nullptr) {
+    const NimBLEConnInfo info = pClient->getConnInfo();
+    event.identity_type = info.getIdAddress().getType();
+    copyText(event.address, sizeof(event.address), info.getAddress().toString());
+    copyText(event.identity, sizeof(event.identity), info.getIdAddress().toString());
+  }
+  copyText(event.operation, sizeof(event.operation), "connect");
+  copyText(event.result, sizeof(event.result), "ok");
+  copyText(event.reason_text, sizeof(event.reason_text), "requested/negotiated");
+  BtDebugJournal::instance().record(event);
+#endif
   const int8_t requestedDbm = Device::powerLevelToDbm(m_Power);
   // Set BLE transmit power after connection is established. The controller
   // offers no clean per-connection readback, log the request only.
@@ -178,8 +132,23 @@ void Camera::onConnect(NimBLEClient *pClient) {
 }
 
 void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
-  (void)pClient;
-  (void)reason;
+#if defined(FURBLE_CONSOLE)
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::GAP_DISCONNECT;
+  event.reason = reason;
+  event.address_type = m_Address.getType();
+  if (pClient != nullptr) {
+    const NimBLEConnInfo info = pClient->getConnInfo();
+    event.identity_type = info.getIdAddress().getType();
+    copyText(event.address, sizeof(event.address), info.getAddress().toString());
+    copyText(event.identity, sizeof(event.identity), info.getIdAddress().toString());
+  }
+  copyText(event.operation, sizeof(event.operation), "disconnect");
+  copyText(event.result, sizeof(event.result), "ok");
+  copyText(event.reason_text, sizeof(event.reason_text), btGapReasonName(reason));
+  BtDebugJournal::instance().record(event);
+#endif
   ESP_LOGI(LOG_TAG, "Disconnected");
   m_Connected = false;
   m_Progress = 0;
@@ -480,8 +449,31 @@ bool Camera::setConnProfile(ConnProfile profile) {
   // the counter-proposal in a peer CONN_UPDATE_REQ from those stored values,
   // so without this a renegotiating camera would be answered with the stale
   // pre-connect fast parameters and the idle profile would never stick.
+#if defined(FURBLE_CONSOLE)
+  const NimBLEConnInfo before = client->getConnInfo();
+#endif
   client->setConnectionParams(minInterval, maxInterval, latency, timeout);
   const bool updated = client->updateConnParams(minInterval, maxInterval, latency, timeout);
+
+#if defined(FURBLE_CONSOLE)
+  const NimBLEConnInfo after = client->getConnInfo();
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::CONNECTION_PARAMS;
+  event.success = updated;
+  event.interval_before = before.getConnInterval();
+  event.latency_before = before.getConnLatency();
+  event.timeout_before = before.getConnTimeout();
+  event.interval_after = after.getConnInterval();
+  event.latency_after = after.getConnLatency();
+  event.timeout_after = after.getConnTimeout();
+  event.address_type = m_Address.getType();
+  copyText(event.address, sizeof(event.address), after.getAddress().toString());
+  copyText(event.identity, sizeof(event.identity), after.getIdAddress().toString());
+  copyText(event.operation, sizeof(event.operation), connProfileName(profile));
+  copyText(event.result, sizeof(event.result), updated ? "ok" : "failed");
+  BtDebugJournal::instance().record(event);
+#endif
 
   {
     const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
@@ -597,14 +589,16 @@ bool Camera::gattWrite(NimBLERemoteCharacteristic *characteristic,
     return false;
   }
 
+#if defined(FURBLE_CONSOLE)
+  const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   const bool result = characteristic->writeValue(data, length, response);
 
 #if defined(FURBLE_CONSOLE)
   const NimBLERemoteService *service = characteristic->getRemoteService();
   const NimBLEUUID empty;
-  journalRecord(response ? journal_direction_t::WRITE_RESPONSE : journal_direction_t::WRITE,
-                service != nullptr ? service->getUUID() : empty, characteristic->getUUID(), data,
-                length, result);
+  journalRecord("write", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
+                data, length, result, response, started_us);
 #endif
 
   return result;
@@ -627,11 +621,14 @@ bool Camera::gattWrite(const NimBLEUUID &service,
     return false;
   }
 
+#if defined(FURBLE_CONSOLE)
+  const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   const bool result = m_Client->setValue(service, characteristic, value, response);
 
 #if defined(FURBLE_CONSOLE)
-  journalRecord(response ? journal_direction_t::WRITE_RESPONSE : journal_direction_t::WRITE,
-                service, characteristic, value.data(), value.size(), result);
+  journalRecord("write", service, characteristic, value.data(), value.size(), result, response,
+                started_us);
 #endif
 
   return result;
@@ -643,13 +640,16 @@ bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue
     return false;
   }
 
+#if defined(FURBLE_CONSOLE)
+  const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   value = characteristic->readValue();
 
 #if defined(FURBLE_CONSOLE)
   const NimBLERemoteService *service = characteristic->getRemoteService();
   const NimBLEUUID empty;
-  journalRecord(journal_direction_t::READ, service != nullptr ? service->getUUID() : empty,
-                characteristic->getUUID(), value.data(), value.size(), true);
+  journalRecord("read", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
+                value.data(), value.size(), true, false, started_us);
 #endif
 
   return true;
@@ -663,11 +663,14 @@ bool Camera::gattRead(const NimBLEUUID &service,
     return false;
   }
 
+#if defined(FURBLE_CONSOLE)
+  const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+#endif
   value = m_Client->getValue(service, characteristic);
 
 #if defined(FURBLE_CONSOLE)
-  journalRecord(journal_direction_t::READ, service, characteristic, value.data(), value.size(),
-                true);
+  journalRecord("read", service, characteristic, value.data(), value.size(), true, false,
+                started_us);
 #endif
 
   return true;
@@ -681,138 +684,79 @@ bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
     return false;
   }
 
-  return characteristic->subscribe(
+#if defined(FURBLE_CONSOLE)
+  const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+#endif
+  const bool result = characteristic->subscribe(
       !indicate,
       [callback](NimBLERemoteCharacteristic *remoteCharacteristic, uint8_t *data, size_t length,
                  bool isNotify) {
 #if defined(FURBLE_CONSOLE)
         const NimBLERemoteService *service = remoteCharacteristic->getRemoteService();
         const NimBLEUUID empty;
-        journalRecord(isNotify ? journal_direction_t::NOTIFY : journal_direction_t::INDICATE,
-                      service != nullptr ? service->getUUID() : empty,
-                      remoteCharacteristic->getUUID(), data, length, true);
+        journalRecord(isNotify ? "notify" : "indicate", service != nullptr ? service->getUUID() : empty,
+                      remoteCharacteristic->getUUID(), data, length, true, false,
+                      static_cast<uint64_t>(esp_timer_get_time()));
 #endif
         if (callback) {
           callback(remoteCharacteristic, data, length, isNotify);
         }
       },
       response);
+#if defined(FURBLE_CONSOLE)
+  const NimBLEUUID empty;
+  const NimBLEUUID service = characteristic->getRemoteService() != nullptr
+                                 ? characteristic->getRemoteService()->getUUID()
+                                 : empty;
+  const uint8_t cccd[] = {static_cast<uint8_t>(indicate ? 0x02 : 0x01), 0x00};
+  journalRecord("subscribe", service, characteristic->getUUID(), cccd, sizeof(cccd), result,
+                response, started_us);
+#endif
+  return result;
 }
 
 #if defined(FURBLE_CONSOLE)
 
 bool Camera::gattJournalSetEnabled(bool enabled) {
-  if (!enabled) {
-    g_JournalEnabled.store(false);
-    portENTER_CRITICAL(&g_JournalMux);
-    g_JournalLiveSequence = g_JournalWriteSequence;
-    portEXIT_CRITICAL(&g_JournalMux);
-    return true;
-  }
-
-  if (g_JournalBuffer == nullptr) {
-    const size_t bytes = JOURNAL_BYTES - (JOURNAL_BYTES % sizeof(journal_record_t));
-#if defined(FURBLE_M5STICKS3)
-    uint8_t *buffer = static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
-#else
-    uint8_t *buffer =
-        static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-#endif
-    if (buffer == nullptr) {
-      return false;
-    }
-
-    portENTER_CRITICAL(&g_JournalMux);
-    if (g_JournalBuffer == nullptr) {
-      g_JournalBuffer = buffer;
-      g_JournalSlots = bytes / sizeof(journal_record_t);
-    } else {
-      heap_caps_free(buffer);
-    }
-    portEXIT_CRITICAL(&g_JournalMux);
-  }
-
-  g_JournalEnabled.store(true);
-  return true;
+  return BtDebugJournal::instance().setEnabled(enabled);
 }
 
 void Camera::gattJournalDrain(void) {
-  while (true) {
-    journal_record_t record = {};
-    bool lost = false;
-    bool haveRecord = false;
-
-    portENTER_CRITICAL(&g_JournalMux);
-    const uint64_t oldest = g_JournalWriteSequence - g_JournalCount;
-    if (g_JournalLiveSequence < oldest) {
-      g_JournalLiveSequence = oldest;
-      lost = true;
-    }
-    if (g_JournalLiveSequence < g_JournalWriteSequence) {
-      const size_t slot = g_JournalLiveSequence % g_JournalSlots;
-      memcpy(&record, g_JournalBuffer + (slot * sizeof(record)), sizeof(record));
-      g_JournalLiveSequence++;
-      haveRecord = true;
-    }
-    portEXIT_CRITICAL(&g_JournalMux);
-
-    if (lost) {
-      printf("bt: journal_lost true\n");
-    }
-    if (!haveRecord) {
-      return;
-    }
-    printJournalRecord(record);
-  }
+  BtDebugJournal::instance().drain(8, printJournalEvent, nullptr);
 }
 
 void Camera::gattJournalDump(size_t count) {
-  uint64_t start;
-  uint64_t end;
-
-  portENTER_CRITICAL(&g_JournalMux);
-  end = g_JournalWriteSequence;
-  const size_t available = g_JournalCount;
-  if (count == 0 || count > available) {
-    count = available;
-  }
-  start = end - count;
-  const bool ready = (g_JournalBuffer != nullptr) && (g_JournalSlots > 0);
-  portEXIT_CRITICAL(&g_JournalMux);
-
-  if (!ready) {
-    return;
-  }
-
-  for (uint64_t sequence = start; sequence < end; sequence++) {
-    journal_record_t record = {};
-    bool haveRecord = false;
-    portENTER_CRITICAL(&g_JournalMux);
-    if (sequence >= (g_JournalWriteSequence - g_JournalCount)
-        && sequence < g_JournalWriteSequence) {
-      const size_t slot = sequence % g_JournalSlots;
-      memcpy(&record, g_JournalBuffer + (slot * sizeof(record)), sizeof(record));
-      haveRecord = true;
-    }
-    portEXIT_CRITICAL(&g_JournalMux);
-    if (haveRecord) {
-      printJournalRecord(record);
-    }
-  }
+  BtDebugJournal::instance().dump(std::min(count, BtDebugJournal::MAX_EVENTS), printJournalEvent,
+                                  nullptr);
 }
 
 void Camera::gattJournalClear(void) {
-  portENTER_CRITICAL(&g_JournalMux);
-  g_JournalCount = 0;
-  g_JournalWriteSequence = 0;
-  g_JournalLiveSequence = 0;
-  portEXIT_CRITICAL(&g_JournalMux);
+  BtDebugJournal::instance().clear();
 }
 
 #endif
 
 bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_params *params) {
+#if defined(FURBLE_CONSOLE)
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::CONNECTION_PARAMS;
+  event.success = params != nullptr;
+  event.interval_after = params != nullptr ? params->itvl_min : 0;
+  event.latency_after = params != nullptr ? params->latency : 0;
+  event.timeout_after = params != nullptr ? params->supervision_timeout : 0;
+  event.address_type = m_Address.getType();
+  if (pClient != nullptr) {
+    const NimBLEConnInfo info = pClient->getConnInfo();
+    copyText(event.address, sizeof(event.address), info.getAddress().toString());
+    copyText(event.identity, sizeof(event.identity), info.getIdAddress().toString());
+  }
+  copyText(event.operation, sizeof(event.operation), "peer-request");
+  copyText(event.result, sizeof(event.result), params != nullptr ? "observed" : "missing");
+  BtDebugJournal::instance().record(event);
+#else
   (void)pClient;
+#endif
   const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
   if (params != nullptr) {
     ESP_LOGI(LOG_TAG, "Peer requested connection parameters (%u-%u, latency %u, timeout %u)",

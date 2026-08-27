@@ -19,6 +19,7 @@ add_library(furble_host_camera STATIC
             ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
             ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
             ${FURBLE_ROOT}/lib/furble/Camera.cpp
+            ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
             ${FURBLE_ROOT}/lib/furble/Device.cpp
             ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
             ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
@@ -245,6 +246,34 @@ target_include_directories(scan_generation_test BEFORE PRIVATE
 target_compile_options(scan_generation_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 target_link_libraries(scan_generation_test PRIVATE Threads::Threads)
+
+# Typed BLE diagnostics are checked through the event API, including bounded
+# ring overwrite and bounded live draining. This prevents tests from merely
+# asserting formatted console strings.
+add_executable(bt_debug_journal_test
+               bt_debug_journal_test.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
+target_include_directories(bt_debug_journal_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_options(bt_debug_journal_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(bt_debug_journal_test PRIVATE Threads::Threads)
+
+# Drive production Camera GATT wrappers with the in-memory Fujifilm peer while
+# the console journal is enabled. Assertions inspect typed events, not output.
+add_executable(camera_journal_event_test
+               camera_journal_event_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
+target_include_directories(camera_journal_event_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(camera_journal_event_test PRIVATE FURBLE_CONSOLE)
+target_compile_options(camera_journal_event_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                           -Wno-unused-parameter)
+target_link_libraries(camera_journal_event_test PRIVATE Threads::Threads)
 
 # Run saved Fujifilm and Nikon callback objects through the production Scan
 # cancellation barrier. This catches a late callback touching a destroyed

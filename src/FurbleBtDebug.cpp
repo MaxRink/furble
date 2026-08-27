@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -25,6 +26,7 @@
 #include <host/ble_hs.h>
 
 #include "FurbleControl.h"
+#include "BtDebugJournal.h"
 #include "Scan.h"
 
 namespace Furble {
@@ -82,6 +84,63 @@ const char *controlStateName(Control::state_t state) {
       return "disconnecting";
   }
   return "unknown";
+}
+
+void journalAddressEvent(BtDebugEventKind kind,
+                         const char *operation,
+                         const NimBLEConnInfo *info,
+                         const char *requested,
+                         uint8_t requestedType,
+                         int reason,
+                         bool success) {
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = kind;
+  event.success = success;
+  event.reason = reason;
+  event.address_type = requestedType;
+  if (info != nullptr) {
+    event.identity_type = info->getIdAddress().getType();
+    snprintf(event.address, sizeof(event.address), "%s", info->getAddress().toString().c_str());
+    snprintf(event.identity, sizeof(event.identity), "%s", info->getIdAddress().toString().c_str());
+  }
+  snprintf(event.operation, sizeof(event.operation), "%s", operation);
+  snprintf(event.result, sizeof(event.result), "requested:%s", requested != nullptr ? requested : "none");
+  snprintf(event.reason_text, sizeof(event.reason_text), "%s", btGapReasonName(reason));
+  BtDebugJournal::instance().record(event);
+}
+
+void journalExplorerGatt(const char *operation,
+                         NimBLERemoteCharacteristic *characteristic,
+                         const uint8_t *payload,
+                         size_t length,
+                         bool success,
+                         bool response,
+                         uint64_t started_us) {
+  if (characteristic == nullptr) {
+    return;
+  }
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::GATT;
+  event.success = success;
+  event.response = response;
+  event.duration_ms = static_cast<uint16_t>(std::min<uint64_t>(
+      (static_cast<uint64_t>(esp_timer_get_time()) - started_us) / 1000ULL, UINT16_MAX));
+  const NimBLERemoteService *service = characteristic->getRemoteService();
+  if (service != nullptr) {
+    snprintf(event.service_uuid, sizeof(event.service_uuid), "%s", service->getUUID().toString().c_str());
+  }
+  snprintf(event.characteristic_uuid, sizeof(event.characteristic_uuid), "%s",
+           characteristic->getUUID().toString().c_str());
+  snprintf(event.operation, sizeof(event.operation), "%s", operation);
+  snprintf(event.result, sizeof(event.result), "%s", success ? "ok" : "failed");
+  event.payload_length = static_cast<uint16_t>(std::min(length, static_cast<size_t>(UINT16_MAX)));
+  const size_t bytes = std::min(length, sizeof(event.payload));
+  if (payload != nullptr && bytes != 0) {
+    memcpy(event.payload, payload, bytes);
+  }
+  BtDebugJournal::instance().record(event);
 }
 
 class VerboseScanCallbacks final: public NimBLEScanCallbacks {
@@ -248,6 +307,8 @@ class Explorer final: public NimBLEClientCallbacks {
 
   void onConnect(NimBLEClient *client) override {
     const NimBLEConnInfo info = client->getConnInfo();
+    journalAddressEvent(BtDebugEventKind::GAP_CONNECT, "connect", &info, m_Address.c_str(),
+                        m_RequestedType, 0, true);
     m_Connected.store(true);
     printf("explore.connected: true\n");
     printf("explore.address: %s\n", info.getAddress().toString().c_str());
@@ -258,11 +319,15 @@ class Explorer final: public NimBLEClientCallbacks {
   }
 
   void onDisconnect(NimBLEClient *, int reason) override {
+    journalAddressEvent(BtDebugEventKind::GAP_DISCONNECT, "disconnect", nullptr, m_Address.c_str(),
+                        m_RequestedType, reason, true);
     m_Connected.store(false);
     printf("explore.disconnected: %d\n", reason);
   }
 
   void onConnectFail(NimBLEClient *, int reason) override {
+    journalAddressEvent(BtDebugEventKind::GAP_CONNECT_FAILED, "connect", nullptr, m_Address.c_str(),
+                        m_RequestedType, reason, false);
     printf("explore.connect_failed: %d\n", reason);
   }
 
@@ -292,6 +357,21 @@ class Explorer final: public NimBLEClientCallbacks {
   }
 
   void onAuthenticationComplete(NimBLEConnInfo &connInfo) override {
+    BtDebugEvent event;
+    event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+    event.kind = BtDebugEventKind::SECURITY;
+    event.success = connInfo.isEncrypted();
+    event.encrypted = connInfo.isEncrypted();
+    event.authenticated = connInfo.isAuthenticated();
+    event.bonded = connInfo.isBonded();
+    event.key_size = connInfo.getSecKeySize();
+    event.address_type = m_RequestedType;
+    event.identity_type = connInfo.getIdAddress().getType();
+    snprintf(event.address, sizeof(event.address), "%s", connInfo.getAddress().toString().c_str());
+    snprintf(event.identity, sizeof(event.identity), "%s", connInfo.getIdAddress().toString().c_str());
+    snprintf(event.operation, sizeof(event.operation), "authentication");
+    snprintf(event.result, sizeof(event.result), "%s", event.success ? "ok" : "failed");
+    BtDebugJournal::instance().record(event);
     printf("pair.auth: encrypted: %s authenticated: %s bonded: %s key_size: %u\n",
            connInfo.isEncrypted() ? "true" : "false", connInfo.isAuthenticated() ? "true" : "false",
            connInfo.isBonded() ? "true" : "false", static_cast<unsigned>(connInfo.getSecKeySize()));
@@ -358,6 +438,7 @@ class Explorer final: public NimBLEClientCallbacks {
     }
 
     bondedBefore = NimBLEDevice::isBonded(address);
+    m_RequestedType = address.getType();
     printf("explore.connect: %s (%s)\n", address.toString().c_str(),
            addressTypeName(address.getType()));
     if (client->connect(address, true, false, true)) {
@@ -436,26 +517,38 @@ class Explorer final: public NimBLEClientCallbacks {
         continue;
       }
       if (characteristic->canNotify()) {
+        const uint8_t cccd[] = {0x01, 0x00};
+        const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
         const bool result = characteristic->subscribe(
             true,
             [](NimBLERemoteCharacteristic *remote, uint8_t *data, size_t length, bool isNotify) {
+              journalExplorerGatt(isNotify ? "notify" : "indicate", remote, data, length, true,
+                                  false, static_cast<uint64_t>(esp_timer_get_time()));
               printf("%s: %llu %s %s\n", isNotify ? "notify" : "indicate",
                      esp_timer_get_time() / 1000ULL, remote->getUUID().toString().c_str(),
                      hexDump(data, length).c_str());
             },
             true);
+        journalExplorerGatt("subscribe", characteristic, cccd, sizeof(cccd), result, true,
+                            started_us);
         printf("subscribe: %s notify: %s\n", characteristic->getUUID().toString().c_str(),
                result ? "true" : "false");
       }
       if (characteristic->canIndicate()) {
+        const uint8_t cccd[] = {0x02, 0x00};
+        const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
         const bool result = characteristic->subscribe(
             false,
             [](NimBLERemoteCharacteristic *remote, uint8_t *data, size_t length, bool isNotify) {
+              journalExplorerGatt(isNotify ? "notify" : "indicate", remote, data, length, true,
+                                  false, static_cast<uint64_t>(esp_timer_get_time()));
               printf("%s: %llu %s %s\n", isNotify ? "notify" : "indicate",
                      esp_timer_get_time() / 1000ULL, remote->getUUID().toString().c_str(),
                      hexDump(data, length).c_str());
             },
             true);
+        journalExplorerGatt("subscribe", characteristic, cccd, sizeof(cccd), result, true,
+                            started_us);
         printf("subscribe: %s indicate: %s\n", characteristic->getUUID().toString().c_str(),
                result ? "true" : "false");
       }
@@ -468,7 +561,10 @@ class Explorer final: public NimBLEClientCallbacks {
       if ((characteristic == nullptr) || !characteristic->canRead() || m_Stop.load()) {
         continue;
       }
+      const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
       const NimBLEAttValue value = characteristic->readValue();
+      journalExplorerGatt("read", characteristic, value.data(), value.size(), true, false,
+                          started_us);
       printf("read: %s %u %s\n", characteristic->getUUID().toString().c_str(),
              static_cast<unsigned>(value.size()), hexDump(value.data(), value.size()).c_str());
     }
@@ -564,6 +660,7 @@ class Explorer final: public NimBLEClientCallbacks {
   std::atomic_bool m_Connected = false;
   std::atomic_bool m_ReadRequested = false;
   std::atomic_bool m_KeepBond = false;
+  uint8_t m_RequestedType = BLE_ADDR_PUBLIC;
 };
 
 VerboseScanCallbacks g_ScanCallbacks;

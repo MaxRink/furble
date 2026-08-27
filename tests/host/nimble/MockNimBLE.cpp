@@ -262,6 +262,13 @@ const NimBLEUUID &NimBLERemoteCharacteristic::getUUID() const {
   return m_Characteristic;
 }
 
+NimBLERemoteService *NimBLERemoteCharacteristic::getRemoteService() const {
+  // The host double keeps the service UUID as a value on the characteristic.
+  // Camera's typed journal tests use UUID-addressed operations; pointer-based
+  // explorer tests only need a null-safe service lookup.
+  return nullptr;
+}
+
 uint16_t NimBLERemoteCharacteristic::getHandle() const {
   return m_Handle;
 }

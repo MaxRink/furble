@@ -170,6 +170,7 @@ class NimBLERemoteCharacteristic {
                              const NimBLEUUID &characteristic);
 
   const NimBLEUUID &getUUID() const;
+  NimBLERemoteService *getRemoteService() const;
   uint16_t getHandle() const;
   bool canWrite() const;
   bool canRead() const;
