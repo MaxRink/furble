@@ -343,7 +343,6 @@ add_executable(poe_power_model_test
 target_include_directories(poe_power_model_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(poe_power_model_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
-
 # Transport-independent OTA lifecycle. The production state machine is linked
 # directly, while the host test supplies a mock for the ESP-IDF transport seam.
 add_executable(ota_state_machine_test

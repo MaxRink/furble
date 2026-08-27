@@ -5,6 +5,7 @@
 #include <utility>
 
 #if defined(ESP_PLATFORM) && defined(FURBLE_ETHERNET)
+#include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <esp_eth.h>
 #include <esp_eth_mac_spi.h>
@@ -19,6 +20,9 @@ namespace Furble {
 namespace {
 
 std::mutex g_StateMutex;
+// Serialize transport lifecycle calls. The state mutex cannot cover init(),
+// start(), or stop() because transports may synchronously emit callbacks.
+std::mutex g_LifecycleMutex;
 std::unique_ptr<Ethernet::Transport> g_OwnedTransport;
 Ethernet::Transport *g_Transport = nullptr;
 Ethernet::NetworkUpCallback g_NetworkUpCallback;
@@ -26,14 +30,17 @@ bool g_Initialized = false;
 bool g_LinkUp = false;
 bool g_Connected = false;
 std::string g_IP;
+uint64_t g_LifecycleEpoch = 0;
 
-void handleTransportEvent(Ethernet::Transport::Event event, const std::string &ip) {
+void handleTransportEvent(Ethernet::Transport::Event event,
+                          const std::string &ip,
+                          uint64_t lifecycleEpoch) {
   Ethernet::NetworkUpCallback callback;
   std::string callbackIP;
 
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
-    if (!g_Initialized) {
+    if (!g_Initialized || lifecycleEpoch != g_LifecycleEpoch) {
       return;
     }
 
@@ -62,6 +69,11 @@ void handleTransportEvent(Ethernet::Transport::Event event, const std::string &i
           }
         }
         break;
+
+      case Ethernet::Transport::Event::IP_LOST:
+        g_Connected = false;
+        g_IP.clear();
+        break;
     }
   }
 
@@ -72,6 +84,8 @@ void handleTransportEvent(Ethernet::Transport::Event event, const std::string &i
 
 bool initializeTransport(Ethernet::Transport &transport,
                          std::unique_ptr<Ethernet::Transport> ownedTransport) {
+  std::lock_guard<std::mutex> lifecycleLock(g_LifecycleMutex);
+  uint64_t lifecycleEpoch;
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
     if (g_Initialized) {
@@ -80,21 +94,23 @@ bool initializeTransport(Ethernet::Transport &transport,
 
     g_OwnedTransport = std::move(ownedTransport);
     g_Transport = &transport;
+    lifecycleEpoch = ++g_LifecycleEpoch;
     g_Initialized = true;
     g_LinkUp = false;
     g_Connected = false;
     g_IP.clear();
   }
 
-  const Ethernet::Transport::EventCallback eventCallback = [](Ethernet::Transport::Event event,
-                                                              const std::string &ip) {
-    handleTransportEvent(event, ip);
-  };
+  const Ethernet::Transport::EventCallback eventCallback =
+      [lifecycleEpoch](Ethernet::Transport::Event event, const std::string &ip) {
+        handleTransportEvent(event, ip, lifecycleEpoch);
+      };
 
   if (!transport.init(eventCallback) || !transport.start()) {
     {
       std::lock_guard<std::mutex> lock(g_StateMutex);
       g_Initialized = false;
+      ++g_LifecycleEpoch;
       g_Transport = nullptr;
       g_LinkUp = false;
       g_Connected = false;
@@ -137,7 +153,15 @@ class EspEthTransport final: public Ethernet::Transport {
     busConfig.quadwp_io_num = -1;
     busConfig.quadhd_io_num = -1;
 
-    esp_err_t err = spi_bus_initialize(SPI2_HOST, &busConfig, SPI_DMA_CH_AUTO);
+    esp_err_t err = gpio_install_isr_service(0);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+      logError("GPIO ISR service installation", err);
+      return false;
+    }
+    // This is a process-global service. Leave it installed so another
+    // subsystem can safely add a per-pin handler while Ethernet is active.
+
+    err = spi_bus_initialize(SPI2_HOST, &busConfig, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
       logError("SPI bus initialization", err);
       return false;
@@ -212,23 +236,31 @@ class EspEthTransport final: public Ethernet::Transport {
       return false;
     }
 
-    err = esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler,
-                                     this);
+    err = esp_event_handler_instance_register(
+        ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler, this, &m_EthHandlerInstance);
     if (err != ESP_OK) {
       logError("Ethernet event registration", err);
       stop();
       return false;
     }
-    m_EthHandlerRegistered = true;
 
-    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler,
-                                     this);
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                              &EspEthTransport::eventHandler, this,
+                                              &m_IpGotHandlerInstance);
     if (err != ESP_OK) {
       logError("Ethernet IP event registration", err);
       stop();
       return false;
     }
-    m_IpHandlerRegistered = true;
+
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_ETH_LOST_IP,
+                                              &EspEthTransport::eventHandler, this,
+                                              &m_IpLostHandlerInstance);
+    if (err != ESP_OK) {
+      logError("Ethernet IP-loss event registration", err);
+      stop();
+      return false;
+    }
 
     return true;
   }
@@ -247,13 +279,29 @@ class EspEthTransport final: public Ethernet::Transport {
   }
 
   void stop(void) override {
-    if (m_IpHandlerRegistered) {
-      esp_event_handler_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, &EspEthTransport::eventHandler);
-      m_IpHandlerRegistered = false;
+    if (m_IpGotHandlerInstance != nullptr) {
+      const esp_err_t err = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                                                  m_IpGotHandlerInstance);
+      if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        logError("Ethernet GOT_IP event unregistration", err);
+      }
+      m_IpGotHandlerInstance = nullptr;
     }
-    if (m_EthHandlerRegistered) {
-      esp_event_handler_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, &EspEthTransport::eventHandler);
-      m_EthHandlerRegistered = false;
+    if (m_IpLostHandlerInstance != nullptr) {
+      const esp_err_t err = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_LOST_IP,
+                                                                  m_IpLostHandlerInstance);
+      if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        logError("Ethernet IP-loss event unregistration", err);
+      }
+      m_IpLostHandlerInstance = nullptr;
+    }
+    if (m_EthHandlerInstance != nullptr) {
+      const esp_err_t err =
+          esp_event_handler_instance_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, m_EthHandlerInstance);
+      if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        logError("Ethernet event unregistration", err);
+      }
+      m_EthHandlerInstance = nullptr;
     }
     if (m_EthHandle != nullptr) {
       esp_eth_stop(m_EthHandle);
@@ -322,6 +370,10 @@ class EspEthTransport final: public Ethernet::Transport {
         esp_ip4addr_ntoa(&gotIp->ip_info.ip, ip, sizeof(ip));
       }
       callback(Event::GOT_IP, ip);
+      return;
+    }
+    if ((eventBase == IP_EVENT) && (eventId == IP_EVENT_ETH_LOST_IP)) {
+      callback(Event::IP_LOST, "");
     }
   }
 
@@ -333,8 +385,9 @@ class EspEthTransport final: public Ethernet::Transport {
   esp_netif_t *m_Netif = nullptr;
   esp_eth_netif_glue_handle_t m_NetifGlue = nullptr;
   bool m_SpiBusInitialized = false;
-  bool m_EthHandlerRegistered = false;
-  bool m_IpHandlerRegistered = false;
+  esp_event_handler_instance_t m_EthHandlerInstance = nullptr;
+  esp_event_handler_instance_t m_IpGotHandlerInstance = nullptr;
+  esp_event_handler_instance_t m_IpLostHandlerInstance = nullptr;
 };
 
 #endif
@@ -382,6 +435,7 @@ void Ethernet::setNetworkUpCallback(NetworkUpCallback callback) {
 }
 
 void Ethernet::stop(void) {
+  std::lock_guard<std::mutex> lifecycleLock(g_LifecycleMutex);
   Ethernet::Transport *transport = nullptr;
   std::unique_ptr<Ethernet::Transport> ownedTransport;
   {
@@ -390,6 +444,7 @@ void Ethernet::stop(void) {
       return;
     }
     g_Initialized = false;
+    ++g_LifecycleEpoch;
     g_LinkUp = false;
     g_Connected = false;
     g_IP.clear();

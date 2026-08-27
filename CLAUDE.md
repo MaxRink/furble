@@ -8,13 +8,14 @@ CLAUDE.md whose directory it touches.
 ## Build
 
 - ESP-IDF 5.x via PlatformIO (`framework = espidf`). This is NOT Arduino.
-- Five board envs: m5stick-c, m5stick-c-plus, m5stick-s3, m5stack-core,
-  m5stack-core2. Each has a `-debug` variant for development. CI and releases
-  build only the five release envs.
+- Six board envs: m5stick-c, m5stick-c-plus, m5stick-s3, m5stack-core,
+  m5stack-core2, and waveshare-s3-eth. Each has a `-debug` variant for
+  development. CI and releases build only the six release envs.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
   share the release sdkconfig via `board_build.esp-idf.sdkconfig_path`.
   Regenerating builds may append derived symbols to sdkconfig files. Commit
-  those changes consistently across all five files, never for just one env.
+  those changes consistently across all six release files, never for just one
+  env.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`
 - The PlatformIO version adapter expands the exact `dev` value to
@@ -36,6 +37,10 @@ CLAUDE.md whose directory it touches.
 - The direct SDL simulator build writes compiler depfiles beside each object.
   Its incremental cache follows project and dependency headers with `make -q`;
   run `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
+- Board-specific ESP-IDF component dependencies must be gated by a CMake
+  profile argument. A compiler define alone is too late for component
+  dependency resolution. The Waveshare profile passes `FURBLE_ETHERNET` both
+  ways for this reason.
 
 ## Style
 

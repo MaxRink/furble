@@ -15,6 +15,7 @@ class Ethernet {
       LINK_UP,
       LINK_DOWN,
       GOT_IP,
+      IP_LOST,
     };
 
     using EventCallback = std::function<void(Event, const std::string &)>;

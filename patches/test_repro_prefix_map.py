@@ -38,6 +38,8 @@ class ReproPrefixMapTest(unittest.TestCase):
     patched = patch_text(PREFIX_MAP)
     self.assertIn("furble_project_real_dir", patched)
     self.assertIn("furble_source_real_dir", patched)
+    self.assertIn("furble_build_real_dir", patched)
+    self.assertIn("${BUILD_DIR}=/IDF_BUILD", patched)
     self.assertEqual(patch_text(patched), patched)
 
   def test_marker_alone_or_incomplete_patch_fails_closed(self):
@@ -47,6 +49,22 @@ class ReproPrefixMapTest(unittest.TestCase):
     )
     with self.assertRaises(RuntimeError):
       patch_text(corrupt)
+
+  def test_upgrades_previous_complete_patch(self):
+    current = patch_text(PREFIX_MAP)
+    legacy = current.replace(repro_prefix_map.MACRO_BUILD, "", 1).replace(
+        repro_prefix_map.REALPATH_MACRO_BUILD, "", 1
+    )
+    upgraded = patch_text(legacy)
+    self.assertIn(repro_prefix_map.MACRO_BUILD, upgraded)
+    self.assertIn(repro_prefix_map.REALPATH_MACRO_BUILD, upgraded)
+    self.assertEqual(patch_text(upgraded), upgraded)
+
+  def test_rejects_half_upgraded_previous_patch(self):
+    current = patch_text(PREFIX_MAP)
+    incomplete = current.replace(repro_prefix_map.MACRO_BUILD, "", 1)
+    with self.assertRaises(RuntimeError):
+      patch_text(incomplete)
 
   def test_missing_anchor_fails_closed_without_partial_text(self):
     broken = PREFIX_MAP.replace("CMAKE_SOURCE_DIR", "SOURCE_DIR")

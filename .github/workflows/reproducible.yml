@@ -61,6 +61,7 @@ jobs:
           - m5stack-core2
           - m5stick-s3
           - esp32-s3-headless
+          - waveshare-s3-eth
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

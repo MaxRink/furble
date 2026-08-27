@@ -21,6 +21,8 @@ REALPATH_DECLARATIONS = (
 )
 REALPATH_MACRO = '        list(APPEND compile_options "-fmacro-prefix-map=${furble_source_real_dir}=.")\n'
 REALPATH_MACRO_IDF = '        list(APPEND compile_options "-fmacro-prefix-map=${furble_idf_real_dir}=/IDF")\n'
+MACRO_BUILD = '        list(APPEND compile_options "-fmacro-prefix-map=${BUILD_DIR}=/IDF_BUILD")\n'
+REALPATH_MACRO_BUILD = '        list(APPEND compile_options "-fmacro-prefix-map=${furble_build_real_dir}=/IDF_BUILD")\n'
 REALPATH_DEBUG = (
     '        list(APPEND compile_options "-fdebug-prefix-map=${furble_idf_real_dir}=/IDF")\n'
     '        list(APPEND compile_options "-fdebug-prefix-map=${furble_project_real_dir}=/IDF_PROJECT")\n'
@@ -42,15 +44,42 @@ def _validate_patched(source: str) -> None:
     raise RuntimeError("ESP-IDF prefix-map realpath debug mapping is invalid")
   if source.count(REALPATH_MACRO_IDF) != 1:
     raise RuntimeError("ESP-IDF prefix-map realpath IDF macro mapping is invalid")
+  if source.count(MACRO_BUILD) != 1:
+    raise RuntimeError("ESP-IDF prefix-map build macro mapping is invalid")
+  if source.count(REALPATH_MACRO_BUILD) != 1:
+    raise RuntimeError("ESP-IDF prefix-map realpath build macro mapping is invalid")
   if source.count(REALPATH_COMPONENT) != 1:
     raise RuntimeError("ESP-IDF prefix-map component realpath mapping is invalid")
   if source.count(REALPATH_COMPONENT_MAP) != 1:
     raise RuntimeError("ESP-IDF prefix-map component realpath flag is invalid")
 
 
+def _upgrade_legacy_patch(source: str) -> str:
+  """Upgrade the previous Furble patch without accepting partial corruption."""
+  required_legacy_fragments = (
+      REALPATH_DECLARATIONS,
+      REALPATH_MACRO,
+      REALPATH_MACRO_IDF,
+      REALPATH_DEBUG,
+      REALPATH_COMPONENT,
+      REALPATH_COMPONENT_MAP,
+  )
+  if any(source.count(fragment) != 1 for fragment in required_legacy_fragments):
+    raise RuntimeError("ESP-IDF prefix-map legacy patch is invalid")
+  if source.count(MACRO_BUILD) != 0 or source.count(REALPATH_MACRO_BUILD) != 0:
+    raise RuntimeError("ESP-IDF prefix-map build macro mapping is incomplete")
+  return source.replace(
+      REALPATH_MACRO_IDF,
+      REALPATH_MACRO_IDF + MACRO_BUILD + REALPATH_MACRO_BUILD,
+      1,
+  )
+
+
 def patch_text(source: str) -> str:
   """Return patched text, failing closed on unexpected IDF source drift."""
   if MARKER in source:
+    if MACRO_BUILD not in source and REALPATH_MACRO_BUILD not in source:
+      source = _upgrade_legacy_patch(source)
     _validate_patched(source)
     return source
   if source.count("    idf_build_get_property(build_components BUILD_COMPONENTS)\n") != 1:
@@ -73,7 +102,9 @@ def patch_text(source: str) -> str:
       MACRO_ANCHOR,
       MACRO_ANCHOR
       + REALPATH_MACRO
-      + REALPATH_MACRO_IDF,
+      + REALPATH_MACRO_IDF
+      + MACRO_BUILD
+      + REALPATH_MACRO_BUILD,
       1,
   )
   source = source.replace(
