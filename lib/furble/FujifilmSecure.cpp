@@ -93,6 +93,13 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool FujifilmSecure::_connect(void) {
   bool success = false;
   m_Progress = 0;
+  const auto registrationAlive = [this]() {
+    if (!isConnected()) {
+      ESP_LOGW(LOG_TAG, "Fujifilm Secure registration aborted after link loss");
+      return false;
+    }
+    return true;
+  };
 
   if (m_PairType == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
@@ -134,12 +141,16 @@ bool FujifilmSecure::_connect(void) {
   if (!m_Client->secureConnection()) {
     return false;
   }
+  if (!registrationAlive())
+    return false;
   ESP_LOGI(LOG_TAG, "Secured!");
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Requesting status");
   NimBLEAttValue status;
   gattRead(PAIR_SVC_UUID, STATUS_CHR_UUID, status);
+  if (!registrationAlive())
+    return false;
   if (status.size() == 4) {
     ESP_LOGI(LOG_TAG, "Status: %s",
              NimBLEUtils::dataToHexString(status.data(), status.size()).c_str());
@@ -150,6 +161,8 @@ bool FujifilmSecure::_connect(void) {
       ESP_LOGI(LOG_TAG, "Failed to write status response");
       return false;
     }
+    if (!registrationAlive())
+      return false;
   } else {
     ESP_LOGI(LOG_TAG, "Failed to request status");
     return false;
@@ -161,11 +174,17 @@ bool FujifilmSecure::_connect(void) {
   setFujifilmSecureRegistration(true);
   const bool identified = gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true);
   setFujifilmSecureRegistration(false);
+  if (!registrationAlive())
+    return false;
   if (!identified) {
     ESP_LOGI(LOG_TAG, "Failed to send identifier");
     return false;
   }
   ESP_LOGI(LOG_TAG, "Identified!");
+  if (!restoreFujifilmSecureFastProfile()) {
+    ESP_LOGI(LOG_TAG, "Failed to restore fast connection profile");
+    return false;
+  }
   m_Progress += 5;
 
   const std::array<sub_t, 6> subscription0 = {
@@ -186,10 +205,14 @@ bool FujifilmSecure::_connect(void) {
   // Fujifilm::subscribe), so they cannot block the connect either. Log and
   // continue so the handshake always reaches the shutter characteristic.
   for (const auto &sub : subscription0) {
+    if (!registrationAlive())
+      return false;
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
     if (!subscribe(sub.service, sub.uuid, sub.notification)) {
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
+    if (!registrationAlive())
+      return false;
     m_Progress += 5;
   }
 
@@ -205,6 +228,8 @@ bool FujifilmSecure::_connect(void) {
   };
 
   for (const auto &sub : subscription1) {
+    if (!registrationAlive())
+      return false;
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
     if (!subscribe(sub.service, sub.uuid, sub.notification)) {
       // Non-fatal, as above. The geotag subscription used to hard-fail here,
@@ -213,19 +238,27 @@ bool FujifilmSecure::_connect(void) {
       // shutter, so log and continue.
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
+    if (!registrationAlive())
+      return false;
     m_Progress += 5;
   }
 
   auto sync_interval = NimBLEAttValue(reinterpret_cast<const uint8_t *>(&GEOTAG_SYNC_INTERVAL),
                                       sizeof(GEOTAG_SYNC_INTERVAL));
   ESP_LOGI(LOG_TAG, "Configuring %hus geotag sync interval", GEOTAG_SYNC_INTERVAL);
+  if (!registrationAlive())
+    return false;
   if (!gattWrite(NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, sync_interval, true)) {
     ESP_LOGI(LOG_TAG, "Failed to configure geotag sync interval");
     return false;
   }
+  if (!registrationAlive())
+    return false;
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Getting shutter service");
+  if (!registrationAlive())
+    return false;
   auto *pSvc = m_Client->getService(SHUTTER_SVC_UUID);
   if (pSvc == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter service");
@@ -234,6 +267,8 @@ bool FujifilmSecure::_connect(void) {
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Getting shutter characteristic");
+  if (!registrationAlive())
+    return false;
   m_Shutter = pSvc->getCharacteristic(CHR_SHUTTER_UUID);
   if (m_Shutter == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter characteristic");
