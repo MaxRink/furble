@@ -142,6 +142,10 @@ bool FujifilmVirtualCamera::geotagRequested() const {
   return m_GeotagRequested;
 }
 
+size_t FujifilmVirtualCamera::accessAfterDrop() const {
+  return m_AccessAfterDrop;
+}
+
 void FujifilmVirtualCamera::setStaleSubscribeSession(bool stale) {
   m_StaleSubscribeSession = stale;
 }
@@ -167,6 +171,11 @@ void FujifilmVirtualCamera::dropLinkOnWrite(const NimBLEUUID &service,
 void FujifilmVirtualCamera::dropLinkDuringConnect(const NimBLEUUID &service,
                                                   const NimBLEUUID &characteristic) {
   m_DropDuringConnect.emplace_back(service, characteristic);
+}
+
+void FujifilmVirtualCamera::dropLinkOnSubscribe(const NimBLEUUID &service,
+                                                const NimBLEUUID &characteristic) {
+  m_DropOnSubscribe.emplace_back(service, characteristic);
 }
 
 bool FujifilmVirtualCamera::isServiceSuppressed(const NimBLEUUID &service) const {
@@ -218,6 +227,16 @@ bool FujifilmVirtualCamera::isDropDuringConnect(const NimBLEUUID &service,
   return false;
 }
 
+bool FujifilmVirtualCamera::isDropOnSubscribe(const NimBLEUUID &service,
+                                              const NimBLEUUID &characteristic) const {
+  for (const auto &drop : m_DropOnSubscribe) {
+    if (matches(drop.first, service) && matches(drop.second, characteristic)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void FujifilmVirtualCamera::clearEvents() {
   m_Writes.clear();
   m_Notifications.clear();
@@ -230,6 +249,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_FailedWrites.clear();
   m_DropOnWrite.clear();
   m_DropDuringConnect.clear();
+  m_DropOnSubscribe.clear();
   m_StaleSubscribeSession = false;
   m_RequireLongConnParamsAfterIdentifier = false;
 }
@@ -246,6 +266,8 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
   m_Identifier.clear();
   m_LastGeotag.clear();
   m_ConnParamsNegotiated = false;
+  m_DroppedLink = false;
+  m_AccessAfterDrop = 0;
   m_Subscriptions.clear();
   if (m_RequestConnParamsDuringConnect) {
     m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(m_RegistrationConnParams);
@@ -263,6 +285,8 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
 }
 
 bool FujifilmVirtualCamera::hasService(const NimBLEUUID &service) const {
+  if (m_DroppedLink)
+    m_AccessAfterDrop++;
   if (isServiceSuppressed(service)) {
     return false;
   }
@@ -274,6 +298,8 @@ bool FujifilmVirtualCamera::hasService(const NimBLEUUID &service) const {
 
 bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
                                               const NimBLEUUID &characteristic) const {
+  if (m_DroppedLink)
+    m_AccessAfterDrop++;
   if (isServiceSuppressed(service) || isCharacteristicSuppressed(service, characteristic)) {
     return false;
   }
@@ -337,6 +363,8 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
                                   const std::vector<uint8_t> &value,
                                   bool response) {
   if (!m_Connected || (m_Client != &client) || !canWrite(service, characteristic)) {
+    if (m_DroppedLink)
+      m_AccessAfterDrop++;
     return false;
   }
 
@@ -419,6 +447,8 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
 NimBLEAttValue FujifilmVirtualCamera::read(NimBLEClient &client,
                                            const NimBLEUUID &service,
                                            const NimBLEUUID &characteristic) {
+  if (m_DroppedLink)
+    m_AccessAfterDrop++;
   if (!m_Connected || (m_Client != &client) || !hasCharacteristic(service, characteristic)) {
     return {};
   }
@@ -436,6 +466,8 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
                                       NimBLERemoteCharacteristic *remote,
                                       const NimBLENotifyCallback &callback,
                                       bool response) {
+  if (m_DroppedLink)
+    m_AccessAfterDrop++;
   if (!m_Connected || (m_Client != &client) || !hasCharacteristic(service, characteristic)
       || (callback == nullptr)) {
     return false;
@@ -448,6 +480,12 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   // for a response, so it still succeeds, which is the bounded path the fix
   // takes.
   if (m_StaleSubscribeSession && response) {
+    return false;
+  }
+
+  if (isDropOnSubscribe(service, characteristic)) {
+    m_DroppedLink = true;
+    client.mockDropLink(0x08, true);
     return false;
   }
 

@@ -118,11 +118,13 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool connected() const;
   void setSecureConnectionResult(bool result);
   void setRequireLongConnParamsAfterIdentifier(bool require);
+  void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
   void requestConnParamsDuringConnect(const ble_gap_upd_params &params);
   bool registrationConnParamsAccepted() const;
   bool tokenAccepted() const;
   bool configured() const;
   bool geotagRequested() const;
+  size_t accessAfterDrop() const;
 
   void clearEvents();
 
@@ -187,6 +189,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  bool isDropOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
 
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
@@ -203,6 +206,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnWrite;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropDuringConnect;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnSubscribe;
+  mutable size_t m_AccessAfterDrop = 0;
+  bool m_DroppedLink = false;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;

@@ -67,6 +67,34 @@ bool testNullNikonCallbacks() {
   return true;
 }
 
+bool testSecureRegistrationDropStopsGATT() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  peer.dropLinkOnSubscribe(Furble::Host::FujifilmVirtualCamera::configurationServiceUUID(),
+                           Furble::Host::FujifilmVirtualCamera::configurationIndication1UUID());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+  if (!check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+             "Secure registration aborts when the peer drops during subscription"))
+    return false;
+  if (!check(!camera.isConnected() && !peer.connected(),
+             "mid-registration drop leaves no connected session"))
+    return false;
+  if (!check(peer.accessAfterDrop() == 0, "mid-registration drop makes no subsequent GATT calls"))
+    return false;
+  for (const auto &write : peer.writes()) {
+    if (!check(write.characteristic
+                   != Furble::Host::FujifilmVirtualCamera::shutterCharacteristicUUID().toString(),
+               "mid-registration drop does not reach shutter writes"))
+      return false;
+  }
+  return true;
+}
+
 bool testRicohBondPolicy() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -125,7 +153,8 @@ bool testRicohBondPolicy() {
 }  // namespace
 
 int main() {
-  return testRegistrationTimeoutException() && testNullNikonCallbacks() && testRicohBondPolicy()
+  return testRegistrationTimeoutException() && testNullNikonCallbacks()
+                 && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
              ? 0
              : 1;
 }
