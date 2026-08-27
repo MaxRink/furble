@@ -244,30 +244,6 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
 
   bool connected = this->_connect();
 
-  // Fujifilm Secure needs its initial peer parameter request accepted during
-  // registration. Once the vendor handshake returns, immediately restore the
-  // bounded fast profile before exposing the live session. Do this even when
-  // the connection saver is disabled because the supervision timeout is also
-  // the dead-link detector.
-  if (connected && m_Type == Type::FUJIFILM_SECURE) {
-    {
-      const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
-      m_ConnectInProgress = false;
-    }
-    m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency,
-                                  m_FastTimeout);
-    const bool requested = m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval,
-                                                      m_FastLatency, m_FastTimeout);
-    const NimBLEConnInfo info = m_Client->getConnInfo();
-    connected = requested && m_Connected && (info.getConnInterval() >= m_FastMinInterval)
-                && (info.getConnInterval() <= m_FastMaxInterval)
-                && (info.getConnLatency() == m_FastLatency)
-                && (info.getConnTimeout() <= m_IdleTimeout);
-    if (!connected) {
-      ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was not applied");
-    }
-  }
-
   if (connected) {
     m_Paired = true;
     // The session is live. Restore self-delete so a later peer disconnect frees
@@ -316,6 +292,28 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
 void Camera::setFujifilmSecureRegistration(bool in_progress) {
   const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
   m_FujifilmSecureRegistration = in_progress;
+}
+
+bool Camera::restoreFujifilmSecureFastProfile() {
+  if (m_Client == nullptr || !m_Connected) {
+    return false;
+  }
+
+  // The Secure peer may have installed its long registration timeout. Request
+  // the bounded profile before the remaining discovery/subscription work so a
+  // live link can never carry that timeout into the session.
+  m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout);
+  const bool requested = m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval,
+                                                    m_FastLatency, m_FastTimeout);
+  const NimBLEConnInfo info = m_Client->getConnInfo();
+  const bool applied = requested && m_Connected && (info.getConnInterval() >= m_FastMinInterval)
+                       && (info.getConnInterval() <= m_FastMaxInterval)
+                       && (info.getConnLatency() == m_FastLatency)
+                       && (info.getConnTimeout() <= m_IdleTimeout);
+  if (!applied) {
+    ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was not applied");
+  }
+  return applied;
 }
 
 void Camera::setConnSaverEnabled(bool enabled) {
