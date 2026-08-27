@@ -847,7 +847,6 @@ void applyScenarioSettings(void) {
   saveByte("scan_mode", Settings::SCAN_MODE);
   saveByte("text_size", Settings::TEXT_SIZE);
   saveByte("auto_off", Settings::AUTO_OFF);
-  saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveByte("low_batt", Settings::LOW_BATT);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);

@@ -27,6 +27,10 @@ class Scan {
 
   void setMode(Mode mode);
   void setTimeout(uint32_t timeout);
+  /** Install the simulator's cross-task start responsiveness probe. */
+  void setStartProbe(std::function<void()> probe);
+  /** Whether the most recent probed start waited for the UI lock. */
+  bool startProbeBlocked(void) const;
   void start(std::function<void(void *)> scan_callback,
              void *scan_result_private_data,
              std::function<void(void *)> scan_end_callback = nullptr);
