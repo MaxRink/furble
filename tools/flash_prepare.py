@@ -48,7 +48,15 @@ def prepare(port: str, baud: int, timeout: float) -> bool:
                 # Echoing the complete line is useful for an audit trail and
                 # contains no credentials.
                 print(line)
-                if line.startswith(("flash.ready:", "flash.watchdog:", "flash.download_recovery:")):
+                # Collect each explicit acknowledgement. Matching only the
+                # ready line would make the success check impossible because
+                # the watchdog and download-recovery acknowledgements would
+                # never enter `seen`.
+                if line in {
+                    "flash.ready: true",
+                    "flash.watchdog: disabled",
+                    "flash.download_recovery: unlocked",
+                }:
                     seen.add(line)
 
             return {
