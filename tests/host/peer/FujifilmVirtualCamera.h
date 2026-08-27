@@ -118,6 +118,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool connected() const;
   void setSecureConnectionResult(bool result);
   void setRequireLongConnParamsAfterIdentifier(bool require);
+  void setDelayRegistrationConnParamsUntilFastRequest(bool delay);
   void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
   void requestConnParamsDuringConnect(const ble_gap_upd_params &params);
   bool registrationConnParamsAccepted() const;
@@ -196,6 +197,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_Connected = false;
   bool m_SecureConnectionResult = true;
   bool m_RequireLongConnParamsAfterIdentifier = false;
+  bool m_DelayRegistrationConnParamsUntilFastRequest = false;
   bool m_ConnParamsNegotiated = false;
   bool m_RequestConnParamsDuringConnect = false;
   ble_gap_upd_params m_RegistrationConnParams {};

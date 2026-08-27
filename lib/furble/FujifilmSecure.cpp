@@ -7,6 +7,7 @@
 #include <freertos/task.h>
 
 #include <cstring>
+#include <memory>
 
 #include "Device.h"
 #include "FujifilmSecure.h"
@@ -69,6 +70,9 @@ FujifilmSecure::~FujifilmSecure(void) {
 }
 
 void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
+  if (pDevice == nullptr) {
+    return;
+  }
   if (pDevice->haveManufacturerData()) {
     const auto manufacturerData = pDevice->getManufacturerData();
     FujifilmProtocol::SecureAdvertisement advertisement;
@@ -174,8 +178,9 @@ bool FujifilmSecure::_connect(void) {
   auto name = NimBLEAttValue(Device::getStringID());
   ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
   setFujifilmSecureRegistration(true);
+  const auto clearRegistration = [this](Camera *) { setFujifilmSecureRegistration(false); };
+  std::unique_ptr<Camera, decltype(clearRegistration)> registrationGuard(this, clearRegistration);
   const bool identified = gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true);
-  setFujifilmSecureRegistration(false);
   if (!registrationAlive())
     return false;
   if (!identified) {
@@ -201,6 +206,10 @@ bool FujifilmSecure::_connect(void) {
     }
     vTaskDelay(connParamsPoll);
   }
+  // The camera may defer its required over-cap request until after the
+  // identifier response. Keep the narrow exception active through the
+  // asynchronous FAST transition, then close it before normal discovery.
+  registrationGuard.reset();
   m_Progress += 5;
 
   const std::array<sub_t, 6> subscription0 = {

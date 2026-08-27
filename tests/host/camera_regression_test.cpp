@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "Device.h"
+#include "FujifilmBasic.h"
 #include "FujifilmSecure.h"
 #include "FujifilmVirtualCamera.h"
 #include "Nikon.h"
@@ -78,6 +79,43 @@ bool testRegistrationFastProfileTimeout() {
   Furble::FujifilmSecure camera(&advertisement);
   return check(!camera.connect(ESP_PWR_LVL_P3, 1000),
                "Secure registration is bounded when FAST never applies");
+}
+
+bool testDelayedRegistrationParameterRequest() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  peer.setRequireLongConnParamsAfterIdentifier(true);
+  peer.setDelayRegistrationConnParamsUntilFastRequest(true);
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+  return check(camera.connect(ESP_PWR_LVL_P3, 1000) && peer.registrationConnParamsAccepted(),
+               "delayed Secure registration parameters remain inside the narrow gate");
+}
+
+bool testNullAndMissingIdentifierBoundaries() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Host::FujifilmVirtualCamera::Config secureConfig;
+  secureConfig.secure = true;
+  Furble::Host::FujifilmVirtualCamera securePeer(secureConfig);
+  const auto secureAdvertisement = securePeer.advertisement();
+  Furble::FujifilmSecure secure(&secureAdvertisement);
+  static_cast<NimBLEScanCallbacks *>(&secure)->onResult(nullptr);
+
+  NimBLEDevice::resetMock();
+  Furble::Host::FujifilmVirtualCamera basicPeer;
+  basicPeer.suppressCharacteristic(
+      Furble::Host::FujifilmVirtualCamera::pairServiceUUID(),
+      Furble::Host::FujifilmVirtualCamera::identifierCharacteristicUUID());
+  NimBLEDevice::setMockPeer(&basicPeer);
+  const auto basicAdvertisement = basicPeer.advertisement();
+  Furble::FujifilmBasic basic(&basicAdvertisement);
+  return check(!basic.connect(ESP_PWR_LVL_P3, 1000),
+               "Fujifilm Basic rejects a missing identifier characteristic");
 }
 
 bool testNullNikonCallbacks() {
@@ -180,8 +218,9 @@ bool testRicohBondPolicy() {
 
 int main() {
   return testRegistrationTimeoutException() && testRegistrationFastProfileTimeout()
-                 && testNullNikonCallbacks() && testSecureRegistrationDropStopsGATT()
-                 && testRicohBondPolicy()
+                 && testDelayedRegistrationParameterRequest()
+                 && testNullAndMissingIdentifierBoundaries() && testNullNikonCallbacks()
+                 && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
              ? 0
              : 1;
 }

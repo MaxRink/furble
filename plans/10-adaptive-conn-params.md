@@ -288,7 +288,11 @@ Review fixes (deep review of the first branch revision):
   so the normal inactivity path can later request IDLE. The host NimBLE double
   deliberately leaves the old parameters visible for its first read, which
   makes an immediate request-and-reread implementation fail the regression.
-  The handshake verifies link state before continuing discovery.
+  The narrow registration gate stays active through request confirmation, not
+  only the identifier write, because real cameras may defer their required
+  over-cap request until after the write response. An RAII guard closes it on
+  every success and failure path. The handshake verifies link state before
+  continuing discovery.
   Registration also aborts at each GATT boundary when the peer disconnects, so
   a half-open Secure session cannot continue issuing requests or block control
   recovery.

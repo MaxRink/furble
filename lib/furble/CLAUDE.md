@@ -47,9 +47,11 @@ protocol core.
   second for NimBLE's asynchronous controller update before the remaining
   discovery work. Verification requires the exact FAST latency and supervision
   timeout, not merely any timeout below the idle cap. A confirmed update clears
-  the peer override so the normal inactivity path can later enter IDLE. Do not
-  broaden the callback exception to Basic or to the rest of a connection
-  attempt.
+  the peer override so the normal inactivity path can later enter IDLE. Keep the
+  registration exception active through that confirmation because a camera may
+  defer its required request until after the identifier response. Every failure
+  path must close the exception. Do not broaden it to Basic or to the rest of a
+  connection attempt.
 - Secure registration must check link state after every read, write, and
   subscription boundary. A peer disconnect aborts the handshake immediately;
   never continue discovery or GATT traffic against a disconnected client.

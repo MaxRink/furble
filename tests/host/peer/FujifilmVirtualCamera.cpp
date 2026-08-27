@@ -252,6 +252,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_DropOnSubscribe.clear();
   m_StaleSubscribeSession = false;
   m_RequireLongConnParamsAfterIdentifier = false;
+  m_DelayRegistrationConnParamsUntilFastRequest = false;
 }
 
 bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -405,7 +406,8 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
              && matches(characteristic, identifierCharacteristicUUID())) {
     m_Identifier.assign(value.begin(), value.end());
     result = m_Config.secure || m_TokenAccepted;
-    if (result && m_RequireLongConnParamsAfterIdentifier && !m_ConnParamsNegotiated) {
+    if (result && m_RequireLongConnParamsAfterIdentifier
+        && !m_DelayRegistrationConnParamsUntilFastRequest && !m_ConnParamsNegotiated) {
       ble_gap_upd_params params = {};
       params.itvl_min = 24;
       params.itvl_max = 40;
@@ -514,6 +516,16 @@ void FujifilmVirtualCamera::setRequireLongConnParamsAfterIdentifier(bool require
   m_RequireLongConnParamsAfterIdentifier = require;
 }
 
+void FujifilmVirtualCamera::setDelayRegistrationConnParamsUntilFastRequest(bool delay) {
+  m_DelayRegistrationConnParamsUntilFastRequest = delay;
+  if (delay) {
+    m_RegistrationConnParams.itvl_min = 24;
+    m_RegistrationConnParams.itvl_max = 40;
+    m_RegistrationConnParams.latency = 0;
+    m_RegistrationConnParams.supervision_timeout = 2000;
+  }
+}
+
 void FujifilmVirtualCamera::requestConnParamsDuringConnect(const ble_gap_upd_params &params) {
   m_RegistrationConnParams = params;
   m_RequestConnParamsDuringConnect = true;
@@ -528,6 +540,15 @@ bool FujifilmVirtualCamera::updateConnectionParams(NimBLEClient &client,
                                                    uint16_t max_interval,
                                                    uint16_t latency,
                                                    uint16_t timeout) {
+  if (m_RequireLongConnParamsAfterIdentifier && m_DelayRegistrationConnParamsUntilFastRequest
+      && !m_ConnParamsNegotiated) {
+    m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(m_RegistrationConnParams);
+    if (!m_RegistrationConnParamsAccepted) {
+      client.mockDropLink(0x08, true);
+      return false;
+    }
+    m_ConnParamsNegotiated = true;
+  }
   (void)min_interval;
   (void)max_interval;
   (void)latency;
