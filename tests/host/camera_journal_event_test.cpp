@@ -7,6 +7,8 @@
 #include "FujifilmVirtualCamera.h"
 #include "NimBLERemoteCharacteristic.h"
 
+const char *LOG_TAG = "camera-journal";
+
 namespace {
 class JournalCamera final: public Furble::Camera {
  public:

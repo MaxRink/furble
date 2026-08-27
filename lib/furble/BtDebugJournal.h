@@ -26,6 +26,9 @@ struct BtDebugEvent {
   static constexpr size_t PAYLOAD_BYTES = 64;
 
   uint64_t timestamp_ms = 0;
+  uint64_t sequence = 0;
+  uint32_t session_id = 0;
+  uint32_t attempt_id = 0;
   BtDebugEventKind kind = BtDebugEventKind::GATT;
   uint64_t generation = 0;
   int32_t reason = 0;
@@ -39,6 +42,9 @@ struct BtDebugEvent {
   bool bonded = false;
   bool physical = false;
   bool logical = false;
+  bool begin = false;
+  bool payload_truncated = false;
+  int8_t rssi = 0;
   uint16_t duration_ms = 0;
   uint16_t interval_before = 0;
   uint16_t latency_before = 0;
@@ -56,6 +62,8 @@ struct BtDebugEvent {
   char state[TEXT_BYTES] = {};
   char result[TEXT_BYTES] = {};
   char reason_text[TEXT_BYTES] = {};
+  char name[TEXT_BYTES] = {};
+  char manufacturer[TEXT_BYTES] = {};
   uint8_t payload[PAYLOAD_BYTES] = {};
 };
 
@@ -65,18 +73,26 @@ const char *btGapReasonName(int reason);
 /** A fixed-capacity ring used by console diagnostics. It never writes logs while recording. */
 class BtDebugJournal {
  public:
-  // Keep the console-only ring below 64 KiB even with the identity and UUID
-  // fields. This is deliberately independent of the board's heap layout.
+  // Keep the console-only ring bounded for each board. S3 has enough PSRAM for
+  // the larger diagnostics window, while the smaller controllers keep the
+  // console feature below 8 KiB of static RAM.
+#if defined(FURBLE_M5STICKS3)
   static constexpr size_t MAX_EVENTS = 128;
+#else
+  static constexpr size_t MAX_EVENTS = 32;
+#endif
   using Emit = void (*)(const BtDebugEvent &, void *context);
 
   static BtDebugJournal &instance();
 
   bool setEnabled(bool enabled);
   bool isEnabled() const;
+  uint32_t nextAttempt();
+  uint32_t sessionId() const;
   void clear();
   void record(const BtDebugEvent &event);
   size_t size() const;
+  size_t droppedCount() const;
 
   /** Emit at most count newest events, in chronological order. Zero means all. */
   size_t dump(size_t count, Emit emit, void *context) const;
@@ -94,6 +110,9 @@ class BtDebugJournal {
   size_t m_Count = 0;
   uint64_t m_WriteSequence = 0;
   uint64_t m_LiveSequence = 0;
+  uint32_t m_SessionId = 0;
+  uint32_t m_NextAttemptId = 0;
+  size_t m_DroppedCount = 0;
   bool m_Enabled = false;
 };
 

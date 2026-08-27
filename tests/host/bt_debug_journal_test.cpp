@@ -26,10 +26,13 @@ int main() {
   BtDebugJournal &journal = BtDebugJournal::instance();
   journal.clear();
   journal.setEnabled(true);
+  const uint32_t session = journal.sessionId();
+  const uint32_t attempt = journal.nextAttempt();
 
   BtDebugEvent connect;
   connect.timestamp_ms = 100;
   connect.kind = BtDebugEventKind::GAP_CONNECT;
+  connect.attempt_id = attempt;
   connect.success = true;
   connect.address_type = 3;
   connect.identity_type = 0;
@@ -51,6 +54,9 @@ int main() {
   check(events.size() == 2 && events[0].kind == BtDebugEventKind::GAP_CONNECT
             && events[1].kind == BtDebugEventKind::GATT,
         "dump preserves event types and order");
+  check(events[0].sequence + 1 == events[1].sequence && events[0].session_id == session
+            && events[0].attempt_id == attempt,
+        "journal stamps sequence, session, and attempt identity");
   check(events[0].address_type == 3 && events[0].identity_type == 0,
         "address and identity types survive the event boundary");
   check(events[1].payload_length == 2 && events[1].payload[0] == 1 && events[1].response,
@@ -77,6 +83,7 @@ int main() {
         "journal has a hard bounded capacity");
   check(events.front().timestamp_ms == 5 && events.back().timestamp_ms == BtDebugJournal::MAX_EVENTS + 4,
         "ring keeps only the newest bounded events");
+  check(journal.droppedCount() == 5, "ring reports overwritten events");
   check(Furble::btGapReasonName(0x13) == std::string("remote-user-terminated"),
         "GAP reason has a human meaning");
   journal.setEnabled(false);

@@ -37,11 +37,33 @@ BtDebugJournal::BtDebugJournal() = default;
 
 bool BtDebugJournal::setEnabled(bool enabled) {
   std::lock_guard<std::mutex> lock(m_Mutex);
+  if (enabled && !m_Enabled) {
+    ++m_SessionId;
+    if (m_SessionId == 0) {
+      ++m_SessionId;
+    }
+    m_NextAttemptId = 0;
+    m_DroppedCount = 0;
+  }
   m_Enabled = enabled;
   if (enabled) {
     m_LiveSequence = m_WriteSequence;
   }
   return true;
+}
+
+uint32_t BtDebugJournal::nextAttempt() {
+  std::lock_guard<std::mutex> lock(m_Mutex);
+  ++m_NextAttemptId;
+  if (m_NextAttemptId == 0) {
+    ++m_NextAttemptId;
+  }
+  return m_NextAttemptId;
+}
+
+uint32_t BtDebugJournal::sessionId() const {
+  std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_SessionId;
 }
 
 bool BtDebugJournal::isEnabled() const {
@@ -54,6 +76,7 @@ void BtDebugJournal::clear() {
   m_Count = 0;
   m_WriteSequence = 0;
   m_LiveSequence = 0;
+  m_DroppedCount = 0;
 }
 
 void BtDebugJournal::record(const BtDebugEvent &event) {
@@ -61,9 +84,20 @@ void BtDebugJournal::record(const BtDebugEvent &event) {
   if (!m_Enabled) {
     return;
   }
-  m_Events[m_WriteSequence % MAX_EVENTS] = event;
+  BtDebugEvent stamped = event;
+  stamped.sequence = m_WriteSequence;
+  stamped.session_id = m_SessionId;
+  if (m_Count == MAX_EVENTS) {
+    ++m_DroppedCount;
+  }
+  m_Events[m_WriteSequence % MAX_EVENTS] = stamped;
   ++m_WriteSequence;
   m_Count = std::min(MAX_EVENTS, m_Count + 1);
+}
+
+size_t BtDebugJournal::droppedCount() const {
+  std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_DroppedCount;
 }
 
 size_t BtDebugJournal::size() const {
