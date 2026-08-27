@@ -745,6 +745,7 @@ void Camera::gattJournalClear(void) {
 
 bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_params *params) {
   (void)pClient;
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
   if (params != nullptr) {
     ESP_LOGI(LOG_TAG, "Peer requested connection parameters (%u-%u, latency %u, timeout %u)",
              params->itvl_min, params->itvl_max, params->latency, params->supervision_timeout);
@@ -755,12 +756,16 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
     // camera that requests a long timeout to save its own power would otherwise
     // win here and blunt detection for that whole window, the false-connected
     // bug where a power-off went unnoticed for tens of seconds and shutter
-    // writes buffered until the camera returned. Reject any peer timeout above
-    // the cap so the current bounded parameters stay in force. Rejecting keeps
+    // writes buffered until the camera returned. Reject an over-cap request
+    // once registration is complete. During registration, however, Fujifilm
+    // Secure cameras require their initial request to be accepted and drop the
+    // link if it is rejected. FurbleControl requests the bounded FAST profile
+    // immediately after connect, so this temporary exception does not weaken
+    // steady-state dead-link detection. Rejecting keeps
     // the existing link parameters, which already satisfy the timeout margin, so
     // detection stays prompt. A well-behaved peer accepts the reject; furble
     // does not counter-request, so there is no renegotiation loop.
-    if (params->supervision_timeout > m_IdleTimeout) {
+    if (params->supervision_timeout > m_IdleTimeout && !m_ConnectInProgress) {
       ESP_LOGW(LOG_TAG,
                "Rejecting peer supervision timeout %u (cap %u) to keep dead-link detection",
                params->supervision_timeout, m_IdleTimeout);
@@ -768,7 +773,6 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
     }
   }
 
-  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
   // Accept the peer values and do not immediately fight them with our own
   // request. A later shutter or focus press starts a new fast-profile cycle.
   m_PeerOverride = true;

@@ -179,6 +179,15 @@ bool Ricoh::_connect(void) {
   if (!m_Client->secureConnection()) {
     ESP_LOGW(LOG_TAG, "Ricoh secure connection failed (bonded before=%s)",
              bondedBefore ? "yes" : "no");
+    // A live-scan pairing is an explicit request for a new pairing. If only
+    // the camera-side bond was removed, discard the stale local key so the
+    // next attempt can perform numeric comparison. Saved reconnects retain
+    // their bond across transient security failures.
+    if (bondedBefore && m_PairType == PairType::NEW) {
+      if (NimBLEDevice::deleteBond(m_Address)) {
+        ESP_LOGI(LOG_TAG, "Ricoh stale local bond cleared for fresh pairing retry");
+      }
+    }
     return false;
   }
   {
