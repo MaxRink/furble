@@ -146,6 +146,13 @@ size_t FujifilmVirtualCamera::accessAfterDrop() const {
   return m_AccessAfterDrop;
 }
 
+bool FujifilmVirtualCamera::subscriptionRequestedWithResponse(
+    const NimBLEUUID &service,
+    const NimBLEUUID &characteristic) const {
+  const auto found = m_Subscriptions.find(key(service, characteristic));
+  return found != m_Subscriptions.end() && found->second.response;
+}
+
 void FujifilmVirtualCamera::setStaleSubscribeSession(bool stale) {
   m_StaleSubscribeSession = stale;
 }
@@ -485,7 +492,10 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   // a write failure. An unacknowledged write (response = false) does not wait
   // for a response, so it still succeeds, which is the bounded path the fix
   // takes.
-  if (m_StaleSubscribeSession && response) {
+  const bool requiredSecureIndication = m_Config.secure
+                                        && (characteristic == configurationIndication1UUID()
+                                            || characteristic == configurationIndication2UUID());
+  if (m_StaleSubscribeSession && response && !requiredSecureIndication) {
     return false;
   }
 
@@ -514,6 +524,7 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   subscription.remote = remote;
   subscription.callback = callback;
   subscription.notification = notification;
+  subscription.response = response;
   m_Subscriptions[key(service, characteristic)] = subscription;
 
   if (matches(characteristic, configurationNotificationUUID())) {

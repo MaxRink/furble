@@ -81,6 +81,40 @@ bool testRegistrationFastProfileTimeout() {
                "Secure registration is bounded when FAST never applies");
 }
 
+bool testSecureRequiredSubscriptionsUseResponses() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+
+  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),
+             "Secure camera accepts its normal subscription sequence")) {
+    return false;
+  }
+
+  if (!check(peer.subscriptionRequestedWithResponse(
+                 Furble::Host::FujifilmVirtualCamera::configurationServiceUUID(),
+                 Furble::Host::FujifilmVirtualCamera::configurationIndication1UUID()),
+             "Secure indication 1 uses an acknowledged CCCD write")) {
+    return false;
+  }
+  if (!check(peer.subscriptionRequestedWithResponse(
+                 Furble::Host::FujifilmVirtualCamera::configurationServiceUUID(),
+                 Furble::Host::FujifilmVirtualCamera::configurationIndication2UUID()),
+             "Secure indication 2 uses an acknowledged CCCD write")) {
+    return false;
+  }
+
+  camera.disconnect();
+  NimBLEDevice::resetMock();
+  return true;
+}
+
 bool testDelayedRegistrationParameterRequest() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -253,6 +287,7 @@ bool testRicohBondPolicy() {
 
 int main() {
   return testRegistrationTimeoutException() && testRegistrationFastProfileTimeout()
+                 && testSecureRequiredSubscriptionsUseResponses()
                  && testDelayedRegistrationParameterRequest()
                  && testRegistrationParameterRequestDuringSubscription()
                  && testSecureFastProfileWaitsForShutterDiscovery()

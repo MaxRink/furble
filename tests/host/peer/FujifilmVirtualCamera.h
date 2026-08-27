@@ -58,11 +58,11 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
                         bool indication = false);
 
   // Model a stale-session reconnect. When enabled the camera still holds the
-  // CCCD subscriptions from the previous session, so an acknowledged CCCD
-  // subscribe write (response = true) never gets its ATT write response and, on
-  // real hardware, blocks the connect. The mock returns false for that write to
-  // stand in for the block. An unacknowledged subscribe write (response = false)
-  // is accepted, which is the bounded path the fix uses.
+  // CCCD subscriptions from the previous session, so an acknowledged optional
+  // CCCD write (response = true) never gets its ATT write response and, on real
+  // hardware, blocks the connect. Required Secure configuration indications
+  // remain acknowledged because a normal X100VI requires those responses. The
+  // mock returns false for stale optional writes to stand in for the block.
   void setStaleSubscribeSession(bool stale);
 
   // Fault injection for adversarial connect and command error paths.
@@ -135,6 +135,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool configured() const;
   bool geotagRequested() const;
   size_t accessAfterDrop() const;
+  bool subscriptionRequestedWithResponse(const NimBLEUUID &service,
+                                         const NimBLEUUID &characteristic) const;
 
   void clearEvents();
 
@@ -191,6 +193,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     NimBLERemoteCharacteristic *remote = nullptr;
     NimBLENotifyCallback callback;
     bool notification = false;
+    bool response = false;
   };
 
   bool isServiceSuppressed(const NimBLEUUID &service) const;

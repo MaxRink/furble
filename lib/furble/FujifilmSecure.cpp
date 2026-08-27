@@ -192,26 +192,33 @@ bool FujifilmSecure::_connect(void) {
 
   const std::array<sub_t, 6> subscription0 = {
       {
-       {"indication 1", SVC_CONF_UUID, CHR_IND1_UUID, false},
-       {"indication 2", SVC_CONF_UUID, CHR_IND2_UUID, false},
-       {"notification 1", SVC_CONF_UUID, CHR_NOT1_UUID, true},
-       {"notification 2", SVC_CONF_UUID, GEOTAG_UPDATE, true},
-       {"notification 4", NOTX_SVC_UUID, NOT4_CHR_UUID, true},
-       {"notification 5", NOTX_SVC_UUID, NOT5_CHR_UUID, true},
+       // X100VI requires acknowledged writes for the two configuration
+          // indications. Optional notifications stay unacknowledged because a
+          // stale-session camera may withhold their ATT response.
+          {"indication 1", SVC_CONF_UUID, CHR_IND1_UUID, false, true},
+       {"indication 2", SVC_CONF_UUID, CHR_IND2_UUID, false, true},
+       {"notification 1", SVC_CONF_UUID, CHR_NOT1_UUID, true, false},
+       {"notification 2", SVC_CONF_UUID, GEOTAG_UPDATE, true, false},
+       {"notification 4", NOTX_SVC_UUID, NOT4_CHR_UUID, true, false},
+       {"notification 5", NOTX_SVC_UUID, NOT5_CHR_UUID, true, false},
        }
   };
 
   // A subscribe failure is never fatal. Promotion to active is link-state only,
   // no notification gates it, and on a stale-session reconnect the camera still
-  // holds the prior CCCD subscriptions so a re-subscribe can fail or be a no-op
-  // without stopping the handshake. The CCCD writes are unacknowledged (see
-  // Fujifilm::subscribe), so they cannot block the connect either. Log and
-  // continue so the handshake always reaches the shutter characteristic.
+  // holds the prior optional CCCD subscriptions so a re-subscribe can fail or
+  // be a no-op without stopping the handshake. Optional CCCD writes are
+  // unacknowledged (see Fujifilm::subscribe), so they cannot block the connect.
+  // The two required indication writes below deliberately remain acknowledged:
+  // a normal X100VI drops the link when those writes are sent without an ATT
+  // response. The esp-nimble-cpp response path is not independently bounded,
+  // so this relies on the camera accepting the required registration writes.
+  // Keep this distinction explicit when changing the subscription table.
   for (const auto &sub : subscription0) {
     if (!registrationAlive())
       return false;
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
-    if (!subscribe(sub.service, sub.uuid, sub.notification)) {
+    if (!subscribe(sub.service, sub.uuid, sub.notification, sub.response)) {
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
     if (!registrationAlive())
@@ -221,12 +228,12 @@ bool FujifilmSecure::_connect(void) {
 
   const std::array<sub_t, 6> subscription1 = {
       {
-       {"notification 6", SVC_CONF_UUID, NOT6_CHR_UUID, true},
-       {"notification 7", NOTX_SVC_UUID, NOT7_CHR_UUID, true},
-       {"notification 8", NOTX_SVC_UUID, NOT8_CHR_UUID, true},
-       {"notification 9", NOTX_SVC_UUID, NOT9_CHR_UUID, true},
-       {"notification 10", NOTX_SVC_UUID, NOT10_CHR_UUID, true},
-       {"notification 11", NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, true},
+       {"notification 6", SVC_CONF_UUID, NOT6_CHR_UUID, true, false},
+       {"notification 7", NOTX_SVC_UUID, NOT7_CHR_UUID, true, false},
+       {"notification 8", NOTX_SVC_UUID, NOT8_CHR_UUID, true, false},
+       {"notification 9", NOTX_SVC_UUID, NOT9_CHR_UUID, true, false},
+       {"notification 10", NOTX_SVC_UUID, NOT10_CHR_UUID, true, false},
+       {"notification 11", NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, true, false},
        }
   };
 
@@ -234,7 +241,7 @@ bool FujifilmSecure::_connect(void) {
     if (!registrationAlive())
       return false;
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
-    if (!subscribe(sub.service, sub.uuid, sub.notification)) {
+    if (!subscribe(sub.service, sub.uuid, sub.notification, sub.response)) {
       // Non-fatal, as above. The geotag subscription used to hard-fail here,
       // which turned a single flaky CCCD write on a stale-session reconnect into
       // a stuck connect. Geotag sync is best-effort and does not gate the
