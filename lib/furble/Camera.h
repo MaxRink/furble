@@ -328,6 +328,10 @@ class Camera: public NimBLEClientCallbacks {
   // It is the liveness guard for m_Client: onDisconnect clears it before NimBLE
   // frees the self-deleting client, so a true read means the client is alive.
   std::atomic<bool> m_Connected = false;
+  // Set before a failed live-link teardown. NimBLE delivers the disconnect
+  // callback asynchronously and performs self-delete after that callback
+  // returns, so the connect task must not detach/delete the client first.
+  std::atomic<bool> m_ClientDeleteOnDisconnect = false;
   bool m_Paired = false;
 
  private:

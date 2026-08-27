@@ -93,6 +93,8 @@ bool g_ConnectShouldFail = false;
 size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
 size_t g_MaxClients = 0;        // 0 means unlimited
 bool g_DeferredDelete = false;  // honour setSelfDelete and defer live deleteClient
+bool g_AsyncDisconnect = false;
+bool g_AsyncDisconnectEventFound = false;
 uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
 size_t g_ConnParamApplyDelayReads = 1;
 bool g_Bonded = false;
@@ -489,6 +491,18 @@ void NimBLEClient::disconnect() {
   if (m_Peer != nullptr) {
     m_Peer->disconnect(*this, 0);
   }
+
+  // In the real stack ble_gap_terminate can complete the link teardown before
+  // the NimBLE GAP task dispatches BLE_GAP_EVENT_DISCONNECT.  Keep the client
+  // in the pool and queue that event, but expose the link as down to match the
+  // state seen by the application.  A premature deleteClient() then erases the
+  // object while the controller event still refers to its connection handle.
+  if (g_AsyncDisconnect) {
+    m_Connected = false;
+    m_DisconnectEventPending = true;
+    return;
+  }
+
   m_Connected = false;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
@@ -503,6 +517,21 @@ void NimBLEClient::disconnect() {
   if (g_DeferredDelete && m_DeleteOnDisconnect) {
     eraseClient(this);
   }
+}
+
+bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
+  if (!m_DisconnectEventPending) {
+    return false;
+  }
+
+  m_DisconnectEventPending = false;
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onDisconnect(this, 0);
+  }
+  if (g_DeferredDelete && m_DeleteOnDisconnect) {
+    eraseClient(this);
+  }
+  return true;
 }
 
 bool NimBLEClient::isConnected() const {
@@ -904,6 +933,34 @@ void NimBLEDevice::setDeferredClientDelete(bool enabled) {
   g_DeferredDelete = enabled;
 }
 
+void NimBLEDevice::setAsyncDisconnect(bool enabled) {
+  g_AsyncDisconnect = enabled;
+  g_AsyncDisconnectEventFound = false;
+}
+
+bool NimBLEDevice::completeAsyncDisconnect(void) {
+  NimBLEClient *pending = nullptr;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    for (const auto &client : g_Clients) {
+      if (client->m_DisconnectEventPending) {
+        pending = client.get();
+        break;
+      }
+    }
+  }
+  if (pending == nullptr) {
+    return false;
+  }
+
+  g_AsyncDisconnectEventFound = pending->mockCompleteAsyncDisconnect();
+  return g_AsyncDisconnectEventFound;
+}
+
+bool NimBLEDevice::asyncDisconnectEventFound(void) {
+  return g_AsyncDisconnectEventFound;
+}
+
 size_t NimBLEDevice::reapDeferredClients() {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   size_t reaped = 0;
@@ -953,6 +1010,8 @@ void NimBLEDevice::resetMock() {
   g_ConnectFailCount = 0;
   g_MaxClients = 0;
   g_DeferredDelete = false;
+  g_AsyncDisconnect = false;
+  g_AsyncDisconnectEventFound = false;
   g_ConnectDelayMs = 0;
   g_ConnParamApplyDelayReads = 1;
   g_Bonded = false;

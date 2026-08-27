@@ -204,6 +204,7 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   }
 
   m_Power = power;
+  m_ClientDeleteOnDisconnect = false;
 
   m_Client = NimBLEDevice::createClient();
   if (m_Client == nullptr) {
@@ -265,12 +266,27 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     // and is a safe no-op if the client somehow already went away. Every
     // live-link m_Client deref is guarded by m_Connected, which is false below,
     // so clearing m_Client cannot race a reader.
-    if (m_Connected) {
+    const bool liveClient = m_Connected && (m_Client != nullptr) && m_Client->isConnected();
+    if (liveClient) {
+      // NimBLE tears down a connected client asynchronously. Arm its normal
+      // callback-side deletion before issuing the terminate; deleting here
+      // would lose a disconnect event whose controller handle is still queued
+      // and can leave the observer unable to scan until the next reboot.
+      m_Client->setSelfDelete(true, false);
+      m_ClientDeleteOnDisconnect = true;
+      this->_disconnect();
+    } else if (m_Connected) {
       this->_disconnect();
     }
     m_Connected = false;
-    m_Client->setClientCallbacks(nullptr, false);
-    NimBLEDevice::deleteClient(m_Client);
+    if (m_ClientDeleteOnDisconnect.exchange(false)) {
+      // The client owns its callback-side deletion. Do not touch it after the
+      // terminate, as NimBLE may free it immediately after onDisconnect.
+      m_Client = nullptr;
+    } else if (m_Client != nullptr) {
+      m_Client->setClientCallbacks(nullptr, false);
+      NimBLEDevice::deleteClient(m_Client);
+    }
     m_Client = nullptr;
     ESP_LOGD(LOG_TAG, "deleteClient(%s) after failed connect, pool now %u", m_Name.c_str(),
              static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));

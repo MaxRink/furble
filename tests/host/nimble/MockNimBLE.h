@@ -298,6 +298,10 @@ class NimBLEClient {
   // path returns immediately, delete-this style).
   void mockDropLinkSelfDelete(int reason);
 
+  // Complete a controller disconnect event held back after a central
+  // terminate.  Returns false when no event is queued.
+  bool mockCompleteAsyncDisconnect(void);
+
   // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
   //
   // mockStallTerminate() marks the client so its next disconnect() issues the
@@ -356,6 +360,7 @@ class NimBLEClient {
   bool m_DeleteOnDisconnect = false;
   bool m_DeleteOnConnectFailure = false;
   bool m_PendingReap = false;
+  bool m_DisconnectEventPending = false;
   std::map<std::string, std::unique_ptr<NimBLERemoteService>> m_Services;
 };
 
@@ -485,6 +490,16 @@ class NimBLEDevice {
   // arms ASan to catch a dereference of a client after its self-delete, the
   // reclaim use-after-free class. resetMock() disables it again.
   static void setDeferredClientDelete(bool enabled);
+
+  // Make a central disconnect look like a controller event which has already
+  // removed the link, while NimBLE still has the GAP disconnect callback
+  // queued.  This is the narrow race exposed by failed registration cleanup:
+  // deleting the client before that callback runs leaves the host with an
+  // orphaned connection event.  Tests complete the queued event explicitly at
+  // a quiescent point.
+  static void setAsyncDisconnect(bool enabled);
+  static bool completeAsyncDisconnect(void);
+  static bool asyncDisconnectEventFound(void);
 
   // Free every client queued for asynchronous reap by a link-loss drop under the
   // deferred-delete model. The fuzz harness calls this at a quiescent point where
