@@ -254,6 +254,9 @@ class Camera: public NimBLEClientCallbacks {
    */
   virtual bool _connect(void) = 0;
 
+  /** Gate Fujifilm Secure's initial registration parameter request. */
+  void setFujifilmSecureRegistration(bool in_progress);
+
   /**
    * Disconnect from the target.
    */
@@ -396,6 +399,7 @@ class Camera: public NimBLEClientCallbacks {
   bool m_ConnSaverEnabled = false;
   bool m_ShutterHeld = false;
   bool m_ConnectInProgress = false;
+  bool m_FujifilmSecureRegistration = false;
   uint32_t m_LastConnActivityMs = 0;
   ConnProfile m_LastRequestedProfile = ConnProfile::FAST;
   uint32_t m_LastRequestMs = 0;

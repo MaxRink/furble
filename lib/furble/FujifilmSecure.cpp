@@ -158,7 +158,10 @@ bool FujifilmSecure::_connect(void) {
 
   auto name = NimBLEAttValue(Device::getStringID());
   ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
-  if (!gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true)) {
+  setFujifilmSecureRegistration(true);
+  const bool identified = gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true);
+  setFujifilmSecureRegistration(false);
+  if (!identified) {
     ESP_LOGI(LOG_TAG, "Failed to send identifier");
     return false;
   }
