@@ -121,6 +121,12 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   void setDelayRegistrationConnParamsUntilFastRequest(bool delay);
   void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
   void requestConnParamsDuringConnect(const ble_gap_upd_params &params);
+  // Model a Secure camera that sends its required registration parameters
+  // while CCCD discovery is still in progress.  Real cameras may defer this
+  // request until the first indication subscription.
+  void requestConnParamsOnSubscribe(const NimBLEUUID &service,
+                                    const NimBLEUUID &characteristic,
+                                    const ble_gap_upd_params &params);
   bool registrationConnParamsAccepted() const;
   bool tokenAccepted() const;
   bool configured() const;
@@ -200,6 +206,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_DelayRegistrationConnParamsUntilFastRequest = false;
   bool m_ConnParamsNegotiated = false;
   bool m_RequestConnParamsDuringConnect = false;
+  bool m_RequestConnParamsOnSubscribe = false;
+  NimBLEUUID m_ConnParamsSubscribeService;
+  NimBLEUUID m_ConnParamsSubscribeCharacteristic;
   ble_gap_upd_params m_RegistrationConnParams {};
   bool m_RegistrationConnParamsAccepted = false;
   bool m_StaleSubscribeSession = false;

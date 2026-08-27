@@ -253,6 +253,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_StaleSubscribeSession = false;
   m_RequireLongConnParamsAfterIdentifier = false;
   m_DelayRegistrationConnParamsUntilFastRequest = false;
+  m_RequestConnParamsOnSubscribe = false;
 }
 
 bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -485,6 +486,20 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
     return false;
   }
 
+  // A real Secure camera can defer its registration connection-parameter
+  // request until the first indication CCCD is enabled.  Exercise that timing
+  // explicitly: rejecting the request must sever the link, as the camera does
+  // when its registration contract is not met.
+  if (m_RequestConnParamsOnSubscribe && (service == m_ConnParamsSubscribeService)
+      && (characteristic == m_ConnParamsSubscribeCharacteristic) && !m_ConnParamsNegotiated) {
+    m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(m_RegistrationConnParams);
+    if (!m_RegistrationConnParamsAccepted) {
+      client.mockDropLink(0x08, true);
+      return false;
+    }
+    m_ConnParamsNegotiated = true;
+  }
+
   if (isDropOnSubscribe(service, characteristic)) {
     m_DroppedLink = true;
     client.mockDropLink(0x08, true);
@@ -529,6 +544,15 @@ void FujifilmVirtualCamera::setDelayRegistrationConnParamsUntilFastRequest(bool 
 void FujifilmVirtualCamera::requestConnParamsDuringConnect(const ble_gap_upd_params &params) {
   m_RegistrationConnParams = params;
   m_RequestConnParamsDuringConnect = true;
+}
+
+void FujifilmVirtualCamera::requestConnParamsOnSubscribe(const NimBLEUUID &service,
+                                                         const NimBLEUUID &characteristic,
+                                                         const ble_gap_upd_params &params) {
+  m_ConnParamsSubscribeService = service;
+  m_ConnParamsSubscribeCharacteristic = characteristic;
+  m_RegistrationConnParams = params;
+  m_RequestConnParamsOnSubscribe = true;
 }
 
 bool FujifilmVirtualCamera::registrationConnParamsAccepted() const {

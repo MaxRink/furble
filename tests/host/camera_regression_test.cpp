@@ -96,6 +96,27 @@ bool testDelayedRegistrationParameterRequest() {
                "delayed Secure registration parameters remain inside the narrow gate");
 }
 
+bool testRegistrationParameterRequestDuringSubscription() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  ble_gap_upd_params params = {};
+  params.itvl_min = 24;
+  params.itvl_max = 40;
+  params.latency = 0;
+  params.supervision_timeout = 2000;
+  peer.requestConnParamsOnSubscribe(
+      Furble::Host::FujifilmVirtualCamera::configurationServiceUUID(),
+      Furble::Host::FujifilmVirtualCamera::configurationIndication1UUID(), params);
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+  return check(camera.connect(ESP_PWR_LVL_P3, 1000),
+               "Secure registration accepts a deferred parameter request during subscription");
+}
+
 bool testNullAndMissingIdentifierBoundaries() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -219,6 +240,7 @@ bool testRicohBondPolicy() {
 int main() {
   return testRegistrationTimeoutException() && testRegistrationFastProfileTimeout()
                  && testDelayedRegistrationParameterRequest()
+                 && testRegistrationParameterRequestDuringSubscription()
                  && testNullAndMissingIdentifierBoundaries() && testNullNikonCallbacks()
                  && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
              ? 0

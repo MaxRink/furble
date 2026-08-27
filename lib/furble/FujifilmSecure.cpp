@@ -206,10 +206,12 @@ bool FujifilmSecure::_connect(void) {
     }
     vTaskDelay(connParamsPoll);
   }
-  // The camera may defer its required over-cap request until after the
-  // identifier response. Keep the narrow exception active through the
-  // asynchronous FAST transition, then close it before normal discovery.
-  registrationGuard.reset();
+  // Keep the registration exception active through all discovery. A Secure
+  // camera may defer its required peer connection parameters until the first
+  // indication CCCD is enabled; closing the gate here makes the camera stop
+  // responding during discovery and the link then expires at the short FAST
+  // supervision timeout. The guard is released after the shutter
+  // characteristic has been discovered below.
   m_Progress += 5;
 
   const std::array<sub_t, 6> subscription0 = {
@@ -299,6 +301,8 @@ bool FujifilmSecure::_connect(void) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter characteristic");
     return false;
   }
+
+  registrationGuard.reset();
 
   m_Progress = 100;
 
