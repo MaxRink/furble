@@ -254,6 +254,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_RequireLongConnParamsAfterIdentifier = false;
   m_DelayRegistrationConnParamsUntilFastRequest = false;
   m_RequestConnParamsOnSubscribe = false;
+  m_RejectFastBeforeShutterDiscovery = false;
 }
 
 bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -270,6 +271,7 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
   m_ConnParamsNegotiated = false;
   m_DroppedLink = false;
   m_AccessAfterDrop = 0;
+  m_ShutterCharacteristicRequested = false;
   m_Subscriptions.clear();
   if (m_RequestConnParamsDuringConnect) {
     m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(m_RegistrationConnParams);
@@ -328,6 +330,7 @@ bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
            || matches(characteristic, SECURE_SYNC_INTERVAL_UUID);
   }
   if (matches(service, shutterServiceUUID())) {
+    const_cast<FujifilmVirtualCamera *>(this)->m_ShutterCharacteristicRequested = true;
     return matches(characteristic, shutterCharacteristicUUID());
   }
   if (matches(service, geotagServiceUUID())) {
@@ -541,6 +544,10 @@ void FujifilmVirtualCamera::setDelayRegistrationConnParamsUntilFastRequest(bool 
   }
 }
 
+void FujifilmVirtualCamera::setRejectFastBeforeShutterDiscovery(bool reject) {
+  m_RejectFastBeforeShutterDiscovery = reject;
+}
+
 void FujifilmVirtualCamera::requestConnParamsDuringConnect(const ble_gap_upd_params &params) {
   m_RegistrationConnParams = params;
   m_RequestConnParamsDuringConnect = true;
@@ -572,6 +579,11 @@ bool FujifilmVirtualCamera::updateConnectionParams(NimBLEClient &client,
       return false;
     }
     m_ConnParamsNegotiated = true;
+  }
+  if (m_RejectFastBeforeShutterDiscovery && !m_ShutterCharacteristicRequested
+      && timeout == (2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT)) {
+    client.mockDropLink(0x08, true);
+    return false;
   }
   (void)min_interval;
   (void)max_interval;

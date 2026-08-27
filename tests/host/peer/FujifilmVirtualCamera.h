@@ -127,6 +127,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   void requestConnParamsOnSubscribe(const NimBLEUUID &service,
                                     const NimBLEUUID &characteristic,
                                     const ble_gap_upd_params &params);
+  // Some Secure cameras drop the link if the central switches away from the
+  // registration profile before shutter-service discovery is complete.
+  void setRejectFastBeforeShutterDiscovery(bool reject);
   bool registrationConnParamsAccepted() const;
   bool tokenAccepted() const;
   bool configured() const;
@@ -207,6 +210,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_ConnParamsNegotiated = false;
   bool m_RequestConnParamsDuringConnect = false;
   bool m_RequestConnParamsOnSubscribe = false;
+  bool m_RejectFastBeforeShutterDiscovery = false;
+  bool m_ShutterCharacteristicRequested = false;
   NimBLEUUID m_ConnParamsSubscribeService;
   NimBLEUUID m_ConnParamsSubscribeCharacteristic;
   ble_gap_upd_params m_RegistrationConnParams {};

@@ -188,30 +188,6 @@ bool FujifilmSecure::_connect(void) {
     return false;
   }
   ESP_LOGI(LOG_TAG, "Identified!");
-  if (!requestFujifilmSecureFastProfile()) {
-    ESP_LOGI(LOG_TAG, "Failed to request fast connection profile");
-    return false;
-  }
-  // updateConnParams() reports request acceptance, not controller completion.
-  // Wait for the live parameters before proceeding, with a short hard bound so
-  // a camera that ignores the update cannot stall registration indefinitely.
-  constexpr TickType_t connParamsPoll = pdMS_TO_TICKS(10);
-  constexpr TickType_t connParamsTimeout = pdMS_TO_TICKS(1000);
-  const TickType_t connParamsStarted = xTaskGetTickCount();
-  while (!confirmFujifilmSecureFastProfile()) {
-    if (!registrationAlive()
-        || static_cast<TickType_t>(xTaskGetTickCount() - connParamsStarted) >= connParamsTimeout) {
-      ESP_LOGI(LOG_TAG, "Failed to apply fast connection profile");
-      return false;
-    }
-    vTaskDelay(connParamsPoll);
-  }
-  // Keep the registration exception active through all discovery. A Secure
-  // camera may defer its required peer connection parameters until the first
-  // indication CCCD is enabled; closing the gate here makes the camera stop
-  // responding during discovery and the link then expires at the short FAST
-  // supervision timeout. The guard is released after the shutter
-  // characteristic has been discovered below.
   m_Progress += 5;
 
   const std::array<sub_t, 6> subscription0 = {
@@ -300,6 +276,26 @@ bool FujifilmSecure::_connect(void) {
   if (m_Shutter == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter characteristic");
     return false;
+  }
+
+  // A Secure camera may require its long registration profile until all GATT
+  // discovery is complete. Request FAST only after the shutter characteristic
+  // exists; doing it before discovery causes some cameras to stop responding
+  // and the link to expire at the short FAST supervision timeout.
+  if (!requestFujifilmSecureFastProfile()) {
+    ESP_LOGI(LOG_TAG, "Failed to request fast connection profile");
+    return false;
+  }
+  constexpr TickType_t connParamsPoll = pdMS_TO_TICKS(10);
+  constexpr TickType_t connParamsTimeout = pdMS_TO_TICKS(1000);
+  const TickType_t connParamsStarted = xTaskGetTickCount();
+  while (!confirmFujifilmSecureFastProfile()) {
+    if (!registrationAlive()
+        || static_cast<TickType_t>(xTaskGetTickCount() - connParamsStarted) >= connParamsTimeout) {
+      ESP_LOGI(LOG_TAG, "Failed to apply fast connection profile");
+      return false;
+    }
+    vTaskDelay(connParamsPoll);
   }
 
   registrationGuard.reset();
