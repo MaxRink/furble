@@ -15,6 +15,16 @@ Scan &Scan::getInstance(void) {
 
 void Scan::setMode(Mode) {}
 
+void Scan::setStartProbe(std::function<void()> probe) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  m_StartProbe = std::move(probe);
+}
+
+bool Scan::startProbeBlocked(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_StartProbeBlocked;
+}
+
 void Scan::setTimeout(uint32_t timeout) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   m_Deadline = Sim::clockMillis() + timeout * 1000U;
