@@ -52,6 +52,7 @@ class UI {
 #include <atomic>
 #include <initializer_list>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -62,6 +63,7 @@ class UI {
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
+#include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "interval.h"
 
@@ -133,6 +135,9 @@ class UI {
 
   /** Re-read the cached auto-off and low battery settings. */
   void reloadPowerPolicies(void);
+
+  /** Hold off automatic CPU/light sleep while the battery is charging. */
+  void updateChargingPowerPolicy(void);
 
   /**
    * Display/hide navigation bar.
@@ -694,6 +699,8 @@ class UI {
   // cached policy settings, refreshed by the rollers and the console
   uint8_t m_AutoOffSetting = 0;
   uint8_t m_LowBattSetting = 0;
+  bool m_AutoOffChargingSetting = false;
+  std::optional<Power::Lock> m_ChargingSleepLock;
 
   uint32_t m_LowBatterySampleSeen = 0;
   uint8_t m_LowBatteryWarnCount = 0;

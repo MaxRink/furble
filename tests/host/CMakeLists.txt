@@ -214,6 +214,10 @@ target_include_directories(camera_list_protocol_test PRIVATE ${FURBLE_ROOT}/lib/
 target_compile_options(camera_list_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
 
+add_executable(auto_off_policy_test auto_off_policy_test.cpp)
+target_include_directories(auto_off_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(auto_off_policy_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(fujifilm_protocol_test
                fujifilm_protocol_test.cpp
                ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
@@ -726,6 +730,7 @@ if(BUILD_TESTING)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
+  add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)

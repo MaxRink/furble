@@ -26,6 +26,7 @@
 
 #include "icons.h"
 
+#include "FurbleAutoOff.h"
 #include "FurbleBootScreen.h"
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
@@ -1601,6 +1602,16 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
           SD::getInstance().request(SD::request_t::RELOAD);
         },
         LV_EVENT_VALUE_CHANGED, NULL);
+  }
+
+  if (setting == Settings::AUTO_OFF_CHARGING) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->reloadPowerPolicies();
+        },
+        LV_EVENT_VALUE_CHANGED, this);
   }
 
   if (setting == Settings::SHOW_TITLE) {
@@ -6162,6 +6173,8 @@ void UI::addPowerMenu(const menu_t &parent) {
       LV_EVENT_VALUE_CHANGED, this);
 
   if (policies) {
+    addSettingItem(menu.page, NULL, Settings::AUTO_OFF_CHARGING);
+
     lv_obj_t *autoOff = addPowerRoller("Auto off", "Never\n5 mins\n10 mins\n30 mins\n60 mins");
     uint8_t minutes = Settings::load<Settings::AUTO_OFF>();
     auto autoOffIt = std::find(m_AutoOffMinutes.begin(), m_AutoOffMinutes.end(), minutes);
@@ -7152,6 +7165,7 @@ void UI::processInactivity(void) {
 void UI::reloadPowerPolicies(void) {
   m_AutoOffSetting = Settings::load<Settings::AUTO_OFF>();
   m_LowBattSetting = Settings::load<Settings::LOW_BATT>();
+  m_AutoOffChargingSetting = Settings::load<Settings::AUTO_OFF_CHARGING>();
 
   // a policy change restarts the whole evaluation, including the warn latch
   m_LowBatteryWarned = false;
@@ -7161,22 +7175,35 @@ void UI::reloadPowerPolicies(void) {
   closeLowBatteryWarning();
 }
 
+void UI::updateChargingPowerPolicy(void) {
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  const bool charging = caps.charging && m_Status.battery.charging;
+  if (charging && !m_ChargingSleepLock.has_value()) {
+    m_ChargingSleepLock.emplace(Power::LockType::NO_LIGHT_SLEEP, "charging");
+  } else if (!charging && m_ChargingSleepLock.has_value()) {
+    m_ChargingSleepLock.reset();
+  }
+}
+
 void UI::processAutoOff(void) {
+  updateChargingPowerPolicy();
   if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
     return;
   }
 
   // STATE_IDLE also covers an active discovery scan, do not cut it short
-  if ((m_AutoOffSetting == 0) || (Control::getInstance().getState() != Control::STATE_IDLE)
-      || Scan::getInstance().isActive()) {
+  const auto &caps = Platform::getInstance().getBatteryCaps();
+  const bool charging = caps.charging && m_Status.battery.charging;
+  if (!caps.charging
+      || !AutoOff::shouldPowerOff(
+          m_AutoOffSetting, Control::getInstance().getState() == Control::STATE_IDLE,
+          Scan::getInstance().isActive(), lv_disp_get_inactive_time(m_Display), charging,
+          m_AutoOffChargingSetting)) {
     return;
   }
 
-  uint32_t timeout = static_cast<uint32_t>(m_AutoOffSetting) * 60000;
-  if (lv_disp_get_inactive_time(m_Display) >= timeout) {
-    ESP_LOGI("ui", "Auto power off after %u minutes idle.", m_AutoOffSetting);
-    doPowerOff();
-  }
+  ESP_LOGI("ui", "Auto power off after %u minutes idle.", m_AutoOffSetting);
+  doPowerOff();
 }
 
 void UI::showLowBatteryWarning(bool powerOff) {
