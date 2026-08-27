@@ -58,7 +58,7 @@ bool Nikon::matchesServiceUUID(const NimBLEAdvertisedDevice *pDevice) {
 bool Nikon::matches(const NimBLEAdvertisedDevice *pDevice) {
   return pDevice != nullptr
          && AdvertisementProtocol::matchesNikonDiscovery(pDevice->haveManufacturerData(),
-                                                      matchesServiceUUID(pDevice));
+                                                         matchesServiceUUID(pDevice));
 }
 
 void Nikon::onResult(const NimBLEAdvertisedDevice *pDevice) {

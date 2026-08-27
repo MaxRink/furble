@@ -3,6 +3,8 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <cstring>
 
@@ -181,9 +183,23 @@ bool FujifilmSecure::_connect(void) {
     return false;
   }
   ESP_LOGI(LOG_TAG, "Identified!");
-  if (!restoreFujifilmSecureFastProfile()) {
-    ESP_LOGI(LOG_TAG, "Failed to restore fast connection profile");
+  if (!requestFujifilmSecureFastProfile()) {
+    ESP_LOGI(LOG_TAG, "Failed to request fast connection profile");
     return false;
+  }
+  // updateConnParams() reports request acceptance, not controller completion.
+  // Wait for the live parameters before proceeding, with a short hard bound so
+  // a camera that ignores the update cannot stall registration indefinitely.
+  constexpr TickType_t connParamsPoll = pdMS_TO_TICKS(10);
+  constexpr TickType_t connParamsTimeout = pdMS_TO_TICKS(1000);
+  const TickType_t connParamsStarted = xTaskGetTickCount();
+  while (!confirmFujifilmSecureFastProfile()) {
+    if (!registrationAlive()
+        || static_cast<TickType_t>(xTaskGetTickCount() - connParamsStarted) >= connParamsTimeout) {
+      ESP_LOGI(LOG_TAG, "Failed to apply fast connection profile");
+      return false;
+    }
+    vTaskDelay(connParamsPoll);
   }
   m_Progress += 5;
 

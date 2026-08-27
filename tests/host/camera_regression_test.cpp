@@ -29,6 +29,7 @@ bool testRegistrationTimeoutException() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
+  camera.setConnSaverEnabled(true);
   if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "Fujifilm registration completes"))
     return false;
   if (!check(peer.registrationConnParamsAccepted(),
@@ -36,6 +37,12 @@ bool testRegistrationTimeoutException() {
     return false;
   NimBLEClient *client = NimBLEDevice::lastClient();
   if (!check(client != nullptr, "registration leaves a client"))
+    return false;
+  if (!check(client->mockConnInfoReadCount() >= 2,
+             "Secure registration waits for the asynchronous parameter update"))
+    return false;
+  if (!check(!client->mockConnParamUpdatePending(),
+             "Secure registration observes the controller-applied parameters"))
     return false;
   ble_gap_upd_params overCap = {};
   overCap.itvl_min = 200;
@@ -47,11 +54,30 @@ bool testRegistrationTimeoutException() {
   const NimBLEConnInfo effective = client->getConnInfo();
   if (!check(effective.getConnInterval() >= BLE_GAP_INITIAL_CONN_ITVL_MIN
                  && effective.getConnInterval() <= BLE_GAP_INITIAL_CONN_ITVL_MAX
-                 && effective.getConnLatency() == 1 && effective.getConnTimeout() <= 700,
-             "bounded fast profile is live after secure registration"))
+                 && effective.getConnLatency() == 1
+                 && effective.getConnTimeout() == (2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT),
+             "exact fast profile is live after secure registration"))
     return false;
   camera.shutterPress();
-  return check(!peer.writes().empty(), "shutter remains usable after timeout rejection");
+  if (!check(!peer.writes().empty(), "shutter remains usable after timeout rejection"))
+    return false;
+  return check(camera.setConnProfile(Furble::Camera::ConnProfile::IDLE),
+               "confirmed fast transition releases the peer override for idle");
+}
+
+bool testRegistrationFastProfileTimeout() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  peer.setRequireLongConnParamsAfterIdentifier(true);
+  NimBLEDevice::setMockPeer(&peer);
+  NimBLEDevice::setConnParamApplyDelayReads(1000);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+  return check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+               "Secure registration is bounded when FAST never applies");
 }
 
 bool testNullNikonCallbacks() {
@@ -153,8 +179,9 @@ bool testRicohBondPolicy() {
 }  // namespace
 
 int main() {
-  return testRegistrationTimeoutException() && testNullNikonCallbacks()
-                 && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
+  return testRegistrationTimeoutException() && testRegistrationFastProfileTimeout()
+                 && testNullNikonCallbacks() && testSecureRegistrationDropStopsGATT()
+                 && testRicohBondPolicy()
              ? 0
              : 1;
 }

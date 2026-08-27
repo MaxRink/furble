@@ -257,8 +257,11 @@ class Camera: public NimBLEClientCallbacks {
   /** Gate Fujifilm Secure's initial registration parameter request. */
   void setFujifilmSecureRegistration(bool in_progress);
 
-  /** Restore and verify the bounded live profile after Secure registration. */
-  bool restoreFujifilmSecureFastProfile();
+  /** Request the bounded live profile after Secure registration. */
+  bool requestFujifilmSecureFastProfile();
+
+  /** Confirm the controller applied the exact Secure FAST profile. */
+  bool confirmFujifilmSecureFastProfile();
 
   /**
    * Disconnect from the target.

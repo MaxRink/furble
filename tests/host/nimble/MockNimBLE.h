@@ -328,13 +328,23 @@ class NimBLEClient {
   // result so a test can assert the accept or reject decision.
   bool mockPeerRequestConnParams(const ble_gap_upd_params &params);
 
+  // Central-initiated connection updates are asynchronous in NimBLE. Expose
+  // enough state for the regression test to prove production waited for the
+  // controller result instead of rereading the old parameters immediately.
+  size_t mockConnInfoReadCount() const;
+  bool mockConnParamUpdatePending() const;
+
  private:
   friend class NimBLEDevice;
 
   NimBLEClientCallbacks *m_Callbacks = nullptr;
   NimBLEMockPeer *m_Peer = nullptr;
   NimBLEAddress m_Address;
-  NimBLEConnInfo m_ConnInfo;
+  mutable NimBLEConnInfo m_ConnInfo;
+  mutable NimBLEConnInfo m_PendingConnInfo;
+  mutable size_t m_ConnInfoReadCount = 0;
+  mutable size_t m_PendingConnInfoReads = 0;
+  mutable bool m_ConnParamUpdatePending = false;
   uint32_t m_ConnectTimeout = 0;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
@@ -449,6 +459,10 @@ class NimBLEDevice {
   // during the outage are dropped, not buffered on the control queue and replayed.
   // resetMock clears it.
   static void setConnectDelayMs(uint32_t ms);
+  // Delay a central connection update for this many getConnInfo() reads. The
+  // default is one stale read. Large values model a peer/controller that never
+  // applies the accepted request within the production registration bound.
+  static void setConnParamApplyDelayReads(size_t reads);
   // Number of NimBLE clients currently live (created minus deleted). A leak
   // shows up as this count growing across failed connect attempts.
   static size_t liveClientCount();

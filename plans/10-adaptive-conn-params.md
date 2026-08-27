@@ -281,8 +281,14 @@ Review fixes (deep review of the first branch revision):
   timeout cap. The callback accepts the camera's initial over-cap request only
   while the Secure identifier write is in progress; Basic and all steady-state
   requests remain capped. The Secure handshake then requests the bounded FAST
-  profile immediately after the identifier write and verifies the live
-  interval, latency, timeout, and link state before continuing discovery.
+  profile immediately after the identifier write. `updateConnParams()` only
+  confirms that NimBLE queued the request, so the handshake waits up to one
+  second for the controller's asynchronous result. It requires the exact FAST
+  latency and supervision timeout, then clears the registration peer override
+  so the normal inactivity path can later request IDLE. The host NimBLE double
+  deliberately leaves the old parameters visible for its first read, which
+  makes an immediate request-and-reread implementation fail the regression.
+  The handshake verifies link state before continuing discovery.
   Registration also aborts at each GATT boundary when the peer disconnects, so
   a half-open Secure session cannot continue issuing requests or block control
   recovery.
@@ -292,6 +298,18 @@ Review fixes (deep review of the first branch revision):
   comparison can complete. Saved reconnects retain their bond on failure. An
   inline retry from the security callback would re-enter NimBLE while the
   connect/client lifetime is still owned by the current attempt.
+
+- The cancellation lifetime audit remains a separate follow-up. `Control`
+  still uses `volatile` rather than synchronised state for `m_Stopped`,
+  `m_ConnectAbort`, and `m_ConnectInProgress`; it also publishes
+  `m_ConnectCamera` and raw target snapshots across task boundaries with mixed
+  locking. `Camera` link/client state is shared between NimBLE callbacks and
+  control tasks under several different locks. Fixing only one read or adding a
+  delay would leave the ownership problem intact. This camera compatibility
+  patch therefore does not add a second callback proxy, deferred deletion, or
+  client quarantine. The follow-up needs one explicit client owner, atomic or
+  consistently locked cancellation state, and race-focused host tests before
+  changing those lifetimes.
 
 - Connect no longer runs at the idle interval. The idle request on
   `onConnect()` is gone and `Camera::connect()` sets a connect-in-progress

@@ -294,26 +294,47 @@ void Camera::setFujifilmSecureRegistration(bool in_progress) {
   m_FujifilmSecureRegistration = in_progress;
 }
 
-bool Camera::restoreFujifilmSecureFastProfile() {
+bool Camera::requestFujifilmSecureFastProfile() {
   if (m_Client == nullptr || !m_Connected) {
     return false;
   }
 
-  // The Secure peer may have installed its long registration timeout. Request
-  // the bounded profile before the remaining discovery/subscription work so a
-  // live link can never carry that timeout into the session.
+  // The Secure peer may have installed its long registration timeout. NimBLE
+  // only queues this update. FujifilmSecure waits separately for the controller
+  // to expose the exact live profile.
   m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout);
-  const bool requested = m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval,
-                                                    m_FastLatency, m_FastTimeout);
-  const NimBLEConnInfo info = m_Client->getConnInfo();
-  const bool applied = requested && m_Connected && (info.getConnInterval() >= m_FastMinInterval)
-                       && (info.getConnInterval() <= m_FastMaxInterval)
-                       && (info.getConnLatency() == m_FastLatency)
-                       && (info.getConnTimeout() <= m_IdleTimeout);
-  if (!applied) {
-    ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was not applied");
+  if (!m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency,
+                                  m_FastTimeout)) {
+    ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was rejected");
+    return false;
   }
-  return applied;
+  return true;
+}
+
+bool Camera::confirmFujifilmSecureFastProfile() {
+  if (!m_Connected || (m_Client == nullptr) || !m_Client->isConnected()) {
+    return false;
+  }
+
+  const NimBLEConnInfo info = m_Client->getConnInfo();
+  const bool applied =
+      (info.getConnInterval() >= m_FastMinInterval) && (info.getConnInterval() <= m_FastMaxInterval)
+      && (info.getConnLatency() == m_FastLatency) && (info.getConnTimeout() == m_FastTimeout);
+  if (!applied) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
+  // The accepted registration request marks the live profile as peer-owned.
+  // Once our exact FAST profile is confirmed, return ownership to the saver so
+  // its normal inactivity transition can later request IDLE.
+  m_PeerOverride = false;
+  m_LastRequestedProfile = ConnProfile::FAST;
+  m_LastRequestMs = connectionTimeMs();
+  m_LastRequestValid = true;
+  m_LastRequestSucceeded = true;
+  m_LastConnActivityMs = m_LastRequestMs;
+  return true;
 }
 
 void Camera::setConnSaverEnabled(bool enabled) {
