@@ -7194,11 +7194,10 @@ void UI::processAutoOff(void) {
   // STATE_IDLE also covers an active discovery scan, do not cut it short
   const auto &caps = Platform::getInstance().getBatteryCaps();
   const bool charging = caps.charging && m_Status.battery.charging;
-  if (!caps.charging
-      || !AutoOff::shouldPowerOff(
-          m_AutoOffSetting, Control::getInstance().getState() == Control::STATE_IDLE,
-          Scan::getInstance().isActive(), lv_disp_get_inactive_time(m_Display), charging,
-          m_AutoOffChargingSetting)) {
+  if (!AutoOff::shouldPowerOff(m_AutoOffSetting,
+                               Control::getInstance().getState() == Control::STATE_IDLE,
+                               Scan::getInstance().isActive(), lv_disp_get_inactive_time(m_Display),
+                               charging, m_AutoOffChargingSetting)) {
     return;
   }
 

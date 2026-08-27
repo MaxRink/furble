@@ -794,11 +794,6 @@ std::string queryValue(const std::string &key) {
   if (key == "platform.light_sleep") {
     return esp_pm_sim_light_sleep_allowed() ? "yes" : "no";
   }
-  if (key == "platform.deep_sleep") {
-    // The simulator has no deep-sleep entry point; powerOff is modeled
-    // separately so scenarios can assert both shutdown surfaces.
-    return "no";
-  }
   if (prefixed("platform.battery.")) {
     const std::string field = key.substr(std::char_traits<char>::length("platform.battery."));
     if (field == "level") {

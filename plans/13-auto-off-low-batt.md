@@ -158,7 +158,8 @@ sampled charging state also owns a `NO_LIGHT_SLEEP` lock, so display-off may
 still happen but automatic CPU/light sleep cannot begin while charging. The
 simulator exposes the charging sample and power-off/light-sleep assertions in
 `autooff-charging-safe.txt` and `autooff-charging-opt-in.txt`; both scripts
-advance beyond the inactivity and auto-off timers.
+advance beyond the inactivity and auto-off timers and assert the production
+power-off and light-sleep surfaces.
 
 Auto off roller index to stored minutes:
 

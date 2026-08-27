@@ -9,5 +9,5 @@ wait 300
 advance 90000
 assert platform.battery.charging yes
 assert platform.power_off yes
-assert platform.deep_sleep no
+assert platform.light_sleep no
 exit
