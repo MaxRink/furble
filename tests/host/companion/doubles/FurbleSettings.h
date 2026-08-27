@@ -60,6 +60,7 @@ class Settings {
     BUTTON_MODE,
     AUTO_OFF,
     LOW_BATT,
+    AUTO_OFF_CHARGING,
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,

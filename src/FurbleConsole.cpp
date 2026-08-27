@@ -516,6 +516,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -566,7 +567,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   // build runs no auto off or low battery policy loop, so there is nothing to
   // reload there.
 #if !defined(FURBLE_NO_DISPLAY)
-  if ((setting.type == Settings::AUTO_OFF) || (setting.type == Settings::LOW_BATT)) {
+  if ((setting.type == Settings::AUTO_OFF) || (setting.type == Settings::LOW_BATT)
+      || (setting.type == Settings::AUTO_OFF_CHARGING)) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
 #endif

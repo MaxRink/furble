@@ -178,6 +178,7 @@ std::vector<SettingCase> settingCases() {
        std::string {Settings::BUTTON_MODE_ONE_BUTTON_VALUE},                                                                                StorageKind::STRING},
       {Settings::AUTO_OFF,          "AUTO_OFF",          uint8_t {0},                                          uint8_t {17},                StorageKind::U8    },
       {Settings::LOW_BATT,          "LOW_BATT",          uint8_t {0},                                          uint8_t {23},                StorageKind::U8    },
+      {Settings::AUTO_OFF_CHARGING, "AUTO_OFF_CHARGING", false,                                                true,                        StorageKind::BOOL  },
       {Settings::SD_GPX,            "SD_GPX",            false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPX_PERIOD,        "GPX_PERIOD",        uint16_t {Settings::GPX_PERIOD_DEFAULT},              uint16_t {30},
        StorageKind::U16                                                                                                                                        },
@@ -237,6 +238,7 @@ ASSERT_STORAGE_TYPE(PRESET_PICKER, bool);
 ASSERT_STORAGE_TYPE(BUTTON_MODE, std::string);
 ASSERT_STORAGE_TYPE(AUTO_OFF, uint8_t);
 ASSERT_STORAGE_TYPE(LOW_BATT, uint8_t);
+ASSERT_STORAGE_TYPE(AUTO_OFF_CHARGING, bool);
 ASSERT_STORAGE_TYPE(SD_GPX, bool);
 ASSERT_STORAGE_TYPE(GPX_PERIOD, uint16_t);
 ASSERT_STORAGE_TYPE(BOOT_SPLASH, bool);
@@ -304,6 +306,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

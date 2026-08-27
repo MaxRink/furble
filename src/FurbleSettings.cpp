@@ -60,6 +60,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
     {AUTO_OFF,          {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
     {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
+    {AUTO_OFF_CHARGING,
+     {AUTO_OFF_CHARGING, 43, "Auto off while charging", "autooff_charge", FURBLE_STR}        },
     {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
     {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
     {BOOT_SPLASH,       {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
@@ -124,6 +126,7 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_VOLUME:
     case AUTO_OFF:
     case LOW_BATT:
+    case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
 #if !defined(FURBLE_NO_DISPLAY)
@@ -206,6 +209,7 @@ bool Settings::isDangerous(type_t type) {
     case BUTTON_MODE:
     case AUTO_OFF:
     case LOW_BATT:
+    case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
     case BOOT_SPLASH:
@@ -478,6 +482,9 @@ void Settings::init(void) {
         case AUTO_OFF:
         case LOW_BATT:
           save<uint8_t>(setting.type, 0);
+          break;
+        case AUTO_OFF_CHARGING:
+          save<bool>(setting.type, false);
           break;
         case BATT_STYLE:
           save<uint8_t>(setting.type, BATT_STYLE_ICON);
