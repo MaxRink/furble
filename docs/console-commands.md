@@ -12,6 +12,11 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug -t upload
 pio device monitor -e m5stick-s3-debug
 ```
 
+The OTA application image is flashed at `0x20000`. This is also enforced for
+no-build uploads, so a previously built `firmware.bin` can be uploaded without
+falling back to PlatformIO's old `0x10000` default. The generated
+`.pio/build/<env>/flash_args` file is the authoritative complete image map.
+
 Log output shares the port, so `log * warn` is usually the first thing worth
 typing. Every command prints one fact per line as `key: value`, so a host script
 can parse it with a split on the first colon.
