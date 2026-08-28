@@ -335,8 +335,9 @@ button, so it was left alone.
 ### Simulator verification
 
 The device IMU is disabled in the simulator, so a FURBLE_SIM seam was added:
-`action nav level` / `nav imu`, a `level_accel x y z` injection that feeds a
-synthetic accel vector through `applyLevelSample`, an `action select` that
+`action nav level` / `nav imu`, shared `imu.accel` / `imu.roll` / `imu.pitch`
+injections that feed the production read path through the simulated IMU, an
+`action select` that
 activates the focused object (models a short OK press), and `simQueryState` keys
 `level_bubble_x`, `level_bubble_y`, `level_side_x`, `level_has_side` and
 `back_focused`.
@@ -558,8 +559,8 @@ New sim actions (all FURBLE_SIM only):
 - `imu.enable` / `imu.disable`: toggle the injected IMU enabled flag.
 
 Each level injection resets the level filter so the next timer tick settles to the
-exact injected orientation, keeping the bubble geometry deterministic. The older
-`level_accel` widget-level poke is kept as a low-level primitive.
+exact injected orientation, keeping the bubble geometry deterministic. There is
+no widget-level injection shortcut.
 
 New `simQueryState` observers: `level_bubble_visible` and `level_target_visible`
 (the bullseye and its target ring show only in portrait), `level_diameter` (the

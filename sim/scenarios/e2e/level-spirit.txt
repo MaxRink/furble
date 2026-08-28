@@ -47,6 +47,8 @@ action imu.accel 0 0 1
 wait 120
 assert ui.level_bubble_x 0
 assert ui.level_bubble_y 0
+assert_min ui.level_bubble_actual_x 1
+assert_min ui.level_bubble_actual_y 1
 assert ui.level_rotation 0
 
 # Small 6 degree roll: the circle bubble moves a lot, still portrait, no tube.
@@ -79,6 +81,7 @@ assert ui.level_side_visible yes
 assert ui.level_bubble_visible no
 assert ui.level_target_visible no
 assert ui.level_side_x 97
+assert_min ui.level_side_actual_x 1
 assert ui.level_root_width 240
 assert ui.level_root_height 135
 assert ui.level_side_on_screen yes
@@ -96,6 +99,7 @@ action imu.roll -70
 wait 200
 assert ui.level_rotation 270
 assert ui.level_side_x -97
+assert_min ui.level_side_actual_x 1
 assert ui.level_root_width 240
 assert ui.level_root_height 135
 assert ui.level_side_on_screen yes

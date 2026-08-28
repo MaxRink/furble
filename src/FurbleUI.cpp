@@ -2277,31 +2277,7 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
-  // Inject a synthetic accelerometer vector into the spirit level. The device
-  // IMU is disabled in the simulator, so this is the only way to exercise the
-  // level page. The filter is reset first so the reading settles to the exact
-  // injected tilt, which lets a scenario assert the bubble travel for a known
-  // small angle. Units are G, x y z, the same as M5.Imu.getAccel().
-  constexpr const char *ACCEL_PREFIX = "level_accel ";
-  if (command.compare(0, std::char_traits<char>::length(ACCEL_PREFIX), ACCEL_PREFIX) == 0) {
-    float accel[3] = {0.0f, 0.0f, 1.0f};
-    if (std::sscanf(command.c_str() + std::char_traits<char>::length(ACCEL_PREFIX), "%f %f %f",
-                    &accel[0], &accel[1], &accel[2])
-        == 3) {
-      if (m_Level.surface != nullptr) {
-        lv_obj_update_layout(m_Level.surface);
-      }
-      if (m_Level.sideTube != nullptr) {
-        lv_obj_update_layout(m_Level.sideTube);
-      }
-      m_Level.filterReady = false;
-      applyLevelSample(&m_Level, accel);
-    }
-    return;
-  }
-
-  // General IMU injection. Unlike level_accel, which pokes the level widget
-  // directly, these set the shared sim IMU state that the firmware reads through
+  // General IMU injection. These set the shared sim IMU state that the firmware reads through
   // the same M5.Imu surface. The level timer, the diagnostics live page and the
   // later motion features all pick it up. The level filter is reset so the next
   // timer tick settles to the exact injected orientation, which keeps the bubble
@@ -3672,7 +3648,7 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(x - anchor);
   }
 
-  // Spirit level bubble geometry, driven by the level_accel injection action.
+  // Spirit level bubble geometry, driven by the shared IMU injection action.
   // The circle bubble carries roll on X and pitch on Y, the side tube carries
   // roll only. A scenario asserts a small tilt produces a visible offset, so a
   // regression to the coarse sensitivity fails here.
@@ -3682,8 +3658,20 @@ std::string UI::simQueryState(const char *key) {
   if (query == "level_bubble_y") {
     return std::to_string(m_Level.bubbleY);
   }
+  // Actual child coordinates verify that the widget remains centered and that
+  // bubbleX/bubbleY are alignment offsets, not absolute top-left positions.
+  if (query == "level_bubble_actual_x") {
+    return m_Level.bubble != nullptr ? std::to_string(lv_obj_get_x(m_Level.bubble)) : "none";
+  }
+  if (query == "level_bubble_actual_y") {
+    return m_Level.bubble != nullptr ? std::to_string(lv_obj_get_y(m_Level.bubble)) : "none";
+  }
   if (query == "level_side_x") {
     return std::to_string(m_Level.sideBubbleX);
+  }
+  if (query == "level_side_actual_x") {
+    return m_Level.sideBubble != nullptr ? std::to_string(lv_obj_get_x(m_Level.sideBubble))
+                                         : "none";
   }
   if (query == "level_root_width") {
     return m_Level.root != nullptr ? std::to_string(lv_obj_get_width(m_Level.root)) : "none";
@@ -4986,7 +4974,8 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
   if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
     level->bubbleX = bubbleX;
     level->bubbleY = bubbleY;
-    lv_obj_set_pos(level->bubble, bubbleX, bubbleY);
+    // Preserve the center anchor and use the computed values as offsets.
+    lv_obj_align(level->bubble, LV_ALIGN_CENTER, bubbleX, bubbleY);
   }
 
   // Side view tube tracks roll only, with the same sensitivity curve.
@@ -4997,7 +4986,7 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
     int32_t sideX = static_cast<int32_t>(std::round(rollShaped * sideMax));
     if (level->sideBubbleX != sideX) {
       level->sideBubbleX = sideX;
-      lv_obj_set_pos(level->sideBubble, sideX, 0);
+      lv_obj_align(level->sideBubble, LV_ALIGN_CENTER, sideX, 0);
     }
   }
 
