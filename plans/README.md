@@ -164,6 +164,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [145-connect-context-initializer.md](145-connect-context-initializer.md) | Explicit initialization for the LVGL connection context |
 | [146-setstate-sleep-lock-order.md](146-setstate-sleep-lock-order.md) | Acquire the sleep lock before publishing the active control state |
 | [147-connect-reclaim-order.md](147-connect-reclaim-order.md) | Failed-connect reclaim ordering for the Ricoh secure-timeout use-after-free |
+| [148-teardown-connect-cancel.md](148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
 
 ## Design documents
 

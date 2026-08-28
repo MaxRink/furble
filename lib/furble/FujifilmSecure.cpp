@@ -127,6 +127,10 @@ bool FujifilmSecure::_connect(void) {
       ESP_LOGW(LOG_TAG, "Fujifilm Secure registration aborted after link loss");
       return false;
     }
+    if (connectCancelled()) {
+      ESP_LOGW(LOG_TAG, "Fujifilm Secure registration aborted by user cancel");
+      return false;
+    }
     return true;
   };
 
@@ -146,8 +150,16 @@ bool FujifilmSecure::_connect(void) {
     BaseType_t timeout = pdFALSE;
     do {
       timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(1000));
-    } while (scan.isActive() && !success);
+    } while (scan.isActive() && !success && !connectCancelled());
     scan.stop();
+
+    // The scan wait runs under Camera::m_Mutex like the rest of the attempt,
+    // so a user cancel must be able to abort it: this wait alone can exceed
+    // the interactive disconnect cap and strand the teardown.
+    if (connectCancelled()) {
+      ESP_LOGI(LOG_TAG, "Scan aborted by user cancel");
+      return false;
+    }
 
     if (timeout == pdFALSE) {
       ESP_LOGI(LOG_TAG, "Timeout waiting for camera");

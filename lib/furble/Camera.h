@@ -103,6 +103,27 @@ class Camera: public NimBLEClientCallbacks {
   void disconnect(void);
 
   /**
+   * Request cancellation of an in-flight connect attempt.
+   *
+   * Camera::connect() holds m_Mutex for the whole attempt, so a teardown that
+   * needs that mutex (Camera::disconnect() from the target task) blocks until
+   * the attempt unwinds. The long vendor waits inside _connect(), such as the
+   * 25 s Fujifilm registration wait, poll connectCancelled() and abort
+   * promptly once this is set, which bounds that block.
+   *
+   * Lock-free and safe from any task. Control::disconnect() sets it for every
+   * target; Control::connectAll(bool) clears it when the user starts a new
+   * connect cycle. Without this token a registration wait for an attempt that
+   * began inactive could not be cancelled at all: its only abort inputs were
+   * m_Connected (the camera holds the link up) and the isActive() flag (only
+   * honoured when the attempt began active), the plan 148 teardown wedge.
+   */
+  void cancelConnect(void);
+
+  /** Re-arm connect attempts after a cancelled cycle. */
+  void clearConnectCancel(void);
+
+  /**
    * Clear stale connection liveness before a fresh connect.
    *
    * A Camera in the persistent CameraList outlives its Control::Target. If a
@@ -264,6 +285,14 @@ class Camera: public NimBLEClientCallbacks {
   bool confirmFujifilmSecureFastProfile();
 
   /**
+   * Has cancelConnect() been requested for the current connect cycle?
+   *
+   * Vendor _connect() implementations poll this inside their long waits so a
+   * user disconnect aborts the attempt within one poll interval.
+   */
+  bool connectCancelled(void) const;
+
+  /**
    * Disconnect from the target.
    */
   virtual void _disconnect(void) = 0;
@@ -403,6 +432,14 @@ class Camera: public NimBLEClientCallbacks {
   // Read lock-free by isActive() and written by setActive()/disconnect() without
   // a shared lock discipline, so keep it atomic to remove the latent race.
   std::atomic<bool> m_Active = false;
+
+  // Connect cancellation token. Set lock-free by cancelConnect() from
+  // Control::disconnect(), polled by the vendor waits inside _connect(), and
+  // cleared by clearConnectCancel() when a new user connect cycle starts. Never
+  // cleared inside Camera::connect() itself: a cancel that lands between the
+  // connectAll() abort check and the attempt entering connect() must survive
+  // into the attempt, or the wait becomes uncancellable again.
+  std::atomic<bool> m_ConnectCancelled = false;
 
   static constexpr uint32_t m_ConnSaverIdleMs = 10 * 1000;
   static constexpr uint32_t m_ConnParamsUpdateGuardMs = 3 * 1000;

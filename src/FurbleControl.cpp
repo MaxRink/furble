@@ -311,7 +311,17 @@ void Control::task(void) {
           break;
         }
         setState(STATE_CONNECTING);
-        setState(connectAll());
+        {
+          const state_t next = connectAll();
+          // An aborted connect returns the state disconnect() owns. Never
+          // republish DISCONNECTING from here: disconnect() can move the
+          // machine to IDLE between connectAll() reading m_State and this
+          // store, and DISCONNECTING is terminal for the control task, so
+          // stamping it back would wedge the state machine until reboot.
+          if (next != STATE_DISCONNECTING) {
+            setState(next);
+          }
+        }
         break;
 
       case STATE_CONNECTING:
@@ -425,6 +435,17 @@ std::vector<Control::Target *> Control::getTargets(void) {
 }
 
 void Control::connectAll(bool infiniteReconnect) {
+  {
+    // A new user connect cycle re-arms every target camera. The cancel token
+    // set by a previous disconnect() must not leak into this cycle, and it is
+    // deliberately not cleared inside Camera::connect(): a cancel that lands
+    // just as an attempt starts has to survive into that attempt.
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto &target : m_Targets) {
+      target->getCamera()->clearConnectCancel();
+    }
+  }
+
   m_InfiniteReconnect = infiniteReconnect;
   m_ReconnectBackoff = Settings::reconBackoffEffective();
   m_ReconnectAttempt = 0;
@@ -494,6 +515,16 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
 
     // send disconnect
     for (const auto &target : m_Targets) {
+      // Abort any in-flight connect attempt on this camera first. The long
+      // vendor waits inside Camera::connect() (Fujifilm registration, the
+      // Secure saved-camera scan) poll this token and unwind within one poll,
+      // releasing Camera::m_Mutex so the target task's Camera::disconnect()
+      // below cannot block behind the attempt. Without it a stale-session
+      // camera that holds the link up but withholds registration pinned the
+      // whole teardown for the full registration timeout per attempt: the
+      // target task never stopped, the drained target could never be reaped,
+      // and the connect gate stayed closed, the plan 148 wedge.
+      target->getCamera()->cancelConnect();
       target->sendCommand(CMD_DISCONNECT);
     }
   }
