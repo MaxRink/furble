@@ -1,0 +1,32 @@
+# Task #54: the first reconnect retry is patient after a boot with no clean
+# teardown and immediate after a furble-initiated disconnect. The fail-connects
+# action arms exactly one failed attempt per cycle so each cycle exercises the
+# first retry. Connect attempts take 750 ms in the sim.
+seed fauxny true
+seed reconnect true
+wait 300
+# Cycle 1: no clean-teardown token exists at boot, so the failed first attempt
+# waits FIRST_RETRY_MS (2500 ms) before the retry.
+action fail-connects 1
+action connect
+wait 1500
+# The 750 ms attempt has failed and the patient wait is running.
+assert control.state connecting
+wait 1400
+# Still inside the wait shortly before it ends at about 3250 ms.
+assert control.state connecting
+wait 1600
+# Wait over at about 3250 ms, the retry completes at about 4000 ms.
+assert control.state active
+# Cycle 2: the interactive disconnect mints the clean token, so the failed
+# first attempt retries at once and is active at about 1500 ms. A patient
+# cycle would still be connecting at the 2200 ms probe below, so this assert
+# fails if the furble origin is ignored.
+action disconnect
+wait 300
+assert control.state idle
+action fail-connects 1
+action connect
+wait 2200
+assert control.state active
+exit
