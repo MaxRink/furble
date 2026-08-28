@@ -359,6 +359,14 @@ class NimBLEClient {
   size_t mockConnInfoReadCount() const;
   bool mockConnParamUpdatePending() const;
 
+  // Host test hook. Free every cached NimBLERemoteService and, through the
+  // service owners, every cached NimBLERemoteCharacteristic, exactly as the
+  // reconnect path's service rediscovery frees the remote attribute objects
+  // after a link drop. Driven from a peer fault while a read or write is in
+  // flight, it models the free landing between the GATT operation and any
+  // later dereference of the remote pointers the caller still holds.
+  void dropServiceCache();
+
  private:
   friend class NimBLEDevice;
 

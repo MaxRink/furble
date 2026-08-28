@@ -16,6 +16,12 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
     NimBLEAddress address = NimBLEAddress(0x223344556677ULL, 0);
     bool camera_bonded = false;
     bool accept_numeric_comparison = true;
+    // CameraPower and OperationMode single-byte values. A GR IV in BLE
+    // standby keeps the link up with power ON (0x01) while OperationMode
+    // reads BLE_STARTUP (0x02) instead of CAPTURE (0x00).
+    uint8_t camera_power = 0x01;
+    uint8_t operation_mode = 0x00;
+    bool operation_mode_read_fails = false;
   };
 
   struct Write {
@@ -30,6 +36,9 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   NimBLEAdvertisedDevice advertisement() const;
   bool cameraBonded() const;
   void removeCameraBond();
+  void setCameraPower(uint8_t power);
+  void setOperationMode(uint8_t mode);
+  void setOperationModeReadFails(bool fails);
   const std::vector<Write> &writes() const;
   void clearEvents();
 

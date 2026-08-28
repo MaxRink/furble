@@ -97,7 +97,8 @@ const char *opModeName(uint8_t value) {
 
 void Ricoh::logChr(NimBLERemoteCharacteristic *pChr,
                    const char *label,
-                   const char *(*decode)(uint8_t)) {
+                   const char *(*decode)(uint8_t),
+                   std::atomic<uint8_t> *lastByte) {
   if (pChr == nullptr) {
     ESP_LOGI(LOG_TAG, "Ricoh %s: missing", label);
     return;
@@ -116,6 +117,8 @@ void Ricoh::logChr(NimBLERemoteCharacteristic *pChr,
     ESP_LOGI(LOG_TAG, "Ricoh %s value=<empty>", label);
     return;
   }
+  if (lastByte != nullptr)
+    *lastByte = value.data()[0];
   if (decode != nullptr && value.length() == 1)
     ESP_LOGI(LOG_TAG, "Ricoh %s value=0x%02X decoded=%s", label, value.data()[0],
              decode(value.data()[0]));
@@ -275,8 +278,8 @@ bool Ricoh::_connect(void) {
   m_Progress = 88;
 
   ESP_LOGI(LOG_TAG, "Ricoh state probe begin");
-  logChr(m_Power, "CameraPower", powerName);
-  logChr(m_OperationMode, "OperationMode", opModeName);
+  logChr(m_Power, "CameraPower", powerName, &m_LastPower);
+  logChr(m_OperationMode, "OperationMode", opModeName, &m_LastOperationMode);
   logChr(m_ShootingFlavor, "ShootingFlavor");
   logChr(m_OperationRequest, "OperationRequest");
   logChr(m_CaptureStatus, "CaptureStatus");
@@ -312,6 +315,8 @@ void Ricoh::clearRemoteState(void) {
   m_PairedDeviceName = nullptr;
   m_GpsInfo = nullptr;
   m_LocationControl = nullptr;
+  m_LastPower = STATE_UNKNOWN;
+  m_LastOperationMode = STATE_UNKNOWN;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
 }
@@ -353,10 +358,17 @@ bool Ricoh::subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char
   }
   bool rc = gattSubscribe(
       pChr,
-      [](NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
+      [this](NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
         ESP_LOGI(LOG_TAG, "Ricoh notify %s (%s): %s", chr->getUUID().toString().c_str(),
                  isNotify ? "notify" : "indicate",
                  NimBLEUtils::dataToHexString(data, static_cast<uint8_t>(len)).c_str());
+        if (len >= 1) {
+          if (chr->getUUID() == POWER_CHR_UUID) {
+            m_LastPower = data[0];
+          } else if (chr->getUUID() == OPERATION_MODE_CHR_UUID) {
+            m_LastOperationMode = data[0];
+          }
+        }
       },
       false);
   ESP_LOGI(LOG_TAG, "Ricoh subscribe %s => %s", label, rc ? "ok" : "failed");
@@ -371,7 +383,46 @@ bool Ricoh::setLocationControl(bool enabled) {
   return writeByte(m_LocationControl, enabled ? 0x01 : 0x00, "LocationControl");
 }
 
+bool Ricoh::captureAllowed(void) {
+  // A GR IV in BLE standby keeps the link up and reports CameraPower ON while
+  // OperationMode is BLE_STARTUP. A capture write in that state cold boots the
+  // camera (lens extends) and can wedge its firmware. Power ON is not
+  // sufficient; only a fresh OperationMode read of CAPTURE authorizes the
+  // shutter writes. The cached state can stay stale for the whole held
+  // connection, so it is never consulted here. A non-CAPTURE reading is always
+  // a safe refusal.
+  if (!isConnected()) {
+    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: not connected");
+    return false;
+  }
+  if (m_OperationMode == nullptr || !m_OperationMode->canRead()) {
+    // The Ricoh matcher also accepts bodies that expose the shooting service
+    // without the GR camera service. Those cannot report a power state and
+    // shot fine before this gate, so the gate only applies when the
+    // characteristic exists. The GR IV always exposes it.
+    ESP_LOGW(LOG_TAG, "Ricoh OperationMode unavailable; allowing capture");
+    return true;
+  }
+  NimBLEAttValue value;
+  if (!gattRead(m_OperationMode, value) || value.length() < 1) {
+    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: OperationMode read failed");
+    return false;
+  }
+  const uint8_t mode = value.data()[0];
+  m_LastOperationMode = mode;
+  if (mode == static_cast<uint8_t>(OperationMode::CAPTURE))
+    return true;
+  if (mode == static_cast<uint8_t>(OperationMode::BLE_STARTUP)) {
+    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: camera asleep (mode 0x%02X BLE_STARTUP)", mode);
+  } else {
+    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: mode 0x%02X %s", mode, opModeName(mode));
+  }
+  return false;
+}
+
 void Ricoh::shutterPress(void) {
+  if (!captureAllowed())
+    return;
   if (!setShootingFlavor(ShootingFlavor::IMMEDIATE))
     return;
   writeOperation(OperationCode::START, OperationParameter::AF);

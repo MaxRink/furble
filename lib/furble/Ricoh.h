@@ -1,6 +1,8 @@
 #ifndef RICOH_H
 #define RICOH_H
 
+#include <atomic>
+
 #include <NimBLERemoteCharacteristic.h>
 
 #include "Camera.h"
@@ -13,11 +15,15 @@ namespace Furble {
  * but this implementation does not claim compatibility with them.
  *
  * Shutter control uses the ShootingFlavor + OperationRequest characteristics
- * (single-write capture; no shutter hold). Focus is unsupported: the documented
- * Focus Mode characteristic configures a mode but does not trigger autofocus,
- * and no separate half-press command has been verified. GPS geotagging uses the
- * shared Ricoh Imaging GPS and location-control characteristics. Pairing uses
- * MITM LE Secure Connections with numeric comparison.
+ * (single-write capture; no shutter hold). Every capture is gated on a fresh
+ * OperationMode read: a GR IV in BLE standby keeps the link up and reports
+ * CameraPower ON while OperationMode is BLE_STARTUP, and a capture write in
+ * that state cold boots the camera and can wedge its firmware. Focus is
+ * unsupported: the documented Focus Mode characteristic configures a mode but
+ * does not trigger autofocus, and no separate half-press command has been
+ * verified. GPS geotagging uses the shared Ricoh Imaging GPS and
+ * location-control characteristics. Pairing uses MITM LE Secure Connections
+ * with numeric comparison.
  *
  * Protocol reference: dm-zharov/ricoh-gr-bluetooth-api, Android HCI snoop analysis.
  */
@@ -62,6 +68,16 @@ class Ricoh: public Camera {
     IMMEDIATE = 0,
     TIMER_2S = 2,
   };
+
+  enum class OperationMode : uint8_t {
+    CAPTURE = 0x00,
+    PLAYBACK = 0x01,
+    BLE_STARTUP = 0x02,
+    OTHER = 0x03,
+    POWER_OFF_TRANSFER = 0x04,
+  };
+
+  static constexpr uint8_t STATE_UNKNOWN = 0xFF;
 
   // GPS Information payload
   typedef struct __attribute__((packed)) _ricoh_geo_t {
@@ -116,6 +132,13 @@ class Ricoh: public Camera {
   NimBLERemoteCharacteristic *m_GpsInfo = nullptr;
   NimBLERemoteCharacteristic *m_LocationControl = nullptr;
 
+  // Camera state cache seeded by the _connect() state probe and refreshed by
+  // notifications. Diagnostic only: the capture gate never trusts this cache
+  // because a held connection can hold stale BLE_STARTUP or stale CAPTURE
+  // forever. Capture authorization always uses a fresh OperationMode read.
+  std::atomic<uint8_t> m_LastPower {STATE_UNKNOWN};
+  std::atomic<uint8_t> m_LastOperationMode {STATE_UNKNOWN};
+
   uint32_t m_LastGpsWriteMs = 0;
   bool m_HasGpsWrite = false;
   gps_t m_LastGps = {};
@@ -133,7 +156,9 @@ class Ricoh: public Camera {
   void clearRemoteState(void);
   void logChr(NimBLERemoteCharacteristic *pChr,
               const char *label,
-              const char *(*decode)(uint8_t) = nullptr);
+              const char *(*decode)(uint8_t) = nullptr,
+              std::atomic<uint8_t> *lastByte = nullptr);
+  bool captureAllowed(void);
   bool writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label);
   bool writeOperation(OperationCode code, OperationParameter parameter);
   bool subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char *label);

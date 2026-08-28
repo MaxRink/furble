@@ -272,6 +272,23 @@ void FujifilmVirtualCamera::clearEvents() {
   m_LastGeotag.clear();
 }
 
+void FujifilmVirtualCamera::faultNextOperation(std::function<void(NimBLEClient &)> fault) {
+  m_OperationFault = std::move(fault);
+}
+
+void FujifilmVirtualCamera::runOperationFault(NimBLEClient &client) {
+  if (!m_OperationFault) {
+    return;
+  }
+  // One shot. Move the fault out first so a reinstall from the fault itself
+  // cannot recurse, then run it. The fault may free the remote service and
+  // characteristic objects this operation was reached through, so callers run
+  // this only after the operation result is computed and touch nothing after.
+  auto fault = std::move(m_OperationFault);
+  m_OperationFault = nullptr;
+  fault(client);
+}
+
 void FujifilmVirtualCamera::clearFaults() {
   m_SuppressedServices.clear();
   m_SuppressedCharacteristics.clear();
@@ -279,6 +296,7 @@ void FujifilmVirtualCamera::clearFaults() {
   m_DropOnWrite.clear();
   m_DropDuringConnect.clear();
   m_DropOnSubscribe.clear();
+  m_OperationFault = nullptr;
   m_StaleSubscribeSession = false;
   m_RequireLongConnParamsAfterIdentifier = false;
   m_DelayRegistrationConnParamsUntilFastRequest = false;
@@ -482,6 +500,10 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   if (isDropDuringConnect(service, characteristic)) {
     client.mockDropLinkSelfDelete(0x08);
   }
+  // In-flight fault window: the write result is final, the operation has not
+  // yet returned to the transport, and the service and characteristic
+  // references may be freed by the fault. Touch nothing after this.
+  runOperationFault(client);
   return result;
 }
 
@@ -490,14 +512,17 @@ NimBLEAttValue FujifilmVirtualCamera::read(NimBLEClient &client,
                                            const NimBLEUUID &characteristic) {
   if (m_DroppedLink)
     m_AccessAfterDrop++;
-  if (!m_Connected || (m_Client != &client) || !hasCharacteristic(service, characteristic)) {
-    return {};
-  }
-  if (m_Config.secure && matches(service, SECURE_PAIR_SERVICE_UUID)
+  NimBLEAttValue result;
+  if (m_Connected && (m_Client == &client) && hasCharacteristic(service, characteristic)
+      && m_Config.secure && matches(service, SECURE_PAIR_SERVICE_UUID)
       && matches(characteristic, SECURE_STATUS_CHARACTERISTIC_UUID)) {
-    return NimBLEAttValue({0x07, 0x96, 0x00, 0x00});
+    result = NimBLEAttValue({0x07, 0x96, 0x00, 0x00});
   }
-  return {};
+  // In-flight fault window: the read result is final, the operation has not
+  // yet returned to the transport, and the service and characteristic
+  // references may be freed by the fault. Touch nothing after this.
+  runOperationFault(client);
+  return result;
 }
 
 bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,

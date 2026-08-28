@@ -193,6 +193,28 @@ target_compile_options(ricoh_focus_test PRIVATE
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
+# The sleep gate test drives the production Ricoh shutter path against the
+# virtual peer in BLE standby. It protects the invariant that only a fresh
+# OperationMode read of CAPTURE authorizes the ShootingFlavor and
+# OperationRequest writes; a capture write in BLE_STARTUP cold boots the
+# camera and can wedge its firmware.
+add_executable(ricoh_sleep_gate_test
+               ricoh_sleep_gate_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(ricoh_sleep_gate_test PRIVATE furble_host_camera)
+target_include_directories(ricoh_sleep_gate_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(ricoh_sleep_gate_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
 # The registration gate test compiles the real Secure path against the same
 # virtual peer as the normal camera suite. The host-only timeout keeps a
 # withheld-registration case fast while firmware retains the 25 s bound.
@@ -855,6 +877,36 @@ target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
 target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
 
+# AddressSanitizer regression for the GATT journal use-after-free. The console
+# journal in the pointer-based Camera::gattRead and gattWrite used to read the
+# service and characteristic UUIDs from the NimBLERemoteCharacteristic after
+# readValue()/writeValue() returned. A peer drop during the operation lets the
+# reconnect rediscovery free those remote objects, so the post-operation
+# dereference crashed on hardware (LoadProhibited 0xfefefefe in journalRecord
+# during a Ricoh GR IV standby drop). The peer's faultNextOperation hook frees
+# the client's service cache mid-operation via dropServiceCache(); the fixed
+# code journals pre-operation UUID snapshots, so the freed characteristic is
+# never touched again. Camera.cpp is compiled here directly with
+# -fsanitize=address and FURBLE_CONSOLE so the journal dereference is both
+# compiled in and instrumented.
+add_executable(gatt_journal_uaf_test
+               gatt_journal_uaf_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
+target_include_directories(gatt_journal_uaf_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(gatt_journal_uaf_test PRIVATE FURBLE_CONSOLE)
+target_compile_options(gatt_journal_uaf_test PRIVATE
+                       -fsanitize=address -g -O1
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_options(gatt_journal_uaf_test PRIVATE -fsanitize=address)
+target_link_libraries(gatt_journal_uaf_test PRIVATE Threads::Threads)
+
 # Seeded BLE lifecycle fuzzer. Drives the real Control state machine through
 # randomised, deterministic (seeded) sequences of connect/disconnect/reconnect
 # operations with injected BLE faults and asserts a battery of invariants after
@@ -912,6 +964,7 @@ if(BUILD_TESTING)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME camera-regression COMMAND camera_regression_test)
   add_test(NAME ricoh-focus COMMAND ricoh_focus_test)
+  add_test(NAME ricoh-sleep-gate COMMAND ricoh_sleep_gate_test)
 
   add_executable(vendor_protocol_conformance_test
                  vendor_protocol_conformance_test.cpp
@@ -971,6 +1024,7 @@ if(BUILD_TESTING)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
+  add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
 
   # Real-Control end-to-end scenarios. Each runs the production control state
