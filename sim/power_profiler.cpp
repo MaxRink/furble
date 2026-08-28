@@ -126,6 +126,7 @@ struct ProfilerState {
   std::string gps_state = "off";
   std::map<std::string, uint64_t> gps_ms {
       {"acquiring", 0},
+      {"degraded",  0},
       {"off",       0},
       {"standby",   0},
       {"tracking",  0}
@@ -300,6 +301,7 @@ void resetCountersLocked(uint32_t now) {
   state.radio_events.clear();
   state.gps_ms = {
       {"acquiring", 0},
+      {"degraded",  0},
       {"off",       0},
       {"standby",   0},
       {"tracking",  0}
@@ -545,6 +547,7 @@ void writeReportLocked(const std::filesystem::path &path,
   const uint64_t display_dim_ms = reportDuration(state.display_ms["dim"]);
   const uint64_t display_off_ms = reportDuration(state.display_ms["off"]);
   const uint64_t gps_acquiring_ms = reportDuration(state.gps_ms["acquiring"]);
+  const uint64_t gps_degraded_ms = reportDuration(state.gps_ms["degraded"]);
   const uint64_t gps_tracking_ms = reportDuration(state.gps_ms["tracking"]);
   const uint64_t gps_standby_ms = reportDuration(state.gps_ms["standby"]);
   const std::map<int, uint64_t> frequencies = state.frequency_ms;
@@ -580,10 +583,14 @@ void writeReportLocked(const std::filesystem::path &path,
                              }()) * model.radio_tx
                                  * 2.0)
                           / safe_duration_ms;
-  const double gps_ma = (static_cast<double>(gps_acquiring_ms) * model.gps_acquisition
-                         + static_cast<double>(gps_tracking_ms) * model.gps_tracking
-                         + static_cast<double>(gps_standby_ms) * model.gps_standby)
-                        / safe_duration_ms;
+  // A degraded retry leaves the receiver rail powered but releases the CPU
+  // sleep lock. Model its receiver draw as acquisition current and expose the
+  // state separately so power regressions cannot disappear from the report.
+  const double gps_ma =
+      (static_cast<double>(gps_acquiring_ms + gps_degraded_ms) * model.gps_acquisition
+       + static_cast<double>(gps_tracking_ms) * model.gps_tracking
+       + static_cast<double>(gps_standby_ms) * model.gps_standby)
+      / safe_duration_ms;
   const double pmic_ma = model.pmic;
   const double peripheral_ma = model.peripheral;
   const double estimated_ma = mcu_ma + display_ma + radio_ma + gps_ma + pmic_ma + peripheral_ma;
@@ -771,6 +778,7 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "    \"gps_ms\": {\n";
   output << "      \"off\": " << reportDuration(state.gps_ms["off"]) << ",\n";
   output << "      \"acquiring\": " << gps_acquiring_ms << ",\n";
+  output << "      \"degraded\": " << gps_degraded_ms << ",\n";
   output << "      \"tracking\": " << gps_tracking_ms << ",\n";
   output << "      \"standby\": " << gps_standby_ms << "\n";
   output << "    }\n";

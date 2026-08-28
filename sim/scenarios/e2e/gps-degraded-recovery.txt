@@ -1,0 +1,33 @@
+# Drive the production GPS duty-cycle wake timeout into degraded retry by
+# suppressing only the fake UART event source, then restore a valid receiver.
+seed gps true
+seed gps_rate 1
+seed gps_power 1
+seed gps_duty 5
+seed gps_uart_mode ack
+wait 4000
+assert gps.state standby
+uart-mode pause
+wait 12000
+# The GPS task is detached from the UI task. Give it a bounded virtual-time
+# handoff before asserting the transition, since busy CI hosts can otherwise
+# leave the receiver in standby at the first observation point.
+wait 3000
+assert-eventually 5000 gps.degraded 1
+assert-eventually 5000 gps.degraded_retries 1
+assert power.no_light_sleep 0
+wait 30000
+assert power.no_light_sleep 0
+uart-mode ack
+# assert-eventually only yields wall time. Advance the simulator clock past the
+# second bounded retry deadline so the production GPS task can run its probe.
+wait 6000
+# A mode change schedules the next fake UART event from the UI update path.
+# Keep one UI wait between that scheduling point and observation so the event
+# cannot be stranded while assert-eventually waits on the worker.
+wait 1000
+assert-eventually 5000 gps.degraded 0
+# The healthy duty-cycle scheduler may legitimately reacquire the lock while
+# tracking the recovered receiver. The earlier lock assertion covers the
+# degraded boundary where the regression pinned it indefinitely.
+exit

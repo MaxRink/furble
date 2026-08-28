@@ -96,6 +96,15 @@ void queueAckLocked(const uint8_t *request, bool ack) {
 void queueGpsEvent(QueueHandle_t queue) {
   {
     std::lock_guard<std::mutex> lock(gpsMutex);
+    if (uartMode == "pause") {
+      gpsQueue = queue;
+      gpsOffset = sizeof(gpsData) - 1;
+      rxBytes.clear();
+      rxEventQueued = false;
+      gpsEventQueued = false;
+      gpsNextEventMillis = UINT32_MAX;
+      return;
+    }
     gpsQueue = queue;
     gpsOffset = 0;
     rxBytes.clear();
@@ -180,7 +189,7 @@ void furble_sim_uart_update(void) {
   {
     std::lock_guard<std::mutex> lock(gpsMutex);
     const uint32_t now = Furble::Sim::clockMillis();
-    const bool due = static_cast<int32_t>(now - gpsNextEventMillis) >= 0;
+    const bool due = (uartMode != "pause") && (static_cast<int32_t>(now - gpsNextEventMillis) >= 0);
     if (gpsQueue != nullptr && !gpsEventQueued && rxBytes.empty()
         && gpsOffset >= sizeof(gpsData) - 1 && due) {
       queue = gpsQueue;
@@ -248,6 +257,11 @@ void furble_sim_uart_clear_writes(void) {
 void furble_sim_uart_set_mode(const char *mode) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   uartMode = mode == nullptr ? "ack" : mode;
+  if (uartMode == "pause") {
+    gpsNextEventMillis = UINT32_MAX;
+  } else if (gpsQueue != nullptr && rxBytes.empty() && gpsOffset >= sizeof(gpsData) - 1) {
+    gpsNextEventMillis = Furble::Sim::clockMillis();
+  }
 }
 
 void furble_sim_uart_inject_event(const char *eventName) {
