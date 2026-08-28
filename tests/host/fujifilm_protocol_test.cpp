@@ -119,11 +119,16 @@ void testMatches() {
 
 void testNotifications() {
   const std::vector<uint8_t> config = {0x02, 0x00};
+  const std::vector<uint8_t> x100vi = {0x01, 0x00};
   const std::vector<uint8_t> geotag = {0x01, 0x00};
   check(isConfigurationNotification(config.data(), config.size()),
-        "the configuration notification header is recognised");
-  check(!isConfigurationNotification(geotag.data(), geotag.size()),
-        "a geotag header is not a configuration notification");
+        "the legacy configuration notification is recognised");
+  check(!isConfigurationNotification(x100vi.data(), x100vi.size()),
+        "the X100VI registration is not the legacy configuration header");
+  check(isRegistrationNotification(x100vi.data(), x100vi.size()),
+        "the captured X100VI 01 00 notification is recognised");
+  check(isRegistrationNotification(config.data(), config.size()),
+        "the legacy Basic registration payload is recognised");
   check(isGeotagRequest(geotag.data(), geotag.size()), "the geotag request header is recognised");
   check(!isGeotagRequest(config.data(), config.size()),
         "a configuration header is not a geotag request");
@@ -131,6 +136,10 @@ void testNotifications() {
   const std::vector<uint8_t> tooShort = {0x02};
   check(!isConfigurationNotification(tooShort.data(), tooShort.size()),
         "a single byte notification is rejected");
+  const std::vector<uint8_t> wrongValue = {0x01, 0x01};
+  check(!isRegistrationNotification(wrongValue.data(), wrongValue.size()),
+        "a malformed registration payload is rejected");
+  check(!isRegistrationNotification(nullptr, 2), "a null registration notification is rejected");
   check(!isGeotagRequest(nullptr, 2), "a null notification pointer is rejected");
 }
 

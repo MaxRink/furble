@@ -3,6 +3,13 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+#include <chrono>
+#include <thread>
+#else
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 
 #include "Device.h"
 #include "Fujifilm.h"
@@ -10,7 +17,20 @@
 
 namespace Furble {
 
-void Fujifilm::notify(BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
+void Fujifilm::notify(BLERemoteCharacteristic *pChr,
+                      uint8_t *pData,
+                      size_t length,
+                      bool isNotify,
+                      uint32_t generation) {
+  if (generation != m_RegistrationGeneration.load()) {
+    ESP_LOGW(LOG_TAG, "Ignoring stale Fujifilm registration callback");
+    return;
+  }
+  if (pChr == nullptr) {
+    ESP_LOGW(LOG_TAG, "Ignoring Fujifilm callback without a characteristic");
+    return;
+  }
+
   ESP_LOGI(LOG_TAG, "Got %s (%u bytes) from %s", isNotify ? "notification" : "indication", length,
            pChr->getUUID().toString().c_str());
   if (length > 0) {
@@ -18,7 +38,9 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr, uint8_t *pData, size_t leng
   }
 
   if (pChr->getUUID() == CHR_NOT1_UUID) {
-    if (FujifilmProtocol::isConfigurationNotification(pData, length)) {
+    // The X100VI capture records 01 00. Keep accepting the legacy 02 00 form
+    // used by older Fujifilm bodies, but only on this dedicated characteristic.
+    if (FujifilmProtocol::isRegistrationNotification(pData, length)) {
       m_Configured = true;
     }
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
@@ -48,12 +70,51 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc,
   // stale-session reconnect, where the camera still holds the prior CCCD
   // subscriptions, cannot block the connect waiting for a write response that
   // never comes.
+  const uint32_t generation = m_RegistrationGeneration.load();
   return gattSubscribe(
       pChr,
-      [this](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length, bool isNotify) {
-        this->notify(pChr, pData, length, isNotify);
+      [this, generation](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length,
+                         bool isNotify) {
+        this->notify(pChr, pData, length, isNotify, generation);
       },
       !notification, response);
+}
+
+bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
+  m_Progress = progress;
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+  const auto started = std::chrono::steady_clock::now();
+#else
+  const TickType_t started = xTaskGetTickCount();
+  const TickType_t timeout = pdMS_TO_TICKS(REGISTRATION_TIMEOUT_MS);
+  const TickType_t poll = pdMS_TO_TICKS(REGISTRATION_POLL_MS);
+#endif
+
+  while (!m_Configured.load()) {
+    if (!m_Connected || (cancelOnInactive && !isActive())) {
+      ESP_LOGW(LOG_TAG, "Fujifilm registration aborted before confirmation");
+      return false;
+    }
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+    if (elapsed.count() >= REGISTRATION_TIMEOUT_MS) {
+#else
+    if (static_cast<TickType_t>(xTaskGetTickCount() - started) >= timeout) {
+#endif
+      ESP_LOGW(LOG_TAG, "Registration not confirmed after %lu ms; put the camera in pairing mode",
+               static_cast<unsigned long>(REGISTRATION_TIMEOUT_MS));
+      return false;
+    }
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+    std::this_thread::sleep_for(std::chrono::milliseconds(REGISTRATION_POLL_MS));
+#else
+    vTaskDelay(poll);
+#endif
+  }
+
+  ESP_LOGI(LOG_TAG, "Fujifilm registration confirmed");
+  return true;
 }
 
 /**

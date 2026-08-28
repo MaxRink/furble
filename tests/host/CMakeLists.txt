@@ -36,6 +36,7 @@ target_include_directories(furble_host_camera
                                   ${FURBLE_ROOT}/lib/furble)
 target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-format
                                                  -Wno-unused-parameter)
+target_compile_definitions(furble_host_camera PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
@@ -191,6 +192,31 @@ target_compile_options(ricoh_focus_test PRIVATE
                        -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
+# The registration gate test compiles the real Secure path against the same
+# virtual peer as the normal camera suite. The host-only timeout keeps a
+# withheld-registration case fast while firmware retains the 25 s bound.
+add_executable(fujifilm_registration_gate_test
+               fujifilm_registration_gate_test.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               advertisement_scan_stub.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_include_directories(fujifilm_registration_gate_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(fujifilm_registration_gate_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(fujifilm_registration_gate_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(fujifilm_registration_gate_test PRIVATE furble_host_camera
+                                                             Threads::Threads)
 
 # Keep the host Ethernet test tied to the firmware source manifest. The test
 # links the production implementation directly, so this configure-time guard
@@ -719,13 +745,16 @@ add_executable(connect_mid_drop_test
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
                ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
 target_include_directories(connect_mid_drop_test BEFORE PRIVATE
                            ${FURBLE_ROOT}/include
                            ${HOST_NIMBLE_DIR}
                            ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
                            ${FURBLE_ROOT}/lib/furble)
 target_compile_options(connect_mid_drop_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -fsanitize=address -g -O1
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_options(connect_mid_drop_test PRIVATE -fsanitize=address)
@@ -806,6 +835,7 @@ if(BUILD_TESTING)
   add_test(NAME camera-journal-events COMMAND camera_journal_event_test)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
+  add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)

@@ -19,6 +19,12 @@ lands on fork master. This file applies once it does.
   through subscriptions and shutter discovery. Request Furble's bounded FAST
   profile only after discovery completes, then verify the controller applied
   it before declaring the camera active.
+- Fujifilm registration gates use only the dedicated `CHR_NOT1` characteristic:
+  X100VI sends `01 00`, while legacy `02 00` is accepted there for older
+  bodies. Since `01 00` on `GEOTAG_UPDATE` means a geotag request, never
+  conflate those events. Clear the flag and advance the callback generation on
+  every connection attempt, and make the confirmation wait bounded and aware
+  of link loss and Control cancellation.
 - Ricoh `OperationRequest {0x01, 0x01}` is capture with autofocus, not a
   focus-only or half-press command. Keep focus gestures as no-ops until a
   distinct operation is verified from protocol evidence and hardware.

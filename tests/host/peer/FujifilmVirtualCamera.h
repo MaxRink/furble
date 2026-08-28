@@ -65,6 +65,18 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // mock returns false for stale optional writes to stand in for the block.
   void setStaleSubscribeSession(bool stale);
 
+  // Withhold the registration-accepted notification while still answering all
+  // link and GATT operations. This models a camera in its settings screen and
+  // is used to prove that a link-only connect cannot become active.
+  void setWithholdRegistration(bool withhold);
+
+  /** Use a custom CHR_NOT1 payload for a registration callback test. */
+  void setRegistrationPayload(const std::vector<uint8_t> &payload);
+
+  // Invoke the notification callback retained from the previous BLE session.
+  // The production callback carries a session generation and must reject it.
+  bool emitStaleRegistration(void);
+
   // Fault injection for adversarial connect and command error paths.
   //
   // suppressService models a camera that does not expose a GATT service at all,
@@ -220,6 +232,10 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   ble_gap_upd_params m_RegistrationConnParams {};
   bool m_RegistrationConnParamsAccepted = false;
   bool m_StaleSubscribeSession = false;
+  bool m_WithholdRegistration = false;
+  std::vector<uint8_t> m_RegistrationPayload = {0x01, 0x00};
+  bool m_HaveStaleRegistration = false;
+  Subscription m_StaleRegistration;
   std::vector<NimBLEUUID> m_SuppressedServices;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;

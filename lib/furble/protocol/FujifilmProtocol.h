@@ -60,6 +60,7 @@ bool matchesBasicAdvertisement(const uint8_t *data,
 bool matchesSecureAdvertisement(const uint8_t *data, size_t bytes, bool advertisesService);
 
 bool isConfigurationNotification(const uint8_t *data, size_t bytes);
+bool isRegistrationNotification(const uint8_t *data, size_t bytes);
 bool isGeotagRequest(const uint8_t *data, size_t bytes);
 
 ShutterFrame makeShutterFrame(ShutterAction action);

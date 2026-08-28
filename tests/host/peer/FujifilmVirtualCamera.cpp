@@ -90,7 +90,7 @@ bool FujifilmVirtualCamera::emitNotification(const NimBLEUUID &service,
   m_Notifications.push_back(notification);
 
   if (matches(characteristic, configurationNotificationUUID()) && (payload.size() >= 2)
-      && (payload[0] == 0x02) && (payload[1] == 0x00)) {
+      && ((payload[0] == 0x01) || (payload[0] == 0x02)) && (payload[1] == 0x00)) {
     m_Configured = true;
   }
   if (matches(characteristic, geotagRequestCharacteristicUUID()) && (payload.size() >= 2)
@@ -155,6 +155,27 @@ bool FujifilmVirtualCamera::subscriptionRequestedWithResponse(
 
 void FujifilmVirtualCamera::setStaleSubscribeSession(bool stale) {
   m_StaleSubscribeSession = stale;
+}
+
+void FujifilmVirtualCamera::setWithholdRegistration(bool withhold) {
+  m_WithholdRegistration = withhold;
+}
+
+void FujifilmVirtualCamera::setRegistrationPayload(const std::vector<uint8_t> &payload) {
+  m_RegistrationPayload = payload;
+}
+
+bool FujifilmVirtualCamera::emitStaleRegistration() {
+  const auto current =
+      m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
+  if (!m_HaveStaleRegistration || (current == m_Subscriptions.end())
+      || (m_StaleRegistration.callback == nullptr)) {
+    return false;
+  }
+
+  std::vector<uint8_t> payload = {0x01, 0x00};
+  m_StaleRegistration.callback(current->second.remote, payload.data(), payload.size(), true);
+  return true;
 }
 
 void FujifilmVirtualCamera::suppressService(const NimBLEUUID &service) {
@@ -291,6 +312,12 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   if (m_Client == &client) {
     m_Client = nullptr;
     m_Connected = false;
+    const auto registration =
+        m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
+    if (registration != m_Subscriptions.end()) {
+      m_StaleRegistration = registration->second;
+      m_HaveStaleRegistration = true;
+    }
     m_Subscriptions.clear();
   }
 }
@@ -527,8 +554,10 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   subscription.response = response;
   m_Subscriptions[key(service, characteristic)] = subscription;
 
-  if (matches(characteristic, configurationNotificationUUID())) {
-    emitNotification(service, characteristic, {0x02, 0x00}, false);
+  if (matches(characteristic, configurationNotificationUUID()) && !m_WithholdRegistration) {
+    // This is the X100VI capture: CHR_NOT1_UUID carries 01 00. The production
+    // protocol helper also accepts the legacy 02 00 Basic form.
+    emitNotification(service, characteristic, m_RegistrationPayload, false);
   }
   return true;
 }
