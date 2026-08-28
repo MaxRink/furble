@@ -162,6 +162,12 @@ void Camera::onConnect(NimBLEClient *pClient) {
 
 void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
 #if defined(FURBLE_CONSOLE)
+  // NimBLE can invoke this callback after it has removed the GAP connection
+  // record.  Do not call getConnInfo() here: besides being unavailable at
+  // that point, it emits a misleading "Connection info not found" diagnostic.
+  // The requested address and attempt id were captured by the connect event,
+  // so retain that stable identity for lifecycle correlation.
+  (void)pClient;
   BtDebugEvent event;
   event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
   event.kind = BtDebugEventKind::GAP_DISCONNECT;
@@ -169,12 +175,7 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
   event.attempt_id = m_DebugAttemptId;
   event.reason = reason;
   event.address_type = m_Address.getType();
-  if (pClient != nullptr) {
-    const NimBLEConnInfo info = pClient->getConnInfo();
-    event.identity_type = info.getIdAddress().getType();
-    copyText(event.address, sizeof(event.address), info.getAddress().toString());
-    copyText(event.identity, sizeof(event.identity), info.getIdAddress().toString());
-  }
+  copyText(event.address, sizeof(event.address), m_Address.toString());
   copyText(event.operation, sizeof(event.operation), "disconnect");
   copyText(event.result, sizeof(event.result), "ok");
   copyText(event.reason_text, sizeof(event.reason_text), btGapReasonName(reason));

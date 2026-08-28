@@ -114,6 +114,18 @@ int main() {
   }
   check(sawFailedConnect, "handshake failure emits a journal event");
   client->disconnect();
+  events.clear();
+  BtDebugJournal::instance().dump(0, collect, &events);
+  bool sawDisconnect = false;
+  for (const auto &event : events) {
+    if (event.kind == BtDebugEventKind::GAP_DISCONNECT) {
+      sawDisconnect = true;
+      check(event.timestamp_ms != 0, "disconnect event carries a timestamp");
+      check(std::string(event.address) == peer.config().address.toString(),
+            "disconnect event preserves the requested address after GAP teardown");
+    }
+  }
+  check(sawDisconnect, "disconnect emits a journal event without querying stale GAP info");
   NimBLEDevice::deleteClient(client);
   delete remote;
   BtDebugJournal::instance().setEnabled(false);

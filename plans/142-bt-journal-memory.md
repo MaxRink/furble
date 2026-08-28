@@ -24,18 +24,29 @@ holding an oversized event ring in internal DRAM.
 
 ## Verification
 
-- Host journal test checks storage budget, address and UUID round trips, text
-  bounds, payload truncation, sequence order, and loss accounting.
-- Host camera journal test checks connect, write, and subscribe events.
-- Full host test suite remains required before merge.
+- Focused host checks: 5/5 passed, covering the journal and camera event
+  paths, scan-start failure and logical-state unwind, plus the S3+PSRAM and
+  S3-without-PSRAM capacity profiles.
+- Fresh full host build and suite after rebasing onto `46d0fe9a`: 69/69
+  tests passed. The journal checks cover storage budget, address and UUID
+  round trips, text bounds, binary-advertisement hex output, payload
+  truncation, sequence order, loss accounting, and disconnect identity.
+- `clang-format --dry-run --Werror` and `git diff --check` passed.
+- `pio run -e waveshare-s3-eth-debug` identified the checked-in 8 MB PSRAM
+  profile but stalled in ESP-IDF `get_cmake_code_model` during CMake
+  configuration, before project compilation; no firmware artifact was
+  produced.
 
 ## Hardware status
 
-No hardware run was available for this isolated worktree. The `m5stick-s3`
-PlatformIO environment uses the generic ESP32-S3-DevKitC-1 board profile,
-which advertises no PSRAM. Its checked-in sdkconfig requests SPIRAM support,
-but that cannot add memory to the no-PSRAM hardware, so allocation failure
-selects the 32-record internal fallback. The `waveshare-s3-eth` environment is
-the checked-in S3+PSRAM profile (`BOARD_HAS_PSRAM`, 8 MB octal PSRAM, and
-`CONFIG_SPIRAM=y`) where the 128-record PSRAM allocation can be built. Only
-the Fujifilm vendor path is hardware-testable under the repository policy.
+The attached M5StickS3 was not flashed: cameras were powered off, and flashing
+was intentionally prohibited because this master still carries the unsafe
+10-second PM1 watchdog path. Use the separate watchdog fix before hardware
+validation. Its generic ESP32-S3-DevKitC-1 PlatformIO profile advertises no
+PSRAM even though the checked-in sdkconfig requests SPIRAM, so runtime
+allocation must use the 32-record internal fallback. The checked-in
+`waveshare-s3-eth` environment declares `BOARD_HAS_PSRAM`, 8 MB octal PSRAM,
+and `CONFIG_SPIRAM=y`; that is the S3+PSRAM build boundary for the 128-record
+allocation. Ricoh is supported and available for hardware validation when
+powered; no camera was powered for this check. The journal is RAM-only and
+never changes bonds or NVS.

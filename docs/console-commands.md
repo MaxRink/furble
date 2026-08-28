@@ -143,10 +143,10 @@ and never changes bonds or NVS.
 ## flash preflight
 
 The StickS3 PMIC watchdog continues running while the ESP32 ROM receives a
-firmware image. At the normal ten-second timeout it can reset the USB device in
-the middle of a slow upload. On a responsive developer build, run the guarded
-preflight and let it start PlatformIO only after the PMIC confirms both safety
-conditions:
+firmware image. If its configured timeout is shorter than a slow upload, it can
+reset the USB device in the middle of the transfer. On a responsive developer
+build, run the guarded preflight and let it start PlatformIO only after the PMIC
+confirms both safety conditions:
 
 ```sh
 python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
