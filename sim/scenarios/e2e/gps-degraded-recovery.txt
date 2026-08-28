@@ -15,6 +15,9 @@ assert power.no_light_sleep_acquires 2
 wait 30000
 assert power.no_light_sleep 0
 uart-mode ack
+# assert-eventually only yields wall time. Advance the simulator clock past the
+# second bounded retry deadline so the production GPS task can run its probe.
+wait 6000
 assert-eventually 5000 gps.degraded 0
 assert-eventually 5000 power.no_light_sleep 0
 assert power.no_light_sleep 0

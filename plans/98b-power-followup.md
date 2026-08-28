@@ -61,6 +61,9 @@ halving battery life after any spell of poor reception, for example indoors.
   still holds the lock while it waits for the first fix.
 - Diagnostics: `gps` console status prints `degraded:` and `retries:`, and the
   sim profiler sees a `degraded` GPS state.
+- The end-to-end recovery scenario advances virtual time after restoring the
+  UART. `assert-eventually` only yields wall time, so it cannot itself cross a
+  pending exponential retry deadline.
 
 ## On-screen indicator
 
