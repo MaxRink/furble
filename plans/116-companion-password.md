@@ -83,8 +83,8 @@ Out of scope:
   gate.
 - `include/FurbleSettings.h` / `src/FurbleSettings.cpp`: `COMPANION_PASSWORD`
   setting and its `wire_id` (shared with `plans/114`/`plans/50`). Reserve the
-  next free id only after reconciling the open IMU setting claim; do not assume
-  id 45 is available.
+  wire id 45 is reserved for this companion-password contract; IMU uses wire
+  id 46. Do not reuse either id for another setting.
 - The PR27 console table: `companion password` subcommands.
 - `sim/shim/FurbleCompanionService.h` and the companion rig
   (`sim/CompanionRigTransport.cpp`): mirror the auth handshake so

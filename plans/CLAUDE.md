@@ -29,7 +29,8 @@ lands on fork master. This file applies once it does.
 - Charging auto-off policy work updates `13-auto-off-low-batt.md` and reserves
   wire id 42 for timezone. The charging opt-in uses wire id 43 only after an
   audit of current master and open relevant branches. Wire id 45 remains
-  unavailable. Keep the default auto-off behavior unchanged on boards without
+  reserved for the companion-password contract, while IMU uses wire id 46.
+  Keep the default auto-off behavior unchanged on boards without
   charging telemetry, suppress auto-off while charging by default, and avoid
   NVS writes from policy ticks.
 - Restart and BLE recovery plans must cover both clean shutdown and unclean

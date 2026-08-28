@@ -215,7 +215,7 @@ Submenu: `Settings` > `Sensors`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| IMU | Off | On, Off | Restart | Enables the spirit level and live IMU diagnostics. The setting is stored as wire ID 45. The supported sensor must be present; press Restart after changing it. |
+| IMU | Off | On, Off | Restart | Enables the spirit level and live IMU diagnostics. The setting is stored as wire ID 46. The supported sensor must be present; press Restart after changing it. |
 
 When enabled, `Connected` contains the **Level** page and `Settings` >
 `Diagnostics` contains the live **IMU** page. The simulator injects deterministic

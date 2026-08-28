@@ -18,6 +18,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
+- The IMU setting is a persisted bool at wire id 46, defaults off, and applies
+  on reboot because it controls `M5.begin()` capability discovery. IMU pages
+  must be gated on both that setting and `M5.Imu.isEnabled()`; the Level timer
+  is started and stopped by page dispatch, not a widget-only callback.
 - `FurbleTimeKeeper`: owns one versioned CRC-protected wall-clock blob. Normal
   synchronization writes are limited to four per day and shutdown checkpoints
   without a backed RTC use a separate three-and-a-half-hour age budget. The

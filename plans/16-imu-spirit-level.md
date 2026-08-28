@@ -47,7 +47,7 @@ Verified anchors against the current tree.
 
 | Enum | NVS key | Namespace | Type | Default | Notes |
 |---|---|---|---|---|---|
-| `IMU` | `imu` (45) | `FURBLE_STR` | `bool` | `false` | False reproduces the current hardcoded `cfg.internal_imu = false`. |
+| `IMU` | `imu` (46) | `FURBLE_STR` | `bool` | `false` | False reproduces the current hardcoded `cfg.internal_imu = false`. |
 
 Name string in the table: `"IMU"`.
 
@@ -221,8 +221,8 @@ Known cost, accepted for now:
 Hardware verification is still pending on all boards: IMU detection, level axis orientation per board, and bubble centring have not been checked on device. The StickS3 walk is owed before merge.
 
 Rebase notes:
-- `IMU` is assigned wire_id 45 in the current settings table. Wire id 46 is
-  reserved for the companion password setting from PR #166.
+- `IMU` is assigned wire_id 46 in the current settings table. Wire id 45 is
+  reserved for the companion-password contract from PR #166.
 - Console settingType, printValue and setValue treat `IMU` as a bool setting.
   `appliesImmediately` stays false because the setting is read once before
   `M5.begin()` and the UI offers an explicit restart.
@@ -269,7 +269,7 @@ Console evidence:
 
 - `settings set imu true` then reboot then `settings get imu` returns
   `value: true`, `applies: on reboot`. The setting saves, persists across a
-  power cycle, and is wired at wire id 45.
+  power cycle, and is wired at wire id 46.
 - Boot with `imu true` completes and the device runs. No crash attributable to
   the IMU. Toggling `imu false` and rebooting also boots clean.
 
@@ -356,7 +356,7 @@ activates the focused object (models a short OK press), and `simQueryState` keys
   per-panel fit sweep. It fits on 80x160, 135x240 and 320x240.
 
 All 13 end-to-end scenarios pass. The firmware `m5stick-s3-debug` build is clean
-and clang-format 21 is clean. Wire id 45 (IMU) is unchanged.
+and clang-format 21 is clean. Wire id 46 (IMU) is unchanged.
 
 On-device retest owed before merge: level page responsiveness, no overlapping
 text, the side bubble tracking roll, and the Diagnostics IMU live short-press
@@ -583,7 +583,7 @@ proves it clears the header).
   80x160.
 
 All 14 end-to-end scenarios pass. The firmware `m5stick-s3-debug` build is clean
-and clang-format 21 is clean. Wire id 45 (IMU) is unchanged.
+and clang-format 21 is clean. Wire id 46 (IMU) is unchanged.
 
 ### PENDING HARDWARE RETEST (v3.1)
 
