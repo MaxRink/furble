@@ -201,6 +201,10 @@ class Control {
     bool infiniteReconnect;
     bool reconnectBackoff;
     uint32_t reconnectAttempt;
+    // Pending origin token for the next explicit connect. Lets the on-device
+    // timing verification observe whether the next connect takes the fast
+    // furble first retry or the patient peer backoff.
+    reconnect_origin_t nextOrigin;
     bool adaptiveActive;
     int userPowerLevel;
     int adaptivePowerLevel;

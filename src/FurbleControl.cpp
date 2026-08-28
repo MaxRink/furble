@@ -828,6 +828,7 @@ Control::debug_state_t Control::getDebugState(void) const {
   snapshot.reconnectAttempt = m_ReconnectAttempt;
 
   const std::lock_guard<std::mutex> lock(m_Mutex);
+  snapshot.nextOrigin = m_NextConnectOrigin;
   snapshot.targetCount = m_Targets.size();
   snapshot.zombieCount = m_ZombieTargets.size();
   snapshot.adaptiveActive = m_AdaptiveActive;

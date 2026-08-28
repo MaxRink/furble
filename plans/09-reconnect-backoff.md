@@ -240,10 +240,13 @@ interactive furble disconnect. A controlled restart writes a one-shot NVS
 marker after its teardown; the first Control instance consumes it on boot. If
 the marker cannot be written, read, or removed, the boot defaults to the peer
 backoff. Mid-session drops and peer resets during a handshake enter the private
-reconnect path with the peer origin. A request arriving while that recovery is
-running cannot mutate the active cycle's origin. The origin is exposed as
-`control.fresh_connect` in the debug console `debug control` snapshot for
-compatibility with the original diagnostic field.
+reconnect path with the peer origin. A request arriving while a connect cycle
+is already armed re-arms the cycle, but patience is sticky: a peer-origin
+cycle never turns fast from a token minted before its peer evidence, and a
+request cannot switch infinite retry off under a running recovery. The
+pending token is exposed as `control.next_origin` (values `furble` or `peer`)
+in the debug console `debug control` snapshot, so the on-device timing
+verification can observe which first retry the next connect will take.
 
 Scope note: the camera power-off case the user already accepted (about 7 s
 supervision timeout, then the backoff) is unchanged. That is a peer-initiated

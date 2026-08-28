@@ -1843,6 +1843,8 @@ int debugControl(void) {
   printf("control.infinite_reconnect: %s\n", boolStr(s.infiniteReconnect));
   printf("control.reconnect_backoff: %s\n", boolStr(s.reconnectBackoff));
   printf("control.reconnect_attempt: %lu\n", static_cast<unsigned long>(s.reconnectAttempt));
+  printf("control.next_origin: %s\n",
+         s.nextOrigin == Control::reconnect_origin_t::FURBLE ? "furble" : "peer");
   printf("control.adaptive_active: %s\n", boolStr(s.adaptiveActive));
   printf("control.power_level: %d\n", s.userPowerLevel);
   printf("control.adaptive_power_level: %d\n", s.adaptivePowerLevel);
