@@ -6,8 +6,8 @@
 #include <NimBLEUtils.h>
 #include <esp_timer.h>
 
-#include "Camera.h"
 #include "BtDebugJournal.h"
+#include "Camera.h"
 #include "Device.h"
 
 namespace Furble {
@@ -42,13 +42,14 @@ std::string payloadHex(const uint8_t *data, size_t length) {
 }
 
 void printJournalEvent(const BtDebugEvent &event, void *) {
-  printf("bt.event: seq:%llu session:%u attempt:%u time:%llu kind:%u phase:%s op:%s result:%s duration_ms:%u reason:%d(%s) gen:%llu ",
-         static_cast<unsigned long long>(event.sequence), static_cast<unsigned>(event.session_id),
-         static_cast<unsigned>(event.attempt_id),
-         static_cast<unsigned long long>(event.timestamp_ms), static_cast<unsigned>(event.kind),
-         event.begin ? "begin" : "end",
-         event.operation, event.result, static_cast<unsigned>(event.duration_ms), event.reason,
-         event.reason_text, static_cast<unsigned long long>(event.generation));
+  printf(
+      "bt.event: seq:%llu session:%u attempt:%u time:%llu kind:%u phase:%s op:%s result:%s "
+      "duration_ms:%u reason:%d(%s) gen:%llu ",
+      static_cast<unsigned long long>(event.sequence), static_cast<unsigned>(event.session_id),
+      static_cast<unsigned>(event.attempt_id), static_cast<unsigned long long>(event.timestamp_ms),
+      static_cast<unsigned>(event.kind), event.begin ? "begin" : "end", event.operation,
+      event.result, static_cast<unsigned>(event.duration_ms), event.reason, event.reason_text,
+      static_cast<unsigned long long>(event.generation));
   if (event.address[0] != '\0') {
     printf("addr:%s type:%u ", event.address, static_cast<unsigned>(event.address_type));
   }
@@ -72,8 +73,9 @@ void printJournalEvent(const BtDebugEvent &event, void *) {
   const size_t payload_bytes = std::min<size_t>(event.payload_length, sizeof(event.payload));
   printf("security:%s/%s/%s key:%u payload_len:%u payload:%s%s rssi:%d name:%s mfr:%s\n",
          event.encrypted ? "encrypted" : "open",
-         event.authenticated ? "authenticated" : "unauthenticated", event.bonded ? "bonded" : "unbonded",
-         static_cast<unsigned>(event.key_size), static_cast<unsigned>(event.payload_length),
+         event.authenticated ? "authenticated" : "unauthenticated",
+         event.bonded ? "bonded" : "unbonded", static_cast<unsigned>(event.key_size),
+         static_cast<unsigned>(event.payload_length),
          payloadHex(event.payload, payload_bytes).c_str(), event.payload_truncated ? "..." : "",
          static_cast<int>(event.rssi), event.name, event.manufacturer);
 }
@@ -705,12 +707,11 @@ bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue
 #if defined(FURBLE_CONSOLE)
   const NimBLERemoteService *service = characteristic->getRemoteService();
   const NimBLEUUID empty;
-  const bool result = value.size() != 0;
   journalRecord("read", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
-                value.data(), value.size(), result, false, started_us, m_DebugAttemptId);
+                value.data(), value.size(), true, false, started_us, m_DebugAttemptId);
 #endif
 
-  return value.size() != 0;
+  return true;
 }
 
 bool Camera::gattRead(const NimBLEUUID &service,
@@ -727,12 +728,11 @@ bool Camera::gattRead(const NimBLEUUID &service,
   value = m_Client->getValue(service, characteristic);
 
 #if defined(FURBLE_CONSOLE)
-  const bool result = value.size() != 0;
-  journalRecord("read", service, characteristic, value.data(), value.size(), result, false,
+  journalRecord("read", service, characteristic, value.data(), value.size(), true, false,
                 started_us, m_DebugAttemptId);
 #endif
 
-  return value.size() != 0;
+  return true;
 }
 
 bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
@@ -761,11 +761,12 @@ bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
 #else
       [callback](NimBLERemoteCharacteristic *remoteCharacteristic, uint8_t *data, size_t length,
 #endif
-                 bool isNotify) {
+                             bool isNotify) {
 #if defined(FURBLE_CONSOLE)
         const NimBLERemoteService *service = remoteCharacteristic->getRemoteService();
         const NimBLEUUID empty;
-        journalRecord(isNotify ? "notify" : "indicate", service != nullptr ? service->getUUID() : empty,
+        journalRecord(isNotify ? "notify" : "indicate",
+                      service != nullptr ? service->getUUID() : empty,
                       remoteCharacteristic->getUUID(), data, length, true, false,
                       static_cast<uint64_t>(esp_timer_get_time()), attempt_id);
 #endif
@@ -792,8 +793,10 @@ void Camera::gattJournalDrain(void) {
 }
 
 void Camera::gattJournalDump(size_t count) {
-  BtDebugJournal::instance().dump(std::min(count, BtDebugJournal::MAX_EVENTS), printJournalEvent,
-                                  nullptr);
+  BtDebugJournal &journal = BtDebugJournal::instance();
+  printf("bt.journal: count:%zu dropped:%zu capacity:%zu storage_bytes:%zu\n", journal.size(),
+         journal.droppedCount(), journal.capacity(), journal.storageBytes());
+  journal.dump(std::min(count, BtDebugJournal::MAX_EVENTS), printJournalEvent, nullptr);
 }
 
 void Camera::gattJournalClear(void) {

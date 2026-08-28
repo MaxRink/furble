@@ -26,6 +26,8 @@ int main() {
   BtDebugJournal &journal = BtDebugJournal::instance();
   journal.clear();
   journal.setEnabled(true);
+  check(journal.capacity() == BtDebugJournal::MAX_EVENTS, "journal allocates its board capacity");
+  check(journal.storageBytes() <= 8192, "non-S3 journal storage stays below 8 KiB");
   const uint32_t session = journal.sessionId();
   const uint32_t attempt = journal.nextAttempt();
 
@@ -37,6 +39,16 @@ int main() {
   connect.address_type = 3;
   connect.identity_type = 0;
   connect.generation = 9;
+  snprintf(connect.address, sizeof(connect.address), "%s", "aa:bb:cc:dd:ee:ff");
+  snprintf(connect.identity, sizeof(connect.identity), "%s", "01:23:45:67:89:ab");
+  snprintf(connect.service_uuid, sizeof(connect.service_uuid), "%s",
+           "12345678-1234-5678-9abc-def012345678");
+  snprintf(connect.characteristic_uuid, sizeof(connect.characteristic_uuid), "%s", "abcd");
+  snprintf(connect.operation, sizeof(connect.operation), "%s", "long-operation-name");
+  for (size_t index = 0; index < sizeof(connect.payload); ++index) {
+    connect.payload[index] = static_cast<uint8_t>(index);
+  }
+  connect.payload_length = 64;
   journal.record(connect);
 
   BtDebugEvent subscribe;
@@ -59,6 +71,17 @@ int main() {
         "journal stamps sequence, session, and attempt identity");
   check(events[0].address_type == 3 && events[0].identity_type == 0,
         "address and identity types survive the event boundary");
+  check(std::string(events[0].address) == "aa:bb:cc:dd:ee:ff"
+            && std::string(events[0].identity) == "01:23:45:67:89:ab",
+        "binary BLE addresses round-trip without losing correlation");
+  check(std::string(events[0].service_uuid) == "12345678-1234-5678-9abc-def012345678"
+            && std::string(events[0].characteristic_uuid) == "abcd",
+        "binary UUIDs round-trip in canonical text form");
+  check(std::string(events[0].operation) == "long-operat",
+        "journal text fields are bounded and terminated");
+  check(
+      events[0].payload_length == 64 && events[0].payload_truncated && events[0].payload[23] == 23,
+      "payload preserves a bounded prefix and loss accounting");
   check(events[1].payload_length == 2 && events[1].payload[0] == 1 && events[1].response,
         "CCCD value and response mode survive the event boundary");
 
@@ -81,7 +104,8 @@ int main() {
   events.clear();
   check(journal.dump(0, collect, &events) == BtDebugJournal::MAX_EVENTS,
         "journal has a hard bounded capacity");
-  check(events.front().timestamp_ms == 5 && events.back().timestamp_ms == BtDebugJournal::MAX_EVENTS + 4,
+  check(events.front().timestamp_ms == 5
+            && events.back().timestamp_ms == BtDebugJournal::MAX_EVENTS + 4,
         "ring keeps only the newest bounded events");
   check(journal.droppedCount() == 5, "ring reports overwritten events");
   check(Furble::btGapReasonName(0x13) == std::string("remote-user-terminated"),

@@ -119,7 +119,8 @@ the web installer Capture BT debug dump panel.
 - `bt pair yes | no | key <6 digits>` answers a pairing prompt.
 - `bt journal on | off | dump [n] | clear` records a GATT journal.
 
-The journal is a fixed 128-event ring. Recording is silent and bounded. Live
+The journal is a fixed 32-event ring on boards without PSRAM and a 128-event
+ring on StickS3 when PSRAM is available. Recording is silent and bounded. Live
 console streaming drains at most eight events per console turn, while `dump`
 prints only the requested newest records. Events use the monotonic millisecond
 clock and typed fields, including requested and resolved address identities,
@@ -128,8 +129,10 @@ state, connection parameters before and after an update, security state and
 key size, GATT service and characteristic UUIDs, operation kind, CCCD value,
 response mode, payload length, result, and bounded duration. Use
 `bt journal dump 128` for a complete bounded snapshot, then copy the console
-output into a bug report. The journal is RAM-only and never changes bonds or
-NVS.
+output into a bug report. The dump reports overwritten records. The compact
+record ring consumes at most 8 KiB of internal memory on non-S3 boards. On S3,
+the 128-record ring consumes PSRAM, with a 32-record internal fallback when
+PSRAM is unavailable. The journal is RAM-only and never changes bonds or NVS.
 
 ## debug
 

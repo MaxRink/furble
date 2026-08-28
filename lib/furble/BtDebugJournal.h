@@ -23,7 +23,9 @@ struct BtDebugEvent {
   static constexpr size_t ADDRESS_BYTES = 18;
   static constexpr size_t UUID_BYTES = 40;
   static constexpr size_t TEXT_BYTES = 32;
-  static constexpr size_t PAYLOAD_BYTES = 64;
+  // Keep journal hex output and retained payload prefixes bounded. The full
+  // wire length remains in payload_length and payload_truncated records loss.
+  static constexpr size_t PAYLOAD_BYTES = 24;
 
   uint64_t timestamp_ms = 0;
   uint64_t sequence = 0;
@@ -73,9 +75,8 @@ const char *btGapReasonName(int reason);
 /** A fixed-capacity ring used by console diagnostics. It never writes logs while recording. */
 class BtDebugJournal {
  public:
-  // Keep the console-only ring bounded for each board. S3 has enough PSRAM for
-  // the larger diagnostics window, while the smaller controllers keep the
-  // console feature below 8 KiB of static RAM.
+  // Keep the console-only ring bounded for each board. The S3 ring is allocated
+  // from PSRAM when available. A no-PSRAM fallback uses the non-S3 capacity.
 #if defined(FURBLE_M5STICKS3)
   static constexpr size_t MAX_EVENTS = 128;
 #else
@@ -84,6 +85,7 @@ class BtDebugJournal {
   using Emit = void (*)(const BtDebugEvent &, void *context);
 
   static BtDebugJournal &instance();
+  ~BtDebugJournal();
 
   bool setEnabled(bool enabled);
   bool isEnabled() const;
@@ -93,6 +95,10 @@ class BtDebugJournal {
   void record(const BtDebugEvent &event);
   size_t size() const;
   size_t droppedCount() const;
+  /** Number of records currently allocated. Useful for proving board fallback. */
+  size_t capacity() const;
+  /** Bytes held by the allocated record ring, excluding the mutex and counters. */
+  size_t storageBytes() const;
 
   /** Emit at most count newest events, in chronological order. Zero means all. */
   size_t dump(size_t count, Emit emit, void *context) const;
@@ -105,8 +111,68 @@ class BtDebugJournal {
   BtDebugJournal(const BtDebugJournal &) = delete;
   BtDebugJournal &operator=(const BtDebugJournal &) = delete;
 
+  // This is the retained representation. BtDebugEvent remains a convenient
+  // decoded view for callbacks, but is never stored in the ring. Addresses and
+  // UUIDs are binary, text is bounded, and payload is deliberately sampled.
+  struct BtDebugRecord {
+    uint64_t timestamp_ms = 0;
+    uint64_t generation = 0;
+    uint32_t attempt_id = 0;
+    int32_t reason = 0;
+    uint16_t duration_ms = 0;
+    uint16_t interval_before = 0;
+    uint16_t latency_before = 0;
+    uint16_t timeout_before = 0;
+    uint16_t interval_after = 0;
+    uint16_t latency_after = 0;
+    uint16_t timeout_after = 0;
+    uint16_t payload_length = 0;
+    uint16_t flags = 0;
+    uint8_t kind = static_cast<uint8_t>(BtDebugEventKind::GATT);
+    uint8_t address_type = 0xff;
+    uint8_t identity_type = 0xff;
+    uint8_t key_size = 0;
+    int8_t rssi = 0;
+    uint8_t address[6] = {};
+    uint8_t identity[6] = {};
+    uint8_t service_uuid_length = 0;
+    uint8_t service_uuid[16] = {};
+    uint8_t characteristic_uuid_length = 0;
+    uint8_t characteristic_uuid[16] = {};
+    char operation[12] = {};
+    char owner[12] = {};
+    char state[12] = {};
+    char result[12] = {};
+    char reason_text[12] = {};
+    char name[16] = {};
+    char manufacturer[16] = {};
+    uint8_t payload[24] = {};
+  };
+
+  static constexpr uint16_t FLAG_SUCCESS = 1U << 0;
+  static constexpr uint16_t FLAG_RESPONSE = 1U << 1;
+  static constexpr uint16_t FLAG_ENCRYPTED = 1U << 2;
+  static constexpr uint16_t FLAG_AUTHENTICATED = 1U << 3;
+  static constexpr uint16_t FLAG_BONDED = 1U << 4;
+  static constexpr uint16_t FLAG_PHYSICAL = 1U << 5;
+  static constexpr uint16_t FLAG_LOGICAL = 1U << 6;
+  static constexpr uint16_t FLAG_BEGIN = 1U << 7;
+  static constexpr uint16_t FLAG_PAYLOAD_TRUNCATED = 1U << 8;
+
+  static_assert(sizeof(BtDebugRecord) <= 224,
+                "journal record must fit the documented per-board budget");
+
+  static void encode(const BtDebugEvent &event, BtDebugRecord &record);
+  static void decode(const BtDebugRecord &record,
+                     uint64_t sequence,
+                     uint32_t session,
+                     BtDebugEvent &event);
+  bool allocateLocked();
+  void releaseLocked();
+
   mutable std::mutex m_Mutex;
-  BtDebugEvent m_Events[MAX_EVENTS] = {};
+  BtDebugRecord *m_Events = nullptr;
+  size_t m_EventCapacity = 0;
   size_t m_Count = 0;
   uint64_t m_WriteSequence = 0;
   uint64_t m_LiveSequence = 0;
