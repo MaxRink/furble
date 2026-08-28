@@ -21,6 +21,27 @@ EXPECTED_FLASH_OFFSETS = {
 }
 
 
+def build_family_error(builds):
+  """Return an error unless builds contain one of each supported chip family."""
+  if not isinstance(builds, list):
+    return "builds must be a list"
+  families = [
+    build.get("chipFamily") if isinstance(build, dict) else None
+    for build in builds
+  ]
+  expected = tuple(EXPECTED_FLASH_OFFSETS)
+  if (
+    len(families) != len(expected)
+    or any(not isinstance(family, str) for family in families)
+    or any(families.count(family) != 1 for family in expected)
+  ):
+    return (
+      "expected exactly one build for each chip family "
+      f"{list(expected)}, got {families!r}"
+    )
+  return None
+
+
 def expected_manifests():
   return {
     f"manifest_{platform}{variant}.json"
@@ -34,10 +55,14 @@ def flash_offset_error(build):
   chip_family = build.get("chipFamily") if isinstance(build, dict) else None
   expected = EXPECTED_FLASH_OFFSETS.get(chip_family)
   parts = build.get("parts") if isinstance(build, dict) else None
-  if expected is None or not isinstance(parts, list):
-    return None
+  if expected is None:
+    return f"unsupported chip family: {chip_family!r}"
+  if not isinstance(parts, list):
+    return f"{chip_family}: missing flash parts"
+  if any(not isinstance(part, dict) for part in parts):
+    return f"{chip_family}: flash parts must be objects"
   actual = tuple(
-    part.get("offset") if isinstance(part, dict) else None for part in parts
+    part.get("offset") for part in parts
   )
   if actual != expected:
     return (
@@ -73,6 +98,9 @@ def validate(site: Path):
     if not isinstance(builds, list) or len(builds) != 2:
       errors.append(f"{manifest_path.name}: expected ESP32 and ESP32-S3 builds")
       continue
+    family_error = build_family_error(builds)
+    if family_error:
+      errors.append(f"{manifest_path.name}: {family_error}")
     for build in builds:
       offset_error = flash_offset_error(build)
       if offset_error:
