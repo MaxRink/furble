@@ -739,6 +739,12 @@ if(BUILD_TESTING)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
+  # Run several independent profiler processes so ctest -j covers report-path
+  # isolation. Each process must be able to create and clean up its own report.
+  foreach(profiler_worker RANGE 1 4)
+    add_test(NAME sim-power-profiler-concurrent-${profiler_worker}
+             COMMAND sim_power_profiler_test)
+  endforeach()
   add_test(NAME ethernet-transport COMMAND ethernet_test)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)

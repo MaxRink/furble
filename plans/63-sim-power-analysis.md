@@ -32,6 +32,10 @@ Updated 2026-08-17 on `feat/63-sim-power`, stacked on `feat/28-emulator`.
 - Phase G usage coverage is implemented and all nine scripts run headless.
   The CI workflow and sticky PR reporting are intentionally deferred so they
   can be consolidated with the screenshot job later.
+- The host power-profiler wrap regression uses an atomically-created unique
+  temporary directory for each process. CTest also runs four independent
+  profiler workers, so parallel host suites cannot overwrite or remove one
+  another's JSON report.
 - The initial pull and rebase could not update the linked worktree Git
   control file because the sandbox denied access to `FETCH_HEAD`. The
   starting tip did not contain the parallel CMake source-list, Scan callback
@@ -535,6 +539,8 @@ time. Effort: one to two days.
 
 - The scenario suite runs headless on macOS and Ubuntu, and two runs on the
   same machine produce byte-identical JSON.
+- Four concurrent `sim_power_profiler_test` processes complete without report
+  collisions or stale temporary files.
 - Reintroduce the RESYNC leak (revert `a16046a` locally): connected-idle
   residency collapses and the gate fails.
 - Add an unconditional `lv_label_set_text` to a periodic timer: invalidated
