@@ -189,10 +189,14 @@ These boolean settings are applied before the UI is constructed:
 `boot_splash`. The M5StickS3 model also accepts `watchdog`; other board models
 reject that seed because they cannot apply it.
 
-The scenario-only settings are `saved_camera`, `connect_fail`, and
-`no_touch`. `saved_camera` adds an inactive saved camera, `connect_fail`
-makes the fake camera reject connect, and `no_touch` selects the physical-button
-layout. The interval settings are `interval_count`, `interval_delay`,
+The scenario-only settings are `saved_camera`, `connect_fail`, `no_touch`,
+`link_lies`, `liveness_check`, and `liveness_grace_ms`. `saved_camera` adds an
+inactive saved camera, `connect_fail` makes the fake camera reject connect, and
+`no_touch` selects the physical-button layout. `link_lies` arms the
+`link-lies-kill` action described under fault injection. `liveness_check
+false` opts a scenario out of the continuous liveness invariant enforcement
+(detection still counts violations), and `liveness_grace_ms` overrides the
+3000 ms divergence grace period. The interval settings are `interval_count`, `interval_delay`,
 `interval_shutter`, and `interval_wait`; `bulb_duration` seeds the bulb timer.
 `gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`, or
 `write-error` before the GPS task starts.
@@ -211,6 +215,7 @@ action connect-two
 action disconnect
 action drop
 action drop N
+action link-lies-kill
 action cancel
 action shutter
 action button-mode one-button
@@ -315,6 +320,7 @@ The complete `ui.*` query set is:
 | `ui.battery_x` | Numeric header x position, or `none`. |
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
+| `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. |
 
 The other namespaces are:
 
@@ -355,6 +361,20 @@ The other namespaces are:
   control state re-enters `connecting`; without it, the state returns to
   `idle` when no other link remains. `action connect-two` keeps a surviving
   link active while one target is dropped.
+- `seed link_lies true` arms `action link-lies-kill`, which kills every
+  connected fake camera link without informing the control state machine:
+  `isConnected()` turns false while the control state stays `active` and no
+  reconnect is scheduled. This constructs the false-connected divergence from
+  the 2026-08-28 hardware incident, which `action drop` cannot express because
+  it always advances the state machine.
+- Every scripted scenario runs a continuous liveness invariant on each driver
+  tick: if the UI presents the Connected screen (the `ui.connected` three-way
+  check) while fewer camera links are actually up than the session has
+  targets, and the divergence outlives the grace period (default 3000 ms,
+  override with `seed liveness_grace_ms N`), the run fails with `LIVENESS
+  INVARIANT FAILED`. `seed liveness_check false` opts a scenario out of the
+  failure; detection still increments `ui.liveness_violations` so an opted-out
+  scenario can assert the invariant would have fired.
 - The companion rig is a localhost TCP peer, not BLE. `--rig` enables it,
   `--rig-port` selects the port, `--ignore-uuid-mismatch` accepts a bad service
   UUID, `--drop-notify` drops status notifications, and `--delay-ms` delays
