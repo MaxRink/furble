@@ -12,9 +12,9 @@ holding an oversized event ring in internal DRAM.
   bounded text, and a 24-byte payload prefix. The decoded event uses the same
   payload bound, so console hex output cannot expand beyond the retained data.
 - Non-S3 boards allocate 32 records, for 6912 bytes of journal storage on the
-  host and at most 6912 bytes on 32-bit targets. StickS3 requests 128 records
-  from PSRAM, for at most 27648 bytes, and falls back to 32 internal records
-  when PSRAM is unavailable.
+  host and at most 6912 bytes on 32-bit targets. ESP32-S3 builds with
+  `CONFIG_SPIRAM` request 128 records from PSRAM, for at most 27648 bytes, and
+  fall back to 32 internal records when PSRAM is unavailable.
 - Allocate only while the journal is enabled. `dump` reports capacity, storage
   bytes, and overwritten-record count. Sequence, session, and attempt IDs keep
   lifecycle events correlated after decoding.

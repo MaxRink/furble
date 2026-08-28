@@ -93,6 +93,26 @@ int main() {
   check(sawConnect && hasIdentity, "connect callback records negotiated address identity");
   check(sawWrite, "typed journal records write operation and response mode");
   check(sawSubscribe, "typed journal records CCCD value and response mode");
+  for (const auto &event : events) {
+    check(event.timestamp_ms != 0, "journal events carry a timestamp");
+  }
+
+  JournalCamera failed;
+  failed.attach(nullptr, peer.config().address);
+  check(!failed.connect(ESP_PWR_LVL_P0, 1000), "handshake failure is reported");
+  events.clear();
+  BtDebugJournal::instance().dump(0, collect, &events);
+  bool sawFailedConnect = false;
+  for (const auto &event : events) {
+    if (event.kind == BtDebugEventKind::GAP_CONNECT_FAILED) {
+      sawFailedConnect = true;
+      check(event.timestamp_ms != 0, "failed connect event carries a timestamp");
+      check(std::string(event.address) == peer.config().address.toString(),
+            "failed connect event preserves the requested address");
+      check(std::string(event.result) == "handshake", "failed connect result is unambiguous");
+    }
+  }
+  check(sawFailedConnect, "handshake failure emits a journal event");
   client->disconnect();
   NimBLEDevice::deleteClient(client);
   delete remote;

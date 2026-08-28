@@ -95,6 +95,7 @@ size_t g_MaxClients = 0;        // 0 means unlimited
 bool g_DeferredDelete = false;  // honour setSelfDelete and defer live deleteClient
 bool g_AsyncDisconnect = false;
 bool g_AsyncDisconnectEventFound = false;
+bool g_ScanStartAllowed = true;
 uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
 size_t g_ConnParamApplyDelayReads = 1;
 bool g_Bonded = false;
@@ -119,6 +120,18 @@ bool eraseClient(NimBLEClient *client) {
 }
 
 }  // namespace
+
+bool nimbleMockGapScanStartAllowed(void) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_ScanStartAllowed
+         && std::none_of(g_Clients.begin(), g_Clients.end(),
+                         [](const auto &client) { return client->mockDisconnectEventPending(); });
+}
+
+void nimbleMockSetGapScanStartAllowed(bool allowed) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_ScanStartAllowed = allowed;
+}
 
 NimBLEServer *NimBLEDevice::createServer() {
   return &g_Server;
@@ -543,6 +556,10 @@ bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
     eraseClient(this);
   }
   return true;
+}
+
+bool NimBLEClient::mockDisconnectEventPending(void) const {
+  return m_DisconnectEventPending;
 }
 
 bool NimBLEClient::isConnected() const {
@@ -1023,6 +1040,7 @@ void NimBLEDevice::resetMock() {
   g_DeferredDelete = false;
   g_AsyncDisconnect = false;
   g_AsyncDisconnectEventFound = false;
+  g_ScanStartAllowed = true;
   g_ConnectDelayMs = 0;
   g_ConnParamApplyDelayReads = 1;
   g_Bonded = false;

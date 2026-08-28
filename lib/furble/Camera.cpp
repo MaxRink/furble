@@ -215,12 +215,13 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     ESP_LOGI(LOG_TAG, "Failed to create client");
 #if defined(FURBLE_CONSOLE)
     BtDebugEvent event;
+    event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
     event.kind = BtDebugEventKind::GAP_CONNECT_FAILED;
     event.attempt_id = m_DebugAttemptId;
     event.address_type = m_Address.getType();
     copyText(event.address, sizeof(event.address), m_Address.toString());
     copyText(event.operation, sizeof(event.operation), "connect");
-    copyText(event.result, sizeof(event.result), "create-client-failed");
+    copyText(event.result, sizeof(event.result), "no-client");
     BtDebugJournal::instance().record(event);
 #endif
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
@@ -311,12 +312,13 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     ESP_LOGW(LOG_TAG, "Camera connect failed for %s", m_Address.toString().c_str());
 #if defined(FURBLE_CONSOLE)
     BtDebugEvent event;
+    event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
     event.kind = BtDebugEventKind::GAP_CONNECT_FAILED;
     event.attempt_id = m_DebugAttemptId;
     event.address_type = m_Address.getType();
     copyText(event.address, sizeof(event.address), m_Address.toString());
     copyText(event.operation, sizeof(event.operation), "connect");
-    copyText(event.result, sizeof(event.result), "camera-handshake-failed");
+    copyText(event.result, sizeof(event.result), "handshake");
     BtDebugJournal::instance().record(event);
 #endif
   }

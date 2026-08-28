@@ -303,6 +303,7 @@ class NimBLEClient {
   // Complete a controller disconnect event held back after a central
   // terminate.  Returns false when no event is queued.
   bool mockCompleteAsyncDisconnect(void);
+  bool mockDisconnectEventPending(void) const;
 
   // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
   //

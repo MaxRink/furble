@@ -257,6 +257,28 @@ target_include_directories(bt_debug_journal_test PRIVATE ${FURBLE_ROOT}/lib/furb
 target_compile_options(bt_debug_journal_test PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(bt_debug_journal_test PRIVATE Threads::Threads)
 
+# Compile the same assertions against the S3+PSRAM and S3-without-PSRAM
+# preprocessor profiles. Runtime allocation failure remains covered by the
+# capability-checked firmware path; these targets lock down both capacities.
+add_executable(bt_debug_journal_s3_test
+               bt_debug_journal_test.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
+target_include_directories(bt_debug_journal_s3_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(bt_debug_journal_s3_test PRIVATE FURBLE_HOST_S3_PSRAM
+                                                            CONFIG_IDF_TARGET_ESP32S3
+                                                            CONFIG_SPIRAM)
+target_compile_options(bt_debug_journal_s3_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(bt_debug_journal_s3_test PRIVATE Threads::Threads)
+
+add_executable(bt_debug_journal_s3_fallback_test
+               bt_debug_journal_test.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
+target_include_directories(bt_debug_journal_s3_fallback_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(bt_debug_journal_s3_fallback_test PRIVATE FURBLE_HOST_S3_FALLBACK
+                                                                     CONFIG_IDF_TARGET_ESP32S3)
+target_compile_options(bt_debug_journal_s3_fallback_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(bt_debug_journal_s3_fallback_test PRIVATE Threads::Threads)
+
 # Drive production Camera GATT wrappers with the in-memory Fujifilm peer while
 # the console journal is enabled. Assertions inspect typed events, not output.
 add_executable(camera_journal_event_test
@@ -757,6 +779,8 @@ if(BUILD_TESTING)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME scan-generation COMMAND scan_generation_test)
   add_test(NAME bt-debug-journal COMMAND bt_debug_journal_test)
+  add_test(NAME bt-debug-journal-s3-psram COMMAND bt_debug_journal_s3_test)
+  add_test(NAME bt-debug-journal-s3-fallback COMMAND bt_debug_journal_s3_fallback_test)
   add_test(NAME camera-journal-events COMMAND camera_journal_event_test)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)

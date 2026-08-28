@@ -26,8 +26,17 @@ int main() {
   BtDebugJournal &journal = BtDebugJournal::instance();
   journal.clear();
   journal.setEnabled(true);
+#if defined(FURBLE_HOST_S3_PSRAM)
+  constexpr size_t expected_capacity = 128;
+  constexpr size_t expected_storage = 27648;
+#else
+  constexpr size_t expected_capacity = 32;
+  constexpr size_t expected_storage = 6912;
+#endif
   check(journal.capacity() == BtDebugJournal::MAX_EVENTS, "journal allocates its board capacity");
-  check(journal.storageBytes() == 6912, "non-S3 journal storage is 32 x 216 bytes");
+  check(journal.capacity() == expected_capacity, "journal capacity matches the target profile");
+  check(journal.storageBytes() == expected_storage,
+        "journal storage matches the target profile and record size");
   const uint32_t session = journal.sessionId();
   const uint32_t attempt = journal.nextAttempt();
 
@@ -59,6 +68,7 @@ int main() {
   subscribe.payload_length = 2;
   subscribe.payload[0] = 1;
   subscribe.payload[1] = 0;
+  snprintf(subscribe.manufacturer, sizeof(subscribe.manufacturer), "%s", "00017f80");
   journal.record(subscribe);
 
   std::vector<BtDebugEvent> events;
@@ -84,6 +94,8 @@ int main() {
       "payload preserves a bounded prefix and loss accounting");
   check(events[1].payload_length == 2 && events[1].payload[0] == 1 && events[1].response,
         "CCCD value and response mode survive the event boundary");
+  check(std::string(events[1].manufacturer) == "00017f80",
+        "binary manufacturer data is retained as bounded lowercase hex");
 
   events.clear();
   check(journal.drain(1, collect, &events) == 1 && events.size() == 1

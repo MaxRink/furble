@@ -156,7 +156,7 @@ bool BtDebugJournal::allocateLocked() {
   if (m_Events != nullptr)
     return true;
 #if defined(ESP_PLATFORM)
-#if defined(FURBLE_M5STICKS3)
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(CONFIG_SPIRAM)
   m_Events = static_cast<BtDebugRecord *>(
       heap_caps_calloc(MAX_EVENTS, sizeof(BtDebugRecord), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   m_EventCapacity = m_Events != nullptr ? MAX_EVENTS : 0;

@@ -17,6 +17,7 @@ namespace Furble {
 
 namespace {
 thread_local Scan *g_CallbackOwner = nullptr;
+constexpr int SCAN_START_FAILED_REASON = -1;
 
 #if defined(FURBLE_CONSOLE)
 void recordScanEvent(const char *operation,
@@ -204,7 +205,8 @@ void Scan::handleScanEnd(uint64_t generation, const NimBLEScanResults &results, 
   }
 
 #if defined(FURBLE_CONSOLE)
-  recordScanEvent("end", owner, generation, true, false, reason == 0, reason);
+  recordScanEvent("end", owner, generation, reason != SCAN_START_FAILED_REASON, false, reason == 0,
+                  reason);
 #endif
 
   if (custom != nullptr) {
@@ -241,7 +243,7 @@ void Scan::onScanEnd(const NimBLEScanResults &results, int reason) {
   handleScanEnd(generation, results, reason);
 }
 
-void Scan::start(std::function<void(void *)> scanCallback,
+bool Scan::start(std::function<void(void *)> scanCallback,
                  void *scanPrivateData,
                  std::function<void(void *)> scanEndCallback) {
   stop();
@@ -250,15 +252,11 @@ void Scan::start(std::function<void(void *)> scanCallback,
 
   Mode mode;
   uint32_t timeout;
-#if defined(FURBLE_CONSOLE)
   uint64_t generation;
-#endif
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);
     ++m_Generation;
-#if defined(FURBLE_CONSOLE)
     generation = m_Generation;
-#endif
     m_CallbackMode = CallbackMode::DISCOVERY;
     m_CustomCallbacks = nullptr;
     m_ScanResultCallback = std::move(scanCallback);
@@ -272,30 +270,32 @@ void Scan::start(std::function<void(void *)> scanCallback,
     m_DeadlineUs = timeout == 0 ? 0 : monotonicUs() + (timeout * 1000000ULL);
   }
 
-  m_Scan->setScanCallbacks(m_CallbackProxy.get());
-  applyMode(mode);
-  const bool physical = m_Scan != nullptr;
-  if (physical) {
-    m_Scan->start(timeout * 1000, false);
+  bool physical = false;
+  if (m_Scan != nullptr) {
+    m_Scan->setScanCallbacks(m_CallbackProxy.get());
+    applyMode(mode);
+    physical = m_Scan->start(timeout * 1000, false);
   }
 #if defined(FURBLE_CONSOLE)
-  recordScanEvent("start", "discovery", generation, physical, true, physical, physical ? 0 : -1);
+  recordScanEvent("start", "discovery", generation, physical, physical, physical,
+                  physical ? 0 : SCAN_START_FAILED_REASON);
 #endif
+  if (!physical) {
+    const NimBLEScanResults results;
+    handleScanEnd(generation, results, SCAN_START_FAILED_REASON);
+  }
+  return physical;
 }
 
-void Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates) {
+bool Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates) {
   stop();
   const std::lock_guard<std::recursive_mutex> dispatchLock(m_DispatchMutex);
 
-#if defined(FURBLE_CONSOLE)
   uint64_t generation;
-#endif
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);
     ++m_Generation;
-#if defined(FURBLE_CONSOLE)
     generation = m_Generation;
-#endif
     m_CallbackMode = CallbackMode::CUSTOM;
     m_CustomCallbacks = pScanCallbacks;
     m_ScanResultCallback = nullptr;
@@ -309,15 +309,21 @@ void Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wa
 
   // Pairing and reconnect ignore the user preset, a low duty cycle here turns
   // a fast reconnect into a timeout.
-  applyMode(Mode::FULL);
-  m_Scan->setScanCallbacks(m_CallbackProxy.get(), wantDuplicates);
-  const bool physical = m_Scan != nullptr;
-  if (physical) {
-    m_Scan->start(duration, false);
+  bool physical = false;
+  if (m_Scan != nullptr) {
+    applyMode(Mode::FULL);
+    m_Scan->setScanCallbacks(m_CallbackProxy.get(), wantDuplicates);
+    physical = m_Scan->start(duration, false);
   }
 #if defined(FURBLE_CONSOLE)
-  recordScanEvent("start", "custom", generation, physical, true, physical, physical ? 0 : -1);
+  recordScanEvent("start", "custom", generation, physical, physical, physical,
+                  physical ? 0 : SCAN_START_FAILED_REASON);
 #endif
+  if (!physical) {
+    const NimBLEScanResults results;
+    handleScanEnd(generation, results, SCAN_START_FAILED_REASON);
+  }
+  return physical;
 }
 
 void Scan::stop(void) {

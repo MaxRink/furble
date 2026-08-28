@@ -75,10 +75,10 @@ const char *btGapReasonName(int reason);
 /** A fixed-capacity ring used by console diagnostics. It never writes logs while recording. */
 class BtDebugJournal {
  public:
-  // Keep the console-only ring bounded for each board. The S3 ring is allocated
-  // from PSRAM when available. A no-PSRAM fallback uses the non-S3 capacity.
+  // S3 builds configured for PSRAM request the larger ring. Allocation still
+  // checks the capability heap at runtime because a board may lack the chip.
   static constexpr size_t INTERNAL_EVENTS = 32;
-#if defined(FURBLE_M5STICKS3)
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(CONFIG_SPIRAM)
   static constexpr size_t MAX_EVENTS = 128;
 #else
   static constexpr size_t MAX_EVENTS = INTERNAL_EVENTS;

@@ -69,8 +69,9 @@ protocol core.
   live at that seam, so companion traffic and raw explorer traffic stay out
   of the vendor journal. Keep new vendor operations on these wrappers. The
   journal stores compact binary records, not `BtDebugEvent` objects. Non-S3
-  storage is 32 records and at most 8 KiB. StickS3 requests 128 records from
-  PSRAM and falls back to 32 internal records when PSRAM is unavailable.
+  storage is 32 records and at most 8 KiB. ESP32-S3 builds configured with
+  `CONFIG_SPIRAM` request 128 records from PSRAM and fall back to 32 internal
+  records when PSRAM is unavailable.
   Payloads and text are bounded and the dropped counter is diagnostic data.
 - Vendor protocol files are per-camera. Any change here needs the
   hardware-tested-vendors statement in the PR: only Fujifilm is testable on

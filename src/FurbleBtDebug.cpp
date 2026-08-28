@@ -105,10 +105,11 @@ void journalAddressEvent(BtDebugEventKind kind,
     event.identity_type = info->getIdAddress().getType();
     snprintf(event.address, sizeof(event.address), "%s", info->getAddress().toString().c_str());
     snprintf(event.identity, sizeof(event.identity), "%s", info->getIdAddress().toString().c_str());
+  } else if (requested != nullptr) {
+    snprintf(event.address, sizeof(event.address), "%s", requested);
   }
   snprintf(event.operation, sizeof(event.operation), "%s", operation);
-  snprintf(event.result, sizeof(event.result), "requested:%s",
-           requested != nullptr ? requested : "none");
+  snprintf(event.result, sizeof(event.result), "%s", success ? "ok" : "failed");
   snprintf(event.reason_text, sizeof(event.reason_text), "%s", btGapReasonName(reason));
   BtDebugJournal::instance().record(event);
 }
@@ -178,6 +179,7 @@ class VerboseScanCallbacks final: public NimBLEScanCallbacks {
     const size_t responseLength = payload.size() - advLength;
 
     BtDebugEvent event;
+    event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
     event.kind = BtDebugEventKind::SCAN;
     event.success = true;
     event.rssi = static_cast<int8_t>(device->getRSSI());
@@ -197,9 +199,14 @@ class VerboseScanCallbacks final: public NimBLEScanCallbacks {
     }
     if (device->getManufacturerDataCount() != 0) {
       const std::string manufacturer = device->getManufacturerData(0);
-      const size_t bytes = std::min(manufacturer.size(), sizeof(event.manufacturer) - 1);
-      memcpy(event.manufacturer, manufacturer.data(), bytes);
-      event.manufacturer[bytes] = '\0';
+      static constexpr char HEX[] = "0123456789abcdef";
+      const size_t bytes = std::min(manufacturer.size(), (sizeof(event.manufacturer) - 1) / 2);
+      for (size_t index = 0; index < bytes; ++index) {
+        const uint8_t value = static_cast<uint8_t>(manufacturer[index]);
+        event.manufacturer[index * 2] = HEX[value >> 4];
+        event.manufacturer[index * 2 + 1] = HEX[value & 0x0f];
+      }
+      event.manufacturer[bytes * 2] = '\0';
     }
     BtDebugJournal::instance().record(event);
 
