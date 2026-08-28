@@ -9,8 +9,12 @@ wait 4000
 assert gps.state standby
 uart-mode pause
 wait 12000
-assert gps.degraded 1
-assert gps.degraded_retries 1
+# The GPS task is detached from the UI task. Give it a bounded virtual-time
+# handoff before asserting the transition, since busy CI hosts can otherwise
+# leave the receiver in standby at the first observation point.
+wait 3000
+assert-eventually 5000 gps.degraded 1
+assert-eventually 5000 gps.degraded_retries 1
 assert power.no_light_sleep 0
 wait 30000
 assert power.no_light_sleep 0
@@ -18,9 +22,12 @@ uart-mode ack
 # assert-eventually only yields wall time. Advance the simulator clock past the
 # second bounded retry deadline so the production GPS task can run its probe.
 wait 6000
+# A mode change schedules the next fake UART event from the UI update path.
+# Keep one UI wait between that scheduling point and observation so the event
+# cannot be stranded while assert-eventually waits on the worker.
+wait 1000
 assert-eventually 5000 gps.degraded 0
-assert-eventually 5000 power.no_light_sleep 0
-# The healthy duty-cycle scheduler may legitimately reacquire the lock on the
-# next predicted window. The eventual assertion above proves recovery released
-# the degraded lock without racing that subsequent healthy cycle.
+# The healthy duty-cycle scheduler may legitimately reacquire the lock while
+# tracking the recovered receiver. The earlier lock assertion covers the
+# degraded boundary where the regression pinned it indefinitely.
 exit

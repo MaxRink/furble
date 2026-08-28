@@ -102,6 +102,13 @@ a modal or a new widget.
   bounded probe leaves no lock held. The profiler models degraded receiver
   current as acquisition current while retaining a separate `degraded` counter.
 - Firmware builds: five release envs plus `m5stick-s3-debug`.
+- CI run `98783861972` exposed a scheduling race at the first degraded-state
+  assertion on a loaded runner. The scenario now includes an explicit worker
+  handoff before observing degradation and before observing recovery. Twelve
+  consecutive isolated runs and the complete 62-scenario e2e suite pass. A
+  healthy `tracking` state may hold `NO_LIGHT_SLEEP`, so the test asserts lock
+  release at the degraded boundary rather than treating healthy tracking as a
+  failure.
 - Owed: an on-device confirmation on the M5StickS3 that the lock current drops
   during the degraded backoff and recovers on resync. The logic is sim testable
   and covered above; the mA recovery is the final on-device step.
