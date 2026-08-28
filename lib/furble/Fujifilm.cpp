@@ -40,7 +40,7 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr,
   if (pChr->getUUID() == CHR_NOT1_UUID) {
     // The X100VI capture records 01 00. Keep accepting the legacy 02 00 form
     // used by older Fujifilm bodies, but only on this dedicated characteristic.
-    if (FujifilmProtocol::isConfigurationNotification(pData, length)) {
+    if (FujifilmProtocol::isRegistrationNotification(pData, length)) {
       m_Configured = true;
     }
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {

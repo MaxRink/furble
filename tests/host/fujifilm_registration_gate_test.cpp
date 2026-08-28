@@ -34,20 +34,20 @@ void init() {
 }
 
 void testRegistrationPayloads() {
-  using Furble::FujifilmProtocol::isConfigurationNotification;
+  using Furble::FujifilmProtocol::isRegistrationNotification;
   const uint8_t captured[] = {0x01, 0x00};
   const uint8_t legacy[] = {0x02, 0x00};
   const uint8_t malformed[] = {0x01, 0x01};
   const uint8_t unrelated[] = {0x03, 0x00};
-  check(isConfigurationNotification(captured, sizeof(captured)),
+  check(isRegistrationNotification(captured, sizeof(captured)),
         "captured X100VI registration payload is accepted");
-  check(isConfigurationNotification(legacy, sizeof(legacy)),
+  check(isRegistrationNotification(legacy, sizeof(legacy)),
         "legacy Basic registration payload is accepted");
-  check(!isConfigurationNotification(malformed, sizeof(malformed)),
+  check(!isRegistrationNotification(malformed, sizeof(malformed)),
         "malformed registration payload is rejected");
-  check(!isConfigurationNotification(unrelated, sizeof(unrelated)),
+  check(!isRegistrationNotification(unrelated, sizeof(unrelated)),
         "unrelated registration payload is rejected");
-  check(!isConfigurationNotification(nullptr, 2), "empty registration callback cannot confirm");
+  check(!isRegistrationNotification(nullptr, 2), "empty registration callback cannot confirm");
 }
 
 void testBasicConfirmationAndReset() {
