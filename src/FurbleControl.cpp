@@ -788,20 +788,23 @@ void Control::setState(state_t state) {
   // DEBUG so a release build compiles the line out and never spams the monitor.
   ESP_LOGD(LOG_TAG, "state %s -> %s", stateName(m_State), stateName(state));
 
-  m_State = state;
-
   // The setting is read once per connect, on the transition into STATE_ACTIVE.
   // Holding the lock keeps the device awake for the whole connection, which is
   // what furble did before the controller could modem sleep.
-  bool hold = (state == STATE_ACTIVE) && !Settings::sleepConnEffective();
-  if (hold == m_SleepLockHeld) {
-    return;
+  const bool hold = (state == STATE_ACTIVE) && !Settings::sleepConnEffective();
+
+  // getState() reads m_State without m_StateMutex. Acquire before publishing
+  // the state so a reader never observes STATE_ACTIVE without the sleep lock.
+  // The release stays after the store: every path to STATE_IDLE passes through
+  // STATE_DISCONNECTING first, so idle is never published with the lock held.
+  auto &power = Power::getInstance();
+  if (hold && !m_SleepLockHeld) {
+    power.acquire(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
   }
 
-  auto &power = Power::getInstance();
-  if (hold) {
-    power.acquire(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
-  } else {
+  m_State = state;
+
+  if (!hold && m_SleepLockHeld) {
     power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
   }
 
