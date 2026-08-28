@@ -284,13 +284,27 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     // so clearing m_Client cannot race a reader.
     const bool liveClient = m_Connected && (m_Client != nullptr) && m_Client->isConnected();
     if (liveClient) {
-      // NimBLE tears down a connected client asynchronously. Arm its normal
-      // callback-side deletion before issuing the terminate; deleting here
-      // would lose a disconnect event whose controller handle is still queued
-      // and can leave the observer unable to scan until the next reboot.
-      m_Client->setSelfDelete(true, false);
-      m_ClientDeleteOnDisconnect = true;
+      // Tear the link down and clear vendor state while self-delete is still
+      // off. A secure timeout that lands here can leave the controller's
+      // disconnect event already queued on the host task. Arming self-delete
+      // before _disconnect() hands that event the free, and the host task can
+      // free the client while _disconnect() is still dereferencing it, the
+      // Ricoh secure-timeout LoadProhibited. With self-delete off the queued
+      // event only clears m_Connected, so _disconnect() runs on a valid
+      // client.
       this->_disconnect();
+      if (m_Connected) {
+        // onDisconnect has not run, so the disconnect event is still in
+        // flight (a link our terminate is taking down, or a dead link whose
+        // queued event the host has not consumed yet). Arm the callback-side
+        // deletion so the client frees through onDisconnect exactly as
+        // before. This arm is the last touch of the client on this task:
+        // NimBLE may free it immediately after the callback. When
+        // onDisconnect already ran no further event will fire; the client is
+        // reclaimed below through deleteClient() instead.
+        m_ClientDeleteOnDisconnect = true;
+        m_Client->setSelfDelete(true, false);
+      }
     } else if (m_Connected) {
       this->_disconnect();
     }
