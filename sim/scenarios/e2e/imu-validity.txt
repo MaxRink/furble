@@ -1,0 +1,27 @@
+# Accel and gyro validity are independent. A failed gyro read must not cause
+# an unchanged accelerometer label to redraw on every diagnostics tick.
+seed fauxny true
+seed imu true
+wait 300
+action nav settings
+wait 150
+action nav diagnostics
+wait 150
+action nav imu
+action imu.accel 0 0 1
+action imu.gyro 0 0 0
+wait 1200
+assert ui.imu_accel_updates 1
+assert ui.imu_gyro_updates 1
+
+action imu.gyro.fail
+wait 1200
+assert ui.imu_accel_updates 1
+assert ui.imu_gyro_updates 1
+
+# Recovery invalidates only the gyro baseline; the stable accel remains quiet.
+action imu.gyro.recover
+wait 1200
+assert ui.imu_accel_updates 1
+assert ui.imu_gyro_updates 2
+exit

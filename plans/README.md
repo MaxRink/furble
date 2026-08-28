@@ -185,14 +185,14 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 
 The frozen setting wire_id ledger lives in
 [50-companion-app-design.md](50-companion-app-design.md). Current integrated
-allocations run through 44 (`BOOT_SPLASH`). Wire id 42 is reserved for the
+allocations run through 46 (`IMU`). Wire id 42 is reserved for the
 timezone setting planned by the time-policy work. Id 43 is allocated to the
 charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
-source and the fetched/open IMU, persistent-time, and WiFi charging branches;
-those refs do not expose 43. Wire id 45 is not considered free because an open
-IMU/companion branch claims it, so it must be renumbered before merge. Off-wire
+source and the fetched/open persistent-time and WiFi charging branches; those
+refs do not expose 43. Off-wire
 id 0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`,
-and `BATTERY_SAVER`. Stacked branches with provisional ids must renumber at
+and `BATTERY_SAVER`. Wire id 45 is reserved for the companion-password
+contract. Stacked branches with provisional ids must renumber at
 rebase; ids only freeze when a PR merges.
 
 ## Dependencies

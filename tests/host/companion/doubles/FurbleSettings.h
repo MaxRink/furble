@@ -27,6 +27,7 @@ class Settings {
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
+    IMU,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -132,6 +133,11 @@ class Settings {
 
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
+  using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::IMU> {
   using type = bool;
 };
 

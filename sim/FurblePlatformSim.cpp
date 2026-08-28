@@ -109,7 +109,6 @@ void Platform::update(void) {
 #else
   (void)Sim::consumeWatchdogFeedSuppression();
 #endif
-  Sim::driverTick();
 }
 
 void Platform::restart(void) {

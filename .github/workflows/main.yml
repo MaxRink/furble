@@ -81,6 +81,9 @@ jobs:
       - name: Check portability contract
         run: python3 tools/check_portability_inventory.py --check
 
+      - name: Check UI restart path
+        run: python3 tests/test_ui_restart_path.py
+
       - name: Configure host harness
         run: cmake -S tests/host -B "$RUNNER_TEMP/furble-host-build"
 

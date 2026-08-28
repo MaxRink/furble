@@ -23,7 +23,7 @@ and an entry here):
 | --- | --- | --- |
 | BLE discovery | `UI::startScan`, `Scan` lifecycle, generation fence, queue drain, `CameraList` update | `sim/ScanSim.cpp` substitutes only the radio/NimBLE event source. Its worker publishes immutable events; it never calls `CameraList` or LVGL. `tests/host` compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
-| Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. Actions send the same LVGL events as physical input where possible; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
+| Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
 | Camera links | Production `Control` state machine and UI connection handlers | `Camera`/`Control` shims provide a deterministic peer and `simDropActiveLink` injects only a link-loss event. No action edits production connection state behind the state machine. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
@@ -143,9 +143,10 @@ a regression.
   connect_fail true` makes the fake camera reject connection. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
   `--delay-ms`.
-- The SDL harness has no IMU injection action, seed, or query. Its platform shim
-  sets `config.internal_imu = false`; do not document or add an IMU DSL token
-  until a source seam exists.
+- The SDL harness models the IMU through `sim/ImuSim.cpp`, which is the host
+  implementation of the same `M5.Imu` read boundary used by production code.
+  Keep IMU actions and queries general enough for diagnostics, spirit-level
+  orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`, and
   `gps.config.<index>.state|attempts`. UART write count and the last command are
   available as `uart.count` and `uart.last`. `camera.count` reports the current
@@ -259,3 +260,40 @@ a regression.
   overflow state for intentional-scroll pages. CI runs it on all three panel
   classes with optional capabilities enabled. Keep route identity and scroll
   endpoint assertions in `page-matrix.txt` rather than duplicating them here.
+- `seed fb_output 0..4` models the persisted feedback output selection. Page
+  and overflow matrices seed `fb_output 1` so the sound volume route is truly
+  reachable when feedback capability is enabled. `feedback-hidden-route.txt`
+  verifies that the volume route remains unreachable when the output is Off;
+  hidden controls must never be activated by simulator navigation.
+
+## IMU injection and redraw probe
+
+- The IMU (BMI270/MPU6886) is a physical sensor with no host counterpart, so a
+  scenario injects orientation through `sim/ImuSim.cpp`, which mirrors the same
+  `M5.Imu` surface (enabled, update, getAccel, getGyro) the firmware reads under
+  `#if defined(FURBLE_SIM)`. Actions: `imu.accel <x> <y> <z>` (G), `imu.roll
+  <deg>`, `imu.pitch <deg>`, `imu.gyro <x> <y> <z>`, `imu.enable`, `imu.disable`,
+  `imu.accel.fail/recover` and `imu.gyro.fail/recover`.
+  Seed `imu true` turns the IMU setting on, while `seed imu false` models the
+  disabled setting and hides both optional pages. The spirit level filter,
+  sensitivity curve and auto-rotate all run on the injected sample.
+  `imu_accel_x/y/z` read the rendered Diagnostics > IMU live label back.
+  `imu_accel_updates` and `imu_gyro_updates` count actual label redraws; validity
+  is tracked independently so one failed sensor does not redraw the other.
+  Script actions are queued onto the UI task before touching LVGL; the
+  `sim_action_on_ui` query is a thread-ownership regression guard.
+  `level_root_width/height` expose the pixel-sized top-level window after panel
+  rotation, and `level_side_on_screen` verifies the complete moving bubble lies
+  inside the active display. Keep these guards with the numeric bubble-offset
+  checks: an offset can be correct while a stale portrait-width root clips the
+  widget from the landscape framebuffer.
+- Redraw-storm probe: the `invalidate.reset` action zeroes a counter fed by the
+  LVGL `LV_EVENT_INVALIDATE_AREA` hook (`profilerInvalidationProbeCount` in
+  `sim/power_profiler.cpp`), and `ui.invalidate_count` reports events since the
+  reset. Hold a page at a fixed injected state over a wait and bound the count to
+  catch a per-tick setter that redraws every frame (CLAUDE.md "LVGL redraw
+  trap"). `redraw-steady.txt` guards the level and connected pages this way.
+- Numeric bounds: alongside the exact-match `assert`, the driver has `assert_max
+  <key> <n>` and `assert_min <key> <n>` (integer parse, inclusive). They express
+  a redraw ceiling and a width-agnostic direction or render floor (for example
+  `assert_min ui.visible_objects 1`) without pinning a per-panel pixel value.

@@ -11,8 +11,8 @@ Rebase notes:
 - `AUTO_OFF_CHARGING` is a bool at wire_id 43. Wire id 42 remains reserved for
   timezone work; 43 was free in the current settings table and the audited
   fetched/open branches. The NVS key is `autooff_charge` (14 characters),
-  within the ESP-IDF 15-character limit. Wire id 45 is intentionally not used
-  because an open IMU/companion branch claims it.
+  within the ESP-IDF 15-character limit. Wire id 45 is reserved for the
+  companion-password contract; IMU uses wire id 46.
 - `src/FurbleCompanionService.cpp` exposes `AUTO_OFF_CHARGING` as
   `SETTING_BOOL`; the existing `AUTO_OFF` and `LOW_BATT` remain `SETTING_U8`.
 - The branch's console coverage (uint8 in all four switches, both apply

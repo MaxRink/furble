@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <tuple>
 
 #include <M5Unified.h>
@@ -52,6 +54,7 @@
 #endif
 
 #if defined(FURBLE_SIM)
+#include "driver.h"
 #include "power_profiler.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 
@@ -74,6 +77,7 @@ uint32_t g_simDisconnectCalls = 0;
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
 #define icon_add_a_photo icon_add_a_photo_24
+#define icon_adjust icon_adjust_24
 #define icon_bluetooth icon_bluetooth_24
 #define icon_cell_tower icon_cell_tower_24
 #define icon_delete icon_delete_24
@@ -94,7 +98,23 @@ uint32_t g_simDisconnectCalls = 0;
 
 namespace Furble {
 
+std::mutex g_IMUMutex;
+
 namespace {
+bool imuSensorEnabledForUI(void) {
+#if defined(FURBLE_SIM)
+  return Furble::Sim::imuEnabled();
+#else
+  return M5.Imu.isEnabled();
+#endif
+}
+
+// The persisted opt-in is intentionally evaluated only while constructing or
+// redisplaying the menu. Live sensor timers must never perform NVS reads.
+bool imuEnabledForUI(void) {
+  return Settings::load<bool>(Settings::IMU) && imuSensorEnabledForUI();
+}
+
 void setLabelTextIfChanged(lv_obj_t *label, const char *text) {
   const char *current = lv_label_get_text(label);
   if ((current == nullptr) || (std::strcmp(current, text) != 0)) {
@@ -218,6 +238,7 @@ lv_timer_t *UI::m_ConnectTimer;
 lv_timer_t *UI::m_GPSDataTimer;
 
 lv_timer_t *UI::m_CamerasTimer;
+lv_timer_t *UI::m_LevelTimer;
 
 lv_timer_t *UI::m_IntervalPageRefresh;
 uint32_t UI::m_IntervalNext;
@@ -241,6 +262,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -270,11 +292,13 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IMUDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -592,6 +616,14 @@ UI::UI(const interval_t &interval)
 
         lv_obj_add_flag(m_Right, LV_OBJ_FLAG_FLOATING);
         lv_obj_align(m_Right, LV_ALIGN_RIGHT_MID, 0, m_RightYOffset);
+
+        // These indicators float against the screen edges, so the level page
+        // must re-anchor them whenever it rotates the panel. Hand their handles
+        // to the level state for that reflow.
+        m_Level.navLeft = m_Left;
+        m_Level.navOK = m_OK;
+        m_Level.navRight = m_Right;
+        m_Level.navRightYOffset = m_RightYOffset;
         break;
 
       default:
@@ -1913,13 +1945,55 @@ void UI::addMainMenu(void) {
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
         }
 
+        // The diagnostics pages hold only read-only info rows. Each row is a
+        // clickable label so button boards can scroll, but a click does nothing,
+        // and lv_menu lands the focus on the first row when the page opens. A
+        // short-press select then hits a dead label and only the universal
+        // long-press escape leaves the page. Move the focus onto the header back
+        // button so a normal select returns to the parent, the same as any other
+        // sub-page. This reuses the existing header arrow, it adds no new widget.
+        // The focus is queued so it runs after lv_menu's own page-load focus,
+        // which would otherwise put it straight back on the first row.
+        if ((page == m_Menu.at(m_IMUDataStr).page) || (page == m_Menu.at(m_BLEStr).page)
+            || (page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)) {
+          lv_async_call(
+              [](void *arg) {
+                auto *button = static_cast<lv_obj_t *>(arg);
+                if (button != nullptr && lv_obj_is_valid(button)) {
+                  lv_group_focus_obj(button);
+                }
+              },
+              back);
+        }
+
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
-            || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)) {
+            || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)
+            || (page == m_Menu.at(m_IMUDataStr).page)) {
           lv_timer_resume(ui->m_DiagnosticsTimer);
           lv_timer_ready(ui->m_DiagnosticsTimer);
         } else {
           lv_timer_pause(ui->m_DiagnosticsTimer);
+        }
+
+        // the diagnostics timer polls the IMU only while its live page is open
+        ui->m_Diagnostics.imuPageActive = (page == m_Menu.at(m_IMUDataStr).page);
+
+        // the spirit level timer only runs while its page is open
+        if (page == m_Menu.at(m_LevelStr).page) {
+          ui->m_Level.filterReady = false;
+          ui->m_Level.displayReady = false;
+          // Always enter the page flat in portrait. The auto-rotate then flips
+          // it to landscape from the live tilt while the page stays open.
+          applyLevelRotation(&ui->m_Level, 0);
+          lv_timer_resume(m_LevelTimer);
+        } else {
+          lv_timer_pause(m_LevelTimer);
+          // Leaving the page must restore portrait so the rest of the UI is
+          // upright. Only touch the display when the page actually rotated it.
+          if (ui->m_Level.rotation != 0) {
+            applyLevelRotation(&ui->m_Level, 0);
+          }
         }
 
         bool presetPage =
@@ -1990,10 +2064,13 @@ void UI::addMainMenu(void) {
           } else {
             lv_obj_add_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
           }
+          showIMUWidgets(imuEnabledForUI());
 
           // hide and disable back button
           lv_obj_add_state(back, LV_STATE_DISABLED);
           lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
+        } else if (page == m_Menu.at(m_DiagnosticsStr).page) {
+          showIMUWidgets(imuEnabledForUI());
         } else if (page == m_Menu.at(m_RemoteShutter).page) {
           if (M5.Touch.isEnabled()) {
             // if touch screen, enable back
@@ -2017,6 +2094,10 @@ void UI::addMainMenu(void) {
         } else if ((page == m_Menu.at(m_GPSDataStr).page)
                    || (page == m_Menu.at(m_CamerasStr).page)) {
           // These pages are reachable from the connected page, always display 'Back'
+          lv_obj_remove_state(back, LV_STATE_DISABLED);
+          lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
+        } else if (page == m_Menu.at(m_LevelStr).page) {
+          // 'Level' is reachable from the connected page, always display 'Back'
           lv_obj_remove_state(back, LV_STATE_DISABLED);
           lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
         }
@@ -2104,7 +2185,65 @@ void UI::configureControl(ControlMode mode, bool set) {
 }
 
 #if defined(FURBLE_SIM)
+bool UI::simRunOnUi(std::function<void()> operation) {
+  bool onUi = false;
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    onUi = std::this_thread::get_id() == m_SimUiThread;
+  }
+  if (onUi) {
+    operation();
+    return true;
+  }
+
+  auto request = std::make_shared<sim_request_t>();
+  request->operation = std::move(operation);
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    m_SimRequests.push_back(request);
+  }
+  while (true) {
+    std::unique_lock<std::mutex> lock(request->mutex);
+    if (request->complete.wait_for(lock, std::chrono::seconds(5),
+                                   [&request]() { return request->done; })) {
+      return request->result;
+    }
+    // The simulator must fail loudly if the UI task has stopped servicing the
+    // queue; silently continuing would turn a thread-ownership regression into
+    // a misleading eventual-state assertion.
+    return false;
+  }
+}
+
+void UI::serviceSimRequests(void) {
+  std::deque<std::shared_ptr<sim_request_t>> requests;
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    requests.swap(m_SimRequests);
+  }
+  for (const auto &request : requests) {
+    bool result = true;
+    try {
+      request->operation();
+    } catch (...) {
+      result = false;
+    }
+    {
+      std::lock_guard<std::mutex> lock(request->mutex);
+      request->result = result;
+      request->done = true;
+    }
+    request->complete.notify_one();
+  }
+}
+
 void UI::simScenarioAction(const char *action) {
+  const std::string command = action == nullptr ? "" : action;
+  simRunOnUi([this, command]() { simScenarioActionOnUi(command.c_str()); });
+}
+
+void UI::simScenarioActionOnUi(const char *action) {
+  m_SimLastActionOnUi.store(std::this_thread::get_id() == m_SimUiThread);
   const std::string command = action == nullptr ? "" : action;
   if (command == "blind") {
     lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_RemoteShutter).page);
@@ -2206,6 +2345,89 @@ void UI::simScenarioAction(const char *action) {
     return;
   }
 
+  // General IMU injection. These set the shared sim IMU state that the firmware reads through
+  // the same M5.Imu surface. The level timer, the diagnostics live page and the
+  // later motion features all pick it up. The level filter is reset so the next
+  // timer tick settles to the exact injected orientation, which keeps the bubble
+  // geometry deterministic for a scenario assert.
+  auto resetLevelFilter = [this]() {
+    if (m_Level.surface != nullptr) {
+      lv_obj_update_layout(m_Level.surface);
+    }
+    if (m_Level.sideTube != nullptr) {
+      lv_obj_update_layout(m_Level.sideTube);
+    }
+    m_Level.filterReady = false;
+  };
+
+  constexpr const char *IMU_ACCEL_PREFIX = "imu.accel ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_ACCEL_PREFIX), IMU_ACCEL_PREFIX) == 0) {
+    float accel[3] = {0.0f, 0.0f, 1.0f};
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ACCEL_PREFIX), "%f %f %f",
+                    &accel[0], &accel[1], &accel[2])
+        == 3) {
+      Furble::Sim::imuSetAccel(accel[0], accel[1], accel[2]);
+      resetLevelFilter();
+    }
+    return;
+  }
+
+  constexpr const char *IMU_ROLL_PREFIX = "imu.roll ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_ROLL_PREFIX), IMU_ROLL_PREFIX) == 0) {
+    float roll = 0.0f;
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ROLL_PREFIX), "%f", &roll)
+        == 1) {
+      Furble::Sim::imuSetOrientation(roll, 0.0f);
+      resetLevelFilter();
+    }
+    return;
+  }
+
+  constexpr const char *IMU_PITCH_PREFIX = "imu.pitch ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_PITCH_PREFIX), IMU_PITCH_PREFIX) == 0) {
+    float pitch = 0.0f;
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_PITCH_PREFIX), "%f",
+                    &pitch)
+        == 1) {
+      Furble::Sim::imuSetOrientation(0.0f, pitch);
+      resetLevelFilter();
+    }
+    return;
+  }
+
+  constexpr const char *IMU_GYRO_PREFIX = "imu.gyro ";
+  if (command.compare(0, std::char_traits<char>::length(IMU_GYRO_PREFIX), IMU_GYRO_PREFIX) == 0) {
+    float gyro[3] = {0.0f, 0.0f, 0.0f};
+    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_GYRO_PREFIX), "%f %f %f",
+                    &gyro[0], &gyro[1], &gyro[2])
+        == 3) {
+      Furble::Sim::imuSetGyro(gyro[0], gyro[1], gyro[2]);
+    }
+    return;
+  }
+
+  if (command == "imu.enable" || command == "imu.disable") {
+    Furble::Sim::imuSetEnabled(command == "imu.enable");
+    return;
+  }
+
+  if (command == "imu.accel.fail" || command == "imu.accel.recover") {
+    Furble::Sim::imuSetAccelAvailable(command == "imu.accel.recover");
+    return;
+  }
+  if (command == "imu.gyro.fail" || command == "imu.gyro.recover") {
+    Furble::Sim::imuSetGyroAvailable(command == "imu.gyro.recover");
+    return;
+  }
+
+  // Zero the redraw-storm probe. A scenario resets it, holds a page steady over
+  // a wait and asserts ui.invalidate_count stays low, so an unguarded per-tick
+  // setter that redraws every frame is caught headlessly.
+  if (command == "invalidate.reset") {
+    Furble::Sim::profilerResetInvalidationProbe();
+    return;
+  }
+
   // Fire the shutter through the real shutter button handler.
   if (command == "shutter") {
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
@@ -2268,6 +2490,19 @@ void UI::simScenarioAction(const char *action) {
     lv_obj_send_event(m_OK, LV_EVENT_LONG_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
     m_SimClickStreakActive = false;
+    return;
+  }
+
+  // Activate whatever the encoder group currently has focused, the same result
+  // a short OK press produces on device. Menu navigation and the header back
+  // button are driven by clicking the focused object, so this models the normal
+  // (non long-press) back: it only returns from a page when the back arrow is
+  // reachable and focused there.
+  if (command == "select") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused != nullptr && lv_obj_is_valid(focused)) {
+      lv_obj_send_event(focused, LV_EVENT_CLICKED, this);
+    }
     return;
   }
 
@@ -2399,6 +2634,7 @@ void UI::simScenarioAction(const char *action) {
         {"settings",          m_SettingsStr        },
         {"display",           m_DisplayStr         },
         {"features",          m_FeaturesStr        },
+        {"sensors",           m_SensorsStr         },
         {"infrared",          m_IRSettingsStr      },
         {"gps_rate",          m_GPSRateStr         },
         {"gps_sentences",     m_GPSSentencesStr    },
@@ -2428,6 +2664,8 @@ void UI::simScenarioAction(const char *action) {
         {"interval_wait",     m_IntervalWaitStr    },
         {"battery",           m_BatteryStr         },
         {"storage",           m_StorageStr         },
+        {"imu",               m_IMUDataStr         },
+        {"level",             m_LevelStr           },
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {
@@ -2442,14 +2680,8 @@ void UI::simScenarioAction(const char *action) {
       return;
     }
     lv_obj_t *button = entry->second.button;
-    if (button != nullptr) {
-      // Scenario actions execute on the script thread, while this handler is
-      // normally entered from the UI task. Give handlers the same mutex
-      // ownership as lv_task_handler; startScan temporarily releases it
-      // around the potentially blocking scan start call.
-      m_Mutex.lock();
+    if (button != nullptr && !lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN)) {
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
-      m_Mutex.unlock();
     }
     return;
   }
@@ -2531,6 +2763,7 @@ void UI::simScenarioAction(const char *action) {
       {"settings",          m_SettingsStr         },
       {"display",           m_DisplayStr          },
       {"features",          m_FeaturesStr         },
+      {"sensors",           m_SensorsStr          },
       {"infrared",          m_IRSettingsStr       },
       {"gps_rate",          m_GPSRateStr          },
       {"gps_sentences",     m_GPSSentencesStr     },
@@ -2572,6 +2805,9 @@ void UI::simScenarioAction(const char *action) {
 
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
+  if (query == "sim_action_on_ui") {
+    return m_SimLastActionOnUi.load() ? "yes" : "no";
+  }
 
   // Keep diagnostics assertions tied to the actual rendered labels. These
   // queries are simulator-only and intentionally return small, stable tokens
@@ -3019,7 +3255,7 @@ std::string UI::simQueryState(const char *key) {
     // matrix scenario, so adding a page cannot silently turn into "other" in
     // host coverage. Optional capability pages are looked up with find below
     // because their menu entries are not built when the capability is absent.
-    const std::array<std::pair<const char *, const char *>, 47> pages = {
+    const std::array<std::pair<const char *, const char *>, 50> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -3038,6 +3274,7 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalometerStr, "timer"},
          {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
+         {m_SensorsStr, "sensors"},
          {m_DisplayStr, "display"},
          {m_TextSizeStr, "text_size"},
          {m_GPSStr, "gps"},
@@ -3068,6 +3305,8 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalDelayStr, "interval_delay"},
          {m_IntervalShutterStr, "interval_shutter"},
          {m_IntervalWaitStr, "interval_wait"},
+         {m_LevelStr, "level"},
+         {m_IMUDataStr, "imu"},
          }
     };
     for (const auto &entry : pages) {
@@ -3480,6 +3719,182 @@ std::string UI::simQueryState(const char *key) {
       anchor = x;
     }
     return std::to_string(x - anchor);
+  }
+
+  // Spirit level bubble geometry, driven by the shared IMU injection action.
+  // The circle bubble carries roll on X and pitch on Y, the side tube carries
+  // roll only. A scenario asserts a small tilt produces a visible offset, so a
+  // regression to the coarse sensitivity fails here.
+  if (query == "level_bubble_x") {
+    return std::to_string(m_Level.bubbleX);
+  }
+  if (query == "level_bubble_y") {
+    return std::to_string(m_Level.bubbleY);
+  }
+  // Actual child coordinates verify that the widget remains centered and that
+  // bubbleX/bubbleY are alignment offsets, not absolute top-left positions.
+  if (query == "level_bubble_actual_x") {
+    return m_Level.bubble != nullptr ? std::to_string(lv_obj_get_x(m_Level.bubble)) : "none";
+  }
+  if (query == "level_bubble_actual_y") {
+    return m_Level.bubble != nullptr ? std::to_string(lv_obj_get_y(m_Level.bubble)) : "none";
+  }
+  if (query == "level_side_x") {
+    return std::to_string(m_Level.sideBubbleX);
+  }
+  if (query == "level_side_actual_x") {
+    return m_Level.sideBubble != nullptr ? std::to_string(lv_obj_get_x(m_Level.sideBubble))
+                                         : "none";
+  }
+  if (query == "level_root_width") {
+    return m_Level.root != nullptr ? std::to_string(lv_obj_get_width(m_Level.root)) : "none";
+  }
+  if (query == "level_root_height") {
+    return m_Level.root != nullptr ? std::to_string(lv_obj_get_height(m_Level.root)) : "none";
+  }
+  if (query == "level_side_on_screen") {
+    if (m_Level.sideBubble == nullptr || lv_obj_has_flag(m_Level.sideTube, LV_OBJ_FLAG_HIDDEN)) {
+      return "no";
+    }
+    lv_area_t bubbleArea;
+    lv_obj_get_coords(m_Level.sideBubble, &bubbleArea);
+    lv_display_t *display = lv_display_get_default();
+    if (display == nullptr) {
+      return "no";
+    }
+    const int32_t width = lv_display_get_horizontal_resolution(display);
+    const int32_t height = lv_display_get_vertical_resolution(display);
+    return (bubbleArea.x1 >= 0 && bubbleArea.y1 >= 0 && bubbleArea.x2 < width
+            && bubbleArea.y2 < height)
+               ? "yes"
+               : "no";
+  }
+  if (query == "level_has_side") {
+    return m_Level.sideTube != nullptr ? "yes" : "no";
+  }
+  // Whether the circle bullseye is currently shown. It is the flat portrait
+  // readout and hides when the page flips to a side orientation.
+  if (query == "level_bubble_visible") {
+    return (m_Level.surface != nullptr && !lv_obj_has_flag(m_Level.surface, LV_OBJ_FLAG_HIDDEN))
+               ? "yes"
+               : "no";
+  }
+  // Whether the fixed centre target ring is shown. It rides with the bullseye,
+  // so it is only visible in the flat portrait view.
+  if (query == "level_target_visible") {
+    return (m_Level.target != nullptr && !lv_obj_has_flag(m_Level.target, LV_OBJ_FLAG_HIDDEN)
+            && m_Level.surface != nullptr && !lv_obj_has_flag(m_Level.surface, LV_OBJ_FLAG_HIDDEN))
+               ? "yes"
+               : "no";
+  }
+  // Whether the side tube is currently shown. It only appears when the page is
+  // flipped onto its side, so this reflects the auto-rotate state.
+  if (query == "level_side_visible") {
+    return (m_Level.sideTube != nullptr && !lv_obj_has_flag(m_Level.sideTube, LV_OBJ_FLAG_HIDDEN))
+               ? "yes"
+               : "no";
+  }
+  // Active LVGL rotation for the level page in degrees, one of 0, 90 or 270.
+  if (query == "level_rotation") {
+    return std::to_string(m_Level.rotation);
+  }
+  // Bullseye content diameter in pixels. Lets a scenario assert the circle is a
+  // usable size and sits inside the panel.
+  if (query == "level_diameter") {
+    return std::to_string(m_Level.surface != nullptr ? lv_obj_get_content_width(m_Level.surface)
+                                                     : 0);
+  }
+  // Absolute top edge of the bullseye. A positive value below the menu header
+  // proves the circle is not jammed under the header bar.
+  if (query == "level_surface_top") {
+    if (m_Level.surface == nullptr) {
+      return "0";
+    }
+    lv_area_t coords;
+    lv_obj_get_coords(m_Level.surface, &coords);
+    return std::to_string(coords.y1);
+  }
+
+  // Whether the encoder focus is on the header back button. A label-only page
+  // that leaves focus elsewhere traps the short-press select, so this is the
+  // teeth for the diagnostics back-navigation fix.
+  if (query == "back_focused") {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    return (back != nullptr && lv_group_get_focused(m_Group) == back) ? "yes" : "no";
+  }
+
+  // Count the shown (not LV_OBJ_FLAG_HIDDEN) objects in the current main page
+  // subtree. A page that failed to build reads 0, so a scenario asserts the
+  // page actually rendered widgets rather than only checking the page name.
+  if (query == "visible_objects") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "0";
+    }
+    std::function<int(lv_obj_t *)> countShown = [&](lv_obj_t *obj) -> int {
+      if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) {
+        return 0;
+      }
+      int count = 1;
+      for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        count += countShown(lv_obj_get_child(obj, i));
+      }
+      return count;
+    };
+    return std::to_string(countShown(page));
+  }
+
+  // Report the optional IMU entry visibility. This uses the same runtime gate
+  // as the firmware pages, while the host seam supplies the sensor presence.
+  // It lets a scenario prove a disabled sensor is not merely an unreadable
+  // page that direct navigation can still reach.
+  if (query == "imu_button_visible" || query == "level_button_visible") {
+    const char *name = query == "imu_button_visible" ? m_IMUDataStr : m_LevelStr;
+    const auto entry = m_Menu.find(name);
+    if (entry == m_Menu.end() || entry->second.button == nullptr) {
+      return "no";
+    }
+    return lv_obj_has_flag(entry->second.button, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
+  }
+
+  // Number of LVGL invalidation events since the last invalidate.reset action.
+  // A scenario resets it, holds a page steady over a wait and asserts the count
+  // stays low, so an unguarded per-tick setter that redraws every frame (the
+  // LVGL invalidation trap) is caught headlessly.
+  if (query == "invalidate_count") {
+    return std::to_string(Furble::Sim::profilerInvalidationProbeCount());
+  }
+
+  // Rendered IMU diagnostics accelerometer readout, parsed back from the live
+  // label text so a scenario confirms the page actually drew the injected
+  // sample rather than only that the read path ran. Each axis is one %.3f
+  // token, matching the label format.
+  if (query == "imu_accel_x" || query == "imu_accel_y" || query == "imu_accel_z") {
+    if (m_Diagnostics.imuAccel == nullptr) {
+      return "none";
+    }
+    const char *text = lv_label_get_text(m_Diagnostics.imuAccel);
+    if (text == nullptr) {
+      return "none";
+    }
+    const char axis = query.back() == 'x' ? 'X' : (query.back() == 'y' ? 'Y' : 'Z');
+    const char *at = std::strchr(text, axis);
+    if (at == nullptr) {
+      return "none";
+    }
+    float value = 0.0f;
+    if (std::sscanf(at + 1, "%f", &value) != 1) {
+      return "none";
+    }
+    char formatted[16];
+    std::snprintf(formatted, sizeof(formatted), "%.3f", value);
+    return formatted;
+  }
+  if (query == "imu_accel_updates") {
+    return std::to_string(m_Diagnostics.imuAccelUpdates);
+  }
+  if (query == "imu_gyro_updates") {
+    return std::to_string(m_Diagnostics.imuGyroUpdates);
   }
 
   return "";
@@ -4286,6 +4701,391 @@ void UI::addCamerasMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addLevelMenu(const menu_t &parent) {
+  // The bullseye icon matches the spirit level's centre target, so the Level
+  // entry reads at a glance and is no longer the only iconless Connected item.
+  menu_t &menu = addMenu(m_LevelStr, &icon_adjust, true, parent);
+
+  m_Level.root = m_Root;
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(cont, 4, LV_PART_MAIN);
+  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Base panel size, portrait. applyLevelRotation reflows the widgets from these.
+  m_Level.baseWidth = m_Width;
+  m_Level.baseHeight = m_Height;
+  m_Level.rotation = 0;
+
+  // One row of numeric readouts at the very top, split left and right: roll in
+  // the left half, pitch in the right half, both in the compact 12 px font with
+  // a degree glyph. A single row keeps the text to one line height so the circle
+  // below gets the rest of the panel. The older stacked rows pushed the circle
+  // up under the header where it was clipped.
+  lv_obj_t *values = lv_obj_create(cont);
+  lv_obj_set_width(values, LV_PCT(100));
+  lv_obj_set_height(values, LV_SIZE_CONTENT);
+  lv_obj_set_layout(values, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(values, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_column(values, 2, LV_PART_MAIN);
+  lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
+
+  m_Level.roll = lv_label_create(values);
+  lv_obj_set_width(m_Level.roll, LV_PCT(50));
+  lv_obj_set_style_text_font(m_Level.roll, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.roll, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.roll, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.roll, "R: --");
+  m_Level.pitch = lv_label_create(values);
+  lv_obj_set_width(m_Level.pitch, LV_PCT(50));
+  lv_obj_set_style_text_font(m_Level.pitch, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.pitch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.pitch, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.pitch, "P: --");
+
+  // The circle and the side tube live in a container that grows to fill the
+  // space under the readout row. Centring the visible readout in this container
+  // leaves a symmetric margin, so the bullseye is never jammed under the header.
+  lv_obj_t *middle = lv_obj_create(cont);
+  lv_obj_set_width(middle, LV_PCT(100));
+  lv_obj_set_flex_grow(middle, 1);
+  lv_obj_set_layout(middle, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(middle, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(middle, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(middle, 0, LV_PART_MAIN);
+  lv_obj_set_style_border_width(middle, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(middle, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_clear_flag(middle, LV_OBJ_FLAG_SCROLLABLE);
+
+  // The circle bubble is the primary flat readout. Its diameter is settled by
+  // applyLevelRotation, which fits it inside the middle container.
+  m_Level.surface = lv_obj_create(middle);
+  lv_obj_clear_flag(m_Level.surface, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(m_Level.surface, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(m_Level.surface, LV_OPA_10, LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.surface, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(m_Level.surface, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
+
+  // Fixed centre target ring, the "level" mark. It is hollow and never moves, so
+  // the moving bubble is read against it and the two are always distinct. The
+  // filled bubble nests inside the ring when the device is level.
+  m_Level.target = lv_obj_create(m_Level.surface);
+  lv_obj_set_size(m_Level.target, 22, 22);
+  lv_obj_set_style_radius(m_Level.target, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(m_Level.target, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.target, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(m_Level.target, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
+  lv_obj_clear_flag(m_Level.target, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_center(m_Level.target);
+
+  m_Level.bubble = lv_obj_create(m_Level.surface);
+  lv_obj_set_size(m_Level.bubble, 16, 16);
+  lv_obj_set_style_radius(m_Level.bubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(m_Level.bubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.bubble, 0, LV_PART_MAIN);
+  lv_obj_center(m_Level.bubble);
+
+  // Side view bubble tube: a classic linear spirit level held against a wall.
+  // The bubble slides left and right with roll only. It is only shown when the
+  // page is flipped onto its side, so it stays hidden in the flat portrait view.
+  m_Level.sideTube = lv_obj_create(middle);
+  lv_obj_set_size(m_Level.sideTube, 48, 20);
+  lv_obj_clear_flag(m_Level.sideTube, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(m_Level.sideTube, 10, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(m_Level.sideTube, LV_OPA_10, LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.sideTube, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(m_Level.sideTube, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
+  lv_obj_set_style_pad_all(m_Level.sideTube, 0, LV_PART_MAIN);
+
+  m_Level.sideBubble = lv_obj_create(m_Level.sideTube);
+  lv_obj_set_size(m_Level.sideBubble, 14, 14);
+  lv_obj_set_style_radius(m_Level.sideBubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(m_Level.sideBubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+  lv_obj_set_style_border_width(m_Level.sideBubble, 0, LV_PART_MAIN);
+  lv_obj_center(m_Level.sideBubble);
+
+  // Gesture hint for the auto-rotate behaviour, pinned at the bottom. It is not
+  // focusable, so the encoder never lands on it. It is only shown in the flat
+  // portrait view.
+  m_Level.hint = lv_label_create(cont);
+  lv_obj_set_width(m_Level.hint, LV_PCT(100));
+  lv_obj_set_style_text_font(m_Level.hint, &lv_font_montserrat_12, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Level.hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_label_set_long_mode(m_Level.hint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(m_Level.hint, "Tilt on side to rotate");
+
+  // Settle the portrait layout: size the circle, hide the side tube, show hint.
+  applyLevelRotation(&m_Level, 0);
+
+  // the main menu page dispatch resumes and pauses this timer
+  m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
+  lv_timer_pause(m_LevelTimer);
+
+  if (!imuEnabledForUI()) {
+    lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void UI::levelUpdate(lv_timer_t *timer) {
+  auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
+
+  // Keep the display awake while the level page is open. The inactivity dim is
+  // gated on LVGL activity, so resetting it every tick holds the screen on. The
+  // level timer only runs while the page is shown, so leaving the page stops the
+  // resets and normal dim resumes with no extra bookkeeping.
+  lv_display_trigger_activity(NULL);
+
+  float accel[3];
+  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+#if defined(FURBLE_SIM)
+  // The simulator has no sensor, so read the injected IMU state through the same
+  // enabled, update and getAccel surface the firmware uses. A scenario drives
+  // the orientation and the real filter, sensitivity and rotation logic below
+  // runs unchanged.
+  if (!Furble::Sim::imuEnabled()) {
+    return;
+  }
+  Furble::Sim::imuUpdate();
+  if (!Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2])) {
+    return;
+  }
+#else
+  if (!imuSensorEnabledForUI()) {
+    return;
+  }
+
+  M5.Imu.update();
+  if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
+    return;
+  }
+#endif
+
+  applyLevelSample(level, accel);
+}
+
+int32_t UI::levelDiameter(int32_t width, int32_t height) {
+  // Reserve vertical room for the two stacked value labels and the gesture hint
+  // so the circle never pushes them off a narrow panel. The circle stays square.
+  constexpr int32_t verticalReserve = 96;
+  int32_t diameter = std::min(width - 16, height - verticalReserve);
+  return std::max<int32_t>(40, diameter);
+}
+
+void UI::applyLevelRotation(level_t *level, int32_t rotation) {
+  lv_display_t *display = lv_display_get_default();
+  // Capture this before the widget reflow below overwrites level->rotation. The
+  // panel rotation and the forced full repaint only run when the orientation
+  // actually changes.
+  const bool orientationChanged = (rotation != level->rotation);
+  // On the real StickS3 the LVGL software rotation path corrupts the screen: it
+  // rotates pixels in the draw buffer but does not coordinate with the panel DMA
+  // flush, so a rotated frame tears against the old stride and only recovers when
+  // the device is held flat again. Rotate the panel controller instead and swap
+  // the LVGL logical resolution, which keeps the DMA engine writing a
+  // consistently oriented framebuffer. Drain any in-flight flush first.
+  //
+  // The full invalidate and synchronous repaint do NOT happen here. They run at
+  // the end of this function, after the widgets and the button overlay have been
+  // reflowed to the new geometry. Repainting here (the earlier bug) forced the
+  // one guaranteed full-screen pass while the level container and the screen
+  // children were still laid out at the portrait width, so only the left ~135 px
+  // of the 240 px landscape panel was ever written and the far side kept its
+  // pre-rotation pixels. The periodic bubble updates that follow only invalidate
+  // small regions, so the right half never recovered.
+  //
+  // The SDL M5GFX framebuffer implements the same panel-rotation API. Keep the
+  // simulator on this path too: LVGL software rotation previously let its
+  // logical width grow to 240 while the simulated panel remained 135 pixels
+  // wide. Captures silently cropped the far half, including the moving bubble.
+  // Matching the firmware path makes panel geometry and complete rotated-frame
+  // capture testable on the host. Physical DMA still needs an on-device check.
+  if (display != nullptr && orientationChanged) {
+    // Captured once at build time while the panel is in its portrait default.
+    static const uint8_t baseRotation = M5.Display.getRotation();
+    M5.Display.waitDMA();
+    if (rotation == 0) {
+      M5.Display.setRotation(baseRotation);
+      lv_display_set_resolution(display, level->baseWidth, level->baseHeight);
+    } else {
+      const uint8_t step = (rotation == 90) ? 1 : 3;
+      M5.Display.setRotation((baseRotation + step) & 0x03);
+      lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
+    }
+  }
+
+  // Landscape swaps the panel width and height. The value labels stay on both
+  // orientations, the circle is the flat readout, the tube is the side readout.
+  const bool landscape = (rotation != 0);
+  const int32_t effWidth = landscape ? level->baseHeight : level->baseWidth;
+  const int32_t effHeight = landscape ? level->baseWidth : level->baseHeight;
+
+  // lv_win_create snapshots its parent's pixel dimensions instead of using
+  // percentages. Resize the root window whenever the level changes the display
+  // resolution. Without this, the panel becomes 240x135 but every page remains
+  // 135 pixels wide, clipping the landscape tube and its moving bubble.
+  if (level->root != nullptr) {
+    lv_obj_set_size(level->root, effWidth, effHeight);
+  }
+
+  if (landscape) {
+    lv_obj_add_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
+    if (level->hint != nullptr) {
+      lv_obj_add_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_remove_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
+    int32_t tubeWidth = std::clamp<int32_t>(effWidth - 24, 48, effWidth);
+    lv_obj_set_size(level->sideTube, tubeWidth, 20);
+  } else {
+    lv_obj_remove_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
+    if (level->hint != nullptr) {
+      lv_obj_remove_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_add_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
+    int32_t diameter = levelDiameter(effWidth, effHeight);
+    lv_obj_set_size(level->surface, diameter, diameter);
+  }
+
+  level->rotation = rotation;
+
+  // Settle the whole screen to the new geometry before any repaint. The panel
+  // rotation swapped the LVGL resolution, which resized the active screen, but
+  // the descendant layout is only recomputed on demand. Force it now so every
+  // widget, the menu header and the level container describe the rotated width
+  // when the forced repaint below runs.
+  lv_obj_t *screen = lv_screen_active();
+  if (screen != nullptr) {
+    lv_obj_update_layout(screen);
+  }
+
+  // Re-anchor the floating physical-button indicators to the rotated screen
+  // edges. They align against the screen, whose size just changed, so without a
+  // fresh align they stay pinned to the old portrait corners and sit in the
+  // wrong place in landscape. Re-applying the alignment reads the live rotated
+  // resolution and lands them on the correct edges.
+  if (level->navLeft != nullptr) {
+    lv_obj_align(level->navLeft, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_align(level->navOK, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(level->navRight, LV_ALIGN_RIGHT_MID, 0, level->navRightYOffset);
+  }
+
+  // Settle the level page container so the next sample reads real bubble
+  // geometry. The circle sits inside the growing middle container, so reflow
+  // from the outer menu container (the middle's parent) to size every widget.
+  lv_obj_t *middle = lv_obj_get_parent(level->surface);
+  lv_obj_t *cont = (middle != nullptr) ? lv_obj_get_parent(middle) : nullptr;
+  if (cont != nullptr) {
+    lv_obj_update_layout(cont);
+  }
+
+  // The panel, the LVGL resolution, every widget and the button overlay now all
+  // describe the new orientation. Force one synchronous full repaint so the
+  // entire rotated width is written in a single pass, then drain the DMA so the
+  // resynchronised framebuffer is fully out before the page continues.
+  if (display != nullptr && orientationChanged) {
+    lv_obj_invalidate(screen);
+    lv_refr_now(display);
+    M5.Display.waitDMA();
+  }
+}
+
+void UI::applyLevelSample(level_t *level, const float accel[3]) {
+  constexpr float alpha = 0.2f;
+  if (!level->filterReady) {
+    std::copy(accel, accel + 3, std::begin(level->accel));
+    level->filterReady = true;
+  } else {
+    for (size_t index = 0; index < 3; index++) {
+      level->accel[index] = (alpha * accel[index]) + ((1.0f - alpha) * level->accel[index]);
+    }
+  }
+
+  constexpr float radiansToDegrees = 57.2957795f;
+  float roll = std::atan2(level->accel[1], level->accel[2]) * radiansToDegrees;
+  float pitch = std::atan2(-level->accel[0], std::sqrt((level->accel[1] * level->accel[1])
+                                                       + (level->accel[2] * level->accel[2])))
+                * radiansToDegrees;
+
+  // Sensitivity. The circle is for finding exact level, so a small tilt must
+  // move the bubble a lot. A tilt of +/-fullScaleTilt reaches the rim, far
+  // tighter than the old +/-45 deg, and a sub-unity exponent adds extra gain
+  // close to centre so tiny deviations from level stay clearly visible.
+  constexpr float fullScaleTilt = 15.0f;
+  constexpr float responseExponent = 0.6f;
+  auto shape = [](float degrees) -> float {
+    float normalized = std::clamp(degrees / fullScaleTilt, -1.0f, 1.0f);
+    float magnitude = std::pow(std::fabs(normalized), responseExponent);
+    return std::copysign(magnitude, normalized);
+  };
+  float rollShaped = shape(roll);
+  float pitchShaped = shape(pitch);
+
+  // Auto-rotate. When the device is laid on its side the page flips to landscape
+  // and shows the linear tube instead of the circle. Hysteresis stops it flapping
+  // at the boundary: enter a side past 60 deg, return to flat below 45 deg, hold
+  // the current orientation in the band between. The sign of the roll picks the
+  // side. The rotation is scoped to this page and reset to 0 on page exit.
+  constexpr float rotateEnter = 60.0f;
+  constexpr float rotateExit = 45.0f;
+  float rollMagnitude = std::fabs(roll);
+  int32_t desiredRotation = level->rotation;
+  if (rollMagnitude >= rotateEnter) {
+    desiredRotation = (roll > 0.0f) ? 90 : 270;
+  } else if (rollMagnitude < rotateExit) {
+    desiredRotation = 0;
+  }
+  if (desiredRotation != level->rotation) {
+    applyLevelRotation(level, desiredRotation);
+  }
+
+  // content width excludes the surface border and padding
+  int32_t contentDiameter = lv_obj_get_content_width(level->surface);
+  int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
+  int32_t maxOffset = std::max<int32_t>(0, ((contentDiameter - bubbleDiameter) / 2) - 4);
+  // the bubble keeps its centre alignment, the position is a delta from centre
+  int32_t bubbleX = static_cast<int32_t>(std::round(rollShaped * maxOffset));
+  int32_t bubbleY = static_cast<int32_t>(std::round(pitchShaped * maxOffset));
+
+  if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
+    level->bubbleX = bubbleX;
+    level->bubbleY = bubbleY;
+    // Preserve the center anchor and use the computed values as offsets.
+    lv_obj_align(level->bubble, LV_ALIGN_CENTER, bubbleX, bubbleY);
+  }
+
+  // Side view tube tracks roll only, with the same sensitivity curve.
+  if (level->sideTube != nullptr) {
+    int32_t tubeWidth = lv_obj_get_content_width(level->sideTube);
+    int32_t sideBubbleWidth = lv_obj_get_width(level->sideBubble);
+    int32_t sideMax = std::max<int32_t>(0, ((tubeWidth - sideBubbleWidth) / 2) - 2);
+    // In side mode the useful reference is the selected wall orientation,
+    // not flat (0 degrees). This keeps a perfectly vertical device centered
+    // and makes small deviations readable on either side of the tube.
+    const float sideReference = level->rotation == 90 ? 90.0f : -90.0f;
+    const float sideShaped = shape(roll - sideReference);
+    int32_t sideX = static_cast<int32_t>(std::round(sideShaped * sideMax));
+    if (level->sideBubbleX != sideX) {
+      level->sideBubbleX = sideX;
+      lv_obj_align(level->sideBubble, LV_ALIGN_CENTER, sideX, 0);
+    }
+  }
+
+  if (!level->displayReady || std::fabs(level->displayRoll - roll) >= 0.1f) {
+    level->displayRoll = roll;
+    lv_label_set_text_fmt(level->roll, "R: %.1f\xC2\xB0", roll);
+  }
+  if (!level->displayReady || std::fabs(level->displayPitch - pitch) >= 0.1f) {
+    level->displayPitch = pitch;
+    lv_label_set_text_fmt(level->pitch, "P: %.1f\xC2\xB0", pitch);
+  }
+  level->displayReady = true;
+}
+
 UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
@@ -4306,6 +5106,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
   addCamerasMenu(menuConnected);
   addBulbMenu(menuConnected);
   menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
+  addLevelMenu(menuConnected);
   menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
   menu_t &disconnect = addMenu(m_RemoteDisconnect, &icon_no_photography, true, menuConnected);
 
@@ -4511,6 +5312,10 @@ UI::menu_t &UI::addConnectedMenu(void) {
   lv_menu_set_load_page_event(menuGPSDataPage.main, menuGPSData.button, menuGPSDataPage.page);
   lv_obj_add_event_cb(menuGPSData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
 
+  // add spirit level control
+  menu_t &menuLevel = m_Menu.at(m_LevelStr);
+  lv_menu_set_load_page_event(menuLevel.main, menuLevel.button, menuLevel.page);
+
   // add disconnect control
   lv_obj_add_event_cb(
       disconnect.button,
@@ -4677,6 +5482,8 @@ void UI::startScan(void) {
 
   scan.clear();
 #if defined(FURBLE_SIM)
+  // Keep the same unlock/relock hand-off as firmware. The simulator's scan
+  // start probe acquires this mutex, proving the start path cannot deadlock.
   scan.setStartProbe([]() {
     m_Mutex.lock();
     m_Mutex.unlock();
@@ -4734,6 +5541,17 @@ void UI::showGPSWidgets(status_t *status, bool show) {
       lv_obj_clear_flag(widget, LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(widget, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
+void UI::showIMUWidgets(bool show) {
+  for (const auto *name : {m_LevelStr, m_IMUDataStr}) {
+    auto &menu = m_Menu.at(name);
+    if (show) {
+      lv_obj_clear_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
     }
   }
 }
@@ -4876,6 +5694,25 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
                     "Use 5 to 15 s to keep fixes fresh. Rail cycling is experimental. GPS unit "
                     "v1.1 has no backup supply, a rail cut costs a ~108 s cold refix, so the "
                     "cycle never completes and the receiver stays always on.");
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addSensorsMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
+
+  addSettingItem(menu.page, NULL, Settings::IMU);
+
+  lv_obj_t *notice = lv_menu_cont_create(menu.page);
+  lv_obj_t *noticeLabel = lv_label_create(notice);
+  lv_label_set_text(noticeLabel, "Restart to apply");
+
+  lv_obj_t *restart = lv_button_create(menu.page);
+  lv_obj_t *label = lv_label_create(restart);
+  lv_label_set_text(label, "Restart");
+  lv_obj_center(label);
+  lv_obj_add_event_cb(
+      restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -6618,6 +7455,65 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
       diagnostics->bleText = text;
     }
   }
+
+  // only poll the IMU over I2C while its live page is open
+  if (diagnostics->imuPageActive) {
+    std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+#if defined(FURBLE_SIM)
+    // Read the injected IMU state through the same surface as the firmware, so a
+    // scenario can drive the live diagnostics readout too.
+    if (Furble::Sim::imuEnabled()) {
+      Furble::Sim::imuUpdate();
+      float accel[3];
+      float gyro[3];
+      bool accelRead = Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2]);
+      bool gyroRead = Furble::Sim::imuGetGyro(&gyro[0], &gyro[1], &gyro[2]);
+#else
+    if (M5.Imu.isEnabled()) {
+      M5.Imu.update();
+      float accel[3];
+      float gyro[3];
+      bool accelRead = M5.Imu.getAccel(&accel[0], &accel[1], &accel[2]);
+      bool gyroRead = M5.Imu.getGyro(&gyro[0], &gyro[1], &gyro[2]);
+#endif
+
+      if (accelRead && diagnostics->imuAccel != nullptr) {
+        bool changed = !diagnostics->imuAccelValid;
+        for (size_t index = 0; index < 3; index++) {
+          changed =
+              changed || (std::fabs(diagnostics->imuAccelValues[index] - accel[index]) >= 0.001f);
+          diagnostics->imuAccelValues[index] = accel[index];
+        }
+        if (changed) {
+          lv_label_set_text_fmt(diagnostics->imuAccel, "Accel (G):\nX %.3f  Y %.3f  Z %.3f",
+                                accel[0], accel[1], accel[2]);
+          diagnostics->imuAccelUpdates++;
+        }
+        diagnostics->imuAccelValid = true;
+      }
+
+      if (gyroRead && diagnostics->imuGyro != nullptr) {
+        bool changed = !diagnostics->imuGyroValid;
+        for (size_t index = 0; index < 3; index++) {
+          changed =
+              changed || (std::fabs(diagnostics->imuGyroValues[index] - gyro[index]) >= 0.001f);
+          diagnostics->imuGyroValues[index] = gyro[index];
+        }
+        if (changed) {
+          lv_label_set_text_fmt(diagnostics->imuGyro, "Gyro (deg/s):\nX %.2f  Y %.2f  Z %.2f",
+                                gyro[0], gyro[1], gyro[2]);
+          diagnostics->imuGyroUpdates++;
+        }
+        diagnostics->imuGyroValid = true;
+      }
+      if (!accelRead) {
+        diagnostics->imuAccelValid = false;
+      }
+      if (!gyroRead) {
+        diagnostics->imuGyroValid = false;
+      }
+    }
+  }
 }
 
 /**
@@ -6856,6 +7752,25 @@ void UI::addBLEMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addIMUDataMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_IMUDataStr, NULL, true, parent);
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  m_Diagnostics.imuAccel = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
+  m_Diagnostics.imuGyro = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
+
+  if (!imuEnabledForUI()) {
+    lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addDiagnosticsMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DiagnosticsStr, &icon_troubleshoot, true, parent);
 
@@ -6868,6 +7783,7 @@ void UI::addDiagnosticsMenu(const menu_t &parent) {
 
   addPowerStateMenu(menu);
   addBLEMenu(menu);
+  addIMUDataMenu(menu);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -7077,6 +7993,7 @@ void UI::addSettingsMenu(void) {
   addDisplayMenu(menu);
   addFeaturesMenu(menu);
   addIRSettingsMenu(menu);
+  addSensorsMenu(menu);
   addGPSMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);
@@ -7452,6 +8369,17 @@ void UI::task(void) {
     Platform::getInstance().update();
 
     m_Mutex.lock();
+#if defined(FURBLE_SIM)
+    {
+      std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+      m_SimUiThread = std::this_thread::get_id();
+    }
+    // Script input is part of the UI task's locked phase, just like physical
+    // LVGL input. This preserves the firmware mutex hand-offs in scan startup
+    // and prevents SDL-thread LVGL access.
+    Sim::driverTick();
+    serviceSimRequests();
+#endif
 #if defined(FURBLE_CONSOLE)
     serviceRequests();
 #endif
@@ -7475,6 +8403,14 @@ void UI::task(void) {
 
 #if defined(FURBLE_SIM)
 bool UI::simulatorHome(void) {
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, result]() { result->store(simulatorHomeOnUi()); })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simulatorHomeOnUi(void) {
   lv_menu_clear_history(m_MainMenu.main);
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
   lv_group_focus_obj(m_Menu.at(m_ScanStr).button);
@@ -7482,6 +8418,14 @@ bool UI::simulatorHome(void) {
 }
 
 bool UI::simulatorBack(void) {
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, result]() { result->store(simulatorBackOnUi()); })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simulatorBackOnUi(void) {
   lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
   if (back == nullptr || lv_menu_get_cur_main_page(m_MainMenu.main) == m_MainMenu.page) {
     return false;
@@ -7492,6 +8436,17 @@ bool UI::simulatorBack(void) {
 }
 
 bool UI::simPressButton(const char *name, bool hold) {
+  const std::string button = name == nullptr ? "" : name;
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, button, hold, result]() {
+        result->store(simPressButtonOnUi(button.c_str(), hold));
+      })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simPressButtonOnUi(const char *name, bool hold) {
   const std::string button = name == nullptr ? "" : name;
 
   // Resolve the silk-screen button to its LVGL input-device role using the same

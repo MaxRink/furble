@@ -255,6 +255,7 @@ void CompanionService::handleLocation(const uint8_t *data, size_t len) {
 CompanionService::setting_type_t CompanionService::settingType(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
+    case Settings::IMU:
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
@@ -319,6 +320,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
 bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> &value) {
   switch (type) {
     case Settings::GPS:
+    case Settings::IMU:
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:

@@ -90,6 +90,9 @@ struct ProfilerState {
   std::map<std::string, uint64_t> timer_fires;
   uint64_t invalidated_area_pixels = 0;
   uint64_t flushed_pixels = 0;
+  // Redraw-storm probe. Reset and read on its own span, not tied to the report
+  // window, so a scenario can measure invalidations over a steady page.
+  uint32_t invalidation_probe_count = 0;
 
   uint64_t ui_cycles = 0;
   bool cycle_timer_fired = false;
@@ -835,6 +838,19 @@ void profilerInvalidatedArea(uint64_t pixels) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
   state.invalidated_area_pixels += pixels;
+  // Count invalidation events for the redraw-storm probe. Independent of the
+  // report window reset so a scenario controls its own measurement span.
+  state.invalidation_probe_count++;
+}
+
+void profilerResetInvalidationProbe(void) {
+  std::lock_guard<std::mutex> lock(state.mutex);
+  state.invalidation_probe_count = 0;
+}
+
+uint32_t profilerInvalidationProbeCount(void) {
+  std::lock_guard<std::mutex> lock(state.mutex);
+  return state.invalidation_probe_count;
 }
 
 void profilerFlushedPixels(uint64_t pixels) {

@@ -1,6 +1,13 @@
 #ifndef FURBLE_UI_H
 #define FURBLE_UI_H
 
+#include <mutex>
+
+namespace Furble {
+/** Serializes M5.Imu transactions between UI timers and debug console probes. */
+extern std::mutex g_IMUMutex;
+}  // namespace Furble
+
 #if defined(FURBLE_NO_DISPLAY)
 
 #include <cstdint>
@@ -50,10 +57,22 @@ class UI {
 
 #include <array>
 #include <atomic>
+#if defined(FURBLE_SIM)
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#endif
 #include <initializer_list>
+#if defined(FURBLE_SIM)
+#include <memory>
+#endif
 #include <mutex>
 #include <optional>
 #include <string>
+#if defined(FURBLE_SIM)
+#include <thread>
+#include <utility>
+#endif
 #include <unordered_map>
 
 #include <lvgl.h>
@@ -252,7 +271,59 @@ class UI {
     lv_obj_t *ble;
     std::string bleText;
     std::array<lv_obj_t *, 3> powerLocks;
+    lv_obj_t *imuAccel;
+    lv_obj_t *imuGyro;
+    float imuAccelValues[3];
+    float imuGyroValues[3];
+    bool imuAccelValid;
+    bool imuGyroValid;
+    uint32_t imuAccelUpdates;
+    uint32_t imuGyroUpdates;
+    /** True while the 'IMU live' page is open, gates I2C polling. */
+    bool imuPageActive;
   } diagnostics_t;
+
+  typedef struct {
+    // The top-level window is pixel-sized by lv_win_create. It does not follow
+    // later display resolution changes automatically, so level rotation must
+    // resize it with the panel or the landscape page remains portrait-width.
+    lv_obj_t *root;
+    lv_obj_t *surface;
+    lv_obj_t *bubble;
+    // Fixed reference ring at the exact centre of the circle. The moving bubble
+    // nests inside it when the device is level, so the target is distinct from
+    // the bubble and never moves.
+    lv_obj_t *target;
+    lv_obj_t *roll;
+    lv_obj_t *pitch;
+    lv_obj_t *sideTube;
+    lv_obj_t *sideBubble;
+    lv_obj_t *hint;
+    float accel[3];
+    float displayRoll;
+    float displayPitch;
+    int32_t bubbleX;
+    int32_t bubbleY;
+    int32_t sideBubbleX;
+    // Panel size at build time, portrait orientation. The reflow swaps these
+    // when the page rotates to landscape.
+    int32_t baseWidth;
+    int32_t baseHeight;
+    // Active LVGL rotation for the page, one of 0, 90 or 270 degrees. The rest
+    // of the UI always runs at 0, this is scoped to the level page.
+    int32_t rotation;
+    // On the compact StickC and StickS3 panels the physical-button indicators
+    // float and are aligned to the screen edges rather than living in a flex
+    // navbar. When the level page rotates the panel those indicators have to be
+    // re-anchored to the rotated edges, so keep their handles here. They stay
+    // null on boards whose indicators reflow on their own and need no fix-up.
+    lv_obj_t *navLeft;
+    lv_obj_t *navOK;
+    lv_obj_t *navRight;
+    int32_t navRightYOffset;
+    bool filterReady;
+    bool displayReady;
+  } level_t;
 
   /**
    * Owner of a spinner.
@@ -455,6 +526,7 @@ class UI {
   static constexpr const char *m_RemoteBulb = "Bulb";
   static constexpr const char *m_RemoteInterval = "Interval";
   static constexpr const char *m_RemoteDisconnect = "Disconnect";
+  static constexpr const char *m_LevelStr = "Level";
   // dodgy hack, add a space so map key is unique
   static constexpr const char *m_RemoteGPSData = "GPS Data ";
   static constexpr const char *m_IntervalometerRunStr = "Intervalometer ";
@@ -470,6 +542,7 @@ class UI {
   static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
   static constexpr const char *m_TextSizeStr = "Text size";
   static constexpr const char *m_FeaturesStr = "Features";
+  static constexpr const char *m_SensorsStr = "Sensors";
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
@@ -495,6 +568,7 @@ class UI {
   static constexpr const char *m_DeviceInfoStr = "Device info";
   static constexpr const char *m_PowerStateStr = "Power state";
   static constexpr const char *m_BLEStr = "BLE";
+  static constexpr const char *m_IMUDataStr = "IMU live";
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
@@ -573,6 +647,7 @@ class UI {
   static lv_timer_t *m_ConnectTimer;
   static lv_timer_t *m_GPSDataTimer;
   static lv_timer_t *m_CamerasTimer;
+  static lv_timer_t *m_LevelTimer;
   static lv_timer_t *m_IntervalPageRefresh;
   static uint32_t m_IntervalNext;
   static std::atomic<uint8_t> m_IntervalometerState;
@@ -661,6 +736,7 @@ class UI {
 
   status_t m_Status;
   diagnostics_t m_Diagnostics = {};
+  level_t m_Level = {};
   nmea_t m_NMEA;
   lv_timer_t *m_NMEATimer = nullptr;
   bool m_FocusPressed = false;
@@ -676,6 +752,26 @@ class UI {
   // the sim build reads these; the firmware still uses the live LVGL streak.
   bool m_SimClickStreakActive = false;
   uint8_t m_SimClickStreak = 0;
+
+  struct sim_request_t {
+    std::function<void()> operation;
+    std::mutex mutex;
+    std::condition_variable complete;
+    bool done = false;
+    bool result = true;
+  };
+
+  std::mutex m_SimRequestMutex;
+  std::deque<std::shared_ptr<sim_request_t> > m_SimRequests;
+  std::thread::id m_SimUiThread;
+  std::atomic<bool> m_SimLastActionOnUi {false};
+
+  bool simRunOnUi(std::function<void()> operation);
+  void serviceSimRequests(void);
+  void simScenarioActionOnUi(const char *action);
+  bool simulatorHomeOnUi(void);
+  bool simulatorBackOnUi(void);
+  bool simPressButtonOnUi(const char *name, bool hold);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
@@ -835,6 +931,9 @@ class UI {
   /** Add the 'Power saving' GPS page. */
   void addGPSPowerMenu(const menu_t &parent);
 
+  /** Add the 'Sensors' menu entry. */
+  void addSensorsMenu(const menu_t &parent);
+
   /** Add 'GPS Data' page. */
   void addGPSDataMenu(const menu_t &parent);
 
@@ -948,6 +1047,9 @@ class UI {
    */
   void serviceStorage(void);
 
+  /** Add the 'IMU live' page. */
+  void addIMUDataMenu(const menu_t &parent);
+
   /** Add the 'Device info' page. */
   void addDeviceInfoMenu(const menu_t &parent);
 
@@ -963,6 +1065,9 @@ class UI {
   /** Diagnostics refresh timer handler. */
   static void diagnosticsUpdate(lv_timer_t *timer);
 
+  /** Show or hide pages which need the IMU enabled. */
+  static void showIMUWidgets(bool show);
+
   /** Describe the last reset reason. */
   static const char *getResetReason(void);
 
@@ -974,6 +1079,8 @@ class UI {
 
   /** Add the connected Cameras status page. */
   void addCamerasMenu(const menu_t &parent);
+  /** Add the spirit level page. */
+  void addLevelMenu(const menu_t &parent);
 
   /** Update entries in connect page. */
   static void updateItems(const menu_t &menu);
@@ -998,6 +1105,30 @@ class UI {
 
   /** Stop GPS Data timer. */
   static void gpsDataStop(lv_event_t *e);
+
+  /** Refresh the spirit level page. */
+  static void levelUpdate(lv_timer_t *timer);
+
+  /**
+   * Map a filtered accelerometer sample to the spirit level widgets.
+   *
+   * Shared by the live IMU timer and the simulator tilt injection seam so both
+   * exercise the same sensitivity curve and bubble placement.
+   */
+  static void applyLevelSample(level_t *level, const float accel[3]);
+
+  /**
+   * Rotate the level page and reflow its widgets for the new orientation.
+   *
+   * Portrait (0 degrees) shows the circle bubble plus the gesture hint. A side
+   * orientation (90 or 270 degrees) swaps the panel to landscape and shows the
+   * linear bubble tube instead. The numeric readout stays on both. The display
+   * rotation is scoped to the level page and restored to 0 on page exit.
+   */
+  static void applyLevelRotation(level_t *level, int32_t rotation);
+
+  /** Clamp a level circle diameter to the panel content for the given size. */
+  static int32_t levelDiameter(int32_t width, int32_t height);
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);

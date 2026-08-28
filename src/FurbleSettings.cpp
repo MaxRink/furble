@@ -27,6 +27,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
+    {IMU,               {IMU, 46, "IMU", "imu", FURBLE_STR}                                  },
     {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
     {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
     {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
@@ -148,6 +149,9 @@ bool Settings::appliesImmediately(type_t type) {
     case FB_OUTPUT:
     case PRESET_PICKER:
     case BUTTON_MODE:
+    // The IMU is brought up during Platform init, so a save takes effect on the
+    // next restart rather than immediately.
+    case IMU:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at
@@ -212,6 +216,7 @@ bool Settings::isDangerous(type_t type) {
     case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
+    case IMU:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -521,6 +526,7 @@ void Settings::init(void) {
           save<multiselect_t>(setting.type, selection);
         } break;
         case GPS:
+        case IMU:
         case GPS_NMEA:
         case MULTICONNECT:
         case RECONNECT:

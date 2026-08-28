@@ -34,12 +34,16 @@ Platform &Platform::getInstance(void) {
 
     auto cfg = M5.config();
     cfg.clear_display = true;
-    cfg.internal_imu = false;
+    cfg.internal_imu = Settings::load<Settings::IMU>();
     cfg.internal_spk = Feedback::outputIncludesSound(
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
     M5.begin(cfg);
+
+    // The IMU keeps the M5Unified default axis order. The spirit level derives
+    // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
+    // That orientation is UNVERIFIED on all boards pending a hardware check.
 
     switch (M5.getBoard()) {
       case m5::board_t::board_M5StickC:

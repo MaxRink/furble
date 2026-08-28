@@ -20,7 +20,8 @@ Public headers for the app layer in src/, one header per module
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
-- `FurbleWatchdog.h` is the single M5PM1 timing contract shared by firmware,
-  simulator, and host tests. The 45 second timeout must remain longer than the
-  30 second OTA health window, while the one second feed cadence and flash
-  disarm and readback safeguards remain intact.
+- `FurbleSettings.h` assigns the IMU enable switch wire id 46. Wire id 45 is
+  reserved for the companion-password contract and must not be reused.
+- `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
+  persisted IMU capability is enabled; simulator seams must model the same
+  `M5.Imu` read boundary rather than adding widget-only state.

@@ -1,8 +1,10 @@
 # Host simulator
 
 The simulator is a host-only SDL build of the furble UI. It uses the real UI
-and control code with simulator shims and fakes. It does not build firmware,
-talk to a radio, or model the device IMU. Scripted time comes from the
+and control code with simulator shims and fakes. It does not build firmware or
+talk to a radio. The IMU is represented by a deterministic injection seam, so
+production level and diagnostics code can be exercised without a physical
+sensor. Scripted time comes from the
 simulator virtual clock, so scenario runs do not wait on wall-clock time.
 
 ## Panels
@@ -369,10 +371,29 @@ The other namespaces are:
   qualify the production 30-second hysteresis; charging suppresses both the
   warning and power-off path.
 
-There is no IMU injection knob in this host SDL simulator. The platform shim
-sets `config.internal_imu = false`, and the scenario parser has no IMU action,
-seed, or query. Do not add an IMU token to a scenario until the harness source
-registers one.
+### IMU injection
+
+The simulator exposes the same accelerometer and gyro read surface used by the
+firmware. It does not emulate BMI270 timing or I2C faults, but it does run the
+production level filter, orientation thresholds, diagnostics polling, and UI
+layout. Use these deterministic controls in scenarios:
+
+- `seed imu true|false` selects the startup setting. The default is `false`.
+- `action imu.enable` and `action imu.disable` toggle the simulated sensor.
+- `action imu.accel X Y Z` injects an accelerometer vector in G.
+- `action imu.roll DEGREES` and `action imu.pitch DEGREES` inject orientation.
+- `action imu.gyro X Y Z` injects gyro data in degrees per second.
+
+The `imu.*` actions feed the shared simulated `M5.Imu` surface. Queries include
+`imu_accel_x`, `imu_accel_y`, `imu_accel_z`, `level_bubble_x`,
+`level_bubble_y`, `level_rotation`, `level_side_visible`, `level_root_width`,
+`level_root_height`, `level_side_on_screen`, and `ui.overflow`. The root-size
+and on-screen queries verify that a landscape panel resize reaches the
+pixel-sized top-level window and that the moving tube bubble is not clipped.
+Checked-in scenarios cover the setting gate, live diagnostics, portrait and
+rotated level layouts, redraw stability, and overflow on all three panel sizes:
+`e2e/imu-gating.txt`, `e2e/imu-diagnostics.txt`, `e2e/level-spirit.txt`,
+`e2e/level-overflow.txt`, and `e2e/redraw-steady.txt`.
 
 ### Real-code host BLE faults
 

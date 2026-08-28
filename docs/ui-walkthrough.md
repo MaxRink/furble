@@ -118,8 +118,10 @@ are:
 - **GPS Data**: the live GPS page.
 - **Disconnect**: drop the camera and return to the main menu.
 
-There is no spirit level or IMU page in this build. That feature is not present
-on the current firmware.
+When the IMU setting is enabled, Connected also contains **Level**, a live
+spirit-level view. Settings > Diagnostics contains **IMU**, which shows the
+accelerometer sample and gyro state. Both pages use the physical sensor on
+firmware and the deterministic IMU seam in the simulator.
 
 ### Remote
 
@@ -355,6 +357,12 @@ Diagnostics groups read-only status pages.
   Dump locks button.
 - **BLE**: a live BLE status row.
 
+### Sensors
+
+The Sensors page contains the **IMU** switch. It is off by default and requires
+Restart after changing it. When enabled, the Connected menu exposes **Level**;
+the live accelerometer page is also available under Diagnostics.
+
 ### Storage
 
 ![Storage settings](img/settings-storage.png)
@@ -467,21 +475,22 @@ screen); the Core is a touch panel and shows the on-screen touch controls.
 | ![](img/core/default/settings.png) | ![](img/core/dark/settings.png) | ![](img/core/mono/settings.png) |
 | ![](img/core/default/remote.png) | ![](img/core/dark/remote.png) | ![](img/core/mono/remote.png) |
 
-## Pending feature (PR #28): IMU spirit level
+## Level and IMU diagnostics
 
-The IMU spirit level is not on the current firmware. It lands with PR #28. These
-previews are captured from that branch's simulator build, not from this branch,
-and are here so the page is documented ahead of the merge. The landscape (rotated)
-level view has a bench-only DMA issue and is not shown; the portrait and side
-bubble views render correctly.
+Enable `Settings` > `Sensors` > `IMU`, then press the Sensors page's Restart
+button. The setting is off by default. After restart, **Level** appears in
+Connected and **IMU** appears under Settings > Diagnostics. The level follows
+roll and pitch and rotates to the side-bubble view when the device is laid over.
 
 ![Level, portrait](img/pending-28/level-portrait.png)
 ![Level, side bubble tube off center](img/pending-28/level-bubble.png)
 ![IMU diagnostics](img/pending-28/imu-diag.png)
 
-The level page shows a bubble that tracks the device tilt. Holding the device
-level centers the bubble; tilting moves it off center along the side tube. The
-IMU diagnostics page shows the raw roll, pitch, and acceleration readout.
+The level page shows a bubble that tracks device tilt. Holding the device level
+centers the bubble; tilting moves it off center along the side tube. The IMU
+diagnostics page shows the raw acceleration readout. Simulator scenarios cover
+both orientations and all supported panel sizes; physical axis/sign and rotated
+DMA behavior remain hardware checks.
 
 ## What the simulator models
 

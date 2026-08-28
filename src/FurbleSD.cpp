@@ -233,6 +233,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       return true;
 
     case Settings::GPS:
+    case Settings::IMU:
     case Settings::GPS_NMEA:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
@@ -445,6 +446,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::GPS:
+    case Settings::IMU:
     case Settings::GPS_NMEA:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:

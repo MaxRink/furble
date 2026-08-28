@@ -1,0 +1,83 @@
+# Width-agnostic spirit level render, bubble tracking and overflow check (PR
+# #28). This runs on all three panel classes in CI (80x160, 135x240, 320x240),
+# so it asserts direction and fit, never exact pixels. level-spirit.txt pins the
+# exact 135x240 geometry; this file proves the page renders, the bubble tracks
+# the injected tilt the right way, and nothing overflows on any panel.
+#
+# The injected IMU seam feeds the same M5.Imu surface the firmware reads, so the
+# real filter, sensitivity curve and auto-rotate logic run unchanged. imu.roll
+# and imu.pitch take degrees, imu.accel takes G on x, y, z.
+seed fauxny true
+seed imu true
+wait 400
+action nav level
+wait 200
+assert ui.page level
+
+# The page built widgets and fits the panel.
+assert_min ui.visible_objects 1
+assert ui.overflow no
+
+# Flat: bubble centred on the target, bullseye and target shown, no side tube.
+action imu.accel 0 0 1
+wait 150
+assert ui.level_bubble_visible yes
+assert ui.level_target_visible yes
+assert ui.level_side_visible no
+assert ui.level_bubble_x 0
+assert ui.level_bubble_y 0
+assert ui.overflow no
+
+# Roll right a little: the bubble tracks right on the x axis, still portrait.
+action imu.roll 6
+wait 150
+assert_min ui.level_bubble_x 1
+assert ui.level_bubble_y 0
+assert ui.level_rotation 0
+assert ui.overflow no
+
+# Roll left: the bubble tracks left, the mirror of the right roll.
+action imu.roll -6
+wait 150
+assert_max ui.level_bubble_x -1
+assert ui.level_rotation 0
+assert ui.overflow no
+
+# Pitch up: only the vertical axis moves, and it moves down the bullseye.
+action imu.pitch 6
+wait 150
+assert_min ui.level_bubble_y 1
+assert ui.level_bubble_x 0
+assert ui.overflow no
+
+# Pitch down: the vertical axis tracks the other way.
+action imu.pitch -6
+wait 150
+assert_max ui.level_bubble_y -1
+assert ui.overflow no
+
+# Lay on the right side past the 60 deg enter threshold: the page flips to
+# landscape, the tube shows, the bullseye hides, and the rotated layout fits.
+action imu.roll 70
+wait 200
+assert ui.level_rotation 90
+assert ui.level_side_visible yes
+assert ui.level_bubble_visible no
+assert_min ui.visible_objects 1
+assert ui.overflow no
+
+# Lay on the left side: the page flips the other way and still fits.
+action imu.roll -70
+wait 200
+assert ui.level_rotation 270
+assert ui.level_side_visible yes
+assert ui.overflow no
+
+# Back below the 45 deg exit: return to portrait, bullseye and target back.
+action imu.roll 0
+wait 200
+assert ui.level_rotation 0
+assert ui.level_bubble_visible yes
+assert ui.level_target_visible yes
+assert ui.overflow no
+exit

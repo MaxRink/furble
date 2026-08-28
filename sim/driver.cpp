@@ -52,6 +52,8 @@ enum class StepType {
   ASSERT,
   ASSERT_EVENTUALLY,
   XASSERT,
+  ASSERT_MAX,
+  ASSERT_MIN,
   PRINT,
   EXIT,
 };
@@ -197,9 +199,9 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off", "gps_rate", "gps_constel",
-      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power", "scan_mode",
-      "text_size",  "auto_off",   "low_batt",
+      "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
+      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
+      "text_size",  "auto_off",   "low_batt",    "fb_output",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -223,6 +225,8 @@ void validateSeed(const std::string &name, const std::string &value) {
       "scan_start_probe",
       "scan_distinct",
       "auto_off_charging",
+      "imu",
+      "imu_sensor",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -491,6 +495,33 @@ void readScript(const std::string &path) {
         std::exit(2);
       }
       steps.push_back(step);
+    } else if (command == "assert_max") {
+      // Numeric upper bound: the query value parsed as an integer must be at
+      // most the expected value. Used for the redraw-storm probe, where a steady
+      // page must hold its invalidation count low rather than at an exact value.
+      Step step;
+      step.type = StepType::ASSERT_MAX;
+      input >> step.name;
+      input >> step.expected;
+      if (step.name.empty() || step.expected.empty()) {
+        std::cerr << "assert_max requires a key and a maximum value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "assert_min") {
+      // Numeric lower bound: the query value parsed as an integer must be at
+      // least the expected value. Used to assert a page rendered widgets
+      // (visible_objects >= 1) and that the bubble tracked a tilt in the right
+      // direction without pinning an exact per-panel pixel value.
+      Step step;
+      step.type = StepType::ASSERT_MIN;
+      input >> step.name;
+      input >> step.expected;
+      if (step.name.empty() || step.expected.empty()) {
+        std::cerr << "assert_min requires a key and a minimum value\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
     } else if (command == "exit") {
       Step step;
       step.type = StepType::EXIT;
@@ -652,6 +683,7 @@ std::string settingBoolValue(const std::string &name) {
       {"tx_adaptive",       Settings::TX_ADAPTIVE      },
       {"recon_backoff",     Settings::RECON_BACKOFF    },
       {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
+      {"imu",               Settings::IMU              },
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
@@ -858,6 +890,7 @@ void applyScenarioSettings(void) {
   saveByte("text_size", Settings::TEXT_SIZE);
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
+  saveByte("fb_output", Settings::FB_OUTPUT);
   saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
@@ -907,6 +940,16 @@ void applyScenarioSettings(void) {
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
+  saveBoolean("imu", Settings::IMU);
+  // Keep the host sensor surface in step with the setting used to construct
+  // the UI. The SDL platform cannot initialize a physical IMU, so the shared
+  // seam owns the enabled state for both page visibility and sensor reads.
+  bool imu_sensor = scenarioSettingIsTrue("imu");
+  const auto imu_sensor_setting = scenarioSettings.find("imu_sensor");
+  if (imu_sensor_setting != scenarioSettings.end()) {
+    imu_sensor = parseBool(imu_sensor_setting->second);
+  }
+  imuSetEnabled(imu_sensor);
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;
@@ -1237,6 +1280,58 @@ void driverTick(void) {
         std::cout << "XPASS (gap fixed, promote to assert): " << step.name << " = " << actual
                   << '\n';
       }
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::ASSERT_MAX:
+    {
+      const std::string actual = queryValue(step.name);
+      long actualValue = 0;
+      long maxValue = 0;
+      try {
+        actualValue = std::stol(actual);
+        maxValue = std::stol(step.expected);
+      } catch (const std::exception &) {
+        std::cerr << "ASSERT_MAX FAILED: " << step.name << " non-numeric (got '" << actual
+                  << "', max '" << step.expected << "')\n";
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      if (actualValue > maxValue) {
+        std::cerr << "ASSERT_MAX FAILED: " << step.name << " expected <= " << maxValue << " got "
+                  << actualValue << '\n';
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      std::cout << "assert ok: " << step.name << " = " << actualValue << " (<= " << maxValue
+                << ")\n";
+      ++stepIndex;
+      break;
+    }
+
+    case StepType::ASSERT_MIN:
+    {
+      const std::string actual = queryValue(step.name);
+      long actualValue = 0;
+      long minValue = 0;
+      try {
+        actualValue = std::stol(actual);
+        minValue = std::stol(step.expected);
+      } catch (const std::exception &) {
+        std::cerr << "ASSERT_MIN FAILED: " << step.name << " non-numeric (got '" << actual
+                  << "', min '" << step.expected << "')\n";
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      if (actualValue < minValue) {
+        std::cerr << "ASSERT_MIN FAILED: " << step.name << " expected >= " << minValue << " got "
+                  << actualValue << '\n';
+        std::cout.flush();
+        std::_Exit(1);
+      }
+      std::cout << "assert ok: " << step.name << " = " << actualValue << " (>= " << minValue
+                << ")\n";
       ++stepIndex;
       break;
     }

@@ -16,6 +16,8 @@
 seed fauxny true
 seed saved_camera true
 seed gps true
+seed imu true
+seed fb_output 1
 wait 300
 # Home menu: must fit on every panel.
 print ui.page
@@ -70,6 +72,13 @@ wait 100
 # any regression where the hint leaks overflow into a page that must fit.
 print ui.page
 print ui.overflow
+action page settings
+action nav sensors
+wait 100
+# Core uses a grid for Settings; Sensors must occupy its own tile rather than
+# colliding with Feedback/IR. The page itself must remain reachable and fit.
+assert ui.page sensors
+assert ui.overflow no
 action page settings
 action nav infrared
 wait 100
@@ -208,7 +217,6 @@ action nav battery
 wait 100
 print ui.page
 print ui.overflow
-
 # Connected-session pages. The remote controls and run pages are compact, so
 # assert their fit as well. Cameras and the GPS remote page are printed because
 # their content legitimately varies with camera/GPS state and panel height.
@@ -266,4 +274,15 @@ print ui.overflow
 assert ui.overflow no
 action stop
 wait 100
+
+# Spirit level page (PR #28 v3.1): one top readout row split roll left, pitch
+# right, then the bullseye and centre target ring centred below. A compact fixed
+# layout that must fit every panel with no overlap or scroll.
+home
+wait 100
+action nav level
+wait 150
+print ui.page
+print ui.overflow
+assert ui.overflow no
 exit

@@ -101,6 +101,12 @@ StickC-Plus, and Core2 when its backup supply is healthy. StickS3 has no
 battery-backed calendar RTC, so it restores the last NVS value with an explicit
 uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
+## imu
+
+- `imu status` performs a read-only probe: it reports the persisted opt-in,
+  detected IMU type, update result, and independent accelerometer/gyroscope
+  reads with values. It performs no NVS writes and does not access LVGL.
+
 ## shutter and focus
 
 - `shutter press` fires and `shutter release` ends. `shutter hold <ms>` fires,

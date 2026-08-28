@@ -1,0 +1,159 @@
+# End-to-end regression for the spirit level page (PR #28 v3.1 rework).
+#
+# The simulator starts with the persisted IMU setting enabled, so the level page
+# is reached with the FURBLE_SIM nav hook and driven through the general injected
+# IMU state. The
+# imu.roll, imu.pitch and imu.accel actions set the shared sim IMU, which the
+# firmware reads through the same M5.Imu surface (isEnabled, update, getAccel).
+# The real level timer, filter, sensitivity curve and auto-rotate logic run
+# exactly as they do on device, so this exercises the firmware read path, not a
+# widget poke. imu.accel takes (x, y, z) in G, imu.roll and imu.pitch take
+# degrees.
+#
+# What this locks in:
+#  - Layout: one readout row at the top, the bullseye centred below with margin
+#    (never under the header), a fixed centre target ring, and no overflow flat
+#    or flipped.
+#  - Flat page: the circle bullseye and target ring show, the side tube is
+#    hidden. A small 6 degree tilt drives the circle bubble a large, clearly
+#    visible distance. The old +/-45 degree linear mapping moved it only a few
+#    pixels, so a revert to that mapping fails these asserts.
+#  - Auto-rotate with hysteresis: entering a side needs 60 degrees, returning to
+#    flat needs below 45 degrees, and the 45 to 60 band holds the current
+#    orientation. A right roll flips to 90, a left roll to 270.
+#  - Side tube shows only in the flipped orientation; the bullseye and target
+#    show only in portrait.
+seed fauxny true
+seed imu true
+wait 300
+action nav level
+wait 200
+assert ui.page level
+assert ui.overflow no
+
+# The flat page opens in portrait: bullseye and target shown, side tube hidden.
+assert ui.level_rotation 0
+assert ui.level_root_width 135
+assert ui.level_root_height 240
+assert ui.level_bubble_visible yes
+assert ui.level_target_visible yes
+assert ui.level_side_visible no
+
+# Layout: a usable bullseye that sits below the header, not jammed under it. A
+# top of 50 px is well clear of the menu header bar.
+assert ui.level_diameter 89
+assert ui.level_surface_top 50
+
+# Flat: the circle bubble is centred on the target.
+action imu.accel 0 0 1
+assert ui.sim_action_on_ui yes
+wait 120
+assert ui.level_bubble_x 0
+assert ui.level_bubble_y 0
+assert_min ui.level_bubble_actual_x 1
+assert_min ui.level_bubble_actual_y 1
+assert ui.level_rotation 0
+
+# Small 6 degree roll: the circle bubble moves a lot, still portrait, no tube.
+action imu.roll 6
+wait 120
+assert ui.level_bubble_x 18
+assert ui.level_bubble_y 0
+assert ui.level_rotation 0
+assert ui.level_side_visible no
+
+# Small 6 degree pitch: only the vertical axis moves.
+action imu.pitch 6
+wait 120
+assert ui.level_bubble_x 0
+assert ui.level_bubble_y 18
+assert ui.level_rotation 0
+
+# Hysteresis low edge: 50 degrees is inside the 45 to 60 band, so from portrait
+# the page stays portrait until the 60 degree enter threshold is passed.
+action imu.roll 50
+wait 120
+assert ui.level_rotation 0
+
+# Lay on the right side, 70 degrees: the page flips to landscape, the tube shows,
+# and the layout still fits.
+action imu.roll 70
+wait 200
+assert ui.level_rotation 90
+assert ui.level_side_visible yes
+assert ui.level_bubble_visible no
+assert ui.level_target_visible no
+assert_max ui.level_side_x -1
+assert_min ui.level_side_actual_x 1
+assert ui.level_root_width 240
+assert ui.level_root_height 135
+assert ui.level_side_on_screen yes
+assert ui.overflow no
+
+# The exact right-side reference is centered; deviations appear on either side
+# of the tube rather than saturating at an edge.
+action imu.roll 90
+wait 150
+assert ui.level_side_x 0
+action imu.roll 84
+wait 150
+assert_max ui.level_side_x -1
+action imu.roll 96
+wait 150
+assert_min ui.level_side_x 1
+
+# Hysteresis hold: 50 degrees is inside the band, so the landscape orientation is
+# held rather than flapping back to portrait.
+action imu.roll 50
+wait 120
+assert ui.level_rotation 90
+assert ui.level_side_visible yes
+
+# Lay on the left side, -70 degrees: the page flips the other way.
+action imu.roll -70
+wait 200
+assert ui.level_rotation 270
+assert_min ui.level_side_x 1
+assert_min ui.level_side_actual_x 1
+assert ui.level_root_width 240
+assert ui.level_root_height 135
+assert ui.level_side_on_screen yes
+
+action imu.roll -90
+wait 150
+assert ui.level_side_x 0
+action imu.roll -96
+wait 150
+assert_max ui.level_side_x -1
+action imu.roll -84
+wait 150
+assert_min ui.level_side_x 1
+
+# Leaving while still rotated must restore the whole application to portrait,
+# including the pixel-sized root window. This is the real user exit path, not
+# just another accelerometer sample.
+back
+wait 120
+assert ui.page main
+assert ui.level_rotation 0
+assert ui.level_root_width 135
+assert ui.level_root_height 240
+
+action nav level
+wait 120
+assert ui.page level
+assert ui.level_rotation 270
+assert ui.level_root_width 240
+assert ui.level_root_height 135
+
+# Back near flat, below the 45 degree exit: return to portrait, hide the tube and
+# show the bullseye and target again.
+action imu.roll 40
+wait 200
+assert ui.level_rotation 0
+assert ui.level_root_width 135
+assert ui.level_root_height 240
+assert ui.level_side_visible no
+assert ui.level_bubble_visible yes
+assert ui.level_target_visible yes
+exit
