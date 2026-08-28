@@ -37,10 +37,10 @@ sets the required `FURBLE_VERSION=dev` and `FURBLE_TEST=0` defaults when the
 caller has not supplied them. It does not offer a no-build upload shortcut:
 `.pio/build` is checkout-local, so a no-build invocation can flash a stale
 image whose embedded revision does not match the source being reviewed.
-If PlatformIO is missing or cannot be executed after a successful preflight,
-the helper attempts `flash cancel` and reports whether watchdog restoration
-succeeded. A failed automatic restoration leaves a manual cancel procedure in
-the error message.
+If PlatformIO is missing, cannot be executed, or exits unsuccessfully after a
+successful preflight, the helper attempts `flash cancel` and reports whether
+watchdog restoration succeeded. A failed automatic restoration leaves a manual
+cancel procedure in the error message.
 
 ## Verification
 
@@ -62,11 +62,11 @@ the error message.
 - Existing `tests/host/pmic_recovery_test.cpp` continues to cover first-access
   wake retry, retained watchdog state during ROM download, and flash recovery
   failure paths.
-- `tests/test_flash_prepare.py` covers all preflight result classes, including
-  missing pyserial, port-open failure, missing acknowledgements, and a
-  mid-handshake I/O failure. It verifies both preflight-only spellings, normal
-  build identity environment, and watchdog restoration after missing or
-  unexecutable PlatformIO.
+- `tests/test_flash_prepare.py` covers all 17 preflight and upload-cleanup
+  cases, including missing pyserial, port-open failure, missing
+  acknowledgements, mid-handshake I/O failure, close-path exceptions, and both
+  successful and failed watchdog restoration after upload failure. The main
+  workflow runs this Python test suite so these cases cannot be skipped.
 
 ## Hardware boundary
 

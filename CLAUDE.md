@@ -49,9 +49,9 @@ CLAUDE.md whose directory it touches.
   ways for this reason.
 - `tools/flash_prepare.py --preflight-only` performs and reports the PMIC
   console handshake without starting PlatformIO. `--dry-run` remains a
-  compatibility alias. If PlatformIO cannot be started after a successful
-  handshake, the helper attempts `flash cancel` and reports whether watchdog
-  restoration succeeded.
+  compatibility alias. If PlatformIO cannot be started or exits unsuccessfully
+  after a successful handshake, the helper attempts `flash cancel` and reports
+  whether watchdog restoration succeeded.
 
 ## Style
 

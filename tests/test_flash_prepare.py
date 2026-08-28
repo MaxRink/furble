@@ -51,6 +51,15 @@ class HandshakeFailingSerial(FakeSerial):
         raise self.error
 
 
+class RestoreSerial(FakeSerial):
+    """Fake console used to verify the watchdog restoration command."""
+
+
+class CloseFailingSerial(FakeSerial):
+    def close(self):
+        raise RuntimeError("close failed")
+
+
 class FlashPrepareTest(unittest.TestCase):
     def test_accepts_all_three_acknowledgements(self):
         serial = FakeSerial(
@@ -76,6 +85,24 @@ class FlashPrepareTest(unittest.TestCase):
 
     def test_success_has_explicit_result(self):
         serial = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        with mock.patch.dict(sys.modules, {"serial": serial_module}):
+            self.assertIs(
+                MODULE.prepare_result("/dev/test", 115200, 0.01),
+                MODULE.PreflightResult.PASSED,
+            )
+
+    def test_close_exception_does_not_mask_success(self):
+        serial = CloseFailingSerial(
             iter(
                 line.encode()
                 for line in (
@@ -252,6 +279,97 @@ class FlashPrepareTest(unittest.TestCase):
             self.assertEqual(MODULE.main(), 2)
         self.assertIn("automatic PMIC watchdog restoration failed", stderr.getvalue())
         self.assertIn("run 'flash cancel'", stderr.getvalue())
+
+    def test_failed_upload_restores_watchdog(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        restored = RestoreSerial(
+            iter((b"flash.ready: false\n", b"flash.watchdog: armed\n"))
+        )
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
+        completed = types.SimpleNamespace(returncode=1)
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", ["flash_prepare.py", "--port", "/dev/test"]
+            ),
+            mock.patch.object(MODULE.subprocess, "run", return_value=completed),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 1)
+        self.assertEqual(serial_module.Serial.call_count, 2)
+        self.assertEqual(restored.command, b"flash cancel\n")
+        self.assertIn("restoration succeeded", stderr.getvalue())
+
+    def test_failed_upload_reports_manual_recovery_when_restore_fails(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        restored = HandshakeFailingSerial(())
+        restored.error = OSError("disconnected")
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
+        completed = types.SimpleNamespace(returncode=1)
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", ["flash_prepare.py", "--port", "/dev/test"]
+            ),
+            mock.patch.object(MODULE.subprocess, "run", return_value=completed),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 1)
+        self.assertIn("automatic PMIC watchdog restoration failed", stderr.getvalue())
+        self.assertIn("run 'flash cancel'", stderr.getvalue())
+
+    def test_subprocess_exception_restores_watchdog(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        restored = RestoreSerial(
+            iter((b"flash.ready: false\n", b"flash.watchdog: armed\n"))
+        )
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", ["flash_prepare.py", "--port", "/dev/test"]
+            ),
+            mock.patch.object(
+                MODULE.subprocess, "run", side_effect=ValueError("bad arguments")
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 2)
+        self.assertEqual(restored.command, b"flash cancel\n")
+        self.assertIn("restoration succeeded", stderr.getvalue())
 
     def test_dependency_failure_main_has_no_recovery_claim(self):
         with (

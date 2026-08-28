@@ -67,7 +67,7 @@ def _load_serial():
 
     try:
         return importlib.import_module("serial")
-    except ImportError:
+    except Exception:
         pass
 
     for package_dir in _platformio_site_packages():
@@ -77,7 +77,7 @@ def _load_serial():
         try:
             importlib.invalidate_caches()
             return importlib.import_module("serial")
-        except ImportError:
+        except Exception:
             continue
     return None
 
@@ -136,6 +136,29 @@ def restore_message(restored: bool) -> str:
         "restoration failed. Keep the device powered, reconnect to the console, "
         "run 'flash cancel', and do not unplug USB while the watchdog is disabled."
     )
+
+
+def upload_failure_message(restored: bool) -> str:
+    if restored:
+        return (
+            "upload failed. PMIC watchdog restoration succeeded; no upload is "
+            "still running."
+        )
+    return (
+        "upload failed and automatic PMIC watchdog restoration failed. Keep the "
+        "device powered, reconnect to the console, run 'flash cancel', and do "
+        "not unplug USB while the watchdog is disabled."
+    )
+
+
+def try_restore_flash_preparation(port: str, baud: int, timeout: float) -> bool:
+    """Attempt cleanup without masking the original upload failure."""
+
+    try:
+        return restore_flash_preparation(port, baud, timeout)
+    except Exception as error:
+        print(f"error: PMIC watchdog restoration raised: {error}", file=sys.stderr)
+        return False
 
 
 def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
@@ -205,7 +228,7 @@ def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
         if callable(close):
             try:
                 close()
-            except OSError:
+            except Exception:
                 pass
 
 
@@ -254,7 +277,7 @@ def restore_flash_preparation(port: str, baud: int, timeout: float) -> bool:
         if callable(close):
             try:
                 close()
-            except OSError:
+            except Exception:
                 pass
 
 
@@ -318,15 +341,26 @@ def main() -> int:
     build_environment.setdefault("FURBLE_TEST", "0")
     try:
         result = subprocess.run(command, check=False, env=build_environment)
-    except (FileNotFoundError, PermissionError, OSError) as error:
+    except (
+        FileNotFoundError,
+        PermissionError,
+        OSError,
+        ValueError,
+        subprocess.SubprocessError,
+    ) as error:
         print(f"error: could not start PlatformIO upload: {error}", file=sys.stderr)
-        print(restore_message(restore_flash_preparation(args.port, args.baud, args.timeout)), file=sys.stderr)
+        print(
+            restore_message(
+                try_restore_flash_preparation(args.port, args.baud, args.timeout)
+            ),
+            file=sys.stderr,
+        )
         return 2
     if result.returncode != 0:
         print(
-            "upload failed. The device may still be in ROM download mode. "
-            "Power-cycle it before retrying; if the application boots, run "
-            "'flash cancel' to restore watchdog protection.",
+            upload_failure_message(
+                try_restore_flash_preparation(args.port, args.baud, args.timeout)
+            ),
             file=sys.stderr,
         )
     return result.returncode

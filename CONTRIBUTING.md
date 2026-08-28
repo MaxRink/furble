@@ -37,8 +37,9 @@ check fails.
 Use `python3 tools/flash_prepare.py --port <device> --env <environment>` for a
 PMIC-safe upload. Use `--preflight-only` to validate the handshake without
 starting PlatformIO. The older `--dry-run` option remains an alias. If
-PlatformIO cannot be started after the watchdog is disabled, the helper tries
-`flash cancel` and reports whether restoration succeeded.
+PlatformIO cannot be started or the upload exits unsuccessfully after the
+watchdog is disabled, the helper tries `flash cancel` and reports whether
+restoration succeeded.
 
 There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has

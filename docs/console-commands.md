@@ -174,9 +174,10 @@ The helper invokes the normal PlatformIO upload target from the checkout that
 contains the script and supplies the required development build identity. Do
 not substitute `pio run -t nobuild -t upload`: PlatformIO build artifacts are
 per-checkout and can otherwise flash a stale revision from another worktree.
-If PlatformIO cannot be started after the handshake, the helper attempts
-`flash cancel` and reports whether the PMIC watchdog was restored. If automatic
-restoration fails, keep the device powered and run `flash cancel` manually.
+If PlatformIO cannot be started or the upload exits unsuccessfully after the
+handshake, the helper attempts `flash cancel` and reports whether the PMIC
+watchdog was restored. If automatic restoration fails, keep the device powered
+and run `flash cancel` manually.
 
 ## Related references
 
