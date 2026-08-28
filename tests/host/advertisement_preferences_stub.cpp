@@ -25,6 +25,12 @@ size_t Preferences::get(const char *, void *, size_t) {
 bool Preferences::isKey(const char *) {
   return false;
 }
+Preferences::status Preferences::readU32(const char *, uint32_t &) {
+  return status::NOT_FOUND;
+}
+Preferences::status Preferences::removeKey(const char *) {
+  return status::NOT_FOUND;
+}
 size_t Preferences::getBytesLength(const char *) {
   return 0;
 }

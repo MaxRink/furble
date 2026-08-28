@@ -439,6 +439,15 @@ target_compile_options(ble_registration_cleanup_test PRIVATE
                        -Wno-unused-lambda-capture -Wno-sign-compare)
 target_link_libraries(ble_registration_cleanup_test PRIVATE Threads::Threads)
 
+add_executable(sim_preferences_api_contract_test
+               sim_preferences_api_contract_test.cpp
+               ${FURBLE_ROOT}/sim/PreferencesSim.cpp)
+target_include_directories(sim_preferences_api_contract_test
+                           PRIVATE ${FURBLE_ROOT}/lib/preferences)
+target_compile_options(sim_preferences_api_contract_test PRIVATE -Wall -Wextra -Werror
+                                                                 -Wno-unused-parameter)
+target_link_libraries(sim_preferences_api_contract_test PRIVATE Threads::Threads)
+
 # Exercise the real NVS/Preferences settings path against a typed in-memory
 # NVS stub. The test also includes the production SD settings helpers so every
 # table row is checked through both the firmware store and the SD import/export
@@ -555,6 +564,13 @@ target_compile_options(gpx_writer_test PRIVATE -Wall -Wextra -Werror -Wno-format
 add_executable(reconnect_backoff_test reconnect_backoff_test.cpp)
 target_include_directories(reconnect_backoff_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(reconnect_backoff_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                      -Wno-unused-parameter)
+
+# Pure two-phase clean-restart marker logic. The storage seam lets this suite
+# inject reset/read/write/remove faults without pulling in ESP-IDF NVS.
+add_executable(restart_marker_test restart_marker_test.cpp)
+target_include_directories(restart_marker_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(restart_marker_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                       -Wno-unused-parameter)
 
 # Pure Battery Saver override arithmetic from include/FurbleBatterySaver.h. No
@@ -786,6 +802,26 @@ target_compile_options(control_disconnect_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
+# End-to-end Control reconnect-initiator regression (task #54). Compiles the real
+# src/FurbleControl.cpp against MockNimBLE and the real Camera under the same
+# control/ shim as control_disconnect_test, and drives the production control
+# task through both reconnect paths to pin their timing: a furble-initiated fresh
+# reconnect skips the #122 first-retry wait, a peer-initiated drop keeps it.
+add_executable(reconnect_initiator_test
+               reconnect_initiator_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(reconnect_initiator_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(reconnect_initiator_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(reconnect_initiator_test PRIVATE furble_host_camera)
+
 # AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
 # It cannot link the shared furble_host_camera library, because the late
 # onDisconnect writes through the freed Camera inside lib/furble/Camera.cpp, so
@@ -985,6 +1021,7 @@ if(BUILD_TESTING)
   add_test(NAME saved-scan-delivery COMMAND saved_scan_delivery_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
+  add_test(NAME sim-preferences-api-contract COMMAND sim_preferences_api_contract_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
@@ -1021,6 +1058,8 @@ if(BUILD_TESTING)
   # reintroduced uncancellable wait fails the suite instead of hanging it.
   add_test(NAME control-teardown-wedge COMMAND control_teardown_wedge_test)
   set_tests_properties(control-teardown-wedge PROPERTIES TIMEOUT 60)
+  add_test(NAME reconnect-initiator COMMAND reconnect_initiator_test)
+  add_test(NAME restart-marker COMMAND restart_marker_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
