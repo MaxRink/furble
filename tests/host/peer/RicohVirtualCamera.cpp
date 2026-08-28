@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "RicohVirtualCamera.h"
 
 namespace Furble {
@@ -27,8 +29,16 @@ RicohVirtualCamera::RicohVirtualCamera() : RicohVirtualCamera(Config {}) {}
 
 RicohVirtualCamera::RicohVirtualCamera(const Config &config) : m_Config(config) {}
 
+RicohVirtualCamera::~RicohVirtualCamera() {
+  cancelFlappyTimer();
+}
+
 bool RicohVirtualCamera::matches(const NimBLEUUID &left, const NimBLEUUID &right) {
   return left == right;
+}
+
+std::string RicohVirtualCamera::key(const NimBLEUUID &service, const NimBLEUUID &characteristic) {
+  return service.toString() + "/" + characteristic.toString();
 }
 
 NimBLEAdvertisedDevice RicohVirtualCamera::advertisement() const {
@@ -67,8 +77,87 @@ const std::vector<RicohVirtualCamera::Write> &RicohVirtualCamera::writes() const
   return m_Writes;
 }
 
+const std::vector<RicohVirtualCamera::Notification> &RicohVirtualCamera::notifications() const {
+  return m_Notifications;
+}
+
 void RicohVirtualCamera::clearEvents() {
   m_Writes.clear();
+  m_Notifications.clear();
+}
+
+bool RicohVirtualCamera::emitNotification(const NimBLEUUID &service,
+                                          const NimBLEUUID &characteristic,
+                                          const std::vector<uint8_t> &payload) {
+  // m_FlappyMutex also guards m_Subscriptions: the drop timer emits on its own
+  // thread while the central subscribes and tears down on another. Recursive,
+  // so the timer (which already holds it) re-enters without deadlock.
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  const auto found = m_Subscriptions.find(key(service, characteristic));
+  if ((found == m_Subscriptions.end()) || (found->second.callback == nullptr)) {
+    return false;
+  }
+
+  Notification notification;
+  notification.service = service.toString();
+  notification.characteristic = characteristic.toString();
+  notification.payload = payload;
+  m_Notifications.push_back(notification);
+
+  std::vector<uint8_t> mutable_payload = payload;
+  found->second.callback(found->second.remote,
+                         mutable_payload.empty() ? nullptr : mutable_payload.data(),
+                         mutable_payload.size(), found->second.notification);
+  return true;
+}
+
+void RicohVirtualCamera::setFlappy(uint32_t fail_attempts, uint32_t drop_after_ms) {
+  cancelFlappyTimer();
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_FlappyEnabled = (fail_attempts > 0) || (drop_after_ms > 0);
+  m_FlappyFailAttempts = fail_attempts;
+  m_FlappyFailRemaining = fail_attempts;
+  m_FlappyDropAfterMs = drop_after_ms;
+}
+
+void RicohVirtualCamera::armFlappyDrop(NimBLEClient &client) {
+  if (m_FlappyDropAfterMs == 0) {
+    return;
+  }
+  cancelFlappyTimer();
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_FlappyCancel = false;
+  m_FlappyThread = std::thread([this, &client]() {
+    std::unique_lock<std::recursive_mutex> lock(m_FlappyMutex);
+    if (m_FlappyCv.wait_for(lock, std::chrono::milliseconds(m_FlappyDropAfterMs),
+                            [this]() { return m_FlappyCancel; })) {
+      // Cancelled: the link went down through another path first.
+      return;
+    }
+    if (!m_Connected || (m_Client != &client)) {
+      return;
+    }
+    // Re-arm the secure-failure budget so the reconnect churns, announce the
+    // power state the way the GR IV does before its standby drop, then sever
+    // the link.
+    m_FlappyFailRemaining = m_FlappyFailAttempts;
+    m_Config.camera_power = 0x00;
+    emitNotification(CAMERA_SERVICE, POWER_CHARACTERISTIC, {0x00});
+    client.mockDropLink(0x08, /*fire_callback=*/true);
+  });
+}
+
+void RicohVirtualCamera::requestFlappyCancel() {
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_FlappyCancel = true;
+  m_FlappyCv.notify_all();
+}
+
+void RicohVirtualCamera::cancelFlappyTimer() {
+  requestFlappyCancel();
+  if (m_FlappyThread.joinable() && (m_FlappyThread.get_id() != std::this_thread::get_id())) {
+    m_FlappyThread.join();
+  }
 }
 
 bool RicohVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
@@ -77,14 +166,23 @@ bool RicohVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddr
   }
   m_Client = &client;
   m_Connected = true;
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_Subscriptions.clear();
   return true;
 }
 
 void RicohVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   (void)reason;
   if (m_Client == &client) {
+    // Cancel the pending flappy drop for this session only: a stale or
+    // foreign client's teardown must not disarm the current session's timer.
+    // No join here: this may run on the drop timer's own thread
+    // (mockDropLink -> peer disconnect) where a join would deadlock.
+    requestFlappyCancel();
     m_Client = nullptr;
     m_Connected = false;
+    const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+    m_Subscriptions.clear();
   }
 }
 
@@ -173,15 +271,41 @@ bool RicohVirtualCamera::subscribe(NimBLEClient &client,
                                    NimBLERemoteCharacteristic *remote,
                                    const NimBLENotifyCallback &callback,
                                    bool response) {
-  (void)notification;
-  (void)remote;
-  (void)callback;
   (void)response;
-  return m_Connected && m_Client == &client && hasCharacteristic(service, characteristic);
+  if (!m_Connected || m_Client != &client || !hasCharacteristic(service, characteristic)
+      || (callback == nullptr)) {
+    return false;
+  }
+
+  // Retain the subscription so the peer can emit notifications, mirroring
+  // FujifilmVirtualCamera. Before this the callback was discarded and the
+  // Ricoh peer could never notify (CameraPower, CaptureStatus).
+  Subscription subscription;
+  subscription.client = &client;
+  subscription.remote = remote;
+  subscription.callback = callback;
+  subscription.notification = notification;
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_Subscriptions[key(service, characteristic)] = subscription;
+  return true;
 }
 
 bool RicohVirtualCamera::secureConnection(NimBLEClient &client) {
-  if (!m_Connected || m_Client != &client || !m_Config.accept_numeric_comparison)
+  if (!m_Connected || m_Client != &client)
+    return false;
+  if (m_FlappyEnabled) {
+    const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+    if (m_FlappyFailRemaining > 0) {
+      // Standby flap: the encryption handshake dies under a supervision
+      // timeout. The failure wakes the connect task while the disconnect
+      // event is still queued on the host task, so the client keeps
+      // reporting connected: the rc=520 class.
+      m_FlappyFailRemaining--;
+      client.mockMarkLinkDeadEventPending(520);
+      return false;
+    }
+  }
+  if (!m_Config.accept_numeric_comparison)
     return false;
   const bool localBonded = NimBLEDevice::isBonded(m_Config.address);
   if (localBonded != m_Config.camera_bonded)
@@ -189,6 +313,9 @@ bool RicohVirtualCamera::secureConnection(NimBLEClient &client) {
   if (!localBonded) {
     NimBLEDevice::setBonded(true);
     m_Config.camera_bonded = true;
+  }
+  if (m_FlappyEnabled) {
+    armFlappyDrop(client);
   }
   return true;
 }
@@ -215,6 +342,14 @@ const NimBLEUUID &RicohVirtualCamera::shootingFlavorCharacteristicUUID() {
 
 const NimBLEUUID &RicohVirtualCamera::operationRequestCharacteristicUUID() {
   return OPERATION_REQUEST_CHARACTERISTIC;
+}
+
+const NimBLEUUID &RicohVirtualCamera::cameraServiceUUID() {
+  return CAMERA_SERVICE;
+}
+
+const NimBLEUUID &RicohVirtualCamera::powerCharacteristicUUID() {
+  return POWER_CHARACTERISTIC;
 }
 
 }  // namespace Host

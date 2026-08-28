@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "FujifilmVirtualCamera.h"
 
 namespace Furble {
@@ -46,6 +48,10 @@ FujifilmVirtualCamera::FujifilmVirtualCamera(const Config &config) : m_Config(co
     m_Config.advertised_services.push_back(m_Config.secure ? SECURE_ADVERTISED_SERVICE_UUID
                                                            : advertisedServiceUUID());
   }
+}
+
+FujifilmVirtualCamera::~FujifilmVirtualCamera() {
+  cancelFlappyTimer();
 }
 
 NimBLEAdvertisedDevice FujifilmVirtualCamera::advertisement() const {
@@ -192,6 +198,69 @@ void FujifilmVirtualCamera::failWrite(const NimBLEUUID &service, const NimBLEUUI
   m_FailedWrites.emplace_back(service, characteristic);
 }
 
+void FujifilmVirtualCamera::setFlappy(uint32_t fail_attempts, uint32_t drop_after_ms) {
+  cancelFlappyTimer();
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_FlappyEnabled = (fail_attempts > 0) || (drop_after_ms > 0);
+  m_FlappyFailAttempts = fail_attempts;
+  m_FlappyFailRemaining = fail_attempts;
+  m_FlappyDropAfterMs = drop_after_ms;
+}
+
+bool FujifilmVirtualCamera::isPairHandshakeWrite(const NimBLEUUID &service,
+                                                 const NimBLEUUID &characteristic) const {
+  return matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
+         && matches(characteristic,
+                    m_Config.secure ? SECURE_STATUS_CHARACTERISTIC_UUID : pairCharacteristicUUID());
+}
+
+bool FujifilmVirtualCamera::flappyConsumeHandshakeFailure() {
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  if (!m_FlappyEnabled || (m_FlappyFailRemaining == 0)) {
+    return false;
+  }
+  m_FlappyFailRemaining--;
+  return true;
+}
+
+void FujifilmVirtualCamera::armFlappyDrop(NimBLEClient &client) {
+  if (m_FlappyDropAfterMs == 0) {
+    return;
+  }
+  cancelFlappyTimer();
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_FlappyCancel = false;
+  m_FlappyThread = std::thread([this, &client]() {
+    std::unique_lock<std::recursive_mutex> lock(m_FlappyMutex);
+    if (m_FlappyCv.wait_for(lock, std::chrono::milliseconds(m_FlappyDropAfterMs),
+                            [this]() { return m_FlappyCancel; })) {
+      // Cancelled: the link went down through another path first.
+      return;
+    }
+    if (!m_Connected || (m_Client != &client)) {
+      return;
+    }
+    // Re-arm the handshake failure budget so the reconnect churns, then sever
+    // the link. The Fujifilm protocol has no power notification, so the drop
+    // is silent, exactly as the standby drop looks to the central.
+    m_FlappyFailRemaining = m_FlappyFailAttempts;
+    client.mockDropLink(0x08, /*fire_callback=*/true);
+  });
+}
+
+void FujifilmVirtualCamera::requestFlappyCancel() {
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  m_FlappyCancel = true;
+  m_FlappyCv.notify_all();
+}
+
+void FujifilmVirtualCamera::cancelFlappyTimer() {
+  requestFlappyCancel();
+  if (m_FlappyThread.joinable() && (m_FlappyThread.get_id() != std::this_thread::get_id())) {
+    m_FlappyThread.join();
+  }
+}
+
 void FujifilmVirtualCamera::dropLinkOnWrite(const NimBLEUUID &service,
                                             const NimBLEUUID &characteristic) {
   m_DropOnWrite.emplace_back(service, characteristic);
@@ -290,6 +359,14 @@ void FujifilmVirtualCamera::runOperationFault(NimBLEClient &client) {
 }
 
 void FujifilmVirtualCamera::clearFaults() {
+  cancelFlappyTimer();
+  {
+    const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+    m_FlappyEnabled = false;
+    m_FlappyFailAttempts = 0;
+    m_FlappyFailRemaining = 0;
+    m_FlappyDropAfterMs = 0;
+  }
   m_SuppressedServices.clear();
   m_SuppressedCharacteristics.clear();
   m_FailedWrites.clear();
@@ -329,6 +406,13 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
 void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   (void)reason;
   if (m_Client == &client) {
+    // Cancel the pending flappy drop for this session only: a stale or
+    // foreign client's teardown must not disarm the current session's timer.
+    // No join here: this may run on the drop timer's own thread
+    // (mockDropLink -> peer disconnect) where a join would deadlock. A
+    // canceller on another thread blocks on the recursive mutex until an
+    // in-flight drop finishes, so the ordering stays safe.
+    requestFlappyCancel();
     m_Client = nullptr;
     m_Connected = false;
     const auto registration =
@@ -433,6 +517,12 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
     return false;
   }
 
+  // FlappyPeer: a standby camera accepts the link but fails the pairing
+  // handshake for the configured number of attempts before completing one.
+  if (isPairHandshakeWrite(service, characteristic) && flappyConsumeHandshakeFailure()) {
+    return false;
+  }
+
   // Fault injection: a supervision-timeout link loss lands on this write. Sever
   // the link and deliver onDisconnect inline (so the central's connected flag
   // clears mid-handshake), then report the write as failed so _connect unwinds.
@@ -488,6 +578,11 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   } else if (matches(service, shutterServiceUUID())
              && matches(characteristic, shutterCharacteristicUUID())) {
     result = (value.size() == 2);
+  }
+
+  // FlappyPeer: the handshake completed, arm the autonomous standby drop.
+  if (m_FlappyEnabled && result && isPairHandshakeWrite(service, characteristic)) {
+    armFlappyDrop(client);
   }
 
   // Fault injection: the peer resets mid-handshake. The write itself completes
