@@ -638,6 +638,41 @@ target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-u
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
 
+# Teardown wedge regression (plan 148). Compiles the production Control and
+# Fujifilm camera sources with a 10 s registration timeout, an order of
+# magnitude above the asserted disconnect bounds, so an uncancellable
+# registration wait fails the test deterministically instead of hiding inside
+# the 100 ms timeout the shared furble_host_camera library uses. It therefore
+# compiles its own copies of the camera sources rather than linking the shared
+# library.
+add_executable(control_teardown_wedge_test
+               control_teardown_wedge_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(control_teardown_wedge_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(control_teardown_wedge_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=10000)
+target_compile_options(control_teardown_wedge_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_teardown_wedge_test PRIVATE Threads::Threads)
+
 # Companion GATT transport-e2e harness. The test drives the production
 # transport-independent CompanionService through a UUID-addressed mock central,
 # then carries location and trigger commands through the real Control and
@@ -895,6 +930,11 @@ if(BUILD_TESTING)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
+
+  # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
+  # reintroduced uncancellable wait fails the suite instead of hanging it.
+  add_test(NAME control-teardown-wedge COMMAND control_teardown_wedge_test)
+  set_tests_properties(control-teardown-wedge PROPERTIES TIMEOUT 60)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)

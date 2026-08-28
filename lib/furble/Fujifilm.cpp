@@ -98,7 +98,12 @@ bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
 #endif
 
   while (!m_Configured.load()) {
-    if (!m_Connected || (cancelOnInactive && !isActive())) {
+    // connectCancelled() is the direct user-cancel path. The isActive() check
+    // only works when the attempt began active, and a stale-session camera
+    // keeps the link up so m_Connected never clears: without the cancel token a
+    // disconnect during this wait blocked the whole teardown for the full
+    // registration timeout (plan 148).
+    if (!m_Connected || connectCancelled() || (cancelOnInactive && !isActive())) {
       ESP_LOGW(LOG_TAG, "Fujifilm registration aborted before confirmation");
       return false;
     }

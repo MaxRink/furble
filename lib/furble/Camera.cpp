@@ -881,6 +881,21 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
   return true;
 }
 
+void Camera::cancelConnect(void) {
+  // Lock-free on purpose: this must be callable while connect() holds m_Mutex
+  // across a long vendor wait. The wait polls connectCancelled() and unwinds,
+  // which is what bounds the m_Mutex acquisition in disconnect() below.
+  m_ConnectCancelled = true;
+}
+
+void Camera::clearConnectCancel(void) {
+  m_ConnectCancelled = false;
+}
+
+bool Camera::connectCancelled(void) const {
+  return m_ConnectCancelled.load();
+}
+
 void Camera::disconnect(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   m_Active = false;
