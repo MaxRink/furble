@@ -106,8 +106,12 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
   /** Called during scanning for connection to saved device. */
   void onResult(const NimBLEAdvertisedDevice *pDevice) override final;
 
+  /** Log the first rejected Fujifilm advertisement of a scan window. */
+  void logFirstReject(const char *reason);
+
   QueueHandle_t m_Queue = NULL;
   serial_t m_Serial = {0x00};
+  bool m_RejectLogged = false;
 };
 
 }  // namespace Furble

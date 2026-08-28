@@ -69,28 +69,46 @@ FujifilmSecure::~FujifilmSecure(void) {
   vQueueDelete(m_Queue);
 }
 
-void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
-  if (pDevice == nullptr) {
+void FujifilmSecure::logFirstReject(const char *reason) {
+  if (m_RejectLogged) {
     return;
   }
-  if (pDevice->haveManufacturerData()) {
-    const auto manufacturerData = pDevice->getManufacturerData();
-    FujifilmProtocol::SecureAdvertisement advertisement;
-    if (FujifilmProtocol::parseSecureAdvertisement(
-            reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
-            advertisement)
-        && pDevice->isAdvertisingService(PAIR_SVC_UUID)) {
-      ESP_LOGD(
-          LOG_TAG, "got %s, want %s",
-          NimBLEUtils::dataToHexString(advertisement.serial.data(), advertisement.serial.size())
-              .c_str(),
-          NimBLEUtils::dataToHexString(m_Serial.data, sizeof(m_Serial.data)).c_str());
-      if (memcmp(advertisement.serial.data(), m_Serial.data, sizeof(m_Serial.data)) == 0) {
-        bool success = true;
-        xQueueSend(m_Queue, &success, 0);
-      }
-    }
+  m_RejectLogged = true;
+  ESP_LOGI(LOG_TAG, "Rejected Fujifilm advertisement during saved scan: %s", reason);
+}
+
+void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
+  if (pDevice == nullptr || !pDevice->haveManufacturerData()) {
+    return;
   }
+  const auto manufacturerData = pDevice->getManufacturerData();
+  FujifilmProtocol::SecureAdvertisement advertisement;
+  if (!FujifilmProtocol::parseSecureAdvertisement(
+          reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
+          advertisement)) {
+    return;
+  }
+
+  // In reconnect standby the camera advertises either the pairing service or
+  // only the Secure service, depending on its session state (hardware trace
+  // 2026-08-28). Accept both and let the serial compare decide identity.
+  if (!pDevice->isAdvertisingService(PAIR_SVC_UUID)
+      && !pDevice->isAdvertisingService(SERVICE_UUID)) {
+    logFirstReject("no pairing or Secure service");
+    return;
+  }
+
+  ESP_LOGD(LOG_TAG, "got %s, want %s",
+           NimBLEUtils::dataToHexString(advertisement.serial.data(), advertisement.serial.size())
+               .c_str(),
+           NimBLEUtils::dataToHexString(m_Serial.data, sizeof(m_Serial.data)).c_str());
+  if (memcmp(advertisement.serial.data(), m_Serial.data, sizeof(m_Serial.data)) != 0) {
+    logFirstReject("serial mismatch");
+    return;
+  }
+
+  bool success = true;
+  xQueueSend(m_Queue, &success, 0);
 }
 
 /**
@@ -119,6 +137,7 @@ bool FujifilmSecure::_connect(void) {
     // Results belong to a logical scan. Do not let an earlier advertisement
     // satisfy this reconnect before the new scan has observed the camera.
     xQueueReset(m_Queue);
+    m_RejectLogged = false;
     scan.clear();
     scan.start(this, SCAN_TIME_MS);
     m_Progress += 5;

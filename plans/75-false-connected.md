@@ -200,3 +200,10 @@ geotag data from a client it has accepted. The original engineering-lessons
 capture recorded acceptance notifications on both characteristics, which this
 restores. The host suite covers the reconnect path with a virtual peer that
 withholds `CHR_NOT1` and sends only a geotag request.
+
+A second reconnect blocker found in the same bench session lives in the saved
+scan itself, not in the registration gate: the SAVED-scan matcher rejected a
+Secure-service-only advertisement, so the reconnect never even reached the
+gate. That fix and its regression test are recorded in
+plans/76-reconnect-stuck.md under "Deviation: saved-scan match never fires
+when the camera advertises only the Secure service (2026-08-28)".

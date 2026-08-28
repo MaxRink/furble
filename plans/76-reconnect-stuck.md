@@ -352,3 +352,36 @@ non-fatal loop change is covered by code review and the on-device retest below.
    received and furble writes geotag data back. The notify callback is
    registered locally before the unacknowledged write, so notifications must
    still arrive; this step proves that end to end on the stale-session path.
+
+## Deviation: saved-scan match never fires when the camera advertises only the Secure service (2026-08-28)
+
+A second, independent reconnect stall was root caused on the bench on
+2026-08-28 and fixed in `fix/secure-saved-scan-match`. It sits before the CCCD
+work above: the SAVED reconnect scan itself never matches, so the console shows
+`Scanning` and then nothing until `Timeout waiting for camera` at 60 s.
+
+Root cause: `FujifilmSecure::onResult` accepted a saved-reconnect advertisement
+only when it parsed as a Secure advertisement AND the device advertised the
+pairing service (`123d8f06-...`). The X100VI in reconnect standby advertises
+either the pairing service or ONLY the Secure service (`a9d2b304-...`),
+depending on its session state. The reject was `ESP_LOGD` (compiled out) and
+the scan runs with duplicates filtered, so one silent reject muted the whole
+60 s window. This also blocked and now exonerates the plan 75 hardware gate
+(false-connected doc, see plans/75-false-connected.md): the stalled reconnect
+there was this scan-match bug, not a false-connected regression.
+
+Fix: accept either service UUID in `onResult` and keep the serial compare as
+the identity check. The first rejected Fujifilm-parsed advertisement per scan
+window is now logged once at INFO so a silent window is diagnosable on the
+bench.
+
+Test gap closed: the host virtual camera built the Secure manufacturer data
+without the 0x02 type byte (7 bytes instead of 8), so
+`parseSecureAdvertisement` always failed against the mock and no host test ever
+exercised a successful saved-scan match. The mock now emits the real 8-byte
+form and the new `saved-scan-delivery` test covers pair, interactive
+disconnect, and reconnect with the advertisement arriving about one second into
+the scan, for both the pairing-service and the Secure-service-only variants.
+Mutation checks: reverting the UUID OR fails the Secure-only variant; removing
+the 0x02 byte fails the match test. Bench reconnect verification is pending and
+camera-state dependent.
