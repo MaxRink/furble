@@ -735,6 +735,10 @@ class UI {
   lv_obj_t *m_BulbReconnect = nullptr;
   lv_obj_t *m_BulbReconnectLabel = nullptr;
   lv_obj_t *m_IRConnectedButton = nullptr;
+  // Second entry point to the shared spirit level page, placed on the main
+  // menu so the tool works without a camera connection. Static because the
+  // static showIMUWidgets() gate hides it on boards without a usable IMU.
+  static lv_obj_t *m_LevelMainButton;
   ControlMode m_ControlMode = ControlMode::MENU;
 
   enum class DisplayState { ACTIVE, DIM, OFF };

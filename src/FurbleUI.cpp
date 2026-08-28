@@ -254,6 +254,8 @@ uint32_t UI::m_BulbEnd;
 
 UI::menu_t UI::m_MainMenu;
 
+lv_obj_t *UI::m_LevelMainButton = nullptr;
+
 std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
@@ -1917,6 +1919,18 @@ void UI::addMainMenu(void) {
   addSettingsMenu();
   addConnectedMenu();
 
+  // The spirit level is a standalone tool, so it also gets a home menu entry
+  // and stays usable with no camera connected. The button loads the same Level
+  // page the Connected entry uses, so this must run after addConnectedMenu()
+  // has built that page. Boards without a usable IMU hide the entry through
+  // the shared showIMUWidgets() gate below.
+  menu_t &menuLevel = m_Menu.at(m_LevelStr);
+  m_LevelMainButton = addMenuItem(m_MainMenu, &icon_adjust, m_LevelStr, false, 1, 1);
+  lv_menu_set_load_page_event(menuLevel.main, m_LevelMainButton, menuLevel.page);
+  if (!imuEnabledForUI()) {
+    lv_obj_add_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+  }
+
   menu_t &off = addMenu(m_PowerOffStr, &icon_power_settings_new);
 
   lv_obj_add_event_cb(
@@ -2026,6 +2040,9 @@ void UI::addMainMenu(void) {
         if (page == m_MainMenu.page) {
           size_t saveCount = CameraList::getSaveCount();
           ui->m_MainCount++;
+
+          // keep the home Level entry in step with the IMU runtime gate
+          showIMUWidgets(imuEnabledForUI());
 
           // Hide connect & delete if there are zero saved
           if (saveCount == 0) {
@@ -2672,6 +2689,15 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   // key walks cannot easily target.
   if (action.kind == Sim::scenario_action_kind_t::NAV) {
     const std::string name = action.name;
+    // The main menu Level entry is a second button onto the shared Level page,
+    // so it has no menu_t of its own. Click it directly, honouring the same
+    // hidden gate the generic path applies.
+    if (name == "level_main") {
+      if (m_LevelMainButton != nullptr && !lv_obj_has_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_send_event(m_LevelMainButton, LV_EVENT_CLICKED, this);
+      }
+      return;
+    }
     static const std::unordered_map<std::string, const char *> buttons = {
         {"connect",           m_ConnectStr         },
         {"scan",              m_ScanStr            },
@@ -3938,6 +3964,15 @@ std::string UI::simQueryState(const char *key) {
       return "no";
     }
     return lv_obj_has_flag(entry->second.button, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
+  }
+
+  // The main menu Level entry sits outside m_Menu, so it gets its own probe.
+  // Scenarios use it to prove the standalone tool entry follows the IMU gate.
+  if (query == "level_main_button_visible") {
+    if (m_LevelMainButton == nullptr) {
+      return "no";
+    }
+    return lv_obj_has_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
   }
 
   // Number of LVGL invalidation events since the last invalidate.reset action.
@@ -5635,6 +5670,13 @@ void UI::showIMUWidgets(bool show) {
       lv_obj_clear_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (m_LevelMainButton != nullptr) {
+    if (show) {
+      lv_obj_clear_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
     }
   }
 }

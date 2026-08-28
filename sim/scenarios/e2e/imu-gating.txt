@@ -4,6 +4,14 @@
 seed fauxny true
 seed imu false
 wait 400
+
+# The main menu Level entry follows the same gate, and a nav onto the hidden
+# button is a no-op rather than a reachable dead page.
+assert ui.level_main_button_visible no
+action nav level_main
+wait 150
+assert ui.page main
+
 action nav settings
 wait 150
 assert ui.imu_button_visible no

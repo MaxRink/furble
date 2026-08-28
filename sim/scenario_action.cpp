@@ -510,6 +510,7 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "storage",
       "imu",
       "level",
+      "level_main",
   };
   const auto pageKnown = [&pages](const std::string &value) {
     for (const char *page : pages) {
