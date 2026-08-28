@@ -34,13 +34,16 @@ registered individually in `tests/host/CMakeLists.txt`:
   Control. The healthy peer keeps its link; the flappy peer completes one
   handshake, drops via `mockDropLink(0x08, true)`, then fails every pairing
   write (`failWrite` on the pair characteristic). `setConnectDelayMs(800)`
-  parks the reconnect inside a blocking connect so the disconnect lands with
-  connect_in_progress true, the exact hardware wedge window. Asserts a
-  bounded disconnect (under 3 s), a clean IDLE, no late state republish, and
-  a working fresh connect afterwards.
+  is armed before the drop, so the first reconnect attempt itself parks
+  inside the blocking connect and the disconnect genuinely lands with
+  connect_in_progress true (asserted by waiting for STATE_CONNECTING and
+  stepping into the 800 ms block), the exact hardware wedge window. Asserts
+  a bounded disconnect (under 3 s), a clean IDLE, no late state republish,
+  and a working fresh connect afterwards.
 - `flappy-cancel-stress`: 25 iterations sweeping the disconnect landing
-  point across the reconnect cycle. Each iteration must land back in IDLE
-  with no late republish.
+  point across the early reconnect cycle (most land inside the first-retry
+  wait; the parked-connect window is owned by `multi-flappy-disconnect`).
+  Each iteration must land back in IDLE with no late republish.
 - `flappy-peer-autonomous`: the same churn driven entirely by the peer's own
   FlappyPeer mode (no per-attempt scripting), proving the autonomous model
   composes with the real Control.
@@ -108,9 +111,12 @@ enabled must be disabled (`setFlappy(0, 0)`) or destroyed before
 - Mutation A (wedge class): changing the retry-path return in
   `Control::connectAll` to an unconditional `return STATE_CONNECT` (dropping
   the disconnect-state propagation) fails `flappy-cancel-stress` ("no late
-  DISCONNECTING republish", iteration lands in state connecting) and
-  `multi-flappy-disconnect` (late republish plus the fresh connect never
-  reaches active). Mutation restored, tests pass again.
+  DISCONNECTING republish", the iteration lands in a late connect state).
+  After the review reorder, `multi-flappy-disconnect` disconnects inside the
+  parked connect, which unwinds through the early-abort return, so this
+  mutation is owned by the stress sweep while the parked-connect window is
+  owned by `multi-flappy-disconnect`: the two scenarios cover complementary
+  windows. Mutation restored, tests pass again.
 - Mutation B (plan 148 wedge class): removing `!connectCancelled()` from the
   FujifilmSecure saved-scan wait loop makes `absent-peer-scan` fail via its
   watchdog (the mid-scan disconnect can no longer abort the scan).
@@ -120,6 +126,13 @@ enabled must be disabled (`setFlappy(0, 0)`) or destroyed before
 
 ## Deviations
 
-None from the gap-analysis reference: the two repro scenarios landed as
-designed, with the autonomous scenario, the Ricoh standby-flap test, and the
-absent-peer test added on top per the peer-realism scope.
+One from the gap-analysis reference, found in review: the reference armed
+`setConnectDelayMs(800)` after the drop, which left the disconnect landing
+inside the 2.5 s first-retry wait rather than inside a blocking connect (the
+one-shot delay was never consumed). The landed scenario arms the delay
+before the drop so the first reconnect attempt itself parks and the
+connect_in_progress window is genuinely exercised, asserted via
+STATE_CONNECTING. The autonomous scenario, the Ricoh standby-flap test, and
+the absent-peer test are additions on top per the peer-realism scope; their
+autonomous drop delay is 1 s so the both-live assertions keep a comfortable
+window on loaded runners.

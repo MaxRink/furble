@@ -89,6 +89,10 @@ void RicohVirtualCamera::clearEvents() {
 bool RicohVirtualCamera::emitNotification(const NimBLEUUID &service,
                                           const NimBLEUUID &characteristic,
                                           const std::vector<uint8_t> &payload) {
+  // m_FlappyMutex also guards m_Subscriptions: the drop timer emits on its own
+  // thread while the central subscribes and tears down on another. Recursive,
+  // so the timer (which already holds it) re-enters without deadlock.
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
   const auto found = m_Subscriptions.find(key(service, characteristic));
   if ((found == m_Subscriptions.end()) || (found->second.callback == nullptr)) {
     return false;
@@ -162,19 +166,22 @@ bool RicohVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddr
   }
   m_Client = &client;
   m_Connected = true;
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
   m_Subscriptions.clear();
   return true;
 }
 
 void RicohVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   (void)reason;
-  // Cancel a pending flappy drop without joining: this may run on the drop
-  // timer's own thread (mockDropLink -> peer disconnect) where a join would
-  // deadlock.
-  requestFlappyCancel();
   if (m_Client == &client) {
+    // Cancel the pending flappy drop for this session only: a stale or
+    // foreign client's teardown must not disarm the current session's timer.
+    // No join here: this may run on the drop timer's own thread
+    // (mockDropLink -> peer disconnect) where a join would deadlock.
+    requestFlappyCancel();
     m_Client = nullptr;
     m_Connected = false;
+    const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
     m_Subscriptions.clear();
   }
 }
@@ -278,6 +285,7 @@ bool RicohVirtualCamera::subscribe(NimBLEClient &client,
   subscription.remote = remote;
   subscription.callback = callback;
   subscription.notification = notification;
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
   m_Subscriptions[key(service, characteristic)] = subscription;
   return true;
 }

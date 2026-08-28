@@ -137,7 +137,9 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   // Standby-flap state. See FujifilmVirtualCamera for the locking model: the
   // recursive mutex lets the drop timer re-enter disconnect() through
   // mockDropLink() on its own thread, while a cancelling thread that loses the
-  // race blocks until the in-flight drop finishes.
+  // race blocks until the in-flight drop finishes. m_FlappyMutex also guards
+  // m_Subscriptions, which the drop timer reads through emitNotification()
+  // while the central subscribes and clears on its own thread.
   bool m_FlappyEnabled = false;
   uint32_t m_FlappyFailAttempts = 0;
   uint32_t m_FlappyFailRemaining = 0;

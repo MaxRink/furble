@@ -405,12 +405,14 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
 
 void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   (void)reason;
-  // Cancel a pending flappy drop without joining: this may run on the drop
-  // timer's own thread (mockDropLink -> peer disconnect) where a join would
-  // deadlock. A canceller on another thread blocks on the recursive mutex until
-  // an in-flight drop finishes, so the ordering stays safe.
-  requestFlappyCancel();
   if (m_Client == &client) {
+    // Cancel the pending flappy drop for this session only: a stale or
+    // foreign client's teardown must not disarm the current session's timer.
+    // No join here: this may run on the drop timer's own thread
+    // (mockDropLink -> peer disconnect) where a join would deadlock. A
+    // canceller on another thread blocks on the recursive mutex until an
+    // in-flight drop finishes, so the ordering stays safe.
+    requestFlappyCancel();
     m_Client = nullptr;
     m_Connected = false;
     const auto registration =

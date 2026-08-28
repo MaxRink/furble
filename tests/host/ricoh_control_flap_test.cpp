@@ -12,9 +12,10 @@
 // clean IDLE, publish no late state, and accept a working follow-up connect.
 //
 // The RicohVirtualCamera standby-flap mode drives the churn autonomously:
-// setFlappy(1, 400) fails one secureConnection per cycle (rc=520 class via
+// setFlappy(1, 1000) fails one secureConnection per cycle (rc=520 class via
 // mockMarkLinkDeadEventPending), completes the next, then emits CameraPower
-// 0x00 and severs the link 400 ms later (the time-compressed standby drop).
+// 0x00 and severs the link one second later (the time-compressed standby
+// drop; the delay leaves the both-live assertions a comfortable window).
 
 #include <chrono>
 #include <cstdlib>
@@ -124,7 +125,7 @@ bool runScenario() {
   flapConfig.name = "RICOH GR IV";
   flapConfig.address = NimBLEAddress(0x3490EABB7D73ULL, 0);
   RicohVirtualCamera flap(flapConfig);
-  flap.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/400);
+  flap.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/1000);
 
   NimBLEDevice::setMockPeerForAddress(good.advertisement().getAddress(), &good);
   NimBLEDevice::setMockPeerForAddress(flap.advertisement().getAddress(), &flap);

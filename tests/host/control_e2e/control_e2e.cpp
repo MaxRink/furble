@@ -658,9 +658,14 @@ bool scenarioMultiFlappyDisconnect() {
 
   // Phase B: the standby camera drops ~20 s later (time compressed) and from
   // now on accepts the link but fails the pairing write, so every reconnect
-  // attempt churns. The healthy camera keeps its link.
+  // attempt churns. The healthy camera keeps its link. The 800 ms connect
+  // delay is armed BEFORE the drop so the first reconnect attempt itself
+  // parks inside the blocking NimBLEClient::connect(): the disconnect below
+  // then lands while connect_in_progress is true, the exact hardware wedge
+  // window. The retry-wait landing window is swept by flappy-cancel-stress.
   flappy.failWrite(FujifilmVirtualCamera::pairServiceUUID(),
                    FujifilmVirtualCamera::pairCharacteristicUUID());
+  NimBLEDevice::setConnectDelayMs(800);
   NimBLEClient *flappyClient = NimBLEDevice::lastClient();
   check(flappyClient != nullptr, "the flappy target has a client");
   if (flappyClient != nullptr) {
@@ -669,14 +674,14 @@ bool scenarioMultiFlappyDisconnect() {
   check(waitForNotState(Control::STATE_ACTIVE, 3000), "control leaves active on the drop");
   check(good.connected(), "the healthy camera keeps its link through the churn");
 
-  // Let at least one failed reconnect attempt complete, then park the next
-  // reconnect inside a blocking connect() so the disconnect below lands while
-  // connect_in_progress is true, the exact hardware wedge window.
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  NimBLEDevice::setConnectDelayMs(800);
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  // The reconnect enters connectAll at once and blocks inside the delayed
+  // connect. Wait for the connecting state, then move a little way into the
+  // 800 ms block so the disconnect lands squarely inside it.
+  check(waitForState(Control::STATE_CONNECTING, 1000),
+        "the reconnect parks inside a blocking connect attempt");
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-  // Phase C: user taps disconnect mid-churn.
+  // Phase C: user taps disconnect mid-churn, with the connect in flight.
   const uint32_t start = nowMs();
   const bool completed = control.disconnect();
   const uint32_t elapsed = nowMs() - start;
@@ -731,7 +736,10 @@ bool scenarioFlappyCancelStress() {
     auto camera = makeCamera(flappy);
     control.addActive(camera);
     control.connectAll(true);
-    // Sweep the disconnect landing point across the reconnect cycle.
+    // Sweep the disconnect landing point across the early reconnect cycle.
+    // Most offsets land inside the first-retry wait (the fast-fail attempt
+    // completes in milliseconds); the parked-connect window is owned by
+    // multi-flappy-disconnect. The teeth here are the late-republish checks.
     std::this_thread::sleep_for(std::chrono::milliseconds(20 + (i * 13) % 180));
     const uint32_t start = nowMs();
     control.disconnect();
@@ -756,7 +764,7 @@ bool scenarioFlappyCancelStress() {
 // The same standby churn as multi-flappy-disconnect, but driven entirely by
 // the peer's own FlappyPeer mode: no per-attempt scripting. setFlappy makes
 // the peer fail one handshake per cycle, complete the next, and sever its own
-// link 400 ms later, so the churn runs autonomously while the healthy camera
+// link one second later, so the churn runs autonomously while the healthy camera
 // keeps its link. The disconnect lands wherever the cycle happens to be.
 bool scenarioFlappyPeerAutonomous() {
   freshEnvironment();
@@ -773,7 +781,9 @@ bool scenarioFlappyPeerAutonomous() {
 
   FujifilmVirtualCamera good(goodConfig);
   FujifilmVirtualCamera flappy(flappyConfig);
-  flappy.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/400);
+  // A 1 s drop delay leaves the both-live assertions a comfortable window
+  // between reaching active and the autonomous drop, even on a loaded runner.
+  flappy.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/1000);
   auto goodCamera = makeCamera(good);
   auto flappyCamera = makeCamera(flappy);
   NimBLEDevice::setMockPeerForAddress(good.config().address, &good);
