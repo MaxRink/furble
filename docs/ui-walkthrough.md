@@ -127,9 +127,12 @@ on the current firmware.
 
 The Remote page is the shutter control. Select fires the shutter, Next
 half-presses focus. Hold focus then press the shutter to lock the shutter open
-for a long exposure. Leaving the page always releases the shutter. On touch
-boards the on-screen Shutter, Focus, and Shutter Lock buttons are always
-visible; the screenshot shows the button-board indicators.
+for a long exposure. Leaving the page always releases the shutter. On Ricoh,
+the Focus control remains visible in the generic UI but is a no-op: the BLE
+protocol has no verified focus-only operation. The Ricoh shutter performs
+capture with autofocus. On touch boards the on-screen Shutter, Focus, and
+Shutter Lock buttons are always visible; the screenshot shows the button-board
+indicators. A per-camera hide/disable treatment remains a UI follow-up.
 
 ### Bulb
 

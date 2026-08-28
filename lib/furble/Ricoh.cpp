@@ -378,13 +378,11 @@ void Ricoh::shutterRelease(void) {
 }
 
 void Ricoh::focusPress(void) {
-  if (!setShootingFlavor(ShootingFlavor::TIMER_2S))
-    return;
-  writeOperation(OperationCode::START, OperationParameter::AF);
+  ESP_LOGI(LOG_TAG, "Ricoh focusPress ignored (focus unsupported; no capture write)");
 }
 
 void Ricoh::focusRelease(void) {
-  ESP_LOGI(LOG_TAG, "Ricoh focusRelease ignored (single-write capture)");
+  ESP_LOGI(LOG_TAG, "Ricoh focusRelease ignored (focus unsupported; no capture write)");
 }
 
 void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {

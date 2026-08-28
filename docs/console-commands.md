@@ -100,7 +100,9 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
 - `shutter press` fires and `shutter release` ends. `shutter hold <ms>` fires,
   waits, and releases, up to 60000 ms.
-- `focus press` half-presses focus and `focus release` ends.
+- `focus press` half-presses focus and `focus release` ends. Ricoh cameras do
+  not support this action over BLE, so both commands are no-ops. Their shutter
+  command uses `OperationRequest {0x01, 0x01}` for capture with autofocus.
 
 These enqueue camera commands directly. They bypass the button-mode dispatch and
 the shutter-lock state, so use them to trigger the camera, not to test the

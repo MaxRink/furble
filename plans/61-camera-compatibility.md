@@ -56,7 +56,7 @@ One class per vendor mode. From the code on fork master:
 | FujifilmSecure | bond, serial rematch on scan | yes | yes | yes, camera requested |
 | NikonRemote | 4-stage handshake, no bond | no-op | yes | no |
 | NikonSmart | Blowfish handshake, broken | no-op | no-op | code present, unreachable |
-| Ricoh | MITM passkey bond | 2 s timer proxy | yes, single write | yes, rate limited |
+| Ricoh | MITM passkey bond | unsupported (no half-press command) | yes, capture with AF | yes, rate limited |
 | Sony | bond | yes | yes | yes, allow/enable gated |
 | FauxNY | fake | logs | logs | logs |
 
@@ -84,7 +84,7 @@ Known gaps in supported vendors:
 | Fujifilm (basic + secure) | GATT, two-write shutter commands | token (basic) or bond + serial (secure) | yes/yes | yes, pull model, 23-byte packet | supported | done | [furble wiki](https://github.com/gkoh/furble/wiki/Protocol-Documentation), [gkoh/furble#208](https://github.com/gkoh/furble/issues/208) |
 | Panasonic Lumix | GATT, 1-byte commands, MEI0 magic handshake | none on S5 gen (no SMP at all); XOR login on G9II gen | yes/yes | yes, 16-byte packet, official feature | missing (upstream PR 282 open, untested) | high | [tobiasbrummer/lux-lat-long-log](https://github.com/tobiasbrummer/lux-lat-long-log), [Aikhjarto/LUMIX-G9II-Remote-Control](https://github.com/Aikhjarto/LUMIX-G9II-Remote-Control), [gkoh/furble#247](https://github.com/gkoh/furble/issues/247) |
 | Pentax K (via Ricoh) | same Ricoh Imaging GATT family as GR | MITM passkey bond | documented, unverified on K bodies | documented | partial (name match accepts PENTAX, protocol untested) | medium | [dm-zharov/ricoh-gr-bluetooth-api](https://github.com/dm-zharov/ricoh-gr-bluetooth-api) |
-| Ricoh GR III/IIIx/IV | GATT, ShootingFlavor + OperationRequest | MITM passkey bond | yes, single-write capture | yes | supported | done | [dm-zharov/ricoh-gr-bluetooth-api](https://github.com/dm-zharov/ricoh-gr-bluetooth-api), [sotashimozono/gr3sync](https://github.com/sotashimozono/gr3sync) |
+| Ricoh GR IV | GATT, ShootingFlavor + OperationRequest | MITM passkey bond | yes, single-write capture with AF; no focus-only operation | yes | supported; GR III/IIIx remain incompatible | done | [dm-zharov/ricoh-gr-bluetooth-api](https://github.com/dm-zharov/ricoh-gr-bluetooth-api), [sotashimozono/gr3sync](https://github.com/sotashimozono/gr3sync) |
 | OM System / Olympus | unknown GATT, nothing public | camera shows name + passcode, QR in app | functionally confirmed, bytes unknown | yes per manual, bytes unknown | missing | low (needs original RE) | [OM-1 II manual](https://learning.omsystem.com/OM-1MarkII/zz_html_manual/en/shooting_remotely_remote_shutter_280.html) |
 | Sigma (fp, fp L, BF) | none, no Bluetooth radio | n/a | n/a | n/a | impossible | none | [sigma-global fp specs](https://www.sigma-global.com/en/cameras/fp/#specifications) |
 | GoPro (HERO 9+) | official Open GoPro BLE API, TLV + protobuf | standard bond, 0xFEA6 adv filter | shutter yes (no focus concept) | no location push | missing | medium | [Open GoPro BLE docs](https://gopro.github.io/OpenGoPro/docs/ble/protocol/ble_setup) |
@@ -434,7 +434,7 @@ Legend: Y furble has it, N missing, P partial or mode-limited.
 
 | Feature | Fujifilm | Canon | Nikon | Sony | Ricoh | Best source and note |
 |---|---|---|---|---|---|---|
-| Separate focus (half-press/AF) | Y | remote Y, smart N | N (remote no-op) | Y | P (2s-timer proxy) | Sony 0x07/0x06 (freemote); Canon 0x40 (Ian Scott) |
+| Separate focus (half-press/AF) | Y | remote Y, smart N | N (remote no-op) | Y | N (focus-only unsupported) | Sony 0x07/0x06 (freemote); Canon 0x40 (Ian Scott); Ricoh OperationRequest is capture |
 | Bulb / long exposure | Y (mode + press/release) | via 2s or immediate | N | via press/release | via self-timer | Fuji manual: slide up start, down stop |
 | Video record start/stop | P (movie mode + press) | N (movie mode 0x08 unused) | N (MODE_VIDEO 0x03 unused) | N (movie 0x0E/0x0F unused) | N | Canon 0x08, Nikon 0x03, Sony 0x0E/0x0F |
 | Zoom (power-zoom lenses) | N (861442ab/43070f6c bytes unknown) | N (wide 0x10, tele 0x20) | N (ML-L7 has +/- , bytes unknown) | N (0x0244-0x0247) | N | Sony and Canon documented; Fuji and Nikon need a sniff |

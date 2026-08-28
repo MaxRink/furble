@@ -31,7 +31,7 @@ by code review and the FauxNY test camera.
 | Canon EOS (Remote) | Remote controller pairing. Focus, no GPS. |
 | Nikon | Remote controller mode works (shutter only). Smart mode appears but does not pair. |
 | Sony | Sony ZV and most modern Sony bodies. |
-| Ricoh | Ricoh GR IV series. Does not work with GR III or GR II. |
+| Ricoh | Ricoh GR IV series. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. Does not work with GR III or GR II. |
 | FauxNY | Software test camera for development. |
 
 ## GPS units
