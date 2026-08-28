@@ -56,8 +56,11 @@ protocol core.
   never continue discovery or GATT traffic against a disconnected client.
 - Fujifilm registration confirmation is a notification on the dedicated
   `CHR_NOT1` characteristic. The captured X100VI payload is `01 00`; accept
-  legacy `02 00` only on `CHR_NOT1`. Do not reuse this registration helper for
-  `GEOTAG_UPDATE`, where `01 00` is a geotag request. Clear the confirmation
+  legacy `02 00` only on `CHR_NOT1`. On `GEOTAG_UPDATE` the payload `01 00` is
+  a geotag request, and a valid request also confirms registration: a saved
+  X100VI reconnect skips the `CHR_NOT1` confirmation and goes straight to
+  periodic geotag requests, which the camera only sends to an accepted client
+  (hardware trace 2026-08-28). Clear the confirmation
   flag and advance a per-connect callback generation before every Basic or
   Secure attempt, and keep active promotion behind a bounded wait that aborts
   on link loss or Control cancellation.
