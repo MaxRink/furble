@@ -1,0 +1,8 @@
+# The just-before boundary survives when the retained PMIC deadline wraps the
+# uint32 virtual clock. The following update cycle is prevented from feeding
+# the watchdog so this observes the end-of-stall state.
+seed watchdog true
+seed clock_ms 4294962295
+stall 44000
+assert platform.watchdog armed
+exit

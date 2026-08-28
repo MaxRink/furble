@@ -118,8 +118,8 @@ bool Platform::unlockDownloadRecovery(void) {
 }
 
 bool Platform::prepareFlash(void) {
-  // A serial upload can spend longer than the normal 10 second PMIC window
-  // in ROM download mode. The caller must be a deliberate local console user;
+  // A serial upload can spend longer than the normal PMIC watchdog window in
+  // ROM download mode. The caller must be a deliberate local console user;
   // the regular runtime watchdog is restored on the next application boot.
   if (!watchdogEnable(false)) {
     ESP_LOGE(LOG_TAG, "M5PM1 watchdog disable failed before flash");

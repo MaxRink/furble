@@ -2,6 +2,7 @@
 #include <limits>
 
 #include "FurbleTime.h"
+#include "FurbleWatchdog.h"
 #include "M5PM1.h"
 #include "clock.h"
 
@@ -23,16 +24,20 @@ int main() {
     return 1;
   }
 
-  setClockMillis(std::numeric_limits<uint32_t>::max() - 5000);
+  const uint32_t start = std::numeric_limits<uint32_t>::max() - 5000;
+  setClockMillis(start);
   M5PM1 pm1;
-  if (pm1.begin(nullptr) != M5PM1_OK || pm1.wdtSet(10) != M5PM1_ERROR
-      || pm1.wdtSet(10) != M5PM1_OK) {
+  if (pm1.begin(nullptr) != M5PM1_OK || pm1.wdtSet(Furble::Watchdog::PM1_TIMEOUT_S) != M5PM1_ERROR
+      || pm1.wdtSet(Furble::Watchdog::PM1_TIMEOUT_S) != M5PM1_OK) {
     return 1;
   }
-  setClockMillis(4998);
+  // The retained PMIC watchdog must survive until just before the shared
+  // deadline, then expire at the exact boundary. The deadline wraps here.
+  const uint32_t deadline = start + Furble::Watchdog::PM1_TIMEOUT_MS;
+  setClockMillis(deadline - 1);
   if (pm1.watchdogExpired()) {
     return 1;
   }
-  setClockMillis(4999);
+  setClockMillis(deadline);
   return pm1.watchdogExpired() ? 0 : 1;
 }

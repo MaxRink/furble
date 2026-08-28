@@ -17,6 +17,7 @@
 namespace Furble {
 
 namespace {
+bool g_SuppressNextWatchdogFeed = false;
 
 #if defined(FURBLE_M5STICKS3)
 using Watchdog::PM1_FEED_PERIOD_MS;
@@ -102,7 +103,11 @@ void Platform::update(void) {
   furble_sim_uart_update();
   Scan::getInstance().update();
 #if defined(FURBLE_M5STICKS3)
-  watchdogFeed();
+  if (!Sim::consumeWatchdogFeedSuppression()) {
+    watchdogFeed();
+  }
+#else
+  (void)Sim::consumeWatchdogFeedSuppression();
 #endif
   Sim::driverTick();
 }
@@ -260,6 +265,16 @@ uint32_t Platform::getBatteryFailCount(void) {
 }
 
 namespace Sim {
+
+void suppressNextWatchdogFeed(void) {
+  g_SuppressNextWatchdogFeed = true;
+}
+
+bool consumeWatchdogFeedSuppression(void) {
+  const bool suppressed = g_SuppressNextWatchdogFeed;
+  g_SuppressNextWatchdogFeed = false;
+  return suppressed;
+}
 
 const char *watchdogState(void) {
 #if defined(FURBLE_M5STICKS3)

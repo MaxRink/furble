@@ -527,3 +527,13 @@ The simulator retains the PMIC watchdog and download lock across
 `M5PM1::begin()`. `pmic-flash-recovery.txt` enforces an unlocked boot state, and
 `tests/host/pmic_recovery_test.cpp` covers persistence, the idle wake retry, and
 watchdog expiry during a simulated ROM download.
+
+## Current threshold follow-up, 2026-08-28
+
+The original 10 second setting is historical. The active
+`Watchdog::PM1_TIMEOUT_MS` is now 45 seconds, with the one second feed cadence,
+PMIC access retry, download-lock unlock, and flash-preparation disarm and
+readback safeguards unchanged. This leaves 15 seconds after the 30 second OTA
+boot-health window for scheduling, diagnostics, and rollback. The historical
+10 minute soak above remains evidence for the old setting, not a claim about
+the new timeout. A controlled hardware boundary test is still required.

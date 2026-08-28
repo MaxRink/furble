@@ -5,7 +5,8 @@ seed watchdog true
 assert platform.watchdog armed
 
 # A single stall avoids the normal update path feeding the watchdog between
-# intermediate assertions. The PM1 deadline is crossed after the uint32 wrap.
-stall 11000
+# intermediate assertions. The 45 second PM1 deadline is crossed after the
+# uint32 wrap.
+stall 45001
 assert platform.watchdog expired
 exit

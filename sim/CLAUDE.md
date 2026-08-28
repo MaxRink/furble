@@ -113,6 +113,9 @@ a regression.
   only by the StickS3 model. Specialized pre-start seeds also include
   `bulb_duration` and `gps_uart_mode`; keep their values synchronized with
   `docs/sim.md` and `validateSeed`.
+  The simulator suppresses only the first post-stall bookkeeping feed, so the
+  following assertion observes retained PMIC state before another normal UI
+  cycle can feed it.
 - `assert <key> <value>` fails the run on a mismatch. `xassert <key> <value>` is
   an expected-fail assert: it documents a value the app SHOULD produce once a
   pending product fix lands, prints `XFAIL (WILL_FAIL)` on a mismatch and keeps
@@ -123,6 +126,10 @@ a regression.
   `M5PM1::begin()`, just as the PMIC is independent of an ESP32 reset.
   `platform.download_lock` exposes the long-press recovery state so a scenario
   can prove that firmware never leaves manual download recovery locked.
+- The simulator consumes `Watchdog::PM1_TIMEOUT_S` and its watchdog boundary
+  scenarios cover normal feeding, just-before expiry, exact-boundary expiry,
+  and uint32 clock wrap. Keep those scenarios aligned with the host watchdog
+  timing tests when changing the timeout.
 - `assert-eventually <timeout-ms> <key> <value>` polls a query using a bounded
   monotonic wall-clock timeout while yielding to background simulator tasks.
   It is for cross-task state convergence after virtual time has advanced, not
@@ -169,6 +176,9 @@ a regression.
   cannot race simulator teardown or be silently narrowed. Seed names are
   allowlisted and each seed requires exactly two arguments, preventing typos or
   trailing values from being silently ignored.
+- `sim/scripts/run-watchdog.sh` is the explicit M5StickS3 watchdog gate. It
+  runs all retained-PMIC feed and boundary scenarios against the default freshly built
+  binary; do not substitute a stale binary or a different panel profile.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the

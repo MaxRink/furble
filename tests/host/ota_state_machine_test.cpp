@@ -531,11 +531,10 @@ bool testRollbackHealthTimingContract() {
   check(!OTA::validationWindowFitsWatchdog(OTA::BootHealth::VALIDATION_WINDOW_MS),
         "a watchdog ending at the deadline has no scheduling margin");
 
-  // The StickS3 PM1 watchdog is currently 10 seconds. Keep this explicit
-  // regression guard until runtime rollback integration either lengthens the
-  // watchdog or deliberately shortens the health window.
-  check(!OTA::validationWindowFitsWatchdog(Furble::Watchdog::PM1_TIMEOUT_MS),
-        "the current 10 second StickS3 watchdog cannot cover the 30 second window");
+  // The StickS3 PM1 watchdog now outlives the validation window with a 15
+  // second scheduling margin, allowing rollback integration to run safely.
+  check(OTA::validationWindowFitsWatchdog(Furble::Watchdog::PM1_TIMEOUT_MS),
+        "the 45 second StickS3 watchdog covers the 30 second window");
 
   return g_Failures == before;
 }

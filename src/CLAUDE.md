@@ -24,6 +24,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   strict rolling-window maximum is eight per day. Only a known battery-backed
   RTC may suppress those checkpoints. Keep every restart and power-off path on the
   shared flush helper and never add per-tick NVS writes.
+- The StickS3 M5PM1 watchdog is armed for 45 seconds through the shared
+  `Watchdog` constants. Keep `watchdogFeed()` at its one second cadence and
+  preserve verified disarm and readback before flash or power-off paths.
 - `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap. The
   parser is owned by GPS and guarded by its mutex; UI and console consumers use
   `getStatusSnapshot()` and must not retain parser references. GPX logging only
