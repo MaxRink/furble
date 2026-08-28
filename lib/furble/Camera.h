@@ -97,11 +97,6 @@ class Camera: public NimBLEClientCallbacks {
    */
   bool connect(esp_power_level_t power, uint32_t timeout);
 
-  /** True when the peer dropped the link while the last handshake ran. */
-  bool peerDroppedDuringConnect(void) const {
-    return m_PeerDroppedDuringConnect.load(std::memory_order_acquire);
-  }
-
   /**
    * Wrapper for protected pure virtual Camera::_disconnect();
    */
@@ -455,7 +450,6 @@ class Camera: public NimBLEClientCallbacks {
   bool m_ShutterHeld = false;
   bool m_ConnectInProgress = false;
   bool m_FujifilmSecureRegistration = false;
-  std::atomic<bool> m_PeerDroppedDuringConnect = false;
   uint32_t m_LastConnActivityMs = 0;
   ConnProfile m_LastRequestedProfile = ConnProfile::FAST;
   uint32_t m_LastRequestMs = 0;

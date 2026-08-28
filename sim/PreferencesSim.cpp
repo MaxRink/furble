@@ -63,20 +63,17 @@ void loadValues(void) {
   }
 }
 
-bool saveValues(void) {
+void saveValues(void) {
   const std::string path = preferencesPath();
   const size_t separator = path.find_last_of("/\\");
   if (separator != std::string::npos) {
     const std::string directory = path.substr(0, separator);
     std::string command = "mkdir -p \"" + directory + "\"";
-    if (std::system(command.c_str()) != 0)
-      return false;
+    std::system(command.c_str());
   }
 
   const std::string temporaryPath = path + ".tmp";
   std::ofstream file(temporaryPath, std::ios::binary | std::ios::trunc);
-  if (!file)
-    return false;
   const uint32_t count = static_cast<uint32_t>(values.size());
   file.write(reinterpret_cast<const char *>(&count), sizeof(count));
   for (const auto &entry : values) {
@@ -92,9 +89,7 @@ bool saveValues(void) {
     }
   }
   file.close();
-  if (!file)
-    return false;
-  return std::rename(temporaryPath.c_str(), path.c_str()) == 0;
+  std::rename(temporaryPath.c_str(), path.c_str());
 }
 
 std::string fullKey(uint32_t handle, const char *key) {
@@ -114,8 +109,8 @@ uint32_t handleFor(const char *name) {
 }
 
 template <typename T>
-size_t putValue(uint32_t handle, bool started, bool readOnly, const char *key, const T &value) {
-  if (!started || readOnly || key == nullptr) {
+size_t putValue(uint32_t handle, const char *key, const T &value) {
+  if (key == nullptr) {
     return 0;
   }
   std::lock_guard<std::mutex> lock(values_mutex);
@@ -123,24 +118,14 @@ size_t putValue(uint32_t handle, bool started, bool readOnly, const char *key, c
   Value stored;
   stored.bytes.resize(sizeof(T));
   std::memcpy(stored.bytes.data(), &value, sizeof(T));
-  const std::string full = fullKey(handle, key);
-  const auto old = values.find(full);
-  const bool hadOld = old != values.end();
-  Value oldValue = hadOld ? old->second : Value {};
-  values[full] = std::move(stored);
-  if (!saveValues()) {
-    if (hadOld)
-      values[full] = std::move(oldValue);
-    else
-      values.erase(full);
-    return 0;
-  }
+  values[fullKey(handle, key)] = std::move(stored);
+  saveValues();
   return sizeof(T);
 }
 
 template <typename T>
-T getValue(uint32_t handle, bool started, const char *key, T defaultValue) {
-  if (!started || key == nullptr) {
+T getValue(uint32_t handle, const char *key, T defaultValue) {
+  if (key == nullptr) {
     return defaultValue;
   }
   std::lock_guard<std::mutex> lock(values_mutex);
@@ -187,7 +172,6 @@ bool Preferences::clear() {
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
-  const auto before = values;
   const std::string prefix = std::to_string(_handle) + ":";
   for (auto it = values.begin(); it != values.end();) {
     if (it->first.compare(0, prefix.size(), prefix) == 0) {
@@ -196,10 +180,7 @@ bool Preferences::clear() {
       ++it;
     }
   }
-  if (!saveValues()) {
-    values = before;
-    return false;
-  }
+  saveValues();
   return true;
 }
 
@@ -209,37 +190,29 @@ bool Preferences::remove(const char *key) {
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
-  const std::string full = fullKey(_handle, key);
-  const auto found = values.find(full);
-  if (found == values.end())
-    return false;
-  const Value old = found->second;
-  values.erase(found);
-  if (!saveValues()) {
-    values[full] = old;
-    return false;
-  }
+  values.erase(fullKey(_handle, key));
+  saveValues();
   return true;
 }
 
 template <>
 size_t Preferences::put(const char *key, bool value) {
-  return putValue(_handle, _started, _readOnly, key, static_cast<uint8_t>(value ? 1 : 0));
+  return putValue(_handle, key, static_cast<uint8_t>(value ? 1 : 0));
 }
 
 template <>
 size_t Preferences::put(const char *key, uint8_t value) {
-  return putValue(_handle, _started, _readOnly, key, value);
+  return putValue(_handle, key, value);
 }
 
 template <>
 size_t Preferences::put(const char *key, uint32_t value) {
-  return putValue(_handle, _started, _readOnly, key, value);
+  return putValue(_handle, key, value);
 }
 
 template <>
 size_t Preferences::put(const char *key, uint16_t value) {
-  return putValue(_handle, _started, _readOnly, key, value);
+  return putValue(_handle, key, value);
 }
 
 template <>
@@ -256,18 +229,8 @@ size_t Preferences::put(const char *key, const char *value) {
   Value stored;
   stored.string_value = true;
   stored.bytes.assign(value, value + std::strlen(value) + 1);
-  const std::string full = fullKey(_handle, key);
-  const auto old = values.find(full);
-  const bool hadOld = old != values.end();
-  Value oldValue = hadOld ? old->second : Value {};
-  values[full] = std::move(stored);
-  if (!saveValues()) {
-    if (hadOld)
-      values[full] = std::move(oldValue);
-    else
-      values.erase(full);
-    return 0;
-  }
+  values[fullKey(_handle, key)] = std::move(stored);
+  saveValues();
   return std::strlen(value);
 }
 
@@ -280,24 +243,14 @@ size_t Preferences::put(const char *key, const void *value, size_t len) {
   Value stored;
   stored.bytes.resize(len);
   std::memcpy(stored.bytes.data(), value, len);
-  const std::string full = fullKey(_handle, key);
-  const auto old = values.find(full);
-  const bool hadOld = old != values.end();
-  Value oldValue = hadOld ? old->second : Value {};
-  values[full] = std::move(stored);
-  if (!saveValues()) {
-    if (hadOld)
-      values[full] = std::move(oldValue);
-    else
-      values.erase(full);
-    return 0;
-  }
+  values[fullKey(_handle, key)] = std::move(stored);
+  saveValues();
   return len;
 }
 
 template <>
 uint8_t Preferences::get(const char *key, uint8_t defaultValue) {
-  return getValue(_handle, _started, key, defaultValue);
+  return getValue(_handle, key, defaultValue);
 }
 
 template <>
@@ -307,12 +260,12 @@ bool Preferences::get(const char *key, bool defaultValue) {
 
 template <>
 uint32_t Preferences::get(const char *key, uint32_t defaultValue) {
-  return getValue(_handle, _started, key, defaultValue);
+  return getValue(_handle, key, defaultValue);
 }
 
 template <>
 uint16_t Preferences::get(const char *key, uint16_t defaultValue) {
-  return getValue(_handle, _started, key, defaultValue);
+  return getValue(_handle, key, defaultValue);
 }
 
 template <>
@@ -354,42 +307,6 @@ bool Preferences::isKey(const char *key) {
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
   return values.find(fullKey(_handle, key)) != values.end();
-}
-
-Preferences::status Preferences::readU32(const char *key, uint32_t &value) {
-  if (!_started || key == nullptr) {
-    return status::ERROR;
-  }
-  std::lock_guard<std::mutex> lock(values_mutex);
-  loadValues();
-  const auto found = values.find(fullKey(_handle, key));
-  if (found == values.end()) {
-    return status::NOT_FOUND;
-  }
-  if (found->second.string_value || found->second.bytes.size() != sizeof(value)) {
-    return status::ERROR;
-  }
-  std::memcpy(&value, found->second.bytes.data(), sizeof(value));
-  return status::OK;
-}
-
-Preferences::status Preferences::removeKey(const char *key) {
-  if (!_started || _readOnly || key == nullptr) {
-    return status::ERROR;
-  }
-  std::lock_guard<std::mutex> lock(values_mutex);
-  loadValues();
-  const auto found = values.find(fullKey(_handle, key));
-  if (found == values.end()) {
-    return status::NOT_FOUND;
-  }
-  const Value old = found->second;
-  values.erase(found);
-  if (!saveValues()) {
-    values[fullKey(_handle, key)] = old;
-    return status::ERROR;
-  }
-  return status::OK;
 }
 
 size_t Preferences::getBytesLength(const char *key) {

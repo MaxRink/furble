@@ -85,13 +85,8 @@ void Platform::prepareRestart(void) {
   // forRestart == true: esp_restart() runs immediately after, so a force-
   // complete on timeout is safe here. The reset kills any in-flight BLE
   // teardown, so nothing can reconnect and race the still-freeing client.
-  const bool disconnected = control.disconnect(Control::DISCONNECT_TIMEOUT_MS, true);
-  if (!disconnected) {
+  if (!control.disconnect(Control::DISCONNECT_TIMEOUT_MS, true)) {
     ESP_LOGW(LOG_TAG, "Restart continuing after camera disconnect timeout.");
-  } else if (!Settings::markCleanRestart()) {
-    // If NVS cannot record the clean teardown, the next boot deliberately
-    // retains the peer-drop backoff instead of assuming the camera is clear.
-    ESP_LOGW(LOG_TAG, "Unable to record clean restart; next reconnect keeps peer backoff.");
   }
 
 #if defined(FURBLE_M5STICKS3)

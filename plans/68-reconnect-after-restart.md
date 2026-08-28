@@ -194,15 +194,3 @@ run passes.
 
 Only Fujifilm hardware is available for this verification. Other camera types
 remain covered by code review and FauxNY tests.
-
-## Follow-up: fast reconnect after a clean restart (2026-08-23, task #54)
-
-The boot autoconnect after a clean restart is a furble-initiated fresh connect:
-`prepareRestart()` disconnects the camera cleanly before writing a one-shot NVS
-marker and resetting. Control consumes that marker once on the next boot and
-skips the 2.5 second first-retry wait. If the marker write, read, or removal
-fails, the boot defaults to the patient peer backoff. An unclean reset while
-connected has no marker and therefore retains the first-retry wait. Peer drops,
-including a reset during the handshake, always use the peer origin. See plan 09
-for the mechanism and the host tests (`reconnect-backoff`,
-`reconnect-initiator`).

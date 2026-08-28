@@ -4,7 +4,6 @@
 
 #include "FurblePlatform.h"
 #include "FurblePower.h"
-#include "FurbleReconnectBackoff.h"
 #include "FurbleSettings.h"
 #include "clock.h"
 
@@ -163,15 +162,8 @@ void Control::setConnSaver(bool enabled) {
   (void)enabled;
 }
 
-void Control::connectAll(bool infiniteReconnect, reconnect_origin_t origin) {
+void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect = infiniteReconnect;
-  // Mirror the on-device origin plumbing: AUTO consumes the pending token
-  // (minted FURBLE by a completed disconnect, PEER otherwise), and each
-  // consumption resets the token to the fail-safe PEER. The origin picks the
-  // fast or patient first retry in getState() below.
-  m_ConnectOrigin = (origin == reconnect_origin_t::AUTO) ? m_NextConnectOrigin : origin;
-  m_NextConnectOrigin = reconnect_origin_t::PEER;
-  m_ReconnectAttempt = 0;
   m_ConnectCamera = nullptr;
   for (const auto &target : m_Targets) {
     if (target->getCamera() != nullptr && target->getCamera()->isActive()) {
@@ -196,10 +188,6 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   m_ConnectCamera = nullptr;
   m_Targets.clear();
   m_State = STATE_IDLE;
-  // The simulated teardown always completes, so the next explicit connect is
-  // furble-originated, exactly like the device after a finished interactive
-  // disconnect.
-  m_NextConnectOrigin = reconnect_origin_t::FURBLE;
   return true;
 }
 
@@ -221,11 +209,7 @@ std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
 Control::state_t Control::getState(void) const {
   auto *control = const_cast<Control *>(this);
   if (control->m_State == STATE_CONNECTING && control->m_ConnectCamera != nullptr) {
-    // connectStart sits in the future while a retry wait is pending, so clamp
-    // the unsigned difference to zero instead of letting it wrap.
-    const uint32_t now = Platform::getInstance().tick();
-    const int32_t sinceStart = static_cast<int32_t>(now - connectStart);
-    const uint32_t elapsed = sinceStart < 0 ? 0 : static_cast<uint32_t>(sinceStart);
+    const uint32_t elapsed = Platform::getInstance().tick() - connectStart;
     const uint8_t progress =
         static_cast<uint8_t>(std::min<uint32_t>(100, elapsed * 100 / CONNECT_DURATION_MS));
     control->m_ConnectCamera->setConnectProgress(progress);
@@ -244,27 +228,9 @@ Control::state_t Control::getState(void) const {
             camera->connect(control->m_Power, CONNECT_DURATION_MS);
           }
         }
-        // A later drop from this active session is peer-initiated.
-        control->m_ConnectOrigin = reconnect_origin_t::PEER;
-        control->m_ReconnectAttempt = 0;
-        control->m_ConnectCamera = nullptr;
-        control->setState(STATE_ACTIVE);
-      } else if (control->m_InfiniteReconnect) {
-        // Model the on-device retry wait so a scenario can observe the
-        // fast-vs-patient first retry: a furble-originated cycle retries at
-        // once, a peer-originated one waits FIRST_RETRY_MS, later attempts
-        // follow the shared backoff curve. The wait is expressed by pushing
-        // connectStart into the future.
-        const uint32_t delay = ReconnectBackoff::delayMs(
-            control->m_ReconnectAttempt, Settings::reconBackoffEffective(),
-            control->m_ConnectOrigin == reconnect_origin_t::FURBLE);
-        control->m_ReconnectAttempt++;
-        connectStart = Sim::clockMillis() + delay;
-        control->m_ConnectCamera->setConnectProgress(0);
-      } else {
-        control->m_ConnectCamera = nullptr;
-        control->setState(STATE_CONNECT_FAILED);
       }
+      control->m_ConnectCamera = nullptr;
+      control->setState(connected ? STATE_ACTIVE : STATE_CONNECT_FAILED);
     }
   }
   return m_State;
@@ -334,11 +300,7 @@ void Control::simDropActiveLink(int index) {
   if (m_InfiniteReconnect) {
     // Reconnect mode re-enters connecting without passing through idle, exactly
     // like the on-device control task after a dropped supervision timeout. Any
-    // camera still connected keeps its link through the reconnect window. The
-    // recovery is peer-originated, so a failed attempt keeps the patient
-    // first-retry wait.
-    m_ConnectOrigin = reconnect_origin_t::PEER;
-    m_ReconnectAttempt = 0;
+    // camera still connected keeps its link through the reconnect window.
     connectStart = Sim::clockMillis();
     dropped->setActive(true);
     dropped->setConnectProgress(0);

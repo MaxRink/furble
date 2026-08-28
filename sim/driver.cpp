@@ -72,9 +72,6 @@ constexpr uint32_t MAX_EVENTUAL_TIMEOUT_MS = 60000;
 
 std::vector<Step> steps;
 std::map<std::string, std::string> scenarioSettings;
-// Remaining connect attempts to fail, armed by the fail-connects action.
-// Consumed by connectShouldFail() below; negative means unarmed.
-long connectFailBudget = -1;
 std::string captureDirectory = ".pio/furble-sim-captures";
 std::string reportDirectory = ".pio/furble-sim-reports";
 std::string scenarioName = "interactive";
@@ -602,34 +599,6 @@ bool parseBatteryAction(const std::string &action) {
   }
 
   simulatedBattery = {static_cast<uint8_t>(level), batteryVoltage(voltageText), current, charging};
-  return true;
-}
-
-// Arm the connect failure budget: "fail-connects N" fails the next N connect
-// attempts and then lets the following attempt succeed. Unlike the static
-// connect_fail seed this can target one connect cycle mid-scenario, which is
-// what the first-retry timing scenario needs.
-bool parseFailConnectsAction(const std::string &action) {
-  std::istringstream input(action);
-  std::string command;
-  input >> command;
-  if (command != "fail-connects") {
-    return false;
-  }
-
-  std::string countText;
-  if (!(input >> countText)) {
-    std::cerr << "action fail-connects requires a count\n";
-    std::exit(2);
-  }
-  const uint32_t count = parseUnsigned(countText);
-  std::string extra;
-  if (input >> extra) {
-    std::cerr << "action fail-connects has unexpected trailing value: " << extra << '\n';
-    std::exit(2);
-  }
-
-  connectFailBudget = static_cast<long>(count);
   return true;
 }
 
@@ -1271,7 +1240,7 @@ void driverTick(void) {
         std::cerr << "Scenario action ran before the UI was ready: " << step.name << '\n';
         std::exit(1);
       }
-      if (!parseBatteryAction(step.name) && !parseFailConnectsAction(step.name)) {
+      if (!parseBatteryAction(step.name)) {
         scenarioUi->simScenarioAction(step.name.c_str());
       }
       ++stepIndex;
@@ -1401,14 +1370,6 @@ void driverTick(void) {
 }
 
 bool connectShouldFail(void) {
-  // An armed fail-connects budget fails exactly that many connect attempts and
-  // then lets the next attempt succeed. A scenario uses it to push a connect
-  // cycle into the retry path and observe the fast or patient first-retry
-  // wait. connect_fail keeps its original always-fail semantics.
-  if (connectFailBudget > 0) {
-    connectFailBudget--;
-    return true;
-  }
   return scenarioSettingIsTrue("connect_fail");
 }
 

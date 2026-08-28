@@ -260,28 +260,6 @@ bool Preferences::isKey(const char *key) {
   return getType(key) != PT_INVALID;
 }
 
-Preferences::status Preferences::readU32(const char *key, uint32_t &value) {
-  if (!_started || !key)
-    return status::ERROR;
-  const esp_err_t err = nvs_get_u32(_handle, key, &value);
-  if (err == ESP_OK)
-    return status::OK;
-  if (err == ESP_ERR_NVS_NOT_FOUND)
-    return status::NOT_FOUND;
-  return status::ERROR;
-}
-
-Preferences::status Preferences::removeKey(const char *key) {
-  if (!_started || !key || _readOnly)
-    return status::ERROR;
-  const esp_err_t err = nvs_erase_key(_handle, key);
-  if (err == ESP_ERR_NVS_NOT_FOUND)
-    return status::NOT_FOUND;
-  if (err != ESP_OK)
-    return status::ERROR;
-  return nvs_commit(_handle) == ESP_OK ? status::OK : status::ERROR;
-}
-
 /*
  * Get a key value
  * */
