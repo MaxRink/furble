@@ -27,6 +27,7 @@ class PreflightResult(Enum):
     DEPENDENCY_MISSING = "dependency-missing"
     CONTACT_FAILED = "contact-failed"
     HANDSHAKE_FAILED = "handshake-failed"
+    HANDSHAKE_IO_FAILED = "handshake-io-failed"
 
 
 def _platformio_site_packages() -> list[Path]:
@@ -115,23 +116,54 @@ def handshake_message() -> str:
     )
 
 
+def handshake_io_message() -> str:
+    return (
+        "The serial port opened, but communication failed during the PMIC "
+        "preflight handshake. No upload was started and the PMIC state is "
+        "unknown. Keep the device powered and retry after checking the USB "
+        "connection."
+    )
+
+
+def restore_message(restored: bool) -> str:
+    if restored:
+        return (
+            "The upload tool could not be started. PMIC watchdog restoration "
+            "succeeded; no upload was started."
+        )
+    return (
+        "The upload tool could not be started and automatic PMIC watchdog "
+        "restoration failed. Keep the device powered, reconnect to the console, "
+        "run 'flash cancel', and do not unplug USB while the watchdog is disabled."
+    )
+
+
 def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
     serial = _load_serial()
     if serial is None:
         return PreflightResult.DEPENDENCY_MISSING
 
+    serial_options = {
+        "baudrate": baud,
+        "timeout": 0.2,
+        "write_timeout": 1,
+    }
+    # Two readers can split the three acknowledgements and turn a valid
+    # preflight into a timeout. pyserial exposes the POSIX TIOCEXCL
+    # guard; leave the option out on platforms where it is unsupported.
+    if os.name == "posix":
+        serial_options["exclusive"] = True
+
     try:
-        serial_options = {
-            "baudrate": baud,
-            "timeout": 0.2,
-            "write_timeout": 1,
-        }
-        # Two readers can split the three acknowledgements and turn a valid
-        # preflight into a timeout. pyserial exposes the POSIX TIOCEXCL
-        # guard; leave the option out on platforms where it is unsupported.
-        if os.name == "posix":
-            serial_options["exclusive"] = True
-        with serial.Serial(port, **serial_options) as device:
+        # Serial() opens the port. Keep this separate from the protocol below
+        # so an open failure cannot be confused with a mid-handshake failure.
+        device = serial.Serial(port, **serial_options)
+    except (OSError, ValueError) as error:
+        print(f"error: cannot open {port}: {error}", file=sys.stderr)
+        return PreflightResult.CONTACT_FAILED
+
+    try:
+        try:
             device.reset_input_buffer()
             device.write(b"flash prepare\n")
             device.flush()
@@ -165,9 +197,65 @@ def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
             if required.issubset(seen):
                 return PreflightResult.PASSED
             return PreflightResult.HANDSHAKE_FAILED
+        except (OSError, ValueError) as error:
+            print(f"error: PMIC handshake failed on {port}: {error}", file=sys.stderr)
+            return PreflightResult.HANDSHAKE_IO_FAILED
+    finally:
+        close = getattr(device, "close", None)
+        if callable(close):
+            try:
+                close()
+            except OSError:
+                pass
+
+
+def restore_flash_preparation(port: str, baud: int, timeout: float) -> bool:
+    """Re-arm the PMIC watchdog after a preflight-only upload failure."""
+
+    serial = _load_serial()
+    if serial is None:
+        return False
+
+    serial_options = {
+        "baudrate": baud,
+        "timeout": 0.2,
+        "write_timeout": 1,
+    }
+    if os.name == "posix":
+        serial_options["exclusive"] = True
+
+    try:
+        device = serial.Serial(port, **serial_options)
     except (OSError, ValueError) as error:
-        print(f"error: cannot contact {port}: {error}", file=sys.stderr)
-        return PreflightResult.CONTACT_FAILED
+        print(f"error: cannot open {port} to restore PMIC watchdog: {error}", file=sys.stderr)
+        return False
+
+    try:
+        try:
+            device.reset_input_buffer()
+            device.write(b"flash cancel\n")
+            device.flush()
+            deadline = time.monotonic() + timeout
+            seen: set[str] = set()
+            while time.monotonic() < deadline:
+                raw = device.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                print(line)
+                if line in {"flash.ready: false", "flash.watchdog: armed"}:
+                    seen.add(line)
+            return {"flash.ready: false", "flash.watchdog: armed"}.issubset(seen)
+        except (OSError, ValueError) as error:
+            print(f"error: PMIC watchdog restoration failed on {port}: {error}", file=sys.stderr)
+            return False
+    finally:
+        close = getattr(device, "close", None)
+        if callable(close):
+            try:
+                close()
+            except OSError:
+                pass
 
 
 def prepare(port: str, baud: int, timeout: float) -> bool:
@@ -184,7 +272,13 @@ def main() -> int:
     )
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=5.0)
-    parser.add_argument("--dry-run", action="store_true", help="preflight only")
+    parser.add_argument(
+        "--preflight-only",
+        "--dry-run",
+        dest="preflight_only",
+        action="store_true",
+        help="run the PMIC preflight but do not start PlatformIO (legacy alias: --dry-run)",
+    )
     args = parser.parse_args()
 
     result = prepare_result(args.port, args.baud, args.timeout)
@@ -193,12 +287,13 @@ def main() -> int:
             PreflightResult.DEPENDENCY_MISSING: dependency_message,
             PreflightResult.CONTACT_FAILED: contact_message,
             PreflightResult.HANDSHAKE_FAILED: handshake_message,
+            PreflightResult.HANDSHAKE_IO_FAILED: handshake_io_message,
         }[result]()
         print(message, file=sys.stderr)
         return 2
 
-    if args.dry_run:
-        print("PMIC preflight passed: dry run complete; upload not started")
+    if args.preflight_only:
+        print("PMIC preflight passed: preflight-only check complete; upload not started")
         return 0
 
     print("PMIC preflight passed: starting upload")
@@ -221,7 +316,12 @@ def main() -> int:
     build_environment = os.environ.copy()
     build_environment.setdefault("FURBLE_VERSION", "dev")
     build_environment.setdefault("FURBLE_TEST", "0")
-    result = subprocess.run(command, check=False, env=build_environment)
+    try:
+        result = subprocess.run(command, check=False, env=build_environment)
+    except (FileNotFoundError, PermissionError, OSError) as error:
+        print(f"error: could not start PlatformIO upload: {error}", file=sys.stderr)
+        print(restore_message(restore_flash_preparation(args.port, args.baud, args.timeout)), file=sys.stderr)
+        return 2
     if result.returncode != 0:
         print(
             "upload failed. The device may still be in ROM download mode. "

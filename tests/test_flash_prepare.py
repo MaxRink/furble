@@ -22,6 +22,7 @@ SPEC.loader.exec_module(MODULE)
 class FakeSerial:
     def __init__(self, lines):
         self.lines = iter(lines)
+        self.closed = False
 
     def __enter__(self):
         return self
@@ -38,19 +39,16 @@ class FakeSerial:
     def flush(self):
         pass
 
+    def close(self):
+        self.closed = True
+
     def readline(self):
         return next(self.lines, b"")
 
 
-class FailingSerial:
-    def __init__(self, error):
-        self.error = error
-
-    def __enter__(self):
+class HandshakeFailingSerial(FakeSerial):
+    def write(self, _command):
         raise self.error
-
-    def __exit__(self, *_args):
-        return False
 
 
 class FlashPrepareTest(unittest.TestCase):
@@ -112,7 +110,7 @@ class FlashPrepareTest(unittest.TestCase):
 
     def test_port_failure_is_not_lock_recovery(self):
         serial_module = types.SimpleNamespace(
-            Serial=mock.Mock(return_value=FailingSerial(OSError("denied")))
+            Serial=mock.Mock(side_effect=OSError("denied"))
         )
         with mock.patch.dict(sys.modules, {"serial": serial_module}):
             self.assertIs(
@@ -120,6 +118,18 @@ class FlashPrepareTest(unittest.TestCase):
                 MODULE.PreflightResult.CONTACT_FAILED,
             )
         self.assertNotIn("DL_LOCK", MODULE.contact_message())
+
+    def test_mid_handshake_oserror_is_not_reported_as_port_failure(self):
+        serial = HandshakeFailingSerial(())
+        serial.error = OSError("disconnected")
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        with mock.patch.dict(sys.modules, {"serial": serial_module}):
+            self.assertIs(
+                MODULE.prepare_result("/dev/test", 115200, 0.01),
+                MODULE.PreflightResult.HANDSHAKE_IO_FAILED,
+            )
+        self.assertIn("serial port opened", MODULE.handshake_io_message())
+        self.assertNotIn("could not open", MODULE.handshake_io_message())
 
     def test_missing_dependency_does_not_contact_device_or_claim_lock(self):
         with mock.patch.object(MODULE, "_load_serial", return_value=None):
@@ -132,7 +142,7 @@ class FlashPrepareTest(unittest.TestCase):
         self.assertIn("No serial port was opened", message)
         self.assertNotIn("DL_LOCK", message)
 
-    def test_dry_run_does_not_say_that_upload_started(self):
+    def test_preflight_only_does_not_say_that_upload_started(self):
         serial = FakeSerial(
             iter(
                 line.encode()
@@ -149,7 +159,7 @@ class FlashPrepareTest(unittest.TestCase):
             mock.patch.object(
                 sys,
                 "argv",
-                ["flash_prepare.py", "--port", "/dev/test", "--dry-run"],
+                ["flash_prepare.py", "--port", "/dev/test", "--preflight-only"],
             ),
             mock.patch.object(MODULE.subprocess, "run") as run,
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
@@ -157,6 +167,91 @@ class FlashPrepareTest(unittest.TestCase):
             self.assertEqual(MODULE.main(), 0)
         run.assert_not_called()
         self.assertIn("upload not started", stdout.getvalue())
+
+    def test_dry_run_remains_legacy_alias(self):
+        serial = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", ["flash_prepare.py", "--port", "/dev/test", "--dry-run"]
+            ),
+            mock.patch.object(MODULE.subprocess, "run") as run,
+        ):
+            self.assertEqual(MODULE.main(), 0)
+        run.assert_not_called()
+
+    def test_missing_platformio_restores_watchdog(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        restored = RestoreSerial(
+            iter((b"flash.ready: false\n", b"flash.watchdog: armed\n"))
+        )
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", ["flash_prepare.py", "--port", "/dev/test"]
+            ),
+            mock.patch.object(
+                MODULE.subprocess, "run", side_effect=FileNotFoundError("pio")
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 2)
+        self.assertEqual(serial_module.Serial.call_count, 2)
+        self.assertEqual(prepared.command, b"flash prepare\n")
+        self.assertEqual(restored.command, b"flash cancel\n")
+        self.assertIn("restoration succeeded", stderr.getvalue())
+
+    def test_unexecutable_platformio_reports_failed_restoration(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        restored = HandshakeFailingSerial(())
+        restored.error = PermissionError("cancel denied")
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", ["flash_prepare.py", "--port", "/dev/test"]
+            ),
+            mock.patch.object(
+                MODULE.subprocess, "run", side_effect=PermissionError("pio")
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 2)
+        self.assertIn("automatic PMIC watchdog restoration failed", stderr.getvalue())
+        self.assertIn("run 'flash cancel'", stderr.getvalue())
 
     def test_dependency_failure_main_has_no_recovery_claim(self):
         with (
