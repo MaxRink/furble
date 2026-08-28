@@ -71,3 +71,14 @@ backtrace capture of the on-device repro is still pending. With the fix the
 retry loop must survive repeated secure timeouts without a panic and without
 exhausting the NimBLE client pool. That soak runs when the Ricoh body is next
 available on the bench.
+
+## Known residual window
+
+A narrow interleaving remains: if the host task consumes the queued disconnect
+event between the reclaim's connected check and the self-delete arm, the arm
+lands on a client whose event is already spent and one NimBLE pool slot leaks
+until reboot. The old code had the same shaped window, it cannot double free,
+and closing it fully needs host-task-serialized deletion that esp-nimble-cpp
+does not expose. Nikon keeps its session object instead of characteristic
+pointers; it now drops that object at connect entry and null-guards its
+command paths.

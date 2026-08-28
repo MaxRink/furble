@@ -77,6 +77,10 @@ void Nikon::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool Nikon::_connect(void) {
   bool success = false;
   m_Progress = 0;
+  // The session object holds the previous attempt's client and pair
+  // characteristic. Drop it before this attempt so a reclaim that skipped the
+  // vendor teardown cannot leave it pointing into a freed client.
+  m_Nikon.reset();
 
   if (m_PairType == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
@@ -139,23 +143,33 @@ void Nikon::_disconnect(void) {
 }
 
 void Nikon::shutterPress(void) {
-  m_Nikon->shutterPress();
+  if (m_Nikon != nullptr) {
+    m_Nikon->shutterPress();
+  }
 }
 
 void Nikon::shutterRelease(void) {
-  m_Nikon->shutterRelease();
+  if (m_Nikon != nullptr) {
+    m_Nikon->shutterRelease();
+  }
 }
 
 void Nikon::focusPress(void) {
-  m_Nikon->focusPress();
+  if (m_Nikon != nullptr) {
+    m_Nikon->focusPress();
+  }
 }
 
 void Nikon::focusRelease(void) {
-  m_Nikon->focusRelease();
+  if (m_Nikon != nullptr) {
+    m_Nikon->focusRelease();
+  }
 }
 
 void Nikon::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
-  m_Nikon->updateGeoData(gps, timesync);
+  if (m_Nikon != nullptr) {
+    m_Nikon->updateGeoData(gps, timesync);
+  }
 }
 
 size_t Nikon::getSerialisedBytes(void) const {
