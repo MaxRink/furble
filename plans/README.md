@@ -160,6 +160,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [125-esp-optimization-program.md](125-esp-optimization-program.md) | Measurement-first ESP-IDF, radio, power, memory, UI, dependency, security, and release optimization program |
 | [127-nordic-port-baseline.md](127-nordic-port-baseline.md) | Simulator-gated portability boundary and Nordic silicon port baseline |
 | [143-pm1-watchdog-window.md](143-pm1-watchdog-window.md) | Safe 45 second M5PM1 watchdog window for OTA health validation |
+| [144-upload-partition-offset.md](144-upload-partition-offset.md) | Keep PlatformIO no-build uploads aligned with OTA application partitions |
 
 ## Design documents
 

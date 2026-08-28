@@ -35,6 +35,13 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug -t upload
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e waveshare-s3-eth
 ```
 
+All board OTA application partitions begin at `0x20000`. The repository sets
+this explicitly for PlatformIO uploads, including `-t nobuild -t upload`, so
+an existing firmware artifact is not sent to PlatformIO's historical `0x10000`
+default. If flashing an artifact manually, use the app offset from its
+`flash_args` file, currently `0x20000`, and do not erase NVS unless a separate
+migration requires it.
+
 Development builds report `dev+g<unambiguous-hash>`. A tracked, staged, or
 non-ignored untracked change appends `.dirty`; ignored-only changes do not.
 Explicit release versions remain unchanged. See `CLAUDE.md` for the complete

@@ -37,6 +37,12 @@ CLAUDE.md whose directory it touches.
 - The direct SDL simulator build writes compiler depfiles beside each object.
   Its incremental cache follows project and dependency headers with `make -q`;
   run `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
+- All OTA application images start at `0x20000`. The shared
+  `board_upload.offset_address` setting is intentional: it keeps
+  `pio run -t nobuild -t upload` from falling back to PlatformIO's historical
+  `0x10000` board default. Use the generated `flash_args` file or the explicit
+  `0x20000` app offset when flashing an existing artifact. Never erase NVS or
+  bonds just to correct an app offset.
 - Board-specific ESP-IDF component dependencies must be gated by a CMake
   profile argument. A compiler define alone is too late for component
   dependency resolution. The Waveshare profile passes `FURBLE_ETHERNET` both

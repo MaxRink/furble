@@ -18,6 +18,7 @@ FLASH_16M = 16 * 1024 * 1024
 PARTITION_TABLE_END = 0x9000
 DATA_ALIGNMENT = 0x1000
 APP_ALIGNMENT = 0x10000
+APP_FLASH_OFFSET = 0x20000
 STOCK_PARTITION_CSV = "partitions_two_ota_large.csv"
 
 # These are the measured firmware.bin sizes recorded in
@@ -249,12 +250,56 @@ def check_board(spec: BoardSpec, csv_path: Path) -> tuple[Partition, Partition]:
         ota_0.size >= spec.reference_app_size,
         f"{spec.name}: OTA slot is smaller than the {spec.reference_app_size}-byte reference app",
     )
-    require(ota_0.offset == 0x20000, f"{spec.name}: ota_0 moved")
+    require(ota_0.offset == APP_FLASH_OFFSET, f"{spec.name}: ota_0 moved")
     require(
         ota_1.offset == align_up(ota_0.end, APP_ALIGNMENT),
         f"{spec.name}: ota_1 is not contiguous after app alignment",
     )
     return ota_0, ota_1
+
+
+def check_upload_offset(repo_root: Path) -> None:
+    """Keep no-build uploads and the partition tables on the same app offset.
+
+    The ESP-IDF builder discovers the offset from the CSV during a normal
+    build. PlatformIO's ``nobuild`` upload target starts with its board default
+    instead, so the project setting is the source of truth for that path.
+    """
+    platformio_ini = repo_root / "platformio.ini"
+    text = platformio_ini.read_text(encoding="utf-8")
+    match = re.search(
+        r"(?m)^\[env\]\s*$.*?^board_upload\.offset_address\s*=\s*([^\s;#]+)",
+        text,
+        re.DOTALL,
+    )
+    require(match is not None, "platformio.ini: global upload app offset is missing")
+    require(
+        parse_size(match.group(1)) == APP_FLASH_OFFSET,
+        "platformio.ini: upload app offset must match ota_0 at 0x20000",
+    )
+
+    for section in re.findall(r"(?ms)^\[env:[^]]+\].*?(?=^\[|\Z)", text):
+        override = re.search(
+            r"(?m)^board_upload\.offset_address\s*=\s*([^\s;#]+)", section
+        )
+        if override is not None:
+            require(
+                parse_size(override.group(1)) == APP_FLASH_OFFSET,
+                "platformio.ini: environment upload app offset differs from ota_0",
+            )
+
+    manifest = (repo_root / "web-installer" / "manifest.tmpl").read_text(
+        encoding="utf-8"
+    )
+    app_offsets = re.findall(
+        r'"path":\s*"[^\"]+/furble-\$PLATFORM-\$VERSION\.bin",\s*'
+        r'"offset":\s*(\d+)',
+        manifest,
+    )
+    require(
+        app_offsets and all(int(offset) == APP_FLASH_OFFSET for offset in app_offsets),
+        "web-installer/manifest.tmpl: app offset differs from ota_0",
+    )
 
 
 def find_stock_csv(repo_root: Path, override: Path | None) -> Path:
@@ -311,6 +356,13 @@ def main(argv: list[str] | None = None) -> int:
     print("Reference firmware sizes: plans/33-wifi-hub.md:1296-1304, commit 2b79ce8")
     print("The headless S3 env uses the measured m5stick-s3 image as its reference.")
     print()
+
+    try:
+        check_upload_offset(repo_root)
+    except (CheckError, OSError) as exc:
+        print(f"upload layout: FAIL: {exc}")
+        return 1
+    print("upload layout: PASS app=0x20000 (PlatformIO and web installer)")
 
     passed = 0
     for spec in BOARD_SPECS:
