@@ -50,11 +50,12 @@ FujifilmVirtualCamera::FujifilmVirtualCamera(const Config &config) : m_Config(co
 
 NimBLEAdvertisedDevice FujifilmVirtualCamera::advertisement() const {
   NimBLEAdvertisedDevice device;
-  std::vector<uint8_t> manufacturer = {0xd8, 0x04};
+  // Both real advertisement forms carry the 0x02 type byte after the company
+  // identifier: d8 04 02 + token (Basic) or d8 04 02 + serial (Secure).
+  std::vector<uint8_t> manufacturer = {0xd8, 0x04, 0x02};
   if (m_Config.secure) {
     manufacturer.insert(manufacturer.end(), m_Config.serial.begin(), m_Config.serial.end());
   } else {
-    manufacturer.push_back(0x02);
     manufacturer.insert(manufacturer.end(), m_Config.token.begin(), m_Config.token.end());
   }
 

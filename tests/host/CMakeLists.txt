@@ -355,6 +355,38 @@ target_compile_options(saved_scan_cancel_test PRIVATE
                        -Wno-unused-lambda-capture -Wno-sign-compare)
 target_link_libraries(saved_scan_cancel_test PRIVATE Threads::Threads)
 
+# Saved Fujifilm Secure reconnect scan match. The camera advertises either the
+# pairing service or only the Secure service in reconnect standby, so the
+# matcher must accept both. This target compiles the production Scan and
+# Secure paths against the host NimBLE double and the virtual peer, and it
+# asserts the reconnect completes promptly once the advertisement arrives.
+add_executable(saved_scan_delivery_test
+               saved_scan_delivery_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_include_directories(saved_scan_delivery_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_options(saved_scan_delivery_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(saved_scan_delivery_test PRIVATE Threads::Threads)
+
 # Failed Secure registration must leave an asynchronous GAP disconnect event
 # addressable until NimBLE has dispatched it. This target combines the real
 # Secure registration and production Scan path with the host NimBLE double.
@@ -862,6 +894,7 @@ if(BUILD_TESTING)
   add_test(NAME bt-debug-journal-s3-fallback COMMAND bt_debug_journal_s3_fallback_test)
   add_test(NAME camera-journal-events COMMAND camera_journal_event_test)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
+  add_test(NAME saved-scan-delivery COMMAND saved_scan_delivery_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
