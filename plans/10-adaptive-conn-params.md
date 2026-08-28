@@ -280,19 +280,19 @@ Review fixes (deep review of the first branch revision):
 - Fujifilm Secure registration is the narrow exception to the supervision
   timeout cap. The callback accepts the camera's initial over-cap request only
   while the Secure identifier write is in progress; Basic and all steady-state
-  requests remain capped. The Secure handshake then requests the bounded FAST
-  profile immediately after the identifier write. `updateConnParams()` only
-  confirms that NimBLE queued the request, so the handshake waits up to one
-  second for the controller's asynchronous result. It requires the exact FAST
-  latency and supervision timeout, then clears the registration peer override
-  so the normal inactivity path can later request IDLE. The host NimBLE double
-  deliberately leaves the old parameters visible for its first read, which
-  makes an immediate request-and-reread implementation fail the regression.
-  The narrow registration gate stays active through request confirmation, not
-  only the identifier write, because real cameras may defer their required
-  over-cap request until after the write response. An RAII guard closes it on
-  every success and failure path. The handshake verifies link state before
-  continuing discovery.
+  requests remain capped. The narrow gate stays active through required
+  subscriptions and shutter discovery because real cameras may defer their
+  required over-cap request, and a real X100VI can stop responding if Furble
+  requests FAST before discovery is complete. The handshake then requests the
+  bounded FAST profile. `updateConnParams()` only confirms that NimBLE queued
+  the request, so the handshake waits up to one second for the controller's
+  asynchronous result. It requires the exact FAST latency and supervision
+  timeout, then clears the registration peer override so the normal inactivity
+  path can later request IDLE. The host NimBLE double deliberately leaves the
+  old parameters visible for its first read, which makes an immediate
+  request-and-reread implementation fail the regression. An RAII guard closes
+  the gate on every success and failure path. The handshake verifies link state
+  before continuing discovery.
   Registration also aborts at each GATT boundary when the peer disconnects, so
   a half-open Secure session cannot continue issuing requests or block control
   recovery.
@@ -303,7 +303,12 @@ Review fixes (deep review of the first branch revision):
   inline retry from the security callback would re-enter NimBLE while the
   connect/client lifetime is still owned by the current attempt.
 
-- The cancellation lifetime audit remains a separate follow-up. `Control`
+- Failed registration on a still-live link now restores NimBLE callback-side
+  self-deletion before terminating the link. The connect task does not detach
+  or delete that client while its asynchronous disconnect event is pending.
+  This is the narrow failed-registration lifetime repair covered by the host
+  cleanup test.
+- The broader cancellation lifetime audit remains a separate follow-up. `Control`
   still uses `volatile` rather than synchronised state for `m_Stopped`,
   `m_ConnectAbort`, and `m_ConnectInProgress`; it also publishes
   `m_ConnectCamera` and raw target snapshots across task boundaries with mixed

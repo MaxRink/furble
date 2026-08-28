@@ -15,6 +15,10 @@ lands on fork master. This file applies once it does.
   behavior, everything new is configurable.
 - Camera compatibility plans record shared protocol bytes, model-specific
   additions, and hardware validation status explicitly.
+- Fujifilm Secure registration plans keep the camera's required peer profile
+  through subscriptions and shutter discovery. Request Furble's bounded FAST
+  profile only after discovery completes, then verify the controller applied
+  it before declaring the camera active.
 - Numbering: 0x small improvements, 1x-2x phased features, 30+ framework work,
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS

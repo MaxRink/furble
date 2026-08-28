@@ -43,15 +43,14 @@ protocol core.
   pre-connect ones.
 - Fujifilm Secure's registration identifier write is the only permitted
   exception to the supervision-timeout cap. The Secure handshake immediately
-  requests the bounded FAST profile after that write, then waits up to one
-  second for NimBLE's asynchronous controller update before the remaining
-  discovery work. Verification requires the exact FAST latency and supervision
-  timeout, not merely any timeout below the idle cap. A confirmed update clears
-  the peer override so the normal inactivity path can later enter IDLE. Keep the
-  registration exception active through that confirmation because a camera may
-  defer its required request until after the identifier response. Every failure
-  path must close the exception. Do not broaden it to Basic or to the rest of a
-  connection attempt.
+  keeps that exception active through required subscriptions and shutter
+  discovery. It then requests the bounded FAST profile and waits up to one
+  second for NimBLE's asynchronous controller update. Requesting FAST before
+  discovery is complete can make a real X100VI stop responding. Verification
+  requires the exact FAST latency and supervision timeout, not merely any
+  timeout below the idle cap. A confirmed update clears the peer override so
+  the normal inactivity path can later enter IDLE. Every failure path must
+  close the exception. Do not broaden it to Basic or steady-state operation.
 - Secure registration must check link state after every read, write, and
   subscription boundary. A peer disconnect aborts the handshake immediately;
   never continue discovery or GATT traffic against a disconnected client.
