@@ -98,7 +98,7 @@ const char *opModeName(uint8_t value) {
 void Ricoh::logChr(NimBLERemoteCharacteristic *pChr,
                    const char *label,
                    const char *(*decode)(uint8_t),
-                   uint8_t *lastByte) {
+                   std::atomic<uint8_t> *lastByte) {
   if (pChr == nullptr) {
     ESP_LOGI(LOG_TAG, "Ricoh %s: missing", label);
     return;

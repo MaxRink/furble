@@ -1,6 +1,8 @@
 #ifndef RICOH_H
 #define RICOH_H
 
+#include <atomic>
+
 #include <NimBLERemoteCharacteristic.h>
 
 #include "Camera.h"
@@ -155,7 +157,7 @@ class Ricoh: public Camera {
   void logChr(NimBLERemoteCharacteristic *pChr,
               const char *label,
               const char *(*decode)(uint8_t) = nullptr,
-              uint8_t *lastByte = nullptr);
+              std::atomic<uint8_t> *lastByte = nullptr);
   bool captureAllowed(void);
   bool writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label);
   bool writeOperation(OperationCode code, OperationParameter parameter);
