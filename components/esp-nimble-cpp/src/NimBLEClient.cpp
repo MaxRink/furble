@@ -291,7 +291,7 @@ bool NimBLEClient::connect(const NimBLEAddress& address, bool deleteAttributes, 
         return true;
     }
 
-    m_pTaskData = &taskData;
+    armTaskData(&taskData);
 
     // Wait for the connect timeout time +retry time * retries for the connection to complete
     if (!NimBLEUtils::taskWait(
@@ -300,6 +300,9 @@ bool NimBLEClient::connect(const NimBLEAddress& address, bool deleteAttributes, 
         if (extractTaskData() == nullptr) {
             // Another context claimed the task data and a release is in flight,
             // wait for it so the task data is not destroyed while still referenced.
+            // This wait is unbounded and the claimant may run client callbacks
+            // before it releases, so client callbacks must never block on a
+            // resource held by the task that called connect().
             NimBLEUtils::taskWait(taskData, BLE_NPL_TIME_FOREVER);
         } else if (m_connStatus != CONNECTED) {
             // if the controller doesn't cancel the connection at the timeout, cancel it here.
@@ -309,8 +312,9 @@ bool NimBLEClient::connect(const NimBLEAddress& address, bool deleteAttributes, 
         }
     }
 
-    m_pTaskData = nullptr;
-    rc          = taskData.m_flags;
+    // m_pTaskData is nullptr on every path here: either a releaser claimed it
+    // before releasing or this task claimed it back after the timeout.
+    rc = taskData.m_flags;
     if (rc != 0) {
         NIMBLE_LOGE(LOG_TAG, "Connection failed; status=%d %s", rc, NimBLEUtils::returnCodeToString(rc));
         goto error;
@@ -354,12 +358,17 @@ bool NimBLEClient::secureConnection(bool async) const {
     NimBLETaskData taskData(const_cast<NimBLEClient*>(this), BLE_HS_ENOTCONN);
     int retryCount = 1;
     do {
-        m_pTaskData = &taskData;
+        armTaskData(&taskData);
         if (NimBLEDevice::startSecurity(m_connHandle)) {
+            // The wait only returns once a claimant released the task data,
+            // so m_pTaskData is nullptr again when it does.
+            NimBLEUtils::taskWait(taskData, BLE_NPL_TIME_FOREVER);
+        } else if (extractTaskData() == nullptr) {
+            // startSecurity failed but a GAP event claimed the task data first
+            // and its release is in flight, wait for it so the task data is not
+            // destroyed while still referenced.
             NimBLEUtils::taskWait(taskData, BLE_NPL_TIME_FOREVER);
         }
-        // Claim the task data back in case no event released it.
-        extractTaskData();
     } while (taskData.m_flags == BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING) && retryCount--);
 
     if (taskData.m_flags == 0) {
@@ -1003,6 +1012,18 @@ NimBLETaskData* NimBLEClient::extractTaskData() const {
     ble_npl_hw_exit_critical(sr);
     return pTaskData;
 } // extractTaskData
+
+/**
+ * @brief Atomically arm the task data of a task about to wait.
+ * @param [in] pTaskData A pointer to the task data of the waiting task.
+ * @details Uses the same critical section as extractTaskData so the arm and
+ * the claim are serialized against each other.
+ */
+void NimBLEClient::armTaskData(NimBLETaskData* pTaskData) const {
+    uint32_t sr = ble_npl_hw_enter_critical();
+    m_pTaskData = pTaskData;
+    ble_npl_hw_exit_critical(sr);
+} // armTaskData
 
 void NimBLEClient::connectEstablishedTimerCb(struct ble_npl_event* event) {
     auto* pClient = static_cast<NimBLEClient*>(ble_npl_event_get_arg(event));

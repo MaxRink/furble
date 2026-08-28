@@ -147,6 +147,7 @@ class NimBLEClient {
     void        startConnectEstablishedTimer(uint16_t connInterval);
     bool        completeConnectEstablished();
     NimBLETaskData* extractTaskData() const;
+    void            armTaskData(NimBLETaskData* pTaskData) const;
     static int      exchangeMTUCb(uint16_t conn_handle, const ble_gatt_error* error, uint16_t mtu, void* arg);
     static int  serviceDiscoveredCB(uint16_t                     connHandle,
                                     const struct ble_gatt_error* error,
