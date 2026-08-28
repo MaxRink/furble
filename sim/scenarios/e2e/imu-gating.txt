@@ -1,7 +1,6 @@
 # IMU presence and read gating. The host seam starts from the scenario's IMU
 # setting, so this proves disabled pages stay hidden and do not render stale
-# values. The explicit enable action then exercises the same shared surface used
-# by the level and diagnostics scenarios.
+# values. Sensor presence and persisted opt-in are independent gates.
 seed fauxny true
 seed imu false
 wait 400
@@ -17,15 +16,8 @@ action nav imu
 wait 1200
 assert ui.imu_accel_x none
 
-action imu.enable
-action nav diagnostics
-wait 150
-assert ui.imu_button_visible yes
-assert ui.level_button_visible yes
 action nav imu
-action imu.accel -0.100 0.200 0.970
-wait 1200
-assert ui.imu_accel_x -0.100
-assert ui.imu_accel_y 0.200
-assert ui.imu_accel_z 0.970
+wait 150
+assert ui.page diagnostics
+assert ui.imu_accel_x none
 exit

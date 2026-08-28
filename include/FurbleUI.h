@@ -1,6 +1,13 @@
 #ifndef FURBLE_UI_H
 #define FURBLE_UI_H
 
+#include <mutex>
+
+namespace Furble {
+/** Serializes M5.Imu transactions between UI timers and debug console probes. */
+extern std::mutex g_IMUMutex;
+}  // namespace Furble
+
 #if defined(FURBLE_NO_DISPLAY)
 
 #include <cstdint>
@@ -50,10 +57,22 @@ class UI {
 
 #include <array>
 #include <atomic>
+#if defined(FURBLE_SIM)
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#endif
 #include <initializer_list>
+#if defined(FURBLE_SIM)
+#include <memory>
+#endif
 #include <mutex>
 #include <optional>
 #include <string>
+#if defined(FURBLE_SIM)
+#include <thread>
+#include <utility>
+#endif
 #include <unordered_map>
 
 #include <lvgl.h>
@@ -256,7 +275,10 @@ class UI {
     lv_obj_t *imuGyro;
     float imuAccelValues[3];
     float imuGyroValues[3];
-    bool imuValuesValid;
+    bool imuAccelValid;
+    bool imuGyroValid;
+    uint32_t imuAccelUpdates;
+    uint32_t imuGyroUpdates;
     /** True while the 'IMU live' page is open, gates I2C polling. */
     bool imuPageActive;
   } diagnostics_t;
@@ -730,6 +752,26 @@ class UI {
   // the sim build reads these; the firmware still uses the live LVGL streak.
   bool m_SimClickStreakActive = false;
   uint8_t m_SimClickStreak = 0;
+
+  struct sim_request_t {
+    std::function<void()> operation;
+    std::mutex mutex;
+    std::condition_variable complete;
+    bool done = false;
+    bool result = true;
+  };
+
+  std::mutex m_SimRequestMutex;
+  std::deque<std::shared_ptr<sim_request_t> > m_SimRequests;
+  std::thread::id m_SimUiThread;
+  std::atomic<bool> m_SimLastActionOnUi {false};
+
+  bool simRunOnUi(std::function<void()> operation);
+  void serviceSimRequests(void);
+  void simScenarioActionOnUi(const char *action);
+  bool simulatorHomeOnUi(void);
+  bool simulatorBackOnUi(void);
+  bool simPressButtonOnUi(const char *name, bool hold);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;

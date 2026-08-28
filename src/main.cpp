@@ -31,6 +31,8 @@
 #if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
 
+std::mutex g_IMUMutex;
+
 // Device status for the companion service. The display build serves these from
 // the UI task, the headless build has no UI so it reads M5.Power directly and
 // reports an idle intervalometer.

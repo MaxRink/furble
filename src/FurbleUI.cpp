@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <tuple>
 
 #include <M5Unified.h>
@@ -96,13 +98,21 @@ uint32_t g_simDisconnectCalls = 0;
 
 namespace Furble {
 
+std::mutex g_IMUMutex;
+
 namespace {
-bool imuEnabledForUI(void) {
+bool imuSensorEnabledForUI(void) {
 #if defined(FURBLE_SIM)
   return Furble::Sim::imuEnabled();
 #else
   return M5.Imu.isEnabled();
 #endif
+}
+
+// The persisted opt-in is intentionally evaluated only while constructing or
+// redisplaying the menu. Live sensor timers must never perform NVS reads.
+bool imuEnabledForUI(void) {
+  return Settings::load<bool>(Settings::IMU) && imuSensorEnabledForUI();
 }
 
 void setLabelTextIfChanged(lv_obj_t *label, const char *text) {
@@ -252,7 +262,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -2175,7 +2185,65 @@ void UI::configureControl(ControlMode mode, bool set) {
 }
 
 #if defined(FURBLE_SIM)
+bool UI::simRunOnUi(std::function<void()> operation) {
+  bool onUi = false;
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    onUi = std::this_thread::get_id() == m_SimUiThread;
+  }
+  if (onUi) {
+    operation();
+    return true;
+  }
+
+  auto request = std::make_shared<sim_request_t>();
+  request->operation = std::move(operation);
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    m_SimRequests.push_back(request);
+  }
+  while (true) {
+    std::unique_lock<std::mutex> lock(request->mutex);
+    if (request->complete.wait_for(lock, std::chrono::seconds(5),
+                                   [&request]() { return request->done; })) {
+      return request->result;
+    }
+    // The simulator must fail loudly if the UI task has stopped servicing the
+    // queue; silently continuing would turn a thread-ownership regression into
+    // a misleading eventual-state assertion.
+    return false;
+  }
+}
+
+void UI::serviceSimRequests(void) {
+  std::deque<std::shared_ptr<sim_request_t>> requests;
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    requests.swap(m_SimRequests);
+  }
+  for (const auto &request : requests) {
+    bool result = true;
+    try {
+      request->operation();
+    } catch (...) {
+      result = false;
+    }
+    {
+      std::lock_guard<std::mutex> lock(request->mutex);
+      request->result = result;
+      request->done = true;
+    }
+    request->complete.notify_one();
+  }
+}
+
 void UI::simScenarioAction(const char *action) {
+  const std::string command = action == nullptr ? "" : action;
+  simRunOnUi([this, command]() { simScenarioActionOnUi(command.c_str()); });
+}
+
+void UI::simScenarioActionOnUi(const char *action) {
+  m_SimLastActionOnUi.store(std::this_thread::get_id() == m_SimUiThread);
   const std::string command = action == nullptr ? "" : action;
   if (command == "blind") {
     lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_RemoteShutter).page);
@@ -2298,7 +2366,6 @@ void UI::simScenarioAction(const char *action) {
     if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ACCEL_PREFIX), "%f %f %f",
                     &accel[0], &accel[1], &accel[2])
         == 3) {
-      Furble::Sim::imuSetEnabled(true);
       Furble::Sim::imuSetAccel(accel[0], accel[1], accel[2]);
       resetLevelFilter();
     }
@@ -2310,7 +2377,6 @@ void UI::simScenarioAction(const char *action) {
     float roll = 0.0f;
     if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ROLL_PREFIX), "%f", &roll)
         == 1) {
-      Furble::Sim::imuSetEnabled(true);
       Furble::Sim::imuSetOrientation(roll, 0.0f);
       resetLevelFilter();
     }
@@ -2323,7 +2389,6 @@ void UI::simScenarioAction(const char *action) {
     if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_PITCH_PREFIX), "%f",
                     &pitch)
         == 1) {
-      Furble::Sim::imuSetEnabled(true);
       Furble::Sim::imuSetOrientation(0.0f, pitch);
       resetLevelFilter();
     }
@@ -2336,7 +2401,6 @@ void UI::simScenarioAction(const char *action) {
     if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_GYRO_PREFIX), "%f %f %f",
                     &gyro[0], &gyro[1], &gyro[2])
         == 3) {
-      Furble::Sim::imuSetEnabled(true);
       Furble::Sim::imuSetGyro(gyro[0], gyro[1], gyro[2]);
     }
     return;
@@ -2344,6 +2408,15 @@ void UI::simScenarioAction(const char *action) {
 
   if (command == "imu.enable" || command == "imu.disable") {
     Furble::Sim::imuSetEnabled(command == "imu.enable");
+    return;
+  }
+
+  if (command == "imu.accel.fail" || command == "imu.accel.recover") {
+    Furble::Sim::imuSetAccelAvailable(command == "imu.accel.recover");
+    return;
+  }
+  if (command == "imu.gyro.fail" || command == "imu.gyro.recover") {
+    Furble::Sim::imuSetGyroAvailable(command == "imu.gyro.recover");
     return;
   }
 
@@ -2561,6 +2634,7 @@ void UI::simScenarioAction(const char *action) {
         {"settings",          m_SettingsStr        },
         {"display",           m_DisplayStr         },
         {"features",          m_FeaturesStr        },
+        {"sensors",           m_SensorsStr         },
         {"infrared",          m_IRSettingsStr      },
         {"gps_rate",          m_GPSRateStr         },
         {"gps_sentences",     m_GPSSentencesStr    },
@@ -2606,14 +2680,8 @@ void UI::simScenarioAction(const char *action) {
       return;
     }
     lv_obj_t *button = entry->second.button;
-    if (button != nullptr) {
-      // Scenario actions execute on the script thread, while this handler is
-      // normally entered from the UI task. Give handlers the same mutex
-      // ownership as lv_task_handler; startScan temporarily releases it
-      // around the potentially blocking scan start call.
-      m_Mutex.lock();
+    if (button != nullptr && !lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN)) {
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
-      m_Mutex.unlock();
     }
     return;
   }
@@ -2695,6 +2763,7 @@ void UI::simScenarioAction(const char *action) {
       {"settings",          m_SettingsStr         },
       {"display",           m_DisplayStr          },
       {"features",          m_FeaturesStr         },
+      {"sensors",           m_SensorsStr          },
       {"infrared",          m_IRSettingsStr       },
       {"gps_rate",          m_GPSRateStr          },
       {"gps_sentences",     m_GPSSentencesStr     },
@@ -2736,6 +2805,9 @@ void UI::simScenarioAction(const char *action) {
 
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
+  if (query == "sim_action_on_ui") {
+    return m_SimLastActionOnUi.load() ? "yes" : "no";
+  }
 
   // Keep diagnostics assertions tied to the actual rendered labels. These
   // queries are simulator-only and intentionally return small, stable tokens
@@ -3183,7 +3255,7 @@ std::string UI::simQueryState(const char *key) {
     // matrix scenario, so adding a page cannot silently turn into "other" in
     // host coverage. Optional capability pages are looked up with find below
     // because their menu entries are not built when the capability is absent.
-    const std::array<std::pair<const char *, const char *>, 49> pages = {
+    const std::array<std::pair<const char *, const char *>, 50> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -3202,6 +3274,7 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalometerStr, "timer"},
          {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
+         {m_SensorsStr, "sensors"},
          {m_DisplayStr, "display"},
          {m_TextSizeStr, "text_size"},
          {m_GPSStr, "gps"},
@@ -3816,6 +3889,12 @@ std::string UI::simQueryState(const char *key) {
     char formatted[16];
     std::snprintf(formatted, sizeof(formatted), "%.3f", value);
     return formatted;
+  }
+  if (query == "imu_accel_updates") {
+    return std::to_string(m_Diagnostics.imuAccelUpdates);
+  }
+  if (query == "imu_gyro_updates") {
+    return std::to_string(m_Diagnostics.imuGyroUpdates);
   }
 
   return "";
@@ -4763,6 +4842,7 @@ void UI::levelUpdate(lv_timer_t *timer) {
   lv_display_trigger_activity(NULL);
 
   float accel[3];
+  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
 #if defined(FURBLE_SIM)
   // The simulator has no sensor, so read the injected IMU state through the same
   // enabled, update and getAccel surface the firmware uses. A scenario drives
@@ -4776,7 +4856,7 @@ void UI::levelUpdate(lv_timer_t *timer) {
     return;
   }
 #else
-  if (!imuEnabledForUI()) {
+  if (!imuSensorEnabledForUI()) {
     return;
   }
 
@@ -4983,7 +5063,12 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
     int32_t tubeWidth = lv_obj_get_content_width(level->sideTube);
     int32_t sideBubbleWidth = lv_obj_get_width(level->sideBubble);
     int32_t sideMax = std::max<int32_t>(0, ((tubeWidth - sideBubbleWidth) / 2) - 2);
-    int32_t sideX = static_cast<int32_t>(std::round(rollShaped * sideMax));
+    // In side mode the useful reference is the selected wall orientation,
+    // not flat (0 degrees). This keeps a perfectly vertical device centered
+    // and makes small deviations readable on either side of the tube.
+    const float sideReference = level->rotation == 90 ? 90.0f : -90.0f;
+    const float sideShaped = shape(roll - sideReference);
+    int32_t sideX = static_cast<int32_t>(std::round(sideShaped * sideMax));
     if (level->sideBubbleX != sideX) {
       level->sideBubbleX = sideX;
       lv_obj_align(level->sideBubble, LV_ALIGN_CENTER, sideX, 0);
@@ -5397,6 +5482,8 @@ void UI::startScan(void) {
 
   scan.clear();
 #if defined(FURBLE_SIM)
+  // Keep the same unlock/relock hand-off as firmware. The simulator's scan
+  // start probe acquires this mutex, proving the start path cannot deadlock.
   scan.setStartProbe([]() {
     m_Mutex.lock();
     m_Mutex.unlock();
@@ -7371,6 +7458,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 
   // only poll the IMU over I2C while its live page is open
   if (diagnostics->imuPageActive) {
+    std::lock_guard<std::mutex> imuLock(g_IMUMutex);
 #if defined(FURBLE_SIM)
     // Read the injected IMU state through the same surface as the firmware, so a
     // scenario can drive the live diagnostics readout too.
@@ -7390,7 +7478,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 #endif
 
       if (accelRead && diagnostics->imuAccel != nullptr) {
-        bool changed = !diagnostics->imuValuesValid;
+        bool changed = !diagnostics->imuAccelValid;
         for (size_t index = 0; index < 3; index++) {
           changed =
               changed || (std::fabs(diagnostics->imuAccelValues[index] - accel[index]) >= 0.001f);
@@ -7399,11 +7487,13 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
         if (changed) {
           lv_label_set_text_fmt(diagnostics->imuAccel, "Accel (G):\nX %.3f  Y %.3f  Z %.3f",
                                 accel[0], accel[1], accel[2]);
+          diagnostics->imuAccelUpdates++;
         }
+        diagnostics->imuAccelValid = true;
       }
 
       if (gyroRead && diagnostics->imuGyro != nullptr) {
-        bool changed = !diagnostics->imuValuesValid;
+        bool changed = !diagnostics->imuGyroValid;
         for (size_t index = 0; index < 3; index++) {
           changed =
               changed || (std::fabs(diagnostics->imuGyroValues[index] - gyro[index]) >= 0.001f);
@@ -7412,10 +7502,16 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
         if (changed) {
           lv_label_set_text_fmt(diagnostics->imuGyro, "Gyro (deg/s):\nX %.2f  Y %.2f  Z %.2f",
                                 gyro[0], gyro[1], gyro[2]);
+          diagnostics->imuGyroUpdates++;
         }
+        diagnostics->imuGyroValid = true;
       }
-
-      diagnostics->imuValuesValid = accelRead && gyroRead;
+      if (!accelRead) {
+        diagnostics->imuAccelValid = false;
+      }
+      if (!gyroRead) {
+        diagnostics->imuGyroValid = false;
+      }
     }
   }
 }
@@ -8273,6 +8369,17 @@ void UI::task(void) {
     Platform::getInstance().update();
 
     m_Mutex.lock();
+#if defined(FURBLE_SIM)
+    {
+      std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+      m_SimUiThread = std::this_thread::get_id();
+    }
+    // Script input is part of the UI task's locked phase, just like physical
+    // LVGL input. This preserves the firmware mutex hand-offs in scan startup
+    // and prevents SDL-thread LVGL access.
+    Sim::driverTick();
+    serviceSimRequests();
+#endif
 #if defined(FURBLE_CONSOLE)
     serviceRequests();
 #endif
@@ -8296,6 +8403,14 @@ void UI::task(void) {
 
 #if defined(FURBLE_SIM)
 bool UI::simulatorHome(void) {
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, result]() { result->store(simulatorHomeOnUi()); })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simulatorHomeOnUi(void) {
   lv_menu_clear_history(m_MainMenu.main);
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
   lv_group_focus_obj(m_Menu.at(m_ScanStr).button);
@@ -8303,6 +8418,14 @@ bool UI::simulatorHome(void) {
 }
 
 bool UI::simulatorBack(void) {
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, result]() { result->store(simulatorBackOnUi()); })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simulatorBackOnUi(void) {
   lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
   if (back == nullptr || lv_menu_get_cur_main_page(m_MainMenu.main) == m_MainMenu.page) {
     return false;
@@ -8313,6 +8436,17 @@ bool UI::simulatorBack(void) {
 }
 
 bool UI::simPressButton(const char *name, bool hold) {
+  const std::string button = name == nullptr ? "" : name;
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, button, hold, result]() {
+        result->store(simPressButtonOnUi(button.c_str(), hold));
+      })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simPressButtonOnUi(const char *name, bool hold) {
   const std::string button = name == nullptr ? "" : name;
 
   // Resolve the silk-screen button to its LVGL input-device role using the same

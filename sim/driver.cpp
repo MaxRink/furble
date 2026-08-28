@@ -215,7 +215,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps",         "gps_nmea",     "fauxny",           "autoconnect",
       "reconnect",   "sleep_conn",   "boot_splash",      "connect_fail",
       "no_touch",    "saved_camera", "scan_start_probe", "scan_distinct",
-      "auto_off_charging", "imu",
+      "auto_off_charging", "imu",         "imu_sensor",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -932,7 +932,12 @@ void applyScenarioSettings(void) {
   // Keep the host sensor surface in step with the setting used to construct
   // the UI. The SDL platform cannot initialize a physical IMU, so the shared
   // seam owns the enabled state for both page visibility and sensor reads.
-  imuSetEnabled(scenarioSettingIsTrue("imu"));
+  bool imu_sensor = scenarioSettingIsTrue("imu");
+  const auto imu_sensor_setting = scenarioSettings.find("imu_sensor");
+  if (imu_sensor_setting != scenarioSettings.end()) {
+    imu_sensor = parseBool(imu_sensor_setting->second);
+  }
+  imuSetEnabled(imu_sensor);
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;

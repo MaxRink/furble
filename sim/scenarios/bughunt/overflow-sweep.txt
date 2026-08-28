@@ -16,6 +16,7 @@
 seed fauxny true
 seed saved_camera true
 seed gps true
+seed imu true
 wait 300
 # Home menu: must fit on every panel.
 print ui.page
@@ -70,6 +71,13 @@ wait 100
 # any regression where the hint leaks overflow into a page that must fit.
 print ui.page
 print ui.overflow
+action page settings
+action nav sensors
+wait 100
+# Core uses a grid for Settings; Sensors must occupy its own tile rather than
+# colliding with Feedback/IR. The page itself must remain reachable and fit.
+assert ui.page sensors
+assert ui.overflow no
 action page settings
 action nav infrared
 wait 100

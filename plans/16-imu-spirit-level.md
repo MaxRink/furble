@@ -704,3 +704,22 @@ physically irreducible one: that the real BMI270 / MPU6886 sensor reads through
 roll-to-rotation sign and the S3 DMA rotation flush filling the full landscape
 width, which the SDL software-rotation path cannot reproduce). Everything the
 simulator can express is green before that bench step.
+
+## Current reconstruction review, 2026-08-28
+
+Scripted actions, navigation, and button shims now execute in the UI task's
+locked phase. Scan startup retains its production unlock and relock handoff,
+and `scan-distinct-rows-heartbeat.txt` asserts the start probe is not blocked.
+The IMU menu entries require both the persisted `IMU` opt-in and a detected
+sensor. Live timers use only the already available sensor state and do not read
+NVS. Accel and gyro diagnostics retain independent validity and redraw baselines;
+`imu-validity.txt` covers one sensor failing while the other remains stable.
+
+Side-mode bubble coordinates use deviation from the selected plus or minus 90
+degree wall reference, so exact side orientation is centered and deviations on
+both sides are tested. Axis and sign calibration remain hardware-only.
+
+The debug console adds read-only `imu status`, reporting the persisted setting,
+symbolic sensor type, update result, and accel/gyro values. A shared IMU mutex
+serializes console probes with UI timer reads. No NVS write or LVGL access is
+performed by the command.

@@ -22,6 +22,8 @@ namespace {
 std::atomic<bool> g_enabled {true};
 std::atomic<float> g_accel[3] = {{0.0f}, {0.0f}, {1.0f}};
 std::atomic<float> g_gyro[3] = {{0.0f}, {0.0f}, {0.0f}};
+std::atomic<bool> g_accelAvailable {true};
+std::atomic<bool> g_gyroAvailable {true};
 }  // namespace
 
 void imuSetEnabled(bool enabled) {
@@ -44,7 +46,7 @@ void imuSetAccel(float x, float y, float z) {
 }
 
 bool imuGetAccel(float *x, float *y, float *z) {
-  if (!g_enabled.load()) {
+  if (!g_enabled.load() || !g_accelAvailable.load()) {
     return false;
   }
   if (x != nullptr) {
@@ -66,7 +68,7 @@ void imuSetGyro(float x, float y, float z) {
 }
 
 bool imuGetGyro(float *x, float *y, float *z) {
-  if (!g_enabled.load()) {
+  if (!g_enabled.load() || !g_gyroAvailable.load()) {
     return false;
   }
   if (x != nullptr) {
@@ -79,6 +81,14 @@ bool imuGetGyro(float *x, float *y, float *z) {
     *z = g_gyro[2].load();
   }
   return true;
+}
+
+void imuSetAccelAvailable(bool available) {
+  g_accelAvailable.store(available);
+}
+
+void imuSetGyroAvailable(bool available) {
+  g_gyroAvailable.store(available);
 }
 
 void imuSetOrientation(float rollDeg, float pitchDeg) {

@@ -1,7 +1,8 @@
 # End-to-end regression for the spirit level page (PR #28 v3.1 rework).
 #
-# The device IMU is disabled in the simulator, so the level page is reached with
-# the FURBLE_SIM nav hook and driven through the general injected IMU state. The
+# The simulator starts with the persisted IMU setting enabled, so the level page
+# is reached with the FURBLE_SIM nav hook and driven through the general injected
+# IMU state. The
 # imu.roll, imu.pitch and imu.accel actions set the shared sim IMU, which the
 # firmware reads through the same M5.Imu surface (isEnabled, update, getAccel).
 # The real level timer, filter, sensitivity curve and auto-rotate logic run
@@ -23,6 +24,7 @@
 #  - Side tube shows only in the flipped orientation; the bullseye and target
 #    show only in portrait.
 seed fauxny true
+seed imu true
 wait 300
 action nav level
 wait 200
@@ -44,6 +46,7 @@ assert ui.level_surface_top 50
 
 # Flat: the circle bubble is centred on the target.
 action imu.accel 0 0 1
+assert ui.sim_action_on_ui yes
 wait 120
 assert ui.level_bubble_x 0
 assert ui.level_bubble_y 0
@@ -72,20 +75,32 @@ action imu.roll 50
 wait 120
 assert ui.level_rotation 0
 
-# Lay on the right side, 70 degrees: the page flips to landscape, the tube shows
-# and pins near the rim, the bullseye and target hide, and the layout still fits.
+# Lay on the right side, 70 degrees: the page flips to landscape, the tube shows,
+# and the layout still fits.
 action imu.roll 70
 wait 200
 assert ui.level_rotation 90
 assert ui.level_side_visible yes
 assert ui.level_bubble_visible no
 assert ui.level_target_visible no
-assert ui.level_side_x 97
+assert_max ui.level_side_x -1
 assert_min ui.level_side_actual_x 1
 assert ui.level_root_width 240
 assert ui.level_root_height 135
 assert ui.level_side_on_screen yes
 assert ui.overflow no
+
+# The exact right-side reference is centered; deviations appear on either side
+# of the tube rather than saturating at an edge.
+action imu.roll 90
+wait 150
+assert ui.level_side_x 0
+action imu.roll 84
+wait 150
+assert_max ui.level_side_x -1
+action imu.roll 96
+wait 150
+assert_min ui.level_side_x 1
 
 # Hysteresis hold: 50 degrees is inside the band, so the landscape orientation is
 # held rather than flapping back to portrait.
@@ -98,11 +113,21 @@ assert ui.level_side_visible yes
 action imu.roll -70
 wait 200
 assert ui.level_rotation 270
-assert ui.level_side_x -97
+assert_min ui.level_side_x 1
 assert_min ui.level_side_actual_x 1
 assert ui.level_root_width 240
 assert ui.level_root_height 135
 assert ui.level_side_on_screen yes
+
+action imu.roll -90
+wait 150
+assert ui.level_side_x 0
+action imu.roll -96
+wait 150
+assert_max ui.level_side_x -1
+action imu.roll -84
+wait 150
+assert_min ui.level_side_x 1
 
 # Leaving while still rotated must restore the whole application to portrait,
 # including the pixel-sized root window. This is the real user exit path, not

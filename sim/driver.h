@@ -74,6 +74,8 @@ void imuSetAccel(float x, float y, float z);
 bool imuGetAccel(float *x, float *y, float *z);
 void imuSetGyro(float x, float y, float z);
 bool imuGetGyro(float *x, float *y, float *z);
+void imuSetAccelAvailable(bool available);
+void imuSetGyroAvailable(bool available);
 
 // Set the gravity vector from a roll and pitch orientation in degrees, using
 // the same convention the spirit level derives from the accelerometer

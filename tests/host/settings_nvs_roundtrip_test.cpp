@@ -85,6 +85,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif

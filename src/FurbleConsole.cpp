@@ -1302,6 +1302,44 @@ int cmdStatus(int argc, char **argv) {
   return 0;
 }
 
+int cmdIMU(int argc, char **argv) {
+  if (argc != 2 || strcmp(argv[1], "status") != 0) {
+    return fail("usage: imu status");
+  }
+
+  const bool setting = Settings::load<bool>(Settings::IMU);
+  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+  const bool enabled = M5.Imu.isEnabled();
+  const auto type = M5.Imu.getType();
+  const char *typeName = "unknown";
+  switch (type) {
+    case m5::imu_none: typeName = "none"; break;
+    case m5::imu_unknown: typeName = "unknown"; break;
+    case m5::imu_sh200q: typeName = "sh200q"; break;
+    case m5::imu_mpu6050: typeName = "mpu6050"; break;
+    case m5::imu_mpu6886: typeName = "mpu6886"; break;
+    case m5::imu_mpu9250: typeName = "mpu9250"; break;
+    case m5::imu_bmi270: typeName = "bmi270"; break;
+  }
+  printf("setting: %s\n", boolStr(setting));
+  printf("enabled: %s\n", boolStr(enabled));
+  printf("type: %s (%u)\n", typeName, static_cast<unsigned>(type));
+  if (!enabled) {
+    printf("updated: false\naccel: false\ngyro: false\n");
+    return 0;
+  }
+
+  const auto updated = M5.Imu.update();
+  float accel[3] = {};
+  float gyro[3] = {};
+  const bool accelRead = M5.Imu.getAccel(&accel[0], &accel[1], &accel[2]);
+  const bool gyroRead = M5.Imu.getGyro(&gyro[0], &gyro[1], &gyro[2]);
+  printf("updated: %s\n", boolStr(updated != m5::IMU_Class::sensor_mask_none));
+  printf("accel: %s %.3f %.3f %.3f\n", boolStr(accelRead), accel[0], accel[1], accel[2]);
+  printf("gyro: %s %.3f %.3f %.3f\n", boolStr(gyroRead), gyro[0], gyro[1], gyro[2]);
+  return 0;
+}
+
 int cmdVersion(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -1999,6 +2037,7 @@ constexpr esp_console_cmd_t command(const char *name,
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
+    command("imu", "imu status (diagnostic sensor probe)", cmdIMU),
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),

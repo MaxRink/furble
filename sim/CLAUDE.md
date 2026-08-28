@@ -23,7 +23,7 @@ and an entry here):
 | --- | --- | --- |
 | BLE discovery | `UI::startScan`, `Scan` lifecycle, generation fence, queue drain, `CameraList` update | `sim/ScanSim.cpp` substitutes only the radio/NimBLE event source. Its worker publishes immutable events; it never calls `CameraList` or LVGL. `tests/host` compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
-| Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. Actions send the same LVGL events as physical input where possible; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
+| Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
 | Camera links | Production `Control` state machine and UI connection handlers | `Camera`/`Control` shims provide a deterministic peer and `simDropActiveLink` injects only a link-loss event. No action edits production connection state behind the state machine. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
@@ -267,11 +267,16 @@ a regression.
   scenario injects orientation through `sim/ImuSim.cpp`, which mirrors the same
   `M5.Imu` surface (enabled, update, getAccel, getGyro) the firmware reads under
   `#if defined(FURBLE_SIM)`. Actions: `imu.accel <x> <y> <z>` (G), `imu.roll
-  <deg>`, `imu.pitch <deg>`, `imu.gyro <x> <y> <z>`, `imu.enable`, `imu.disable`.
+  <deg>`, `imu.pitch <deg>`, `imu.gyro <x> <y> <z>`, `imu.enable`, `imu.disable`,
+  `imu.accel.fail/recover` and `imu.gyro.fail/recover`.
   Seed `imu true` turns the IMU setting on, while `seed imu false` models the
   disabled setting and hides both optional pages. The spirit level filter,
   sensitivity curve and auto-rotate all run on the injected sample.
   `imu_accel_x/y/z` read the rendered Diagnostics > IMU live label back.
+  `imu_accel_updates` and `imu_gyro_updates` count actual label redraws; validity
+  is tracked independently so one failed sensor does not redraw the other.
+  Script actions are queued onto the UI task before touching LVGL; the
+  `sim_action_on_ui` query is a thread-ownership regression guard.
   `level_root_width/height` expose the pixel-sized top-level window after panel
   rotation, and `level_side_on_screen` verifies the complete moving bubble lies
   inside the active display. Keep these guards with the numeric bubble-offset
