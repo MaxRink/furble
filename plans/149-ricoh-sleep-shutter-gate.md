@@ -69,3 +69,15 @@ be implemented.
 - https://github.com/sky18Dragon/RICOH-GR-Live-View-Shooting/blob/main/docs/known_issues.md
 - https://github.com/sky18Dragon/RICOH-GR-Live-View-Shooting/blob/main/logs/2026-06-28-camera-power-state-investigation.md
 - https://www.ricoh-imaging.co.jp/english/products/gr-3/feature/04.html
+
+## Review notes
+
+- The gate applies only when the OperationMode characteristic exists. Bodies
+  matched by the broad Ricoh matcher without the GR camera service cannot
+  report a power state and shot fine before the gate, so they keep their
+  shutter. The GR IV always exposes the characteristic.
+- The fresh read costs one ATT round trip per press, bounded by the ATT
+  transaction timeout on a dead link. It runs on the target task, not under
+  the camera mutex, so it cannot recreate the teardown wedge.
+- GPS and location control writes are not gated yet. Whether they are safe in
+  BLE standby is unknown; the bench experiments in this plan cover it.

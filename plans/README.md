@@ -165,7 +165,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [146-setstate-sleep-lock-order.md](146-setstate-sleep-lock-order.md) | Acquire the sleep lock before publishing the active control state |
 | [147-connect-reclaim-order.md](147-connect-reclaim-order.md) | Failed-connect reclaim ordering for the Ricoh secure-timeout use-after-free |
 | [148-teardown-connect-cancel.md](148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
-| [148-ricoh-sleep-shutter-gate.md](148-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
+| [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
 
 ## Design documents
 

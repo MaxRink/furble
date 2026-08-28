@@ -134,8 +134,8 @@ class Ricoh: public Camera {
   // notifications. Diagnostic only: the capture gate never trusts this cache
   // because a held connection can hold stale BLE_STARTUP or stale CAPTURE
   // forever. Capture authorization always uses a fresh OperationMode read.
-  uint8_t m_LastPower = STATE_UNKNOWN;
-  uint8_t m_LastOperationMode = STATE_UNKNOWN;
+  std::atomic<uint8_t> m_LastPower {STATE_UNKNOWN};
+  std::atomic<uint8_t> m_LastOperationMode {STATE_UNKNOWN};
 
   uint32_t m_LastGpsWriteMs = 0;
   bool m_HasGpsWrite = false;

@@ -396,8 +396,12 @@ bool Ricoh::captureAllowed(void) {
     return false;
   }
   if (m_OperationMode == nullptr || !m_OperationMode->canRead()) {
-    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: OperationMode unavailable");
-    return false;
+    // The Ricoh matcher also accepts bodies that expose the shooting service
+    // without the GR camera service. Those cannot report a power state and
+    // shot fine before this gate, so the gate only applies when the
+    // characteristic exists. The GR IV always exposes it.
+    ESP_LOGW(LOG_TAG, "Ricoh OperationMode unavailable; allowing capture");
+    return true;
   }
   NimBLEAttValue value;
   if (!gattRead(m_OperationMode, value) || value.length() < 1) {
