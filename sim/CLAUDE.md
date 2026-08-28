@@ -24,7 +24,7 @@ and an entry here):
 | BLE discovery | `UI::startScan`, `Scan` lifecycle, generation fence, queue drain, `CameraList` update | `sim/ScanSim.cpp` substitutes only the radio/NimBLE event source. Its worker publishes immutable events; it never calls `CameraList` or LVGL. `tests/host` compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
-| Camera links | Production `Control` state machine and UI connection handlers | `Camera`/`Control` shims provide a deterministic peer and `simDropActiveLink` injects only a link-loss event. No action edits production connection state behind the state machine. |
+| Camera links | Production `Control` state machine and UI connection handlers | `Camera`/`Control` shims provide a deterministic peer and `simDropActiveLink` injects only a link-loss event. No action edits production connection state behind the state machine, with one deliberate exception: `action link-lies-kill` (armed by `seed link_lies true`) kills the fake link truth while the control state stays active, constructing the false-connected divergence for the driver's continuous liveness invariant (plan 155). |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
@@ -111,7 +111,8 @@ a regression.
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
   ordinary `wait` keeps feeding it. The `watchdog` seed is therefore accepted
   only by the StickS3 model. Specialized pre-start seeds also include
-  `bulb_duration` and `gps_uart_mode`; keep their values synchronized with
+  `bulb_duration`, `gps_uart_mode`, `link_lies`, `liveness_check`, and
+  `liveness_grace_ms`; keep their values synchronized with
   `docs/sim.md` and `validateSeed`.
   The simulator suppresses only the first post-stall bookkeeping feed, so the
   following assertion observes retained PMIC state before another normal UI

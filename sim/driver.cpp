@@ -86,6 +86,21 @@ bool waiting = false;
 battery_reading_t simulatedBattery = {80, 4000, 0, false};
 bool simulatedPowerOff = false;
 
+// Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
+// presents the Connected screen (the same three-way check the ui.connected
+// query makes) while fewer camera links are actually up than the session has
+// targets, a grace timer starts. Divergence outliving the grace period is a
+// liveness violation: the 2026-08-28 hardware incident kept a Connected screen
+// up while neither camera had a live link. Scenarios that deliberately
+// construct the divergence opt out of enforcement with "seed liveness_check
+// false"; detection still counts violations so such a scenario can assert the
+// invariant would have fired.
+constexpr uint32_t LIVENESS_GRACE_DEFAULT_MS = 3000;
+bool livenessArmed = false;
+bool livenessLatched = false;
+uint32_t livenessDeadline = 0;
+uint32_t livenessViolations = 0;
+
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
     return SDLK_UP;
@@ -193,7 +208,7 @@ bool booleanSeedValue(const std::string &value) {
 }
 
 void validateSeed(const std::string &name, const std::string &value) {
-  if (name == "clock_ms") {
+  if (name == "clock_ms" || name == "liveness_grace_ms") {
     parseUnsigned(value);
     return;
   }
@@ -227,6 +242,8 @@ void validateSeed(const std::string &name, const std::string &value) {
       "auto_off_charging",
       "imu",
       "imu_sensor",
+      "link_lies",
+      "liveness_check",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -707,6 +724,86 @@ std::string settingByteValue(const std::string &name) {
   return std::to_string(static_cast<unsigned>(Settings::load<uint8_t>(found->second)));
 }
 
+// Enforcement default is on. "seed liveness_check false" opts a scenario out
+// of failing the run; detection and the violation counter keep running.
+bool livenessEnforced(void) {
+  const auto found = scenarioSettings.find("liveness_check");
+  return found == scenarioSettings.end() || parseBool(found->second);
+}
+
+uint32_t livenessGraceMs(void) {
+  const auto found = scenarioSettings.find("liveness_grace_ms");
+  return found == scenarioSettings.end() ? LIVENESS_GRACE_DEFAULT_MS : parseUnsigned(found->second);
+}
+
+// The converse invariant the per-step asserts cannot watch continuously: a UI
+// that presents Connected implies the camera links are actually up. Runs every
+// driver tick on the UI task, reusing the exact ui.connected presentation
+// check plus the per-camera link truth behind control.connected.
+void checkLivenessInvariant(void) {
+  if (scenarioUi == nullptr) {
+    return;
+  }
+
+  auto &control = Control::getInstance();
+  const size_t targets = control.getTargetCount();
+  const size_t connected = control.getConnectedTargetCount();
+  const bool presentsConnected = scenarioUi->simQueryState("connected") == "yes";
+  const bool diverged = presentsConnected && connected < targets;
+  if (!diverged) {
+    livenessArmed = false;
+    livenessLatched = false;
+    return;
+  }
+
+  const uint32_t now = clockMillis();
+  if (!livenessArmed) {
+    livenessArmed = true;
+    livenessDeadline = now + livenessGraceMs();
+    return;
+  }
+  if (livenessLatched || !clockDeadlineReached(now, livenessDeadline)) {
+    return;
+  }
+
+  livenessLatched = true;
+  ++livenessViolations;
+  if (livenessEnforced()) {
+    std::cerr << "LIVENESS INVARIANT FAILED: UI shows Connected but only " << connected << " of "
+              << targets << " camera links are live beyond the " << livenessGraceMs()
+              << " ms grace period\n";
+    std::cout.flush();
+    // Skip host teardown, matching the assert failure path, so the exit code
+    // is not masked by background sim threads unwinding their mutexes.
+    std::_Exit(1);
+  }
+  std::cout << "liveness violation recorded (enforcement off): " << connected << " of " << targets
+            << " camera links live\n";
+}
+
+// "action link-lies-kill" silently kills every connected fake camera link
+// while leaving the control state machine untouched: isConnected() turns
+// false, control stays ACTIVE, and nothing schedules a reconnect. This is the
+// false-connected divergence observed on hardware on 2026-08-28, which the
+// fake control cannot otherwise express. Gated behind "seed link_lies true" so
+// no scenario constructs the divergence by accident.
+bool applyLinkLiesAction(const std::string &action) {
+  if (action != "link-lies-kill") {
+    return false;
+  }
+  if (!scenarioSettingIsTrue("link_lies")) {
+    std::cerr << "action link-lies-kill requires: seed link_lies true\n";
+    std::exit(2);
+  }
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    auto camera = CameraList::get(n);
+    if (camera != nullptr && camera->isConnected()) {
+      camera->disconnect();
+    }
+  }
+  return true;
+}
+
 // Resolve an assertable state key to a string. UI keys run on the UI task, so
 // LVGL reads stay single threaded. Control and camera keys read the shared
 // state the real app maintains.
@@ -716,6 +813,12 @@ std::string queryValue(const std::string &key) {
     return key.size() >= length && key.compare(0, length, prefix) == 0;
   };
 
+  if (key == "ui.liveness_violations") {
+    // Driver-owned counter: how many times the continuous liveness invariant
+    // fired. With "seed liveness_check false" the run keeps going, so this
+    // query proves the invariant would have failed the scenario.
+    return std::to_string(livenessViolations);
+  }
   if (prefixed("ui.")) {
     if (scenarioUi == nullptr) {
       return "";
@@ -1109,6 +1212,11 @@ void driverTick(void) {
     return;
   }
 
+  // The liveness invariant runs on every tick, including while a wait step
+  // holds the scenario, so a sustained false-connected presentation cannot
+  // hide between the scripted assertions.
+  checkLivenessInvariant();
+
   if (stepIndex >= steps.size()) {
     return;
   }
@@ -1240,7 +1348,7 @@ void driverTick(void) {
         std::cerr << "Scenario action ran before the UI was ready: " << step.name << '\n';
         std::exit(1);
       }
-      if (!parseBatteryAction(step.name)) {
+      if (!parseBatteryAction(step.name) && !applyLinkLiesAction(step.name)) {
         scenarioUi->simScenarioAction(step.name.c_str());
       }
       ++stepIndex;
