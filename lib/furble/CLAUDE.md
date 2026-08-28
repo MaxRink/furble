@@ -54,6 +54,13 @@ protocol core.
 - Secure registration must check link state after every read, write, and
   subscription boundary. A peer disconnect aborts the handshake immediately;
   never continue discovery or GATT traffic against a disconnected client.
+- Fujifilm registration confirmation is a notification on the dedicated
+  `CHR_NOT1` characteristic. The captured X100VI payload is `01 00`; accept
+  legacy `02 00` only on `CHR_NOT1`. Do not reuse this registration helper for
+  `GEOTAG_UPDATE`, where `01 00` is a geotag request. Clear the confirmation
+  flag and advance a per-connect callback generation before every Basic or
+  Secure attempt, and keep active promotion behind a bounded wait that aborts
+  on link loss or Control cancellation.
 - Ricoh fresh pairing treats a bonded-address security failure as a stale local
   bond: delete that bond and return failure so the next bounded control retry
   can perform numeric comparison. Saved reconnect failures preserve the bond;

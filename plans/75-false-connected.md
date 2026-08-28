@@ -144,17 +144,18 @@ Gate the Connected/ACTIVE promotion on the real vendor-handshake completion, not
 on the GATT plumbing alone.
 
 1. In both Fujifilm `_connect()` paths, after the subscribe sequence, wait for
-   the camera-side confirmation notification with a bounded 25 s timeout.
+   the camera-side confirmation notification with a bounded 25 s firmware
+   timeout. Host builds use a short steady-clock seam for deterministic tests.
    `m_Configured` is set only by CHR_NOT1 with the captured `0x01 0x00` payload
-   or the legacy `0x02 0x00` payload.
+   or the legacy `0x02 0x00` payload. The same bytes on GEOTAG_UPDATE are not
+   registration confirmation.
 2. On timeout, return false from `_connect()` so `Camera::connect()` tears the
    link down (`lib/furble/Camera.cpp:53-54`) and Control does not promote to
    ACTIVE.
-3. Report a distinct failure, not a generic connect fail: "camera did not
-   confirm, put it in pairing mode." The current `STATE_CONNECT_FAILED` path in
-   the UI (`src/FurbleUI.cpp:1239-1242`) can carry a specific message for this
-   case so the user knows to leave the settings menu and enter the pairing or
-   remote screen.
+3. Return the failed handshake through the existing bounded connect-failure
+   path. A distinct user-facing message such as "camera did not confirm, put
+   it in pairing mode" remains a follow-up UI improvement, outside this
+   protocol gate.
 4. Keep the wait bounded and off the Control mutex. `_connect()` already runs
    outside the Control critical section, and the existing Basic loop used
    `vTaskDelay`, so this respects the "never hold the Control mutex across a
@@ -166,7 +167,8 @@ Risk and sequencing:
   The Secure identity comes from the captured X100VI `01 00` event. Basic keeps
   compatibility with the legacy `02 00` event.
 - All new blocking behavior stays behind a bounded timeout so a slow but genuine
-  camera is not falsely rejected. Tune the timeout from the capture timings.
+  camera is not falsely rejected. The implementation uses 25 s on firmware and
+  a compile-time short timeout on host.
 
 ## Implementation state
 
