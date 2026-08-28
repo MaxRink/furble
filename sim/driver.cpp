@@ -394,7 +394,8 @@ void readScript(const std::string &path) {
       if (step.name != "ack" && step.name != "nack" && step.name != "timeout"
           && step.name != "malformed" && step.name != "partial" && step.name != "write-error"
           && step.name != "pause") {
-        std::cerr << "uart-mode requires ack, nack, timeout, malformed, partial, write-error or pause\n";
+        std::cerr
+            << "uart-mode requires ack, nack, timeout, malformed, partial, write-error or pause\n";
         std::exit(2);
       }
       steps.push_back(step);

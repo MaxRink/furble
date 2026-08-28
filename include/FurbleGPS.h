@@ -145,14 +145,10 @@ class GPS {
    * it and retries on a bounded backoff, so this only reports that reception is
    * poor, not that furble is stuck.
    */
-  bool isDegraded(void) const {
-    return getCycleStatusSnapshot().degraded;
-  }
+  bool isDegraded(void) const { return getCycleStatusSnapshot().degraded; }
 
   /** Consecutive degraded retry attempts since the last healthy recovery. */
-  uint32_t degradedRetries(void) const {
-    return getCycleStatusSnapshot().retries;
-  }
+  uint32_t degradedRetries(void) const { return getCycleStatusSnapshot().retries; }
 
   void reset(void);
   void task(void);
