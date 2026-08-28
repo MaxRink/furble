@@ -5863,15 +5863,16 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
         auto &gps = GPS::getInstance();
         const auto status = gps.getStatusSnapshot();
+        const auto cycle = gps.getCycleStatusSnapshot();
 
         // a degraded, self recovering cycle is otherwise console only, surface
         // the retry count here too. The IfChanged setter keeps this guarded.
-        if (gps.isDegraded()) {
+        if (cycle.degraded) {
           setLabelTextFmtIfChanged(ui->m_NMEA.fix,
                                    "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
                                    (unsigned long)status.satellites, status.hdop,
                                    (unsigned long)(status.location_age / 1000), status.speed_kmph,
-                                   (unsigned long)gps.degradedRetries());
+                                   (unsigned long)cycle.retries);
         } else {
           setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
                                    (unsigned long)status.satellites, status.hdop,

@@ -434,6 +434,10 @@ void GPS::serviceCycle(void) {
 
   // The application update sets this only after it has accepted a valid fix.
   if (m_CycleRequest.exchange(false)) {
+    // A valid fix received during a degraded retry is recovery, even when the
+    // duty-cycle request immediately transitions into standby or rail-off.
+    // Do not carry the old backoff into the next failure episode.
+    m_Degraded.reset();
     acquirePowerLock();
 
     if ((m_PowerPolicy == POWER_STANDBY) && (m_DutySeconds > 0)) {

@@ -867,6 +867,7 @@ int gpsConfig(void) {
 int gpsStatus(void) {
   auto &gps = GPS::getInstance();
   const auto status = gps.getStatusSnapshot();
+  const auto cycle = gps.getCycleStatusSnapshot();
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
   printf("fix: %s\n", boolStr(status.fix));
@@ -879,8 +880,8 @@ int gpsStatus(void) {
   printf("time: %02u:%02u:%02u\n", status.hour, status.minute, status.second);
   printf("chars: %lu\n", status.chars_processed);
   printf("sentences: %lu\n", status.sentences_passed);
-  printf("degraded: %s\n", boolStr(gps.isDegraded()));
-  printf("retries: %lu\n", static_cast<unsigned long>(gps.degradedRetries()));
+  printf("degraded: %s\n", boolStr(cycle.degraded));
+  printf("retries: %lu\n", static_cast<unsigned long>(cycle.retries));
   printf("raw: %s\n", boolStr(g_GPSRaw));
   return 0;
 }
