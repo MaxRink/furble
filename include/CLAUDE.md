@@ -20,3 +20,7 @@ Public headers for the app layer in src/, one header per module
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
+- `FurbleWatchdog.h` is the single M5PM1 timing contract shared by firmware,
+  simulator, and host tests. The 45 second timeout must remain longer than the
+  30 second OTA health window, while the one second feed cadence and flash
+  disarm and readback safeguards remain intact.

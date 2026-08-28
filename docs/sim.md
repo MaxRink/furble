@@ -98,6 +98,12 @@ run. The capture helpers use `--out` to choose the capture directory.
 the documentation screenshot gallery. It uses `FURBLE_SIM_BOARDS` and
 `FURBLE_SIM_BUILD_ROOT` to limit the matrix or relocate its build trees.
 
+The retained M5PM1 watchdog contract has a dedicated gate:
+`sim/scripts/run-watchdog.sh` runs the feed, near-boundary, expiry, and
+uint32-wrap scenarios against the default, freshly built M5StickS3 binary.
+Keep this explicit gate when changing the watchdog timeout or simulator timing
+path.
+
 The simulator command-line options are:
 
 | Option | Effect |

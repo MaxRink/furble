@@ -1,0 +1,10 @@
+# A stall just short of the shared 45 second timeout must leave the retained
+# PMIC watchdog armed. The next bookkeeping feed is suppressed by the sim so
+# this assertion observes the state at the end of the stall.
+seed watchdog true
+wait 400
+assert setting.watchdog 1
+assert platform.watchdog armed
+stall 44000
+assert platform.watchdog armed
+exit

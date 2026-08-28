@@ -465,11 +465,10 @@ so a developer build behaves exactly as it does today.
 
 Interaction with `plans/26-pm1-watchdog.md`: the M5PM1 hardware watchdog on the
 StickS3 and the rollback timer both exist to catch a wedged device, at different
-layers. They do not conflict in principle, but the landed 10 second PM1
-watchdog is currently shorter than the planned 30 second health window.
-Runtime rollback integration is blocked until the watchdog is lengthened
-beyond that window or the window is deliberately shortened, otherwise a slow
-healthy boot can reset before validation.
+layers. They do not conflict in principle. The PM1 watchdog is now 45 seconds,
+which outlives the planned 30 second health window by 15 seconds. Runtime
+rollback integration remains separately gated on its firmware and hardware
+validation; the watchdog timing conflict is resolved by plan 143.
 
 ---
 

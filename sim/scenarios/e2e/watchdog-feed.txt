@@ -1,0 +1,9 @@
+# Normal virtual time runs the production Platform::update path, including its
+# one-second feed cadence. The retained PMIC watchdog must remain armed.
+seed watchdog true
+wait 400
+assert setting.watchdog 1
+assert platform.watchdog armed
+wait 44000
+assert platform.watchdog armed
+exit

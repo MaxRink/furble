@@ -7,7 +7,9 @@ namespace Furble {
 namespace Watchdog {
 
 /** M5PM1 watchdog timing shared by firmware, simulator, and host tests. */
-static constexpr uint32_t PM1_TIMEOUT_MS = 10000;
+// Keep a 15 s margin after the OTA boot-health window. The feed cadence is
+// unchanged, so this only widens the deadlock recovery boundary.
+static constexpr uint32_t PM1_TIMEOUT_MS = 45000;
 static constexpr uint8_t PM1_TIMEOUT_S = static_cast<uint8_t>(PM1_TIMEOUT_MS / 1000);
 static constexpr uint32_t PM1_FEED_PERIOD_MS = 1000;
 

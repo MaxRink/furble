@@ -6,9 +6,8 @@ wait 400
 assert setting.watchdog 1
 assert platform.watchdog armed
 
-wait 9000
-assert platform.watchdog armed
-
-stall 11000
+# A stall beyond the shared 45 second timeout expires the retained PMIC before
+# the simulator's next bookkeeping cycle can feed it.
+stall 46000
 assert platform.watchdog expired
 exit

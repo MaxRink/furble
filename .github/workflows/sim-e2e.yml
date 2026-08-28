@@ -108,6 +108,15 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-e2e.sh
 
+      # Keep the retained M5PM1 watchdog contract explicit. This runs against
+      # the freshly built default M5StickS3 binary, rather than relying only on
+      # the broad scenario glob (or a stale developer binary).
+      - name: Assert M5StickS3 PM1 watchdog boundaries
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: sh sim/scripts/run-watchdog.sh
+
       - name: Stress asynchronous GPS task convergence
         env:
           SDL_VIDEODRIVER: dummy

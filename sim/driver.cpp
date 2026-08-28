@@ -1081,6 +1081,10 @@ void driverTick(void) {
       // Advance scenario time without returning to Platform::update. This
       // models a wedged UI task, so the virtual PM1 watchdog cannot be fed.
       advanceClock(step.milliseconds);
+      // The UI loop resumes once to process the next assertion. Prevent that
+      // bookkeeping cycle from feeding the retained PMIC: on hardware the
+      // watchdog would have expired asynchronously during the stall.
+      suppressNextWatchdogFeed();
       ++stepIndex;
       break;
 
