@@ -87,10 +87,21 @@ Verification completed:
 
 - clang-format 21 passes for all changed C++ and header files.
 - `git diff --check` passes.
-- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
-  `-e m5stick-s3-debug` pass.
-- Hardware testing is pending. No boards have been tested. The hardware run
-  must also confirm:
+- The host settings/SD round-trip table is exhaustive over `Settings::type_t`
+  and now checks each row's bool/integer/string/blob classification.
+- The M5Stick-S3 firmware build was not completed in this pass. The attached
+  board is visible as `/dev/cu.usbmodem1101`, but the local PlatformIO CLI
+  stalls before reporting its version/build status, and the worktree simulator
+  build reports the required M5GFX dependency missing. The exact absent source
+  paths are `/private/tmp/furble-charging-policy-reconstruct/.pio/libdeps/m5stick-s3/M5GFX/src/M5GFX.cpp`,
+  `/private/tmp/furble-charging-policy-reconstruct/.pio/libdeps/m5stick-s3/M5Unified/src/M5Unified.cpp`,
+  and `/private/tmp/furble-charging-policy-reconstruct/.pio/libdeps/m5stick-s3/TinyGPSPlus/src/TinyGPS++.cpp`,
+  with the corresponding three paths under
+  `/Users/A92615428/git/GitHub/gkoh/furble/.pio/libdeps/m5stick-s3/` also absent.
+  The worktree also lacks `managed_components/lvgl__lvgl/`, while the main
+  workspace's LVGL copy is present. Safe cached sources are otherwise absent.
+  No firmware was flashed and no hardware behavior is claimed for this
+  revision. The hardware run must also confirm:
   - dismissing the warning returns focus to the page the user was on, not an
     arbitrary object in the flat group.
   - the warn-only box lets the screen dim and sleep normally, only the

@@ -43,7 +43,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
 - Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
-  every new `Settings::type_t` case.
+  every new `Settings::type_t` case. The host
+  `settings_nvs_roundtrip_test` keeps an exhaustive storage-kind mirror so a
+  new enum value fails the host build until its table and switch handling are
+  updated.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic

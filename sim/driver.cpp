@@ -210,9 +210,18 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",       "gps_nmea",     "fauxny",           "autoconnect",
-      "reconnect", "sleep_conn",   "boot_splash",      "connect_fail",
-      "no_touch",  "saved_camera", "scan_start_probe", "scan_distinct",
+      "gps",
+      "gps_nmea",
+      "fauxny",
+      "autoconnect",
+      "reconnect",
+      "sleep_conn",
+      "boot_splash",
+      "connect_fail",
+      "no_touch",
+      "saved_camera",
+      "scan_start_probe",
+      "scan_distinct",
       "auto_off_charging",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
@@ -626,22 +635,22 @@ const char *controlStateName(Control::state_t state) {
 // Report a boolean setting as "1" or "0" so scenarios can assert persistence.
 std::string settingBoolValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> booleans = {
-      {"fauxny",        Settings::FAUXNY       },
-      {"autoconnect",   Settings::AUTOCONNECT  },
-      {"reconnect",     Settings::RECONNECT    },
-      {"multiconnect",  Settings::MULTICONNECT },
-      {"companion",     Settings::COMPANION    },
+      {"fauxny",            Settings::FAUXNY           },
+      {"autoconnect",       Settings::AUTOCONNECT      },
+      {"reconnect",         Settings::RECONNECT        },
+      {"multiconnect",      Settings::MULTICONNECT     },
+      {"companion",         Settings::COMPANION        },
 #if defined(FURBLE_M5STICKS3)
-      {"watchdog",      Settings::WATCHDOG     },
+      {"watchdog",          Settings::WATCHDOG         },
 #endif
-      {"gps",           Settings::GPS          },
-      {"gps_nmea",      Settings::GPS_NMEA     },
-      {"ir",            Settings::IR           },
-      {"conn_saver",    Settings::CONN_SAVER   },
-      {"preset_picker", Settings::PRESET_PICKER},
-      {"show_title",    Settings::SHOW_TITLE   },
-      {"tx_adaptive",   Settings::TX_ADAPTIVE  },
-      {"recon_backoff", Settings::RECON_BACKOFF},
+      {"gps",               Settings::GPS              },
+      {"gps_nmea",          Settings::GPS_NMEA         },
+      {"ir",                Settings::IR               },
+      {"conn_saver",        Settings::CONN_SAVER       },
+      {"preset_picker",     Settings::PRESET_PICKER    },
+      {"show_title",        Settings::SHOW_TITLE       },
+      {"tx_adaptive",       Settings::TX_ADAPTIVE      },
+      {"recon_backoff",     Settings::RECON_BACKOFF    },
       {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
   };
   const auto found = booleans.find(name);
