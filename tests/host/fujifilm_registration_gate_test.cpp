@@ -89,6 +89,21 @@ void testBasicConfirmationAndReset() {
           "malformed or unrelated CHR_NOT1 payload cannot confirm registration");
   }
   peer.setRegistrationPayload({0x01, 0x00});
+
+  // A link loss while the gate is polling must abort immediately rather than
+  // waiting for the full registration deadline.
+  peer.setWithholdRegistration(true);
+  Furble::FujifilmBasic dropped(&advertisement);
+  bool dropConnected = true;
+  std::thread dropAttempt([&]() { dropConnected = dropped.connect(ESP_PWR_LVL_P3, 1000); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  auto *client = NimBLEDevice::lastClient();
+  check(client != nullptr, "link-drop test has a live mock client");
+  if (client != nullptr) {
+    client->mockDropLink(0x08, true);
+  }
+  dropAttempt.join();
+  check(!dropConnected, "link loss aborts registration polling");
 }
 
 void testSecureConfirmationAndTimeout() {
