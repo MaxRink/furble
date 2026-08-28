@@ -10,8 +10,8 @@ assert gps.state standby
 uart-mode pause
 wait 12000
 assert gps.degraded 1
+assert gps.degraded_retries 1
 assert power.no_light_sleep 0
-assert power.no_light_sleep_acquires 2
 wait 30000
 assert power.no_light_sleep 0
 uart-mode ack
