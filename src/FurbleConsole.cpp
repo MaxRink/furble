@@ -1313,13 +1313,27 @@ int cmdIMU(int argc, char **argv) {
   const auto type = M5.Imu.getType();
   const char *typeName = "unknown";
   switch (type) {
-    case m5::imu_none: typeName = "none"; break;
-    case m5::imu_unknown: typeName = "unknown"; break;
-    case m5::imu_sh200q: typeName = "sh200q"; break;
-    case m5::imu_mpu6050: typeName = "mpu6050"; break;
-    case m5::imu_mpu6886: typeName = "mpu6886"; break;
-    case m5::imu_mpu9250: typeName = "mpu9250"; break;
-    case m5::imu_bmi270: typeName = "bmi270"; break;
+    case m5::imu_none:
+      typeName = "none";
+      break;
+    case m5::imu_unknown:
+      typeName = "unknown";
+      break;
+    case m5::imu_sh200q:
+      typeName = "sh200q";
+      break;
+    case m5::imu_mpu6050:
+      typeName = "mpu6050";
+      break;
+    case m5::imu_mpu6886:
+      typeName = "mpu6886";
+      break;
+    case m5::imu_mpu9250:
+      typeName = "mpu9250";
+      break;
+    case m5::imu_bmi270:
+      typeName = "bmi270";
+      break;
   }
   printf("setting: %s\n", boolStr(setting));
   printf("enabled: %s\n", boolStr(enabled));

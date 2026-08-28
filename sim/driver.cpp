@@ -199,8 +199,8 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off", "gps_rate", "gps_constel",
-      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power", "scan_mode",
+      "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
+      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
       "text_size",  "auto_off",   "low_batt",    "fb_output",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
@@ -212,10 +212,21 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",         "gps_nmea",     "fauxny",           "autoconnect",
-      "reconnect",   "sleep_conn",   "boot_splash",      "connect_fail",
-      "no_touch",    "saved_camera", "scan_start_probe", "scan_distinct",
-      "auto_off_charging", "imu",         "imu_sensor",
+      "gps",
+      "gps_nmea",
+      "fauxny",
+      "autoconnect",
+      "reconnect",
+      "sleep_conn",
+      "boot_splash",
+      "connect_fail",
+      "no_touch",
+      "saved_camera",
+      "scan_start_probe",
+      "scan_distinct",
+      "auto_off_charging",
+      "imu",
+      "imu_sensor",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
