@@ -119,6 +119,33 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
    */
   static std::string composeName(const std::string &advertisedName, const serial_t &serial);
 
+  /**
+   * Consecutive security-handshake failures on a bonded camera.
+   *
+   * Counts only attempts that got the link up and then failed
+   * secureConnection(). Reset on a successful handshake and whenever an
+   * attempt starts unbonded, so it always measures a run of failures against
+   * the same stale keys. Lives on the Camera object, which the CameraList and
+   * Control::Target keep alive across the whole reconnect cycle, so the run is
+   * observed across attempts and not just within one.
+   */
+  uint8_t m_SecureFailures = 0;
+
+  /**
+   * Consecutive security failures that prove the camera dropped our bond.
+   *
+   * Two, not one: a single failed handshake is ordinary radio noise (a lost
+   * pairing PDU, a momentary supervision loss), and deleting a good bond on it
+   * would cost the user a re-pair for nothing. Two in a row against the same
+   * keys is systematic.
+   *
+   * Not more than two either. Every extra attempt is a ~30 s (rc=13) or ~5 s
+   * (rc=520) stall the user spends in a reconnect loop with no way out, and
+   * the false-positive cost is only a re-pair while the false-negative cost is
+   * that loop running forever.
+   */
+  static constexpr uint8_t SECURE_FAILURE_LIMIT = 2;
+
   QueueHandle_t m_Queue = NULL;
   serial_t m_Serial = {0x00};
   bool m_RejectLogged = false;

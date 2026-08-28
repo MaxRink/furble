@@ -145,9 +145,9 @@ void CameraList::remove(Furble::Camera *camera) {
  * the underlying library supports it. We work around this by managing a simple
  * index with a known name and storing target devices in separate entries.
  */
-void CameraList::load(void) {
+void CameraList::loadSaved(std::vector<std::shared_ptr<Furble::Camera>> &out) {
   m_Prefs.begin(FURBLE_STR, true);
-  m_ConnectList.clear();
+  out.clear();
   std::vector<index_entry_t> index = load_index();
   for (const auto &i : index) {
     size_t dbytes = m_Prefs.getBytesLength(i.name);
@@ -159,51 +159,83 @@ void CameraList::load(void) {
 
     switch (i.type) {
       case Camera::Type::FUJIFILM_BASIC:
-        m_ConnectList.push_back(std::make_shared<Furble::FujifilmBasic>(
+        out.push_back(std::make_shared<Furble::FujifilmBasic>(
             static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::CANON_EOS_SMART:
-        m_ConnectList.push_back(std::make_shared<Furble::CanonEOSSmart>(
+        out.push_back(std::make_shared<Furble::CanonEOSSmart>(
             static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::CANON_EOS_REMOTE:
-        m_ConnectList.push_back(std::make_shared<Furble::CanonEOSRemote>(
+        out.push_back(std::make_shared<Furble::CanonEOSRemote>(
             static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::MOBILE_DEVICE:
         ESP_LOGW(FURBLE_STR, "MobileDevice support has been removed.");
         break;
       case Camera::Type::FAUXNY:
-        m_ConnectList.push_back(
+        out.push_back(
             std::make_shared<Furble::FauxNY>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::NIKON:
-        m_ConnectList.push_back(
+        out.push_back(
             std::make_shared<Furble::Nikon>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::SONY:
-        m_ConnectList.push_back(
+        out.push_back(
             std::make_shared<Furble::Sony>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::RICOH:
-        m_ConnectList.push_back(
+        out.push_back(
             std::make_shared<Furble::Ricoh>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::FUJIFILM_SECURE:
-        m_ConnectList.push_back(std::make_shared<Furble::FujifilmSecure>(
+        out.push_back(std::make_shared<Furble::FujifilmSecure>(
             static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::PANASONIC_LUMIX:
-        m_ConnectList.push_back(
+        out.push_back(
             std::make_unique<Furble::Lumix>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::DJI_OSMO:
-        m_ConnectList.push_back(
+        out.push_back(
             std::make_unique<Furble::DJIOsmo>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
     }
   }
   m_Prefs.end();
+}
+
+void CameraList::load(void) {
+  loadSaved(m_ConnectList);
+}
+
+bool CameraList::isSaved(const Furble::Camera *camera) {
+  if (camera == nullptr) {
+    return false;
+  }
+
+  // Rebuild the saved cameras into a local vector rather than calling load():
+  // this runs from the Scan page, where m_ConnectList holds the live scan
+  // results and must survive the check. The saved list is a handful of
+  // entries and this only runs on a user tap, never on a hot path.
+  std::vector<std::shared_ptr<Furble::Camera>> saved;
+  loadSaved(saved);
+
+  const uint64_t address = static_cast<uint64_t>(camera->getAddress());
+  const uint32_t type = static_cast<uint32_t>(camera->getType());
+  for (const auto &entry : saved) {
+    if (entry == nullptr) {
+      continue;
+    }
+    if (CameraListProtocol::sameSavedIdentity(
+            type, address, camera->getName(), static_cast<uint32_t>(entry->getType()),
+            static_cast<uint64_t>(entry->getAddress()), entry->getName())) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 size_t CameraList::getSaveCount(void) {

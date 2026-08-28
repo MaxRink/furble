@@ -51,6 +51,25 @@ bool decodeIndex(const uint8_t *data, size_t bytes, std::vector<IndexEntry> &ent
   return true;
 }
 
+bool sameSavedIdentity(uint32_t type_a,
+                       uint64_t address_a,
+                       const std::string &name_a,
+                       uint32_t type_b,
+                       uint64_t address_b,
+                       const std::string &name_b) {
+  if (type_a != type_b) {
+    // A different vendor mode is a different camera as far as the saved list is
+    // concerned, even at the same address.
+    return false;
+  }
+  if (address_a == address_b) {
+    return true;
+  }
+  // The address moved, so fall back to the advertised name. An empty name
+  // carries no identity and must never match.
+  return !name_a.empty() && (name_a == name_b);
+}
+
 void upsertIndex(std::vector<IndexEntry> &entries, const IndexEntry &entry) {
   for (auto &existing : entries) {
     if (std::memcmp(existing.name, entry.name, INDEX_NAME_BYTES) == 0) {

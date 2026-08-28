@@ -1875,6 +1875,8 @@ int debugControl(void) {
   printf("control.infinite_reconnect: %s\n", boolStr(s.infiniteReconnect));
   printf("control.reconnect_backoff: %s\n", boolStr(s.reconnectBackoff));
   printf("control.reconnect_attempt: %lu\n", static_cast<unsigned long>(s.reconnectAttempt));
+  printf("control.connect_fail_reason: %s\n",
+         s.connectFailReason.empty() ? "none" : s.connectFailReason.c_str());
   printf("control.adaptive_active: %s\n", boolStr(s.adaptiveActive));
   printf("control.power_level: %d\n", s.userPowerLevel);
   printf("control.adaptive_power_level: %d\n", s.adaptivePowerLevel);

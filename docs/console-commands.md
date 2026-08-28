@@ -58,6 +58,21 @@ About page and exposed through companion BLE Device Information.
 | `reboot` | Restart the device. |
 | `help` | List every command. |
 
+### Pairing a camera that is already saved
+
+Pairing is refused when the selected scan result is a camera the saved list
+already holds, on the Scan page and through the console `pair <scan-index>`
+verb, which routes through the same UI request. Both call
+`UI::beginPairing()`, so the refusal is written once. The device shows an
+"Already saved" box that has to be dismissed, and no connect is started.
+
+The check is identity, not the saved index key. The index is keyed on the BLE
+address, and a Fujifilm Secure body advertises a resolvable private address
+that changes with every pairing, so a second pairing would add a second record
+for one camera instead of replacing the first. `sameSavedIdentity()` matches on
+the vendor type plus either the address or the advertised name. To pair a saved
+camera again, delete it first with the Delete page.
+
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has

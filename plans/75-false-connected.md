@@ -147,8 +147,10 @@ on the GATT plumbing alone.
    the camera-side confirmation notification with a bounded 25 s firmware
    timeout. Host builds use a short steady-clock seam for deterministic tests.
    `m_Configured` is set only by CHR_NOT1 with the captured `0x01 0x00` payload
-   or the legacy `0x02 0x00` payload. The same bytes on GEOTAG_UPDATE are not
-   registration confirmation.
+   or the legacy `0x02 0x00` payload. This design originally treated the same
+   bytes on GEOTAG_UPDATE as not being registration confirmation; hardware
+   later proved saved reconnects confirm only through GEOTAG_UPDATE, see the
+   deviation section below (PR #239, plan 151).
 2. On timeout, return false from `_connect()` so `Camera::connect()` tears the
    link down (`lib/furble/Camera.cpp:53-54`) and Control does not promote to
    ACTIVE.

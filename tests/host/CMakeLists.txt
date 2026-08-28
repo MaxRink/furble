@@ -287,6 +287,65 @@ target_compile_options(fujifilm_registration_gate_test PRIVATE
 target_link_libraries(fujifilm_registration_gate_test PRIVATE furble_host_camera
                                                              Threads::Threads)
 
+# Stale-bond recovery for Fujifilm Secure (plan 151). Uses the shared library's
+# 100 ms registration timeout: the recovery runs before the registration wait,
+# so the short timeout only keeps the successful fresh-pair phase fast.
+add_executable(fujifilm_stale_bond_test
+               fujifilm_stale_bond_test.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               advertisement_scan_stub.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_include_directories(fujifilm_stale_bond_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(fujifilm_stale_bond_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(fujifilm_stale_bond_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(fujifilm_stale_bond_test PRIVATE furble_host_camera
+                                                       Threads::Threads)
+
+# Camera-level cancel during the registration wait (plans 148/151). Compiles
+# its own camera sources with a 10 s registration timeout, an order of
+# magnitude above the asserted abort bound, so a wait that ignores the
+# Camera::cancelConnect token fails the bounded-time check deterministically
+# instead of hiding inside the 100 ms timeout the shared library uses.
+add_executable(fujifilm_registration_cancel_test
+               fujifilm_registration_cancel_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               advertisement_scan_stub.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_include_directories(fujifilm_registration_cancel_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(fujifilm_registration_cancel_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=10000)
+target_compile_options(fujifilm_registration_cancel_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(fujifilm_registration_cancel_test PRIVATE Threads::Threads)
+
 # Keep the host Ethernet test tied to the firmware source manifest. The test
 # links the production implementation directly, so this configure-time guard
 # catches the failure mode that matters here: a firmware build which forgets
@@ -1129,6 +1188,42 @@ target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
 # CameraPower 0x00 notify and a timed link drop) churns the reconnect cycle
 # next to a healthy Fujifilm while a mid-cycle disconnect must land in a clean
 # IDLE and a follow-up connect must work.
+# Stale-bond recovery through the REAL Control reconnect loop (plan 151). Uses
+# the production Scan so the SAVED reconnect path (scan, then connect, then
+# secure) is exercised exactly as the bench drives it.
+add_executable(fujifilm_repair_needed_test
+               fujifilm_repair_needed_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp)
+target_include_directories(fujifilm_repair_needed_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR}
+                                  ${FURBLE_ROOT}/lib/preferences
+                                  ${FURBLE_ROOT}/lib/blowfish)
+target_compile_definitions(fujifilm_repair_needed_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(fujifilm_repair_needed_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(fujifilm_repair_needed_test PRIVATE Threads::Threads)
+
 add_executable(ricoh_control_flap_test
                ricoh_control_flap_test.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
@@ -1378,6 +1473,9 @@ if(BUILD_TESTING)
   add_test(NAME saved-scan-delivery COMMAND saved_scan_delivery_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
+  add_test(NAME fujifilm-stale-bond COMMAND fujifilm_stale_bond_test)
+  add_test(NAME fujifilm-repair-needed COMMAND fujifilm_repair_needed_test)
+  add_test(NAME fujifilm-registration-cancel COMMAND fujifilm_registration_cancel_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)

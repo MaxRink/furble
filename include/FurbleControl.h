@@ -198,11 +198,28 @@ class Control {
     uint8_t rssiStrongSamples;
     uint8_t rssiWeakSamples;
     std::string connectingCamera;
+    // Empty for every ordinary failure. Non-empty only when the cycle stopped
+    // for a reason retrying cannot fix, so the bench can assert the re-pair
+    // outcome over the console instead of reading logs.
+    std::string connectFailReason;
   };
 
   /** Capture the control state snapshot under m_Mutex. */
   debug_state_t getDebugState(void) const;
 #endif  // FURBLE_CONSOLE || FURBLE_SIM
+
+  /**
+   * Why the last connect cycle ended in STATE_CONNECT_FAILED.
+   *
+   * Empty unless the failure has an explanation worth putting in front of the
+   * user. Today the only such failure is a camera that no longer holds our
+   * pairing: retrying is futile, so the cycle stops and the UI shows this text
+   * instead of the reconnect spinner. Cleared when a new connect cycle starts.
+   *
+   * Returns a copy taken under m_Mutex so the caller never reads a string the
+   * control task is rewriting.
+   */
+  std::string getConnectFailReason(void) const;
 
   /** Retrieve the number of active camera targets. */
   size_t getTargetCount(void) const;
@@ -368,6 +385,9 @@ class Control {
   // budget in connectAll(). A member rather than a function-local static so a
   // reboot clears it with the rest of the session state.
   uint32_t m_ConnectFailCount = 0;
+  // User-facing explanation for a STATE_CONNECT_FAILED that retrying cannot
+  // fix. Empty for every ordinary failure. Guarded by m_Mutex.
+  std::string m_ConnectFailReason;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

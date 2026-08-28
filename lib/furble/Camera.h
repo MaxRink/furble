@@ -122,6 +122,20 @@ class Camera: public NimBLEClientCallbacks {
 
   /** Re-arm connect attempts after a cancelled cycle. */
   void clearConnectCancel(void);
+  /**
+   * Wake a connect attempt that is blocked inside NimBLE.
+   *
+   * cancelConnect() only sets a token, and nothing polls it while
+   * secureConnection() or a GATT round trip is blocked in the host. This
+   * terminates the link on the in-flight client so that call returns at once.
+   *
+   * Deliberately separate from cancelConnect() because this is a radio call:
+   * Control::disconnect() sets the token under its own mutex and calls this
+   * after releasing it, which the "no radio calls under m_Mutex" rule requires.
+   * Safe on any Camera at any time: it is a no-op unless an attempt is in
+   * flight with its link up.
+   */
+  void abortBlockingConnect(void);
 
   /**
    * Clear stale connection liveness before a fresh connect.
@@ -218,6 +232,21 @@ class Camera: public NimBLEClientCallbacks {
   /** Get connection progress percentage (0-100). */
   uint8_t getConnectProgress(void) const;
 
+  /**
+   * Did the last connect attempt prove the camera no longer holds our pairing?
+   *
+   * Set only by a vendor _connect() that has definitive evidence the camera
+   * side dropped the bond, and only after the local bond was deleted in
+   * response. Retrying cannot fix that state: the camera has to be put into
+   * pairing mode and paired again. Control reads this after a failed attempt
+   * and stops the reconnect cycle instead of looping forever, so the flag has
+   * to outlive the attempt that set it. Cleared by resetConnectionState(), on
+   * a fresh user connect request, and at the start of each attempt.
+   *
+   * Lock-free: written on the connect task, read on the control task.
+   */
+  bool needsRepair(void) const;
+
   /** Enable or disable adaptive connection parameters. */
   void setConnSaverEnabled(bool enabled);
 
@@ -291,6 +320,14 @@ class Camera: public NimBLEClientCallbacks {
    * user disconnect aborts the attempt within one poll interval.
    */
   bool connectCancelled(void) const;
+
+  /**
+   * Record that the camera no longer holds our pairing, so a re-pair is needed.
+   *
+   * Vendor connect paths call this once they have deleted the stale local bond
+   * and proved that a fresh in-link pairing is not available either.
+   */
+  void setNeedsRepair(void);
 
   /**
    * Disconnect from the target.
@@ -440,6 +477,25 @@ class Camera: public NimBLEClientCallbacks {
   // connectAll() abort check and the attempt entering connect() must survive
   // into the attempt, or the wait becomes uncancellable again.
   std::atomic<bool> m_ConnectCancelled = false;
+
+  // Set when a vendor connect proved the camera dropped its side of the bond.
+  // Read by Control after a failed attempt to end the reconnect cycle with a
+  // re-pair prompt instead of retrying forever. See needsRepair().
+  std::atomic<bool> m_NeedsRepair = false;
+
+  // Guards m_CancelClient only. Held around a pointer store on the connect task
+  // and a link terminate on the cancelling task, both short and neither
+  // nesting any other lock, so no ordering hazard with m_Mutex.
+  std::mutex m_CancelMutex;
+
+  // The NimBLE client of the attempt currently in flight, or nullptr.
+  //
+  // Non-null only between the createClient() that starts an attempt and the
+  // return of _connect(). Across that window NimBLE self-delete is off (the #62
+  // lifecycle rule), so no other task can free the client, and the connect task
+  // withdraws the pointer here before any teardown touches it. That makes it
+  // safe for cancelConnect() to terminate the link on it from another task.
+  NimBLEClient *m_CancelClient = nullptr;
 
   static constexpr uint32_t m_ConnSaverIdleMs = 10 * 1000;
   static constexpr uint32_t m_ConnParamsUpdateGuardMs = 3 * 1000;
