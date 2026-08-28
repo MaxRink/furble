@@ -151,6 +151,19 @@ def upload_failure_message(restored: bool) -> str:
     )
 
 
+def preflight_only_message(restored: bool) -> str:
+    if restored:
+        return (
+            "PMIC preflight passed and was cancelled cleanly: watchdog armed and "
+            "download recovery locked; upload not started."
+        )
+    return (
+        "PMIC preflight passed, but automatic watchdog restoration failed. No "
+        "upload was started. Keep the device powered, reconnect to the console, "
+        "run 'flash cancel', and do not unplug USB while the watchdog is disabled."
+    )
+
+
 def try_restore_flash_preparation(port: str, baud: int, timeout: float) -> bool:
     """Attempt cleanup without masking the original upload failure."""
 
@@ -316,8 +329,12 @@ def main() -> int:
         return 2
 
     if args.preflight_only:
-        print("PMIC preflight passed: preflight-only check complete; upload not started")
-        return 0
+        restored = try_restore_flash_preparation(args.port, args.baud, args.timeout)
+        print(
+            preflight_only_message(restored),
+            file=sys.stdout if restored else sys.stderr,
+        )
+        return 0 if restored else 2
 
     print("PMIC preflight passed: starting upload")
 

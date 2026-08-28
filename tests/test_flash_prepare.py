@@ -169,8 +169,8 @@ class FlashPrepareTest(unittest.TestCase):
         self.assertIn("No serial port was opened", message)
         self.assertNotIn("DL_LOCK", message)
 
-    def test_preflight_only_does_not_say_that_upload_started(self):
-        serial = FakeSerial(
+    def test_preflight_only_restores_watchdog(self):
+        prepared = FakeSerial(
             iter(
                 line.encode()
                 for line in (
@@ -180,23 +180,34 @@ class FlashPrepareTest(unittest.TestCase):
                 )
             )
         )
-        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        restored = RestoreSerial(
+            iter((b"flash.ready: false\n", b"flash.watchdog: armed\n"))
+        )
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
         with (
             mock.patch.dict(sys.modules, {"serial": serial_module}),
             mock.patch.object(
                 sys,
                 "argv",
-                ["flash_prepare.py", "--port", "/dev/test", "--preflight-only"],
+                [
+                    "flash_prepare.py", "--port", "/dev/test", "--timeout", "0.01",
+                    "--preflight-only",
+                ],
             ),
             mock.patch.object(MODULE.subprocess, "run") as run,
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
         ):
             self.assertEqual(MODULE.main(), 0)
         run.assert_not_called()
+        self.assertEqual(serial_module.Serial.call_count, 2)
+        self.assertEqual(restored.command, b"flash cancel\n")
+        self.assertIn("cancelled cleanly", stdout.getvalue())
         self.assertIn("upload not started", stdout.getvalue())
 
-    def test_dry_run_remains_legacy_alias(self):
-        serial = FakeSerial(
+    def test_preflight_only_returns_failure_with_manual_recovery(self):
+        prepared = FakeSerial(
             iter(
                 line.encode()
                 for line in (
@@ -206,16 +217,86 @@ class FlashPrepareTest(unittest.TestCase):
                 )
             )
         )
-        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        restored = RestoreSerial(iter((b"flash.ready: false\n",)))
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
         with (
             mock.patch.dict(sys.modules, {"serial": serial_module}),
             mock.patch.object(
-                sys, "argv", ["flash_prepare.py", "--port", "/dev/test", "--dry-run"]
+                sys, "argv", [
+                    "flash_prepare.py", "--port", "/dev/test", "--timeout", "0.01",
+                    "--preflight-only",
+                ]
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 2)
+        self.assertEqual(restored.command, b"flash cancel\n")
+        self.assertIn("restoration failed", stderr.getvalue())
+        self.assertIn("run 'flash cancel'", stderr.getvalue())
+
+    def test_dry_run_alias_restores_watchdog(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        restored = RestoreSerial(
+            iter((b"flash.ready: false\n", b"flash.watchdog: armed\n"))
+        )
+        serial_module = types.SimpleNamespace(
+            Serial=mock.Mock(side_effect=[prepared, restored])
+        )
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", [
+                    "flash_prepare.py", "--port", "/dev/test", "--timeout", "0.01",
+                    "--dry-run",
+                ]
             ),
             mock.patch.object(MODULE.subprocess, "run") as run,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
         ):
             self.assertEqual(MODULE.main(), 0)
         run.assert_not_called()
+        self.assertEqual(restored.command, b"flash cancel\n")
+        self.assertIn("cancelled cleanly", stdout.getvalue())
+
+    def test_preflight_only_restoration_exception_requires_manual_recovery(self):
+        prepared = FakeSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=prepared))
+        with (
+            mock.patch.dict(sys.modules, {"serial": serial_module}),
+            mock.patch.object(
+                sys, "argv", [
+                    "flash_prepare.py", "--port", "/dev/test", "--timeout", "0.01",
+                    "--preflight-only",
+                ]
+            ),
+            mock.patch.object(
+                MODULE, "restore_flash_preparation", side_effect=RuntimeError("lost")
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(MODULE.main(), 2)
+        self.assertIn("restoration raised", stderr.getvalue())
+        self.assertIn("run 'flash cancel'", stderr.getvalue())
 
     def test_missing_platformio_restores_watchdog(self):
         prepared = FakeSerial(
