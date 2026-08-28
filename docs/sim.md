@@ -475,6 +475,7 @@ The complete `ui.*` query set is:
 | Query | Returned value |
 | --- | --- |
 | `ui.connect_box` | `hidden` or `visible`. |
+| `ui.connect_error` | `none`, or the dismissable connect error box's title as one lowercased token: `already_saved`, `pairing_lost`, or `connect_failed`. |
 | `ui.indicators_focused` | `yes` or `no`. |
 | `ui.bulb_ms` | Persisted bulb duration in milliseconds. |
 | `ui.disconnect_calls` | Numeric disconnect count. |

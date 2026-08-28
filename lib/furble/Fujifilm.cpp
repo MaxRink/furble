@@ -3,12 +3,15 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
-#include <chrono>
-#include <thread>
-#else
+// The registration wait timeout macro is always defined (Fujifilm.h carries
+// the default), so the host/firmware split keys off ESP_PLATFORM like the
+// rest of lib/furble.
+#if defined(ESP_PLATFORM)
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#else
+#include <chrono>
+#include <thread>
 #endif
 
 #include "Device.h"
@@ -94,12 +97,12 @@ bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
   // yet. Fires before the deadline below is taken, so a parked test thread does
   // not burn the registration timeout it is about to observe.
   FURBLE_TEST_SYNC_POINT("fujifilm_registration_wait");
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
-  const auto started = std::chrono::steady_clock::now();
-#else
+#if defined(ESP_PLATFORM)
   const TickType_t started = xTaskGetTickCount();
   const TickType_t timeout = pdMS_TO_TICKS(REGISTRATION_TIMEOUT_MS);
   const TickType_t poll = pdMS_TO_TICKS(REGISTRATION_POLL_MS);
+#else
+  const auto started = std::chrono::steady_clock::now();
 #endif
 
   while (!m_Configured.load()) {
@@ -112,21 +115,21 @@ bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
       ESP_LOGW(LOG_TAG, "Fujifilm registration aborted before confirmation");
       return false;
     }
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+#if defined(ESP_PLATFORM)
+    if (static_cast<TickType_t>(xTaskGetTickCount() - started) >= timeout) {
+#else
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started);
     if (elapsed.count() >= REGISTRATION_TIMEOUT_MS) {
-#else
-    if (static_cast<TickType_t>(xTaskGetTickCount() - started) >= timeout) {
 #endif
       ESP_LOGW(LOG_TAG, "Registration not confirmed after %lu ms; put the camera in pairing mode",
                static_cast<unsigned long>(REGISTRATION_TIMEOUT_MS));
       return false;
     }
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
-    std::this_thread::sleep_for(std::chrono::milliseconds(REGISTRATION_POLL_MS));
-#else
+#if defined(ESP_PLATFORM)
     vTaskDelay(poll);
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(REGISTRATION_POLL_MS));
 #endif
   }
 

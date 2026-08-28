@@ -750,6 +750,52 @@ void UI::closeCompanionPairingDialog(void) {
   }
 }
 
+void UI::closeConnectErrorDialog(void) {
+  if (m_ConnectErrorDialog != nullptr) {
+    if (lv_obj_is_valid(m_ConnectErrorDialog)) {
+      lv_msgbox_close_async(m_ConnectErrorDialog);
+    }
+    m_ConnectErrorDialog = nullptr;
+  }
+
+  if (m_ConnectErrorPrevFocus != nullptr) {
+    if (lv_obj_is_valid(m_ConnectErrorPrevFocus)) {
+      lv_group_focus_obj(m_ConnectErrorPrevFocus);
+    }
+    m_ConnectErrorPrevFocus = nullptr;
+  }
+}
+
+void UI::showConnectError(const char *title, const char *text) {
+  if (m_ConnectErrorDialog != nullptr) {
+    if (lv_obj_is_valid(m_ConnectErrorDialog)) {
+      return;
+    }
+    // The box went away with its screen. Drop the dangling handle rather than
+    // letting it block the prompt for the rest of the session.
+    m_ConnectErrorDialog = nullptr;
+    m_ConnectErrorPrevFocus = nullptr;
+  }
+
+  m_ConnectErrorPrevFocus = lv_group_get_focused(m_Group);
+  m_ConnectErrorDialog = lv_msgbox_create(nullptr);
+  lv_msgbox_add_title(m_ConnectErrorDialog, title);
+  lv_msgbox_add_text(m_ConnectErrorDialog, text);
+
+  lv_obj_t *ok = lv_msgbox_add_footer_button(m_ConnectErrorDialog, "OK");
+  // Add the button to the encoder group so it is focusable and operable on
+  // non-touch devices, exactly as the companion pairing prompt does.
+  addToInputGroup(m_Group, ok);
+  lv_obj_add_event_cb(
+      ok,
+      [](lv_event_t *event) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+        ui->closeConnectErrorDialog();
+      },
+      LV_EVENT_CLICKED, this);
+  lv_group_focus_obj(ok);
+}
+
 void UI::stopCompanionPairingTimer(void) {
   closeCompanionPairingDialog();
   if (m_CompanionPairingTimer != nullptr) {
@@ -1928,6 +1974,19 @@ lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMo
           LV_EVENT_CLICKED, ctx);
       break;
     case MODE_SCAN:
+      // A scan row is a pairing request, so it goes through beginPairing(),
+      // which refuses a camera that is already saved. The Connect page below
+      // shares the row builder but not this check: everything on that page is
+      // saved by definition.
+      lv_obj_add_event_cb(
+          item,
+          [](lv_event_t *e) {
+            size_t index =
+                static_cast<size_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+            beginPairing(index, e);
+          },
+          LV_EVENT_CLICKED, ctx);
+      break;
     case MODE_CONNECT:
       lv_obj_add_event_cb(
           item,
@@ -3775,6 +3834,37 @@ std::string UI::simQueryState(const char *key) {
     return (inGroup && focused) ? "yes" : "no";
   }
 
+  // The connect error box: "none" when nothing is up, otherwise its rendered
+  // title as a single token ("already_saved", "pairing_lost",
+  // "connect_failed"), so a scenario can tell a refused pairing from a failed
+  // connect and from a camera that lost its pairing. Reading the label rather
+  // than a flag is what proves the text actually reached the screen; the
+  // scenario DSL takes one word per value, hence the lowercased token.
+  if (query == "connect_error") {
+    if (m_ConnectErrorDialog == nullptr || !lv_obj_is_valid(m_ConnectErrorDialog)) {
+      return "none";
+    }
+    lv_obj_t *header = lv_msgbox_get_header(m_ConnectErrorDialog);
+    if (header != nullptr) {
+      for (uint32_t i = 0; i < lv_obj_get_child_count(header); i++) {
+        lv_obj_t *child = lv_obj_get_child(header, i);
+        if (!lv_obj_check_type(child, &lv_label_class)) {
+          continue;
+        }
+        const char *text = lv_label_get_text(child);
+        if (text == nullptr) {
+          break;
+        }
+        std::string token(text);
+        for (auto &c : token) {
+          c = (c == ' ') ? '_' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return token;
+      }
+    }
+    return "open";
+  }
+
   // Number of live pairing message boxes on the top layer. A modal message box
   // built with lv_msgbox_create(nullptr) sits inside a backdrop that is a direct
   // child of the top layer. More than one means a re-entrancy stacked or
@@ -4810,9 +4900,31 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       break;
 
     case Control::STATE_CONNECT_FAILED:
-      ESP_LOGE("ui", "Connection failed.");
+    {
+      // Read both before doDisconnect() clears the targets.
+      //
+      // Some connect failures cannot be fixed by trying again: the camera
+      // dropped its side of the pairing, so the stale-bond recovery deleted
+      // the local bond and stopped the cycle. Those carry a reason. Every
+      // other failure gets the generic text. Either way the box has to be
+      // dismissed: dropping silently back to the menu left the user unable to
+      // tell an out-of-range camera from one that had lost its pairing.
+      const std::string reason = control.getConnectFailReason();
+      const std::string name = control.getDisconnectedName();
+      ESP_LOGE("ui", "Connection failed. %s", reason.c_str());
       doDisconnect();
+      if (!reason.empty()) {
+        ctx->ui->showConnectError("Pairing lost", reason.c_str());
+      } else {
+        char text[160];
+        std::snprintf(text, sizeof(text),
+                      "Could not connect to %s.\nCheck it is powered on and in range, then "
+                      "try again.",
+                      name.empty() ? "the camera" : name.c_str());
+        ctx->ui->showConnectError("Connect failed", text);
+      }
       break;
+    }
 
     case Control::STATE_ACTIVE:
       if (!ctx->feedbackConnected) {
@@ -5200,6 +5312,38 @@ void UI::serviceRequests(void) {
   }
 }
 #endif
+
+bool UI::beginPairing(size_t index, lv_event_t *e) {
+  if (index >= CameraList::size()) {
+    return false;
+  }
+
+  auto camera = CameraList::get(index);
+  if (camera == nullptr) {
+    return false;
+  }
+
+  if (CameraList::isSaved(camera.get())) {
+    // Pairing a camera that is already saved cannot replace its entry when the
+    // body advertises a resolvable private address: the address moved, so a
+    // second record appears for one camera and the saved reconnect picks
+    // whichever the index happens to hold. Refuse and say why, rather than
+    // starting a connect that quietly makes the list worse.
+    ESP_LOGW(LOG_TAG, "'%s' is already saved, refusing to pair it again",
+             camera->getName().c_str());
+    char text[160];
+    std::snprintf(text, sizeof(text),
+                  "%s is already saved.\nConnect from the saved list, or delete it to pair "
+                  "again.",
+                  camera->getName().c_str());
+    m_ConnectContext.ui->showConnectError("Already saved", text);
+    return false;
+  }
+
+  camera->setActive(true);
+  doConnect(e);
+  return true;
+}
 
 void UI::doConnect(lv_event_t *e) {
   auto &control = Control::getInstance();

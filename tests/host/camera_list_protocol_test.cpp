@@ -20,6 +20,7 @@ using Furble::CameraListProtocol::encodeIndex;
 using Furble::CameraListProtocol::INDEX_ENTRY_BYTES;
 using Furble::CameraListProtocol::INDEX_NAME_BYTES;
 using Furble::CameraListProtocol::IndexEntry;
+using Furble::CameraListProtocol::sameSavedIdentity;
 using Furble::CameraListProtocol::upsertIndex;
 
 namespace {
@@ -130,6 +131,39 @@ void testUpsert() {
   check(index.size() == 3, "a fresh name appends after replacements");
 }
 
+// The already-saved refusal. The saved index is keyed on the BLE address, which
+// cannot recognise a camera the user is pairing a second time: a Fujifilm
+// Secure body advertises a resolvable private address that changes with every
+// pairing, so the same camera comes back under a new key and the list gains a
+// second, useless record.
+void testSameSavedIdentity() {
+  constexpr uint32_t kSecure = 8;  // Camera::Type::FUJIFILM_SECURE
+  constexpr uint32_t kBasic = 1;   // Camera::Type::FUJIFILM_BASIC
+  const std::string name = "FUJIFILM X100VI";
+
+  check(sameSavedIdentity(kSecure, 0x112233445566ULL, name, kSecure, 0x112233445566ULL, name),
+        "the same address and type is the same camera");
+
+  // The signature case: the body re-paired under a new resolvable private
+  // address. Nothing but the advertised name survives, and it has to be enough.
+  check(sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, name, kSecure, 0x112233445566ULL, name),
+        "a moved address still matches on the advertised name");
+
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, name, kSecure, 0x112233445566ULL,
+                           "FUJIFILM X-T5"),
+        "a different camera at a different address does not match");
+
+  check(!sameSavedIdentity(kSecure, 0x112233445566ULL, name, kBasic, 0x112233445566ULL, name),
+        "a different vendor mode is a different saved camera");
+
+  // An unnamed advertisement carries no identity of its own, so it must never
+  // match on the empty string and lock the user out of pairing.
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, "", kSecure, 0x112233445566ULL, ""),
+        "an empty name never matches");
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, "", kSecure, 0x112233445566ULL, name),
+        "an empty name does not match a real one");
+}
+
 }  // namespace
 
 int main() {
@@ -139,6 +173,7 @@ int main() {
   testEmpty();
   testRejects();
   testUpsert();
+  testSameSavedIdentity();
 
   if (g_failures > 0) {
     std::cerr << "camera list protocol tests: " << g_failures << " FAILED\n";

@@ -1610,6 +1610,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/scan-already-saved.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/scan-distinct-rows-heartbeat.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

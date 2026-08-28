@@ -391,6 +391,9 @@ void FujifilmVirtualCamera::clearFaults() {
     m_StallLinkDown = true;
   }
   m_StallSignal.notify_all();
+  m_SecureConnectionDropsLink = false;
+  m_SecureTimeoutsRemaining = 0;
+  m_RefuseWhileBonded = false;
   m_RequireLongConnParamsAfterIdentifier = false;
   m_DelayRegistrationConnParamsUntilFastRequest = false;
   m_RequestConnParamsOnSubscribe = false;
@@ -731,7 +734,27 @@ bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
       return false;
     }
   }
-
+  if (m_SecureTimeoutsRemaining > 0) {
+    // The bench signature: the handshake times out and the link goes with it,
+    // so the connect task sees the failure with the link already down.
+    if (m_SecureTimeoutsRemaining != kSecureTimeoutAlways) {
+      m_SecureTimeoutsRemaining--;
+    }
+    client.mockDropLink(0x08, true);
+    return false;
+  }
+  if (m_RefuseWhileBonded && NimBLEDevice::isBonded(m_Config.address)) {
+    // Dead keys are refused, but the camera stays on the link so a fresh
+    // pairing can still be made once the stale bond is deleted.
+    return false;
+  }
+  if (m_SecureConnectionDropsLink) {
+    // The standby-timeout shape: the link dies under the encryption handshake
+    // and the failure reaches the caller only after onDisconnect cleared the
+    // link state, so the stale-bond recovery must not treat it as rejection.
+    client.mockDropLink(0x08, true);
+    return false;
+  }
   return m_SecureConnectionResult && m_Connected && (m_Client == &client);
 }
 
@@ -781,6 +804,16 @@ bool FujifilmVirtualCamera::secureStallWasAborted() const {
 uint32_t FujifilmVirtualCamera::secureStallEntries() const {
   const std::lock_guard<std::mutex> lock(m_StallMutex);
   return m_StallEntries;
+void FujifilmVirtualCamera::setSecureConnectionDropsLink(bool drop) {
+  m_SecureConnectionDropsLink = drop;
+}
+
+void FujifilmVirtualCamera::setSecureTimeouts(uint32_t attempts) {
+  m_SecureTimeoutsRemaining = attempts;
+}
+
+void FujifilmVirtualCamera::setRefuseWhileBonded(bool refuse) {
+  m_RefuseWhileBonded = refuse;
 }
 
 void FujifilmVirtualCamera::setRequireLongConnParamsAfterIdentifier(bool require) {

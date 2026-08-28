@@ -3,6 +3,7 @@
 
 #include <array>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -203,6 +204,28 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // How many times the handshake has been entered, so a repeated-cycle test can
   // prove every cycle really reached the blocking call.
   uint32_t secureStallEntries() const;
+  // Model a standby camera whose encryption handshake dies with the link (the
+  // Ricoh rc=520 shape, plans/147): secureConnection fails only after the drop
+  // has cleared the link state. Distinct from setSecureConnectionResult(false),
+  // which models a camera that refuses the encryption but stays on the link,
+  // the definitive stale-bond signature from the PR #93 X100VI trace.
+  void setSecureConnectionDropsLink(bool drop);
+  // Model the X100VI stale-bond signature captured on hardware 2026-09-02
+  // (bench-logs/stale-bond-245-run2). After the pairing is deleted on the
+  // camera only, the link comes up and the encryption handshake then times out
+  // and takes the link with it, attempt after attempt, with no refusal ever
+  // arriving. `attempts` is how many consecutive secure handshakes time out
+  // before the camera accepts one again; kSecureTimeoutAlways never accepts,
+  // and 0 disables the mode. The rc=520 variant, where the failure reaches the
+  // caller before the disconnect event is delivered, is covered by wrapping
+  // this peer in SecureTimeoutPeer instead.
+  void setSecureTimeouts(uint32_t attempts);
+  static constexpr uint32_t kSecureTimeoutAlways = UINT32_MAX;
+  // Model a camera that deleted its pairing but is sitting in pairing mode: it
+  // refuses the encryption while a bond exists (dead keys) and accepts a fresh
+  // pairing once the stale bond is gone, all on the same link. This is the
+  // in-link recovery the stale-bond path attempts before giving up.
+  void setRefuseWhileBonded(bool refuse);
   void setRequireLongConnParamsAfterIdentifier(bool require);
   void setDelayRegistrationConnParamsUntilFastRequest(bool delay);
   void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
@@ -313,6 +336,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_StallLinkDown = false;
   bool m_StallAborted = false;
   uint32_t m_StallEntries = 0;
+  bool m_SecureConnectionDropsLink = false;
+  uint32_t m_SecureTimeoutsRemaining = 0;
+  bool m_RefuseWhileBonded = false;
   bool m_RequireLongConnParamsAfterIdentifier = false;
   bool m_DelayRegistrationConnParamsUntilFastRequest = false;
   bool m_ConnParamsNegotiated = false;

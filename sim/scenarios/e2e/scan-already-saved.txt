@@ -1,0 +1,30 @@
+# Pairing a camera that is already saved must be refused, not started.
+#
+# The saved index is keyed on the BLE address, and a Fujifilm Secure body
+# advertises a resolvable private address that changes with every pairing. A
+# second pairing therefore adds a second record for one camera instead of
+# replacing the first, and the saved reconnect picks whichever the index holds.
+# The Scan page refuses the tap with a message the user has to dismiss.
+seed fauxny true
+seed saved_camera true
+wait 400
+
+home
+wait 200
+assert ui.page main
+assert ui.connect_error none
+
+# The same camera turns up in the scan results.
+action nav scan
+wait 400
+assert ui.page scan
+
+# Tapping its row must refuse instead of connecting.
+action select
+wait 300
+assert ui.connect_error already_saved
+assert ui.modal_count 1
+assert control.state idle
+assert control.targets 0
+
+exit
