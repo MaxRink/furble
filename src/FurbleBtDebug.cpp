@@ -25,6 +25,7 @@
 #include <freertos/task.h>
 #include <host/ble_hs.h>
 
+#include "BtDebugHex.h"
 #include "BtDebugJournal.h"
 #include "FurbleControl.h"
 #include "Scan.h"
@@ -199,14 +200,8 @@ class VerboseScanCallbacks final: public NimBLEScanCallbacks {
     }
     if (device->getManufacturerDataCount() != 0) {
       const std::string manufacturer = device->getManufacturerData(0);
-      static constexpr char HEX[] = "0123456789abcdef";
-      const size_t bytes = std::min(manufacturer.size(), (sizeof(event.manufacturer) - 1) / 2);
-      for (size_t index = 0; index < bytes; ++index) {
-        const uint8_t value = static_cast<uint8_t>(manufacturer[index]);
-        event.manufacturer[index * 2] = HEX[value >> 4];
-        event.manufacturer[index * 2 + 1] = HEX[value & 0x0f];
-      }
-      event.manufacturer[bytes * 2] = '\0';
+      btHexEncode(reinterpret_cast<const uint8_t *>(manufacturer.data()), manufacturer.size(),
+                  event.manufacturer, sizeof(event.manufacturer));
     }
     BtDebugJournal::instance().record(event);
 

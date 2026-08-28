@@ -29,8 +29,10 @@ holding an oversized event ring in internal DRAM.
   S3-without-PSRAM capacity profiles.
 - Fresh full host build and suite after rebasing onto `46d0fe9a`: 69/69
   tests passed. The journal checks cover storage budget, address and UUID
-  round trips, text bounds, binary-advertisement hex output, payload
-  truncation, sequence order, loss accounting, and disconnect identity.
+  round trips, text bounds, binary-advertisement hex output (including
+  embedded zero/non-printable bytes and bounded truncation), payload
+  truncation, sequence order, loss accounting, and disconnect
+  correlation/address preservation.
 - `clang-format --dry-run --Werror` and `git diff --check` passed.
 - `pio run -e waveshare-s3-eth-debug` identified the checked-in 8 MB PSRAM
   profile but stalled in ESP-IDF `get_cmake_code_model` during CMake

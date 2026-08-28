@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "BtDebugHex.h"
 #include "BtDebugJournal.h"
 
 using Furble::BtDebugEvent;
@@ -68,7 +69,11 @@ int main() {
   subscribe.payload_length = 2;
   subscribe.payload[0] = 1;
   subscribe.payload[1] = 0;
-  snprintf(subscribe.manufacturer, sizeof(subscribe.manufacturer), "%s", "00017f80");
+  const uint8_t manufacturer[] = {0x00, 0x01, 0x7f, 0x80, 0xff};
+  check(Furble::btHexEncode(manufacturer, sizeof(manufacturer), subscribe.manufacturer,
+                            sizeof(subscribe.manufacturer))
+            == sizeof(manufacturer),
+        "binary manufacturer data reports the retained byte count");
   journal.record(subscribe);
 
   std::vector<BtDebugEvent> events;
@@ -94,8 +99,12 @@ int main() {
       "payload preserves a bounded prefix and loss accounting");
   check(events[1].payload_length == 2 && events[1].payload[0] == 1 && events[1].response,
         "CCCD value and response mode survive the event boundary");
-  check(std::string(events[1].manufacturer) == "00017f80",
+  check(std::string(events[1].manufacturer) == "00017f80ff",
         "binary manufacturer data is retained as bounded lowercase hex");
+  char truncated[9] = {};
+  check(Furble::btHexEncode(manufacturer, sizeof(manufacturer), truncated, sizeof(truncated)) == 4
+            && std::string(truncated) == "00017f80",
+        "binary manufacturer hex truncation is bounded and terminated");
 
   events.clear();
   check(journal.drain(1, collect, &events) == 1 && events.size() == 1
