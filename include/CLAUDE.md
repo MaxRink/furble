@@ -16,3 +16,7 @@ Public headers for the app layer in src/, one header per module
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
   methods directly.
+- `FurbleAutoOff.h` contains the pure disconnected-idle policy predicate.
+  Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
+  enabled; callers must sample charging telemetry and keep policy ticks free of
+  NVS writes.

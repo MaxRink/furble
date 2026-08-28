@@ -160,6 +160,9 @@ a regression.
   CHARGING` command changes the reading at runtime. `ui.low_battery` reports
   the rendered warning state and `platform.power_off` records a production
   power-off request without terminating the simulator.
+  `auto_off_charging` is the explicit opt-in for auto-off while charging.
+  Charging-safe and opt-in scenarios assert both production power-off and
+  light-sleep surfaces; no simulator-only policy or persistence path is used.
   `sim/scripts/run-invalid.sh` requires malformed typed seed fixtures to exit
   with DSL validation status 2. Typed seeds are validated while the scenario
   file is parsed, before SDL or firmware worker threads start, so invalid input
