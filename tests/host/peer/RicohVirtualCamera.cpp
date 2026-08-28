@@ -51,6 +51,18 @@ void RicohVirtualCamera::removeCameraBond() {
   m_Config.camera_bonded = false;
 }
 
+void RicohVirtualCamera::setCameraPower(uint8_t power) {
+  m_Config.camera_power = power;
+}
+
+void RicohVirtualCamera::setOperationMode(uint8_t mode) {
+  m_Config.operation_mode = mode;
+}
+
+void RicohVirtualCamera::setOperationModeReadFails(bool fails) {
+  m_Config.operation_mode_read_fails = fails;
+}
+
 const std::vector<RicohVirtualCamera::Write> &RicohVirtualCamera::writes() const {
   return m_Writes;
 }
@@ -142,6 +154,14 @@ NimBLEAttValue RicohVirtualCamera::read(NimBLEClient &client,
   }
   if (matches(service, BT_CONTROL_SERVICE) && matches(characteristic, PAIRED_NAME_CHARACTERISTIC)) {
     return NimBLEAttValue("furble");
+  }
+  if (matches(service, CAMERA_SERVICE) && matches(characteristic, POWER_CHARACTERISTIC)) {
+    return NimBLEAttValue({m_Config.camera_power});
+  }
+  if (matches(service, CAMERA_SERVICE) && matches(characteristic, OPERATION_MODE_CHARACTERISTIC)) {
+    if (m_Config.operation_mode_read_fails)
+      return {};
+    return NimBLEAttValue({m_Config.operation_mode});
   }
   return NimBLEAttValue({0x00});
 }

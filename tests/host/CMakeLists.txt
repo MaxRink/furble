@@ -193,6 +193,28 @@ target_compile_options(ricoh_focus_test PRIVATE
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
+# The sleep gate test drives the production Ricoh shutter path against the
+# virtual peer in BLE standby. It protects the invariant that only a fresh
+# OperationMode read of CAPTURE authorizes the ShootingFlavor and
+# OperationRequest writes; a capture write in BLE_STARTUP cold boots the
+# camera and can wedge its firmware.
+add_executable(ricoh_sleep_gate_test
+               ricoh_sleep_gate_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(ricoh_sleep_gate_test PRIVATE furble_host_camera)
+target_include_directories(ricoh_sleep_gate_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(ricoh_sleep_gate_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
 # The registration gate test compiles the real Secure path against the same
 # virtual peer as the normal camera suite. The host-only timeout keeps a
 # withheld-registration case fast while firmware retains the 25 s bound.
@@ -912,6 +934,7 @@ if(BUILD_TESTING)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME camera-regression COMMAND camera_regression_test)
   add_test(NAME ricoh-focus COMMAND ricoh_focus_test)
+  add_test(NAME ricoh-sleep-gate COMMAND ricoh_sleep_gate_test)
 
   add_executable(vendor_protocol_conformance_test
                  vendor_protocol_conformance_test.cpp
