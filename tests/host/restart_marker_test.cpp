@@ -80,6 +80,14 @@ static void assertTrace(const std::vector<Operation> &trace,
 }
 
 int main() {
+  // Fail-safe contract for the boot origin: an empty store, a true first boot
+  // or a marker lost to power failure, must never report a clean restart, so
+  // the first connect keeps the patient peer backoff. The Control-side half
+  // of this contract lives in tests/host/reconnect_initiator_test.cpp, whose
+  // boot test fails if the default origin ever turns fast again.
+  FaultStorage neverMarked;
+  assert(!Furble::RestartMarker::consume(neverMarked));
+
   // Derive the complete successful mark schedule and fault every observed
   // boundary, including the final commit readback (ordinal 4).
   FaultStorage markProbe;

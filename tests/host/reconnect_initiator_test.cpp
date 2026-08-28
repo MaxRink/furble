@@ -12,15 +12,20 @@
 // therefore skips the first-retry wait; a peer-initiated mid-session drop keeps
 // it.
 //
-// Test A drives a fresh, furble-initiated connect whose first attempt fails and
-// asserts the retry is immediate (well under the 2.5 s wait). Test B drives a
-// mid-session peer drop whose first reconnect attempt fails and asserts the
-// 2.5 s first-retry backoff is still honoured.
+// The boot test runs first and pins the fail-safe: with no clean-restart
+// marker consumed (the host Settings shim returns false, the same as an
+// unreadable marker or a true first boot) the very first connect keeps the
+// patient peer backoff. Test A drives a reconnect after a completed
+// interactive disconnect and asserts the retry is immediate (well under the
+// 2.5 s wait). Test B drives a mid-session peer drop whose first reconnect
+// attempt fails and asserts the 2.5 s first-retry backoff is still honoured.
 //
-// Mutation check: revert delayMs() to ignore the queued origin (always
-// FIRST_RETRY_MS at attempt 0), and Test A's fast bound fails because the fresh
-// reconnect waits the full 2.5 s. The handshake-reset test similarly catches
-// any implementation that trusts a caller-supplied clean origin.
+// Mutation checks: revert m_NextConnectOrigin's default to FURBLE and the boot
+// test's elapsed floor fails because the first connect turns fast. Revert
+// delayMs() to ignore the queued origin (always FIRST_RETRY_MS at attempt 0)
+// and Test A's fast bound fails because the reconnect waits the full 2.5 s.
+// The handshake-reset test similarly catches any implementation that trusts a
+// caller-supplied clean origin.
 
 #include <chrono>
 #include <cstdint>
@@ -84,12 +89,16 @@ void ensureControlTask() {
 
 using Furble::Control;
 
-// Test A: a fresh, furble-initiated connect. The first connect attempt fails, so
-// the control task enters the first-retry path at attempt 0. Because the connect
-// was furble-initiated (no stale peer session), the retry must be immediate, so
-// the camera reaches active well inside the 2.5 s stale-session wait.
-bool testFurbleInitiatedReconnectIsFast() {
-  std::cout << "test: a furble-initiated fresh reconnect skips the 2.5 s first-retry wait\n";
+// Boot fail-safe: the host Settings shim's consumeCleanRestart() returns
+// false, the same result as a marker lost to power failure, an NVS error, or
+// a true first boot. The very first connect of the process must therefore
+// keep the patient peer backoff. This test must run first: it consumes the
+// one boot token before any disconnect() mints a fresh FURBLE token.
+//
+// Mutation check: revert Control::m_NextConnectOrigin's default to FURBLE and
+// the elapsed floor below fails because the first retry turns immediate.
+bool testBootWithoutMarkerKeepsBackoff() {
+  std::cout << "test: a boot without a consumed clean-restart marker keeps the backoff\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -105,15 +114,73 @@ bool testFurbleInitiatedReconnectIsFast() {
     return false;
   }
 
-  // Fail the very first connect attempt so the first-retry path is exercised at
-  // attempt 0. This is the first connection since boot, so it must use the
-  // same fast path as a reconnect after a completed furble disconnect. The
-  // next attempt then succeeds.
+  // Fail the very first connect attempt so the first-retry path runs at
+  // attempt 0 with the boot origin token.
   NimBLEDevice::setConnectFailCount(1);
 
   const auto start = std::chrono::steady_clock::now();
-  // Infinite reconnect on: this is the only mode where the first-retry backoff
-  // applies. AUTO consumes the token carried by the interactive disconnect.
+  control.connectAll(true);
+
+  const bool connected = waitFor([&] { return control.getConnectedTargetCount() == 1; }, 8000);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  check(connected, "the boot connect eventually completes");
+  // No marker was consumed, so the first retry must wait roughly
+  // FIRST_RETRY_MS (2500 ms). A 2000 ms floor proves the wait happened while
+  // tolerating scheduling jitter.
+  check(elapsed >= 2000, "a boot without the clean-restart marker keeps the first-retry backoff");
+  std::cout << "  unmarked boot connect completed in " << elapsed << " ms\n";
+
+  control.disconnect();
+  NimBLEDevice::resetMock();
+  return g_Failures == before;
+}
+
+// Test A: a reconnect after a completed interactive disconnect. The teardown
+// mints the FURBLE token, so when the next connect's first attempt fails the
+// retry at attempt 0 must be immediate and the camera reaches active well
+// inside the 2.5 s stale-session wait.
+bool testFurbleInitiatedReconnectIsFast() {
+  std::cout << "test: a furble-initiated reconnect skips the 2.5 s first-retry wait\n";
+  const int before = g_Failures;
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  ensureControlTask();
+
+  Furble::Host::FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  auto &control = Control::getInstance();
+
+  control.addActive(camera);
+  if (!check(control.getTargetCount() == 1, "the camera becomes an active target")) {
+    NimBLEDevice::resetMock();
+    return false;
+  }
+
+  // Establish the session, then tear it down through the interactive
+  // disconnect. The completed teardown is what mints the clean FURBLE token.
+  control.connectAll(true);
+  if (!check(waitFor([&] { return control.getConnectedTargetCount() == 1; }, 4000),
+             "the initial connect reaches active")) {
+    control.disconnect();
+    NimBLEDevice::resetMock();
+    return false;
+  }
+  control.disconnect();
+  if (!check(waitFor([&] { return control.getTargetCount() == 0; }, 2000),
+             "the interactive disconnect completes")) {
+    NimBLEDevice::resetMock();
+    return false;
+  }
+
+  // Reconnect with a failing first attempt so the first-retry path runs at
+  // attempt 0. AUTO consumes the token carried by the interactive disconnect.
+  control.addActive(camera);
+  NimBLEDevice::setConnectFailCount(1);
+
+  const auto start = std::chrono::steady_clock::now();
   control.connectAll(true);
 
   const bool connected = waitFor([&] { return control.getConnectedTargetCount() == 1; }, 4000);
@@ -121,13 +188,60 @@ bool testFurbleInitiatedReconnectIsFast() {
                            std::chrono::steady_clock::now() - start)
                            .count();
 
-  check(connected, "the fresh furble-initiated reconnect completes");
+  check(connected, "the furble-initiated reconnect completes");
   // The old stale-session wait was 2500 ms; the fast path is immediate. A bound
   // well under 2500 ms fails if the wait is not skipped, and is loose enough to
-  // absorb the control task's 50 ms tick and the connect handshake.
+  // absorb the control task's 50 ms tick, the zombie drain and the handshake.
   check(elapsed < 1500,
-        "the fresh furble-initiated reconnect does not wait FIRST_RETRY_MS before retrying");
-  std::cout << "  fresh reconnect completed in " << elapsed << " ms\n";
+        "the furble-initiated reconnect does not wait FIRST_RETRY_MS before retrying");
+  std::cout << "  furble-initiated reconnect completed in " << elapsed << " ms\n";
+
+  control.disconnect();
+  NimBLEDevice::resetMock();
+  return g_Failures == before;
+}
+
+// A connect request received while the task already sits in STATE_CONNECT
+// must re-arm the running cycle instead of being silently dropped, and the
+// re-arm keeps the request's furble origin when the interrupted cycle is
+// itself furble-originated.
+bool testConnectDuringConnectRearms() {
+  std::cout << "test: a connect request during STATE_CONNECT re-arms and keeps its origin\n";
+  const int before = g_Failures;
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  ensureControlTask();
+
+  Furble::Host::FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  auto &control = Control::getInstance();
+  control.addActive(camera);
+
+  // Three failures: the first burns the immediate furble retry, the second
+  // parks the cycle in the 5 s BASE_MS wait, and the third falls to the
+  // re-armed cycle whose immediate furble retry then succeeds.
+  NimBLEDevice::setConnectFailCount(3);
+
+  const auto start = std::chrono::steady_clock::now();
+  control.connectAll(true, Control::reconnect_origin_t::FURBLE);
+  // Queue a second furble request during the BASE_MS wait. The control task
+  // receives it in STATE_CONNECT once the wait ends.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  control.connectAll(true, Control::reconnect_origin_t::FURBLE);
+
+  const bool connected = waitFor([&] { return control.getConnectedTargetCount() == 1; }, 9000);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  check(connected, "the re-armed connect completes");
+  // With the re-arm the third attempt runs right after the 5 s wait and its
+  // immediate furble retry succeeds at about 5.2 s. A dropped request keeps
+  // the old cycle's counter and waits another BASE_MS (about 10.2 s), and a
+  // re-arm that lost the furble origin adds the 2.5 s peer wait (about
+  // 7.7 s). The bound rejects both.
+  check(elapsed < 6500, "the queued connect re-arms the cycle and keeps the furble origin");
+  std::cout << "  re-armed connect completed in " << elapsed << " ms\n";
 
   control.disconnect();
   NimBLEDevice::resetMock();
@@ -295,7 +409,11 @@ bool testManualConnectDuringPeerRecoveryKeepsBackoff() {
 }  // namespace
 
 int main() {
+  // Order matters: the boot test consumes the process's one boot origin token
+  // and must run before any disconnect() mints a fresh FURBLE token.
+  testBootWithoutMarkerKeepsBackoff();
   testFurbleInitiatedReconnectIsFast();
+  testConnectDuringConnectRearms();
   testPeerInitiatedDropKeepsBackoff();
   testPeerResetDuringHandshakeKeepsBackoff();
   testManualConnectDuringPeerRecoveryKeepsBackoff();

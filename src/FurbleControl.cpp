@@ -178,6 +178,11 @@ Control &Control::getInstance(void) {
     // the compile-time default.
     instance.m_Power = Settings::load<esp_power_level_t>(Settings::TX_POWER);
     instance.m_AdaptivePower = instance.m_Power;
+    // The origin token defaults to the patient PEER backoff. Only a consumed
+    // clean-restart marker proves the previous session ended with a proper
+    // link termination, so only that consumption upgrades the first connect
+    // to the fast FURBLE origin. A missing or unreadable marker (power loss,
+    // watchdog reset, NVS failure, true first boot) keeps the fail-safe.
     if (Settings::consumeCleanRestart()) {
       const std::lock_guard<std::mutex> lock(instance.m_Mutex);
       instance.m_NextConnectOrigin = reconnect_origin_t::FURBLE;
@@ -338,6 +343,22 @@ void Control::task(void) {
         break;
 
       case STATE_CONNECT:
+        // A connect request landing here used to be dropped silently even
+        // though its origin token was already consumed. Re-arm the cycle with
+        // the new request instead, mirroring STATE_CONNECT_FAILED. Patience is
+        // sticky both ways: an armed peer cycle may sit behind real peer
+        // evidence (a mid-session drop, a handshake reset), so a fast token
+        // minted before that evidence must not shorten its stale-session wait,
+        // and a request must not switch infinite retry off under a running
+        // recovery.
+        if (ret == pdTRUE && cmd == CMD_CONNECT) {
+          command_t rearmed = request;
+          if (m_ConnectOrigin == reconnect_origin_t::PEER) {
+            rearmed.origin = reconnect_origin_t::PEER;
+          }
+          rearmed.infiniteReconnect = rearmed.infiniteReconnect || m_InfiniteReconnect;
+          startConnectRequest(rearmed);
+        }
         // Do not start a new connection while a prior teardown is still
         // draining. A fresh NimBLE client allocated in connectAll() would race
         // the client a quarantined target's teardown task is still releasing,
