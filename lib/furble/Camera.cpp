@@ -347,6 +347,13 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
 
   {
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    // Known bounded window: an onDisconnect that lands after this clear no
+    // longer sets m_PeerDroppedDuringConnect, so a peer reset in the last
+    // instants of a failed attempt can be missed and the reconnect origin
+    // stays FURBLE. The cost is one immediate first retry against a possibly
+    // stale session; that retry fails and the normal backoff takes over, so
+    // the miss cannot loop. Closing it would need the drop callback and this
+    // completion to share one ordering, not a one-line reorder.
     m_ConnectInProgress = false;
     m_FujifilmSecureRegistration = false;
     // Restart the inactivity timer so the idle countdown begins at connect
