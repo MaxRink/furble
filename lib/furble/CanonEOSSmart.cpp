@@ -39,6 +39,8 @@ void CanonEOSSmart::pairCallback(BLERemoteCharacteristic *pBLERemoteCharacterist
  * handled by the underlying NimBLE and ESP32 libraries.
  */
 bool CanonEOSSmart::_connect(void) {
+  // Drop any stale characteristic pointer from a previous session.
+  m_Geo = nullptr;
   if (NimBLEDevice::isBonded(m_Address)) {
     // Already bonded? Assume pair acceptance!
     m_PairResult = PAIR_ACCEPT;

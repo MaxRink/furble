@@ -437,6 +437,34 @@ void NimBLEClient::setClientCallbacks(NimBLEClientCallbacks *callbacks, bool del
 void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_connect_failure) {
   m_DeleteOnDisconnect = delete_on_disconnect;
   m_DeleteOnConnectFailure = delete_on_connect_failure;
+
+  // Repro: the supervision-timeout disconnect event is still queued on
+  // the host task. Arming delete-on-disconnect hands the free to that event.
+  // Deliver it here, right after the arm, which is one legal interleaving of
+  // the real host task against the failed-connect reclaim: onDisconnect fires,
+  // then the armed client is freed inline (NimBLEClient.cpp:1084-1098,
+  // NimBLEDevice.cpp:373). Nothing may touch this object after eraseClient.
+  if (delete_on_disconnect && m_LinkDeadEventPending) {
+    m_LinkDeadEventPending = false;
+    const int reason = m_LinkDeadReason;
+    if (m_Peer != nullptr) {
+      m_Peer->disconnect(*this, reason);
+      m_Peer = nullptr;
+    }
+    m_Connected = false;
+    if (m_Callbacks != nullptr) {
+      m_Callbacks->onDisconnect(this, reason);
+    }
+    eraseClient(this);
+    return;
+  }
+}
+
+void NimBLEClient::mockMarkLinkDeadEventPending(int reason) {
+  // The physical link is gone (supervision timeout) but the host task has not
+  // consumed BLE_GAP_EVENT_DISCONNECT yet: the client still reports connected.
+  m_LinkDeadEventPending = true;
+  m_LinkDeadReason = reason;
 }
 
 void NimBLEClient::setConnectTimeout(uint32_t timeout) {
@@ -499,6 +527,29 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
 
 void NimBLEClient::disconnect() {
   if (!m_Connected) {
+    return;
+  }
+
+  // Repro: a terminate issued against a link the supervision timeout
+  // already killed. ble_gap_terminate returns ENOTCONN-ish and the queued
+  // disconnect event is consumed around the call: onDisconnect fires here. A
+  // client not armed for delete-on-disconnect survives (the fixed ordering);
+  // an armed one is freed inline exactly as on the host task.
+  if (m_LinkDeadEventPending) {
+    m_LinkDeadEventPending = false;
+    const int reason = m_LinkDeadReason;
+    if (m_Peer != nullptr) {
+      m_Peer->disconnect(*this, reason);
+      m_Peer = nullptr;
+    }
+    m_Connected = false;
+    const bool selfDelete = m_DeleteOnDisconnect;
+    if (m_Callbacks != nullptr) {
+      m_Callbacks->onDisconnect(this, reason);
+    }
+    if (selfDelete) {
+      eraseClient(this);
+    }
     return;
   }
 

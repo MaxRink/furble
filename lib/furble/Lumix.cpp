@@ -76,6 +76,10 @@ bool Lumix::matches(const NimBLEAdvertisedDevice *pDevice) {
 }
 
 bool Lumix::_connect(void) {
+  // Drop any stale characteristic pointers from a previous session.
+  m_Control = nullptr;
+  m_Location = nullptr;
+  m_Clock = nullptr;
   m_Progress = 10;
   ESP_LOGI(LOG_TAG, "Lumix connecting");
   if (!m_Client->connect(m_Address)) {
