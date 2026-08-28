@@ -60,7 +60,55 @@ class CloseFailingSerial(FakeSerial):
         raise RuntimeError("close failed")
 
 
+class CountingSerial(FakeSerial):
+    def __init__(self, lines):
+        super().__init__(lines)
+        self.readline_count = 0
+
+    def readline(self):
+        self.readline_count += 1
+        return super().readline()
+
+
 class FlashPrepareTest(unittest.TestCase):
+    def test_prepare_stops_reading_after_all_acknowledgements(self):
+        serial = CountingSerial(
+            iter(
+                line.encode()
+                for line in (
+                    "flash.ready: true\n",
+                    "flash.watchdog: disabled\n",
+                    "flash.download_recovery: unlocked\n",
+                )
+            )
+        )
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        with mock.patch.dict(sys.modules, {"serial": serial_module}):
+            self.assertIs(
+                MODULE.prepare_result("/dev/test", 115200, 0.01),
+                MODULE.PreflightResult.PASSED,
+            )
+        self.assertEqual(serial.readline_count, 3)
+
+    def test_restore_stops_reading_after_all_acknowledgements(self):
+        serial = CountingSerial(
+            iter((b"flash.ready: false\n", b"flash.watchdog: armed\n"))
+        )
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        with mock.patch.dict(sys.modules, {"serial": serial_module}):
+            self.assertTrue(MODULE.restore_flash_preparation("/dev/test", 115200, 0.01))
+        self.assertEqual(serial.readline_count, 2)
+
+    def test_incomplete_handshakes_still_fail_after_timeout(self):
+        serial = CountingSerial(iter((b"flash.ready: true\n",)))
+        serial_module = types.SimpleNamespace(Serial=mock.Mock(return_value=serial))
+        with mock.patch.dict(sys.modules, {"serial": serial_module}):
+            self.assertIs(
+                MODULE.prepare_result("/dev/test", 115200, 0.01),
+                MODULE.PreflightResult.HANDSHAKE_FAILED,
+            )
+        self.assertGreater(serial.readline_count, 1)
+
     def test_accepts_all_three_acknowledgements(self):
         serial = FakeSerial(
             iter(

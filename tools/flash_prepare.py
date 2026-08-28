@@ -154,8 +154,8 @@ def upload_failure_message(restored: bool) -> str:
 def preflight_only_message(restored: bool) -> str:
     if restored:
         return (
-            "PMIC preflight passed and was cancelled cleanly: watchdog armed and "
-            "download recovery locked; upload not started."
+            "PMIC preflight passed and was cancelled cleanly: watchdog armed; "
+            "download recovery remains available; upload not started."
         )
     return (
         "PMIC preflight passed, but automatic watchdog restoration failed. No "
@@ -224,14 +224,13 @@ def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
                     "flash.download_recovery: unlocked",
                 }:
                     seen.add(line)
-
-            required = {
-                "flash.ready: true",
-                "flash.watchdog: disabled",
-                "flash.download_recovery: unlocked",
-            }
-            if required.issubset(seen):
-                return PreflightResult.PASSED
+                    required = {
+                        "flash.ready: true",
+                        "flash.watchdog: disabled",
+                        "flash.download_recovery: unlocked",
+                    }
+                    if required.issubset(seen):
+                        return PreflightResult.PASSED
             return PreflightResult.HANDSHAKE_FAILED
         except (OSError, ValueError) as error:
             print(f"error: PMIC handshake failed on {port}: {error}", file=sys.stderr)
@@ -281,7 +280,9 @@ def restore_flash_preparation(port: str, baud: int, timeout: float) -> bool:
                 print(line)
                 if line in {"flash.ready: false", "flash.watchdog: armed"}:
                     seen.add(line)
-            return {"flash.ready: false", "flash.watchdog: armed"}.issubset(seen)
+                    if {"flash.ready: false", "flash.watchdog: armed"}.issubset(seen):
+                        return True
+            return False
         except (OSError, ValueError) as error:
             print(f"error: PMIC watchdog restoration failed on {port}: {error}", file=sys.stderr)
             return False
