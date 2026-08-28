@@ -25,8 +25,8 @@
 #include <freertos/task.h>
 #include <host/ble_hs.h>
 
-#include "FurbleControl.h"
 #include "BtDebugJournal.h"
+#include "FurbleControl.h"
 #include "Scan.h"
 
 namespace Furble {
@@ -107,7 +107,8 @@ void journalAddressEvent(BtDebugEventKind kind,
     snprintf(event.identity, sizeof(event.identity), "%s", info->getIdAddress().toString().c_str());
   }
   snprintf(event.operation, sizeof(event.operation), "%s", operation);
-  snprintf(event.result, sizeof(event.result), "requested:%s", requested != nullptr ? requested : "none");
+  snprintf(event.result, sizeof(event.result), "requested:%s",
+           requested != nullptr ? requested : "none");
   snprintf(event.reason_text, sizeof(event.reason_text), "%s", btGapReasonName(reason));
   BtDebugJournal::instance().record(event);
 }
@@ -135,7 +136,8 @@ void journalExplorerGatt(const char *operation,
       (static_cast<uint64_t>(esp_timer_get_time()) - started_us) / 1000ULL, UINT16_MAX));
   const NimBLERemoteService *service = characteristic->getRemoteService();
   if (service != nullptr) {
-    snprintf(event.service_uuid, sizeof(event.service_uuid), "%s", service->getUUID().toString().c_str());
+    snprintf(event.service_uuid, sizeof(event.service_uuid), "%s",
+             service->getUUID().toString().c_str());
   }
   snprintf(event.characteristic_uuid, sizeof(event.characteristic_uuid), "%s",
            characteristic->getUUID().toString().c_str());
@@ -182,7 +184,8 @@ class VerboseScanCallbacks final: public NimBLEScanCallbacks {
     snprintf(event.address, sizeof(event.address), "%s", address.c_str());
     snprintf(event.name, sizeof(event.name), "%s", device->getName().c_str());
     snprintf(event.operation, sizeof(event.operation), "advertisement");
-    event.payload_length = static_cast<uint16_t>(std::min(payload.size(), static_cast<size_t>(UINT16_MAX)));
+    event.payload_length =
+        static_cast<uint16_t>(std::min(payload.size(), static_cast<size_t>(UINT16_MAX)));
     event.payload_truncated = payload.size() > sizeof(event.payload);
     const size_t eventBytes = std::min(payload.size(), sizeof(event.payload));
     if (eventBytes != 0) {
@@ -402,7 +405,8 @@ class Explorer final: public NimBLEClientCallbacks {
     event.address_type = m_RequestedType;
     event.identity_type = connInfo.getIdAddress().getType();
     snprintf(event.address, sizeof(event.address), "%s", connInfo.getAddress().toString().c_str());
-    snprintf(event.identity, sizeof(event.identity), "%s", connInfo.getIdAddress().toString().c_str());
+    snprintf(event.identity, sizeof(event.identity), "%s",
+             connInfo.getIdAddress().toString().c_str());
     snprintf(event.operation, sizeof(event.operation), "authentication");
     snprintf(event.result, sizeof(event.result), "%s", event.success ? "ok" : "failed");
     BtDebugJournal::instance().record(event);
