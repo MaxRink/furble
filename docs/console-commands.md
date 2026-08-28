@@ -161,9 +161,16 @@ python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
 The preflight accepts no credentials and prints no secret data. If it cannot
 obtain all three acknowledgements (`flash.ready`, a disabled watchdog, and an
 unlocked download path), it refuses to flash. Use the physical long-press
-recovery procedure in the README when the running application is wedged. If an
-upload is cancelled after `flash prepare`, reconnect to the console and run
-`flash cancel`, or reboot so normal startup re-arms the watchdog.
+recovery procedure in the README when the running application is wedged. A
+missing Python dependency or an unopened port is reported separately and does
+not imply a retained PMIC download lock. If an upload is cancelled after
+`flash prepare`, reconnect to the console and run `flash cancel`, or reboot so
+normal startup re-arms the watchdog.
+
+The helper invokes the normal PlatformIO upload target from the checkout that
+contains the script and supplies the required development build identity. Do
+not substitute `pio run -t nobuild -t upload`: PlatformIO build artifacts are
+per-checkout and can otherwise flash a stale revision from another worktree.
 
 ## Related references
 

@@ -3,34 +3,122 @@
 
 The command is intentionally conservative. It only starts PlatformIO after a
 developer-console firmware has acknowledged that the PMIC watchdog is disabled
-and long-press download recovery is unlocked. If the application is wedged, the
-script refuses to guess and prints the physical recovery procedure instead.
+and long-press download recovery is unlocked. If a dependency, port, or
+handshake fails, the script refuses to guess and reports only what was observed.
 """
 
 from __future__ import annotations
 
 import argparse
+from enum import Enum
+import importlib
+import os
+from shutil import which
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 
-def recovery_message() -> str:
+class PreflightResult(Enum):
+    """Outcome categories used to keep diagnostic failures fail-closed."""
+
+    PASSED = "passed"
+    DEPENDENCY_MISSING = "dependency-missing"
+    CONTACT_FAILED = "contact-failed"
+    HANDSHAKE_FAILED = "handshake-failed"
+
+
+def _platformio_site_packages() -> list[Path]:
+    """Return site-packages directories belonging to the PlatformIO penv.
+
+    PlatformIO installs pyserial in its own virtual environment. Developers
+    often invoke this script with the system Python instead of that
+    environment. We may import a package from the penv, but never install or
+    execute anything implicitly.
+    """
+
+    candidates: list[Path] = []
+    pio = which("pio")
+    if pio:
+        pio_path = Path(pio).resolve()
+        if pio_path.parent.name in {"bin", "Scripts"}:
+            candidates.append(pio_path.parent.parent)
+
+    core_dir = os.environ.get("PLATFORMIO_CORE_DIR")
+    if core_dir:
+        candidates.append(Path(core_dir).expanduser())
+    candidates.append(Path.home() / ".platformio")
+
+    site_packages: list[Path] = []
+    seen: set[Path] = set()
+    for penv in candidates:
+        if penv in seen:
+            continue
+        seen.add(penv)
+        site_packages.extend((penv / "lib").glob("python*/site-packages"))
+        site_packages.append(penv / "Lib" / "site-packages")
+    return [path for path in site_packages if path.is_dir()]
+
+
+def _load_serial():
+    """Load pyserial from the active interpreter or PlatformIO's penv."""
+
+    try:
+        return importlib.import_module("serial")
+    except ImportError:
+        pass
+
+    for package_dir in _platformio_site_packages():
+        package_text = str(package_dir)
+        if package_text not in sys.path:
+            sys.path.insert(0, package_text)
+        try:
+            importlib.invalidate_caches()
+            return importlib.import_module("serial")
+        except ImportError:
+            continue
+    return None
+
+
+def dependency_message() -> str:
+    """Explain how to provide pyserial without contacting the device."""
+
+    project = Path(__file__).resolve().parent.parent
+    lines = [
+        "PMIC preflight was not attempted because pyserial is unavailable.",
+        f"Install the repository tools with: {sys.executable} -m pip install -r {project / 'requirements.txt'}",
+    ]
+    if which("pio"):
+        lines.append(
+            "Alternatively, invoke this script with the Python interpreter "
+            "from the PlatformIO penv so its bundled pyserial is used."
+        )
+    lines.append("No serial port was opened and no PMIC state was inferred.")
+    return "\n".join(lines)
+
+
+def contact_message() -> str:
     return (
-        "PMIC preflight did not complete. USB unplugging and reset are insufficient "
-        "for a retained DL_LOCK; remove battery power (disconnect, depletion, or "
-        "service), restore it, then hold the StickS3 side button until the green "
-        "LED flashes and retry."
+        "The PMIC preflight could not open the requested serial port. No upload "
+        "was started and no PMIC lock state was inferred. Check the port, USB "
+        "cable, and that no other monitor owns the device, then retry."
     )
 
 
-def prepare(port: str, baud: int, timeout: float) -> bool:
-    try:
-        import serial  # type: ignore
-    except ImportError:
-        print("error: pyserial is required for PMIC flash preflight", file=sys.stderr)
-        return False
+def handshake_message() -> str:
+    return (
+        "The device responded, but the PMIC preflight did not provide all three "
+        "safety acknowledgements. No upload was started and the PMIC state is "
+        "unknown. If the application is responsive, run 'flash cancel' or reboot "
+        "before retrying."
+    )
+
+
+def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
+    serial = _load_serial()
+    if serial is None:
+        return PreflightResult.DEPENDENCY_MISSING
 
     try:
         with serial.Serial(port, baudrate=baud, timeout=0.2, write_timeout=1) as device:
@@ -59,14 +147,23 @@ def prepare(port: str, baud: int, timeout: float) -> bool:
                 }:
                     seen.add(line)
 
-            return {
+            required = {
                 "flash.ready: true",
                 "flash.watchdog: disabled",
                 "flash.download_recovery: unlocked",
-            }.issubset(seen)
+            }
+            if required.issubset(seen):
+                return PreflightResult.PASSED
+            return PreflightResult.HANDSHAKE_FAILED
     except (OSError, ValueError) as error:
         print(f"error: cannot contact {port}: {error}", file=sys.stderr)
-        return False
+        return PreflightResult.CONTACT_FAILED
+
+
+def prepare(port: str, baud: int, timeout: float) -> bool:
+    """Compatibility wrapper returning the historical boolean result."""
+
+    return prepare_result(port, baud, timeout) is PreflightResult.PASSED
 
 
 def main() -> int:
@@ -80,13 +177,21 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="preflight only")
     args = parser.parse_args()
 
-    if not prepare(args.port, args.baud, args.timeout):
-        print(recovery_message(), file=sys.stderr)
+    result = prepare_result(args.port, args.baud, args.timeout)
+    if result is not PreflightResult.PASSED:
+        message = {
+            PreflightResult.DEPENDENCY_MISSING: dependency_message,
+            PreflightResult.CONTACT_FAILED: contact_message,
+            PreflightResult.HANDSHAKE_FAILED: handshake_message,
+        }[result]()
+        print(message, file=sys.stderr)
         return 2
 
-    print("PMIC preflight passed: starting upload")
     if args.dry_run:
+        print("PMIC preflight passed: dry run complete; upload not started")
         return 0
+
+    print("PMIC preflight passed: starting upload")
 
     project = Path(__file__).resolve().parent.parent
     command = [
@@ -101,7 +206,12 @@ def main() -> int:
         "--upload-port",
         args.port,
     ]
-    result = subprocess.run(command, check=False)
+    # Keep the normal PlatformIO build dependency. A `nobuild` upload can
+    # silently flash an image left by another checkout or revision.
+    build_environment = os.environ.copy()
+    build_environment.setdefault("FURBLE_VERSION", "dev")
+    build_environment.setdefault("FURBLE_TEST", "0")
+    result = subprocess.run(command, check=False, env=build_environment)
     if result.returncode != 0:
         print(
             "upload failed. The device may still be in ROM download mode. "

@@ -22,6 +22,18 @@ All contributions will continue to pass through human review before acceptance.
 
 furble is an ESP-IDF 5.x project built with PlatformIO. It is not Arduino.
 
+Install the pinned PlatformIO and serial-console tooling before using the
+PMIC-safe uploader:
+
+```sh
+python3 -m pip install -r requirements.txt
+```
+
+The uploader also looks for `pyserial` in PlatformIO's virtual environment, so
+it can be run with the system Python when PlatformIO was installed by `pio`
+there. It never installs dependencies or contacts the device when the import
+check fails.
+
 There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has
 a matching `-debug` environment that adds verbose logging and the USB serial
