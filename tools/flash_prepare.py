@@ -121,7 +121,17 @@ def prepare_result(port: str, baud: int, timeout: float) -> PreflightResult:
         return PreflightResult.DEPENDENCY_MISSING
 
     try:
-        with serial.Serial(port, baudrate=baud, timeout=0.2, write_timeout=1) as device:
+        serial_options = {
+            "baudrate": baud,
+            "timeout": 0.2,
+            "write_timeout": 1,
+        }
+        # Two readers can split the three acknowledgements and turn a valid
+        # preflight into a timeout. pyserial exposes the POSIX TIOCEXCL
+        # guard; leave the option out on platforms where it is unsupported.
+        if os.name == "posix":
+            serial_options["exclusive"] = True
+        with serial.Serial(port, **serial_options) as device:
             device.reset_input_buffer()
             device.write(b"flash prepare\n")
             device.flush()

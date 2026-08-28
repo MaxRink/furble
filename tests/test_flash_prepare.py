@@ -69,6 +69,12 @@ class FlashPrepareTest(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"serial": serial_module}):
             self.assertTrue(MODULE.prepare("/dev/test", 115200, 0.01))
         self.assertEqual(serial.command, b"flash prepare\n")
+        options = serial_module.Serial.call_args.kwargs
+        self.assertEqual(options["baudrate"], 115200)
+        self.assertEqual(options["timeout"], 0.2)
+        self.assertEqual(options["write_timeout"], 1)
+        if MODULE.os.name == "posix":
+            self.assertTrue(options["exclusive"])
 
     def test_success_has_explicit_result(self):
         serial = FakeSerial(
