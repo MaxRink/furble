@@ -65,7 +65,7 @@ class Scan: public NimBLEScanCallbacks {
    * The optional end callback fires when the scan stops by itself, it does not
    * fire on stop().
    */
-  bool start(std::function<void(void *)> scanCallback,
+  void start(std::function<void(void *)> scanCallback,
              void *scanResultPrivateData,
              std::function<void(void *)> scanEndCallback = nullptr);
 
@@ -74,7 +74,7 @@ class Scan: public NimBLEScanCallbacks {
    *
    * This is the pairing and reconnect path, it always scans at full duty.
    */
-  bool start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates = false);
+  void start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates = false);
 
   /**
    * Stop the scan.

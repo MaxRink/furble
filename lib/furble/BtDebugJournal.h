@@ -77,10 +77,11 @@ class BtDebugJournal {
  public:
   // Keep the console-only ring bounded for each board. The S3 ring is allocated
   // from PSRAM when available. A no-PSRAM fallback uses the non-S3 capacity.
+  static constexpr size_t INTERNAL_EVENTS = 32;
 #if defined(FURBLE_M5STICKS3)
   static constexpr size_t MAX_EVENTS = 128;
 #else
-  static constexpr size_t MAX_EVENTS = 32;
+  static constexpr size_t MAX_EVENTS = INTERNAL_EVENTS;
 #endif
   using Emit = void (*)(const BtDebugEvent &, void *context);
 
@@ -159,7 +160,7 @@ class BtDebugJournal {
   static constexpr uint16_t FLAG_BEGIN = 1U << 7;
   static constexpr uint16_t FLAG_PAYLOAD_TRUNCATED = 1U << 8;
 
-  static_assert(sizeof(BtDebugRecord) <= 224,
+  static_assert(sizeof(BtDebugRecord) <= 216,
                 "journal record must fit the documented per-board budget");
 
   static void encode(const BtDebugEvent &event, BtDebugRecord &record);

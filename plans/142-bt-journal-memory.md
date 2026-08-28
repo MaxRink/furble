@@ -11,9 +11,10 @@ holding an oversized event ring in internal DRAM.
   216-byte record with binary six-byte addresses, binary UUIDs, packed flags,
   bounded text, and a 24-byte payload prefix. The decoded event uses the same
   payload bound, so console hex output cannot expand beyond the retained data.
-- Non-S3 boards allocate 32 records, for exactly 6912 bytes of journal
-  storage. StickS3 requests 128 records from PSRAM, for exactly 27648 bytes,
-  and falls back to 32 internal records when PSRAM is unavailable.
+- Non-S3 boards allocate 32 records, for 6912 bytes of journal storage on the
+  host and at most 6912 bytes on 32-bit targets. StickS3 requests 128 records
+  from PSRAM, for at most 27648 bytes, and falls back to 32 internal records
+  when PSRAM is unavailable.
 - Allocate only while the journal is enabled. `dump` reports capacity, storage
   bytes, and overwritten-record count. Sequence, session, and attempt IDs keep
   lifecycle events correlated after decoding.
@@ -30,5 +31,10 @@ holding an oversized event ring in internal DRAM.
 
 ## Hardware status
 
-No hardware run was available for this isolated worktree. Only the Fujifilm
-vendor path is hardware-testable under the repository policy.
+No hardware run was available for this isolated worktree. The `m5stick-s3`
+PlatformIO environment uses the generic ESP32-S3-DevKitC-1 profile and its
+checked-in sdkconfig does not enable `CONFIG_SPIRAM`, so that environment must
+use the 32-record fallback. The `waveshare-s3-eth` environment is the checked-
+in S3+PSRAM profile (`BOARD_HAS_PSRAM`, 8 MB octal PSRAM, and
+`CONFIG_SPIRAM=y`) where the 128-record PSRAM allocation can be built. Only
+the Fujifilm vendor path is hardware-testable under the repository policy.

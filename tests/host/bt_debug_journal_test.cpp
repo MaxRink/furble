@@ -27,7 +27,7 @@ int main() {
   journal.clear();
   journal.setEnabled(true);
   check(journal.capacity() == BtDebugJournal::MAX_EVENTS, "journal allocates its board capacity");
-  check(journal.storageBytes() <= 8192, "non-S3 journal storage stays below 8 KiB");
+  check(journal.storageBytes() == 6912, "non-S3 journal storage is 32 x 216 bytes");
   const uint32_t session = journal.sessionId();
   const uint32_t attempt = journal.nextAttempt();
 

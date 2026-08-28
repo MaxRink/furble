@@ -162,9 +162,9 @@ bool BtDebugJournal::allocateLocked() {
   m_EventCapacity = m_Events != nullptr ? MAX_EVENTS : 0;
   if (m_Events == nullptr) {
     // Keep an S3 build useful when its PSRAM is absent or unavailable.
-    m_Events = static_cast<BtDebugRecord *>(
-        heap_caps_calloc(32, sizeof(BtDebugRecord), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    m_EventCapacity = m_Events != nullptr ? 32 : 0;
+    m_Events = static_cast<BtDebugRecord *>(heap_caps_calloc(
+        INTERNAL_EVENTS, sizeof(BtDebugRecord), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    m_EventCapacity = m_Events != nullptr ? INTERNAL_EVENTS : 0;
   }
 #else
   m_Events = static_cast<BtDebugRecord *>(

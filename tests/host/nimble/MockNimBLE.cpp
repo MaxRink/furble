@@ -387,6 +387,10 @@ const NimBLEAddress &NimBLEConnInfo::getAddress() const {
   return address;
 }
 
+const NimBLEAddress &NimBLEConnInfo::getIdAddress() const {
+  return getAddress();
+}
+
 void NimBLEClientCallbacks::onConnect(NimBLEClient *client) {
   (void)client;
 }

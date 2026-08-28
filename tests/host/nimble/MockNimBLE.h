@@ -216,6 +216,7 @@ class NimBLEConnInfo {
   bool isBonded() const;
   uint8_t getSecKeySize() const;
   const NimBLEAddress &getAddress() const;
+  const NimBLEAddress &getIdAddress() const;
 
  private:
   uint16_t m_Interval;
