@@ -162,6 +162,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [143-pm1-watchdog-window.md](143-pm1-watchdog-window.md) | Safe 45 second M5PM1 watchdog window for OTA health validation |
 | [144-upload-partition-offset.md](144-upload-partition-offset.md) | Keep PlatformIO no-build uploads aligned with OTA application partitions |
 | [145-connect-context-initializer.md](145-connect-context-initializer.md) | Explicit initialization for the LVGL connection context |
+| [146-setstate-sleep-lock-order.md](146-setstate-sleep-lock-order.md) | Acquire the sleep lock before publishing the active control state |
 
 ## Design documents
 
