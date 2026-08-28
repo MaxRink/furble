@@ -14,6 +14,7 @@
 # Teeth: with the focus fix reverted, back_focused reads no and select stays on
 # the imu page, so both asserts fail.
 seed fauxny true
+seed imu true
 wait 300
 action nav settings
 wait 150
