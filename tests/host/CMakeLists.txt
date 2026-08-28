@@ -171,6 +171,26 @@ target_compile_options(camera_regression_test PRIVATE
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
+# Drive the production Ricoh focus and shutter paths through the in-memory peer.
+# The semantic assertions protect the distinction between unsupported focus
+# gestures and the supported capture-with-autofocus operation.
+add_executable(ricoh_focus_test
+               ricoh_focus_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(ricoh_focus_test PRIVATE furble_host_camera)
+target_include_directories(ricoh_focus_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(ricoh_focus_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
 # Keep the host Ethernet test tied to the firmware source manifest. The test
 # links the production implementation directly, so this configure-time guard
 # catches the failure mode that matters here: a firmware build which forgets
@@ -690,6 +710,7 @@ if(BUILD_TESTING)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME camera-regression COMMAND camera_regression_test)
+  add_test(NAME ricoh-focus COMMAND ricoh_focus_test)
 
   add_executable(vendor_protocol_conformance_test
                  vendor_protocol_conformance_test.cpp

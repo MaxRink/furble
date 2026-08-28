@@ -19,6 +19,9 @@ lands on fork master. This file applies once it does.
   through subscriptions and shutter discovery. Request Furble's bounded FAST
   profile only after discovery completes, then verify the controller applied
   it before declaring the camera active.
+- Ricoh `OperationRequest {0x01, 0x01}` is capture with autofocus, not a
+  focus-only or half-press command. Keep focus gestures as no-ops until a
+  distinct operation is verified from protocol evidence and hardware.
 - Numbering: 0x small improvements, 1x-2x phased features, 30+ framework work,
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS

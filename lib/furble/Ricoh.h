@@ -7,12 +7,17 @@
 
 namespace Furble {
 /**
- * Ricoh Imaging family BLE remote for RICOH GR III / IIIx / IV and PENTAX K bodies.
+ * Ricoh Imaging BLE remote for the RICOH GR IV series.
+ *
+ * GR III / IIIx and PENTAX bodies share parts of the Ricoh Imaging protocol,
+ * but this implementation does not claim compatibility with them.
  *
  * Shutter control uses the ShootingFlavor + OperationRequest characteristics
- * (single-write capture; no half-press/release). GPS geotagging uses the shared
- * Ricoh Imaging GPS and location-control characteristics. Pairing uses MITM LE
- * Secure Connections with numeric comparison.
+ * (single-write capture; no shutter hold). Focus is unsupported: the documented
+ * Focus Mode characteristic configures a mode but does not trigger autofocus,
+ * and no separate half-press command has been verified. GPS geotagging uses the
+ * shared Ricoh Imaging GPS and location-control characteristics. Pairing uses
+ * MITM LE Secure Connections with numeric comparison.
  *
  * Protocol reference: dm-zharov/ricoh-gr-bluetooth-api, Android HCI snoop analysis.
  */

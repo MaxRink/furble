@@ -87,7 +87,9 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 ## shutter and focus
 
 - `shutter press`, `shutter release`, `shutter hold <ms>`.
-- `focus press`, `focus release`.
+- `focus press`, `focus release`. Ricoh cameras treat both commands as no-ops.
+  Their shutter command uses `OperationRequest {0x01, 0x01}` for capture with
+  autofocus.
 
 These enqueue camera commands directly. They bypass the button-mode dispatch and
 the shutter-lock state.

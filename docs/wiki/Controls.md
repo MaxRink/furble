@@ -51,6 +51,10 @@ Open the connected `Remote` page to reach the shutter control.
 
 - **Select (middle) is the shutter.** Press to fire, release to end.
 - **Next (right) is focus.** Press to half-press focus, release to end.
+- Ricoh cameras do not support the focus action over this BLE path. Their
+  focus control is a no-op; use the camera body to configure autofocus. Ricoh's
+  supported shutter operation sends `OperationRequest {0x01, 0x01}`, which means
+  capture with autofocus, not a separate focus command.
 - **Shutter lock.** Hold focus (right), then press the shutter (select). The
   shutter locks open and stays open until you press a button. This is handy for
   a long exposure without holding a button down. You can also long-press the

@@ -59,6 +59,11 @@ protocol core.
   can perform numeric comparison. Saved reconnect failures preserve the bond;
   do not reconnect inline from the security callback or alter callback/client
   lifetime ownership.
+- Ricoh `focusPress()` and `focusRelease()` are intentional no-ops. The
+  documented Focus Mode characteristic configures a focus mode, while
+  Operation Request starts capture. Do not map focus to a timer or capture
+  operation without a verified autofocus command. Source:
+  https://github.com/dm-zharov/ricoh-gr-bluetooth-api
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out

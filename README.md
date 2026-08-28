@@ -93,7 +93,7 @@ The following devices have been tested and confirmed to work:
 | Fujifilm X & GFX   | ✔️        | ✔️       | ✔️               | ✔️[^1]   | ✔️       |
 | Canon EOS (Remote) | ✔️        | ✔️       | ✔️               | ✔️       | :x:[^2] |
 | Canon EOS (Smart)  | ✔️        | ✔️       | ✔️               | :x:[^2] | ✔️       |
-| Ricoh              | ✔️        | ✔️       | ✔️[^3]           | ✔️       | ✔️       |
+| Ricoh              | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
@@ -101,6 +101,8 @@ The following devices have been tested and confirmed to work:
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
 [^2]: Non-existent
 [^3]: Auto-shutter release only, no manual exposure control
+[^4]: Focus-only controls are unsupported and do not send a camera command.
+The supported shutter command performs an immediate capture with autofocus.
 
 ## Supported Controllers
 
@@ -483,6 +485,11 @@ different.
 All Ricoh GR IV series cameras are theoretically supported. This support was
 graciously implemented by @sky18Dragon.
 The current implementation will _not_ work with GR III or GR II.
+Focus-only controls are intentionally unsupported. The documented Ricoh Focus
+Mode setting does not trigger autofocus, and no separate half-press command has
+been verified. The BLE `OperationRequest` `{0x01, 0x01}` sequence is a capture
+request with autofocus, not a focus-only command. See the [Ricoh BLE protocol
+reference](https://github.com/dm-zharov/ricoh-gr-bluetooth-api).
 
 #### Nikon
 
