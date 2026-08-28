@@ -314,7 +314,7 @@ void GPS::enable(void) {
 
 void GPS::acquirePowerLock(void) {
 #if defined(FURBLE_M5STICKS3)
-  if (!m_Enabled) {
+  if (!gpsPowerLockRequired(m_Enabled.load(), m_CycleState == cycle_state_t::DEGRADED)) {
     return;
   }
 
@@ -503,7 +503,6 @@ void GPS::serviceCycle(void) {
       // clean run recovers the duty cycle and drops the lock, a failure re-enters
       // enterDegraded() with a longer backoff, so the lock is never pinned.
       if (m_Degraded.retryDue(now)) {
-        acquirePowerLock();
         reset();
         m_ConfigChars = m_GPS.charsProcessed();
         m_ConfigStart = now;
@@ -514,6 +513,7 @@ void GPS::serviceCycle(void) {
         m_ExpectedInterval = gpsRateInterval();
         m_ProbeDeadline = now + DEGRADED_PROBE_MS;
         m_CycleState = cycle_state_t::ACQUIRING;
+        acquirePowerLock();
         FURBLE_SIM_GPS_STATE("acquiring");
       }
       break;
@@ -529,7 +529,12 @@ void GPS::beginBurst(uint32_t now) {
     return;
   }
 
-  acquirePowerLock();
+  // A late UART burst can arrive during the degraded backoff. Do not let that
+  // event pin NO_LIGHT_SLEEP until the next scheduled retry. The retry path
+  // changes to ACQUIRING before acquiring the lock.
+  if (m_CycleState != cycle_state_t::DEGRADED) {
+    acquirePowerLock();
+  }
 
   const cycle_state_t previous = m_CycleState;
   if (m_HavePrediction && (previous != cycle_state_t::RESYNC)

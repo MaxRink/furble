@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <limits>
 
 #include "FurbleGPSPowerCycle.h"
 
@@ -99,6 +100,14 @@ bool testNeverHeldForever() {
           "the retry is due within the cap, the lock is not held forever");
     now += wait;  // model the task sleeping then re-entering on a failed retry
   }
+
+  // FreeRTOS ticks wrap. The signed deadline comparison must still keep a
+  // wrapped retry pending until its actual deadline.
+  GpsDegradedRetry wrapped;
+  const uint32_t nearWrap = std::numeric_limits<uint32_t>::max() - 5000;
+  wrapped.enter(nearWrap);
+  check(!wrapped.retryDue(nearWrap), "a wrapped retry is not due early");
+  check(wrapped.retryDue(wrapped.retryDeadline()), "a wrapped retry is due at its deadline");
 
   return g_Failures == before;
 }
@@ -178,6 +187,12 @@ bool testIndicatorMapping() {
   check(!Furble::gpsIndicatorDegraded(false, true), "off but degraded is still not indicated");
   check(!Furble::gpsIndicatorDegraded(true, false), "enabled and healthy is not indicated");
   check(Furble::gpsIndicatorDegraded(true, true), "enabled and degraded is indicated");
+  check(Furble::gpsPowerLockRequired(true, false),
+        "enabled healthy GPS requires the no-light-sleep lock");
+  check(!Furble::gpsPowerLockRequired(true, true),
+        "enabled degraded GPS releases the no-light-sleep lock");
+  check(!Furble::gpsPowerLockRequired(false, false),
+        "disabled GPS never requires the no-light-sleep lock");
 
   // tie it to the real retry lifecycle: enabled GPS lights on entry, clears on
   // resync, and an off GPS is never indicated whatever the cycle state

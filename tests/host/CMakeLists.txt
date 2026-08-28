@@ -570,7 +570,21 @@ target_compile_options(ota_partition_sink_test PRIVATE -Wall -Wextra -Werror -Wn
 add_executable(gps_power_cycle_test gps_power_cycle_test.cpp)
 target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                    -Wno-unused-parameter)
+                                                     -Wno-unused-parameter)
+
+# Exercise the simulator's production power profiler accounting for the GPS
+# degraded state. This stays host-only because it drives the same profiler API
+# that the SDL simulator uses, including lock and virtual-clock transitions.
+add_executable(gps_power_profiler_test
+               gps_power_profiler_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/power_profiler.cpp)
+target_include_directories(gps_power_profiler_test PRIVATE
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/include)
+target_compile_options(gps_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                         -Wno-unused-parameter)
+target_link_libraries(gps_power_profiler_test PRIVATE Threads::Threads)
 
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
@@ -820,6 +834,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
+  add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)

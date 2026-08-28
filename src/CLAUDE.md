@@ -35,6 +35,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   parser is owned by GPS and guarded by its mutex; UI and console consumers use
   `getStatusSnapshot()` and must not retain parser references. GPX logging only
   builds a point and queues it via `SD::logPoint()`, never does file I/O.
+  Burst power cycling uses a bounded degraded retry state. It releases
+  `NO_LIGHT_SLEEP` during backoff, ignores late UART lock reacquisition, and
+  reacquires only after moving to the time-bounded acquisition probe. Keep the
+  host policy and simulator power-accounting tests aligned with these states.
 - `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
   IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on

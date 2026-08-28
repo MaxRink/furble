@@ -52,6 +52,10 @@ halving battery life after any spell of poor reception, for example indoors.
 - A healthy recovery (`finishBurst` clean predicted burst, `finishMeasurement`
   consistent measurement, resync back to `WAITING`) calls `m_Degraded.reset()`,
   so reception recovering clears the state.
+- Late UART data during the backoff cannot reacquire the lock: the shared
+  `gpsPowerLockRequired()` gate rejects lock acquisition while `DEGRADED`, and
+  the retry changes to `ACQUIRING` before acquiring it. This closes a second
+  lock-lifetime path that the first implementation missed.
 - The healthy path is unchanged: a device that never degrades never enters this
   code, and the initial post-enable `ACQUIRING` stays unbounded so a cold start
   still holds the lock while it waits for the first fix.
@@ -86,6 +90,12 @@ a modal or a new widget.
   the suite fail; restoring it returns to green. The same test also pins the
   on-screen indicator mapping: `gpsIndicatorDegraded()` lights only when GPS is
   enabled and the cycle is degraded, and clears on resync or GPS off.
+- Host regression `tests/host/gps_power_profiler_test.cpp` (ctest
+  `gps-power-profiler`) drives the same lock and virtual-clock API used by the
+  SDL simulator. It asserts degraded residency is present in the report,
+  light-sleep residency exists during the released-lock backoff, and the
+  bounded probe leaves no lock held. The profiler models degraded receiver
+  current as acquisition current while retaining a separate `degraded` counter.
 - Firmware builds: five release envs plus `m5stick-s3-debug`.
 - Owed: an on-device confirmation on the M5StickS3 that the lock current drops
   during the degraded backoff and recovers on resync. The logic is sim testable
