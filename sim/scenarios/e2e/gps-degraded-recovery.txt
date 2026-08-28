@@ -20,5 +20,7 @@ uart-mode ack
 wait 6000
 assert-eventually 5000 gps.degraded 0
 assert-eventually 5000 power.no_light_sleep 0
-assert power.no_light_sleep 0
+# The healthy duty-cycle scheduler may legitimately reacquire the lock on the
+# next predicted window. The eventual assertion above proves recovery released
+# the degraded lock without racing that subsequent healthy cycle.
 exit

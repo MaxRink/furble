@@ -63,7 +63,9 @@ halving battery life after any spell of poor reception, for example indoors.
   sim profiler sees a `degraded` GPS state.
 - The end-to-end recovery scenario advances virtual time after restoring the
   UART. `assert-eventually` only yields wall time, so it cannot itself cross a
-  pending exponential retry deadline.
+  pending exponential retry deadline. It checks the lock during the recovered
+  interval rather than requiring an instantaneous final zero: the healthy duty
+  cycle is allowed to reacquire `NO_LIGHT_SLEEP` for its next predicted window.
 
 ## On-screen indicator
 
