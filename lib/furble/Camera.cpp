@@ -667,14 +667,19 @@ bool Camera::gattWrite(NimBLERemoteCharacteristic *characteristic,
 
 #if defined(FURBLE_CONSOLE)
   const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+  // Snapshot the UUIDs before the write. A concurrent disconnect plus
+  // reconnect rediscovery frees the remote characteristic, so the pointer
+  // must not be dereferenced again after the operation returns.
+  const NimBLERemoteService *service = characteristic->getRemoteService();
+  const NimBLEUUID empty;
+  const NimBLEUUID service_uuid = service != nullptr ? service->getUUID() : empty;
+  const NimBLEUUID characteristic_uuid = characteristic->getUUID();
 #endif
   const bool result = characteristic->writeValue(data, length, response);
 
 #if defined(FURBLE_CONSOLE)
-  const NimBLERemoteService *service = characteristic->getRemoteService();
-  const NimBLEUUID empty;
-  journalRecord("write", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
-                data, length, result, response, started_us, m_DebugAttemptId);
+  journalRecord("write", service_uuid, characteristic_uuid, data, length, result, response,
+                started_us, m_DebugAttemptId);
 #endif
 
   return result;
@@ -718,14 +723,21 @@ bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue
 
 #if defined(FURBLE_CONSOLE)
   const uint64_t started_us = static_cast<uint64_t>(esp_timer_get_time());
+  // Snapshot the UUIDs before the read. A concurrent disconnect plus
+  // reconnect rediscovery frees the remote characteristic, so the pointer
+  // must not be dereferenced again after the operation returns. Observed on
+  // hardware 2026-08-28: GR IV standby drop during the sleep gate read, then
+  // LoadProhibited on 0xfefefefe in the journal call after readValue.
+  const NimBLERemoteService *service = characteristic->getRemoteService();
+  const NimBLEUUID empty;
+  const NimBLEUUID service_uuid = service != nullptr ? service->getUUID() : empty;
+  const NimBLEUUID characteristic_uuid = characteristic->getUUID();
 #endif
   value = characteristic->readValue();
 
 #if defined(FURBLE_CONSOLE)
-  const NimBLERemoteService *service = characteristic->getRemoteService();
-  const NimBLEUUID empty;
-  journalRecord("read", service != nullptr ? service->getUUID() : empty, characteristic->getUUID(),
-                value.data(), value.size(), true, false, started_us, m_DebugAttemptId);
+  journalRecord("read", service_uuid, characteristic_uuid, value.data(), value.size(), true, false,
+                started_us, m_DebugAttemptId);
 #endif
 
   return true;

@@ -81,3 +81,35 @@ be implemented.
   the camera mutex, so it cannot recreate the teardown wedge.
 - GPS and location control writes are not gated yet. Whether they are safe in
   BLE standby is unknown; the bench experiments in this plan cover it.
+
+## GATT journal use-after-free (hardware crash 2026-08-28)
+
+Pressing the shutter while the GR IV dropped the link into standby crashed
+furble with LoadProhibited on EXCVADDR 0xfefefefe. Backtrace:
+Ricoh::shutterPress -> Ricoh::captureAllowed -> Camera::gattRead ->
+journalRecord -> NimBLEUUID::toString -> ble_uuid_to_str on freed memory.
+
+Root cause: the pointer-based Camera::gattRead and Camera::gattWrite read the
+service and characteristic UUIDs from the NimBLERemoteCharacteristic after
+readValue()/writeValue() returned, inside the FURBLE_CONSOLE journalRecord
+block. The standby drop during the sleep gate read let the reconnect path
+free the remote attribute objects during service rediscovery, so the
+post-operation dereference landed on freed memory.
+
+Fix: both wrappers snapshot the service and characteristic UUIDs by value
+before the operation and journal the copies, so the characteristic pointer is
+never dereferenced again after the operation returns.
+
+Regression test: gatt-journal-uaf (tests/host/gatt_journal_uaf_test.cpp).
+It compiles Camera.cpp with AddressSanitizer and FURBLE_CONSOLE, then uses
+the virtual peer's faultNextOperation hook to free the client's cached remote
+service and characteristic objects (NimBLEClient::dropServiceCache) while the
+read and write are in flight. Mutation proven: restoring the post-operation
+characteristic->getUUID() dereference makes ASan abort with
+heap-use-after-free in NimBLEUUID::toString via journalRecord, matching the
+hardware trace.
+
+Residual risk: a free landing while the blocking readValue()/writeValue()
+call is still inside NimBLE remains a narrower window this fix does not
+cover. That belongs to the broader connection-lifetime work (reconnect
+rediscovery racing in-flight vendor operations) and is tracked separately.

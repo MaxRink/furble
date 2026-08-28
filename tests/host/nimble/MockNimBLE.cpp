@@ -735,6 +735,10 @@ NimBLERemoteService *NimBLEClient::getService(const NimBLEUUID &service) {
   return found->second.get();
 }
 
+void NimBLEClient::dropServiceCache() {
+  m_Services.clear();
+}
+
 bool NimBLEClient::secureConnection() {
   return (m_Peer != nullptr) && m_Peer->secureConnection(*this);
 }

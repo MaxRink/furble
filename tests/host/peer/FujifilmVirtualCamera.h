@@ -116,6 +116,16 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // on the freed client, which is the mid-connect use-after-free this guards.
   void dropLinkDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic);
 
+  // faultNextOperation installs a one-shot fault that runs inside the next
+  // read() or write(), after the operation result is computed and immediately
+  // before it returns to the NimBLE transport. It models a concurrent event,
+  // such as the reconnect path's service rediscovery, landing while the GATT
+  // operation is still in flight. The fault may free the remote service and
+  // characteristic objects (NimBLEClient::dropServiceCache), so the peer
+  // touches nothing after running it. Do not combine with the link-drop
+  // faults above; those already own the end-of-operation window.
+  void faultNextOperation(std::function<void(NimBLEClient &)> fault);
+
   // Clear every injected fault (suppressed services and characteristics, failed
   // writes, mid-handshake drops and the stale-subscribe flag). The fuzz harness
   // reuses one persistent peer across many lifecycle operations and calls this to
@@ -215,6 +225,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool isDropOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  void runOperationFault(NimBLEClient &client);
 
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
@@ -242,6 +253,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnWrite;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropDuringConnect;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnSubscribe;
+  std::function<void(NimBLEClient &)> m_OperationFault;
   mutable size_t m_AccessAfterDrop = 0;
   bool m_DroppedLink = false;
   bool m_TokenAccepted = false;
