@@ -70,6 +70,8 @@ FujifilmBasic::FujifilmBasic(const NimBLEAdvertisedDevice *pDevice)
  * re-pairing.
  */
 bool FujifilmBasic::_connect(void) {
+  // Drop any stale characteristic pointer from a previous session.
+  m_Shutter = nullptr;
   m_Progress = 10;
   const bool cancelOnInactive = isActive();
   m_RegistrationGeneration.fetch_add(1);

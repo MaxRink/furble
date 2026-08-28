@@ -97,6 +97,8 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
  * Connect to a Fujifilm secure.
  */
 bool FujifilmSecure::_connect(void) {
+  // Drop any stale characteristic pointer from a previous session.
+  m_Shutter = nullptr;
   bool success = false;
   m_Progress = 0;
   const bool cancelOnInactive = isActive();

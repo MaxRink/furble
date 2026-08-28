@@ -21,6 +21,8 @@ bool CanonEOSRemote::matches(const NimBLEAdvertisedDevice *pDevice) {
 }
 
 bool CanonEOSRemote::_connect(void) {
+  // Drop any stale characteristic pointer from a previous session.
+  m_Control = nullptr;
   ESP_LOGI(LOG_TAG, "Connecting");
   if (!m_Client->connect(m_Address)) {
     ESP_LOGI(LOG_TAG, "Connection failed!!!");

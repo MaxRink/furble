@@ -162,6 +162,10 @@ Ricoh::SecurityMode Ricoh::securityMode() const {
 }
 
 bool Ricoh::_connect(void) {
+  // Drop characteristic pointers from any previous session. A failed connect
+  // can reclaim the old client without running _disconnect() on this class, so
+  // stale pointers would dangle into the freed client.
+  clearRemoteState();
   m_Progress = 0;
 
   bool bondedBefore = NimBLEDevice::isBonded(m_Address);

@@ -39,6 +39,9 @@ bool Sony::matches(const NimBLEAdvertisedDevice *pDevice) {
 }
 
 bool Sony::_connect(void) {
+  // Drop any stale remote pointers from a previous session.
+  m_Control = nullptr;
+  m_GeoSvc = nullptr;
   ESP_LOGI(LOG_TAG, "Connecting");
   if (!m_Client->connect(m_Address)) {
     ESP_LOGI(LOG_TAG, "Connection failed!!!");
