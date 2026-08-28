@@ -99,6 +99,9 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool FujifilmSecure::_connect(void) {
   bool success = false;
   m_Progress = 0;
+  const bool cancelOnInactive = isActive();
+  m_RegistrationGeneration.fetch_add(1);
+  m_Configured = false;
   const auto registrationAlive = [this]() {
     if (!isConnected()) {
       ESP_LOGW(LOG_TAG, "Fujifilm Secure registration aborted after link loss");
@@ -251,6 +254,12 @@ bool FujifilmSecure::_connect(void) {
     if (!registrationAlive())
       return false;
     m_Progress += 5;
+  }
+
+  // The X100VI registration confirmation is CHR_NOT1_UUID carrying 01 00.
+  // Do not promote a bare secure GATT link to an active shutter target.
+  if (!waitForRegistration(85, cancelOnInactive)) {
+    return false;
   }
 
   auto sync_interval = NimBLEAttValue(reinterpret_cast<const uint8_t *>(&GEOTAG_SYNC_INTERVAL),

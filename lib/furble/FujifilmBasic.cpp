@@ -71,6 +71,9 @@ FujifilmBasic::FujifilmBasic(const NimBLEAdvertisedDevice *pDevice)
  */
 bool FujifilmBasic::_connect(void) {
   m_Progress = 10;
+  const bool cancelOnInactive = isActive();
+  m_RegistrationGeneration.fetch_add(1);
+  m_Configured = false;
 
   NimBLERemoteService *pSvc = nullptr;
   NimBLERemoteCharacteristic *pChr = nullptr;
@@ -146,6 +149,13 @@ bool FujifilmBasic::_connect(void) {
   m_Progress = 80;
 
   if (!this->subscribe(SVC_CONF_UUID, CHR_IND3_UUID, false)) {
+    return false;
+  }
+
+  // A link and accepted GATT writes are not enough to prove that the camera
+  // accepted furble as a remote. Wait for CHR_NOT1_UUID before discovering the
+  // shutter and allowing Control to promote this camera to active.
+  if (!waitForRegistration(85, cancelOnInactive)) {
     return false;
   }
 

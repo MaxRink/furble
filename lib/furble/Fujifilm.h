@@ -67,7 +67,29 @@ class Fujifilm: public Camera {
                  bool notification,
                  bool response = false);
 
-  bool m_Configured = false;
+  /**
+   * Wait for the camera to confirm app-level registration.
+   *
+   * A GATT link and successful ATT operations do not prove that the camera
+   * accepted furble as a remote. Fujifilm sends a notification on CHR_NOT1_UUID
+   * after accepting the registration. The wait is bounded and runs outside the
+   * Control mutex. Direct host camera tests do not set Camera::m_Active, so the
+   * cancellation check is enabled only when the connection began active.
+   */
+  bool waitForRegistration(uint8_t progress, bool cancelOnInactive);
+
+#ifndef FURBLE_HOST_REGISTRATION_TIMEOUT_MS
+  static constexpr uint32_t REGISTRATION_TIMEOUT_MS = 25000;
+#else
+  static constexpr uint32_t REGISTRATION_TIMEOUT_MS = FURBLE_HOST_REGISTRATION_TIMEOUT_MS;
+#endif
+  static constexpr uint32_t REGISTRATION_POLL_MS = 20;
+
+  // Incremented for every connection attempt. Subscription callbacks capture
+  // the attempt they belong to, so a queued notification from an old NimBLE
+  // client cannot confirm a later reconnect.
+  std::atomic<uint32_t> m_RegistrationGeneration {0};
+  std::atomic<bool> m_Configured {false};
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
 
  private:
@@ -78,7 +100,7 @@ class Fujifilm: public Camera {
   const NimBLEUUID SVC_GEOTAG_UUID {0x3b46ec2b, 0x48ba, 0x41fd, 0xb1b8ed860b60d22b};
   const NimBLEUUID CHR_GEOTAG_UUID {0x0f36ec14, 0x29e5, 0x411a, 0xa1b664ee8383f090};
 
-  void notify(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool);
+  void notify(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool, uint32_t generation);
   void sendGeoData(const gps_t &gps, const timesync_t &timesync);
 
   template <std::size_t N>
