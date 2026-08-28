@@ -471,6 +471,14 @@ class NimBLEDevice {
   static NimBLEMockPeer *getMockPeer();
   static void resetMock();
 
+  // Absent-peer model: a saved camera that is powered off or out of range. Its
+  // address stays registered (a connect attempt would still be routed), but the
+  // scan never delivers its advertisement, so the saved-reconnect SCAN path
+  // times out instead of the connect call failing. This is distinct from
+  // setConnectShouldFail: that fails NimBLEClient::connect(); this starves the
+  // scan wait that runs before connect() is ever reached. resetMock clears it.
+  static void setScanAbsentAddress(const NimBLEAddress &address, bool absent);
+
   // Host test hooks.
   // The most recently created client, so a test can drive link loss on the
   // client a Camera created internally.

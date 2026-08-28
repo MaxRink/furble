@@ -877,6 +877,84 @@ target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
 target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
 
+# Ricoh standby flap through the real Control (plan 154). The first
+# Ricoh-through-Control coverage: a GR IV style standby camera (autonomous
+# RicohVirtualCamera flappy mode: rc=520 secureConnection failures, then a
+# CameraPower 0x00 notify and a timed link drop) churns the reconnect cycle
+# next to a healthy Fujifilm while a mid-cycle disconnect must land in a clean
+# IDLE and a follow-up connect must work.
+add_executable(ricoh_control_flap_test
+               ricoh_control_flap_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp)
+target_include_directories(ricoh_control_flap_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(ricoh_control_flap_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(ricoh_control_flap_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(ricoh_control_flap_test PRIVATE Threads::Threads)
+
+# Absent-peer model through the real Control (plan 154). A paired Fujifilm
+# Secure camera is registered but flagged absent, so the SAVED reconnect scan
+# is starved (setScanAbsentAddress withholds the advertisement a background
+# advertiser keeps emitting) instead of the connect call failing. A mid-scan
+# disconnect must abort the scan wait via the connect-cancel poll, land in a
+# clean IDLE, and leave a manual connect to the healthy camera responsive.
+add_executable(absent_peer_scan_test
+               absent_peer_scan_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp)
+target_include_directories(absent_peer_scan_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${FURBLE_ROOT}/lib/blowfish
+                                  ${FURBLE_ROOT}/lib/preferences
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(absent_peer_scan_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(absent_peer_scan_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(absent_peer_scan_test PRIVATE Threads::Threads)
+
 # AddressSanitizer regression for the GATT journal use-after-free. The console
 # journal in the pointer-based Camera::gattRead and gattWrite used to read the
 # service and characteristic UUIDs from the NimBLERemoteCharacteristic after
@@ -1027,6 +1105,13 @@ if(BUILD_TESTING)
   add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
 
+  # Peer realism through the real Control (plan 154). Both carry their own
+  # watchdog, the ctest timeout is the backstop for a wedged control task.
+  add_test(NAME ricoh-control-flap COMMAND ricoh_control_flap_test)
+  set_tests_properties(ricoh-control-flap PROPERTIES TIMEOUT 90)
+  add_test(NAME absent-peer-scan COMMAND absent_peer_scan_test)
+  set_tests_properties(absent-peer-scan PROPERTIES TIMEOUT 60)
+
   # Real-Control end-to-end scenarios. Each runs the production control state
   # machine end to end against the mock peer and is registered individually so a
   # failure names the scenario.
@@ -1039,7 +1124,10 @@ if(BUILD_TESTING)
           transient-connect-recovers
           client-pool-exhaustion
           multi-connect-fujifilm
-          reconnect-shutter-drop)
+          reconnect-shutter-drop
+          multi-flappy-disconnect
+          flappy-cancel-stress
+          flappy-peer-autonomous)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
   endforeach()
 

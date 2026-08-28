@@ -2,7 +2,10 @@
 #define FURBLE_HOST_FUJIFILM_VIRTUAL_CAMERA_H
 
 #include <array>
+#include <condition_variable>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -45,6 +48,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
 
   FujifilmVirtualCamera();
   explicit FujifilmVirtualCamera(const Config &config);
+  ~FujifilmVirtualCamera() override;
 
   NimBLEAdvertisedDevice advertisement() const;
 
@@ -95,6 +99,19 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   void suppressService(const NimBLEUUID &service);
   void suppressCharacteristic(const NimBLEUUID &service, const NimBLEUUID &characteristic);
   void failWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+
+  // FlappyPeer: an autonomous standby camera model (the GR IV class observed on
+  // hardware 2026-08-28, mapped onto the Fujifilm handshake). The peer accepts
+  // every BLE connect, fails the pairing handshake write for fail_attempts
+  // attempts, then completes one handshake and severs the link drop_after_ms
+  // later on its own timer (the time-compressed ~20 s standby drop; the
+  // Fujifilm protocol has no power notification, so the drop is silent). After
+  // the drop the failure budget re-arms, so a reconnect loop churns against
+  // the peer without any per-attempt scripting from the test. setFlappy(0, 0)
+  // disables the mode and joins the drop timer; a peer with the mode enabled
+  // must be disabled or destroyed before NimBLEDevice::resetMock() frees the
+  // client its timer may still reference.
+  void setFlappy(uint32_t fail_attempts, uint32_t drop_after_ms);
 
   // dropLinkOnWrite models a supervision-timeout link loss that lands in the
   // middle of the connect handshake: when the central writes the named
@@ -219,6 +236,11 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   };
 
   bool isServiceSuppressed(const NimBLEUUID &service) const;
+  bool isPairHandshakeWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  bool flappyConsumeHandshakeFailure();
+  void armFlappyDrop(NimBLEClient &client);
+  void requestFlappyCancel();
+  void cancelFlappyTimer();
   bool isCharacteristicSuppressed(const NimBLEUUID &service,
                                   const NimBLEUUID &characteristic) const;
   bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
@@ -264,6 +286,20 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<Notification> m_Notifications;
   std::vector<uint8_t> m_LastGeotag;
   std::map<std::string, Subscription> m_Subscriptions;
+
+  // FlappyPeer state. The recursive mutex lets the drop timer re-enter
+  // disconnect() through mockDropLink() on its own thread, and lets any other
+  // thread cancel the timer: a canceller that loses the race blocks until the
+  // in-flight drop finishes, so the timer never touches a client freed by the
+  // canceller's teardown.
+  bool m_FlappyEnabled = false;
+  uint32_t m_FlappyFailAttempts = 0;
+  uint32_t m_FlappyFailRemaining = 0;
+  uint32_t m_FlappyDropAfterMs = 0;
+  bool m_FlappyCancel = false;
+  std::recursive_mutex m_FlappyMutex;
+  std::condition_variable_any m_FlappyCv;
+  std::thread m_FlappyThread;
 
   static std::string key(const NimBLEUUID &service, const NimBLEUUID &characteristic);
 };

@@ -6,6 +6,10 @@
 class NimBLEAdvertisedDevice;
 bool nimbleMockGapScanStartAllowed(void);
 void nimbleMockSetGapScanStartAllowed(bool allowed);
+// Absent-peer model: false when the advertisement's address is flagged absent
+// via NimBLEDevice::setScanAbsentAddress(), so the scan never delivers it even
+// while an advertiser keeps emitting it. See MockNimBLE.h.
+bool nimbleMockScanDeliveryAllowed(const NimBLEAdvertisedDevice *device);
 class NimBLEScanResults {};
 class NimBLEServer {
  public:
@@ -34,7 +38,7 @@ class NimBLEScan {
   bool isScanning() const { return m_Scanning; }
   NimBLEScanCallbacks *callbacks() const { return m_Callbacks; }
   void emitResult(const NimBLEAdvertisedDevice *device) {
-    if (m_Callbacks != nullptr) {
+    if ((m_Callbacks != nullptr) && nimbleMockScanDeliveryAllowed(device)) {
       m_Callbacks->onResult(device);
     }
   }

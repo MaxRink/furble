@@ -616,6 +616,206 @@ bool scenarioReconnectShutterDrop() {
   return g_Failures == 0;
 }
 
+// REPRO: FAILURE 1 analog (hardware incident 2026-08-28). Two targets, one
+// healthy (X100VI stand-in) and one flappy standby camera (GR IV stand-in): it
+// accepts the BLE connect, completes the handshake, then drops the link
+// shortly after (the 20 s CameraPower-notify drop, time-compressed), and every
+// reconnect attempt after that accepts the link but fails the handshake (the
+// rc=520 class). While the reconnect cycle churns against the flappy camera,
+// and while the control task is parked inside a blocking connect()
+// (connect_in_progress true), the user taps disconnect. The machine must
+// return to IDLE bounded and accept a fresh connect; a wedge in DISCONNECTING
+// is the hardware failure.
+bool scenarioMultiFlappyDisconnect() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera::Config goodConfig;
+  goodConfig.name = "FUJIFILM X100VI";
+  goodConfig.address = NimBLEAddress(0x112233445501ULL, 0);
+  goodConfig.token = {0x11, 0x22, 0x33, 0x44};
+  FujifilmVirtualCamera::Config flappyConfig;
+  flappyConfig.name = "RICOH GR IV STANDIN";
+  flappyConfig.address = NimBLEAddress(0x112233445502ULL, 0);
+  flappyConfig.token = {0x55, 0x66, 0x77, 0x88};
+
+  FujifilmVirtualCamera good(goodConfig);
+  FujifilmVirtualCamera flappy(flappyConfig);
+  auto goodCamera = makeCamera(good);
+  auto flappyCamera = makeCamera(flappy);
+  NimBLEDevice::setMockPeerForAddress(good.config().address, &good);
+  NimBLEDevice::setMockPeerForAddress(flappy.config().address, &flappy);
+
+  control.addActive(goodCamera);
+  control.addActive(flappyCamera);
+  check(control.getTargetCount() == 2, "two targets selected");
+
+  // Phase A: both connect (the standby camera sometimes completes the full
+  // handshake on hardware too).
+  control.connectAll(true);
+  check(waitForState(Control::STATE_ACTIVE, 5000), "both cameras reach active");
+  check(waitForConnectedCount(2, 1000), "both links live");
+
+  // Phase B: the standby camera drops ~20 s later (time compressed) and from
+  // now on accepts the link but fails the pairing write, so every reconnect
+  // attempt churns. The healthy camera keeps its link.
+  flappy.failWrite(FujifilmVirtualCamera::pairServiceUUID(),
+                   FujifilmVirtualCamera::pairCharacteristicUUID());
+  NimBLEClient *flappyClient = NimBLEDevice::lastClient();
+  check(flappyClient != nullptr, "the flappy target has a client");
+  if (flappyClient != nullptr) {
+    flappyClient->mockDropLink(0x08, /*fire_callback=*/true);
+  }
+  check(waitForNotState(Control::STATE_ACTIVE, 3000), "control leaves active on the drop");
+  check(good.connected(), "the healthy camera keeps its link through the churn");
+
+  // Let at least one failed reconnect attempt complete, then park the next
+  // reconnect inside a blocking connect() so the disconnect below lands while
+  // connect_in_progress is true, the exact hardware wedge window.
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  NimBLEDevice::setConnectDelayMs(800);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // Phase C: user taps disconnect mid-churn.
+  const uint32_t start = nowMs();
+  const bool completed = control.disconnect();
+  const uint32_t elapsed = nowMs() - start;
+  check(completed, "mid-churn disconnect completes");
+  check(elapsed < 3000, "mid-churn disconnect returns within 3 s");
+  check(waitForState(Control::STATE_IDLE, 3000),
+        "state machine returns to idle, not wedged in disconnecting");
+  check(control.getTargetCount() == 0, "targets cleared after mid-churn disconnect");
+
+  // Give the control task time to finish the aborted connectAll pass and
+  // publish whatever state it computes. A late republish of CONNECT or
+  // DISCONNECTING here is the wedge class.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  check(control.getState() == Control::STATE_IDLE,
+        "no late state republish after the aborted connect cycle");
+
+  // Phase D: a fresh connect must be accepted, not refused by a terminal state.
+  NimBLEDevice::resetMock();
+  FujifilmVirtualCamera fresh(goodConfig);
+  auto freshCamera = makeCamera(fresh);
+  control.addActive(freshCamera);
+  const uint32_t reconnectStart = nowMs();
+  control.connectAll(false);
+  const bool active = waitForState(Control::STATE_ACTIVE, 5000);
+  const uint32_t reconnectElapsed = nowMs() - reconnectStart;
+  check(active, "a fresh connect after the mid-churn disconnect reaches active");
+  check(reconnectElapsed < 4000, "the fresh connect is bounded");
+
+  control.disconnect();
+  waitForState(Control::STATE_IDLE, 2000);
+  return g_Failures == 0;
+}
+
+// Stress variant: many disconnect-during-churn cycles in one process, with the
+// disconnect landing at a swept offset inside the reconnect cycle. Each
+// iteration must land back in IDLE; a single iteration stuck in DISCONNECTING
+// (or refusing the next connect) is the wedge.
+bool scenarioFlappyCancelStress() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera::Config flappyConfig;
+  flappyConfig.name = "RICOH GR IV STANDIN";
+  flappyConfig.address = NimBLEAddress(0x112233445502ULL, 0);
+  flappyConfig.token = {0x55, 0x66, 0x77, 0x88};
+
+  for (int i = 0; i < 25 && g_Failures == 0; i++) {
+    NimBLEDevice::resetMock();
+    FujifilmVirtualCamera flappy(flappyConfig);
+    flappy.failWrite(FujifilmVirtualCamera::pairServiceUUID(),
+                     FujifilmVirtualCamera::pairCharacteristicUUID());
+    auto camera = makeCamera(flappy);
+    control.addActive(camera);
+    control.connectAll(true);
+    // Sweep the disconnect landing point across the reconnect cycle.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20 + (i * 13) % 180));
+    const uint32_t start = nowMs();
+    control.disconnect();
+    const uint32_t elapsed = nowMs() - start;
+    check(elapsed < 3000, "stress disconnect returns bounded");
+    if (!check(waitForState(Control::STATE_IDLE, 2000), "stress iteration lands in idle")) {
+      std::cerr << "  iteration " << i << " stuck in state " << stateName(control.getState())
+                << '\n';
+      break;
+    }
+    // The wedge republish can land after IDLE was observed. Catch it.
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    if (!check(control.getState() == Control::STATE_IDLE,
+               "no late DISCONNECTING republish in stress iteration")) {
+      std::cerr << "  iteration " << i << " late state " << stateName(control.getState()) << '\n';
+      break;
+    }
+  }
+  return g_Failures == 0;
+}
+
+// The same standby churn as multi-flappy-disconnect, but driven entirely by
+// the peer's own FlappyPeer mode: no per-attempt scripting. setFlappy makes
+// the peer fail one handshake per cycle, complete the next, and sever its own
+// link 400 ms later, so the churn runs autonomously while the healthy camera
+// keeps its link. The disconnect lands wherever the cycle happens to be.
+bool scenarioFlappyPeerAutonomous() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera::Config goodConfig;
+  goodConfig.name = "FUJIFILM X100VI";
+  goodConfig.address = NimBLEAddress(0x112233445501ULL, 0);
+  goodConfig.token = {0x11, 0x22, 0x33, 0x44};
+  FujifilmVirtualCamera::Config flappyConfig;
+  flappyConfig.name = "RICOH GR IV STANDIN";
+  flappyConfig.address = NimBLEAddress(0x112233445502ULL, 0);
+  flappyConfig.token = {0x55, 0x66, 0x77, 0x88};
+
+  FujifilmVirtualCamera good(goodConfig);
+  FujifilmVirtualCamera flappy(flappyConfig);
+  flappy.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/400);
+  auto goodCamera = makeCamera(good);
+  auto flappyCamera = makeCamera(flappy);
+  NimBLEDevice::setMockPeerForAddress(good.config().address, &good);
+  NimBLEDevice::setMockPeerForAddress(flappy.config().address, &flappy);
+
+  control.addActive(goodCamera);
+  control.addActive(flappyCamera);
+  control.connectAll(true);
+
+  // One autonomous handshake failure (2.5 s first-retry wait), then active.
+  check(waitForState(Control::STATE_ACTIVE, 8000), "both cameras reach active despite the flap");
+  check(waitForConnectedCount(2, 1000), "both links live before the autonomous drop");
+
+  // The peer drops its own link with no test involvement.
+  check(waitForNotState(Control::STATE_ACTIVE, 3000), "the flappy peer drops on its own");
+  check(good.connected(), "the healthy camera keeps its link through the autonomous churn");
+
+  // Disconnect mid-churn, wherever the autonomous cycle happens to be.
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  const uint32_t start = nowMs();
+  const bool completed = control.disconnect();
+  const uint32_t elapsed = nowMs() - start;
+  check(completed, "mid-churn disconnect completes under the autonomous flap");
+  check(elapsed < 3000, "mid-churn disconnect returns within 3 s");
+  check(waitForState(Control::STATE_IDLE, 3000), "returns to idle under the autonomous flap");
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  check(control.getState() == Control::STATE_IDLE, "no late republish under the autonomous flap");
+
+  // Disable the flap (joins the drop timer) before the mock frees the clients.
+  flappy.setFlappy(0, 0);
+  NimBLEDevice::resetMock();
+  FujifilmVirtualCamera fresh(goodConfig);
+  auto freshCamera = makeCamera(fresh);
+  control.addActive(freshCamera);
+  control.connectAll(false);
+  check(waitForState(Control::STATE_ACTIVE, 5000), "a fresh connect works after the flap");
+
+  control.disconnect();
+  waitForState(Control::STATE_IDLE, 2000);
+  return g_Failures == 0;
+}
+
 const std::map<std::string, std::function<bool()>> &scenarios() {
   static const std::map<std::string, std::function<bool()>> table = {
       {"fresh-connect",                    scenarioFreshConnect                },
@@ -627,6 +827,9 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"client-pool-exhaustion",           scenarioClientPoolExhaustion        },
       {"multi-connect-fujifilm",           scenarioMultiConnectFujifilm        },
       {"reconnect-shutter-drop",           scenarioReconnectShutterDrop        },
+      {"multi-flappy-disconnect",          scenarioMultiFlappyDisconnect       },
+      {"flappy-cancel-stress",             scenarioFlappyCancelStress          },
+      {"flappy-peer-autonomous",           scenarioFlappyPeerAutonomous        },
   };
   return table;
 }

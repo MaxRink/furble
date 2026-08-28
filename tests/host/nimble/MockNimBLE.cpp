@@ -100,6 +100,8 @@ uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next conne
 size_t g_ConnParamApplyDelayReads = 1;
 bool g_Bonded = false;
 size_t g_DeleteBondCount = 0;
+// Absent-peer model: addresses whose advertisements the scan never delivers.
+std::vector<NimBLEAddress> g_AbsentAddresses;
 
 // Erase a client from the live pool, freeing it. Caller must not touch the
 // pointer afterwards. Safe to call on a pointer no longer in the pool. Also
@@ -131,6 +133,19 @@ bool nimbleMockGapScanStartAllowed(void) {
 void nimbleMockSetGapScanStartAllowed(bool allowed) {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   g_ScanStartAllowed = allowed;
+}
+
+bool nimbleMockScanDeliveryAllowed(const NimBLEAdvertisedDevice *device) {
+  if (device == nullptr) {
+    return true;
+  }
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  for (const auto &address : g_AbsentAddresses) {
+    if (address == device->getAddress()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 NimBLEServer *NimBLEDevice::createServer() {
@@ -1100,6 +1115,16 @@ void NimBLEDevice::resetMock() {
   g_ConnParamApplyDelayReads = 1;
   g_Bonded = false;
   g_DeleteBondCount = 0;
+  g_AbsentAddresses.clear();
+}
+
+void NimBLEDevice::setScanAbsentAddress(const NimBLEAddress &address, bool absent) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_AbsentAddresses.erase(std::remove(g_AbsentAddresses.begin(), g_AbsentAddresses.end(), address),
+                          g_AbsentAddresses.end());
+  if (absent) {
+    g_AbsentAddresses.push_back(address);
+  }
 }
 
 NimBLEClient *NimBLEDevice::lastClient() {
