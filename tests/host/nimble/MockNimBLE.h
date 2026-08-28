@@ -300,6 +300,24 @@ class NimBLEClient {
   // path returns immediately, delete-this style).
   void mockDropLinkSelfDelete(int reason);
 
+  // Repro hook. Model a link killed by the supervision timeout whose
+  // BLE_GAP_EVENT_DISCONNECT is still queued on the NimBLE host task: the
+  // client keeps reporting connected (the conn handle is still set) while the
+  // physical link is gone. The queued event is then consumed at the two points
+  // the real host task can consume it relative to the failed-connect reclaim:
+  //
+  // - setSelfDelete(true, x): the broken reclaim ordering arms
+  //   delete-on-disconnect first. The hook delivers the queued event right
+  //   after the arm, exactly as the concurrent host task can: onDisconnect
+  //   fires and,
+  //   because deleteOnDisconnect is now set, the client is freed inline
+  //   (NimBLEClient.cpp:1090 -> NimBLEDevice.cpp:373). Any later touch of the
+  //   client by the reclaim is the use-after-free.
+  // - disconnect(): a terminate against the dead link. The queued event is
+  //   consumed during the call (onDisconnect fires); with delete-on-disconnect
+  //   still off nothing is freed, matching the fixed ordering.
+  void mockMarkLinkDeadEventPending(int reason);
+
   // Complete a controller disconnect event held back after a central
   // terminate.  Returns false when no event is queued.
   bool mockCompleteAsyncDisconnect(void);
@@ -364,6 +382,9 @@ class NimBLEClient {
   bool m_DeleteOnConnectFailure = false;
   bool m_PendingReap = false;
   bool m_DisconnectEventPending = false;
+  // Repro state for mockMarkLinkDeadEventPending().
+  bool m_LinkDeadEventPending = false;
+  int m_LinkDeadReason = 0;
   std::map<std::string, std::unique_ptr<NimBLERemoteService>> m_Services;
 };
 

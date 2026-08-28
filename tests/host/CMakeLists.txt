@@ -760,6 +760,34 @@ target_compile_options(connect_mid_drop_test PRIVATE
 target_link_options(connect_mid_drop_test PRIVATE -fsanitize=address)
 target_link_libraries(connect_mid_drop_test PRIVATE Threads::Threads)
 
+# AddressSanitizer regression for the Ricoh secure-timeout reclaim
+# use-after-free. A bonded saved reconnect fails secureConnection() (rc=520)
+# while the controller's disconnect event is still queued on the host task. The
+# mock's mockMarkLinkDeadEventPending() models that queued event; on the broken
+# ordering (self-delete armed before _disconnect()) the event frees the client
+# while _disconnect() still dereferences it and ASan aborts.
+add_executable(ricoh_secure_timeout_uaf_test
+               ricoh_secure_timeout_uaf_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp)
+target_include_directories(ricoh_secure_timeout_uaf_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CONTROL_E2E_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h
+                       -fsanitize=address -g -O1
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
+target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
+
 # Seeded BLE lifecycle fuzzer. Drives the real Control state machine through
 # randomised, deterministic (seeded) sequences of connect/disconnect/reconnect
 # operations with injected BLE faults and asserts a battery of invariants after
@@ -869,6 +897,7 @@ if(BUILD_TESTING)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
+  add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
 
   # Real-Control end-to-end scenarios. Each runs the production control state
