@@ -143,9 +143,10 @@ a regression.
   connect_fail true` makes the fake camera reject connection. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
   `--delay-ms`.
-- The SDL harness has no IMU injection action, seed, or query. Its platform shim
-  sets `config.internal_imu = false`; do not document or add an IMU DSL token
-  until a source seam exists.
+- The SDL harness models the IMU through `sim/ImuSim.cpp`, which is the host
+  implementation of the same `M5.Imu` read boundary used by production code.
+  Keep IMU actions and queries general enough for diagnostics, spirit-level
+  orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`, and
   `gps.config.<index>.state|attempts`. UART write count and the last command are
   available as `uart.count` and `uart.last`. `camera.count` reports the current
