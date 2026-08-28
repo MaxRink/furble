@@ -158,6 +158,9 @@ python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
   --env m5stick-s3-debug
 ```
 
+To validate the handshake without invoking PlatformIO, use
+`--preflight-only`. The older `--dry-run` spelling is retained as an alias.
+
 The preflight accepts no credentials and prints no secret data. If it cannot
 obtain all three acknowledgements (`flash.ready`, a disabled watchdog, and an
 unlocked download path), it refuses to flash. Use the physical long-press
@@ -171,6 +174,9 @@ The helper invokes the normal PlatformIO upload target from the checkout that
 contains the script and supplies the required development build identity. Do
 not substitute `pio run -t nobuild -t upload`: PlatformIO build artifacts are
 per-checkout and can otherwise flash a stale revision from another worktree.
+If PlatformIO cannot be started after the handshake, the helper attempts
+`flash cancel` and reports whether the PMIC watchdog was restored. If automatic
+restoration fails, keep the device powered and run `flash cancel` manually.
 
 ## Related references
 

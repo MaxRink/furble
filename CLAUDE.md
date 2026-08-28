@@ -47,6 +47,11 @@ CLAUDE.md whose directory it touches.
   profile argument. A compiler define alone is too late for component
   dependency resolution. The Waveshare profile passes `FURBLE_ETHERNET` both
   ways for this reason.
+- `tools/flash_prepare.py --preflight-only` performs and reports the PMIC
+  console handshake without starting PlatformIO. `--dry-run` remains a
+  compatibility alias. If PlatformIO cannot be started after a successful
+  handshake, the helper attempts `flash cancel` and reports whether watchdog
+  restoration succeeded.
 
 ## Style
 

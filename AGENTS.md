@@ -28,3 +28,9 @@ Development builds using `FURBLE_VERSION=dev` identify the checkout as
 `dev+g<unambiguous-hash>` and append `.dirty` for tracked, staged, or
 non-ignored untracked changes. Ignored-only changes stay clean. Explicit release
 versions remain unchanged. See `CLAUDE.md` for build details.
+
+The StickS3 flash helper is fail-closed. Use `--preflight-only` to validate the
+PMIC handshake without uploading. The historical `--dry-run` spelling remains
+supported. A missing or unexecutable PlatformIO command after a successful
+preflight must trigger an automatic `flash cancel` attempt and report the
+restoration result. Never infer PMIC state from a missing port or dependency.
