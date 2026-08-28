@@ -281,7 +281,7 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   } else if (name == "gps_uart_mode") {
     if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
-        && value != "partial" && value != "write-error") {
+        && value != "partial" && value != "write-error" && value != "pause") {
       std::cerr << "Invalid gps_uart_mode: " << value << '\n';
       std::exit(2);
     }
@@ -392,8 +392,9 @@ void readScript(const std::string &path) {
       step.type = StepType::UART_MODE;
       input >> step.name;
       if (step.name != "ack" && step.name != "nack" && step.name != "timeout"
-          && step.name != "malformed" && step.name != "partial" && step.name != "write-error") {
-        std::cerr << "uart-mode requires ack, nack, timeout, malformed, partial or write-error\n";
+          && step.name != "malformed" && step.name != "partial" && step.name != "write-error"
+          && step.name != "pause") {
+        std::cerr << "uart-mode requires ack, nack, timeout, malformed, partial, write-error or pause\n";
         std::exit(2);
       }
       steps.push_back(step);
@@ -779,6 +780,12 @@ std::string queryValue(const std::string &key) {
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
     }
+    if (sub == "degraded") {
+      return gps.getCycleStatusSnapshot().degraded ? "1" : "0";
+    }
+    if (sub == "degraded_retries") {
+      return std::to_string(gps.getCycleStatusSnapshot().retries);
+    }
     if (sub.rfind("config.", 0) == 0) {
       const std::string field = sub.substr(7);
       const size_t dot = field.find('.');
@@ -799,6 +806,13 @@ std::string queryValue(const std::string &key) {
         return std::to_string(status[index].attempts);
       }
     }
+  }
+  if (key == "power.no_light_sleep") {
+    return std::to_string(Power::getInstance().getCount(Power::LockType::NO_LIGHT_SLEEP));
+  }
+  if (key == "power.no_light_sleep_acquires") {
+    return std::to_string(
+        Power::getInstance().getStats(Power::LockType::NO_LIGHT_SLEEP).totalAcquires);
   }
   if (prefixed("uart.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("uart."));
@@ -1115,6 +1129,11 @@ void driverTick(void) {
         waitUntil = now + step.milliseconds;
         waiting = true;
       } else if (clockDeadlineReached(now, waitUntil)) {
+        // Give detached production tasks one final host scheduling quantum
+        // after virtual time reaches the deadline. Without this handoff a
+        // GPS retry deadline can be observed by the UI before serviceCycle()
+        // gets to run, making boundary assertions race the worker.
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
         waiting = false;
         ++stepIndex;
       }

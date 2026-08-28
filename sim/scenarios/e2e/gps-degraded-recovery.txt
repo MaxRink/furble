@@ -1,0 +1,21 @@
+# Drive the production GPS duty-cycle wake timeout into degraded retry by
+# suppressing only the fake UART event source, then restore a valid receiver.
+seed gps true
+seed gps_rate 1
+seed gps_power 1
+seed gps_duty 5
+seed gps_uart_mode ack
+wait 4000
+assert gps.state standby
+uart-mode pause
+wait 12000
+assert gps.degraded 1
+assert power.no_light_sleep 0
+assert power.no_light_sleep_acquires 2
+wait 30000
+assert power.no_light_sleep 0
+uart-mode ack
+assert-eventually 5000 gps.degraded 0
+assert-eventually 5000 power.no_light_sleep 0
+assert power.no_light_sleep 0
+exit
