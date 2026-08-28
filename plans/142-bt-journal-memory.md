@@ -32,9 +32,10 @@ holding an oversized event ring in internal DRAM.
 ## Hardware status
 
 No hardware run was available for this isolated worktree. The `m5stick-s3`
-PlatformIO environment uses the generic ESP32-S3-DevKitC-1 profile and its
-checked-in sdkconfig does not enable `CONFIG_SPIRAM`, so that environment must
-use the 32-record fallback. The `waveshare-s3-eth` environment is the checked-
-in S3+PSRAM profile (`BOARD_HAS_PSRAM`, 8 MB octal PSRAM, and
+PlatformIO environment uses the generic ESP32-S3-DevKitC-1 board profile,
+which advertises no PSRAM. Its checked-in sdkconfig requests SPIRAM support,
+but that cannot add memory to the no-PSRAM hardware, so allocation failure
+selects the 32-record internal fallback. The `waveshare-s3-eth` environment is
+the checked-in S3+PSRAM profile (`BOARD_HAS_PSRAM`, 8 MB octal PSRAM, and
 `CONFIG_SPIRAM=y`) where the 128-record PSRAM allocation can be built. Only
 the Fujifilm vendor path is hardware-testable under the repository policy.
