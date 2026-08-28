@@ -30,7 +30,10 @@ Python without pyserial is guided to the pinned
 its bundled pyserial without running an installer. Dependency and port
 failures never print retained-lock recovery instructions. A dry run explicitly
 reports that no upload was started. The canonical spelling is
-`--preflight-only`; `--dry-run` remains a compatibility alias.
+`--preflight-only`; `--dry-run` remains a compatibility alias. Both aliases
+always cancel a successful prepare before returning, and return zero only when
+the cancel acknowledgements confirm an armed watchdog and locked download
+recovery. A restoration failure returns nonzero with manual recovery guidance.
 
 The uploader deliberately retains PlatformIO's normal build dependency and
 sets the required `FURBLE_VERSION=dev` and `FURBLE_TEST=0` defaults when the
@@ -65,7 +68,9 @@ cancel procedure in the error message.
 - `tests/test_flash_prepare.py` covers all 17 preflight and upload-cleanup
   cases, including missing pyserial, port-open failure, missing
   acknowledgements, mid-handshake I/O failure, close-path exceptions, and both
-  successful and failed watchdog restoration after upload failure. The main
+  successful and failed watchdog restoration after upload failure. It also
+  covers successful, failed, and exceptional restoration for both
+  preflight-only aliases. The main
   workflow runs this Python test suite so these cases cannot be skipped.
 
 ## Hardware boundary
