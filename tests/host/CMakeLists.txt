@@ -33,7 +33,6 @@ target_include_directories(furble_host_camera
                            PUBLIC ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR}
                                   ${HOST_CORPUS_DIR}
-                                  ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
                                   ${FURBLE_ROOT}/lib/furble)
 target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-format
                                                  -Wno-unused-parameter)
@@ -746,13 +745,16 @@ add_executable(connect_mid_drop_test
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
                ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
 target_include_directories(connect_mid_drop_test BEFORE PRIVATE
                            ${FURBLE_ROOT}/include
                            ${HOST_NIMBLE_DIR}
                            ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
                            ${FURBLE_ROOT}/lib/furble)
 target_compile_options(connect_mid_drop_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -fsanitize=address -g -O1
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_options(connect_mid_drop_test PRIVATE -fsanitize=address)

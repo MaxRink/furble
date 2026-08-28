@@ -13,6 +13,7 @@
 #include "FujifilmSecure.h"
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
+#include "protocol/FujifilmProtocol.h"
 
 const char *LOG_TAG = "furble-registration-gate-test";
 
@@ -30,6 +31,23 @@ void check(bool condition, const char *message) {
 void init() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
+}
+
+void testRegistrationPayloads() {
+  using Furble::FujifilmProtocol::isConfigurationNotification;
+  const uint8_t captured[] = {0x01, 0x00};
+  const uint8_t legacy[] = {0x02, 0x00};
+  const uint8_t malformed[] = {0x01, 0x01};
+  const uint8_t unrelated[] = {0x03, 0x00};
+  check(isConfigurationNotification(captured, sizeof(captured)),
+        "captured X100VI registration payload is accepted");
+  check(isConfigurationNotification(legacy, sizeof(legacy)),
+        "legacy Basic registration payload is accepted");
+  check(!isConfigurationNotification(malformed, sizeof(malformed)),
+        "malformed registration payload is rejected");
+  check(!isConfigurationNotification(unrelated, sizeof(unrelated)),
+        "unrelated registration payload is rejected");
+  check(!isConfigurationNotification(nullptr, 2), "empty registration callback cannot confirm");
 }
 
 void testBasicConfirmationAndReset() {
@@ -55,6 +73,22 @@ void testBasicConfirmationAndReset() {
   check(!connected, "stale registration callback cannot confirm a reconnect");
   check(!camera.isConnected() && !peer.connected(),
         "Basic timeout tears down the link after registration is withheld");
+
+  // These payloads are delivered through the production callback, not merely
+  // checked by the protocol helper. None may confirm the dedicated event.
+  for (const auto &payload : {
+           std::vector<uint8_t> {},
+            std::vector<uint8_t> {0x01},
+            std::vector<uint8_t> {0x01, 0x01},
+           std::vector<uint8_t> {0x03, 0x00}
+  }) {
+    peer.setWithholdRegistration(false);
+    peer.setRegistrationPayload(payload);
+    Furble::FujifilmBasic malformed(&advertisement);
+    check(!malformed.connect(ESP_PWR_LVL_P3, 1000),
+          "malformed or unrelated CHR_NOT1 payload cannot confirm registration");
+  }
+  peer.setRegistrationPayload({0x01, 0x00});
 }
 
 void testSecureConfirmationAndTimeout() {
@@ -87,6 +121,7 @@ void testSecureConfirmationAndTimeout() {
 }  // namespace
 
 int main() {
+  testRegistrationPayloads();
   testBasicConfirmationAndReset();
   testSecureConfirmationAndTimeout();
   NimBLEDevice::resetMock();

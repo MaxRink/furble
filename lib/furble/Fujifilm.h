@@ -3,6 +3,8 @@
 
 #include <NimBLERemoteCharacteristic.h>
 
+#include <atomic>
+
 #include "Camera.h"
 
 namespace Furble {

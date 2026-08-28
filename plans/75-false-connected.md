@@ -7,10 +7,10 @@ Bluetooth pairing or shooting screen. The user started a connection from furble.
 furble reported CONNECTED, but the camera did not actually connect. In that state
 the shutter does nothing.
 
-This is a diagnosis document. It traces exactly where furble commits to the
-connected state, shows that the commit happens before any camera-side
-confirmation, names the missing confirmation, and proposes a fix. No code change
-lands with this document.
+This document records the diagnosis and implementation state for the
+registration gate. The gate is implemented in both Fujifilm paths and covered
+by production-path host tests. Hardware validation remains outstanding because
+the cameras are currently unavailable.
 
 ## Where furble commits to Connected
 
@@ -59,9 +59,10 @@ accepted the LE link and kept its GATT server up will ACK the writes and accept
 the subscriptions whether or not its companion-app logic has registered furble
 as a remote. None of these steps proves the camera agreed to be controlled.
 
-The actual app-level confirmation exists in the code and is deliberately not
-waited on. `Fujifilm::notify` (`lib/furble/Fujifilm.cpp:24-27`) sets
-`m_Configured = true` when `CHR_NOT1_UUID` delivers the two bytes `0x02 0x00`.
+The actual app-level confirmation exists in the code and was deliberately not
+waited on. The X100VI capture shows `CHR_NOT1_UUID` delivering `0x01 0x00`.
+Older Basic bodies used `0x02 0x00`. Both payloads are accepted only on the
+dedicated CHR_NOT1 characteristic.
 That notification is the camera saying it accepted the registration. The wait
 loop that would block the connect until `m_Configured` arrives is present but
 compiled out:
@@ -101,7 +102,7 @@ loop at all:
   interval, fetch the shutter service and characteristic (lines 135-208).
 - `return true` (line 212).
 
-Nothing here waits for the `CHR_NOT1_UUID` `0x02 0x00` confirmation, or for any
+Nothing here waits for the `CHR_NOT1_UUID` registration confirmation, or for any
 other camera-side "registration accepted" signal. The secure path is arguably
 worse than Basic because `secureConnection()` succeeding on a stale bond looks
 like strong evidence of a real connection when it is not.
@@ -124,13 +125,9 @@ Confidence:
   `#if 0` wait-for-`m_Configured` block in FujifilmBasic is direct evidence the
   confirmation exists and is intentionally not enforced.
 - For the exact X100VI (Secure) case, that the missing gate is precisely the
-  `CHR_NOT1_UUID` `0x02 0x00` notification is high confidence for Basic and
-  medium-to-high for Secure. Secure subscribes to twelve notifications; which
-  one (or which status value) uniquely distinguishes "registered" from "link up
-  in settings menu" needs the live capture to confirm. The hardware agent's
-  `false-connected-settings.log` capture is the input that identifies it: it
-  records which notifications, if any, the camera sends while in the settings
-  menu versus on the pairing screen.
+  `CHR_NOT1_UUID` `0x01 0x00` notification is high confidence for Secure and
+  medium-to-high for Basic, which also accepts the legacy `0x02 0x00` form.
+  The X100VI capture is the source for the Secure characteristic and payload.
 
 ## Why the shutter silently does nothing
 
@@ -146,12 +143,10 @@ camera does nothing. Connected but inert, exactly as reported.
 Gate the Connected/ACTIVE promotion on the real vendor-handshake completion, not
 on the GATT plumbing alone.
 
-1. In the Fujifilm `_connect()` paths, after the subscribe sequence, wait for the
-   camera-side confirmation notification with a bounded timeout. Basic already
-   has the mechanism: re-enable a variant of the `#if 0` loop that blocks on
-   `m_Configured` (set by the `CHR_NOT1_UUID` `0x02 0x00` notification). Secure
-   needs the equivalent confirmation identified from the capture, then the same
-   bounded wait.
+1. In both Fujifilm `_connect()` paths, after the subscribe sequence, wait for
+   the camera-side confirmation notification with a bounded 25 s timeout.
+   `m_Configured` is set only by CHR_NOT1 with the captured `0x01 0x00` payload
+   or the legacy `0x02 0x00` payload.
 2. On timeout, return false from `_connect()` so `Camera::connect()` tears the
    link down (`lib/furble/Camera.cpp:53-54`) and Control does not promote to
    ACTIVE.
@@ -167,21 +162,27 @@ on the GATT plumbing alone.
 
 Risk and sequencing:
 
-- The Basic-path re-enable is small and low-risk and could land next on its own.
-  The confirmation mechanism (`m_Configured`) already exists; the change is to
-  re-enable a bounded wait and fail on timeout.
-- The Secure path (the actual X100VI failure) needs the confirming-notification
-  identity that only a live capture gives. The hardware agent's
-  `false-connected-settings.log` is the input: compare the notification traffic
-  in the settings-menu case against a known-good pairing-screen connect to find
-  the notification (or status value) that is present only on a real
-  registration. Do not guess which of the twelve Secure notifications is the
-  gate; confirm it from the capture first.
+- The Basic and Secure paths now share the same dedicated-characteristic gate.
+  The Secure identity comes from the captured X100VI `01 00` event. Basic keeps
+  compatibility with the legacy `02 00` event.
 - All new blocking behavior stays behind a bounded timeout so a slow but genuine
   camera is not falsely rejected. Tune the timeout from the capture timings.
 
 ## Implementation state
 
-Not started. Diagnosis only. This document is the input for a follow-up
-implementation PR, which needs `false-connected-settings.log` to fix the Secure
-path.
+Implemented in the follow-up registration-gate PR:
+
+- Basic and Secure wait for CHR_NOT1 registration confirmation before shutter
+  discovery and active promotion.
+- A per-connection generation is captured by every callback. A notification
+  queued by a previous NimBLE client cannot confirm a later reconnect.
+- The confirmation flag is cleared at every connection attempt. Missing,
+  malformed, empty, and unrelated notifications do not confirm registration.
+- The wait exits on link loss or Control cancellation and has a 25 s firmware
+  deadline. Host tests use a compile-time 100 ms timeout and a steady-clock
+  shim, so timeout tests do not sleep for 25 s.
+- The virtual peer drives the production Basic and Secure code paths. Tests
+  cover positive `01 00`, legacy `02 00`, withheld registration, stale callback
+  replay, reconnect reset, teardown, and bounded timeout behavior.
+- Hardware status: not tested in this PR. Earlier X100VI captures provide the
+  `01 00` payload evidence; a live camera sanity test is still required.

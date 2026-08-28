@@ -70,8 +70,7 @@ bool isConfigurationNotification(const uint8_t *data, size_t bytes) {
   // X100VI's CHR_NOT1 capture is 01 00. Older Basic bodies used 02 00 for
   // the same registration-accepted event. The characteristic UUID identifies
   // the event, so this helper accepts both payload variants.
-  return data != nullptr && bytes >= 2 && data[1] == 0x00
-         && (data[0] == 0x01 || data[0] == 0x02);
+  return data != nullptr && bytes >= 2 && data[1] == 0x00 && (data[0] == 0x01 || data[0] == 0x02);
 }
 
 bool isGeotagRequest(const uint8_t *data, size_t bytes) {

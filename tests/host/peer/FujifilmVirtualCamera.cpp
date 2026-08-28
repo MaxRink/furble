@@ -161,9 +161,13 @@ void FujifilmVirtualCamera::setWithholdRegistration(bool withhold) {
   m_WithholdRegistration = withhold;
 }
 
+void FujifilmVirtualCamera::setRegistrationPayload(const std::vector<uint8_t> &payload) {
+  m_RegistrationPayload = payload;
+}
+
 bool FujifilmVirtualCamera::emitStaleRegistration() {
-  const auto current = m_Subscriptions.find(key(configurationServiceUUID(),
-                                                configurationNotificationUUID()));
+  const auto current =
+      m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
   if (!m_HaveStaleRegistration || (current == m_Subscriptions.end())
       || (m_StaleRegistration.callback == nullptr)) {
     return false;
@@ -308,8 +312,8 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   if (m_Client == &client) {
     m_Client = nullptr;
     m_Connected = false;
-    const auto registration = m_Subscriptions.find(key(configurationServiceUUID(),
-                                                       configurationNotificationUUID()));
+    const auto registration =
+        m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
     if (registration != m_Subscriptions.end()) {
       m_StaleRegistration = registration->second;
       m_HaveStaleRegistration = true;
@@ -553,7 +557,7 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   if (matches(characteristic, configurationNotificationUUID()) && !m_WithholdRegistration) {
     // This is the X100VI capture: CHR_NOT1_UUID carries 01 00. The production
     // protocol helper also accepts the legacy 02 00 Basic form.
-    emitNotification(service, characteristic, {0x01, 0x00}, false);
+    emitNotification(service, characteristic, m_RegistrationPayload, false);
   }
   return true;
 }

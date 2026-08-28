@@ -70,6 +70,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // is used to prove that a link-only connect cannot become active.
   void setWithholdRegistration(bool withhold);
 
+  /** Use a custom CHR_NOT1 payload for a registration callback test. */
+  void setRegistrationPayload(const std::vector<uint8_t> &payload);
+
   // Invoke the notification callback retained from the previous BLE session.
   // The production callback carries a session generation and must reject it.
   bool emitStaleRegistration(void);
@@ -230,6 +233,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_RegistrationConnParamsAccepted = false;
   bool m_StaleSubscribeSession = false;
   bool m_WithholdRegistration = false;
+  std::vector<uint8_t> m_RegistrationPayload = {0x01, 0x00};
   bool m_HaveStaleRegistration = false;
   Subscription m_StaleRegistration;
   std::vector<NimBLEUUID> m_SuppressedServices;

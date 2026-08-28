@@ -3,8 +3,11 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+#include <chrono>
+#include <thread>
+#else
 #include <freertos/FreeRTOS.h>
-#if !defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
 #include <freertos/task.h>
 #endif
 
@@ -70,9 +73,7 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc,
   const uint32_t generation = m_RegistrationGeneration.load();
   return gattSubscribe(
       pChr,
-      [this, generation](BLERemoteCharacteristic *pChr,
-                         uint8_t *pData,
-                         size_t length,
+      [this, generation](BLERemoteCharacteristic *pChr, uint8_t *pData, size_t length,
                          bool isNotify) {
         this->notify(pChr, pData, length, isNotify, generation);
       },
@@ -81,22 +82,35 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc,
 
 bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
   m_Progress = progress;
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+  const auto started = std::chrono::steady_clock::now();
+#else
   const TickType_t started = xTaskGetTickCount();
   const TickType_t timeout = pdMS_TO_TICKS(REGISTRATION_TIMEOUT_MS);
   const TickType_t poll = pdMS_TO_TICKS(REGISTRATION_POLL_MS);
+#endif
 
   while (!m_Configured.load()) {
     if (!m_Connected || (cancelOnInactive && !isActive())) {
       ESP_LOGW(LOG_TAG, "Fujifilm registration aborted before confirmation");
       return false;
     }
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+    if (elapsed.count() >= REGISTRATION_TIMEOUT_MS) {
+#else
     if (static_cast<TickType_t>(xTaskGetTickCount() - started) >= timeout) {
-      ESP_LOGW(LOG_TAG,
-               "Registration not confirmed after %lu ms; put the camera in pairing mode",
+#endif
+      ESP_LOGW(LOG_TAG, "Registration not confirmed after %lu ms; put the camera in pairing mode",
                static_cast<unsigned long>(REGISTRATION_TIMEOUT_MS));
       return false;
     }
+#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+    std::this_thread::sleep_for(std::chrono::milliseconds(REGISTRATION_POLL_MS));
+#else
     vTaskDelay(poll);
+#endif
   }
 
   ESP_LOGI(LOG_TAG, "Fujifilm registration confirmed");
