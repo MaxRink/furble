@@ -552,6 +552,7 @@ class Explorer final: public NimBLEClientCallbacks {
   }
 
   void subscribeAll() {
+    const uint32_t attempt_id = m_AttemptId;
     for (NimBLERemoteCharacteristic *characteristic : m_Characteristics) {
       if (characteristic == nullptr) {
         continue;
@@ -563,9 +564,10 @@ class Explorer final: public NimBLEClientCallbacks {
                             started_us, m_AttemptId, true);
         const bool result = characteristic->subscribe(
             true,
-            [](NimBLERemoteCharacteristic *remote, uint8_t *data, size_t length, bool isNotify) {
+            [attempt_id](NimBLERemoteCharacteristic *remote, uint8_t *data, size_t length,
+                         bool isNotify) {
               journalExplorerGatt(isNotify ? "notify" : "indicate", remote, data, length, true,
-                                  false, static_cast<uint64_t>(esp_timer_get_time()), m_AttemptId);
+                                  false, static_cast<uint64_t>(esp_timer_get_time()), attempt_id);
               printf("%s: %llu %s %s\n", isNotify ? "notify" : "indicate",
                      esp_timer_get_time() / 1000ULL, remote->getUUID().toString().c_str(),
                      hexDump(data, length).c_str());
@@ -583,9 +585,10 @@ class Explorer final: public NimBLEClientCallbacks {
                             started_us, m_AttemptId, true);
         const bool result = characteristic->subscribe(
             false,
-            [](NimBLERemoteCharacteristic *remote, uint8_t *data, size_t length, bool isNotify) {
+            [attempt_id](NimBLERemoteCharacteristic *remote, uint8_t *data, size_t length,
+                         bool isNotify) {
               journalExplorerGatt(isNotify ? "notify" : "indicate", remote, data, length, true,
-                                  false, static_cast<uint64_t>(esp_timer_get_time()), m_AttemptId);
+                                  false, static_cast<uint64_t>(esp_timer_get_time()), attempt_id);
               printf("%s: %llu %s %s\n", isNotify ? "notify" : "indicate",
                      esp_timer_get_time() / 1000ULL, remote->getUUID().toString().c_str(),
                      hexDump(data, length).c_str());
