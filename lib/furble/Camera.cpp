@@ -44,12 +44,12 @@ std::string payloadHex(const uint8_t *data, size_t length) {
 void printJournalEvent(const BtDebugEvent &event, void *) {
   printf(
       "bt.event: seq:%llu session:%u attempt:%u time:%llu kind:%u phase:%s op:%s result:%s "
-      "duration_ms:%u reason:%d(%s) gen:%llu ",
+      "duration_ms:%u reason:%ld(%s) gen:%llu ",
       static_cast<unsigned long long>(event.sequence), static_cast<unsigned>(event.session_id),
       static_cast<unsigned>(event.attempt_id), static_cast<unsigned long long>(event.timestamp_ms),
       static_cast<unsigned>(event.kind), event.begin ? "begin" : "end", event.operation,
-      event.result, static_cast<unsigned>(event.duration_ms), event.reason, event.reason_text,
-      static_cast<unsigned long long>(event.generation));
+      event.result, static_cast<unsigned>(event.duration_ms), static_cast<long>(event.reason),
+      event.reason_text, static_cast<unsigned long long>(event.generation));
   if (event.address[0] != '\0') {
     printf("addr:%s type:%u ", event.address, static_cast<unsigned>(event.address_type));
   }
