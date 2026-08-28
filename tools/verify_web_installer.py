@@ -15,6 +15,11 @@ RELEASE_PLATFORMS = (
   "waveshare-s3-eth",
 )
 
+EXPECTED_FLASH_OFFSETS = {
+  "ESP32": (0x1000, 0x8000, 0xF000, 0x20000),
+  "ESP32-S3": (0x0, 0x8000, 0xF000, 0x20000),
+}
+
 
 def expected_manifests():
   return {
@@ -22,6 +27,25 @@ def expected_manifests():
     for platform in RELEASE_PLATFORMS
     for variant in ("", "-debug")
   }
+
+
+def flash_offset_error(build):
+  """Return an error when a generated manifest has the wrong flash map."""
+  chip_family = build.get("chipFamily") if isinstance(build, dict) else None
+  expected = EXPECTED_FLASH_OFFSETS.get(chip_family)
+  parts = build.get("parts") if isinstance(build, dict) else None
+  if expected is None or not isinstance(parts, list):
+    return None
+  actual = tuple(
+    part.get("offset") if isinstance(part, dict) else None for part in parts
+  )
+  if actual != expected:
+    return (
+      f"{chip_family}: expected flash offsets "
+      f"{tuple(hex(offset) for offset in expected)}, got "
+      f"{tuple(hex(offset) if isinstance(offset, int) else offset for offset in actual)}"
+    )
+  return None
 
 
 def validate(site: Path):
@@ -50,6 +74,9 @@ def validate(site: Path):
       errors.append(f"{manifest_path.name}: expected ESP32 and ESP32-S3 builds")
       continue
     for build in builds:
+      offset_error = flash_offset_error(build)
+      if offset_error:
+        errors.append(f"{manifest_path.name}: {offset_error}")
       parts = build.get("parts") if isinstance(build, dict) else None
       if not isinstance(parts, list) or len(parts) != 4:
         errors.append(f"{manifest_path.name}: expected four flash parts")
