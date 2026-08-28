@@ -2,44 +2,11 @@
 #include <nvs_flash.h>
 
 #include "FurbleBatterySaver.h"
-#include "FurbleRestartMarker.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
 namespace Furble {
-
-namespace {
-class PreferencesRestartStorage final: public RestartMarkerStorage {
- public:
-  explicit PreferencesRestartStorage(Preferences &prefs) : m_Prefs(prefs) {}
-  result read(const char *key, uint32_t &value) override {
-    const auto status = m_Prefs.readU32(key, value);
-    if (status == Preferences::status::NOT_FOUND)
-      return result::ABSENT;
-    return status == Preferences::status::OK ? result::PRESENT : result::ERROR;
-  }
-  result write(const char *key, uint32_t value) override {
-    return m_Prefs.put<uint32_t>(key, value) == sizeof(value) ? result::SUCCESS : result::ERROR;
-  }
-  result remove(const char *key) override {
-    const auto status = m_Prefs.removeKey(key);
-    if (status == Preferences::status::NOT_FOUND)
-      return result::ABSENT;
-    return status == Preferences::status::OK ? result::SUCCESS : result::ERROR;
-  }
-  result exists(const char *key) override {
-    uint32_t value = 0;
-    const auto status = m_Prefs.readU32(key, value);
-    if (status == Preferences::status::NOT_FOUND)
-      return result::ABSENT;
-    return status == Preferences::status::OK ? result::PRESENT : result::ERROR;
-  }
-
- private:
-  Preferences &m_Prefs;
-};
-}  // namespace
 
 // The board-conditional text size policy in FurbleTextSize.h uses raw values so
 // it stays dependency free for the host tests. Pin those values to the enum so
@@ -614,30 +581,6 @@ void Settings::init(void) {
       }
     }
   }
-}
-
-bool Settings::markCleanRestart(void) {
-  Preferences prefs;
-  if (!prefs.begin(FURBLE_STR, false)) {
-    return false;
-  }
-
-  PreferencesRestartStorage storage(prefs);
-  const bool written = RestartMarker::mark(storage);
-  prefs.end();
-  return written;
-}
-
-bool Settings::consumeCleanRestart(void) {
-  Preferences prefs;
-  if (!prefs.begin(FURBLE_STR, false)) {
-    return false;
-  }
-
-  PreferencesRestartStorage storage(prefs);
-  const bool consumed = RestartMarker::consume(storage);
-  prefs.end();
-  return consumed;
 }
 
 bool Settings::batterySaver(void) {

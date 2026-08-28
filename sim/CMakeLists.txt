@@ -7,15 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(FURBLE_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
-
-# Keep the simulator's control seam ABI-checked against the firmware header.
-# This catches a stale one-argument simulator definition before the optional
-# graphics dependencies are configured.
-file(READ "${CMAKE_CURRENT_LIST_DIR}/FurbleControlSim.cpp" _sim_control_source)
-if(NOT _sim_control_source MATCHES
-   "void[ ]+Control::connectAll\\(bool[ ]+infiniteReconnect,[ ]*reconnect_origin_t[ ]+origin\\)")
-  message(FATAL_ERROR "FurbleControlSim::connectAll is out of sync with FurbleControl.h")
-endif()
 set(FURBLE_DEP_ROOT
     "${FURBLE_ROOT}/.pio/libdeps/m5stick-s3"
     CACHE PATH "PlatformIO library cache used by the simulator")

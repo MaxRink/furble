@@ -41,15 +41,6 @@ class Control {
     STATE_DISCONNECTING,
   } state_t;
 
-  // The first retry may skip the stale-session wait only when the prior link
-  // teardown was known to be ours. AUTO is resolved from the pending origin
-  // token; callers must use PEER when a link may have been dropped by camera.
-  enum class reconnect_origin_t : uint8_t {
-    AUTO,
-    PEER,
-    FURBLE,
-  };
-
   class Target {
     friend class Control;
 
@@ -144,7 +135,7 @@ class Control {
   /**
    * Connect to all active cameras.
    */
-  void connectAll(bool infiniteReconnect, reconnect_origin_t origin = reconnect_origin_t::AUTO);
+  void connectAll(bool infiniteReconnect);
 
   /**
    * Disconnect all connected cameras.
@@ -201,10 +192,6 @@ class Control {
     bool infiniteReconnect;
     bool reconnectBackoff;
     uint32_t reconnectAttempt;
-    // Pending origin token for the next explicit connect. Lets the on-device
-    // timing verification observe whether the next connect takes the fast
-    // furble first retry or the patient peer backoff.
-    reconnect_origin_t nextOrigin;
     bool adaptiveActive;
     int userPowerLevel;
     int adaptivePowerLevel;
@@ -306,11 +293,6 @@ class Control {
    */
   void setState(state_t state);
 
-  struct command_t;
-
-  /** Apply a queued explicit connect request on the control task. */
-  void startConnectRequest(const command_t &request);
-
   /**
    * Sample connection RSSI and adjust the shared transmit power.
    *
@@ -336,12 +318,6 @@ class Control {
   static constexpr UBaseType_t m_QueueLength = 32;
   static constexpr const char *POWER_LOCK_OWNER = "control";
 
-  struct command_t {
-    cmd_t command;
-    reconnect_origin_t origin;
-    bool infiniteReconnect;
-  };
-
   QueueHandle_t m_Queue = NULL;
   mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
@@ -365,18 +341,6 @@ class Control {
   bool m_ReconnectBackoff = false;
   uint32_t m_ReconnectAttempt = 0;
   bool m_ReconnectHintLogged = false;
-  // Origin of the currently running connect cycle. This is written and read by
-  // the control task only. A peer drop always starts the private reconnect path
-  // with PEER, while an interactive disconnect or consumed clean-restart marker
-  // supplies FURBLE to the next explicit connect request.
-  reconnect_origin_t m_ConnectOrigin = reconnect_origin_t::PEER;
-  // Origin token for the next explicit connect request. Guarded by m_Mutex so
-  // disconnect() and connectAll() cannot race or lose the clean teardown cause.
-  // Defaults to the fail-safe PEER: a boot whose clean-restart marker is
-  // absent or unreadable keeps the patient peer backoff. Only a consumed
-  // marker (getInstance()) or a completed interactive teardown (disconnect())
-  // upgrades the token to FURBLE.
-  reconnect_origin_t m_NextConnectOrigin = reconnect_origin_t::PEER;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

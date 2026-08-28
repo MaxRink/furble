@@ -52,7 +52,6 @@ class Settings {
   static bool sleepConnEffective(void);
   static bool connSaverEffective(void);
   static bool reconBackoffEffective(void);
-  static bool consumeCleanRestart(void) { return false; }
 };
 
 template <>

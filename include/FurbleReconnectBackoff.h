@@ -25,26 +25,14 @@ static constexpr uint32_t MAX_MS = (120 * 1000);
 // reconnects in a few seconds, instead of stalling on the full backoff.
 static constexpr uint32_t FIRST_RETRY_MS = (2500);
 
-// Wait before the first retry when furble itself initiated the prior
-// disconnect. A furble-initiated disconnect (the interactive Disconnect, or the
-// clean pre-restart teardown) hands the camera a proper link termination, so the
-// camera is not holding a stale session that has to expire. There is nothing to
-// wait out, so retry at once instead of holding FIRST_RETRY_MS. A peer-initiated
-// drop (camera power-off, supervision timeout, out of range) keeps FIRST_RETRY_MS
-// because the camera may still hold the previous session for a moment.
-static constexpr uint32_t FIRST_RETRY_FURBLE_MS = (0);
-
 // Compute the wait before the next reconnect attempt. attempt is the number of
-// retries already performed: 0 selects the short first retry. furbleInitiated
-// picks the immediate first retry when furble caused the prior disconnect, so no
-// stale peer session has to expire; a peer-initiated drop keeps FIRST_RETRY_MS.
-// Later attempts hold BASE_MS when backoff is disabled, or grow exponentially
-// from BASE_MS up to MAX_MS when it is enabled. The exponential curve for
-// attempt >= 1 is unchanged from the original; only the first retry is shortened,
-// and furbleInitiated only affects that first retry.
-inline uint32_t delayMs(uint32_t attempt, bool backoffEnabled, bool furbleInitiated = false) {
+// retries already performed: 0 selects the short first retry. Later attempts
+// hold BASE_MS when backoff is disabled, or grow exponentially from BASE_MS up
+// to MAX_MS when it is enabled. The exponential curve for attempt >= 1 is
+// unchanged from the original; only the first retry is shortened.
+inline uint32_t delayMs(uint32_t attempt, bool backoffEnabled) {
   if (attempt == 0) {
-    return furbleInitiated ? FIRST_RETRY_FURBLE_MS : FIRST_RETRY_MS;
+    return FIRST_RETRY_MS;
   }
 
   if (!backoffEnabled) {

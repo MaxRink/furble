@@ -22,7 +22,6 @@ namespace Furble {
 
 class Preferences {
  public:
-  enum class status : uint8_t { OK, NOT_FOUND, ERROR };
   Preferences();
   ~Preferences();
 
@@ -43,8 +42,6 @@ class Preferences {
   size_t get(const char *key, void *buf, size_t maxLen);
 
   bool isKey(const char *key);
-  status readU32(const char *key, uint32_t &value);
-  status removeKey(const char *key);
   size_t getBytesLength(const char *key);
   size_t freeEntries();
 
