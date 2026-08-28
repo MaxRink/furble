@@ -10,6 +10,7 @@ seed fauxny true
 seed saved_camera true
 seed gps true
 seed imu true
+seed fb_output 1
 seed interval_count 2
 seed interval_delay 0
 seed interval_shutter 100

@@ -17,6 +17,7 @@ seed fauxny true
 seed saved_camera true
 seed gps true
 seed imu true
+seed fb_output 1
 wait 300
 # Home menu: must fit on every panel.
 print ui.page

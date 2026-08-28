@@ -260,6 +260,11 @@ a regression.
   overflow state for intentional-scroll pages. CI runs it on all three panel
   classes with optional capabilities enabled. Keep route identity and scroll
   endpoint assertions in `page-matrix.txt` rather than duplicating them here.
+- `seed fb_output 0..4` models the persisted feedback output selection. Page
+  and overflow matrices seed `fb_output 1` so the sound volume route is truly
+  reachable when feedback capability is enabled. `feedback-hidden-route.txt`
+  verifies that the volume route remains unreachable when the output is Off;
+  hidden controls must never be activated by simulator navigation.
 
 ## IMU injection and redraw probe
 

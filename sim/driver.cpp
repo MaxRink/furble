@@ -201,7 +201,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate", "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power", "scan_mode",
-      "text_size",  "auto_off",   "low_batt",
+      "text_size",  "auto_off",   "low_batt",    "fb_output",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -879,6 +879,7 @@ void applyScenarioSettings(void) {
   saveByte("text_size", Settings::TEXT_SIZE);
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
+  saveByte("fb_output", Settings::FB_OUTPUT);
   saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);

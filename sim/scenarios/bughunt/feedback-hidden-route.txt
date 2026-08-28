@@ -1,0 +1,15 @@
+# A feedback-capable board may still have its persisted output set to Off.
+# Volume is then deliberately hidden. Navigation must not click a hidden LVGL
+# button or silently reach a page that the user cannot reach.
+seed fb_output 0
+wait 300
+action nav settings
+wait 100
+action nav feedback
+wait 100
+assert ui.page feedback
+action nav feedback_volume
+wait 100
+assert ui.page feedback
+assert ui.overflow no
+exit
