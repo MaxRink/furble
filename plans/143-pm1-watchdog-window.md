@@ -19,8 +19,9 @@ three-feed safety margin are unchanged. No feed, unlock, or flash-preparation
 recovery path was weakened.
 
 The PMIC timeout is a retained external boundary. The simulator uses the same
-shared second value and keeps the watchdog and download lock across a modeled
-ESP reset. Equality remains expiry: a stall at 45,000 ms must reset, while a
+shared second value and keeps the watchdog state and download recovery
+availability across a modeled ESP reset. Equality remains expiry: a stall at
+45,000 ms must reset, while a
 stall at 44,999 ms must survive. Deadline arithmetic remains uint32-wrap-safe.
 
 The serial uploader now classifies dependency, port-open,
@@ -32,8 +33,10 @@ failures never print retained-lock recovery instructions. A dry run explicitly
 reports that no upload was started. The canonical spelling is
 `--preflight-only`; `--dry-run` remains a compatibility alias. Both aliases
 always cancel a successful prepare before returning, and return zero only when
-the cancel acknowledgements confirm an armed watchdog and locked download
-recovery. A restoration failure returns nonzero with manual recovery guidance.
+the cancel acknowledgements confirm an armed watchdog. Download recovery stays
+available intentionally, including after cancel, so a wedged device can still
+be recovered. A restoration failure returns nonzero with manual recovery
+guidance.
 
 The uploader deliberately retains PlatformIO's normal build dependency and
 sets the required `FURBLE_VERSION=dev` and `FURBLE_TEST=0` defaults when the
@@ -65,12 +68,13 @@ cancel procedure in the error message.
 - Existing `tests/host/pmic_recovery_test.cpp` continues to cover first-access
   wake retry, retained watchdog state during ROM download, and flash recovery
   failure paths.
-- `tests/test_flash_prepare.py` covers all 17 preflight and upload-cleanup
+- `tests/test_flash_prepare.py` covers all 22 preflight and upload-cleanup
   cases, including missing pyserial, port-open failure, missing
   acknowledgements, mid-handshake I/O failure, close-path exceptions, and both
   successful and failed watchdog restoration after upload failure. It also
   covers successful, failed, and exceptional restoration for both
-  preflight-only aliases. The main
+  preflight-only aliases, including early acknowledgement completion and
+  timeout behavior. The main
   workflow runs this Python test suite so these cases cannot be skipped.
 
 ## Hardware boundary

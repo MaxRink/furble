@@ -35,4 +35,6 @@ PMIC handshake without uploading. After a successful prepare, it must issue
 historical `--dry-run` spelling has the same semantics. A missing,
 unexecutable, or unsuccessful PlatformIO command after a successful preflight
 must also trigger an automatic `flash cancel` attempt and report the restoration
-result. Never infer PMIC state from a missing port or dependency.
+result. Download recovery remains available after cancel by design, preserving
+manual rescue for wedged devices. Never infer PMIC state from a missing port or
+dependency.

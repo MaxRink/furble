@@ -38,7 +38,8 @@ Use `python3 tools/flash_prepare.py --port <device> --env <environment>` for a
 PMIC-safe upload. Use `--preflight-only` to validate the handshake without
 starting PlatformIO. The older `--dry-run` option remains an alias. Both forms
 cancel a successful prepare and return zero only after confirming watchdog
-restoration. If PlatformIO cannot be started or the upload exits unsuccessfully
+restoration. Download recovery remains available after cancel by design. If
+PlatformIO cannot be started or the upload exits unsuccessfully
 after the watchdog is disabled, the helper also tries `flash cancel` and reports
 whether restoration succeeded.
 

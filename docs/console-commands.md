@@ -161,9 +161,10 @@ python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
 To validate the handshake without invoking PlatformIO, use
 `--preflight-only`. The older `--dry-run` spelling is retained as an alias.
 Both forms send `flash cancel` after a successful prepare and return success
-only after confirming that the watchdog is armed and download recovery is
-locked. If restoration cannot be confirmed, the command returns a failure and
-prints the safe manual recovery procedure.
+only after confirming that the watchdog is armed. Download recovery remains
+available by design, including after cancel, so a wedged device can still be
+rescued. If watchdog restoration cannot be confirmed, the command returns a
+failure and prints the safe manual recovery procedure.
 
 The preflight accepts no credentials and prints no secret data. If it cannot
 obtain all three acknowledgements (`flash.ready`, a disabled watchdog, and an
