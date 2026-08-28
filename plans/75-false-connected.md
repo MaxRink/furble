@@ -188,3 +188,15 @@ Implemented in the follow-up registration-gate PR:
   replay, reconnect reset, teardown, and bounded timeout behavior.
 - Hardware status: not tested in this PR. Earlier X100VI captures provide the
   `01 00` payload evidence; a live camera sanity test is still required.
+
+## Deviation: saved-camera reconnect confirmation (2026-08-28)
+
+Hardware exposed a gap the day the gate merged: a saved X100VI reconnect does
+not resend the `CHR_NOT1` confirmation. The camera goes straight to periodic
+`01 00` geotag requests on `GEOTAG_UPDATE`, so the gate timed out after 25 s
+on every reconnect and the connect retry loop never succeeded. A valid geotag
+request now also confirms registration, because the camera only requests
+geotag data from a client it has accepted. The original engineering-lessons
+capture recorded acceptance notifications on both characteristics, which this
+restores. The host suite covers the reconnect path with a virtual peer that
+withholds `CHR_NOT1` and sends only a geotag request.

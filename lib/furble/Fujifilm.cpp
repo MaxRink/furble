@@ -46,6 +46,13 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr,
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
     if (FujifilmProtocol::isGeotagRequest(pData, length)) {
       m_GeoRequested = true;
+      // A saved-camera reconnect on the X100VI does not resend the dedicated
+      // registration confirmation. The camera goes straight to periodic geotag
+      // requests, which it only sends to a client it has accepted, so treat a
+      // valid request as the registration confirmation. Hardware trace
+      // 2026-08-28: reconnect stalls at 25 s without this while 01 00 arrives
+      // here every 10 s.
+      m_Configured = true;
     }
   } else {
     ESP_LOGW(LOG_TAG, "Unhandled subscription.");

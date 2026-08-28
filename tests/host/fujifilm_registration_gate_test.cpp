@@ -133,12 +133,53 @@ void testSecureConfirmationAndTimeout() {
   check(elapsed.count() < 1000, "registration timeout remains bounded in the host test");
 }
 
+// A saved-camera reconnect on the X100VI does not resend the dedicated
+// registration confirmation. The camera goes straight to periodic geotag
+// requests, so a valid request must confirm the gate. Hardware trace
+// 2026-08-28: without this the reconnect stalls for the full deadline while
+// 01 00 arrives on the geotag characteristic every 10 seconds.
+void testGeotagRequestConfirmsReconnect() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer;
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  peer.setWithholdRegistration(true);
+  Furble::FujifilmBasic camera(&advertisement);
+  bool connected = false;
+  std::thread attempt([&]() { connected = camera.connect(ESP_PWR_LVL_P3, 1000); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  check(peer.requestGeotag(), "virtual peer can send a geotag request mid-wait");
+  attempt.join();
+  check(connected, "geotag request confirms registration on a reconnect");
+  camera.disconnect();
+
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  config.name = "FUJIFILM X100VI";
+  Furble::Host::FujifilmVirtualCamera securePeer(config);
+  NimBLEDevice::setMockPeer(&securePeer);
+  const auto secureAdvertisement = securePeer.advertisement();
+
+  securePeer.setWithholdRegistration(true);
+  Furble::FujifilmSecure secureCamera(&secureAdvertisement);
+  bool secureConnected = false;
+  std::thread secureAttempt(
+      [&]() { secureConnected = secureCamera.connect(ESP_PWR_LVL_P3, 1000); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  check(securePeer.requestGeotag(), "secure virtual peer can send a geotag request mid-wait");
+  secureAttempt.join();
+  check(secureConnected, "geotag request confirms registration on a Secure reconnect");
+  secureCamera.disconnect();
+}
+
 }  // namespace
 
 int main() {
   testRegistrationPayloads();
   testBasicConfirmationAndReset();
   testSecureConfirmationAndTimeout();
+  testGeotagRequestConfirmsReconnect();
   NimBLEDevice::resetMock();
   if (failures != 0) {
     std::cerr << failures << " registration-gate checks failed\n";
