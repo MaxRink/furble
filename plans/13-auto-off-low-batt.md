@@ -8,8 +8,13 @@ Rebase notes:
 
 - `AUTO_OFF` is assigned wire_id 37 and `LOW_BATT` wire_id 38, continuing
   after `DISPLAY_MODE` (36) from PR 31.
-- `src/FurbleCompanion.cpp` settingType and settingValue cover both as
-  SETTING_U8.
+- `AUTO_OFF_CHARGING` is a bool at wire_id 43. Wire id 42 remains reserved for
+  timezone work; 43 was free in the current settings table and the audited
+  fetched/open branches. The NVS key is `autooff_charge` (14 characters),
+  within the ESP-IDF 15-character limit. Wire id 45 is intentionally not used
+  because an open IMU/companion branch claims it.
+- `src/FurbleCompanionService.cpp` exposes `AUTO_OFF_CHARGING` as
+  `SETTING_BOOL`; the existing `AUTO_OFF` and `LOW_BATT` remain `SETTING_U8`.
 - The branch's console coverage (uint8 in all four switches, both apply
   immediately) merged onto master's GPS_POWER/GPS_DUTY lists as unions.
 
@@ -82,10 +87,21 @@ Verification completed:
 
 - clang-format 21 passes for all changed C++ and header files.
 - `git diff --check` passes.
-- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` and
-  `-e m5stick-s3-debug` pass.
-- Hardware testing is pending. No boards have been tested. The hardware run
-  must also confirm:
+- The host settings/SD round-trip table is exhaustive over `Settings::type_t`
+  and now checks each row's bool/integer/string/blob classification.
+- The M5Stick-S3 firmware build was not completed in this pass. The attached
+  board is visible as `/dev/cu.usbmodem1101`, but the local PlatformIO CLI
+  stalls before reporting its version/build status, and the worktree simulator
+  build reports the required M5GFX dependency missing. The exact absent source
+  paths are `/private/tmp/furble-charging-policy-reconstruct/.pio/libdeps/m5stick-s3/M5GFX/src/M5GFX.cpp`,
+  `/private/tmp/furble-charging-policy-reconstruct/.pio/libdeps/m5stick-s3/M5Unified/src/M5Unified.cpp`,
+  and `/private/tmp/furble-charging-policy-reconstruct/.pio/libdeps/m5stick-s3/TinyGPSPlus/src/TinyGPS++.cpp`,
+  with the corresponding three paths under
+  `/Users/A92615428/git/GitHub/gkoh/furble/.pio/libdeps/m5stick-s3/` also absent.
+  The worktree also lacks `managed_components/lvgl__lvgl/`, while the main
+  workspace's LVGL copy is present. Safe cached sources are otherwise absent.
+  No firmware was flashed and no hardware behavior is claimed for this
+  revision. The hardware run must also confirm:
   - dismissing the warning returns focus to the page the user was on, not an
     arbitrary object in the flat group.
   - the warn-only box lets the screen dim and sleep normally, only the
@@ -147,7 +163,14 @@ Out of scope:
 | `LOW_BATT` | `low_batt` (8 chars) | `FURBLE_STR` | `uint8_t` | 0 none, 1 warn, 2 warn then power off | 0 |
 
 Both defaults reproduce current behaviour exactly. Nothing happens unless the
-user opts in.
+user opts in. Auto-off is suppressed while a board with a charging capability
+reports charging; the `AUTO_OFF_CHARGING` switch explicitly permits it. The
+sampled charging state also owns a `NO_LIGHT_SLEEP` lock, so display-off may
+still happen but automatic CPU/light sleep cannot begin while charging. The
+simulator exposes the charging sample and power-off/light-sleep assertions in
+`autooff-charging-safe.txt` and `autooff-charging-opt-in.txt`; both scripts
+advance beyond the inactivity and auto-off timers and assert the production
+power-off and light-sleep surfaces.
 
 Auto off roller index to stored minutes:
 

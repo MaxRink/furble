@@ -26,6 +26,12 @@ lands on fork master. This file applies once it does.
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS
   backup rail, $PCAS support). Cite it instead of re-measuring.
+- Charging auto-off policy work updates `13-auto-off-low-batt.md` and reserves
+  wire id 42 for timezone. The charging opt-in uses wire id 43 only after an
+  audit of current master and open relevant branches. Wire id 45 remains
+  unavailable. Keep the default auto-off behavior unchanged on boards without
+  charging telemetry, suppress auto-off while charging by default, and avoid
+  NVS writes from policy ticks.
 - Restart and BLE recovery plans must cover both clean shutdown and unclean
   reset paths, and must include an immediate reconnect acceptance test.
 - Settings concurrency plans must distinguish ESP-IDF NVS thread safety from

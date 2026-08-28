@@ -56,6 +56,7 @@ class Settings {
     BUTTON_MODE,
     AUTO_OFF,
     LOW_BATT,
+    AUTO_OFF_CHARGING,
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
@@ -380,6 +381,10 @@ struct Settings::storage_type<Settings::AUTO_OFF> {
 template <>
 struct Settings::storage_type<Settings::LOW_BATT> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::AUTO_OFF_CHARGING> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::SD_GPX> {

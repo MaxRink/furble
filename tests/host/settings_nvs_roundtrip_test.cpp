@@ -62,6 +62,73 @@ enum class StorageKind {
   BLOB,
 };
 
+// Keep this switch exhaustive on purpose. It is a host-side mirror of the
+// wire/storage classification used by the firmware-facing setting tables: a
+// new Settings::type_t value must be added here before the host gate can build.
+StorageKind storageKindFor(Settings::type_t type) {
+  switch (type) {
+    case Settings::TX_ADAPTIVE:
+    case Settings::GPS:
+    case Settings::GPS_NMEA:
+    case Settings::MULTICONNECT:
+    case Settings::RECONNECT:
+    case Settings::RECON_BACKOFF:
+    case Settings::FAUXNY:
+    case Settings::AUTOCONNECT:
+    case Settings::SHOW_TITLE:
+    case Settings::SLEEP_CONN:
+    case Settings::COMPANION:
+    case Settings::CONN_SAVER:
+    case Settings::IR:
+    case Settings::PRESET_PICKER:
+    case Settings::SD_GPX:
+    case Settings::BOOT_SPLASH:
+    case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
+#if defined(FURBLE_M5STICKS3)
+    case Settings::WATCHDOG:
+#endif
+      return StorageKind::BOOL;
+    case Settings::BRIGHTNESS:
+    case Settings::INACTIVITY:
+    case Settings::DISPLAY_OFF:
+    case Settings::TEXT_SIZE:
+    case Settings::TX_POWER:
+    case Settings::GPS_RATE:
+    case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
+    case Settings::CPU_FREQ:
+    case Settings::BATT_STYLE:
+    case Settings::SCAN_MODE:
+    case Settings::IR_PROTO:
+    case Settings::FB_OUTPUT:
+    case Settings::FB_EVENTS:
+    case Settings::FB_VOLUME:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+#endif
+      return StorageKind::U8;
+    case Settings::GPS_BAUD:
+    case Settings::SCAN_TIMEOUT:
+      return StorageKind::U32;
+    case Settings::GPX_PERIOD:
+      return StorageKind::U16;
+    case Settings::THEME:
+    case Settings::BUTTON_MODE:
+      return StorageKind::STRING;
+    case Settings::INTERVAL:
+    case Settings::MULTISELECT:
+    case Settings::BULB:
+    case Settings::TOUCH_CALIBRATION:
+      return StorageKind::BLOB;
+  }
+  std::abort();
+}
+
 struct SettingCase {
   Settings::type_t type;
   const char *name;
@@ -178,6 +245,7 @@ std::vector<SettingCase> settingCases() {
        std::string {Settings::BUTTON_MODE_ONE_BUTTON_VALUE},                                                                                StorageKind::STRING},
       {Settings::AUTO_OFF,          "AUTO_OFF",          uint8_t {0},                                          uint8_t {17},                StorageKind::U8    },
       {Settings::LOW_BATT,          "LOW_BATT",          uint8_t {0},                                          uint8_t {23},                StorageKind::U8    },
+      {Settings::AUTO_OFF_CHARGING, "AUTO_OFF_CHARGING", false,                                                true,                        StorageKind::BOOL  },
       {Settings::SD_GPX,            "SD_GPX",            false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPX_PERIOD,        "GPX_PERIOD",        uint16_t {Settings::GPX_PERIOD_DEFAULT},              uint16_t {30},
        StorageKind::U16                                                                                                                                        },
@@ -237,6 +305,7 @@ ASSERT_STORAGE_TYPE(PRESET_PICKER, bool);
 ASSERT_STORAGE_TYPE(BUTTON_MODE, std::string);
 ASSERT_STORAGE_TYPE(AUTO_OFF, uint8_t);
 ASSERT_STORAGE_TYPE(LOW_BATT, uint8_t);
+ASSERT_STORAGE_TYPE(AUTO_OFF_CHARGING, bool);
 ASSERT_STORAGE_TYPE(SD_GPX, bool);
 ASSERT_STORAGE_TYPE(GPX_PERIOD, uint16_t);
 ASSERT_STORAGE_TYPE(BOOT_SPLASH, bool);
@@ -304,6 +373,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -390,6 +460,8 @@ void checkTableCoverage(const std::vector<SettingCase> &cases) {
           std::string("test case table has a duplicate for ") + test.name);
     check(Settings::all().find(test.type) != Settings::all().end(),
           std::string("test case table references missing setting ") + test.name);
+    check(test.storage == storageKindFor(test.type),
+          std::string("test case table has the wrong storage kind for ") + test.name);
   }
   for (const auto &entry : Settings::all()) {
     check(seen.count(entry.first) == 1,

@@ -43,7 +43,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
 - Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
-  every new `Settings::type_t` case.
+  every new `Settings::type_t` case. The host
+  `settings_nvs_roundtrip_test` keeps an exhaustive storage-kind mirror so a
+  new enum value fails the host build until its table and switch handling are
+  updated.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic
@@ -78,13 +81,18 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - The GPS Data and Raw NMEA pages show TinyGPSPlus speed in km/h. Format
   user-visible coordinates to five decimal places without narrowing the double.
 - Power policies: the one-second timer drives `processAutoOff` (disconnected
-  idle power off, skipped while scanning) and `processLowBattery` (warn or
-  warn-then-off, consecutive-sample hysteresis on the smoothed level, power
-  off gated on a real charging measurement). Both settings are cached in
-  members, refreshed by the rollers and `Request::POWER_RELOAD`. All power
-  off paths go through `UI::doPowerOff`: watchdog off, intervalometer
-  quiesced with a proper shutter release, disconnect, then
-  `Platform::powerOff`, which reports failure so the UI can resume.
+  idle power off, skipped while scanning or charging by default) and
+  `processLowBattery` (warn or warn-then-off, consecutive-sample hysteresis on
+  the smoothed level, power off gated on a real charging measurement).
+  `AUTO_OFF_CHARGING` is an explicit opt-in for auto-off on external power;
+  its saved bool uses wire id 43 and the `autooff_charge` NVS key. Both
+  auto-off settings are cached in members, refreshed by the rollers and
+  `Request::POWER_RELOAD`; no policy tick writes NVS. While the sampled battery
+  state says charging, UI holds `NO_LIGHT_SLEEP`, allowing the panel to turn
+  off without entering CPU/light sleep. All power off paths go through
+  `UI::doPowerOff`: watchdog off, intervalometer quiesced with a proper shutter
+  release, disconnect, then `Platform::powerOff`, which reports failure so the
+  UI can resume.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and
