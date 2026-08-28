@@ -5869,9 +5869,9 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         if (gps.isDegraded()) {
           setLabelTextFmtIfChanged(ui->m_NMEA.fix,
                                    "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
-                                    (unsigned long)status.satellites, status.hdop,
-                                    (unsigned long)(status.location_age / 1000), status.speed_kmph,
-                                    (unsigned long)gps.degradedRetries());
+                                   (unsigned long)status.satellites, status.hdop,
+                                   (unsigned long)(status.location_age / 1000), status.speed_kmph,
+                                   (unsigned long)gps.degradedRetries());
         } else {
           setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
                                    (unsigned long)status.satellites, status.hdop,

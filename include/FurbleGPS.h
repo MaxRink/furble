@@ -135,10 +135,16 @@ class GPS {
    * it and retries on a bounded backoff, so this only reports that reception is
    * poor, not that furble is stuck.
    */
-  bool isDegraded(void) const { return m_CycleState == cycle_state_t::DEGRADED; }
+  bool isDegraded(void) const {
+    const std::lock_guard<std::mutex> lock(m_CycleMutex);
+    return m_CycleState == cycle_state_t::DEGRADED;
+  }
 
   /** Consecutive degraded retry attempts since the last healthy recovery. */
-  uint32_t degradedRetries(void) const { return m_Degraded.failures(); }
+  uint32_t degradedRetries(void) const {
+    const std::lock_guard<std::mutex> lock(m_CycleMutex);
+    return m_Degraded.failures();
+  }
 
   void reset(void);
   void task(void);
@@ -395,7 +401,7 @@ class GPS {
 
   // serialises the cycle state between the GPS task and enable() or disable(),
   // never held across PMIC, UART or other blocking hardware setup
-  std::mutex m_CycleMutex;
+  mutable std::mutex m_CycleMutex;
 
 #if defined(FURBLE_M5STICKS3)
   // held only during a receive burst or the burst acquisition window
