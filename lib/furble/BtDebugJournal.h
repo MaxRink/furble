@@ -5,6 +5,10 @@
 #include <cstdint>
 #include <mutex>
 
+#if defined(ESP_PLATFORM)
+#include <sdkconfig.h>
+#endif
+
 namespace Furble {
 
 /** The event families emitted by the developer BLE diagnostics. */
