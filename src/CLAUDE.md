@@ -81,6 +81,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
   independent of `Camera`, NVS, and `CameraList`; pairing input is console
   passthrough and passive third-party sniffing is not supported by NimBLE.
+  `Scan::start()` returns the physical NimBLE start result; leave the scan
+  callback state stopped when the controller rejects the request.
 - The GPS Data and Raw NMEA pages show TinyGPSPlus speed in km/h. Format
   user-visible coordinates to five decimal places without narrowing the double.
 - Power policies: the one-second timer drives `processAutoOff` (disconnected

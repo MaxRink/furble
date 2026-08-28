@@ -18,14 +18,17 @@ void Scan::setMode(Mode mode) {
 void Scan::setTimeout(uint32_t timeout) {
   m_Timeout = timeout;
 }
-void Scan::start(std::function<void(void *)> result,
+bool Scan::start(std::function<void(void *)> result,
                  void *privateData,
                  std::function<void(void *)> end) {
   m_ScanResultCallback = std::move(result);
   m_ScanEndCallback = std::move(end);
   m_ScanResultPrivateData = privateData;
+  return true;
 }
-void Scan::start(NimBLEScanCallbacks *, uint32_t, bool) {}
+bool Scan::start(NimBLEScanCallbacks *, uint32_t, bool) {
+  return true;
+}
 void Scan::stop(void) {}
 bool Scan::isActive(void) const {
   return false;

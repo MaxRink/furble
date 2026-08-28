@@ -44,6 +44,11 @@ int main() {
   const auto testThread = std::this_thread::get_id();
   std::thread::id callbackThread;
   scan.setTimeout(0);
+  nimbleMockSetGapScanStartAllowed(false);
+  check(!scan.start([](void *) {}, nullptr), "physical scan start failure propagates", failures);
+  check(!scan.isActive() && !nimble->isScanning(),
+        "failed physical start unwinds logical scan state", failures);
+  nimbleMockSetGapScanStartAllowed(true);
   scan.start(
       [&rows, &callbackThread](void *) {
         rows++;

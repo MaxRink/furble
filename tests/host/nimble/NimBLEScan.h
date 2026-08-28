@@ -4,6 +4,8 @@
 #include <cstdint>
 
 class NimBLEAdvertisedDevice;
+bool nimbleMockGapScanStartAllowed(void);
+void nimbleMockSetGapScanStartAllowed(bool allowed);
 class NimBLEScanResults {};
 class NimBLEServer {
  public:
@@ -23,7 +25,10 @@ class NimBLEScan {
   void setInterval(uint16_t) {}
   void setWindow(uint16_t) {}
   void setScanCallbacks(NimBLEScanCallbacks *callbacks, bool = false) { m_Callbacks = callbacks; }
-  void start(uint32_t, bool = false) { m_Scanning = true; }
+  bool start(uint32_t, bool = false) {
+    m_Scanning = nimbleMockGapScanStartAllowed();
+    return m_Scanning;
+  }
   void stop() { m_Scanning = false; }
   void clearResults() {}
   bool isScanning() const { return m_Scanning; }

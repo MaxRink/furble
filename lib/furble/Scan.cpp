@@ -2,8 +2,12 @@
 #include <NimBLEScan.h>
 
 #include <esp_timer.h>
+#include <cstdio>
 
 #include "Device.h"
+#if defined(FURBLE_CONSOLE)
+#include "BtDebugJournal.h"
+#endif
 #include "Scan.h"
 
 // log tag
@@ -13,7 +17,34 @@ namespace Furble {
 
 namespace {
 thread_local Scan *g_CallbackOwner = nullptr;
+constexpr int SCAN_START_FAILED_REASON = -1;
+
+#if defined(FURBLE_CONSOLE)
+void recordScanEvent(const char *operation,
+                     const char *owner,
+                     uint64_t generation,
+                     bool physical,
+                     bool logical,
+                     bool success,
+                     int reason = 0) {
+  BtDebugEvent event;
+  event.timestamp_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
+  event.kind = BtDebugEventKind::SCAN;
+  event.generation = generation;
+  event.reason = reason;
+  event.success = success;
+  event.physical = physical;
+  event.logical = logical;
+  snprintf(event.operation, sizeof(event.operation), "%s", operation);
+  snprintf(event.owner, sizeof(event.owner), "%s", owner);
+  snprintf(event.state, sizeof(event.state), "%s", logical ? "logical-active" : "logical-idle");
+  snprintf(event.result, sizeof(event.result), "%s", success ? "ok" : "failed");
+  snprintf(event.reason_text, sizeof(event.reason_text), "%s",
+           reason == 0 ? "none" : btGapReasonName(reason));
+  BtDebugJournal::instance().record(event);
 }
+#endif
+}  // namespace
 
 /*
  * NimBLEScan::stop() calls ble_gap_disc_cancel and does not invoke onScanEnd.
@@ -135,6 +166,9 @@ void Scan::handleScanEnd(uint64_t generation, const NimBLEScanResults &results, 
   ESP_LOGI(LOG_TAG, "Scan ended, reason %d", reason);
 
   NimBLEScanCallbacks *custom = nullptr;
+#if defined(FURBLE_CONSOLE)
+  const char *owner = "scan";
+#endif
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);
     if (!m_Active || generation != m_Generation) {
@@ -144,6 +178,9 @@ void Scan::handleScanEnd(uint64_t generation, const NimBLEScanResults &results, 
     m_Active = false;
     m_DeadlineUs = 0;
     if (m_CallbackMode == CallbackMode::CUSTOM) {
+#if defined(FURBLE_CONSOLE)
+      owner = "custom";
+#endif
       custom = m_CustomCallbacks;
       if (custom != nullptr) {
         ++m_CallbacksInFlight;
@@ -151,6 +188,9 @@ void Scan::handleScanEnd(uint64_t generation, const NimBLEScanResults &results, 
       m_CustomCallbacks = nullptr;
       m_CallbackMode = CallbackMode::IDLE;
     } else if (m_CallbackMode == CallbackMode::DISCOVERY) {
+#if defined(FURBLE_CONSOLE)
+      owner = "discovery";
+#endif
       PendingEvent event;
       event.type = PendingEvent::Type::END;
       event.generation = generation;
@@ -163,6 +203,11 @@ void Scan::handleScanEnd(uint64_t generation, const NimBLEScanResults &results, 
       m_CallbackMode = CallbackMode::IDLE;
     }
   }
+
+#if defined(FURBLE_CONSOLE)
+  recordScanEvent("end", owner, generation, reason != SCAN_START_FAILED_REASON, false, reason == 0,
+                  reason);
+#endif
 
   if (custom != nullptr) {
     Scan *previousOwner = g_CallbackOwner;
@@ -198,7 +243,7 @@ void Scan::onScanEnd(const NimBLEScanResults &results, int reason) {
   handleScanEnd(generation, results, reason);
 }
 
-void Scan::start(std::function<void(void *)> scanCallback,
+bool Scan::start(std::function<void(void *)> scanCallback,
                  void *scanPrivateData,
                  std::function<void(void *)> scanEndCallback) {
   stop();
@@ -207,9 +252,11 @@ void Scan::start(std::function<void(void *)> scanCallback,
 
   Mode mode;
   uint32_t timeout;
+  uint64_t generation;
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);
     ++m_Generation;
+    generation = m_Generation;
     m_CallbackMode = CallbackMode::DISCOVERY;
     m_CustomCallbacks = nullptr;
     m_ScanResultCallback = std::move(scanCallback);
@@ -223,18 +270,32 @@ void Scan::start(std::function<void(void *)> scanCallback,
     m_DeadlineUs = timeout == 0 ? 0 : monotonicUs() + (timeout * 1000000ULL);
   }
 
-  m_Scan->setScanCallbacks(m_CallbackProxy.get());
-  applyMode(mode);
-  m_Scan->start(timeout * 1000, false);
+  bool physical = false;
+  if (m_Scan != nullptr) {
+    m_Scan->setScanCallbacks(m_CallbackProxy.get());
+    applyMode(mode);
+    physical = m_Scan->start(timeout * 1000, false);
+  }
+#if defined(FURBLE_CONSOLE)
+  recordScanEvent("start", "discovery", generation, physical, physical, physical,
+                  physical ? 0 : SCAN_START_FAILED_REASON);
+#endif
+  if (!physical) {
+    const NimBLEScanResults results;
+    handleScanEnd(generation, results, SCAN_START_FAILED_REASON);
+  }
+  return physical;
 }
 
-void Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates) {
+bool Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wantDuplicates) {
   stop();
   const std::lock_guard<std::recursive_mutex> dispatchLock(m_DispatchMutex);
 
+  uint64_t generation;
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);
     ++m_Generation;
+    generation = m_Generation;
     m_CallbackMode = CallbackMode::CUSTOM;
     m_CustomCallbacks = pScanCallbacks;
     m_ScanResultCallback = nullptr;
@@ -248,15 +309,35 @@ void Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wa
 
   // Pairing and reconnect ignore the user preset, a low duty cycle here turns
   // a fast reconnect into a timeout.
-  applyMode(Mode::FULL);
-  m_Scan->setScanCallbacks(m_CallbackProxy.get(), wantDuplicates);
-  m_Scan->start(duration, false);
+  bool physical = false;
+  if (m_Scan != nullptr) {
+    applyMode(Mode::FULL);
+    m_Scan->setScanCallbacks(m_CallbackProxy.get(), wantDuplicates);
+    physical = m_Scan->start(duration, false);
+  }
+#if defined(FURBLE_CONSOLE)
+  recordScanEvent("start", "custom", generation, physical, physical, physical,
+                  physical ? 0 : SCAN_START_FAILED_REASON);
+#endif
+  if (!physical) {
+    const NimBLEScanResults results;
+    handleScanEnd(generation, results, SCAN_START_FAILED_REASON);
+  }
+  return physical;
 }
 
 void Scan::stop(void) {
   const std::lock_guard<std::recursive_mutex> dispatchLock(m_DispatchMutex);
+#if defined(FURBLE_CONSOLE)
+  bool wasActive = false;
+  uint64_t generation = 0;
+#endif
   {
     std::unique_lock<std::mutex> lock(m_StateMutex);
+#if defined(FURBLE_CONSOLE)
+    wasActive = m_Active;
+    generation = m_Generation;
+#endif
     m_Active = false;
     m_DeadlineUs = 0;
     ++m_Generation;
@@ -280,6 +361,11 @@ void Scan::stop(void) {
   if (m_Scan != nullptr) {
     m_Scan->stop();
   }
+#if defined(FURBLE_CONSOLE)
+  if (wasActive) {
+    recordScanEvent("stop", "scan", generation, false, false, true);
+  }
+#endif
 }
 
 void Scan::expire(void) {

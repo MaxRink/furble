@@ -119,6 +119,22 @@ the web installer Capture BT debug dump panel.
 - `bt pair yes | no | key <6 digits>` answers a pairing prompt.
 - `bt journal on | off | dump [n] | clear` records a GATT journal.
 
+The journal is a fixed 32-event ring on boards without PSRAM and a 128-event
+ring on ESP32-S3 builds configured for PSRAM. Recording is silent and bounded.
+Live console streaming drains at most eight events per console turn, while `dump`
+prints only the requested newest records. Events use the monotonic millisecond
+clock and typed fields, including requested and resolved address identities,
+GAP reason names, scan callback owner and generation, physical/logical scan
+state, connection parameters before and after an update, security state and
+key size, GATT service and characteristic UUIDs, operation kind, CCCD value,
+response mode, payload length, result, and bounded duration. Use
+`bt journal dump 128` for a complete bounded snapshot, then copy the console
+output into a bug report. The dump reports overwritten records. The compact
+record ring consumes at most 8 KiB of internal memory on non-S3 boards. On S3
+with `CONFIG_SPIRAM`, the 128-record ring requests PSRAM, with a 32-record
+internal fallback when PSRAM is unavailable at runtime. The journal is RAM-only
+and never changes bonds or NVS.
+
 ## debug
 
 `debug <target>` dumps internal state for one subsystem: `control`,
@@ -127,10 +143,10 @@ the web installer Capture BT debug dump panel.
 ## flash preflight
 
 The StickS3 PMIC watchdog continues running while the ESP32 ROM receives a
-firmware image. At the normal ten-second timeout it can reset the USB device in
-the middle of a slow upload. On a responsive developer build, run the guarded
-preflight and let it start PlatformIO only after the PMIC confirms both safety
-conditions:
+firmware image. If its configured timeout is shorter than a slow upload, it can
+reset the USB device in the middle of the transfer. On a responsive developer
+build, run the guarded preflight and let it start PlatformIO only after the PMIC
+confirms both safety conditions:
 
 ```sh
 python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \

@@ -170,6 +170,7 @@ class NimBLERemoteCharacteristic {
                              const NimBLEUUID &characteristic);
 
   const NimBLEUUID &getUUID() const;
+  NimBLERemoteService *getRemoteService() const;
   uint16_t getHandle() const;
   bool canWrite() const;
   bool canRead() const;
@@ -215,6 +216,7 @@ class NimBLEConnInfo {
   bool isBonded() const;
   uint8_t getSecKeySize() const;
   const NimBLEAddress &getAddress() const;
+  const NimBLEAddress &getIdAddress() const;
 
  private:
   uint16_t m_Interval;
@@ -301,6 +303,7 @@ class NimBLEClient {
   // Complete a controller disconnect event held back after a central
   // terminate.  Returns false when no event is queued.
   bool mockCompleteAsyncDisconnect(void);
+  bool mockDisconnectEventPending(void) const;
 
   // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
   //

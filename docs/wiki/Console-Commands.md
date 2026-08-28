@@ -102,6 +102,17 @@ the shutter-lock state.
 - `bt pair yes | no | key <6 digits>` answers a pairing prompt.
 - `bt journal on | off | dump [n] | clear` records a GATT journal.
 
+The journal is a fixed 32-event ring on boards without PSRAM and a 128-event
+ring on StickS3 when PSRAM is available. Recording is silent, live output is
+limited to eight events per console turn, and `dump [n]` is bounded. Entries
+carry monotonic time, GAP reason text and address identity types, scan owner /
+generation and physical/logical state, connection parameter transitions,
+security state and key size, and typed GATT operation details including UUIDs,
+CCCD value, response mode, result, payload length, and duration. The compact
+record ring stays below 8 KiB of internal memory on non-S3 boards. StickS3 uses
+PSRAM for its 128 records and falls back to 32 internal records without PSRAM.
+It does not write bonds or NVS.
+
 ## debug
 
 `debug <target>` dumps internal state for one subsystem: `control`,
