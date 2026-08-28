@@ -280,6 +280,10 @@ jobs:
       - name: Test build version resolution
         run: python patches/test_build_version.py
 
+      - name: Check NimBLE flow-control workaround
+        if: ${{ matrix.platform == 'm5stick-c' }}
+        run: python3 tests/test_nimble_flow_control_workaround.py
+
       - name: Install Dependencies
         run: python -m pip install -r requirements.txt
 

@@ -34,6 +34,29 @@ Run with `FURBLE_VERSION=dev FURBLE_TEST=0`:
 3. Record firmware sizes and warnings. Hardware flashing and camera testing
    remain separate gates. No hardware claim is made by this dependency slice.
 
+## NimBLE controller workaround
+
+ESP-IDF 5.5.3 is not currently safe for Furble's encrypted NimBLE central
+traffic with host flow control enabled. Espressif documents a host flow-control
+regression that can stall BLE data transfer and lose the connection on ESP32,
+ESP32-C3, and ESP32-S3 in [esp-idf#18323](https://github.com/espressif/esp-idf/issues/18323).
+The temporary upstream workaround is to disable
+`CONFIG_BT_NIMBLE_HS_FLOW_CTRL`; the checked-in board configurations also keep
+the legacy `CONFIG_NIMBLE_HS_FLOW_CTRL` spelling disabled. The host policy test
+`tests/test_nimble_flow_control_workaround.py` prevents the workaround from
+being accidentally regenerated away, and PlatformIO CI runs it before the
+firmware matrix. Re-enable flow control only after the selected framework's
+release notes and an encrypted-GATT hardware soak clear the issue.
+
+Hardware verification used an M5StickS3 with ESP-IDF 5.5.3 and an encrypted
+Fujifilm X100VI connection. With flow control enabled, registration repeatedly
+stalled at the first indication subscription and the camera dropped the link
+after about 5.4 seconds. With this workaround, registration passed both
+indication subscriptions and all remaining notifications, a shutter hold
+completed, and a second connection after a direct scan cancellation completed
+on the first attempt. The tested development image identified itself as
+`dev+g3bf549d8`.
+
 ## Rollback
 
 Restore `platformio.ini` and `tools/reproducible-build.lock` to the 6.12.0 /
