@@ -633,7 +633,7 @@ UI::UI(const interval_t &interval)
   configureControl(ControlMode::MENU);
 
   // create connection timer
-  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false};
+  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false, {}, 0, false};
   m_ConnectTimer = lv_timer_create(connectTimerHandler, 50, &m_ConnectContext);
   lv_timer_pause(m_ConnectTimer);
 

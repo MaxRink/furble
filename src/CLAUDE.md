@@ -61,6 +61,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.
+  Aggregate UI context assignments must initialize every field explicitly. Keep
+  the connect timer paused until its context and widgets are ready.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:
