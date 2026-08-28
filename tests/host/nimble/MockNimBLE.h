@@ -135,6 +135,9 @@ class NimBLEMockPeer {
   virtual bool hasService(const NimBLEUUID &service) const = 0;
   virtual bool hasCharacteristic(const NimBLEUUID &service,
                                  const NimBLEUUID &characteristic) const = 0;
+  virtual bool discoverCharacteristic(NimBLEClient &client,
+                                      const NimBLEUUID &service,
+                                      const NimBLEUUID &characteristic) = 0;
   virtual bool canWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const = 0;
   virtual bool write(NimBLEClient &client,
                      const NimBLEUUID &service,
@@ -295,6 +298,10 @@ class NimBLEClient {
   // path returns immediately, delete-this style).
   void mockDropLinkSelfDelete(int reason);
 
+  // Complete a controller disconnect event held back after a central
+  // terminate.  Returns false when no event is queued.
+  bool mockCompleteAsyncDisconnect(void);
+
   // Host test hooks that model a gone peer whose ble_gap_terminate stalls.
   //
   // mockStallTerminate() marks the client so its next disconnect() issues the
@@ -325,13 +332,23 @@ class NimBLEClient {
   // result so a test can assert the accept or reject decision.
   bool mockPeerRequestConnParams(const ble_gap_upd_params &params);
 
+  // Central-initiated connection updates are asynchronous in NimBLE. Expose
+  // enough state for the regression test to prove production waited for the
+  // controller result instead of rereading the old parameters immediately.
+  size_t mockConnInfoReadCount() const;
+  bool mockConnParamUpdatePending() const;
+
  private:
   friend class NimBLEDevice;
 
   NimBLEClientCallbacks *m_Callbacks = nullptr;
   NimBLEMockPeer *m_Peer = nullptr;
   NimBLEAddress m_Address;
-  NimBLEConnInfo m_ConnInfo;
+  mutable NimBLEConnInfo m_ConnInfo;
+  mutable NimBLEConnInfo m_PendingConnInfo;
+  mutable size_t m_ConnInfoReadCount = 0;
+  mutable size_t m_PendingConnInfoReads = 0;
+  mutable bool m_ConnParamUpdatePending = false;
   uint32_t m_ConnectTimeout = 0;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
@@ -343,6 +360,7 @@ class NimBLEClient {
   bool m_DeleteOnDisconnect = false;
   bool m_DeleteOnConnectFailure = false;
   bool m_PendingReap = false;
+  bool m_DisconnectEventPending = false;
   std::map<std::string, std::unique_ptr<NimBLERemoteService>> m_Services;
 };
 
@@ -408,6 +426,8 @@ class NimBLEDevice {
   static bool deleteClient(NimBLEClient *client);
   static bool deleteBond(const NimBLEAddress &address);
   static bool isBonded(const NimBLEAddress &address);
+  static void setBonded(bool bonded);
+  static size_t deleteBondCount();
   static bool setMTU(uint16_t mtu);
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
   static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
@@ -444,6 +464,10 @@ class NimBLEDevice {
   // during the outage are dropped, not buffered on the control queue and replayed.
   // resetMock clears it.
   static void setConnectDelayMs(uint32_t ms);
+  // Delay a central connection update for this many getConnInfo() reads. The
+  // default is one stale read. Large values model a peer/controller that never
+  // applies the accepted request within the production registration bound.
+  static void setConnParamApplyDelayReads(size_t reads);
   // Number of NimBLE clients currently live (created minus deleted). A leak
   // shows up as this count growing across failed connect attempts.
   static size_t liveClientCount();
@@ -466,6 +490,16 @@ class NimBLEDevice {
   // arms ASan to catch a dereference of a client after its self-delete, the
   // reclaim use-after-free class. resetMock() disables it again.
   static void setDeferredClientDelete(bool enabled);
+
+  // Make a central disconnect look like a controller event which has already
+  // removed the link, while NimBLE still has the GAP disconnect callback
+  // queued.  This is the narrow race exposed by failed registration cleanup:
+  // deleting the client before that callback runs leaves the host with an
+  // orphaned connection event.  Tests complete the queued event explicitly at
+  // a quiescent point.
+  static void setAsyncDisconnect(bool enabled);
+  static bool completeAsyncDisconnect(void);
+  static bool asyncDisconnectEventFound(void);
 
   // Free every client queued for asynchronous reap by a link-loss drop under the
   // deferred-delete model. The fuzz harness calls this at a quiescent point where

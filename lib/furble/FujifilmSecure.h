@@ -59,6 +59,7 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
     const NimBLEUUID &service; /** Service UUID. */
     const NimBLEUUID &uuid;    /** CCC UUID. */
     bool notification;         /** Notification or indication? */
+    bool response;             /** Require an ATT write response? */
   } sub_t;
 
   // Advertised service UUID

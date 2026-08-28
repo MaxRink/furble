@@ -3,8 +3,11 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <cstring>
+#include <memory>
 
 #include "Device.h"
 #include "FujifilmSecure.h"
@@ -67,6 +70,9 @@ FujifilmSecure::~FujifilmSecure(void) {
 }
 
 void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
+  if (pDevice == nullptr) {
+    return;
+  }
   if (pDevice->haveManufacturerData()) {
     const auto manufacturerData = pDevice->getManufacturerData();
     FujifilmProtocol::SecureAdvertisement advertisement;
@@ -93,6 +99,13 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool FujifilmSecure::_connect(void) {
   bool success = false;
   m_Progress = 0;
+  const auto registrationAlive = [this]() {
+    if (!isConnected()) {
+      ESP_LOGW(LOG_TAG, "Fujifilm Secure registration aborted after link loss");
+      return false;
+    }
+    return true;
+  };
 
   if (m_PairType == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
@@ -134,12 +147,16 @@ bool FujifilmSecure::_connect(void) {
   if (!m_Client->secureConnection()) {
     return false;
   }
+  if (!registrationAlive())
+    return false;
   ESP_LOGI(LOG_TAG, "Secured!");
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Requesting status");
   NimBLEAttValue status;
   gattRead(PAIR_SVC_UUID, STATUS_CHR_UUID, status);
+  if (!registrationAlive())
+    return false;
   if (status.size() == 4) {
     ESP_LOGI(LOG_TAG, "Status: %s",
              NimBLEUtils::dataToHexString(status.data(), status.size()).c_str());
@@ -150,6 +167,8 @@ bool FujifilmSecure::_connect(void) {
       ESP_LOGI(LOG_TAG, "Failed to write status response");
       return false;
     }
+    if (!registrationAlive())
+      return false;
   } else {
     ESP_LOGI(LOG_TAG, "Failed to request status");
     return false;
@@ -158,7 +177,13 @@ bool FujifilmSecure::_connect(void) {
 
   auto name = NimBLEAttValue(Device::getStringID());
   ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
-  if (!gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true)) {
+  setFujifilmSecureRegistration(true);
+  const auto clearRegistration = [this](Camera *) { setFujifilmSecureRegistration(false); };
+  std::unique_ptr<Camera, decltype(clearRegistration)> registrationGuard(this, clearRegistration);
+  const bool identified = gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true);
+  if (!registrationAlive())
+    return false;
+  if (!identified) {
     ESP_LOGI(LOG_TAG, "Failed to send identifier");
     return false;
   }
@@ -167,62 +192,83 @@ bool FujifilmSecure::_connect(void) {
 
   const std::array<sub_t, 6> subscription0 = {
       {
-       {"indication 1", SVC_CONF_UUID, CHR_IND1_UUID, false},
-       {"indication 2", SVC_CONF_UUID, CHR_IND2_UUID, false},
-       {"notification 1", SVC_CONF_UUID, CHR_NOT1_UUID, true},
-       {"notification 2", SVC_CONF_UUID, GEOTAG_UPDATE, true},
-       {"notification 4", NOTX_SVC_UUID, NOT4_CHR_UUID, true},
-       {"notification 5", NOTX_SVC_UUID, NOT5_CHR_UUID, true},
+       // X100VI requires acknowledged writes for the two configuration
+          // indications. Optional notifications stay unacknowledged because a
+          // stale-session camera may withhold their ATT response.
+          {"indication 1", SVC_CONF_UUID, CHR_IND1_UUID, false, true},
+       {"indication 2", SVC_CONF_UUID, CHR_IND2_UUID, false, true},
+       {"notification 1", SVC_CONF_UUID, CHR_NOT1_UUID, true, false},
+       {"notification 2", SVC_CONF_UUID, GEOTAG_UPDATE, true, false},
+       {"notification 4", NOTX_SVC_UUID, NOT4_CHR_UUID, true, false},
+       {"notification 5", NOTX_SVC_UUID, NOT5_CHR_UUID, true, false},
        }
   };
 
   // A subscribe failure is never fatal. Promotion to active is link-state only,
   // no notification gates it, and on a stale-session reconnect the camera still
-  // holds the prior CCCD subscriptions so a re-subscribe can fail or be a no-op
-  // without stopping the handshake. The CCCD writes are unacknowledged (see
-  // Fujifilm::subscribe), so they cannot block the connect either. Log and
-  // continue so the handshake always reaches the shutter characteristic.
+  // holds the prior optional CCCD subscriptions so a re-subscribe can fail or
+  // be a no-op without stopping the handshake. Optional CCCD writes are
+  // unacknowledged (see Fujifilm::subscribe), so they cannot block the connect.
+  // The two required indication writes below deliberately remain acknowledged:
+  // a normal X100VI drops the link when those writes are sent without an ATT
+  // response. The esp-nimble-cpp response path is not independently bounded,
+  // so this relies on the camera accepting the required registration writes.
+  // Keep this distinction explicit when changing the subscription table.
   for (const auto &sub : subscription0) {
+    if (!registrationAlive())
+      return false;
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
-    if (!subscribe(sub.service, sub.uuid, sub.notification)) {
+    if (!subscribe(sub.service, sub.uuid, sub.notification, sub.response)) {
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
+    if (!registrationAlive())
+      return false;
     m_Progress += 5;
   }
 
   const std::array<sub_t, 6> subscription1 = {
       {
-       {"notification 6", SVC_CONF_UUID, NOT6_CHR_UUID, true},
-       {"notification 7", NOTX_SVC_UUID, NOT7_CHR_UUID, true},
-       {"notification 8", NOTX_SVC_UUID, NOT8_CHR_UUID, true},
-       {"notification 9", NOTX_SVC_UUID, NOT9_CHR_UUID, true},
-       {"notification 10", NOTX_SVC_UUID, NOT10_CHR_UUID, true},
-       {"notification 11", NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, true},
+       {"notification 6", SVC_CONF_UUID, NOT6_CHR_UUID, true, false},
+       {"notification 7", NOTX_SVC_UUID, NOT7_CHR_UUID, true, false},
+       {"notification 8", NOTX_SVC_UUID, NOT8_CHR_UUID, true, false},
+       {"notification 9", NOTX_SVC_UUID, NOT9_CHR_UUID, true, false},
+       {"notification 10", NOTX_SVC_UUID, NOT10_CHR_UUID, true, false},
+       {"notification 11", NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, true, false},
        }
   };
 
   for (const auto &sub : subscription1) {
+    if (!registrationAlive())
+      return false;
     ESP_LOGI(LOG_TAG, "Subscribing to %s", sub.name.c_str());
-    if (!subscribe(sub.service, sub.uuid, sub.notification)) {
+    if (!subscribe(sub.service, sub.uuid, sub.notification, sub.response)) {
       // Non-fatal, as above. The geotag subscription used to hard-fail here,
       // which turned a single flaky CCCD write on a stale-session reconnect into
       // a stuck connect. Geotag sync is best-effort and does not gate the
       // shutter, so log and continue.
       ESP_LOGI(LOG_TAG, "Failed to subscribe to %s", sub.name.c_str());
     }
+    if (!registrationAlive())
+      return false;
     m_Progress += 5;
   }
 
   auto sync_interval = NimBLEAttValue(reinterpret_cast<const uint8_t *>(&GEOTAG_SYNC_INTERVAL),
                                       sizeof(GEOTAG_SYNC_INTERVAL));
   ESP_LOGI(LOG_TAG, "Configuring %hus geotag sync interval", GEOTAG_SYNC_INTERVAL);
+  if (!registrationAlive())
+    return false;
   if (!gattWrite(NOTX_SVC_UUID, GEOTAG_SYNC_INTERVAL_UUID, sync_interval, true)) {
     ESP_LOGI(LOG_TAG, "Failed to configure geotag sync interval");
     return false;
   }
+  if (!registrationAlive())
+    return false;
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Getting shutter service");
+  if (!registrationAlive())
+    return false;
   auto *pSvc = m_Client->getService(SHUTTER_SVC_UUID);
   if (pSvc == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter service");
@@ -231,11 +277,35 @@ bool FujifilmSecure::_connect(void) {
   m_Progress += 5;
 
   ESP_LOGI(LOG_TAG, "Getting shutter characteristic");
+  if (!registrationAlive())
+    return false;
   m_Shutter = pSvc->getCharacteristic(CHR_SHUTTER_UUID);
   if (m_Shutter == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to get shutter characteristic");
     return false;
   }
+
+  // A Secure camera may require its long registration profile until all GATT
+  // discovery is complete. Request FAST only after the shutter characteristic
+  // exists; doing it before discovery causes some cameras to stop responding
+  // and the link to expire at the short FAST supervision timeout.
+  if (!requestFujifilmSecureFastProfile()) {
+    ESP_LOGI(LOG_TAG, "Failed to request fast connection profile");
+    return false;
+  }
+  constexpr TickType_t connParamsPoll = pdMS_TO_TICKS(10);
+  constexpr TickType_t connParamsTimeout = pdMS_TO_TICKS(1000);
+  const TickType_t connParamsStarted = xTaskGetTickCount();
+  while (!confirmFujifilmSecureFastProfile()) {
+    if (!registrationAlive()
+        || static_cast<TickType_t>(xTaskGetTickCount() - connParamsStarted) >= connParamsTimeout) {
+      ESP_LOGI(LOG_TAG, "Failed to apply fast connection profile");
+      return false;
+    }
+    vTaskDelay(connParamsPoll);
+  }
+
+  registrationGuard.reset();
 
   m_Progress = 100;
 

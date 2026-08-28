@@ -254,6 +254,15 @@ class Camera: public NimBLEClientCallbacks {
    */
   virtual bool _connect(void) = 0;
 
+  /** Gate Fujifilm Secure's initial registration parameter request. */
+  void setFujifilmSecureRegistration(bool in_progress);
+
+  /** Request the bounded live profile after Secure registration. */
+  bool requestFujifilmSecureFastProfile();
+
+  /** Confirm the controller applied the exact Secure FAST profile. */
+  bool confirmFujifilmSecureFastProfile();
+
   /**
    * Disconnect from the target.
    */
@@ -319,6 +328,10 @@ class Camera: public NimBLEClientCallbacks {
   // It is the liveness guard for m_Client: onDisconnect clears it before NimBLE
   // frees the self-deleting client, so a true read means the client is alive.
   std::atomic<bool> m_Connected = false;
+  // Set before a failed live-link teardown. NimBLE delivers the disconnect
+  // callback asynchronously and performs self-delete after that callback
+  // returns, so the connect task must not detach/delete the client first.
+  std::atomic<bool> m_ClientDeleteOnDisconnect = false;
   bool m_Paired = false;
 
  private:
@@ -396,6 +409,7 @@ class Camera: public NimBLEClientCallbacks {
   bool m_ConnSaverEnabled = false;
   bool m_ShutterHeld = false;
   bool m_ConnectInProgress = false;
+  bool m_FujifilmSecureRegistration = false;
   uint32_t m_LastConnActivityMs = 0;
   ConnProfile m_LastRequestedProfile = ConnProfile::FAST;
   uint32_t m_LastRequestMs = 0;

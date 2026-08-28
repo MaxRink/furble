@@ -41,6 +41,24 @@ protocol core.
   `setConnProfile()` also mirrors the profile into the NimBLE client so peer
   renegotiation counter-proposals carry the current values, not the
   pre-connect ones.
+- Fujifilm Secure's registration identifier write is the only permitted
+  exception to the supervision-timeout cap. The Secure handshake immediately
+  keeps that exception active through required subscriptions and shutter
+  discovery. It then requests the bounded FAST profile and waits up to one
+  second for NimBLE's asynchronous controller update. Requesting FAST before
+  discovery is complete can make a real X100VI stop responding. Verification
+  requires the exact FAST latency and supervision timeout, not merely any
+  timeout below the idle cap. A confirmed update clears the peer override so
+  the normal inactivity path can later enter IDLE. Every failure path must
+  close the exception. Do not broaden it to Basic or steady-state operation.
+- Secure registration must check link state after every read, write, and
+  subscription boundary. A peer disconnect aborts the handshake immediately;
+  never continue discovery or GATT traffic against a disconnected client.
+- Ricoh fresh pairing treats a bonded-address security failure as a stale local
+  bond: delete that bond and return failure so the next bounded control retry
+  can perform numeric comparison. Saved reconnect failures preserve the bond;
+  do not reconnect inline from the security callback or alter callback/client
+  lifetime ownership.
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out

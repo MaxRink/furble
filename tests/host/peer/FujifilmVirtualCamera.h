@@ -24,6 +24,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     std::string name = "FUJIFILM X100VI";
     NimBLEAddress address = NimBLEAddress(0x112233445566ULL, 0);
     std::array<uint8_t, 4> token = {0xa1, 0xb2, 0xc3, 0xd4};
+    bool secure = false;
+    std::array<uint8_t, 5> serial = {0x01, 0x02, 0x03, 0x04, 0x05};
     std::vector<NimBLEUUID> advertised_services;
   };
 
@@ -56,11 +58,11 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
                         bool indication = false);
 
   // Model a stale-session reconnect. When enabled the camera still holds the
-  // CCCD subscriptions from the previous session, so an acknowledged CCCD
-  // subscribe write (response = true) never gets its ATT write response and, on
-  // real hardware, blocks the connect. The mock returns false for that write to
-  // stand in for the block. An unacknowledged subscribe write (response = false)
-  // is accepted, which is the bounded path the fix uses.
+  // CCCD subscriptions from the previous session, so an acknowledged optional
+  // CCCD write (response = true) never gets its ATT write response and, on real
+  // hardware, blocks the connect. Required Secure configuration indications
+  // remain acknowledged because a normal X100VI requires those responses. The
+  // mock returns false for stale optional writes to stand in for the block.
   void setStaleSubscribeSession(bool stale);
 
   // Fault injection for adversarial connect and command error paths.
@@ -114,9 +116,27 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const std::vector<uint8_t> &lastGeotag() const;
   const std::string &identifier() const;
   bool connected() const;
+  void setSecureConnectionResult(bool result);
+  void setRequireLongConnParamsAfterIdentifier(bool require);
+  void setDelayRegistrationConnParamsUntilFastRequest(bool delay);
+  void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+  void requestConnParamsDuringConnect(const ble_gap_upd_params &params);
+  // Model a Secure camera that sends its required registration parameters
+  // while CCCD discovery is still in progress.  Real cameras may defer this
+  // request until the first indication subscription.
+  void requestConnParamsOnSubscribe(const NimBLEUUID &service,
+                                    const NimBLEUUID &characteristic,
+                                    const ble_gap_upd_params &params);
+  // Some Secure cameras drop the link if the central switches away from the
+  // registration profile before shutter-service discovery is complete.
+  void setRejectFastBeforeShutterDiscovery(bool reject);
+  bool registrationConnParamsAccepted() const;
   bool tokenAccepted() const;
   bool configured() const;
   bool geotagRequested() const;
+  size_t accessAfterDrop() const;
+  bool subscriptionRequestedWithResponse(const NimBLEUUID &service,
+                                         const NimBLEUUID &characteristic) const;
 
   void clearEvents();
 
@@ -125,6 +145,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool hasService(const NimBLEUUID &service) const override;
   bool hasCharacteristic(const NimBLEUUID &service,
                          const NimBLEUUID &characteristic) const override;
+  bool discoverCharacteristic(NimBLEClient &client,
+                              const NimBLEUUID &service,
+                              const NimBLEUUID &characteristic) override;
   bool canWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const override;
   bool write(NimBLEClient &client,
              const NimBLEUUID &service,
@@ -170,6 +193,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     NimBLERemoteCharacteristic *remote = nullptr;
     NimBLENotifyCallback callback;
     bool notification = false;
+    bool response = false;
   };
 
   bool isServiceSuppressed(const NimBLEUUID &service) const;
@@ -178,16 +202,32 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropOnWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  bool isDropOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
 
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
+  bool m_SecureConnectionResult = true;
+  bool m_RequireLongConnParamsAfterIdentifier = false;
+  bool m_DelayRegistrationConnParamsUntilFastRequest = false;
+  bool m_ConnParamsNegotiated = false;
+  bool m_RequestConnParamsDuringConnect = false;
+  bool m_RequestConnParamsOnSubscribe = false;
+  bool m_RejectFastBeforeShutterDiscovery = false;
+  bool m_ShutterCharacteristicRequested = false;
+  NimBLEUUID m_ConnParamsSubscribeService;
+  NimBLEUUID m_ConnParamsSubscribeCharacteristic;
+  ble_gap_upd_params m_RegistrationConnParams {};
+  bool m_RegistrationConnParamsAccepted = false;
   bool m_StaleSubscribeSession = false;
   std::vector<NimBLEUUID> m_SuppressedServices;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnWrite;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropDuringConnect;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_DropOnSubscribe;
+  mutable size_t m_AccessAfterDrop = 0;
+  bool m_DroppedLink = false;
   bool m_TokenAccepted = false;
   bool m_Configured = false;
   bool m_GeotagRequested = false;

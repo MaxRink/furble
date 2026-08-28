@@ -17,6 +17,7 @@ set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
 add_library(furble_host_camera STATIC
             ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
             ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+            ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
             ${FURBLE_ROOT}/lib/furble/Camera.cpp
             ${FURBLE_ROOT}/lib/furble/Device.cpp
             ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -144,6 +145,32 @@ target_compile_options(advertisement_dispatch_test PRIVATE
                        -Wno-unused-parameter)
 target_link_libraries(advertisement_dispatch_test PRIVATE Threads::Threads)
 
+add_executable(camera_regression_test
+               camera_regression_test.cpp
+               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               advertisement_scan_stub.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(camera_regression_test PRIVATE furble_host_camera)
+target_include_directories(camera_regression_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${FURBLE_ROOT}/sim
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(camera_regression_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
 # Keep the host Ethernet test tied to the firmware source manifest. The test
 # links the production implementation directly, so this configure-time guard
 # catches the failure mode that matters here: a firmware build which forgets
@@ -226,6 +253,36 @@ target_compile_options(saved_scan_cancel_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
                        -Wno-unused-lambda-capture -Wno-sign-compare)
 target_link_libraries(saved_scan_cancel_test PRIVATE Threads::Threads)
+
+# Failed Secure registration must leave an asynchronous GAP disconnect event
+# addressable until NimBLE has dispatched it. This target combines the real
+# Secure registration and production Scan path with the host NimBLE double.
+add_executable(ble_registration_cleanup_test
+               ble_registration_cleanup_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_include_directories(ble_registration_cleanup_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_options(ble_registration_cleanup_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(ble_registration_cleanup_test PRIVATE Threads::Threads)
 
 # Exercise the real NVS/Preferences settings path against a typed in-memory
 # NVS stub. The test also includes the production SD settings helpers so every
@@ -632,6 +689,7 @@ if(BUILD_TESTING)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
+  add_test(NAME camera-regression COMMAND camera_regression_test)
 
   add_executable(vendor_protocol_conformance_test
                  vendor_protocol_conformance_test.cpp
@@ -645,6 +703,7 @@ if(BUILD_TESTING)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
   add_test(NAME scan-generation COMMAND scan_generation_test)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
+  add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)

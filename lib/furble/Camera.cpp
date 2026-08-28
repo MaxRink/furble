@@ -200,15 +200,18 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     // second connect into minutes.
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
     m_ConnectInProgress = true;
+    m_FujifilmSecureRegistration = false;
   }
 
   m_Power = power;
+  m_ClientDeleteOnDisconnect = false;
 
   m_Client = NimBLEDevice::createClient();
   if (m_Client == nullptr) {
     ESP_LOGI(LOG_TAG, "Failed to create client");
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
     m_ConnectInProgress = false;
+    m_FujifilmSecureRegistration = false;
     return false;
   }
 
@@ -241,6 +244,7 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(securityMode()));
 
   bool connected = this->_connect();
+
   if (connected) {
     m_Paired = true;
     // The session is live. Restore self-delete so a later peer disconnect frees
@@ -262,12 +266,27 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     // and is a safe no-op if the client somehow already went away. Every
     // live-link m_Client deref is guarded by m_Connected, which is false below,
     // so clearing m_Client cannot race a reader.
-    if (m_Connected) {
+    const bool liveClient = m_Connected && (m_Client != nullptr) && m_Client->isConnected();
+    if (liveClient) {
+      // NimBLE tears down a connected client asynchronously. Arm its normal
+      // callback-side deletion before issuing the terminate; deleting here
+      // would lose a disconnect event whose controller handle is still queued
+      // and can leave the observer unable to scan until the next reboot.
+      m_Client->setSelfDelete(true, false);
+      m_ClientDeleteOnDisconnect = true;
+      this->_disconnect();
+    } else if (m_Connected) {
       this->_disconnect();
     }
     m_Connected = false;
-    m_Client->setClientCallbacks(nullptr, false);
-    NimBLEDevice::deleteClient(m_Client);
+    if (m_ClientDeleteOnDisconnect.exchange(false)) {
+      // The client owns its callback-side deletion. Do not touch it after the
+      // terminate, as NimBLE may free it immediately after onDisconnect.
+      m_Client = nullptr;
+    } else if (m_Client != nullptr) {
+      m_Client->setClientCallbacks(nullptr, false);
+      NimBLEDevice::deleteClient(m_Client);
+    }
     m_Client = nullptr;
     ESP_LOGD(LOG_TAG, "deleteClient(%s) after failed connect, pool now %u", m_Name.c_str(),
              static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
@@ -277,12 +296,61 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   {
     const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
     m_ConnectInProgress = false;
+    m_FujifilmSecureRegistration = false;
     // Restart the inactivity timer so the idle countdown begins at connect
     // completion, not at the connection event mid-setup.
     m_LastConnActivityMs = connectionTimeMs();
   }
 
   return m_Connected;
+}
+
+void Camera::setFujifilmSecureRegistration(bool in_progress) {
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
+  m_FujifilmSecureRegistration = in_progress;
+}
+
+bool Camera::requestFujifilmSecureFastProfile() {
+  if (m_Client == nullptr || !m_Connected) {
+    return false;
+  }
+
+  // The Secure peer may have installed its long registration timeout. NimBLE
+  // only queues this update. FujifilmSecure waits separately for the controller
+  // to expose the exact live profile.
+  m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout);
+  if (!m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency,
+                                  m_FastTimeout)) {
+    ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was rejected");
+    return false;
+  }
+  return true;
+}
+
+bool Camera::confirmFujifilmSecureFastProfile() {
+  if (!m_Connected || (m_Client == nullptr) || !m_Client->isConnected()) {
+    return false;
+  }
+
+  const NimBLEConnInfo info = m_Client->getConnInfo();
+  const bool applied =
+      (info.getConnInterval() >= m_FastMinInterval) && (info.getConnInterval() <= m_FastMaxInterval)
+      && (info.getConnLatency() == m_FastLatency) && (info.getConnTimeout() == m_FastTimeout);
+  if (!applied) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
+  // The accepted registration request marks the live profile as peer-owned.
+  // Once our exact FAST profile is confirmed, return ownership to the saver so
+  // its normal inactivity transition can later request IDLE.
+  m_PeerOverride = false;
+  m_LastRequestedProfile = ConnProfile::FAST;
+  m_LastRequestMs = connectionTimeMs();
+  m_LastRequestValid = true;
+  m_LastRequestSucceeded = true;
+  m_LastConnActivityMs = m_LastRequestMs;
+  return true;
 }
 
 void Camera::setConnSaverEnabled(bool enabled) {
@@ -745,6 +813,7 @@ void Camera::gattJournalClear(void) {
 
 bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_params *params) {
   (void)pClient;
+  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
   if (params != nullptr) {
     ESP_LOGI(LOG_TAG, "Peer requested connection parameters (%u-%u, latency %u, timeout %u)",
              params->itvl_min, params->itvl_max, params->latency, params->supervision_timeout);
@@ -755,12 +824,18 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
     // camera that requests a long timeout to save its own power would otherwise
     // win here and blunt detection for that whole window, the false-connected
     // bug where a power-off went unnoticed for tens of seconds and shutter
-    // writes buffered until the camera returned. Reject any peer timeout above
-    // the cap so the current bounded parameters stay in force. Rejecting keeps
+    // writes buffered until the camera returned. Reject an over-cap request
+    // once registration is complete. During the Secure identifier write only,
+    // Fujifilm cameras require their initial request to be accepted and drop
+    // the link if it is rejected. Camera::connect() requests and verifies the
+    // bounded FAST profile immediately after that handshake, so this temporary
+    // exception does not weaken steady-state dead-link detection. Rejecting keeps
     // the existing link parameters, which already satisfy the timeout margin, so
     // detection stays prompt. A well-behaved peer accepts the reject; furble
     // does not counter-request, so there is no renegotiation loop.
-    if (params->supervision_timeout > m_IdleTimeout) {
+    const bool secureRegistration =
+        (m_Type == Type::FUJIFILM_SECURE) && m_FujifilmSecureRegistration;
+    if (params->supervision_timeout > m_IdleTimeout && !secureRegistration) {
       ESP_LOGW(LOG_TAG,
                "Rejecting peer supervision timeout %u (cap %u) to keep dead-link detection",
                params->supervision_timeout, m_IdleTimeout);
@@ -768,7 +843,6 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
     }
   }
 
-  const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
   // Accept the peer values and do not immediately fight them with our own
   // request. A later shutter or focus press starts a new fast-profile cycle.
   m_PeerOverride = true;

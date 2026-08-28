@@ -93,7 +93,12 @@ bool g_ConnectShouldFail = false;
 size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
 size_t g_MaxClients = 0;        // 0 means unlimited
 bool g_DeferredDelete = false;  // honour setSelfDelete and defer live deleteClient
+bool g_AsyncDisconnect = false;
+bool g_AsyncDisconnectEventFound = false;
 uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
+size_t g_ConnParamApplyDelayReads = 1;
+bool g_Bonded = false;
+size_t g_DeleteBondCount = 0;
 
 // Erase a client from the live pool, freeing it. Caller must not touch the
 // pointer afterwards. Safe to call on a pointer no longer in the pool. Also
@@ -327,7 +332,8 @@ const NimBLEUUID &NimBLERemoteService::getUUID() const {
 NimBLERemoteCharacteristic *NimBLERemoteService::getCharacteristic(
     const NimBLEUUID &characteristic) {
   if ((m_Client == nullptr) || (m_Client->getPeer() == nullptr)
-      || !m_Client->getPeer()->hasCharacteristic(m_Service, characteristic)) {
+      || !m_Client->getPeer()->hasCharacteristic(m_Service, characteristic)
+      || !m_Client->getPeer()->discoverCharacteristic(*m_Client, m_Service, characteristic)) {
     return nullptr;
   }
 
@@ -418,7 +424,13 @@ void NimBLEClient::setConnectionParams(uint16_t min_interval,
                                        uint16_t latency,
                                        uint16_t timeout) {
   (void)max_interval;
-  m_ConnInfo = NimBLEConnInfo(min_interval, latency, timeout);
+  // NimBLE stores these as the preferred parameters for the next connection
+  // and for counter-proposals. It does not change an existing controller link.
+  // Only update the live mock snapshot before connect; connected links move via
+  // the asynchronous updateConnParams() path below.
+  if (!m_Connected) {
+    m_ConnInfo = NimBLEConnInfo(min_interval, latency, timeout);
+  }
 }
 
 bool NimBLEClient::connect(const NimBLEAddress &address) {
@@ -479,6 +491,18 @@ void NimBLEClient::disconnect() {
   if (m_Peer != nullptr) {
     m_Peer->disconnect(*this, 0);
   }
+
+  // In the real stack ble_gap_terminate can complete the link teardown before
+  // the NimBLE GAP task dispatches BLE_GAP_EVENT_DISCONNECT.  Keep the client
+  // in the pool and queue that event, but expose the link as down to match the
+  // state seen by the application.  A premature deleteClient() then erases the
+  // object while the controller event still refers to its connection handle.
+  if (g_AsyncDisconnect) {
+    m_Connected = false;
+    m_DisconnectEventPending = true;
+    return;
+  }
+
   m_Connected = false;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
@@ -493,6 +517,21 @@ void NimBLEClient::disconnect() {
   if (g_DeferredDelete && m_DeleteOnDisconnect) {
     eraseClient(this);
   }
+}
+
+bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
+  if (!m_DisconnectEventPending) {
+    return false;
+  }
+
+  m_DisconnectEventPending = false;
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onDisconnect(this, 0);
+  }
+  if (g_DeferredDelete && m_DeleteOnDisconnect) {
+    eraseClient(this);
+  }
+  return true;
 }
 
 bool NimBLEClient::isConnected() const {
@@ -597,6 +636,7 @@ bool NimBLEClient::mockPeerRequestConnParams(const ble_gap_upd_params &params) {
   }
   const bool accepted = m_Callbacks->onConnParamsUpdateRequest(this, &params);
   if (accepted) {
+    m_ConnParamUpdatePending = false;
     m_ConnInfo = NimBLEConnInfo(params.itvl_min, params.latency, params.supervision_timeout);
   }
   return accepted;
@@ -648,12 +688,34 @@ bool NimBLEClient::updateConnParams(uint16_t min_interval,
   if (!m_Peer->updateConnectionParams(*this, min_interval, max_interval, latency, timeout)) {
     return false;
   }
-  m_ConnInfo = NimBLEConnInfo(min_interval, latency, timeout);
+  // The real API reports whether the controller request was queued. The GAP
+  // update event changes the live connection info later. Keep one stale read
+  // between those events so an immediate request-and-reread test cannot pass.
+  m_PendingConnInfo = NimBLEConnInfo(min_interval, latency, timeout);
+  m_PendingConnInfoReads = g_ConnParamApplyDelayReads;
+  m_ConnParamUpdatePending = true;
   return true;
 }
 
 NimBLEConnInfo NimBLEClient::getConnInfo() const {
+  m_ConnInfoReadCount++;
+  if (m_ConnParamUpdatePending) {
+    if (m_PendingConnInfoReads > 0) {
+      m_PendingConnInfoReads--;
+    } else {
+      m_ConnInfo = m_PendingConnInfo;
+      m_ConnParamUpdatePending = false;
+    }
+  }
   return m_ConnInfo;
+}
+
+size_t NimBLEClient::mockConnInfoReadCount() const {
+  return m_ConnInfoReadCount;
+}
+
+bool NimBLEClient::mockConnParamUpdatePending() const {
+  return m_ConnParamUpdatePending;
 }
 
 int NimBLEClient::getRssi() const {
@@ -830,11 +892,21 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
 }
 
 bool NimBLEDevice::deleteBond(const NimBLEAddress &) {
+  g_Bonded = false;
+  g_DeleteBondCount++;
   return true;
 }
 
 bool NimBLEDevice::isBonded(const NimBLEAddress &) {
-  return false;
+  return g_Bonded;
+}
+
+void NimBLEDevice::setBonded(bool bonded) {
+  g_Bonded = bonded;
+}
+
+size_t NimBLEDevice::deleteBondCount() {
+  return g_DeleteBondCount;
 }
 
 bool NimBLEDevice::setMTU(uint16_t) {
@@ -859,6 +931,34 @@ void NimBLEDevice::setMaxClients(size_t max) {
 
 void NimBLEDevice::setDeferredClientDelete(bool enabled) {
   g_DeferredDelete = enabled;
+}
+
+void NimBLEDevice::setAsyncDisconnect(bool enabled) {
+  g_AsyncDisconnect = enabled;
+  g_AsyncDisconnectEventFound = false;
+}
+
+bool NimBLEDevice::completeAsyncDisconnect(void) {
+  NimBLEClient *pending = nullptr;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    for (const auto &client : g_Clients) {
+      if (client->m_DisconnectEventPending) {
+        pending = client.get();
+        break;
+      }
+    }
+  }
+  if (pending == nullptr) {
+    return false;
+  }
+
+  g_AsyncDisconnectEventFound = pending->mockCompleteAsyncDisconnect();
+  return g_AsyncDisconnectEventFound;
+}
+
+bool NimBLEDevice::asyncDisconnectEventFound(void) {
+  return g_AsyncDisconnectEventFound;
 }
 
 size_t NimBLEDevice::reapDeferredClients() {
@@ -910,7 +1010,12 @@ void NimBLEDevice::resetMock() {
   g_ConnectFailCount = 0;
   g_MaxClients = 0;
   g_DeferredDelete = false;
+  g_AsyncDisconnect = false;
+  g_AsyncDisconnectEventFound = false;
   g_ConnectDelayMs = 0;
+  g_ConnParamApplyDelayReads = 1;
+  g_Bonded = false;
+  g_DeleteBondCount = 0;
 }
 
 NimBLEClient *NimBLEDevice::lastClient() {
@@ -928,6 +1033,10 @@ void NimBLEDevice::setConnectFailCount(size_t count) {
 
 void NimBLEDevice::setConnectDelayMs(uint32_t ms) {
   g_ConnectDelayMs = ms;
+}
+
+void NimBLEDevice::setConnParamApplyDelayReads(size_t reads) {
+  g_ConnParamApplyDelayReads = reads;
 }
 
 extern "C" int64_t esp_timer_get_time(void) {
