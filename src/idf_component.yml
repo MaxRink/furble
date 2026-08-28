@@ -1,5 +1,9 @@
 dependencies:
   h2zero/esp-nimble-cpp:
     version: "2.5.0"
+    # Vendored copy of the pinned 2.5.0 release carrying the NimBLETaskData
+    # ownership fix for the disconnect versus timeout use-after-scope race.
+    # See plans/150-nimble-taskdata-race.md.
+    override_path: "../components/esp-nimble-cpp"
   lvgl/lvgl:
     version: "9.4.0"
