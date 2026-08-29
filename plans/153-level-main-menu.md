@@ -35,6 +35,13 @@ Add a second button for the already-built Level page to the main menu:
 - No changes to the Level page itself. The page dispatch in addMainMenu()
   already re-enables Back on the Level page regardless of entry path, and the
   level timer resume and pause key off the page, not the entry path.
+- Home row padding trim on the 135x240 boards: with the Level entry the home
+  menu carries six visible rows and the CI page-matrix overflow guard caught
+  a one pixel overflow at the default row padding of 6. The home rows trim
+  to 5, following the per-page row padding prior art in addMenuItem(), so
+  the page fits with headroom at Normal and Large text. The 80x160 and
+  320x240 layouts fit unchanged. With the optional IR row enabled the home
+  menu scrolls, the same as any over-tall list.
 
 ## Simulator surface
 
@@ -52,16 +59,22 @@ Add a second button for the already-built Level page to the main menu:
 
 ## Verification
 
-- Full end-to-end simulator suite headless: 71 of 71 scenarios pass on the
-  default M5StickS3 panel, re-run after rebasing onto the post PR #243
-  master.
+- Full end-to-end simulator suite headless: 73 of 73 scenarios pass on the
+  default M5StickS3 panel after rebasing onto the current master.
+- CI-equivalent panel matrix run locally on all three modeled panels
+  (135x240, 80x160, 320x240): page-matrix, overflow-sweep,
+  text-size-overflow large and small, level-overflow, imu-diagnostics,
+  redraw-steady, the StickC text size gates, connstate-page-sweep and
+  statusbar-stability all pass, 24 of 24 runs. Before the padding trim the
+  page-matrix home assert failed on 135x240 with a one pixel overflow;
+  after it the home page reports scroll_bottom 0 on every panel.
 - Layout checked by screenshot on the 80x160 M5StickC panel (flex column, no
   icons), the 135x240 StickC Plus and StickS3 panel, and the 320x240 M5COREX
-  panel. The StickC home menu fits all six rows without scrolling, and the
-  main to level to back walk passes on every panel.
-- Full host suite green: 77 of 77 ctest tests on the rebased master.
-- m5stick-s3-debug (1510270 of 3145728 bytes flash) and m5stick-c (1158181 of
-  1740800 bytes flash) firmware builds pass and fit.
+  panel. Every home menu fits without scrolling, and the main to level to
+  back walk passes on every panel.
+- Full host suite green: 82 of 82 ctest tests on the rebased master.
+- m5stick-s3-debug and m5stick-c firmware builds pass and fit flash (sizes
+  in the PR).
 
 ## Hardware boundary
 

@@ -1508,9 +1508,15 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // The home menu carries seven rows once the Level entry joins it and the IR
+  // capability row is present. At the default padding of 6 the seventh row
+  // overflows the 135x240 panel by one pixel, so the home rows trim to 5 and
+  // all seven fit with headroom. Every other page keeps the roomier padding.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
-  lv_obj_set_style_pad_top(cont, connectedPage ? 0 : 6, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, connectedPage ? 0 : 6, LV_STATE_DEFAULT);
+  const bool mainPage = menu.page == m_MainMenu.page;
+  const int32_t pad = connectedPage ? 0 : (mainPage ? 5 : 6);
+  lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
   // (Connect, Scan, Delete, Settings, Power off) fits without scrolling. The
