@@ -8,6 +8,7 @@
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleTestSync.h"
 
 namespace Furble {
 
@@ -293,6 +294,7 @@ void Control::task(void) {
       case STATE_IDLE:
         if (ret == pdTRUE) {
           if (cmd == CMD_CONNECT) {
+            FURBLE_TEST_SYNC_POINT("idle_connect_dequeued");
             setState(STATE_CONNECT);
             continue;
           }
@@ -312,6 +314,7 @@ void Control::task(void) {
         setState(STATE_CONNECTING);
         {
           const state_t next = connectAll();
+          FURBLE_TEST_SYNC_POINT("connectall_returned");
           // An aborted connect returns the state disconnect() owns. Never
           // republish DISCONNECTING from here: disconnect() can move the
           // machine to IDLE between connectAll() reading m_State and this
@@ -500,6 +503,7 @@ bool Control::targetTasksStopped(void) {
 
 bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   m_ConnectAbort = true;
+  FURBLE_TEST_SYNC_POINT("disconnect_abort_armed");
   setState(STATE_DISCONNECTING);
   m_ReconnectAttempt = 0;
 
