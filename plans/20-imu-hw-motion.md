@@ -7,6 +7,27 @@ change. The CPU then sleeps instead of polling the accelerometer. This replaces
 the software variance poll of PR18 where the hardware supports it, and keeps the
 software detector as a fallback everywhere else.
 
+## Implementation state
+
+Implemented on `feat/20-hw-motion`:
+
+- Added the opt-in `MotionSource` API and software fallback detector.
+- Added raw BMI270 any-motion and no-motion configuration.
+- Added MPU6886 wake-on-motion configuration and one-second status polling.
+- Added M5StickS3 M5PM1 GPIO4 to GPIO13 wake setup and StickC GPIO35 wake setup.
+- Added the `HW_MOTION` setting with provisional wire ID 34.
+- Added the Motion Engine roller and IMU diagnostics rows.
+
+The checked out base contains PR16 only. PR17 and PR18 motion consumers are not
+present. The source is therefore opt-in and does not arm at boot. This preserves
+the current runtime behavior until a consumer subscribes and calls `arm()`.
+
+The setting uses NVS key `hw_motion`. Values are Auto, Software, and Hardware.
+The default is Auto. The hardware interrupt wiring is not hardware tested.
+
+No sdkconfig file was changed. The required build reached the sandbox
+permission and component-registry blockers. It did not reach compilation.
+
 ## Scope
 
 In scope:

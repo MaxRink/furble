@@ -157,6 +157,7 @@ class CompanionService {
   static setting_type_t settingType(Settings::type_t type);
   static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
   static bool saveSetting(Settings::type_t type, const uint8_t *value, uint8_t length);
+  static bool settingNeedsRestart(Settings::type_t type);
   static void appendResponse(std::vector<uint8_t> &response,
                              setting_status_t status,
                              uint8_t id,

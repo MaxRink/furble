@@ -81,6 +81,7 @@ class UI {
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
@@ -273,6 +274,9 @@ class UI {
     std::array<lv_obj_t *, 3> powerLocks;
     lv_obj_t *imuAccel;
     lv_obj_t *imuGyro;
+    lv_obj_t *imuBackend;
+    lv_obj_t *imuMotion;
+    lv_obj_t *imuInterrupts;
     float imuAccelValues[3];
     float imuGyroValues[3];
     bool imuAccelValid;
@@ -281,6 +285,10 @@ class UI {
     uint32_t imuGyroUpdates;
     /** True while the 'IMU live' page is open, gates I2C polling. */
     bool imuPageActive;
+    IMU::Backend imuBackendValue = IMU::Backend::NONE;
+    IMU::MotionState imuMotionValue = IMU::MotionState::MOVING;
+    uint32_t imuInterruptCount = 0;
+    bool imuMotionValuesValid = false;
   } diagnostics_t;
 
   typedef struct {
@@ -569,6 +577,7 @@ class UI {
   static constexpr const char *m_PowerStateStr = "Power state";
   static constexpr const char *m_BLEStr = "BLE";
   static constexpr const char *m_IMUDataStr = "IMU live";
+  static constexpr const char *m_MotionEngineOptions = "Auto\nSoftware\nHardware";
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
