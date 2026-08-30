@@ -160,9 +160,8 @@ int main() {
     return fail(__LINE__);
   }
   value = 3;
-  if (xQueueSendToFront(queue, &value, 0) != pdTRUE
-      || xQueueReceive(queue, &received, 0) != pdTRUE || received != 3
-      || xQueueReceive(queue, &received, 0) != pdTRUE || received != 1) {
+  if (xQueueSendToFront(queue, &value, 0) != pdTRUE || xQueueReceive(queue, &received, 0) != pdTRUE
+      || received != 3 || xQueueReceive(queue, &received, 0) != pdTRUE || received != 1) {
     return fail(__LINE__);
   }
   if (xQueueReset(queue) != pdTRUE || xQueueReceive(queue, &received, 0) != pdFALSE) {
@@ -219,8 +218,8 @@ int main() {
 
   setClockMillis(0);
   timerFired.store(false);
-  const esp_timer_create_args_t timerArgs = {
-      timerCallback, nullptr, ESP_TIMER_TASK, "scheduler-test", false};
+  const esp_timer_create_args_t timerArgs = {timerCallback, nullptr, ESP_TIMER_TASK,
+                                             "scheduler-test", false};
   esp_timer_handle_t timer = nullptr;
   if (esp_timer_create(&timerArgs, &timer) != ESP_OK
       || esp_timer_start_once(timer, 5000) != ESP_OK) {
@@ -242,18 +241,17 @@ int main() {
       || esp_timer_start_once(stateTimer, 10000) != ESP_OK
       || esp_timer_start_once(stateTimer, 10000) != ESP_ERR_INVALID_STATE
       || esp_timer_delete(stateTimer) != ESP_ERR_INVALID_STATE
-      || esp_timer_stop(stateTimer) != ESP_OK
-      || esp_timer_stop(stateTimer) != ESP_ERR_INVALID_STATE
+      || esp_timer_stop(stateTimer) != ESP_OK || esp_timer_stop(stateTimer) != ESP_ERR_INVALID_STATE
       || esp_timer_delete(stateTimer) != ESP_OK) {
     return fail(__LINE__);
   }
 
   cancelledTimerFired.store(false);
   timerCancellationResult.store(0);
-  const esp_timer_create_args_t cancellingArgs = {
-      cancellingTimerCallback, nullptr, ESP_TIMER_TASK, "timer-canceller", false};
-  const esp_timer_create_args_t cancelledArgs = {
-      cancelledTimerCallback, nullptr, ESP_TIMER_TASK, "timer-cancelled", false};
+  const esp_timer_create_args_t cancellingArgs = {cancellingTimerCallback, nullptr, ESP_TIMER_TASK,
+                                                  "timer-canceller", false};
+  const esp_timer_create_args_t cancelledArgs = {cancelledTimerCallback, nullptr, ESP_TIMER_TASK,
+                                                 "timer-cancelled", false};
   if (esp_timer_create(&cancellingArgs, &cancellingTimer) != ESP_OK
       || esp_timer_create(&cancelledArgs, &cancellableTimer) != ESP_OK
       || esp_timer_start_once(cancellingTimer, 5000) != ESP_OK
@@ -261,8 +259,7 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(5);
-  for (unsigned int attempt = 0;
-       attempt < 10000 && timerCancellationResult.load() == 0;
+  for (unsigned int attempt = 0; attempt < 10000 && timerCancellationResult.load() == 0;
        ++attempt) {
     std::this_thread::yield();
   }
@@ -273,8 +270,8 @@ int main() {
   // Owner teardown may free a timer callback argument only after the single
   // dispatcher has joined. Prove stop waits for an in-flight callback instead
   // of returning while that callback can still access owner state.
-  const esp_timer_create_args_t blockingArgs = {
-      blockingTimerCallback, nullptr, ESP_TIMER_TASK, "timer-quiescence", false};
+  const esp_timer_create_args_t blockingArgs = {blockingTimerCallback, nullptr, ESP_TIMER_TASK,
+                                                "timer-quiescence", false};
   esp_timer_handle_t blockingTimer = nullptr;
   blockingTimerStarted.store(false);
   blockingTimerRelease.store(false);
@@ -383,8 +380,7 @@ int main() {
   looping.queue = xQueueCreate(1, sizeof(uint32_t));
   TaskHandle_t loopingTask = nullptr;
   if (looping.queue == nullptr
-      || xTaskCreate(loopingQueueWaitTask, "queue-loop", 0, &looping, 0, &loopingTask)
-             != pdPASS) {
+      || xTaskCreate(loopingQueueWaitTask, "queue-loop", 0, &looping, 0, &loopingTask) != pdPASS) {
     return fail(__LINE__);
   }
   waitFor(looping.started);

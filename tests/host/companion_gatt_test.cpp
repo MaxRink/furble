@@ -422,8 +422,7 @@ void testCompanionGattFlow(void) {
         "zero-duration timed shutter presses and releases exactly once");
 
   const size_t timedBefore = shutterWriteCount(first) + shutterWriteCount(second);
-  check(central.write(TRIGGER_UUID, {1, 4, 100, 0}),
-        "trigger UUID accepts a timed shutter press");
+  check(central.write(TRIGGER_UUID, {1, 4, 100, 0}), "trigger UUID accepts a timed shutter press");
   std::thread timerThread([]() { furble_host_fire_active_timer(); });
   std::thread disconnectThread([&]() { central.disconnect(); });
   timerThread.join();

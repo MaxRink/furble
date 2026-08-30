@@ -8,8 +8,8 @@
 #include <thread>
 #include <vector>
 
-#include <freertos/FreeRTOS.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
 
 #include "clock.h"
 #include "power_profiler.h"
@@ -81,9 +81,8 @@ bool waitUntilLocked(std::unique_lock<std::mutex> &lock,
   }
   if (ticks == portMAX_DELAY) {
     setTaskBlockedLocked(true);
-    Furble::Sim::schedulerCondition().wait(lock, [&ready]() {
-      return Furble::Sim::schedulerStopping() || taskStopping() || ready();
-    });
+    Furble::Sim::schedulerCondition().wait(
+        lock, [&ready]() { return Furble::Sim::schedulerStopping() || taskStopping() || ready(); });
     setTaskBlockedLocked(false);
     return ready();
   }
@@ -92,8 +91,7 @@ bool waitUntilLocked(std::unique_lock<std::mutex> &lock,
   setTaskBlockedLocked(true);
   Furble::Sim::schedulerCondition().wait(lock, [&ready, deadline]() {
     return Furble::Sim::schedulerStopping() || taskStopping()
-           || Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(), deadline)
-           || ready();
+           || Furble::Sim::clockDeadlineReached(Furble::Sim::clockMillis(), deadline) || ready();
   });
   setTaskBlockedLocked(false);
   return ready();
@@ -105,10 +103,7 @@ void markTaskFinished(const std::shared_ptr<SimTask> &task) {
   Furble::Sim::schedulerCondition().notify_all();
 }
 
-BaseType_t queueSend(QueueHandle_t queue,
-                     const void *item,
-                     TickType_t ticksToWait,
-                     bool front) {
+BaseType_t queueSend(QueueHandle_t queue, const void *item, TickType_t ticksToWait, bool front) {
   exitStoppedTask();
   if (queue == nullptr || item == nullptr) {
     return pdFALSE;
@@ -278,9 +273,7 @@ BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticksToW
   return queueSend(queue, item, ticksToWait, false);
 }
 
-BaseType_t xQueueSendToFront(QueueHandle_t queue,
-                             const void *item,
-                             TickType_t ticksToWait) {
+BaseType_t xQueueSendToFront(QueueHandle_t queue, const void *item, TickType_t ticksToWait) {
   return queueSend(queue, item, ticksToWait, true);
 }
 
@@ -293,9 +286,8 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticksToWait
 
   std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
   QueueUse use {queue};
-  const bool available = waitUntilLocked(lock, ticksToWait, [queue]() {
-    return queue->deleted || !queue->items.empty();
-  });
+  const bool available = waitUntilLocked(
+      lock, ticksToWait, [queue]() { return queue->deleted || !queue->items.empty(); });
   exitStoppedTask();
   if (Furble::Sim::schedulerStopping() || taskStopping() || queue->deleted || !available
       || queue->items.empty()) {
@@ -345,9 +337,7 @@ void vQueueDelete(QueueHandle_t queue) {
     queue->items.clear();
     queue->reset_callback = nullptr;
     Furble::Sim::schedulerCondition().notify_all();
-    Furble::Sim::schedulerCondition().wait(lock, [queue]() {
-      return queue->active_users == 0;
-    });
+    Furble::Sim::schedulerCondition().wait(lock, [queue]() { return queue->active_users == 0; });
   }
   delete queue;
 }

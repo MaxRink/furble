@@ -5,9 +5,7 @@
 extern "C" {
 #endif
 
-SDL_Thread *furble_sim_SDL_CreateThread(SDL_ThreadFunction function,
-                                        const char *name,
-                                        void *data);
+SDL_Thread *furble_sim_SDL_CreateThread(SDL_ThreadFunction function, const char *name, void *data);
 void furble_sim_SDL_Quit(void);
 
 #ifdef __cplusplus

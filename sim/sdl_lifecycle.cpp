@@ -1,7 +1,7 @@
 #include <cstring>
 #include <mutex>
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 #undef SDL_CreateThread
 #undef SDL_Quit

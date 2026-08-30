@@ -1,8 +1,8 @@
 #ifndef FURBLE_SIM_CLOCK_H
 #define FURBLE_SIM_CLOCK_H
 
-#include <cstdint>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 
 #include "FurbleTime.h"

@@ -217,8 +217,7 @@ void CompanionService::notifyStatus(bool force) {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     const bool changed =
         !m_HaveLastStatus || (std::memcmp(&status, &m_LastStatus, sizeof(status)) != 0);
-    const bool keepalive =
-        !m_HaveLastStatus || ((now - m_LastStatusNotificationMs) >= 30 * 1000);
+    const bool keepalive = !m_HaveLastStatus || ((now - m_LastStatusNotificationMs) >= 30 * 1000);
     const bool rateAllowed = !m_HaveLastStatus || ((now - m_LastStatusNotificationMs) >= 1000);
 
     shouldNotify = force || keepalive || (changed && rateAllowed);
