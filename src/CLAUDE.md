@@ -39,6 +39,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `NO_LIGHT_SLEEP` during backoff, ignores late UART lock reacquisition, and
   reacquires only after moving to the time-bounded acquisition probe. Keep the
   host policy and simulator power-accounting tests aligned with these states.
+  The service mutex covers each task pass and settings reset. Before waiting
+  for it, settings transitions must set the enable gate false and send the
+  private front-of-queue wake event so an idle UART receive releases the mutex.
 - `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
   IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
@@ -58,6 +61,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `settings_nvs_roundtrip_test` keeps an exhaustive storage-kind mirror so a
   new enum value fails the host build until its table and switch handling are
   updated.
+- `CompanionService::m_Mutex` serializes the status notification cache and all
+  trigger rate and held-command state, including timer and disconnect release.
+  Keep transport-triggered callbacks on that ownership rule, but never hold it
+  across a transport virtual call because production GATT takes its own mutex.
+  A zero-duration timed trigger releases inline because `handleTrigger()`
+  already owns the service mutex.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic
@@ -71,6 +80,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   calls so the watchdog and callback handoff remain responsive.
   Aggregate UI context assignments must initialize every field explicitly. Keep
   the connect timer paused until its context and widgets are ready.
+  Under `FURBLE_SIM`, a driver exit request is observed inside the locked UI
+  phase. Unlock and return from the task so simulator workers can be joined;
+  never terminate the process from this production source.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:

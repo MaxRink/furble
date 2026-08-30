@@ -16,13 +16,20 @@ assert ui.gps_fix yes
 
 # Exercise the real settings callback while the background task is actively
 # decoding. TSan must prove each disable/enable reset is atomic with respect to
-# the task-owned UART and configuration state.
+# the task-owned UART and configuration state. Pause new UART input first and
+# let the task enter its timed receive so the settings transition must use the
+# production queue wake path; virtual time cannot advance while the UI callback
+# is waiting for the service mutex.
+uart-mode pause
+wait 200
 action toggle gps
 wait 200
 assert setting.gps 0
 action toggle gps
 wait 500
 assert setting.gps 1
+uart-mode ack
+wait 1200
 
 action nav nmea
 wait 2200

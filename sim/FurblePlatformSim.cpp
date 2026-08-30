@@ -114,7 +114,7 @@ void Platform::update(void) {
 void Platform::restart(void) {
   // The host simulator has no reset vector; ending the process is the closest
   // equivalent for scripted runs.
-  std::_Exit(0);
+  Sim::requestExit(0);
 }
 
 bool Platform::powerOff(void) {

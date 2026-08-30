@@ -10,6 +10,16 @@
 #include "clock.h"
 #include "power_profiler.h"
 
+namespace Furble::Sim {
+
+std::atomic<int> requestedExit {-1};
+
+void requestExit(int result) {
+  requestedExit.store(result);
+}
+
+}  // namespace Furble::Sim
+
 namespace {
 
 class TemporaryReportDirectory {
@@ -78,5 +88,5 @@ int main() {
   advanceClock(500);
   profilerWriteReport(path.c_str(), "clock-wrap-reset");
   const bool resetWindowIsMeasured = reportContains(path, "\"duration_ms\": 500");
-  return resetWindowIsMeasured ? 0 : 1;
+  return resetWindowIsMeasured && requestedExit.load() == -1 ? 0 : 1;
 }

@@ -30,9 +30,23 @@ BaseType_t xTaskCreate(TaskFunction_t task,
                        TaskHandle_t *task_handle);
 void vTaskDelete(TaskHandle_t task_handle);
 void vTaskDelay(TickType_t ticks);
+TickType_t xTaskGetTickCount(void);
+
+/** Stop and join every simulator task before firmware objects are destroyed. */
+void furble_sim_stop_all_tasks(void);
+
+/** Reset simulator task/scheduler state for an isolated host test run. */
+void furble_sim_reset_tasks(void);
+
+/** Return whether simulator teardown has begun. */
+bool furble_sim_shutdown_requested(void);
+
+/** Return whether a simulator task is currently blocked on a delay or queue. */
+bool furble_sim_task_blocked(TaskHandle_t task_handle);
 
 QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size);
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticks_to_wait);
+BaseType_t xQueueSendToFront(QueueHandle_t queue, const void *item, TickType_t ticks_to_wait);
 BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks_to_wait);
 BaseType_t xQueueReset(QueueHandle_t queue);
 void vQueueDelete(QueueHandle_t queue);

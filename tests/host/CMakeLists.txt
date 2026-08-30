@@ -570,6 +570,17 @@ target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBL
 target_compile_options(sim_clock_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
+add_executable(sim_scheduler_test
+               sim_scheduler_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/freertos.cpp)
+target_include_directories(sim_scheduler_test PRIVATE ${FURBLE_ROOT}/include
+                                                       ${FURBLE_ROOT}/sim
+                                                       ${FURBLE_ROOT}/sim/shim)
+target_compile_options(sim_scheduler_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter)
+target_link_libraries(sim_scheduler_test PRIVATE Threads::Threads)
+
 add_executable(sim_power_profiler_test
                sim_power_profiler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
@@ -1077,6 +1088,8 @@ if(BUILD_TESTING)
   add_test(NAME battery-saver COMMAND battery_saver_test)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
+  add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
+  set_tests_properties(sim-scheduler PROPERTIES TIMEOUT 10)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
   # Run several independent profiler processes so ctest -j covers report-path
   # isolation. Each process must be able to create and clean up its own report.

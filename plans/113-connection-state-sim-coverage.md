@@ -2,9 +2,11 @@
 
 ## Motivation
 
-A bench session found four connection-state bugs that reached hardware even
-though the sim runs the real Control state machine and every UI page. The sim
-just did not assert them:
+A bench session found four connection-state bugs that reached hardware. The
+sim exercises every UI page, but its current connection implementation is a
+fake Control/Camera path, so its passing state coverage is not proof that the
+production state machine behaves identically. The sim just did not assert
+these UI symptoms:
 
 1. the reconnect indicator was missing on the full-screen Remote shutter page
    (fixed in PR #154);

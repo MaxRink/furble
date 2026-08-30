@@ -16,11 +16,15 @@ decide because they are policy, not code:
 
 This document is a recommendation only. It does not change any setting default
 in code. Every default change below is explicitly marked as the maintainer's
-call.
+call. The 2026-08-30 simulator review found that the underlying connection,
+scheduler, and electrical models are incomplete. Plan 158 must land before a
+sim result is used as a hardware or release decision. The figures below are
+advisory hypotheses, not validated device measurements.
 
 All milliamp figures are the plan 63 energy-model estimates for the S3 from the
-audit unless noted as measured. The one cross-checked point is connected-idle:
-3.6 mA modeled against 3.3 mA measured (`plans/00-hardware-experiments.md`).
+audit unless noted as measured. The 3.6 mA modeled value and 3.3 mA value in
+`plans/00-hardware-experiments.md` were collected under different conditions,
+so their numerical proximity is not a model validation.
 
 ## 1. The `SLEEP_CONN` default decision
 
@@ -51,24 +55,25 @@ Plan 07 flagged the risk before the feature merged, and it is real:
   GPS burst power lock is compiled out (`FURBLE_M5STICKS3` guard, plan 15), so
   light sleep during a connection would kill the GPS UART clock and drop NMEA
   sentences. The setting is correctly hidden on those boards today.
-- The audit's 3.6 mA is a model estimate. It matches the 3.3 mA measured floor,
-  but the measurement was at stock connection parameters and screen-on. The
+- The audit's 3.6 mA is a model estimate. It is numerically close to a 3.3 mA
+  value measured under different connection and display conditions. The
   connected-plus-screen-off-plus-sleep floor has never been measured directly.
-  Section 3 closes that gap.
+  Section 3 defines the measurement needed to close that gap.
 
 ### Recommendation
 
 Do not flip the `SLEEP_CONN` code default now. Ship the win through plan 77
 instead:
 
-1. Land plan 77 (opt-in Battery Saver). It forces `SLEEP_CONN` on the S3 as
-   part of the bundle, so a user who wants the runtime gets it with one switch
-   and today's out-of-the-box behaviour is unchanged. This is the low-risk path
-   and it is ready now.
-2. Run the section 3 measurement and a 30 minute Fujifilm soak with the profile
-   on. Confirm no disconnects, no reconnect log entries, and acceptable first
-   shutter latency after a 30 s idle gap (the plan 07 verification steps).
-3. Only after that soak, consider defaulting `SLEEP_CONN` on for the S3
+1. Keep plan 77's Battery Saver opt-in. It forces `SLEEP_CONN` on the S3 as
+   part of the bundle, so today's out-of-the-box behaviour is unchanged. Treat
+   the modeled runtime benefit as experimental until the gates below pass.
+2. Run the section 3 external measurement and repeated per-vendor camera soaks
+   with the profile on. Confirm no disconnects, no reconnect log entries, and
+   acceptable first shutter latency after a 30 s idle gap. A Fujifilm-only soak
+   cannot establish a safe default for every supported camera family.
+3. Only after calibrated measurement and exact-profile camera evidence,
+   consider defaulting `SLEEP_CONN` on for the S3
    specifically, with a documented opt-out in Settings > Power. Keep it opt-in
    on all other boards. This stays the maintainer's decision; the soak evidence
    is the gate, not this document.
@@ -132,32 +137,33 @@ option for the flasher, and do not grow the env matrix for it.
 
 ## 3. On-device measurement protocol (M5StickS3)
 
-The audit numbers are model estimates. The console `power` command makes the
-real device self-report, so the model can be validated without an external
-meter. This protocol is what turns "3.6 mA modeled" into "measured on my S3".
+The audit numbers are model estimates. M5StickS3's M5PM1 has no battery-current
+backend in M5Unified and no documented current register. The console can report
+voltage, charge state, coarse battery level, and firmware state, but not the
+instantaneous current needed to calibrate this model. A calibrated external
+measurement is mandatory before claiming accuracy or flipping a default.
 
 ### Tooling
 
-- Flash the console build: `m5stick-s3-debug` (release builds do not expose the
-  console). Instantaneous `power stats` reads are capturable over USB while the
-  device is plugged in. Drain runs (`power log`) must be unplugged, because
-  charging masks the draw, so those need the user to unplug and later replug to
-  read the captured log.
-- `power stats` prints the current sample: voltage_mv, level_pct, current_ma,
-  and the EWMA current.
-- `power log <seconds>` starts a periodic logger. Columns:
-  `timestamp_s,voltage_mv,level_pct,current_ma,current_ewma_ma,` plus a computed
-  drain percent per hour. `power log off` stops it.
-- The `furble-worktrees/serctl.py` serial driver can interleave console
-  commands with `sleep:N` delays and capture timestamped logs, which suits an
-  unattended drain run.
+- Use a calibrated inline power analyzer at one documented electrical boundary,
+  preferably the complete device input with charging disabled. Record analyzer
+  model, firmware, range, sample rate, supply voltage, cable, battery presence,
+  and whether USB data is attached.
+- Flash `m5stick-s3-debug` for synchronized firmware state and event logs. The
+  console's `power stats` and `power log` values are supporting state evidence,
+  not current measurements on this board.
+- Capture analyzer samples and the firmware log from one shared timestamp or a
+  visible marker event. Retain raw samples, not only a displayed average.
+- Use the same supply, display brightness, radio peer, connection parameters,
+  GPS rail, room conditions, and soak duration for baseline and candidate.
 
 ### States to capture
 
-For each state, record `current_ewma_ma` from `power stats` after the reading
-settles (about 20 to 30 s), and separately run an unplugged `power log 30` for
-several minutes to get the drain-percent-per-hour that the audit asked for.
-Cross-check against the model column.
+For each state, record external input current after the state settles, retain
+the full trace, and compute mean, median, p95, wake-event energy, and confidence
+interval over the same window. Use `power log 30` only to correlate voltage,
+level, charge, and firmware state. Cross-check against the advisory model
+column at the same electrical boundary.
 
 | # | State | Setup | Model est mA | Audit source |
 |---|---|---|---|---|
@@ -171,31 +177,33 @@ Cross-check against the model column.
 States 3 and 4 are the headline pair. The expected result is the
 connected-plus-screen-off draw dropping from about 43.6 mA toward the 3.6 mA
 light-sleep floor when Battery Saver is on. Reproducing that end to end on the
-bench is what validates both the model and plan 77 before any default is
-touched.
+bench is a prerequisite to evaluating both the model and plan 77. It does not
+validate the model without a calibrated current measurement.
 
 ### Procedure per state
 
 1. Boot with the intended settings. For the saver pair, toggle Battery Saver in
    Settings > Power and reboot (the display bundle is read at UI init).
 2. Reach the target state (connect the camera, blank the screen, attach GPS).
-3. Plugged in: `power stats`, wait for the EWMA to settle, record it. Repeat
-   three times.
-4. Unplugged: `power log 30`, leave it for at least 10 minutes untouched so the
-   inactivity and any auto behaviours are exercised, replug, read the log,
-   record the median drain percent per hour.
-5. Compare measured against the model column. A gap larger than model tolerance
-   at state 4 (the validated point) is the signal to investigate before
+3. Start the external capture and firmware log, wait for the state to settle,
+   then retain at least 10 minutes. Repeat each state at least three times.
+4. Annotate every display, GPS, reconnect, shutter, and connection-parameter
+   transition. Reject a run that silently changes state.
+5. Compare external measurements against the model at the same boundary. A gap
+   larger than model tolerance
+   at state 4 (the candidate headline point) is the signal to investigate before
    trusting any default flip.
 
 ### What the measurement gates
 
-- State 4 confirming near the 3.6 mA floor is the precondition in section 1 for
-  considering an S3 `SLEEP_CONN` default flip.
+- A stable state 4 with calibrated current, acceptable shutter latency, and no
+  exact-profile camera regressions is a precondition for considering an S3
+  `SLEEP_CONN` default flip.
 - State 5 minus state 2 isolates the GPS term (modeled 23 mA), the input to any
   future GPS duty rework (audit action 7).
-- State 3 minus state 4 is the raw value of `SLEEP_CONN` on this specific cell,
-  which is the number to quote in release notes rather than the model estimate.
+- State 3 minus state 4 is the measured value of `SLEEP_CONN` for this exact
+  hardware, firmware, camera, and setup. Do not generalize it without another
+  matching trace.
 
 ## References
 

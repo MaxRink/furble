@@ -15,6 +15,10 @@ lands on fork master. This file applies once it does.
   behavior, everything new is configurable.
 - Camera compatibility plans record shared protocol bytes, model-specific
   additions, and hardware validation status explicitly.
+- Simulator camera certification is fail closed. Common implementations and
+  official documentation may enrich a peer, but only an exact model and
+  firmware hardware corpus may produce a certified feature result. Missing,
+  inferred, conflicting, or synthetic behavior is `UNCERTIFIED`.
 - Fujifilm Secure registration plans keep the camera's required peer profile
   through subscriptions and shutter discovery. Request Furble's bounded FAST
   profile only after discovery completes, then verify the controller applied

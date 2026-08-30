@@ -156,10 +156,12 @@ text after a comment are ignored. Each line starts with one verb.
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
+| `assert-eventually-virtual` | `assert-eventually-virtual TIMEOUT_MS KEY VALUE` polls once per normal UI tick while virtual time, platform updates, and background tasks continue. TIMEOUT_MS must be 1 through 60000 virtual milliseconds; a timeout reports the last value and exits 1. |
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
+`assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
+`print` use the same query namespaces:
 `ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
 
 The scenario-only `scan_distinct` seed makes the asynchronous scan worker
@@ -458,8 +460,9 @@ handshake writes, link drops during a handshake, and deferred client deletion.
 2. Use `seed` for state needed before UI construction. Use `action` to drive a
    real UI path, and `wait` or `advance` before checking timer-driven state.
    Use `assert-eventually` only when a background simulator task must catch up
-   after virtual time has advanced. Keep exact count/value assertions after the
-   eventual state assertion.
+   after virtual time has advanced. Use `assert-eventually-virtual` when the
+   observed device timeout itself must continue advancing. Keep exact
+   count/value assertions after the eventual state assertion.
    CI repeats the asynchronous GPS scenarios through
    `sim/scripts/run-async-stress.sh`; keep cross-task regressions in that set.
 3. Prefer `assert` for a fixed contract. Use `xassert` only for a known gap

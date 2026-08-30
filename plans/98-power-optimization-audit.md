@@ -11,7 +11,18 @@ Audit base: fork master `fefbd05`, 2026-08-18. All simulator numbers below
 were produced with the plan 63 profiler from this tree. The sim was built
 with `sim/build.sh` and every checked-in scenario reproduced its baseline
 byte for byte (`tools/power-model/compare.py`, all nine PASS at +0.00%).
-The numbers are relative model estimates for the S3, not measurements.
+The numbers are relative model estimates for the S3, not measurements. This
+audit was refreshed on 2026-08-30: the figures remain useful for finding
+relative opportunities, but they are not hardware evidence or release gates.
+The current SDL build uses fake connection Control, Camera, CameraList, and
+Scan policy, mixes host and virtual timing in places, and does not yet model
+all wake, radio, GPS, display, PMIC, and board-specific costs.
+
+The simulator fidelity work is now sequenced by
+[158-sim-scheduler-parity.md](158-sim-scheduler-parity.md). Until its scheduler
+and production connection vertical slice land, treat every absolute mA,
+runtime, residency, and model-to-bench comparison in this document as
+advisory. Re-run the optimization analysis after each calibrated model phase.
 
 ## Method
 
@@ -25,6 +36,90 @@ The numbers are relative model estimates for the S3, not measurements.
   `sdkconfig.*`, `platformio.ini`, and `lib/furble` connection code.
 - Read every power plan (00 to 19, 26, 32, 33, 63, 64, 71) plus the plans
   README.
+
+## 2026-08-30 review refresh
+
+The additional power review found these blockers to a hardware-faithful
+optimization decision:
+
+- The fake Control duplicates connection truth and does not exercise the
+  production Control, Camera, CameraList, Scan, or NimBLE ownership and
+  cancellation paths. A green connection scenario cannot validate radio duty
+  or sleep-lock behavior.
+- Before plan 158 the host had detached task threads, wall-clock queue waits,
+  host timers, and virtual firmware time. The scheduler foundation now uses
+  joinable workers and virtual waits, but same-tick worker dispatch is still
+  host-scheduled. `getState()` and some query paths also change observable
+  state, so profiler reads are not always pure observations.
+- The power shim is policy-only and incomplete. It does not yet charge wake
+  overhead, BLE event duty by negotiated parameters, GPS cold and warm start,
+  brightness, all sleep states, or board-specific PMIC and peripheral rails.
+  Invalid settings and failed model inputs must fail closed instead of silently
+  producing plausible current.
+- Existing invalidation and flush counters are valuable diagnostics, but a
+  settings navigation run showed that more invalidation and flush work does
+  not map directly to the current table. The model must retain per-state
+  attribution before optimization choices are ranked.
+
+The ranked optimization questions remain useful, but no default should be
+changed from these modeled numbers alone. The next analysis must use the
+production connection stack, exact board profiles, calibrated peripheral
+states, and differential traces against the same scenario on hardware.
+
+### Critical model errors found in the refresh
+
+1. GPS rail off and on transitions are not profiled, and the configured
+   107.7-second cold-start refix cost is never charged. Rail cycling can look
+   cheaper than continuous tracking even when reacquisition dominates.
+2. The gate compares only total estimated mA. Independent regressions in wake
+   count, light-sleep residency, lock ownership, pixels, GPS state, or radio
+   work can cancel numerically and pass.
+3. Timer, queue, and task wake transitions are free. A wake storm can preserve
+   total sleep time and report no energy change.
+4. Active display brightness is absent. The model assumes full brightness for
+   on and a fixed 32/255 duty for dim, regardless of the effective setting.
+5. Active CPU time bottoms out at 80 MHz even though production configures a
+   40 MHz minimum.
+6. GPS terms mix module-level 3.3 V estimates with whole-device 5 V input
+   measurements and omit conversion efficiency and rail-off leakage.
+7. BLE accounting charges generic application events instead of captured radio
+   airtime, retries, PHY, payload, and negotiated connection intervals. Its
+   connected floor may already include traffic that is then double counted.
+8. Each state duration is rounded independently to one second before energy is
+   integrated. A 499 ms state becomes zero and a 500 ms state becomes one
+   second, so component totals can exceed the real window.
+9. Missing or malformed current-model input falls back silently to built-in
+   defaults while the report still names the YAML source. Loading must fail
+   closed and include the exact model digest.
+10. CI and report identity are S3-only despite per-board tables. StickC, Plus,
+    Core, and Core2 regressions are not power gated.
+11. Simulator PM diagnostics report an 80 MHz minimum and light sleep disabled,
+    unlike production's 40 MHz minimum and enabled policy.
+12. Unknown display or GPS state names disappear from serialization and energy
+    instead of invalidating the report.
+
+### Revised implementation order
+
+1. Accounting correctness: integrate raw durations, fail closed on model load,
+   record a model digest, reject unknown states, track effective brightness,
+   align PM configuration, and choose one electrical boundary.
+2. Independent regression guards: gate sleep residency, lock residency,
+   timer/queue/task wake rates, pixels, radio event classes, GPS rail changes,
+   and required state coverage separately from estimated mA.
+3. Physics proxies: derive BLE airtime from captured link parameters, display
+   cost from transferred pixels and duty, GPS/UART cost from bytes and rail
+   state, and scheduler transition cost from wake counters.
+4. Scenario and board matrix: add scan and reconnect, connected screen-off with
+   saver on and off, brightness sweep, GPS standby and rail-cycle recovery,
+   degraded retry, and every exact board profile.
+5. Hardware calibration: use an external analyzer to calibrate the highest
+   impact terms first, then retain raw traces and tolerances with each model
+   revision.
+
+The optimization priority after those corrections remains display duty first,
+then safe connected sleep, screen-off housekeeping wakeups, BLE idle interval,
+GPS duty policy with cold-start cost, and APB-lock scope. The current numbers
+cannot reliably rank changes within one of those categories.
 
 ## Baseline numbers, S3 energy model
 
@@ -49,9 +144,10 @@ What-if runs against the same binary:
 | connected idle, screen on, `sleep_conn` on | 84.5 | unchanged, the display APB lock pins the MCU |
 | gps duty seeded 30 s | 104.2 | standby residency 0, value outside `DUTY_SECONDS` |
 
-The 3.61 mA what-if matches the 3.3 mA measured connected-idle floor from
-plans/00 within model tolerance. That cross-check validates the model at
-its most important point.
+The 3.61 mA what-if is numerically close to the 3.3 mA connected-idle value
+reported in plans/00, but the states, board conditions, and measurement method
+are not equivalent enough to validate the model. Keep this as a hypothesis to
+retest with a calibrated external measurement after plan 158.
 
 Two conclusions fall straight out of the table. First, the display plus the
 MCU-held-active pattern is 81 of the 84 mA in every screen-on scenario.
@@ -247,11 +343,12 @@ Both merged and working. The profiler reproduced every baseline and the
 
 ## Is 3.3 mA truly the S3 floor?
 
-For connected idle at stock connection parameters, yes. The measured
-3.3 mA equals the Espressif power_save reference for light sleep from the
-main XTAL, and the composed model lands at 3.61 mA. The 0.23 mA mode
-requires an external 32.768 kHz crystal the board does not have. That
-part of plans/00 is final.
+Not established by this audit. The measured 3.3 mA value, the Espressif
+power-save reference, and the 3.61 mA composed estimate were collected or
+derived under conditions that are not yet trace-equivalent. The 0.23 mA mode
+also requires an external 32.768 kHz crystal the board does not have. Treat
+the values in plans/00 as hardware observations to reproduce, not as a
+validated universal floor.
 
 But the floor is parameter-relative, not absolute:
 
@@ -341,6 +438,14 @@ WiFi, the linker drops it, there is no runtime cost, so `WIFI_PS_*`
 and coexistence tuning are moot until plan 33), brownout levels
 (safety, not power), ADC (unused directly), speaker/vibration/IR
 (already power-disciplined with enable/disable brackets).
+
+## Prerequisite for the action list
+
+Complete plan 158 Phase 1 before using the modeled ranking to choose a power
+default or quote a runtime. Then complete the production connection vertical
+slice and the relevant board calibration for any action involving BLE, sleep,
+GPS, display, or absolute current. The ranking below remains a hypothesis
+list until those gates pass.
 
 ## Top 10 actions
 

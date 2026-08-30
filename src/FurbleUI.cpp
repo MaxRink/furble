@@ -8389,6 +8389,10 @@ void UI::task(void) {
     // LVGL input. This preserves the firmware mutex hand-offs in scan startup
     // and prevents SDL-thread LVGL access.
     Sim::driverTick();
+    if (Sim::exitRequested()) {
+      m_Mutex.unlock();
+      return;
+    }
     serviceSimRequests();
 #endif
 #if defined(FURBLE_CONSOLE)

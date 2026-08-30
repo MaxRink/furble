@@ -78,6 +78,7 @@ uint64_t CompanionService::nowMs(void) {
 }
 
 void CompanionService::init(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   if (m_TimedShutterTimer != nullptr) {
     return;
   }
@@ -95,12 +96,17 @@ void CompanionService::init(void) {
 }
 
 void CompanionService::deinit(void) {
-  if (m_TimedShutterTimer != nullptr) {
-    if (esp_timer_is_active(m_TimedShutterTimer)) {
-      esp_timer_stop(m_TimedShutterTimer);
-    }
-    esp_timer_delete(m_TimedShutterTimer);
+  esp_timer_handle_t timer = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    timer = m_TimedShutterTimer;
     m_TimedShutterTimer = nullptr;
+  }
+  if (timer != nullptr) {
+    if (esp_timer_is_active(timer)) {
+      esp_timer_stop(timer);
+    }
+    esp_timer_delete(timer);
   }
 }
 
@@ -206,19 +212,28 @@ void CompanionService::notifyStatus(bool force) {
 
   const companion_status_t status = getStatus();
   const uint64_t now = nowMs();
-  const bool changed =
-      !m_HaveLastStatus || (std::memcmp(&status, &m_LastStatus, sizeof(status)) != 0);
-  const bool keepalive =
-      (m_LastStatusNotificationMs == 0) || ((now - m_LastStatusNotificationMs) >= 30 * 1000);
-  const bool rateAllowed =
-      (m_LastStatusNotificationMs == 0) || ((now - m_LastStatusNotificationMs) >= 1000);
+  bool shouldNotify = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    const bool changed =
+        !m_HaveLastStatus || (std::memcmp(&status, &m_LastStatus, sizeof(status)) != 0);
+    const bool keepalive = !m_HaveLastStatus || ((now - m_LastStatusNotificationMs) >= 30 * 1000);
+    const bool rateAllowed = !m_HaveLastStatus || ((now - m_LastStatusNotificationMs) >= 1000);
 
-  if (force || keepalive || (changed && rateAllowed)) {
+    shouldNotify = force || keepalive || (changed && rateAllowed);
+    if (shouldNotify) {
+      // Publish the cache reservation before entering the transport. This
+      // suppresses a concurrent duplicate without inverting the service and
+      // production GATT mutex order around a virtual call.
+      m_LastStatusNotificationMs = now;
+      m_LastStatus = status;
+      m_HaveLastStatus = true;
+    }
+  }
+
+  if (shouldNotify) {
     m_Transport.notify(COMPANION_CHAR_STATUS, reinterpret_cast<const uint8_t *>(&status),
                        sizeof(status));
-    m_LastStatusNotificationMs = now;
-    m_LastStatus = status;
-    m_HaveLastStatus = true;
   }
 }
 
@@ -618,6 +633,7 @@ void CompanionService::handleTrigger(const uint8_t *data, size_t len) {
   if ((data[0] == 0) || (op > 4) || ((op == 4) && (len != 4)) || ((op != 4) && (len != 2))) {
     return;
   }
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   if (Control::getInstance().getState() != Control::STATE_ACTIVE || !allowTrigger()) {
     return;
   }
@@ -655,7 +671,10 @@ void CompanionService::handleTrigger(const uint8_t *data, size_t len) {
       }
       m_ShutterHeld = true;
       if ((m_TimedShutterTimer == nullptr) || (holdMs == 0)) {
-        timedShutter(this);
+        // handleTrigger already owns m_Mutex. Release inline so the zero-delay
+        // path does not recursively enter timedShutter and deadlock.
+        Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
+        m_ShutterHeld = false;
       } else {
         if (esp_timer_is_active(m_TimedShutterTimer)) {
           esp_timer_stop(m_TimedShutterTimer);
@@ -670,6 +689,7 @@ void CompanionService::handleTrigger(const uint8_t *data, size_t len) {
 }
 
 void CompanionService::releaseHeldCommands(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   if (m_ShutterHeld) {
     Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
     m_ShutterHeld = false;
@@ -682,6 +702,7 @@ void CompanionService::releaseHeldCommands(void) {
 
 void CompanionService::timedShutter(void *param) {
   auto *service = static_cast<CompanionService *>(param);
+  const std::lock_guard<std::mutex> lock(service->m_Mutex);
   if (service->m_ShutterHeld) {
     Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
     service->m_ShutterHeld = false;

@@ -6,18 +6,22 @@ seed gps_power 1
 seed gps_duty 5
 seed gps_uart_mode ack
 wait 4000
-assert gps.state standby
+# The GPS worker publishes standby asynchronously after the virtual interval.
+assert-eventually 5000 gps.state standby
 uart-mode pause
 wait 12000
-# The GPS task is detached from the UI task. Give it a bounded virtual-time
+# The GPS task runs independently from the UI task. Give it a bounded virtual-time
 # handoff before asserting the transition, since busy CI hosts can otherwise
 # leave the receiver in standby at the first observation point.
 wait 3000
 assert-eventually 5000 gps.degraded 1
 assert-eventually 5000 gps.degraded_retries 1
-assert power.no_light_sleep 0
+# A scheduled retry may already be inside its bounded 6-second probe here.
+# Keep the UI and virtual clock running while waiting for its release.
+assert-eventually-virtual 7000 power.no_light_sleep 0
 wait 30000
-assert power.no_light_sleep 0
+# The long jump can land inside a later bounded probe too.
+assert-eventually-virtual 7000 power.no_light_sleep 0
 uart-mode ack
 # assert-eventually only yields wall time. Advance the simulator clock past the
 # second bounded retry deadline so the production GPS task can run its probe.

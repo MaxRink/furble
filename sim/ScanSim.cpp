@@ -13,6 +13,10 @@ Scan &Scan::getInstance(void) {
   return instance;
 }
 
+Scan::~Scan() {
+  shutdown();
+}
+
 void Scan::setMode(Mode) {}
 
 void Scan::setStartProbe(std::function<void()> probe) {
@@ -56,7 +60,8 @@ void Scan::start(std::function<void(void *)> scan_callback,
     }
     m_StartProbeBlocked = !completed->load(std::memory_order_acquire);
     if (m_StartProbeBlocked) {
-      worker.detach();
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      m_ProbeWorkers.push_back(std::move(worker));
     } else {
       worker.join();
     }
@@ -107,6 +112,20 @@ void Scan::stop(void) {
   }
   if (m_Worker.joinable()) {
     m_Worker.join();
+  }
+}
+
+void Scan::shutdown(void) {
+  stop();
+  std::vector<std::thread> probes;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    probes.swap(m_ProbeWorkers);
+  }
+  for (auto &probe : probes) {
+    if (probe.joinable()) {
+      probe.join();
+    }
   }
 }
 

@@ -25,6 +25,15 @@ void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);
 
+/** Request an orderly simulator shutdown with the supplied process result. */
+void requestExit(int result);
+
+/** Return true once a scenario, fuzzer, or panel close requested shutdown. */
+bool exitRequested(void);
+
+/** Return the first requested simulator process result, or zero if unset. */
+int exitResult(void);
+
 // End-to-end scenario support. connectShouldFail() lets a scenario model a
 // camera that never establishes a link, mirroring the stale-connected hardware
 // bug at the UI layer. The shutter and focus counters expose how many of each
@@ -42,6 +51,10 @@ void rigConfigure(bool requested,
                   bool dropNotify,
                   uint32_t delayMs);
 void startRig(void);
+/** Stop and join rig socket workers without destroying timer callback state. */
+void quiesceRig(void);
+/** Destroy the quiesced rig after the timer dispatcher has joined. */
+void stopRig(void);
 bool rigRequested(void);
 bool rigIsEnabled(void);
 bool rigHasPendingPairing(void);
