@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "clock.h"
+#include "driver.h"
 
 namespace Furble::Sim {
 namespace {
@@ -598,7 +599,8 @@ void writeReportLocked(const std::filesystem::path &path,
   std::ofstream output(path, std::ios::trunc);
   if (!output) {
     std::cerr << "Could not write power report: " << path << '\n';
-    std::exit(1);
+    requestExit(1);
+    return;
   }
 
   output << "{\n";
@@ -889,9 +891,9 @@ void profilerQueueReceive(const char *queue_name, bool returned_data) {
   const std::string name = queue_name == nullptr ? "unnamed" : queue_name;
   if (returned_data) {
     state.queue_receives[name]++;
-    // Queue counts are deterministic virtual activity. The detached host
-    // task's wake timing is not used for idle residency because it races the
-    // UI thread without advancing scenario time.
+    // Queue counts are deterministic virtual activity. A host task's wake
+    // timing is not used for idle residency because host scheduling still
+    // races the UI thread without advancing scenario time.
   } else {
     state.queue_empty_receives[name]++;
   }

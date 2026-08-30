@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "FurbleUI.h"
+#include "driver.h"
 #include "fuzz.h"
 
 // Seeded UI fuzzer. See fuzz.h for the contract. The fuzzer drives the real
@@ -353,9 +354,7 @@ void finish(void) {
   }
   std::cout << '\n';
   std::cout.flush();
-  // Skip host teardown so the exit code is not masked by background sim threads
-  // unwinding their mutexes, matching the scripted driver's exit path.
-  std::_Exit(findings.empty() ? 0 : 1);
+  requestExit(findings.empty() ? 0 : 1);
 }
 
 }  // namespace

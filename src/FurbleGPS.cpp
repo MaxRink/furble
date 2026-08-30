@@ -127,6 +127,17 @@ uint32_t tickDistance(uint32_t first, uint32_t second) {
   const int32_t delta = static_cast<int32_t>(first - second);
   return delta < 0 ? static_cast<uint32_t>(-delta) : static_cast<uint32_t>(delta);
 }
+
+void wakeGPSService(QueueHandle_t queue) {
+  if (queue == nullptr) {
+    return;
+  }
+  // Settings transitions set m_Enabled false before sending this private
+  // event. The task discards it under the service mutex, so it exists only to
+  // cancel an idle UART receive without waiting for the next tick deadline.
+  const uart_event_t wake = {.type = UART_DATA, .size = 0};
+  xQueueSendToFront(queue, &wake, 0);
+}
 }  // namespace
 
 GPS &GPS::getInstance() {
@@ -206,6 +217,9 @@ void GPS::task(void) {
 
     uart_event_t event;
     if (xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick()))) {
+      if (!m_Enabled) {
+        continue;
+      }
       switch (event.type) {
         case UART_DATA:
           serviceSerial();
@@ -248,6 +262,7 @@ void GPS::enable(void) {
 
   // park the GPS task first, m_Enabled gates every cycle entry point
   m_Enabled = false;
+  wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
 
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
@@ -1280,6 +1295,7 @@ bool GPS::sendAidIni(void) {
 
 void GPS::disable(void) {
   m_Enabled = false;
+  wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
   FURBLE_SIM_GPS_STATE("off");
   m_ConfigPending = false;

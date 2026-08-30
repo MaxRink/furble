@@ -16,6 +16,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "Scan.h"
 #include "capture.h"
 #include "driver.h"
 
@@ -25,7 +26,7 @@ namespace {
 
 std::atomic<bool> panelReady {false};
 
-int runSimulator(bool *) {
+int runSimulator() {
   using namespace Furble;
 
   Platform::init();
@@ -119,7 +120,14 @@ int runSimulator(bool *) {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   ui.task();
-  return 0;
+  Scan::getInstance().shutdown();
+  // No rig worker may arm or touch a service timer after this point. The
+  // esp_timer API deletes callbacks asynchronously on hardware, so keep the
+  // callback argument alive until the simulator dispatcher has joined.
+  Sim::quiesceRig();
+  furble_sim_stop_all_tasks();
+  Sim::stopRig();
+  return Sim::exitResult();
 }
 
 }  // namespace
@@ -130,15 +138,18 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  bool running = true;
-  std::thread simulator([&running]() { runSimulator(&running); });
+  int simulatorResult = 0;
+  std::thread simulator([&simulatorResult]() { simulatorResult = runSimulator(); });
   while (!panelReady.load(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
-  while (lgfx::Panel_sdl::loop() == 0) {
+  while (!Furble::Sim::exitRequested() && lgfx::Panel_sdl::loop() == 0) {
   }
 
-  running = false;
+  if (!Furble::Sim::exitRequested()) {
+    Furble::Sim::requestExit(0);
+  }
   simulator.join();
-  return lgfx::Panel_sdl::close();
+  const int closeResult = lgfx::Panel_sdl::close();
+  return simulatorResult == 0 ? closeResult : simulatorResult;
 }

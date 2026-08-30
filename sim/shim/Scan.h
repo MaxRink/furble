@@ -7,6 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #include <CameraList.h>
 
@@ -24,6 +25,7 @@ class Scan {
   static constexpr size_t MODE_COUNT = 3;
 
   static Scan &getInstance(void);
+  ~Scan();
 
   void setMode(Mode mode);
   void setTimeout(uint32_t timeout);
@@ -35,6 +37,8 @@ class Scan {
              void *scan_result_private_data,
              std::function<void(void *)> scan_end_callback = nullptr);
   void stop(void);
+  /** Stop scanning and join simulator-only callback probe workers. */
+  void shutdown(void);
   bool isActive(void) const;
   size_t endCallbackCount(void) const;
   /** Identifier of the simulated advertisement currently being drained. */
@@ -70,6 +74,7 @@ class Scan {
   std::condition_variable m_WorkerDone;
   std::deque<PendingEvent> m_PendingEvents;
   std::thread m_Worker;
+  std::vector<std::thread> m_ProbeWorkers;
   bool m_WorkerRunning = false;
 };
 

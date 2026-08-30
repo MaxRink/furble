@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
@@ -83,6 +84,7 @@ Furble::UI *scenarioUi = nullptr;
 bool configured = false;
 Furble::UI *backTarget = nullptr;
 bool waiting = false;
+std::atomic<int> requestedExit {-1};
 battery_reading_t simulatedBattery = {80, 4000, 0, false};
 bool simulatedPowerOff = false;
 
@@ -773,9 +775,8 @@ void checkLivenessInvariant(void) {
               << targets << " camera links are live beyond the " << livenessGraceMs()
               << " ms grace period\n";
     std::cout.flush();
-    // Skip host teardown, matching the assert failure path, so the exit code
-    // is not masked by background sim threads unwinding their mutexes.
-    std::_Exit(1);
+    requestExit(1);
+    return;
   }
   std::cout << "liveness violation recorded (enforcement off): " << connected << " of " << targets
             << " camera links live\n";
@@ -793,7 +794,8 @@ bool applyLinkLiesAction(const std::string &action) {
   }
   if (!scenarioSettingIsTrue("link_lies")) {
     std::cerr << "action link-lies-kill requires: seed link_lies true\n";
-    std::exit(2);
+    requestExit(2);
+    return true;
   }
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
@@ -895,7 +897,8 @@ std::string queryValue(const std::string &key) {
       const size_t dot = field.find('.');
       if (dot == std::string::npos) {
         std::cerr << "GPS config assert needs <index>.state or <index>.attempts\n";
-        std::exit(2);
+        requestExit(2);
+        return "";
       }
       const size_t index = static_cast<size_t>(std::stoul(field.substr(0, dot)));
       const auto status = gps.getConfigStatus();
@@ -943,7 +946,8 @@ std::string queryValue(const std::string &key) {
     }
     if (value.empty()) {
       std::cerr << "Unknown setting for assert: " << name << '\n';
-      std::exit(2);
+      requestExit(2);
+      return "";
     }
     return value;
   }
@@ -979,7 +983,8 @@ std::string queryValue(const std::string &key) {
   }
 
   std::cerr << "Unknown assert key: " << key << '\n';
-  std::exit(2);
+  requestExit(2);
+  return "";
 }
 
 }  // namespace
@@ -1032,7 +1037,8 @@ void applyScenarioSettings(void) {
       const uint32_t level = parseUnsigned(batteryLevel->second);
       if (level > 100) {
         std::cerr << "Invalid battery_level: " << batteryLevel->second << '\n';
-        std::exit(2);
+        requestExit(2);
+        return;
       }
       reading.level = static_cast<uint8_t>(level);
     }
@@ -1047,7 +1053,8 @@ void applyScenarioSettings(void) {
       if (value != "0" && value != "1" && value != "true" && value != "false" && value != "yes"
           && value != "no" && value != "on" && value != "off") {
         std::cerr << "Invalid battery_charging: " << value << '\n';
-        std::exit(2);
+        requestExit(2);
+        return;
       }
       reading.charging = parseBool(value);
     }
@@ -1114,6 +1121,7 @@ void notePowerOff(void) {
 }
 
 void configure(int argc, char **argv) {
+  requestedExit.store(-1);
   if (configured) {
     return;
   }
@@ -1238,7 +1246,7 @@ void driverTick(void) {
         waitUntil = now + step.milliseconds;
         waiting = true;
       } else if (clockDeadlineReached(now, waitUntil)) {
-        // Give detached production tasks one final host scheduling quantum
+        // Give joinable production tasks one final host scheduling quantum
         // after virtual time reaches the deadline. Without this handoff a
         // GPS retry deadline can be observed by the UI before serviceCycle()
         // gets to run, making boundary assertions race the worker.
@@ -1271,11 +1279,13 @@ void driverTick(void) {
       // emulated GPIOs, which do not reach the UI in a headless run.
       if (scenarioUi == nullptr) {
         std::cerr << "Scenario button ran before the UI was ready: " << step.name << '\n';
-        std::exit(1);
+        requestExit(1);
+        return;
       }
       if (!scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
         std::cerr << "Simulator button not available on this board: " << step.name << '\n';
-        std::exit(1);
+        requestExit(1);
+        return;
       }
       ++stepIndex;
       break;
@@ -1283,7 +1293,8 @@ void driverTick(void) {
     case StepType::CAPTURE:
       if (!captureFrame(capturePath(step.name))) {
         std::cerr << "Could not capture simulator frame: " << step.name << '\n';
-        std::exit(1);
+        requestExit(1);
+        return;
       }
       std::cout << "Captured " << capturePath(step.name) << '\n';
       ++stepIndex;
@@ -1319,7 +1330,8 @@ void driverTick(void) {
     case StepType::HOME:
       if (backTarget == nullptr || !backTarget->simulatorHome()) {
         std::cerr << "Could not navigate home in simulator\n";
-        std::exit(1);
+        requestExit(1);
+        return;
       }
       ++stepIndex;
       break;
@@ -1327,7 +1339,8 @@ void driverTick(void) {
     case StepType::BACK:
       if (backTarget == nullptr || !backTarget->simulatorBack()) {
         std::cerr << "Could not navigate back in simulator\n";
-        std::exit(1);
+        requestExit(1);
+        return;
       }
       ++stepIndex;
       break;
@@ -1346,7 +1359,8 @@ void driverTick(void) {
     case StepType::ACTION:
       if (scenarioUi == nullptr) {
         std::cerr << "Scenario action ran before the UI was ready: " << step.name << '\n';
-        std::exit(1);
+        requestExit(1);
+        return;
       }
       if (!parseBatteryAction(step.name) && !applyLinkLiesAction(step.name)) {
         scenarioUi->simScenarioAction(step.name.c_str());
@@ -1361,9 +1375,8 @@ void driverTick(void) {
         std::cerr << "ASSERT FAILED: " << step.name << " expected '" << step.expected << "' got '"
                   << actual << "'\n";
         std::cout.flush();
-        // Skip host teardown so the assertion exit code is not masked by an
-        // abort from background sim threads unwinding their mutexes.
-        std::_Exit(1);
+        requestExit(1);
+        return;
       }
       std::cout << "assert ok: " << step.name << " = " << actual << '\n';
       ++stepIndex;
@@ -1386,7 +1399,8 @@ void driverTick(void) {
           std::cerr << "ASSERT-EVENTUALLY FAILED: " << step.name << " expected '" << step.expected
                     << "' got '" << actual << "' after " << step.timeoutMilliseconds << " ms\n";
           std::cout.flush();
-          std::_Exit(1);
+          requestExit(1);
+          return;
         }
         // This is a host-side observation wait. It leaves the UI task blocked
         // while allowing background simulator tasks to process the state that
@@ -1424,13 +1438,15 @@ void driverTick(void) {
         std::cerr << "ASSERT_MAX FAILED: " << step.name << " non-numeric (got '" << actual
                   << "', max '" << step.expected << "')\n";
         std::cout.flush();
-        std::_Exit(1);
+        requestExit(1);
+        return;
       }
       if (actualValue > maxValue) {
         std::cerr << "ASSERT_MAX FAILED: " << step.name << " expected <= " << maxValue << " got "
                   << actualValue << '\n';
         std::cout.flush();
-        std::_Exit(1);
+        requestExit(1);
+        return;
       }
       std::cout << "assert ok: " << step.name << " = " << actualValue << " (<= " << maxValue
                 << ")\n";
@@ -1450,13 +1466,15 @@ void driverTick(void) {
         std::cerr << "ASSERT_MIN FAILED: " << step.name << " non-numeric (got '" << actual
                   << "', min '" << step.expected << "')\n";
         std::cout.flush();
-        std::_Exit(1);
+        requestExit(1);
+        return;
       }
       if (actualValue < minValue) {
         std::cerr << "ASSERT_MIN FAILED: " << step.name << " expected >= " << minValue << " got "
                   << actualValue << '\n';
         std::cout.flush();
-        std::_Exit(1);
+        requestExit(1);
+        return;
       }
       std::cout << "assert ok: " << step.name << " = " << actualValue << " (>= " << minValue
                 << ")\n";
@@ -1470,11 +1488,24 @@ void driverTick(void) {
       break;
 
     case StepType::EXIT:
-      // Flush before the teardown-free exit so buffered assert and print lines
-      // reach the log when stdout is a pipe rather than a terminal.
       std::cout.flush();
-      std::_Exit(0);
+      requestExit(0);
+      return;
   }
+}
+
+void requestExit(int result) {
+  int unset = -1;
+  requestedExit.compare_exchange_strong(unset, result);
+}
+
+bool exitRequested(void) {
+  return requestedExit.load() >= 0;
+}
+
+int exitResult(void) {
+  const int result = requestedExit.load();
+  return result < 0 ? 0 : result;
 }
 
 bool connectShouldFail(void) {

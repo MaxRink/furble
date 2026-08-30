@@ -14,24 +14,33 @@ Line anchors below were read at `f455b0b` on fork `master` and at `7487f64` on
 
 ## Implementation state
 
-Updated 2026-08-17 on `feat/63-sim-power`, stacked on `feat/28-emulator`.
+Updated 2026-08-30 after the simulator fidelity review. The profiler and
+scenario plumbing below are present, but the plan is not complete and its
+current power figures are advisory only. The SDL build still substitutes the
+connection Control, Camera, CameraList, and Scan policy, uses a host scheduler
+that is not yet equivalent to FreeRTOS, and has not been calibrated against
+per-board hardware traces. No absolute current or runtime claim is a release
+gate until plan 158 and the calibration phases land.
 
-- Phase A is complete: the simulator records named LVGL timer fires,
+- Phase A instrumentation is present but incomplete: the simulator records
+  named LVGL timer fires,
   invalidated pixels, flushed pixels, queue wakeups and task delays. The
   driver supports `report <file>.json` and the nine usage scenarios live in
   `sim/scenarios/`.
-- Phase B is complete: the `esp_pm` shim records lock transitions with
+- Phase B instrumentation is present but incomplete: the `esp_pm` shim records
+  lock transitions with
   virtual timestamps, Power owner names, hold histograms and estimated light
   sleep residency.
-- Phase C is complete for the simulator scope: DFS residency is reported and
+- Phase C is a partial host model: DFS residency is reported and
   the M5PM1 stub covers wake-on-first-access, watchdog, timer and shutdown
   behavior.
-- The S3 energy model is implemented from
+- The S3 energy model is an uncalibrated advisory model from
   `tools/power-model/board-currents.yaml`. It combines the activity, lock,
   display, radio and GPS state intervals into estimated average mA.
-- Phase G usage coverage is implemented and all nine scripts run headless.
-  The CI workflow and sticky PR reporting are intentionally deferred so they
-  can be consolidated with the screenshot job later.
+- Phase G usage coverage is present and the nine scripts run headless, but the
+  CI workflow and sticky PR reporting are intentionally deferred so they
+  can be consolidated with the screenshot job later. This is not evidence of
+  hardware parity.
 - The host power-profiler wrap regression uses an atomically-created unique
   temporary directory for each process. CTest also runs four independent
   profiler workers, so parallel host suites cannot overwrite or remove one
@@ -77,11 +86,12 @@ that drains in hours instead of days.
 The hardware answer to all three is a current measurement: a device on the
 bench, a stable setup, and a 30 to 60 minute soak per configuration. That is
 the right tool for calibration and the wrong tool for regression detection.
-The simulator from [28-emulator.md](28-emulator.md) already runs the shipping
-`src/FurbleUI.cpp`, `src/FurbleGPS.cpp` and `src/FurbleSettings.cpp` on a
-virtual clock under a scripted driver. All three bug classes are visible in
-that build as counters: timer fires, invalidated pixels, lock hold time. The
-sim can catch all three in seconds in CI.
+The current simulator runs the shipping UI, GPS, and settings code on a
+scripted host driver, but its connection policy and parts of its scheduler and
+peripheral model are still substitutes. The counters therefore expose useful
+firmware activity trends, not hardware-identical power. Plan 158 makes the
+scheduler and teardown deterministic before the production connection stack
+and calibrated peripheral models are introduced.
 
 ## Design
 
@@ -439,14 +449,14 @@ Extended states, optional for the first table:
 The percent-per-hour slope times the nameplate cell capacity gives a rough
 mA per state. Rough is fine: the gate is relative.
 
-This run is not a prerequisite for anything. The table ships seeded from
-datasheets and published measurements. The run upgrades entries from
-`datasheet` and `estimated` confidence to `measured-local`, and it validates
-the composed model against the one hard number already on file: the 3.3 mA
-S3 connected-idle floor from
-[00-hardware-experiments.md](00-hardware-experiments.md) Experiment A. If
-the composed model and that floor disagree badly, the model is wrong and the
-disagreement is the bug report.
+This run is not a prerequisite for the first profiler implementation, but it
+is a prerequisite for any absolute-current or runtime claim. The table may be
+seeded from datasheets and published measurements for relative development
+only. The run can upgrade entries from `datasheet` and `estimated` confidence
+to `measured-local`; the 3.3 mA S3 value in
+[00-hardware-experiments.md](00-hardware-experiments.md) was collected under
+different conditions and is a comparison point, not validation. Plan 158
+must first make scheduler timing and production connection behavior faithful.
 
 ## Phases
 
@@ -472,25 +482,27 @@ the plan 19 and plan 26 interactions. Effort: one to two days.
 
 ### Phase D: BLE duty and GPS receiver models
 
-The BLE duty integrator over the plans/36 mock NimBLE layer. The GPS
-receiver state model over the real `src/FurbleGPS.cpp` policy code. Both
-feed duty integrals into the report. This phase depends on the plans/36
-tier B mock existing; if it does not yet, the GPS half lands alone. Effort:
-two to three days.
+The BLE duty integrator must run over the production connection stack and
+plans/36 MockNimBLE layer, not the current fake Control. The GPS receiver
+state model runs over the real `src/FurbleGPS.cpp` policy code. Both feed duty
+integrals into the report. This phase depends on plan 158 Phase 2 and the
+plans/36 tier B mock. Effort: two to three days.
 
 ### Phase E: energy model and gate
 
 Consume `tools/power-model/board-currents.yaml`, compute estimated mA per
 scenario per board, write baselines, extend the plan 28 CI job with the
-comparison and the artifact upload. Gate goes live with datasheet numbers.
+comparison and the artifact upload. Reports may be advisory with datasheet
+numbers; a blocking power gate waits for plan 158 scheduler and connection
+parity plus the relevant calibration.
 Effort: one day.
 
-### Phase F: hardware calibration, in parallel
+### Phase F: hardware calibration, after scheduler and stack parity
 
-The micro-task above. Independent of every other phase, needs only a
-StickS3 and the debug console. Upgrades table confidence and validates the
-composed model against the Experiment A floor. Effort: one bench session
-plus soak time.
+The micro-task above needs a StickS3, a calibrated current measurement, and
+the scheduler and production connection phases. It upgrades table
+confidence and compares the composed model with hardware traces; it does not
+make the model identical by itself. Effort: one bench session plus soak time.
 
 ### Phase G: usage test suite and PR reporting
 
@@ -511,8 +523,9 @@ time. Effort: one to two days.
   line stating the numbers are relative estimates, and the gate compares
   sim against sim, never sim against hardware.
 - **Table drift.** Datasheet numbers age and confidence tags rot. Mitigate:
-  the schema forces a source per entry, and the Experiment A floor check in
-  phase F pins the composed model to one measured truth.
+  the schema forces a source per entry, and phase F records comparisons with
+  measured hardware traces after plan 158. A comparison does not certify
+  parity without matching state and timing conditions.
 - **Baseline churn.** If reports are not deterministic the gate becomes
   noise. Mitigate: everything runs on the virtual clock, and verification
   requires two runs to produce byte-identical JSON before the gate turns on.
@@ -552,8 +565,8 @@ time. Effort: one to two days.
 - Disable standby entry in the GPS duty policy: the receiver model shows
   tracking current across the whole scenario.
 - The composed model's connected-idle estimate for the S3 is compared
-  against the 3.3 mA Experiment A floor after phase F. The ratio is
-  documented. It is not a gate.
+  against a calibrated Experiment A trace after phase F and plan 158. The
+  ratio and state conditions are documented. It is not a gate by itself.
 - The five release environments build unchanged, and no release binary
   contains any sim symbol. Docs and sim-only changes cannot regress
   firmware.

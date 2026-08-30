@@ -98,7 +98,7 @@ class CompanionRigTransport final: public Furble::CompanionTransport {
     return true;
   }
 
-  void stop(void) {
+  void quiesce(void) {
     const bool wasRunning = m_Running.exchange(false);
     if (!wasRunning && !m_ListenThread.joinable() && !m_NotifyThread.joinable()) {
       return;
@@ -121,6 +121,10 @@ class CompanionRigTransport final: public Furble::CompanionTransport {
       m_NotifyThread.join();
     }
     m_Service.onDisconnected();
+  }
+
+  void stop(void) {
+    quiesce();
     m_Service.deinit();
   }
 
@@ -555,6 +559,16 @@ void startRig(void) {
   }
 }
 
+void quiesceRig(void) {
+  if (rig != nullptr) {
+    rig->quiesce();
+  }
+}
+
+void stopRig(void) {
+  rig.reset();
+}
+
 bool rigRequested(void) {
   return requested;
 }
@@ -615,6 +629,8 @@ std::atomic<uint32_t> injectedPin {0};
 
 void rigConfigure(bool, uint16_t, bool, bool, uint32_t) {}
 void startRig(void) {}
+void quiesceRig(void) {}
+void stopRig(void) {}
 bool rigRequested(void) {
   return false;
 }

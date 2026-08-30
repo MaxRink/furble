@@ -24,8 +24,9 @@ bool fuzzActive(void);
 
 // Advance the fuzzer by one simulator tick. Executes at most one event per call
 // with settle ticks in between so LVGL can process the transition. Runs on the
-// UI task, so LVGL reads stay single threaded. Exits the process when the event
-// budget is spent, with a non-zero code if any hard invariant failed.
+// UI task, so LVGL reads stay single threaded. Requests orderly simulator
+// shutdown when the event budget is spent, with a non-zero result if a hard
+// invariant failed.
 void fuzzTick(Furble::UI *ui);
 
 }  // namespace Furble::Sim

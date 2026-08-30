@@ -1,12 +1,16 @@
 # sim/ (host SDL simulator)
 
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
-It never changes firmware behavior: no shipping source under src/, include/,
-or lib/ may be modified for the simulator. All adaptation happens through the
-shim headers and the fake implementations here. One narrow exception exists:
-`UI::simulatorHome` and `UI::simulatorBack` in `src/FurbleUI.cpp` give scripts
-deterministic menu navigation. They are guarded by `#if defined(FURBLE_SIM)`,
-which only the sim build defines, so firmware builds compile identical code.
+Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
+shipping sources are allowed only for observability, deterministic navigation,
+or orderly host exit, and firmware builds must compile the unchanged production
+path. The current build still contains simulator substitutes for Control,
+Camera, CameraList, and Scan, so it is not yet a hardware-identical build of the
+production connection stack. The target architecture is to remove those policy
+substitutes and run the production sources against a MockNimBLE boundary and
+calibrated virtual peers. Current shared-source seams include
+`UI::simulatorHome`, `UI::simulatorBack`, and the orderly exit check in
+`UI::task`; the seam inventory below is authoritative.
 
 The complete build, panel, scenario DSL, query, fault-injection, and
 scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
@@ -15,20 +19,52 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 
 ## Parity inventory and seam rules
 
-The simulator is a host build of the production UI/control path. The following
-is the complete intentional seam inventory (a new seam needs a contract test
-and an entry here):
+The simulator shares substantial production UI, GPS, settings, and power
+policy, but the connection path is currently a fake and the host scheduler is
+not yet equivalent to FreeRTOS. The following is the current seam inventory
+and target boundary (a new seam needs a contract test and an entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
 | --- | --- | --- |
-| BLE discovery | `UI::startScan`, `Scan` lifecycle, generation fence, queue drain, `CameraList` update | `sim/ScanSim.cpp` substitutes only the radio/NimBLE event source. Its worker publishes immutable events; it never calls `CameraList` or LVGL. `tests/host` compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
+| BLE discovery | `UI::startScan` and UI-side result materialization are shared; production `Scan` and `CameraList` are not in the SDL build | `sim/shim/Scan.h`, `sim/ScanSim.cpp`, and `sim/CameraListSim.cpp` replace scan lifecycle, radio events, matching, and list persistence. The worker publishes immutable fake events and never touches LVGL. `tests/host` separately compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
-| Camera links | Production `Control` state machine and UI connection handlers | `Camera`/`Control` shims provide a deterministic peer and `simDropActiveLink` injects only a link-loss event. No action edits production connection state behind the state machine, with one deliberate exception: `action link-lies-kill` (armed by `seed link_lies true`) kills the fake link truth while the control state stays active, constructing the false-connected divergence for the driver's continuous liveness invariant (plan 155). |
+| Camera links | UI connection handlers are shared; production `Control`, `Camera`, and `CameraList` are not yet in the SDL build | `sim/FurbleControlSim.cpp`, the fake camera/list, and `sim/ScanSim.cpp` provide the current deterministic peer and link-drop hooks. They are temporary policy substitutes. The target is production `Control`/`Camera`/`CameraList`/`Scan` over MockNimBLE and virtual peers; `action link-lies-kill` remains an interim fault injection until that boundary exists. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
-| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, and the scan-start probe. These are observability/input seams, not alternate policy. Boot minimum-visible delay is the sole wall-clock-only omission. |
+| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, and the scan-start probe. These are observability/input seams, not alternate policy. Plan 158 tracks remaining priority, preemption, same-tick dispatch, delete-other, queue ownership, and CPU-time gaps. |
+
+### Hardware identity status
+
+The acceptance target is 100 percent identical observable behavior for every
+firmware state that can be represented on the host. That requires the same
+production state machines, event ordering, timeout semantics, cancellation and
+ownership rules, boot order, board configuration, and power policy. A passing
+scenario against a fake Control implementation is not evidence of that target.
+
+Plan 158 first makes host deadlines and teardown orderly: one virtual clock for
+FreeRTOS delays, queue deadlines, and esp_timer callbacks, joinable tasks,
+explicit stop and wake, and no process termination from worker threads. Timer
+callbacks use one serialized dispatch boundary and enforce active-state API
+errors. Equal timer deadlines preserve arm order, and a callback can cancel a
+second due timer or delete itself. On exit, companion-rig socket workers join
+first, then tasks and the timer dispatcher join, and only then may the rig
+service owning timer callback arguments be destroyed. Same-tick task ordering and FreeRTOS
+priority/preemption are not yet deterministic and must not be described as
+parity-complete.
+The next vertical slice replaces the connection fakes with production sources
+and MockNimBLE peers. Peripheral models and current tables then require board
+calibration and differential traces against hardware. Physical radio timing,
+analog current, sensor noise, and unavailable peripherals are irreducible
+boundaries; each must be measured, bounded, and an explicit release gate, not
+silently treated as identical.
+
+Plan 159 defines camera peer certification. Virtual peers may import pinned
+behavior from common GitHub implementations and official documentation, but
+only exact capture-backed model and firmware fields can produce a certified
+result. Inferred, synthetic, missing, or conflicting behavior must return
+`UNCERTIFIED` rather than a plausible compatibility pass.
 
 `FURBLE_SIM` conditionals in shared sources are audited at each release:
 `FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h` and
@@ -137,9 +173,10 @@ a regression.
   for extending a scenario's virtual-time budget. Timeout values must be from
   1 through 60000 ms. A timeout prints the last observed value and exits 1.
 - UI-task delays advance virtual time and then perform a short host scheduler
-  handoff. Preserve that handoff: it lets detached background task threads
+  handoff. Preserve that handoff: it lets joinable background task threads
   observe each part of a scripted wait instead of starting work only after the
-  entire virtual-time budget has elapsed.
+  entire virtual-time budget has elapsed. The handoff does not provide
+  deterministic priority or preemption; plan 158 tracks that remaining gap.
 - `action drop` and `action drop <n>` model a dropped fake peer link. `seed
   connect_fail true` makes the fake camera reject connection. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and

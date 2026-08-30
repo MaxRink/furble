@@ -30,4 +30,9 @@ bool esp_timer_is_active(esp_timer_handle_t handle);
 esp_err_t esp_timer_start_once(esp_timer_handle_t handle, uint64_t timeout_us);
 esp_err_t esp_timer_stop(esp_timer_handle_t handle);
 
+// Fire the currently armed one-shot timer on the caller's thread. This keeps
+// CompanionService timer overlap tests deterministic without adding a second
+// timer scheduler to the host target.
+extern "C" bool furble_host_fire_active_timer(void);
+
 #endif

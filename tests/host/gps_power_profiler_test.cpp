@@ -4,6 +4,7 @@
 // Keep that state visible in simulator reports and ensure a later probe can
 // hold the lock only for its bounded acquisition window.
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -12,6 +13,16 @@
 
 #include "clock.h"
 #include "power_profiler.h"
+
+namespace Furble::Sim {
+
+std::atomic<int> requestedExit {-1};
+
+void requestExit(int result) {
+  requestedExit.store(result);
+}
+
+}  // namespace Furble::Sim
 
 namespace {
 
@@ -81,6 +92,7 @@ int main() {
         "light sleep is available while the degraded lock is released");
   check(lockHasField(json, "no_light_sleep", "current_count", 0),
         "the bounded probe releases its power lock");
+  check(requestedExit.load() == -1, "writing a valid report does not request simulator exit");
 
   if (failures != 0) {
     std::cerr << failures << " check(s) failed\n";

@@ -9,7 +9,7 @@ wait 4000
 assert gps.state standby
 uart-mode pause
 wait 12000
-# The GPS task is detached from the UI task. Give it a bounded virtual-time
+# The GPS task runs independently from the UI task. Give it a bounded virtual-time
 # handoff before asserting the transition, since busy CI hosts can otherwise
 # leave the receiver in standby at the first observation point.
 wait 3000

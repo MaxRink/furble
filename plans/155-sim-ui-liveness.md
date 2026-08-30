@@ -72,11 +72,17 @@ the seed so no scenario builds the divergence by accident.
   `assert_min ui.liveness_violations 1`; re-enabled, it passes. No mutation
   left in the tree.
 
+These checks prove the interim invariant and its fault injection against the
+fake connection implementation only. They do not cover production Control
+ownership, callback lifetime, cancellation, timeout, or scheduler behavior;
+those are tracked by plan 158 and its follow-up vertical slices.
+
 ## Long-term remediation (future work)
 
-This plan hardens the fake-control sim. The class of bug from the 2026-08-28
-incident (production `Control`/NimBLE believing a dead link is alive) can only
-be reproduced by simulating over the REAL `Control` state machine:
+This plan hardens the fake-control sim. It is an interim guard, not production
+connection parity. The class of bug from the 2026-08-28 incident (production
+`Control`/NimBLE believing a dead link is alive) can only be reproduced by
+simulating over the REAL `Control` state machine:
 
 - Compile production `FurbleControl.cpp` into the sim against a MockNimBLE
   layer (the `tests/host` fake NimBLE is the starting point).
@@ -87,5 +93,7 @@ be reproduced by simulating over the REAL `Control` state machine:
 
 See the sim gap analysis from the 2026-08-28 incident review: the fake control
 cannot express UI/link divergence by construction, which is why the `link_lies`
-seed exists as an interim, hand-built divergence. The real-Control sim is
-tracked separately and is not attempted here.
+seed exists as an interim, hand-built divergence. Plan 158 first makes the
+host scheduler and teardown deterministic, then tracks the production-Control
+vertical slice and hardware calibration required for a parity claim. The
+real-Control sim is not attempted in this plan.
