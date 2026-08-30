@@ -91,3 +91,10 @@ protocol core.
 - The Fujifilm X100VI Secure golden GATT handshake (STATUS values, identity
   write, registration-accept notifications, shutter sequence) is recorded in
   `plans/95-engineering-lessons.md`. Cite it instead of re-capturing.
+- `protocol/` holds pure, host-testable protocol helpers with no BLE, NVS or
+  app-layer deps. `FujifilmProtocol` is the camera wire codec. `GpsCasic`
+  (Furble::Casic) is the AT6668/CASIC GPS helper: binary checksum and framing,
+  the autobaud ladder, the GSV/GSA satellite parser, ephemeris cache framing
+  and the MON-HW decode. It is used by `src/FurbleGPS`, not by any camera, and
+  is covered by the `gps-casic` host test. Keep it dependency-free so both the
+  firmware and the host suite link it unchanged.

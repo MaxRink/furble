@@ -46,6 +46,11 @@ wait 350
 capture dark-settings-gps
 print ui.page
 
+action nav gps_sats
+wait 2800
+capture dark-gps-satellites
+print ui.page
+
 action nav bluetooth
 wait 350
 capture dark-bluetooth

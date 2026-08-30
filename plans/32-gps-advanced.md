@@ -40,11 +40,60 @@ Phase 1 is implemented on `feat/32-gps-advanced`.
   ESP32 clock at the 1970 epoch, and asserting a valid time of unknown age would
   feed the receiver an over-confident wrong time and hurt time to first fix. The
   cached position still narrows the search safely.
-- PR32a autobaud, PR32c dynamic platform, tier 2 ephemeris, companion-fed
-  assistance and the satellite detail page remain out of scope.
-- Hardware verification is pending. The sandboxed worktree could not run
-  PlatformIO; the `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3`
-  build was run on the harvest machine at commit time and succeeded.
+Phase 2 is implemented on `feat/32-gps-advanced-phase2`, branched from
+`fork/master`. The parseable logic moved into a host-tested module,
+`lib/furble/protocol/GpsCasic.{h,cpp}`, covered by the `gps-casic` host test.
+
+- PR32a autobaud and no-receiver state, DONE. `GPS_BAUD` gains the sentinel
+  value 0 for Auto. A new `Casic::Autobaud` ladder probes 115200, 9600, 38400,
+  57600, 19200 then 4800, one NMEA sentence pair per rate, and locks on the
+  first rate that yields two passing checksums. When the ladder finds nothing it
+  enters a named `absent` state, drops the 5 V rail, and retries once after 60 s.
+  The detection state and detected baud show in `gps status` and on the Raw NMEA
+  page. **Deviation from the plan, deliberate:** the default stays `9600`, not
+  `Auto`. The task brief requires the default to preserve current behaviour, so
+  Auto is opt-in. Existing installs are unchanged; only a user who selects Auto
+  gets detection. The `$PCAS06` identity query and `$GPTXT` parse are not
+  implemented; detection relies on the checksum criterion alone.
+- PR32d tier 2 ephemeris replay, DONE in framing, hardware-tuning-pending in
+  effect. `GPS_ASSIST` mode 2 is now selectable in the roller. On a stable fix
+  furble polls `MSG-GPSEPH` 0x08 0x07, `MSG-GPSION` 0x08 0x06 and `MSG-GPSUTC`
+  0x08 0x05 with a `CFG-MSG` rate 0xFFFF poll, stores the frames verbatim in the
+  `gps_eph` NVS blob at most once an hour, and replays them paced one frame at a
+  time on the next enable, refusing a cache older than four hours. The store,
+  age-bounding and paced-replay framing are host-tested. Whether the replay
+  actually shortens time to first fix on this firmware needs the bench, per the
+  plan's own measurement caveat.
+- PR32e satellite detail page, DONE. A direct GSV and GSA parser
+  (`Casic::NmeaSatellites`) fills a per satellite table with id, constellation,
+  elevation, azimuth, C/N0 and the used flag, plus PDOP, HDOP, VDOP and fix
+  type. It runs only while the Satellites page or `gps sats on` is active, which
+  un-prunes GSV and GSA and restores the user's set on close. Multi-sentence GSV
+  reassembly and the DOP parse are host-tested.
+- PR32c dynamic platform, scaffolded, hardware-tuning-pending. `GPS_PLATFORM`
+  (wire id 42, key `gps_plat`, default 0 do-not-send) selects Portable,
+  Stationary, Pedestrian or Vehicle. It is applied through the same `CFG-NAVX`
+  query-modify-write as the constellation mask, editing `dyModel` at offset 4
+  under mask bit B0, with a `$PCAS11` NMEA fallback. The `$PCAS11` numbering is
+  third-party attested only, so it is provisional; the on-device effect of
+  `dyModel` is unmeasured. Reachable from the console with `gps platform <0-4>`.
+- MON-HW interference poll, scaffolded, hardware-tuning-pending. `gps monhw`
+  sends the poll and prints the decoded and raw response. The 56-byte layout
+  could not be confirmed against a live unit, so `Casic::parseMonHw` reads a
+  conservative subset and the console prints the raw bytes and marks it pending.
+- Companion-fed assistance (tier 3) remains out of scope; it belongs to
+  `plans/50-companion-app-design.md`.
+- Data sources: the CASIC binary framing, the id-first checksum, `AID-INI`,
+  `CFG-NAVX` `dyModel`, the `MSG-GPSEPH/ION/UTC` ids and `MON-HW` come from the
+  CASIC v3.6 specification; the GSV and GSA field layouts, the GNSS numbering and
+  the corrected checksum formula come from the Quectel L76K specification; the
+  `$PCAS11` stationary value is from the millerjs ATGM336H wiki. All are listed
+  under References below and cited inline in `GpsCasic.h`.
+- Hardware verification is pending for every Phase 2 item that touches the
+  receiver: autobaud lock and no-receiver drop, ephemeris replay effect on TTFF,
+  the `dyModel`/`$PCAS11` platform change, and the MON-HW decode. Host tests and
+  the five release plus `m5stick-s3-debug` firmware builds pass. On-device
+  verification uses the console script in each PR section below.
 
 ## Motivation
 

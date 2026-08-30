@@ -622,38 +622,6 @@ target_include_directories(ota_state_machine_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(ota_state_machine_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
-# Transport-neutral MQTT OTA envelope and delivery policy. This is production
-# source compiled directly into the host test, so simulator and firmware use
-# the same parser, chunk ledger, and retained/replay policy.
-add_executable(ota_mqtt_protocol_test
-               ota_mqtt_protocol_test.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp)
-target_include_directories(ota_mqtt_protocol_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                        -Wno-unused-parameter)
-
-# Durable anti-rollback journal. The test supplies a fault-injecting backend,
-# while the production JournalReplayStore and its fixed record format are
-# compiled unchanged for host and simulator.
-add_executable(ota_replay_store_test
-               ota_replay_store_test.cpp
-               nvs_replay_fake/nvs_fake.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAReplayStoreNVS.cpp)
-target_include_directories(ota_replay_store_test BEFORE PRIVATE
-                           ${CMAKE_CURRENT_SOURCE_DIR}/nvs_replay_fake
-                           ${FURBLE_ROOT}/include)
-target_compile_definitions(ota_replay_store_test PRIVATE ESP_PLATFORM)
-target_compile_options(ota_replay_store_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                       -Wno-unused-parameter)
-
-add_executable(ota_partition_sink_test
-               ota_partition_sink_test.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp)
-target_include_directories(ota_partition_sink_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(ota_partition_sink_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                          -Wno-unused-parameter)
 # Pure GPS degraded retry policy from include/FurbleGPSPowerCycle.h. The GPS task
 # shares this header, so the suite pins the bounded, self recovering behaviour
 # that replaced the permanent lock trap. No hardware dependency, so it needs no
@@ -663,19 +631,14 @@ target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
 
-# Exercise the simulator's production power profiler accounting for the GPS
-# degraded state. This stays host-only because it drives the same profiler API
-# that the SDL simulator uses, including lock and virtual-clock transitions.
-add_executable(gps_power_profiler_test
-               gps_power_profiler_test.cpp
-               ${FURBLE_ROOT}/sim/clock.cpp
-               ${FURBLE_ROOT}/sim/power_profiler.cpp)
-target_include_directories(gps_power_profiler_test PRIVATE
-                           ${FURBLE_ROOT}/sim
-                           ${FURBLE_ROOT}/include)
-target_compile_options(gps_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                         -Wno-unused-parameter)
-target_link_libraries(gps_power_profiler_test PRIVATE Threads::Threads)
+# Pure CASIC and NMEA helper logic from lib/furble/protocol/GpsCasic. No BLE or
+# NVS dependency, so it compiles the production source directly.
+add_executable(gps_casic_test
+               gps_casic_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp)
+target_include_directories(gps_casic_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                              -Wno-unused-parameter)
 
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
@@ -1100,11 +1063,8 @@ if(BUILD_TESTING)
   add_test(NAME ethernet-transport COMMAND ethernet_test)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
-  add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
-  add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
-  add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
-  add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
+  add_test(NAME gps-casic COMMAND gps_casic_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
 

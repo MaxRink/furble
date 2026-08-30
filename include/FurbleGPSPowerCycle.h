@@ -95,14 +95,6 @@ inline bool gpsIndicatorDegraded(bool enabled, bool degraded) {
   return enabled && degraded;
 }
 
-// A degraded receiver deliberately releases NO_LIGHT_SLEEP. The retry probe
-// moves back to ACQUIRING before it asks for the lock again. Keeping this gate
-// next to the retry policy prevents an unsolicited late UART burst from
-// re-acquiring the lock while the backoff is active.
-inline bool gpsPowerLockRequired(bool enabled, bool degraded) {
-  return enabled && !degraded;
-}
-
 }  // namespace Furble
 
 #endif

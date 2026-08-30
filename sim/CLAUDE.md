@@ -303,40 +303,6 @@ a regression.
   overflow state for intentional-scroll pages. CI runs it on all three panel
   classes with optional capabilities enabled. Keep route identity and scroll
   endpoint assertions in `page-matrix.txt` rather than duplicating them here.
-- `seed fb_output 0..4` models the persisted feedback output selection. Page
-  and overflow matrices seed `fb_output 1` so the sound volume route is truly
-  reachable when feedback capability is enabled. `feedback-hidden-route.txt`
-  verifies that the volume route remains unreachable when the output is Off;
-  hidden controls must never be activated by simulator navigation.
-
-## IMU injection and redraw probe
-
-- The IMU (BMI270/MPU6886) is a physical sensor with no host counterpart, so a
-  scenario injects orientation through `sim/ImuSim.cpp`, which mirrors the same
-  `M5.Imu` surface (enabled, update, getAccel, getGyro) the firmware reads under
-  `#if defined(FURBLE_SIM)`. Actions: `imu.accel <x> <y> <z>` (G), `imu.roll
-  <deg>`, `imu.pitch <deg>`, `imu.gyro <x> <y> <z>`, `imu.enable`, `imu.disable`,
-  `imu.accel.fail/recover` and `imu.gyro.fail/recover`.
-  Seed `imu true` turns the IMU setting on, while `seed imu false` models the
-  disabled setting and hides both optional pages. The spirit level filter,
-  sensitivity curve and auto-rotate all run on the injected sample.
-  `imu_accel_x/y/z` read the rendered Diagnostics > IMU live label back.
-  `imu_accel_updates` and `imu_gyro_updates` count actual label redraws; validity
-  is tracked independently so one failed sensor does not redraw the other.
-  Script actions are queued onto the UI task before touching LVGL; the
-  `sim_action_on_ui` query is a thread-ownership regression guard.
-  `level_root_width/height` expose the pixel-sized top-level window after panel
-  rotation, and `level_side_on_screen` verifies the complete moving bubble lies
-  inside the active display. Keep these guards with the numeric bubble-offset
-  checks: an offset can be correct while a stale portrait-width root clips the
-  widget from the landscape framebuffer.
-- Redraw-storm probe: the `invalidate.reset` action zeroes a counter fed by the
-  LVGL `LV_EVENT_INVALIDATE_AREA` hook (`profilerInvalidationProbeCount` in
-  `sim/power_profiler.cpp`), and `ui.invalidate_count` reports events since the
-  reset. Hold a page at a fixed injected state over a wait and bound the count to
-  catch a per-tick setter that redraws every frame (CLAUDE.md "LVGL redraw
-  trap"). `redraw-steady.txt` guards the level and connected pages this way.
-- Numeric bounds: alongside the exact-match `assert`, the driver has `assert_max
-  <key> <n>` and `assert_min <key> <n>` (integer parse, inclusive). They express
-  a redraw ceiling and a width-agnostic direction or render floor (for example
-  `assert_min ui.visible_objects 1`) without pinning a per-panel pixel value.
+- GPS docs use `nav gps_sats` and the `gps-satellite-page` scenario. The fake
+   UART includes a fixed GSV/GSA fixture, so the capture proves the satellite
+   page route and parsed counts without implying live AT6668 hardware coverage.

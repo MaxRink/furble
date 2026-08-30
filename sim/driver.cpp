@@ -885,6 +885,18 @@ std::string queryValue(const std::string &key) {
     if (sub == "satellites") {
       return std::to_string(gps.getSatellites());
     }
+    if (sub == "sats_in_view") {
+      return std::to_string(gps.getSatelliteReport().in_view);
+    }
+    if (sub == "sats_used") {
+      return std::to_string(gps.getSatelliteReport().used);
+    }
+    if (sub == "sats_fix") {
+      return std::to_string(gps.getSatelliteReport().dop.fix_type);
+    }
+    if (sub == "sats_capture") {
+      return gps.satelliteCaptureEnabled() ? "1" : "0";
+    }
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
     }
