@@ -991,6 +991,10 @@ std::string queryValue(const std::string &key) {
 
 }  // namespace
 
+uint32_t livenessViolationCount(void) {
+  return livenessViolations;
+}
+
 void preparePreferences(void) {
   if (scenarioName == "interactive") {
     return;
@@ -1217,15 +1221,15 @@ void startProfiler(void) {
 }
 
 void driverTick(void) {
+  // Keep the continuous liveness check ahead of the fuzzer's phase dispatcher.
+  // A fuzz settle or finish phase must not create a blind spot for a sustained
+  // false-connected presentation.
+  checkLivenessInvariant();
+
   if (fuzzActive()) {
     fuzzTick(scenarioUi);
     return;
   }
-
-  // The liveness invariant runs on every tick, including while a wait step
-  // holds the scenario, so a sustained false-connected presentation cannot
-  // hide between the scripted assertions.
-  checkLivenessInvariant();
 
   if (stepIndex >= steps.size()) {
     return;

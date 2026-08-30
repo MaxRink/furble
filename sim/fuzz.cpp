@@ -4,14 +4,15 @@
 #include <deque>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <random>
-#include <set>
 #include <string>
 #include <vector>
 
 #include "FurbleUI.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "fuzz_machine.h"
 
 // Seeded UI fuzzer. See fuzz.h for the contract. The fuzzer drives the real
 // FurbleUI through the same FURBLE_SIM seams the scripted scenarios use
@@ -118,18 +119,37 @@ struct Finding {
   uint32_t step;
 };
 
+// These are the state surfaces the fuzzer can observe without reaching into
+// LVGL or Control internals. Comparing them after the settle phase makes the
+// no-effect count honest: it means no visible state changed, not that a
+// setting or command could not have changed behind the query boundary.
+constexpr std::array<const char *, 9> kObservableQueries = {
+    "page",           "focus",      "modal",         "modal_count", "connected",
+    "interval_state", "bulb_state", "connect_timer", "overflow"};
+
+struct ObservableState {
+  std::array<std::string, kObservableQueries.size()> values;
+
+  bool operator==(const ObservableState &other) const { return values == other.values; }
+};
+
 // Fuzzer state. All of it lives on the UI task, so no locking is needed.
 bool active = false;
 bool verbose = false;
 uint64_t seed = 0;
 uint32_t maxSteps = 0;
-uint32_t stepCount = 0;
-uint32_t settle = 0;
+std::unique_ptr<FuzzMachine> machine;
+Event pendingEvent = Event::SELECT;
+std::string pendingDescription;
+bool pendingWasStop = false;
+ObservableState stateBeforeApply;
+uint32_t escapeActions = 0;
 std::mt19937_64 rng;
 std::deque<std::string> recentEvents;
 std::vector<Finding> findings;
 std::map<std::string, uint32_t> classCounts;
-std::set<std::string> visitedPages;
+std::map<std::string, uint32_t> eventCounts;
+std::map<std::string, uint32_t> pageCounts;
 
 const char *eventName(Event event) {
   switch (event) {
@@ -176,8 +196,7 @@ const char *eventName(Event event) {
 }
 
 uint32_t pick(uint32_t bound) {
-  std::uniform_int_distribution<uint32_t> dist(0, bound - 1);
-  return dist(rng);
+  return fuzzBoundedRandom(rng, bound);
 }
 
 Event pickEvent(void) {
@@ -201,7 +220,7 @@ void recordEvent(const std::string &description) {
     recentEvents.pop_front();
   }
   if (verbose) {
-    std::cout << "fuzz step " << stepCount << " event " << description << '\n';
+    std::cout << "fuzz step " << machine->stepCount() << " event " << description << '\n';
   }
 }
 
@@ -214,17 +233,25 @@ void recordFinding(UI *ui,
   finding.page = ui->simQueryState("page");
   finding.event = event;
   finding.detail = detail;
-  finding.step = stepCount;
+  finding.step = machine->stepCount();
   findings.push_back(finding);
   classCounts[bug_class]++;
 
-  std::cout << "FUZZ FINDING [" << bug_class << "] step=" << stepCount << " page=" << finding.page
-            << " event=" << event << " detail=" << detail << '\n';
+  std::cout << "FUZZ FINDING [" << bug_class << "] step=" << machine->stepCount()
+            << " page=" << finding.page << " event=" << event << " detail=" << detail << '\n';
   std::cout << "  recent:";
   for (const std::string &entry : recentEvents) {
     std::cout << ' ' << entry;
   }
   std::cout << '\n';
+}
+
+ObservableState captureState(UI *ui) {
+  ObservableState state;
+  for (size_t i = 0; i < kObservableQueries.size(); i++) {
+    state.values[i] = ui->simQueryState(kObservableQueries[i]);
+  }
+  return state;
 }
 
 // Check the invariants that hold after any event. The stale focus and stacked
@@ -242,33 +269,36 @@ void checkInvariants(UI *ui, const std::string &event) {
 
   const std::string page = ui->simQueryState("page");
   if (!page.empty()) {
-    visitedPages.insert(page);
+    pageCounts[page]++;
   }
   if (mustFit(page) && ui->simQueryState("overflow") == "yes") {
     recordFinding(ui, "layout-overflow", event, "compact page overflows the panel");
   }
 }
 
-// Verify that a page the fuzzer entered is leavable. Clears a blocking pairing
-// modal first (an unanswered modal legitimately holds navigation), then presses
-// the model back button until the root menu returns. A page that never returns
-// to main is a navigation trap.
-void escapeAudit(UI *ui) {
+// Advance the escape audit by one action. A modal rejection or physical back
+// press is followed by real LVGL settling, then this phase is re-entered until
+// the page confirms that main is reachable.
+void escapeTick(UI *ui) {
   if (ui->simQueryState("modal") == "open") {
     ui->simScenarioAction("companion-reject");
-    settle = 4;
+    machine->escapeModalRejected();
     return;
   }
-  for (int attempt = 0; attempt < 24; attempt++) {
-    if (ui->simQueryState("page") == "main") {
-      return;
-    }
-    ui->simPressButton(kBtnBack, true);
+
+  if (ui->simQueryState("page") == "main") {
+    machine->escapeChecked(true);
+    escapeActions = 0;
+    return;
   }
-  if (ui->simQueryState("page") != "main") {
+
+  ui->simPressButton(kBtnBack, true);
+  escapeActions++;
+  if (escapeActions >= 24 && ui->simQueryState("page") != "main") {
     recordFinding(ui, "nav-trap", "escape-audit", "page not leavable by the model back button");
     ui->simulatorHome();
   }
+  machine->escapeBackIssued();
 }
 
 void applyEvent(UI *ui, Event event) {
@@ -343,14 +373,25 @@ void applyEvent(UI *ui, Event event) {
 }
 
 void finish(void) {
-  std::cout << "FUZZ SUMMARY seed=" << seed << " steps=" << stepCount
-            << " findings=" << findings.size() << '\n';
+  active = false;
+  std::cout << "FUZZ SUMMARY seed=" << seed << " steps=" << machine->stepCount()
+            << " attempted=" << machine->attempted()
+            << " observed_delta=" << machine->observedDelta()
+            << " no_observed_delta=" << machine->noObservedDelta()
+            << " settled=" << machine->settled()
+            << " timer_stop_checks=" << machine->timerStopChecks()
+            << " liveness=" << livenessViolationCount() << " findings=" << findings.size() << '\n';
   for (const auto &entry : classCounts) {
     std::cout << "  class " << entry.first << " count " << entry.second << '\n';
   }
-  std::cout << "FUZZ COVERAGE pages=" << visitedPages.size() << ':';
-  for (const std::string &page : visitedPages) {
-    std::cout << ' ' << page;
+  std::cout << "FUZZ EVENTS classes=" << eventCounts.size() << ':';
+  for (const auto &entry : eventCounts) {
+    std::cout << ' ' << entry.first << '=' << entry.second;
+  }
+  std::cout << '\n';
+  std::cout << "FUZZ COVERAGE pages=" << pageCounts.size() << ':';
+  for (const auto &entry : pageCounts) {
+    std::cout << ' ' << entry.first << '=' << entry.second;
   }
   std::cout << '\n';
   std::cout.flush();
@@ -362,9 +403,20 @@ void finish(void) {
 void fuzzConfigure(uint64_t s, uint32_t steps, bool v) {
   active = true;
   seed = s;
-  maxSteps = steps;
   verbose = v;
+  maxSteps = steps;
+  machine = std::make_unique<FuzzMachine>(steps);
+  pendingEvent = Event::SELECT;
+  pendingDescription.clear();
+  pendingWasStop = false;
+  stateBeforeApply = ObservableState {};
+  escapeActions = 0;
   rng.seed(s);
+  recentEvents.clear();
+  findings.clear();
+  classCounts.clear();
+  eventCounts.clear();
+  pageCounts.clear();
   std::cout << "FUZZ START seed=" << seed << " steps=" << maxSteps << '\n';
 }
 
@@ -377,47 +429,60 @@ void fuzzTick(UI *ui) {
     return;
   }
 
-  if (settle > 0) {
-    settle--;
-    return;
-  }
+  switch (machine->phase()) {
+    case FuzzPhase::APPLY:
+      if (!machine->beginApply()) {
+        return;
+      }
+      pendingEvent = pickEvent();
+      pendingDescription = eventName(pendingEvent);
+      pendingWasStop = pendingEvent == Event::INTERVAL_STOP;
+      stateBeforeApply = captureState(ui);
+      applyEvent(ui, pendingEvent);
+      recordEvent(pendingDescription);
+      eventCounts[pendingDescription]++;
+      // The post-handler hook counts the current LVGL cycle and the next
+      // settle cycles before Check reads any state.
+      machine->eventApplied(2 + pick(5));
+      return;
 
-  if (stepCount >= maxSteps) {
-    escapeAudit(ui);
-    finish();
-    return;
-  }
+    case FuzzPhase::SETTLE:
+      // The post-handler hook advances this phase. Do not count a driver-only
+      // tick as an LVGL cycle.
+      return;
 
-  const Event event = pickEvent();
-  std::string description = eventName(event);
+    case FuzzPhase::CHECK:
+    {
+      checkInvariants(ui, pendingDescription);
+      const bool observedDelta = !(captureState(ui) == stateBeforeApply);
 
-  // Track the timer run state around an explicit stop so the intervalometer
-  // run-state leak (PR #112 class) is caught: after stop the state must reset.
-  const bool wasStop = event == Event::INTERVAL_STOP;
+      if (pendingWasStop) {
+        const std::string state = ui->simQueryState("interval_state");
+        if (state != "idle" && state != "finished" && state != "unknown") {
+          recordFinding(ui, "timer-leak", pendingDescription,
+                        "interval_state=" + state + " after stop");
+        }
+      }
+      machine->checkComplete(observedDelta, pendingWasStop);
 
-  applyEvent(ui, event);
-  recordEvent(description);
-
-  // Let LVGL process the transition, then check the invariants on the settled
-  // frame on the next entry. Some transitions need a few ticks (connect timer,
-  // modal raise), so settle a random small budget.
-  settle = 2 + pick(5);
-
-  checkInvariants(ui, description);
-
-  if (wasStop) {
-    const std::string state = ui->simQueryState("interval_state");
-    if (state != "idle" && state != "finished" && state != "unknown") {
-      recordFinding(ui, "timer-leak", description, "interval_state=" + state + " after stop");
+      return;
     }
-  }
 
-  // Periodically confirm the current page is leavable without wedging.
-  if (stepCount % 40 == 39) {
-    escapeAudit(ui);
-  }
+    case FuzzPhase::ESCAPE:
+      escapeTick(ui);
+      return;
 
-  stepCount++;
+    case FuzzPhase::FINISH:
+      finish();
+      return;
+  }
+}
+
+void fuzzCycleComplete(UI *ui) {
+  if (!active || ui == nullptr || machine == nullptr) {
+    return;
+  }
+  machine->lvglCycleComplete();
 }
 
 }  // namespace Furble::Sim
