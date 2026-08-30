@@ -31,6 +31,7 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -282,6 +283,10 @@ struct Settings::storage_type<Settings::GPS_DUTY> {
 template <>
 struct Settings::storage_type<Settings::GPS_ASSIST> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_MOTION> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::INTERVAL> {

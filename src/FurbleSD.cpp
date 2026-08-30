@@ -248,6 +248,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::IR:
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_MOTION:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
@@ -461,6 +462,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::IR:
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_MOTION:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:

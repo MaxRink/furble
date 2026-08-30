@@ -106,6 +106,8 @@ class GPS {
 
   void setIcon(lv_obj_t *icon);
   bool isEnabled(void) const;
+  /** True when the enabled software motion detector reports stationary. */
+  bool isStationary(void) const;
   void reloadSetting(void);
 
   /** Refresh the cached GPX logging settings from NVS. */
@@ -194,6 +196,10 @@ class GPS {
   static constexpr const size_t BUFFER_SIZE = 256;
   static constexpr const int QUEUE_SIZE = 32;
   static constexpr const uint16_t SERVICE_MS = 1000;
+  static constexpr const uint16_t MOTION_SAMPLE_MS = 100;
+  static constexpr const size_t MOTION_WINDOW_SAMPLES = 50;
+  static constexpr const uint32_t MOTION_STATIONARY_MS = 60 * 1000;
+  static constexpr const float MOTION_VARIANCE_THRESHOLD = 0.02f;
   static constexpr const uint32_t MAX_AGE_MS = 30 * 1000;
   static constexpr const char *POWER_LOCK_OWNER = "gps";
 
@@ -281,6 +287,9 @@ class GPS {
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
+  void syncMotionTimer(void);
+  void updateMotion(void);
+  void resetMotion(void);
   bool wiredFixIsFresh(const status_t &status) const;
 
   void acquirePowerLock(void);
@@ -345,6 +354,7 @@ class GPS {
   // status icon on a change and never re-invalidates it every update
   bool m_IconDegraded = false;
   lv_timer_t *m_Timer = NULL;
+  lv_timer_t *m_MotionTimer = NULL;
 #endif
 
   TaskHandle_t m_Task = NULL;
@@ -358,6 +368,13 @@ class GPS {
 
   std::atomic<bool> m_Enabled = false;
   bool m_HasFix = false;
+  std::atomic<bool> m_MotionEnabled {false};
+  std::atomic<bool> m_MotionStationary {false};
+  std::atomic<bool> m_MotionResetPending {false};
+  uint64_t m_MotionStillSinceMs = 0;
+  std::array<float, MOTION_WINDOW_SAMPLES> m_MotionSamples {};
+  size_t m_MotionSampleCount = 0;
+  size_t m_MotionSampleNext = 0;
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
   std::atomic<uint8_t> m_Satellites {0};
   external_fix_t m_ExternalFix = {};
