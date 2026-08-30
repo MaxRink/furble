@@ -1,0 +1,15 @@
+# Multiple queued CONNECT requests carry generations. The worker must ignore
+# the stale first command and give only the latest command a 750 ms window.
+seed fauxny true
+wait 300
+action connect-queued-twice
+wait 0
+assert control.state connecting
+assert control.connect_completions 0
+wait 740
+assert control.state connecting
+assert control.connect_completions 0
+wait 5
+assert control.state active
+assert control.connect_completions 1
+exit

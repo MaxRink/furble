@@ -1,0 +1,11 @@
+# Cancel at the worker's completion publication boundary. The cancellation
+# hook runs outside the publication lock, so generation/state validation must
+# reject the just-finished connect without a stale completion.
+seed fauxny true
+wait 300
+action connect-cancel-boundary
+wait 750
+assert control.state idle
+assert control.connect_completions 0
+assert control.connected 0
+exit

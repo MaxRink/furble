@@ -244,6 +244,11 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   }
 
+  if (name == "scan_timeout") {
+    parseUnsigned(value);
+    return;
+  }
+
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
@@ -269,6 +274,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "no_touch",
       "saved_camera",
       "scan_start_probe",
+      "scan_start_fail",
       "scan_distinct",
       "auto_off_charging",
       "imu",
@@ -873,6 +879,14 @@ std::string queryValue(const std::string &key) {
     if (sub == "targets") {
       return std::to_string(control.getTargetCount());
     }
+    if (sub == "connect_completions") {
+      // The completion counter is exposed by the simulator only to prove that
+      // state readers do not perform the synthetic connect transition.
+      return std::to_string(control.simConnectCompletions());
+    }
+    if (sub == "request_pending") {
+      return control.simConnectRequestPending() ? "1" : "0";
+    }
   }
   if (prefixed("camera.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("camera."));
@@ -894,6 +908,12 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
+  }
+  if (key == "scan.active") {
+    return Scan::getInstance().isActive() ? "1" : "0";
+  }
+  if (key == "scan.stop_calls") {
+    return std::to_string(Scan::getInstance().stopCount());
   }
   if (key == "scan.start_probe_blocked") {
     return Scan::getInstance().startProbeBlocked() ? "1" : "0";
@@ -1064,6 +1084,10 @@ void applyScenarioSettings(void) {
   saveByte("cpu_freq", Settings::CPU_FREQ);
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
+  const auto scanTimeout = scenarioSettings.find("scan_timeout");
+  if (scanTimeout != scenarioSettings.end()) {
+    Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));
+  }
   saveByte("text_size", Settings::TEXT_SIZE);
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
@@ -1507,11 +1531,28 @@ void driverTick(void) {
         simulatedBattery = {step.action.batteryLevel, step.action.batteryVoltage,
                             step.action.batteryCurrent, step.action.batteryCharging};
       } else if (!applyLinkLiesAction(step.action)) {
-        const auto result = scenarioUi->simScenarioAction(step.action);
-        if (result == UI::sim_action_result_t::INVALID) {
-          std::cerr << "Invalid simulator action at runtime: " << step.name << '\n';
-          requestExit(2);
-          return;
+        if (step.action.kind == scenario_action_kind_t::SIMPLE
+            && step.action.name == "connect-cancel-boundary") {
+          // Cancel at the worker's publication boundary, after the synthetic
+          // camera attempt and immediately before generation/state publication.
+          Control::getInstance().simSetConnectPublishHook([]() {
+            Control::getInstance().disconnect();
+          });
+          const scenario_action_t connectAction {
+              scenario_action_kind_t::SIMPLE, "connect"};
+          const auto result = scenarioUi->simScenarioAction(connectAction);
+          if (result == UI::sim_action_result_t::INVALID) {
+            std::cerr << "Invalid simulator action at runtime: " << step.name << '\n';
+            requestExit(2);
+            return;
+          }
+        } else {
+          const auto result = scenarioUi->simScenarioAction(step.action);
+          if (result == UI::sim_action_result_t::INVALID) {
+            std::cerr << "Invalid simulator action at runtime: " << step.name << '\n';
+            requestExit(2);
+            return;
+          }
         }
       }
       ++stepIndex;

@@ -1,0 +1,15 @@
+# Scan completion belongs to the asynchronous scan worker. isActive() queries
+# are intentionally repeated before the worker's completion is drained.
+seed fauxny true
+seed scan_timeout 1
+wait 300
+action nav scan
+assert scan.active 1
+assert scan.active 1
+assert scan.stop_calls 1
+assert scan.stop_calls 1
+wait 1100
+assert scan.active 0
+assert scan.end_callbacks 1
+assert scan.stop_calls 1
+exit

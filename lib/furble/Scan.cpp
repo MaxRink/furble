@@ -281,8 +281,19 @@ bool Scan::start(std::function<void(void *)> scanCallback,
                   physical ? 0 : SCAN_START_FAILED_REASON);
 #endif
   if (!physical) {
-    const NimBLEScanResults results;
-    handleScanEnd(generation, results, SCAN_START_FAILED_REASON);
+    // A rejected start has no NimBLE scan-end event. Clear the logical start
+    // state without invoking the completion callback. Normal completion is
+    // owned exclusively by NimBLE's onScanEnd callback.
+    const std::lock_guard<std::mutex> lock(m_StateMutex);
+    if (generation == m_Generation) {
+      m_Active = false;
+      m_DeadlineUs = 0;
+      m_CallbackMode = CallbackMode::IDLE;
+      m_CustomCallbacks = nullptr;
+      m_ScanResultCallback = nullptr;
+      m_ScanEndCallback = nullptr;
+      m_ScanResultPrivateData = nullptr;
+    }
   }
   return physical;
 }
@@ -320,8 +331,19 @@ bool Scan::start(NimBLEScanCallbacks *pScanCallbacks, uint32_t duration, bool wa
                   physical ? 0 : SCAN_START_FAILED_REASON);
 #endif
   if (!physical) {
-    const NimBLEScanResults results;
-    handleScanEnd(generation, results, SCAN_START_FAILED_REASON);
+    // No physical scan was started, therefore NimBLE will not deliver an end
+    // callback. Keep the failed-start path callback-free and leave completion
+    // ownership with onScanEnd for successful starts.
+    const std::lock_guard<std::mutex> lock(m_StateMutex);
+    if (generation == m_Generation) {
+      m_Active = false;
+      m_DeadlineUs = 0;
+      m_CallbackMode = CallbackMode::IDLE;
+      m_CustomCallbacks = nullptr;
+      m_ScanResultCallback = nullptr;
+      m_ScanEndCallback = nullptr;
+      m_ScanResultPrivateData = nullptr;
+    }
   }
   return physical;
 }
@@ -368,21 +390,9 @@ void Scan::stop(void) {
 #endif
 }
 
-void Scan::expire(void) {
-  stop();
-}
-
 bool Scan::isActive(void) const {
-  bool expired = false;
-  {
-    const std::lock_guard<std::mutex> lock(m_StateMutex);
-    expired = m_Active && m_DeadlineUs != 0 && monotonicUs() >= m_DeadlineUs;
-    if (!expired) {
-      return m_Active;
-    }
-  }
-  const_cast<Scan *>(this)->expire();
-  return false;
+  const std::lock_guard<std::mutex> lock(m_StateMutex);
+  return m_Active;
 }
 
 void Scan::clear(void) {

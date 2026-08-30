@@ -9,8 +9,15 @@ action connect
 wait 200
 assert control.state connecting
 assert ui.connect_box visible
+# No reader may publish the completion; the worker has not reached its
+# synthetic 750 ms deadline yet.
+assert control.connect_completions 0
+# Repeated observations must not advance the synthetic connection attempt.
+assert control.state connecting
+assert control.state connecting
 wait 1500
 assert control.state active
 assert control.connected 1
+assert control.connect_completions 1
 assert ui.connected yes
 exit

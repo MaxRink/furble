@@ -1,0 +1,13 @@
+# The request is task-owned, but the initiating UI iteration must keep the
+# progress timer alive while the worker has not accepted the queue item.
+seed fauxny true
+wait 300
+action connect
+wait 0
+assert ui.connect_timer running
+assert ui.connect_box visible
+wait 200
+assert control.request_pending 0
+assert control.state connecting
+assert ui.connect_timer running
+exit

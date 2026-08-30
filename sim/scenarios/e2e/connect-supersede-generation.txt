@@ -1,0 +1,15 @@
+# A second CONNECT request owns a new 750 ms window; the first generation may
+# not publish when its old deadline is crossed.
+seed fauxny true
+wait 300
+action connect
+wait 200
+assert control.state connecting
+action connect
+wait 251
+assert control.state connecting
+assert control.connect_completions 0
+wait 499
+assert control.state active
+assert control.connect_completions 1
+exit

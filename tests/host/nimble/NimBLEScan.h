@@ -1,6 +1,7 @@
 #ifndef FURBLE_HOST_NIMBLE_SCAN_H
 #define FURBLE_HOST_NIMBLE_SCAN_H
 
+#include <cstddef>
 #include <cstdint>
 
 class NimBLEAdvertisedDevice;
@@ -30,12 +31,18 @@ class NimBLEScan {
   void setWindow(uint16_t) {}
   void setScanCallbacks(NimBLEScanCallbacks *callbacks, bool = false) { m_Callbacks = callbacks; }
   bool start(uint32_t, bool = false) {
+    ++m_StartCount;
     m_Scanning = nimbleMockGapScanStartAllowed();
     return m_Scanning;
   }
-  void stop() { m_Scanning = false; }
+  void stop() {
+    ++m_StopCount;
+    m_Scanning = false;
+  }
   void clearResults() {}
   bool isScanning() const { return m_Scanning; }
+  size_t startCount() const { return m_StartCount; }
+  size_t stopCount() const { return m_StopCount; }
   NimBLEScanCallbacks *callbacks() const { return m_Callbacks; }
   void emitResult(const NimBLEAdvertisedDevice *device) {
     if ((m_Callbacks != nullptr) && nimbleMockScanDeliveryAllowed(device)) {
@@ -44,6 +51,9 @@ class NimBLEScan {
   }
   void emitEnd(int reason = 0) {
     if (m_Callbacks != nullptr) {
+      // The physical scanner owns completion. Its callback observes an already
+      // stopped scan, matching NimBLE's finite-scan end event.
+      m_Scanning = false;
       NimBLEScanResults results;
       m_Callbacks->onScanEnd(results, reason);
     }
@@ -52,6 +62,8 @@ class NimBLEScan {
  private:
   NimBLEScanCallbacks *m_Callbacks = nullptr;
   bool m_Scanning = false;
+  size_t m_StartCount = 0;
+  size_t m_StopCount = 0;
 };
 
 #endif

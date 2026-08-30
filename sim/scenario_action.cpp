@@ -108,6 +108,7 @@ bool parseScenarioAction(const std::string &text,
       "imu.accel.recover", "imu.gyro.fail", "imu.gyro.recover", "invalidate.reset", "shutter",
       "main-press-hold", "main-double-click", "main-click-hold", "select", "intervalometer",
       "bulb-start", "bulb-stop", "stop", "preset-step-up", "preset-step-down",
+      "connect-queued-twice", "connect-queue-full", "connect-cancel-boundary",
       "companion-pair-request", "companion-accept", "companion-reject",
   };
   for (const char *command : simple) {

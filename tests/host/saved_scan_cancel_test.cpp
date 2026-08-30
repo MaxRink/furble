@@ -24,8 +24,13 @@ void cancelSavedScan(CameraType &camera, int &failures) {
 
   scan.start(&camera, 1);
   std::this_thread::sleep_for(std::chrono::milliseconds(3));
-  check(!scan.isActive(), "saved-camera finite scan expires", failures);
-  check(!nimble->isScanning(), "saved-camera expiry stops physical scan", failures);
+  check(scan.isActive(), "saved-camera scan stays active until NimBLE scan end", failures);
+  // The host double has no wall-clock GAP timer. emitEnd() represents the
+  // physical NimBLE end event; this assertion is about the ownership boundary,
+  // not proof that the one-second controller deadline elapsed.
+  nimble->emitEnd();
+  check(!scan.isActive(), "saved-camera finite scan completes at scan end", failures);
+  check(!nimble->isScanning(), "NimBLE end leaves the physical scanner stopped", failures);
 
   scan.start(&camera, 60000);
   std::thread callbackWorker([nimble]() {

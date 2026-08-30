@@ -1,0 +1,11 @@
+# Timeout zero means scan-until-stopped: the worker never schedules a
+# synthetic END and observations remain pure.
+seed scan_timeout 0
+wait 300
+action nav scan
+assert scan.active 1
+wait 1500
+assert scan.active 1
+assert scan.end_callbacks 0
+assert scan.stop_calls 1
+exit

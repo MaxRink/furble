@@ -65,6 +65,30 @@ Unexpected task exceptions are recorded on the retained task record, request
 the simulator's failure-result seam (upgrading an earlier success to nonzero),
 and wake the scheduler before the task publishes `finished`. Focused host
 coverage joins that worker and verifies the nonzero result.
+The observation-purity follow-up keeps the synthetic connection model honest.
+The simulator's 750 ms `UNCERTIFIED` FauxNY progression now runs on its
+control worker. `Control::getState()` and `getConnectingCamera()` only read
+published state. Connect commands carry their desired generation, so queued
+stale requests and completions are ignored; a generation fence drops a
+completion cancelled by disconnect or superseded by a newer request. This
+remains a simulator policy substitute, not production connection parity.
+If the simulator queue rejects a generation-tagged request, the caller clears
+that still-current pending generation and publishes `CONNECT_FAILED` under the
+same lock; the queue-full scenario guards against a permanently fenced
+attempt.
+
+Scan activity is also observational. Production `Scan::isActive()` no longer
+expires a scan or calls `stop()` from a reader. NimBLE owns completion through
+`onScanEnd`; the simulator worker owns its synthetic completion. Both paths
+fence stale generations and deliver one completion callback. The host NimBLE
+double now marks the physical scanner stopped before delivering its end event,
+so tests exercise the same ownership boundary.
+The host `sim_connect_deadline_test` pins the task deadline at exact 749/750 ms
+and across uint32 wrap without depending on UI script costs. Simulator
+scenarios exercise a superseding generation and cancel through a real
+publication-boundary hook; the scan scenario keeps a finite logical deadline
+separate from the physical end event and proves repeated `isActive()` reads do
+not call `stop()`.
 
 Phase 1 is not complete. Multiple workers that become ready on the same tick
 still rely on host scheduling rather than a deterministic FreeRTOS priority

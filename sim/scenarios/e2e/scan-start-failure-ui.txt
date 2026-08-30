@@ -1,0 +1,9 @@
+# A physical scan-start rejection has no scan-end callback; the shared UI
+# caller must finish the page from start() == false instead of hanging.
+seed scan_start_fail true
+wait 300
+action nav scan
+assert scan.active 0
+assert scan.end_callbacks 0
+assert ui.scan_finished yes
+exit

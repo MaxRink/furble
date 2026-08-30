@@ -41,13 +41,18 @@ int main() {
   NimBLEAdvertisedDevice advertisement;
   advertisement.setName("async-camera");
   size_t rows = 0;
+  size_t failedStartEnds = 0;
   const auto testThread = std::this_thread::get_id();
   std::thread::id callbackThread;
   scan.setTimeout(0);
   nimbleMockSetGapScanStartAllowed(false);
-  check(!scan.start([](void *) {}, nullptr), "physical scan start failure propagates", failures);
+  check(!scan.start([](void *) {}, nullptr,
+                    [&failedStartEnds](void *) { ++failedStartEnds; }),
+        "physical scan start failure propagates", failures);
   check(!scan.isActive() && !nimble->isScanning(),
         "failed physical start unwinds logical scan state", failures);
+  scan.processPendingCallbacks();
+  check(failedStartEnds == 0, "failed scan start has no synthetic completion callback", failures);
   nimbleMockSetGapScanStartAllowed(true);
   scan.start(
       [&rows, &callbackThread](void *) {
@@ -96,9 +101,25 @@ int main() {
 
   scan.setTimeout(1);
   scan.start([](void *) {}, nullptr);
+  const size_t stopCountBeforeObservation = nimble->stopCount();
+  // The mock does not run a physical GAP timer. Sleeping past the logical
+  // duration intentionally does not manufacture an end event; emitEnd()
+  // below stands for NimBLE's physical completion boundary.
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
-  check(!scan.isActive(), "finite timeout expires the logical scan", failures);
-  check(!nimble->isScanning(), "finite timeout stops the physical scanner", failures);
+  check(scan.isActive(), "finite timeout remains active until the scan-end callback", failures);
+  check(nimble->stopCount() == stopCountBeforeObservation,
+        "isActive does not stop the physical scanner", failures);
+  nimble->emitEnd();
+  check(!scan.isActive(), "scan-end callback completes the logical scan", failures);
+  check(!nimble->isScanning(), "scan-end callback observes a stopped physical scanner", failures);
+
+  size_t endCallbacks = 0;
+  scan.setTimeout(0);
+  scan.start([](void *) {}, nullptr, [&endCallbacks](void *) { ++endCallbacks; });
+  nimble->emitEnd();
+  nimble->emitEnd();
+  scan.processPendingCallbacks();
+  check(endCallbacks == 1, "duplicate scan-end events deliver one completion callback", failures);
 
   CancelOnResult cancel;
   scan.setTimeout(0);

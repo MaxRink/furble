@@ -9,6 +9,7 @@
 # so the Remote page uses the non-touch layout, and FURBLE_SIM_RIG=0 so the
 # header shows the shipped title. The boot splash is captured separately by the
 # harness through FURBLE_SIM_CAPTURE_SPLASH, before the LVGL UI takes over.
+seed scan_timeout 1
 seed fauxny true
 seed gps true
 seed saved_camera true

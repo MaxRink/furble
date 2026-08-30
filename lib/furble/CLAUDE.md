@@ -25,7 +25,10 @@ protocol core.
   and permits a new one immediately. The host lock serializes cancellation
   with GAP dispatch, so no proxy callback remains in flight after `stop()`.
   Keep the logical generation fence and bounded copied-event queue around that
-  contract. Never run `CameraList` or UI work from the NimBLE host callback.
+  contract. `isActive()` is observational only: it must not expire or stop a
+  scan from a reader. Completion is owned by NimBLE `onScanEnd`, and each
+  accepted generation delivers at most one end callback. Never run
+  `CameraList` or UI work from the NimBLE host callback.
 - `Camera` exposes connection RSSI and applies the power cap it was given on
   connect. The runtime adaptive level lives in the app layer Control. NimBLE
   transmit power calls take dBm, so map the supported P3, P6 and P9 enum

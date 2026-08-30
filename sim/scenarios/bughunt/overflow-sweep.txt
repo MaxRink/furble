@@ -15,6 +15,7 @@
 # design. Those pages only print their overflow state, they are not asserted.
 seed fauxny true
 seed saved_camera true
+seed scan_timeout 1
 seed gps true
 seed imu true
 seed fb_output 1

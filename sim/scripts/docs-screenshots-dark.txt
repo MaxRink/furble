@@ -2,6 +2,7 @@
 # capture harness (sim/scripts/docs-capture.sh) with FURBLE_SIM_THEME=Dark and
 # the optional-capability env vars set. Filenames are prefixed dark- so they sit
 # beside the default-theme set in docs/img.
+seed scan_timeout 1
 seed fauxny true
 seed gps true
 seed saved_camera true

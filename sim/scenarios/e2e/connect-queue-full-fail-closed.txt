@@ -1,0 +1,11 @@
+# A full control queue must fail the newest request closed: no stale attempt or
+# permanently pending request may survive a rejected enqueue.
+seed fauxny true
+wait 300
+action connect-queue-full
+wait 200
+assert control.request_pending 0
+assert control.connect_completions 0
+assert control.state idle
+assert ui.connect_timer paused
+exit

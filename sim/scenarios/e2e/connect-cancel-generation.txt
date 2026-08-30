@@ -1,0 +1,16 @@
+# A cancelled synthetic connection must not publish its old completion after
+# a new connection generation starts.
+seed fauxny true
+wait 300
+action connect
+wait 200
+assert control.state connecting
+action disconnect
+assert control.state idle
+action connect
+wait 200
+assert control.state connecting
+wait 1000
+assert control.state active
+assert control.connected 1
+exit

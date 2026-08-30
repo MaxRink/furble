@@ -99,8 +99,8 @@ class Camera {
   Type m_Type = Type::FAUXNY;
   std::string m_Name;
   std::atomic<uint8_t> m_Progress {0};
-  bool m_Active = false;
-  bool m_Connected = false;
+  std::atomic<bool> m_Active {false};
+  std::atomic<bool> m_Connected {false};
 };
 
 }  // namespace Furble

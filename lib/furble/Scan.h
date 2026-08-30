@@ -152,7 +152,6 @@ class Scan: public NimBLEScanCallbacks {
   void applyMode(Mode mode);
   void handleResult(uint64_t generation, const NimBLEAdvertisedDevice *pDevice);
   void handleScanEnd(uint64_t generation, const NimBLEScanResults &results, int reason);
-  void expire(void);
   static uint64_t monotonicUs(void);
 
   NimBLEServer *m_Server = nullptr;

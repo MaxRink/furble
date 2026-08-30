@@ -126,6 +126,10 @@ int runSimulator() {
   // callback argument alive until the simulator dispatcher has joined.
   Sim::quiesceRig();
   furble_sim_stop_all_tasks();
+  control.simShutdown();
+  if (control.simQueueAlive()) {
+    return 1;
+  }
   Sim::stopRig();
   return Sim::exitResult();
 }

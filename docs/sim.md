@@ -28,9 +28,15 @@ The simulator's shared-code boundary is audited in [`sim/CLAUDE.md`](../sim/CLAU
 In brief, scan startup, generation fencing, queue draining, `CameraList` updates,
 display mode/flush, LVGL timers, and the `Control` state machine are production
 code. `sim/ScanSim.cpp` is only the asynchronous radio event source; its worker
-cannot touch `CameraList` or LVGL. The production `lib/furble/Scan.cpp` is also
-compiled by the host tests against fake NimBLE, so simulator convenience does
-not hide production scan behavior.
+cannot touch `CameraList` or LVGL. Its finite-scan worker owns completion, while
+`Scan::isActive()` is observation only. The synthetic FauxNY connection ramp is
+750 ms and explicitly `UNCERTIFIED`; it is advanced by the control worker, not
+by a state getter, and cancellation fences late completion by generation. The
+production `lib/furble/Scan.cpp` is also compiled by the host tests against fake
+NimBLE, so simulator convenience does not hide production scan behavior.
+The exact 749/750 ms and uint32-wrap deadline predicate is covered by the
+dependency-light host `sim_connect_deadline_test`; UI scripts only assert
+eventual connection behavior because each script iteration advances time.
 
 M5GFX SDL, FreeRTOS/ESP-IDF calls, NimBLE radio events, camera links, UART/GPS
 bytes, PMIC/power, NVS, and optional IR/feedback/SD hardware are the remaining
@@ -162,9 +168,10 @@ text after a comment are ignored. Each line starts with one verb.
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
-`print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
+`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
+`ui.*`, `control.*`, `camera.*`, `scan.*`, `gps.*`, `uart.*`, and `setting.*`.
+The `assert-eventually-virtual` form uses the same namespaces while advancing
+virtual time and yielding to simulator tasks on each UI tick.
 
 The scenario-only `scan_distinct` seed makes the asynchronous scan worker
 publish two distinct FauxNY advertisements. The
@@ -179,6 +186,12 @@ These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
 `auto_off`, and `low_batt`.
+
+`scan_timeout` seeds the finite scan duration in seconds. Scan completion is
+owned by the simulator worker; reading `scan.active` does not cancel it.
+
+`scan_start_fail true` rejects the simulator's physical start and emits no end
+callback, exercising the shared UI caller's explicit failure handling.
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -215,6 +228,9 @@ action blind-shutter
 action indicator-click-focus
 action focus-lock
 action connect
+action connect-queued-twice
+action connect-queue-full
+action connect-cancel-boundary
 action connect-two
 action disconnect
 action drop
@@ -338,6 +354,7 @@ The complete `ui.*` query set is:
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
 | `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. |
+| `ui.scan_finished` | `yes` when the scan page's completion notice is visible. |
 
 The other namespaces are:
 
@@ -353,10 +370,19 @@ The other namespaces are:
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.
 - `control.connected` and `control.targets`: numeric target counts.
+- `control.connect_completions`: simulator-only count of connection results
+  published by the control worker. It proves repeated state reads do not
+  complete the synthetic connection.
+- `control.request_pending`: `1` while the simulator has queued a connect
+  request that the control worker has not accepted.
 - `camera.count`: numeric camera-list row count, useful for scan de-duplication
   assertions.
 - `scan.end_callbacks`: numeric count of simulated scan-end callbacks delivered
   by the current scan. A discovery scan should deliver exactly one callback.
+- `scan.active`: `1` while the scan worker has not delivered completion,
+  otherwise `0`.
+- `scan.stop_calls`: numeric count of simulator scan cancellation calls. A
+  repeated state observation must not increase it.
 - `camera.shutter_presses`, `camera.shutter_releases`, `camera.focus_presses`,
   and `camera.focus_releases`: numeric fake-camera command counts.
 - `setting.text_size`: the persisted numeric text-size setting.

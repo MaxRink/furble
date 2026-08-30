@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -240,10 +241,33 @@ class Control {
    * stay connected and the trigger stays live.
    */
   void simDropActiveLink(int index = -1);
+  /** Number of simulator connection completions published by the task. */
+  size_t simConnectCompletions(void) const;
+  /** Whether a simulator connect request is queued for the control task. */
+  bool simConnectRequestPending(void) const;
+  struct sim_state_snapshot_t {
+    state_t state;
+    bool requestPending;
+  };
+  /** Read state and queued-request status from one simulator lock boundary. */
+  sim_state_snapshot_t simStateSnapshot(void) const;
+  /** Release the simulator-owned command queue after its task has joined. */
+  void simShutdown(void);
+  /** Lifecycle assertion for simulator teardown tests. */
+  bool simQueueAlive(void) const;
+  /** Cancel the next synthetic completion at its publication boundary. */
+  void simSetConnectPublishHook(std::function<void(void)> hook);
 #endif
 
  private:
   Control() {};
+
+#if defined(FURBLE_SIM)
+  struct sim_cmd_t {
+    cmd_t command;
+    uint64_t generation;
+  };
+#endif
 
   /** Iterate over cameras and attempt connection. */
   state_t connectAll(void);
@@ -292,6 +316,10 @@ class Control {
    * Every state change goes through here, that is what keeps the lock balanced.
    */
   void setState(state_t state);
+#if defined(FURBLE_SIM)
+  /** Move state while m_Mutex is held, keeping generation publication atomic. */
+  void setStateLocked(state_t state);
+#endif
 
   /**
    * Sample connection RSSI and adjust the shared transmit power.
@@ -353,6 +381,16 @@ class Control {
   // Holds a strong reference so an in-flight connect keeps its Camera alive even
   // if CameraList::load() drops the list's reference.
   std::shared_ptr<Camera> m_ConnectCamera;
+
+#if defined(FURBLE_SIM)
+  // The simulator keeps the synthetic connect model on the control task. A
+  // reader must never complete it as a side effect of observing state.
+  uint64_t m_SimConnectGeneration = 0;
+  uint32_t m_SimConnectStart = 0;
+  size_t m_SimConnectCompletions = 0;
+  std::function<void(void)> m_SimConnectPublishHook;
+  bool m_SimConnectRequestPending = false;
+#endif
 
   // User transmit power cap, loaded from TX_POWER at first getInstance()
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;

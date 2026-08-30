@@ -59,6 +59,15 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
 target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
 
+# The simulator Control worker owns its synthetic connect start timestamp.
+# Exercise the shared 750 ms wrap-safe deadline predicate directly so the
+# boundary does not depend on UI script loop costs.
+add_executable(sim_connect_deadline_test sim_connect_deadline_test.cpp)
+target_include_directories(sim_connect_deadline_test PRIVATE
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/include)
+target_compile_options(sim_connect_deadline_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(time_keeper_policy_test
                time_keeper_policy_test.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp)
@@ -1101,6 +1110,7 @@ if(BUILD_TESTING)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
+  add_test(NAME sim-connect-deadline COMMAND sim_connect_deadline_test)
   add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
   set_tests_properties(sim-scheduler PROPERTIES TIMEOUT 10)
   add_test(NAME sim-fuzz-machine COMMAND sim_fuzz_machine_test)

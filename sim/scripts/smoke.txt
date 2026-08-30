@@ -1,4 +1,5 @@
 # Exercise the initial menu, fake FauxNY scan, connection flow, and shutter page.
+seed scan_timeout 1
 wait 200
 capture main
 key left

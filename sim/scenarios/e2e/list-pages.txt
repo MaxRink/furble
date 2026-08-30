@@ -3,6 +3,7 @@
 # the FauxNY test camera on the Scan page.
 seed fauxny true
 seed saved_camera true
+seed scan_timeout 1
 wait 400
 
 home

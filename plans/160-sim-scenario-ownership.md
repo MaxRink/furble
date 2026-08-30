@@ -1,7 +1,7 @@
 # 160 - simulator scenario ownership
 
 The simulator scenario inventory is machine-checked in
-`sim/scenarios/manifest.json`. The current inventory contains 124 scenarios:
+`sim/scenarios/manifest.json`. The current inventory contains 133 scenarios:
 every root, bug-hunt, end-to-end, and
 invalid script has one entry with a suite, owner, supported board matrix,
 capabilities, and exact expected process exit. The checker rejects unlisted,

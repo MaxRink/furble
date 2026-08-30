@@ -29,7 +29,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | BLE discovery | `UI::startScan` and UI-side result materialization are shared; production `Scan` and `CameraList` are not in the SDL build | `sim/shim/Scan.h`, `sim/ScanSim.cpp`, and `sim/CameraListSim.cpp` replace scan lifecycle, radio events, matching, and list persistence. The worker publishes immutable fake events and never touches LVGL. `tests/host` separately compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
-| Camera links | UI connection handlers are shared; production `Control`, `Camera`, and `CameraList` are not yet in the SDL build | `sim/FurbleControlSim.cpp`, the fake camera/list, and `sim/ScanSim.cpp` provide the current deterministic peer and link-drop hooks. They are temporary policy substitutes. The target is production `Control`/`Camera`/`CameraList`/`Scan` over MockNimBLE and virtual peers; `action link-lies-kill` remains an interim fault injection until that boundary exists. |
+| Camera links | UI connection handlers are shared; production `Control`, `Camera`, and `CameraList` are not yet in the SDL build | `sim/FurbleControlSim.cpp`, the fake camera/list, and `sim/ScanSim.cpp` provide the current deterministic peer and link-drop hooks. The synthetic 750 ms `UNCERTIFIED` connection progression is owned by the control worker. Connect requests carry generations, state getters are observational, and generation-fenced cancellation prevents stale queued requests or completions from publishing after disconnect. These remain temporary policy substitutes. The target is production `Control`/`Camera`/`CameraList`/`Scan` over MockNimBLE and virtual peers; `action link-lies-kill` remains an interim fault injection until that boundary exists. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
@@ -50,7 +50,9 @@ callbacks use one serialized dispatch boundary and enforce active-state API
 errors. Equal timer deadlines preserve arm order, and a callback can cancel a
 second due timer or delete itself. On exit, companion-rig socket workers join
 first, then tasks and the timer dispatcher join, and only then may the rig
-service owning timer callback arguments be destroyed. Same-tick task ordering and FreeRTOS
+service owning timer callback arguments be destroyed. The simulator Control
+queue is released only after the control task has joined, and no worker callback
+may use it afterward. Same-tick task ordering and FreeRTOS
 priority/preemption are not yet deterministic and must not be described as
 parity-complete.
 The next vertical slice replaces the connection fakes with production sources
@@ -125,8 +127,16 @@ a regression.
   clock, so `gps.png` is not byte-reproducible and must not be a golden
   baseline as-is.
 - The fake scan publishes two advertisement events and a scan end from a
-  background host worker. `processPendingCallbacks()` drains them on the UI
-  task, so the fake never mutates `CameraList` or touches LVGL from its worker.
+  background host worker. A finite scan's worker owns the completion
+  transition; `isActive()` is a read-only observation and never cancels the
+  worker. `processPendingCallbacks()` drains events on the UI task, so the fake
+  never mutates `CameraList` or touches LVGL from its worker. Completion is
+  fenced by the scan generation and the end callback is delivered at most once.
+  A zero timeout is infinite and never schedules a synthetic END; finite
+  deadlines are anchored when `start()` accepts the scan. The production host
+  mock likewise distinguishes a logical deadline from the physical NimBLE
+  end event, and failed physical starts leave completion to the caller because
+  they have no end callback.
   The fake UART captures all writes and models receiver
   replies with `uart-mode ack|nack|timeout|malformed|partial|write-error`.
   Inject UART driver events with `uart-event data|fifo|buffer|break|parity|frame|pattern`.
@@ -205,8 +215,11 @@ a regression.
   available as `uart.count` and `uart.last`. `camera.count` reports the current
   simulated camera-list row count, allowing scan-result de-duplication scenarios
   to assert that a repeated fake advertisement does not add a second row.
+  `scan.active` reports the worker-owned logical activity state.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
-  scenarios to catch duplicate simulated completion events.
+  scenarios to catch duplicate simulated completion events. `scan.stop_calls`
+  reports cancellation calls, allowing observation-purity scenarios to prove
+  that readers do not stop a scan.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start

@@ -8,6 +8,7 @@
 # FURBLE_SIM-only seam, so a new route cannot silently report "other".
 seed fauxny true
 seed saved_camera true
+seed scan_timeout 1
 seed gps true
 seed imu true
 seed fb_output 1

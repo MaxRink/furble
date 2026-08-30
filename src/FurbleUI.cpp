@@ -2326,6 +2326,40 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     return;
   }
 
+  // Queue two connect requests in one UI-task turn. The control worker must
+  // discard the stale first generation and start only the latest request.
+  if (command == "connect-queued-twice") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    if (CameraList::size() == 0) {
+      CameraList::addFauxNY();
+    }
+    auto camera = CameraList::last();
+    if (camera != nullptr) {
+      camera->setActive(true);
+    }
+    doConnect(nullptr);
+    doConnect(nullptr);
+    return;
+  }
+
+  // Fill the simulator control queue without yielding to its worker. The
+  // final request must fail closed rather than leaving the prior generation
+  // fenced behind a permanently pending flag.
+  if (command == "connect-queue-full") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    if (CameraList::size() == 0) {
+      CameraList::addFauxNY();
+    }
+    auto camera = CameraList::last();
+    if (camera != nullptr) {
+      camera->setActive(true);
+    }
+    for (size_t n = 0; n < 40; n++) {
+      doConnect(nullptr);
+    }
+    return;
+  }
+
   // Connect two cameras so a multi-connect drop can be exercised: one camera
   // dropping must not blank the trigger for the other. Seeds a second FauxNY
   // camera, selects both, and drives the same connect flow as the on-device
@@ -2867,6 +2901,11 @@ std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
+  }
+  if (query == "scan_finished") {
+    return m_ScanFinished != nullptr && !lv_obj_has_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN)
+               ? "yes"
+               : "no";
   }
 
   // Keep diagnostics assertions tied to the actual rendered labels. These
@@ -4152,7 +4191,19 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   auto *ctx = static_cast<ConnectContext_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
   std::shared_ptr<Camera> camera;
+#if defined(FURBLE_SIM)
+  // connectAll() publishes only a task-owned request. Keep the progress timer
+  // alive for the initiating UI iteration while that request is waiting in the
+  // queue; otherwise the same LVGL cycle would see IDLE and pause the timer
+  // before the control worker can publish CONNECTING.
+  const auto snapshot = control.simStateSnapshot();
+  auto state = snapshot.state;
+  if (state == Control::STATE_IDLE && snapshot.requestPending) {
+    state = Control::STATE_CONNECTING;
+  }
+#else
   auto state = control.getState();
+#endif
 
   // A drop out of the active state is a disconnect no matter which state
   // follows: with infinite reconnect the control re-enters connecting without
@@ -5555,7 +5606,7 @@ void UI::startScan(void) {
   // combinations. Scan callbacks only enqueue immutable events; the UI task
   // drains and applies them below.
   m_Mutex.unlock();
-  scan.start(
+  const bool scanStarted = scan.start(
       [](void *param) {
         auto *menu = static_cast<menu_t *>(param);
 #if defined(FURBLE_SIM)
@@ -5572,6 +5623,12 @@ void UI::startScan(void) {
       },
       &menu, [](void *) { lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN); });
   m_Mutex.lock();
+
+  // A rejected physical start has no NimBLE scan-end callback. Complete the
+  // visible scan page at the caller so it cannot remain stuck in scanning.
+  if (!scanStarted) {
+    lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
+  }
 
   m_ConnectContext.menuName = m_ScanStr;
 }

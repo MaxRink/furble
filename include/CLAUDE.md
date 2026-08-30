@@ -30,3 +30,6 @@ Public headers for the app layer in src/, one header per module
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
+- Under `FURBLE_SIM`, the synthetic 750 ms FauxNY connect progression belongs
+  to the control task. Connect commands carry generations, state getters remain
+  read-only, and a cancelled generation must not publish a late completion.

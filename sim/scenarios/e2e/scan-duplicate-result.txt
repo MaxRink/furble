@@ -1,5 +1,6 @@
 # A repeated scan result must not create a second camera row. The simulator's
 # FauxNY result models the duplicate-address guard used by CameraList::match.
+seed scan_timeout 1
 wait 300
 
 home
