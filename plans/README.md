@@ -106,6 +106,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [30-m5stack-framework.md](30-m5stack-framework.md) | Upstream M5Stack library gaps, fork and PR strategy |
 | [40-thinknode-port.md](40-thinknode-port.md) | ThinkNode port feasibility |
 | [41-alternative-hardware.md](41-alternative-hardware.md) | Alternative sidecar hardware |
+| [42-waveshare-eth-node.md](42-waveshare-eth-node.md) | Waveshare ESP32-S3-ETH wired MQTT node |
 
 ## Bug analyses
 
@@ -127,13 +128,19 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [68-flasher-debug-firmware.md](68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
+| [139-persistent-time.md](139-persistent-time.md) | RTC, NVS, GPS, NTP, and companion wall-clock retention policy |
 | [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
+| [113-per-board-ota-slots.md](113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
 | [114-provision-parser.md](114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
 | [114-flasher-provisioning.md](114-flasher-provisioning.md) | Follow-up browser transport for the landed provisioning parser |
 | [115-ota-engine.md](115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
 | [130-ota-mqtt-contract.md](130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
+| [131-ota-replay-store.md](131-ota-replay-store.md) | Durable two-slot anti-rollback replay journal |
+| [132-ota-partition-sink.md](132-ota-partition-sink.md) | Ordered, digest-verified inactive-partition sink |
 | [124-sim-incremental-deps.md](124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
+| [127-dev-version-identity.md](127-dev-version-identity.md) | Append an unambiguous short Git revision to development firmware versions while preserving release tags |
+| [142-bt-journal-memory.md](142-bt-journal-memory.md) | Compact, capability-aware Bluetooth journal storage and loss accounting |
 
 ## Network, companion, and simulator follow-ups
 
@@ -152,6 +159,18 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 |---|---|
 | [125-esp-optimization-program.md](125-esp-optimization-program.md) | Measurement-first ESP-IDF, radio, power, memory, UI, dependency, security, and release optimization program |
 | [127-nordic-port-baseline.md](127-nordic-port-baseline.md) | Simulator-gated portability boundary and Nordic silicon port baseline |
+| [143-pm1-watchdog-window.md](143-pm1-watchdog-window.md) | Safe 45 second M5PM1 watchdog window for OTA health validation |
+| [144-upload-partition-offset.md](144-upload-partition-offset.md) | Keep PlatformIO no-build uploads aligned with OTA application partitions |
+| [145-connect-context-initializer.md](145-connect-context-initializer.md) | Explicit initialization for the LVGL connection context |
+| [146-setstate-sleep-lock-order.md](146-setstate-sleep-lock-order.md) | Acquire the sleep lock before publishing the active control state |
+| [147-connect-reclaim-order.md](147-connect-reclaim-order.md) | Failed-connect reclaim ordering for the Ricoh secure-timeout use-after-free |
+| [148-teardown-connect-cancel.md](148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
+| [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
+| [150-nimble-taskdata-race.md](150-nimble-taskdata-race.md) | Vendored esp-nimble-cpp fix for the task data release use-after-scope race |
+| [154-host-flappy-peer-realism.md](154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
+| [155-sim-ui-liveness.md](155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
+| [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
+| [159-camera-peer-certification.md](159-camera-peer-certification.md) | Capture-backed, fail-closed virtual camera peers and exact feature-level compatibility certification |
 
 ## Design documents
 
@@ -171,16 +190,19 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |
 
-## Wire ids
+ ## Wire ids
 
 The frozen setting wire_id ledger lives in
 [50-companion-app-design.md](50-companion-app-design.md). Current integrated
-allocations run through 44 (`BOOT_SPLASH`). Open PR #28 owns 45 (`IMU`), so
-PR #166 uses the next free id, 46 (`COMPANION_PASSWORD`). The next free id
-after this branch is 47. Off-wire id 0 remains used by `BULB`,
-`TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`, and `BATTERY_SAVER`.
-Stacked branches with provisional ids renumber at rebase; ids only freeze when
-a PR merges.
+allocations run through 46 (`IMU`). Wire id 42 is reserved for the
+timezone setting planned by the time-policy work. Id 43 is allocated to the
+charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
+source and the fetched/open persistent-time and WiFi charging branches; those
+refs do not expose 43. Off-wire
+id 0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`,
+and `BATTERY_SAVER`. Wire id 47 is allocated to the companion-password
+contract. Stacked branches with provisional ids must renumber at
+rebase; ids only freeze when a PR merges.
 
 ## Dependencies
 
