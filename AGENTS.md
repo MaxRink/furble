@@ -18,6 +18,8 @@ claim against the code, not against a plan doc.
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
+All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
+`python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
 Manual PlatformIO dispatches must run the complete firmware matrix. Do not
 derive a comparison range from repository root commits.
 Gate board-specific ESP-IDF component dependencies with a CMake profile
