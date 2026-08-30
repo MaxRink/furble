@@ -19,6 +19,18 @@ away from the harness.
   existing simulator scenarios.
 - The reference includes the current bulb, intervalometer, GPS, watchdog, and
   multiconnect seams that landed after the original plan draft.
+- The simulator action boundary now uses the shared typed parser in
+  `sim/scenario_action.{h,cpp}` for both pre-runtime validation and UI
+  dispatch. Strict verb/action arity, numeric and finite-value checks, unknown
+  options, duplicate seeds, and malformed GPS query indices fail orderly with
+  status 2. UI action outcomes are classified as `APPLIED`,
+  `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; `page main` and `page menu`
+  remain explicit root aliases, and scroll values exclude `INT32_MIN` because
+  runtime negates the signed LVGL delta.
+- Fuzz CLI values are authoritative over matching `FURBLE_FUZZ_SEED` and
+  `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` enables fuzzing on its own,
+  and `sim/scripts/run-fuzz.sh` documents and exercises the explicit argument
+  contract.
 
 ## Verification
 
@@ -29,9 +41,13 @@ sh sim/scripts/check-doc-tokens.sh
 sh sim/scripts/check-doc-tokens.sh --links
 ```
 
-The simulator CI workflows build the supported panel classes and run the full
-scenario suite. This PR changes documentation and a checker only, so no
-firmware or hardware behavior changes.
+The implementation spans the typed action parser (`sim/scenario_action.{h,cpp}`),
+strict scenario/CLI parsing in `sim/driver.cpp`, typed UI dispatch and outcome
+reporting in `include/FurbleUI.h` and `src/FurbleUI.cpp`, focused host parser
+coverage, malformed fixtures, and the fuzz validation wrappers. The simulator
+CI workflows build the supported panel classes and run the full scenario suite;
+this working slice was limited to static review and `git diff --check`, with no
+build or test execution in the implementation handoff.
 
 ## Follow-ups
 

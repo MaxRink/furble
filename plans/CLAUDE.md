@@ -10,6 +10,10 @@ lands on fork master. This file applies once it does.
   and any deviation from the written plan with the reason.
 - Fork-only delivery changes record their implementation state in the related
   plan even when the upstream plan says the work has no PR.
+- Plan 121's implementation state covers the simulator runtime boundary as
+  well as its reference docs: typed action parsing/dispatch, strict DSL and
+  CLI validation, malformed fixtures, focused host coverage, and wrapper
+  contracts must be recorded in `plans/121-sim-usage-fault-docs.md`.
 - Docs state motivation first, then design. Keep the upstream maintainer's
   preferences in mind: issue first, fewer UI elements, defaults keep current
   behavior, everything new is configurable.

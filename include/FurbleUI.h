@@ -3,6 +3,10 @@
 
 #include <mutex>
 
+#if defined(FURBLE_SIM)
+#include "scenario_action.h"
+#endif
+
 namespace Furble {
 /** Serializes M5.Imu transactions between UI timers and debug console probes. */
 extern std::mutex g_IMUMutex;
@@ -179,8 +183,16 @@ class UI {
   void shutterUnlock(Control &control);
 
 #if defined(FURBLE_SIM)
+  enum class sim_action_result_t {
+    APPLIED,
+    VALID_NO_EFFECT,
+    UNAVAILABLE,
+    INVALID,
+  };
+
   /** Apply one deterministic scenario action without changing firmware builds. */
-  void simScenarioAction(const char *action);
+  sim_action_result_t simScenarioAction(const char *action);
+  sim_action_result_t simScenarioAction(const Sim::scenario_action_t &action);
 
   /** Report an assertable UI state value for scripted end-to-end scenarios. */
   std::string simQueryState(const char *key);
@@ -765,10 +777,11 @@ class UI {
   std::deque<std::shared_ptr<sim_request_t> > m_SimRequests;
   std::thread::id m_SimUiThread;
   std::atomic<bool> m_SimLastActionOnUi {false};
+  sim_action_result_t m_SimActionResult = sim_action_result_t::INVALID;
 
   bool simRunOnUi(std::function<void()> operation);
   void serviceSimRequests(void);
-  void simScenarioActionOnUi(const char *action);
+  void simScenarioActionOnUi(const Sim::scenario_action_t &action);
   bool simulatorHomeOnUi(void);
   bool simulatorBackOnUi(void);
   bool simPressButtonOnUi(const char *name, bool hold);

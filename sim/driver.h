@@ -2,6 +2,7 @@
 #define FURBLE_SIM_DRIVER_H
 
 #include <cstdint>
+#include "scenario_action.h"
 
 namespace Furble {
 class UI;

@@ -90,6 +90,8 @@ count=0
 for seed in $SEEDS $XFAIL; do
   count=$((count + 1))
   echo "=== fuzz seed $seed ($STEPS steps) ==="
+  # Keep both explicit arguments in the wrapper contract: CLI seed/steps win
+  # over any FURBLE_FUZZ_SEED/FURBLE_FUZZ_STEPS fallback inherited by the run.
   output_file=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz.XXXXXX") || exit 1
   if "$BIN" --seed "$seed" --fuzz-steps "$STEPS" >"$output_file" 2>&1; then
     rc=0

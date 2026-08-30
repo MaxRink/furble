@@ -1,0 +1,2 @@
+assert gps.config.1junk.state idle
+exit

@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <thread>
@@ -2237,21 +2238,42 @@ void UI::serviceSimRequests(void) {
   }
 }
 
-void UI::simScenarioAction(const char *action) {
-  const std::string command = action == nullptr ? "" : action;
-  simRunOnUi([this, command]() { simScenarioActionOnUi(command.c_str()); });
+UI::sim_action_result_t UI::simScenarioAction(const char *action) {
+  Sim::scenario_action_t parsed;
+  std::string error;
+  if (!Sim::parseScenarioAction(action == nullptr ? "" : action, &parsed, &error)) {
+    return sim_action_result_t::INVALID;
+  }
+  return simScenarioAction(parsed);
 }
 
-void UI::simScenarioActionOnUi(const char *action) {
-  m_SimLastActionOnUi.store(std::this_thread::get_id() == m_SimUiThread);
-  const std::string command = action == nullptr ? "" : action;
-  if (command == "blind") {
-    lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_RemoteShutter).page);
-    configureControl(ControlMode::SHUTTER);
-    return;
+UI::sim_action_result_t UI::simScenarioAction(const Sim::scenario_action_t &action) {
+  auto actionState = std::make_shared<Sim::scenario_action_t>(action);
+  auto resultState = std::make_shared<sim_action_result_t>(sim_action_result_t::INVALID);
+  if (!simRunOnUi([this, actionState, resultState]() {
+        simScenarioActionOnUi(*actionState);
+        *resultState = m_SimActionResult;
+      })) {
+    return sim_action_result_t::INVALID;
   }
+  return *resultState;
+}
 
-  if (command == "blind-shutter") {
+void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
+  m_SimLastActionOnUi.store(std::this_thread::get_id() == m_SimUiThread);
+  m_SimActionResult = sim_action_result_t::INVALID;
+  const std::string command = action.name;
+  const bool simpleAction = action.kind == Sim::scenario_action_kind_t::SIMPLE;
+  if (action.kind == Sim::scenario_action_kind_t::SIMPLE) {
+    if (command == "blind") {
+      m_SimActionResult = sim_action_result_t::APPLIED;
+      lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_RemoteShutter).page);
+      configureControl(ControlMode::SHUTTER);
+      return;
+    }
+  }
+  if (simpleAction && command == "blind-shutter") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     auto &control = Control::getInstance();
     control.sendCommand(Control::CMD_SHUTTER_PRESS);
     control.sendCommand(Control::CMD_SHUTTER_RELEASE);
@@ -2265,7 +2287,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // on the next press of another object. Mirroring that exact flag gate here
   // lets a headless run prove the indicators no longer latch the green focus
   // outline after a release.
-  if (command == "indicator-click-focus") {
+  if (simpleAction && command == "indicator-click-focus") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     for (lv_obj_t *indicator : {m_Left, m_OK, m_Right}) {
       if (indicator != nullptr && lv_obj_has_flag(indicator, LV_OBJ_FLAG_CLICK_FOCUSABLE)) {
         lv_obj_send_event(indicator, LV_EVENT_FOCUSED, this);
@@ -2277,7 +2300,9 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Focus the Remote page shutter lock so a scenario can confirm its focus
   // outline. The sim always renders the touch remote layout, where key
   // navigation does not land on this floating button, so focus it directly.
-  if (command == "focus-lock") {
+  if (simpleAction && command == "focus-lock") {
+    m_SimActionResult = m_ShutterLockIcon == nullptr ? sim_action_result_t::UNAVAILABLE
+                                                     : sim_action_result_t::APPLIED;
     if (m_ShutterLockIcon != nullptr) {
       lv_obj_add_state(m_ShutterLockIcon,
                        static_cast<lv_state_t>(LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY));
@@ -2288,7 +2313,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Drive the real connect flow the Scan and Connect buttons trigger. The
   // connect timer then advances the state machine and reveals the connected
   // page, exactly as it does for an on-device button press.
-  if (command == "connect") {
+  if (simpleAction && command == "connect") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     if (CameraList::size() == 0) {
       CameraList::addFauxNY();
     }
@@ -2304,7 +2330,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // dropping must not blank the trigger for the other. Seeds a second FauxNY
   // camera, selects both, and drives the same connect flow as the on-device
   // multi-select screen.
-  if (command == "connect-two") {
+  if (simpleAction && command == "connect-two") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     while (CameraList::size() < 2) {
       CameraList::addFauxNY();
     }
@@ -2316,7 +2343,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   }
 
   // Mirror the on-device disconnect button.
-  if (command == "disconnect") {
+  if (simpleAction && command == "disconnect") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     doDisconnect();
     return;
   }
@@ -2326,11 +2354,11 @@ void UI::simScenarioActionOnUi(const char *action) {
   // reconnect (task #54 / F3). "drop" drops every active link; "drop <n>" drops
   // only target n, so a multi-connect session can lose one camera and keep the
   // rest live.
-  if (command == "drop" || command.rfind("drop ", 0) == 0) {
-    int index = -1;
-    if (command.size() > 5) {
-      index = std::atoi(command.c_str() + 5);
-    }
+  if (action.kind == Sim::scenario_action_kind_t::DROP) {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    const int index = action.index == std::numeric_limits<uint32_t>::max()
+                          ? -1
+                          : static_cast<int>(action.index);
     Control::getInstance().simDropActiveLink(index);
     return;
   }
@@ -2338,7 +2366,9 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Click the real Cancel button on the connect message box, running the same
   // handler an on-device press would. Used to prove one Cancel click fires
   // exactly one disconnect regardless of prior connect attempts (F4).
-  if (command == "cancel") {
+  if (simpleAction && command == "cancel") {
+    m_SimActionResult = m_ConnectContext.cancel == nullptr ? sim_action_result_t::VALID_NO_EFFECT
+                                                           : sim_action_result_t::APPLIED;
     if (m_ConnectContext.cancel != nullptr) {
       lv_obj_send_event(m_ConnectContext.cancel, LV_EVENT_CLICKED, this);
     }
@@ -2360,62 +2390,46 @@ void UI::simScenarioActionOnUi(const char *action) {
     m_Level.filterReady = false;
   };
 
-  constexpr const char *IMU_ACCEL_PREFIX = "imu.accel ";
-  if (command.compare(0, std::char_traits<char>::length(IMU_ACCEL_PREFIX), IMU_ACCEL_PREFIX) == 0) {
-    float accel[3] = {0.0f, 0.0f, 1.0f};
-    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ACCEL_PREFIX), "%f %f %f",
-                    &accel[0], &accel[1], &accel[2])
-        == 3) {
-      Furble::Sim::imuSetAccel(accel[0], accel[1], accel[2]);
-      resetLevelFilter();
-    }
+  if (action.kind == Sim::scenario_action_kind_t::IMU_VECTOR && action.name == "imu.accel") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    Furble::Sim::imuSetAccel(action.values[0], action.values[1], action.values[2]);
+    resetLevelFilter();
     return;
   }
 
-  constexpr const char *IMU_ROLL_PREFIX = "imu.roll ";
-  if (command.compare(0, std::char_traits<char>::length(IMU_ROLL_PREFIX), IMU_ROLL_PREFIX) == 0) {
-    float roll = 0.0f;
-    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_ROLL_PREFIX), "%f", &roll)
-        == 1) {
-      Furble::Sim::imuSetOrientation(roll, 0.0f);
-      resetLevelFilter();
-    }
+  if (action.kind == Sim::scenario_action_kind_t::IMU_ANGLE && action.name == "imu.roll") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    Furble::Sim::imuSetOrientation(action.values[0], 0.0f);
+    resetLevelFilter();
     return;
   }
 
-  constexpr const char *IMU_PITCH_PREFIX = "imu.pitch ";
-  if (command.compare(0, std::char_traits<char>::length(IMU_PITCH_PREFIX), IMU_PITCH_PREFIX) == 0) {
-    float pitch = 0.0f;
-    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_PITCH_PREFIX), "%f",
-                    &pitch)
-        == 1) {
-      Furble::Sim::imuSetOrientation(0.0f, pitch);
-      resetLevelFilter();
-    }
+  if (action.kind == Sim::scenario_action_kind_t::IMU_ANGLE && action.name == "imu.pitch") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    Furble::Sim::imuSetOrientation(0.0f, action.values[0]);
+    resetLevelFilter();
     return;
   }
 
-  constexpr const char *IMU_GYRO_PREFIX = "imu.gyro ";
-  if (command.compare(0, std::char_traits<char>::length(IMU_GYRO_PREFIX), IMU_GYRO_PREFIX) == 0) {
-    float gyro[3] = {0.0f, 0.0f, 0.0f};
-    if (std::sscanf(command.c_str() + std::char_traits<char>::length(IMU_GYRO_PREFIX), "%f %f %f",
-                    &gyro[0], &gyro[1], &gyro[2])
-        == 3) {
-      Furble::Sim::imuSetGyro(gyro[0], gyro[1], gyro[2]);
-    }
+  if (action.kind == Sim::scenario_action_kind_t::IMU_VECTOR && action.name == "imu.gyro") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    Furble::Sim::imuSetGyro(action.values[0], action.values[1], action.values[2]);
     return;
   }
 
-  if (command == "imu.enable" || command == "imu.disable") {
+  if (simpleAction && (command == "imu.enable" || command == "imu.disable")) {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Furble::Sim::imuSetEnabled(command == "imu.enable");
     return;
   }
 
-  if (command == "imu.accel.fail" || command == "imu.accel.recover") {
+  if (simpleAction && (command == "imu.accel.fail" || command == "imu.accel.recover")) {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Furble::Sim::imuSetAccelAvailable(command == "imu.accel.recover");
     return;
   }
-  if (command == "imu.gyro.fail" || command == "imu.gyro.recover") {
+  if (simpleAction && (command == "imu.gyro.fail" || command == "imu.gyro.recover")) {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Furble::Sim::imuSetGyroAvailable(command == "imu.gyro.recover");
     return;
   }
@@ -2423,13 +2437,15 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Zero the redraw-storm probe. A scenario resets it, holds a page steady over
   // a wait and asserts ui.invalidate_count stays low, so an unguarded per-tick
   // setter that redraws every frame is caught headlessly.
-  if (command == "invalidate.reset") {
+  if (simpleAction && command == "invalidate.reset") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Furble::Sim::profilerResetInvalidationProbe();
     return;
   }
 
   // Fire the shutter through the real shutter button handler.
-  if (command == "shutter") {
+  if (simpleAction && command == "shutter") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
     return;
@@ -2438,11 +2454,13 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Select the main-button behavior mode. BUTTON_MODE is a string roller, not a
   // boolean switch, so it has no toggle entry. handleButtonMode reads the stored
   // value live on each event, so a later gesture picks up the change.
-  if (command == "button-mode one-button") {
+  if (action.kind == Sim::scenario_action_kind_t::BUTTON_MODE && action.mode == "one-button") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Settings::save<std::string>(Settings::BUTTON_MODE, Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
     return;
   }
-  if (command == "button-mode two-button") {
+  if (action.kind == Sim::scenario_action_kind_t::BUTTON_MODE && action.mode == "two-button") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Settings::save<std::string>(Settings::BUTTON_MODE, Settings::BUTTON_MODE_TWO_BUTTON_VALUE);
     return;
   }
@@ -2450,7 +2468,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Single press and hold of the main button (gesture 1). The press is held
   // past the long-press threshold, so one-button mode dispatches focus, held
   // until release. A quick tap alone is a no-op by design.
-  if (command == "main-press-hold") {
+  if (simpleAction && command == "main-press-hold") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_LONG_PRESSED, this);
     lv_obj_send_event(m_OK, LV_EVENT_RELEASED, this);
@@ -2464,7 +2483,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // dispatch exactly one shutter press and release and leak no focus. The sim
   // cannot reproduce LVGL's real streak timing, so it injects the streak the
   // short-click classification records.
-  if (command == "main-double-click") {
+  if (simpleAction && command == "main-double-click") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     m_SimClickStreakActive = true;
     m_SimClickStreak = 1;
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
@@ -2480,7 +2500,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // streak, then the second press is held past the long-press threshold. The
   // fixed handler must dispatch a single sustained shutter press and release,
   // and leak no focus.
-  if (command == "main-click-hold") {
+  if (simpleAction && command == "main-click-hold") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     m_SimClickStreakActive = true;
     m_SimClickStreak = 1;
     lv_obj_send_event(m_OK, LV_EVENT_PRESSED, this);
@@ -2498,10 +2519,12 @@ void UI::simScenarioActionOnUi(const char *action) {
   // button are driven by clicking the focused object, so this models the normal
   // (non long-press) back: it only returns from a page when the back arrow is
   // reachable and focused there.
-  if (command == "select") {
+  if (simpleAction && command == "select") {
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
     lv_obj_t *focused = lv_group_get_focused(m_Group);
     if (focused != nullptr && lv_obj_is_valid(focused)) {
       lv_obj_send_event(focused, LV_EVENT_CLICKED, this);
+      m_SimActionResult = sim_action_result_t::APPLIED;
     }
     return;
   }
@@ -2509,9 +2532,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Toggle a boolean setting through its real switch widget so the switch's
   // value-changed callback persists the new value, exactly as a button press
   // on that switch would.
-  constexpr const char *TOGGLE_PREFIX = "toggle ";
-  if (command.compare(0, std::char_traits<char>::length(TOGGLE_PREFIX), TOGGLE_PREFIX) == 0) {
-    const std::string name = command.substr(std::char_traits<char>::length(TOGGLE_PREFIX));
+  if (action.kind == Sim::scenario_action_kind_t::TOGGLE) {
+    const std::string name = action.name;
     static const std::unordered_map<std::string, Settings::type_t> settings = {
         {"gps",           Settings::GPS          },
         {"gps_nmea",      Settings::GPS_NMEA     },
@@ -2531,12 +2553,16 @@ void UI::simScenarioActionOnUi(const char *action) {
     };
     const auto found = settings.find(name);
     if (found == settings.end()) {
+      m_SimActionResult = name == "watchdog" ? sim_action_result_t::UNAVAILABLE
+                                             : sim_action_result_t::INVALID;
       return;
     }
     const auto entry = g_simSettingSwitches.find(static_cast<int>(found->second));
     if (entry == g_simSettingSwitches.end() || entry->second == nullptr) {
+      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
       return;
     }
+    m_SimActionResult = sim_action_result_t::APPLIED;
     lv_obj_t *widget = entry->second;
     if (lv_obj_has_state(widget, LV_STATE_CHECKED)) {
       lv_obj_remove_state(widget, LV_STATE_CHECKED);
@@ -2550,8 +2576,12 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Drive the real Start button so the run page loads and the interval timer
   // starts exactly as an on-device press does, including the run page Back
   // handling.
-  if (command == "intervalometer") {
-    lv_obj_send_event(m_IntervalStart, LV_EVENT_CLICKED, nullptr);
+  if (simpleAction && command == "intervalometer") {
+    m_SimActionResult = m_IntervalStart == nullptr ? sim_action_result_t::UNAVAILABLE
+                                                   : sim_action_result_t::APPLIED;
+    if (m_IntervalStart != nullptr) {
+      lv_obj_send_event(m_IntervalStart, LV_EVENT_CLICKED, nullptr);
+    }
     return;
   }
 
@@ -2559,13 +2589,16 @@ void UI::simScenarioActionOnUi(const char *action) {
   // host coverage without relying on a board-specific focus count. The paired
   // stop action releases the simulated shutter and returns through the real
   // menu back path, leaving subsequent page checks deterministic.
-  if (command == "bulb-start") {
+  if (simpleAction && command == "bulb-start") {
+    m_SimActionResult = m_BulbStart == nullptr ? sim_action_result_t::UNAVAILABLE
+                                               : sim_action_result_t::APPLIED;
     if (m_BulbStart != nullptr) {
       lv_obj_send_event(m_BulbStart, LV_EVENT_CLICKED, nullptr);
     }
     return;
   }
-  if (command == "bulb-stop") {
+  if (simpleAction && command == "bulb-stop") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     bulbStop();
     simulatorBack();
     return;
@@ -2573,8 +2606,12 @@ void UI::simScenarioActionOnUi(const char *action) {
 
   // Drive the real Stop button so the run state reset and back navigation run
   // exactly as an on-device press does.
-  if (command == "stop") {
-    lv_obj_send_event(m_IntervalStop, LV_EVENT_CLICKED, nullptr);
+  if (simpleAction && command == "stop") {
+    m_SimActionResult = m_IntervalStop == nullptr ? sim_action_result_t::UNAVAILABLE
+                                                  : sim_action_result_t::APPLIED;
+    if (m_IntervalStop != nullptr) {
+      lv_obj_send_event(m_IntervalStop, LV_EVENT_CLICKED, nullptr);
+    }
     return;
   }
 
@@ -2582,7 +2619,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // entry, running the same handler the physical plus and minus keys drive. The
   // step snaps the stored bulb duration onto the series and persists it, so a
   // scenario can assert the picked preset survived through Settings::BULB.
-  if (command == "preset-step-up" || command == "preset-step-down") {
+  if (simpleAction && (command == "preset-step-up" || command == "preset-step-down")) {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_BulbDurationStr).page);
     presetStep(command == "preset-step-up" ? 1 : -1);
     return;
@@ -2592,7 +2630,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // the pairing timer is running so it raises the real modal. This lets the
   // input-after-approve regression (task #32) be reproduced headlessly. The pin
   // is fixed so captures stay deterministic.
-  if (command == "companion-pair-request") {
+  if (simpleAction && command == "companion-pair-request") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
     Sim::rigInjectPendingPairing(123456);
     startCompanionPairingTimer();
     return;
@@ -2601,7 +2640,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // Click a real companion pairing modal footer button, running the same
   // handler an on-device button press would. Footer child 0 is Accept, 1 is
   // Reject. Used to reproduce the input-after-approve regression (task #32).
-  if (command == "companion-accept" || command == "companion-reject") {
+  if (simpleAction && (command == "companion-accept" || command == "companion-reject")) {
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
     if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
       return;
     }
@@ -2613,6 +2653,7 @@ void UI::simScenarioActionOnUi(const char *action) {
     lv_obj_t *button = lv_obj_get_child(footer, index);
     if (button != nullptr) {
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+      m_SimActionResult = sim_action_result_t::APPLIED;
     }
     return;
   }
@@ -2621,9 +2662,8 @@ void UI::simScenarioActionOnUi(const char *action) {
   // menu history and the header back button pops correctly. This reaches the
   // deep diagnostics pages (BLE, Power state, Device info) the position-based
   // key walks cannot easily target.
-  constexpr const char *NAV_PREFIX = "nav ";
-  if (command.compare(0, std::char_traits<char>::length(NAV_PREFIX), NAV_PREFIX) == 0) {
-    const std::string name = command.substr(std::char_traits<char>::length(NAV_PREFIX));
+  if (action.kind == Sim::scenario_action_kind_t::NAV) {
+    const std::string name = action.name;
     static const std::unordered_map<std::string, const char *> buttons = {
         {"connect",           m_ConnectStr         },
         {"scan",              m_ScanStr            },
@@ -2669,6 +2709,7 @@ void UI::simScenarioActionOnUi(const char *action) {
     };
     const auto found = buttons.find(name);
     if (found == buttons.end()) {
+      m_SimActionResult = sim_action_result_t::INVALID;
       return;
     }
     // Some pages are not registered on every board panel (for example the
@@ -2677,11 +2718,15 @@ void UI::simScenarioActionOnUi(const char *action) {
     // instead of aborting the sim.
     const auto entry = m_Menu.find(found->second);
     if (entry == m_Menu.end()) {
+      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
       return;
     }
     lv_obj_t *button = entry->second.button;
     if (button != nullptr && !lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN)) {
       lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+      m_SimActionResult = sim_action_result_t::APPLIED;
+    } else {
+      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
     }
     return;
   }
@@ -2695,11 +2740,11 @@ void UI::simScenarioActionOnUi(const char *action) {
   //   scroll top     back to the first row
   //   scroll bottom  all the way to the last row
   //   scroll <n>     n pixels down (negative scrolls up)
-  constexpr const char *SCROLL_PREFIX = "scroll ";
-  if (command.compare(0, std::char_traits<char>::length(SCROLL_PREFIX), SCROLL_PREFIX) == 0) {
-    const std::string arg = command.substr(std::char_traits<char>::length(SCROLL_PREFIX));
+  if (action.kind == Sim::scenario_action_kind_t::SCROLL) {
+    const std::string arg = action.name;
     lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
     if (page == nullptr) {
+      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
       return;
     }
     lv_obj_update_layout(page);
@@ -2727,17 +2772,18 @@ void UI::simScenarioActionOnUi(const char *action) {
         lv_obj_scroll_by(page, 0, -delta, LV_ANIM_OFF);
       }
     } else {
-      lv_obj_scroll_by(page, 0, -std::atoi(arg.c_str()), LV_ANIM_OFF);
+      const int32_t delta = static_cast<int32_t>(-static_cast<int64_t>(action.integer));
+      lv_obj_scroll_by(page, 0, delta, LV_ANIM_OFF);
     }
+    m_SimActionResult = sim_action_result_t::APPLIED;
     return;
   }
 
-  constexpr const char *PAGE_PREFIX = "page ";
-  if (command.compare(0, std::char_traits<char>::length(PAGE_PREFIX), PAGE_PREFIX) != 0) {
+  if (action.kind != Sim::scenario_action_kind_t::PAGE) {
     return;
   }
 
-  const std::string page_name = command.substr(std::char_traits<char>::length(PAGE_PREFIX));
+  const std::string page_name = action.name;
   lv_obj_t *page = m_MainMenu.page;
   // Connected-session sub-pages, so the per-page connection-state sweep can land
   // on each place a user sits during a live session and confirm a drop is
@@ -2794,10 +2840,24 @@ void UI::simScenarioActionOnUi(const char *action) {
       {"interval_wait",     m_IntervalWaitStr     },
   };
   const auto found = pages.find(page_name);
+  if (page_name == "main" || page_name == "menu") {
+    lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    return;
+  }
+  if (found == pages.end()) {
+    m_SimActionResult = sim_action_result_t::INVALID;
+    return;
+  }
+  m_SimActionResult = sim_action_result_t::APPLIED;
   if (found != pages.end()) {
     const auto entry = m_Menu.find(found->second);
-    if (entry != m_Menu.end() && entry->second.page != nullptr) {
+    if (entry != m_Menu.end() && entry->second.page != nullptr
+        && !lv_obj_has_flag(entry->second.page, LV_OBJ_FLAG_HIDDEN)) {
       page = entry->second.page;
+    } else {
+      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
+      return;
     }
   }
   lv_menu_set_page(m_MainMenu.main, page);

@@ -1,0 +1,2 @@
+action drop 0 trailing
+exit

@@ -42,3 +42,25 @@ if [ "$count" -eq 0 ]; then
 fi
 
 echo "All $count malformed scenarios were rejected."
+
+expect_invalid() {
+  rc=0
+  "$@" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL command unexpectedly succeeded: $*" >&2
+    exit 1
+  fi
+  if [ "$rc" -ne 2 ]; then
+    echo "FAIL command returned $rc, expected validation status 2: $*" >&2
+    exit 1
+  fi
+}
+
+# Keep command-line validation in the same pre-runtime gate as script parsing.
+expect_invalid "$BIN" --unknown-option
+expect_invalid "$BIN" --script
+expect_invalid "$BIN" --seed not-a-number
+expect_invalid "$BIN" --script "$ROOT/sim/scripts/smoke.txt" --fuzz
+expect_invalid env FURBLE_FUZZ_STEPS=not-a-number "$BIN" --fuzz
+expect_invalid env FURBLE_FUZZ_STEPS=0 "$BIN" --fuzz
+echo "CLI and environment validation passed."

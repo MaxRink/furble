@@ -1,0 +1,273 @@
+#include "scenario_action.h"
+
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
+#include <initializer_list>
+#include <limits>
+#include <sstream>
+#include <vector>
+
+namespace Furble::Sim {
+namespace {
+
+std::vector<std::string> splitWords(const std::string &text) {
+  std::istringstream input(text);
+  std::vector<std::string> words;
+  std::string word;
+  while (input >> word) {
+    words.push_back(word);
+  }
+  return words;
+}
+
+bool oneOf(const std::string &value, std::initializer_list<const char *> values) {
+  for (const char *candidate : values) {
+    if (value == candidate) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool parseUnsigned(const std::string &text, uint64_t maximum, uint64_t *value) {
+  if (text.empty() || text[0] == '-') {
+    return false;
+  }
+  errno = 0;
+  char *end = nullptr;
+  const unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
+  if (errno == ERANGE || end == text.c_str() || *end != '\0'
+      || parsed > maximum) {
+    return false;
+  }
+  *value = static_cast<uint64_t>(parsed);
+  return true;
+}
+
+bool parseSigned(const std::string &text, int64_t minimum, int64_t maximum, int64_t *value) {
+  errno = 0;
+  char *end = nullptr;
+  const long long parsed = std::strtoll(text.c_str(), &end, 10);
+  if (errno == ERANGE || end == text.c_str() || *end != '\0' || parsed < minimum
+      || parsed > maximum) {
+    return false;
+  }
+  *value = static_cast<int64_t>(parsed);
+  return true;
+}
+
+bool parseFloat(const std::string &text, float *value) {
+  errno = 0;
+  char *end = nullptr;
+  const float parsed = std::strtof(text.c_str(), &end);
+  if (errno == ERANGE || end == text.c_str() || *end != '\0' || !std::isfinite(parsed)) {
+    return false;
+  }
+  *value = parsed;
+  return true;
+}
+
+bool fail(std::string *error, const char *message) {
+  if (error != nullptr) {
+    *error = message;
+  }
+  return false;
+}
+
+}  // namespace
+
+bool parseScenarioAction(const std::string &text,
+                         scenario_action_t *action,
+                         std::string *error) {
+  if (action == nullptr) {
+    return fail(error, "missing action output");
+  }
+  *action = scenario_action_t {};
+  const std::vector<std::string> args = splitWords(text);
+  if (args.empty()) {
+    return fail(error, "an action is required");
+  }
+
+  const auto exact = [&args](std::initializer_list<const char *> expected) {
+    if (args.size() != expected.size()) {
+      return false;
+    }
+    size_t index = 0;
+    for (const char *word : expected) {
+      if (args[index++] != word) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const std::initializer_list<const char *> simple = {
+      "blind", "blind-shutter", "indicator-click-focus", "focus-lock", "connect", "connect-two",
+      "disconnect", "link-lies-kill", "cancel", "imu.enable", "imu.disable", "imu.accel.fail",
+      "imu.accel.recover", "imu.gyro.fail", "imu.gyro.recover", "invalidate.reset", "shutter",
+      "main-press-hold", "main-double-click", "main-click-hold", "select", "intervalometer",
+      "bulb-start", "bulb-stop", "stop", "preset-step-up", "preset-step-down",
+      "companion-pair-request", "companion-accept", "companion-reject",
+  };
+  for (const char *command : simple) {
+    if (exact({command})) {
+      action->kind = scenario_action_kind_t::SIMPLE;
+      action->name = command;
+      return true;
+    }
+  }
+
+  if (args[0] == "button-mode") {
+    if (args.size() != 2 || !oneOf(args[1], {"one-button", "two-button"})) {
+      return fail(error, "button-mode requires one-button or two-button");
+    }
+    action->kind = scenario_action_kind_t::BUTTON_MODE;
+    action->mode = args[1];
+    return true;
+  }
+
+  if (args[0] == "battery") {
+    if (args.size() != 5) {
+      return fail(error, "battery requires level voltage current charging");
+    }
+    uint64_t level = 0;
+    uint64_t voltage = 0;
+    int64_t current = 0;
+    if (!parseUnsigned(args[1], 100, &level) || !parseUnsigned(args[2], 65535, &voltage)
+        || !parseSigned(args[3], std::numeric_limits<int32_t>::min(),
+                        std::numeric_limits<int32_t>::max(), &current)
+        || !oneOf(args[4], {"0", "1", "true", "false", "yes", "no", "on", "off"})) {
+      return fail(error, "invalid battery value");
+    }
+    action->kind = scenario_action_kind_t::BATTERY;
+    action->batteryLevel = static_cast<uint8_t>(level);
+    action->batteryVoltage = static_cast<uint16_t>(voltage);
+    action->batteryCurrent = static_cast<int32_t>(current);
+    action->batteryCharging = oneOf(args[4], {"1", "true", "yes", "on"});
+    return true;
+  }
+
+  if (args[0] == "drop") {
+    if (args.size() > 2) {
+      return fail(error, "drop accepts an optional target index");
+    }
+    action->kind = scenario_action_kind_t::DROP;
+    action->index = std::numeric_limits<uint32_t>::max();
+    if (args.size() == 2) {
+      uint64_t index = 0;
+      if (!parseUnsigned(args[1], static_cast<uint64_t>(std::numeric_limits<int32_t>::max()), &index)) {
+        return fail(error, "drop target index is out of range");
+      }
+      action->index = static_cast<uint32_t>(index);
+    }
+    return true;
+  }
+
+  if (args[0] == "imu.accel" || args[0] == "imu.gyro") {
+    if (args.size() != 4) {
+      return fail(error, "imu vector requires exactly three finite numbers");
+    }
+    for (size_t index = 0; index < 3; index++) {
+      if (!parseFloat(args[index + 1], &action->values[index])) {
+        return fail(error, "imu values must be finite numbers");
+      }
+    }
+    action->kind = scenario_action_kind_t::IMU_VECTOR;
+    action->name = args[0];
+    return true;
+  }
+  if (args[0] == "imu.roll" || args[0] == "imu.pitch") {
+    if (args.size() != 2 || !parseFloat(args[1], &action->values[0])) {
+      return fail(error, "imu angle requires one finite number");
+    }
+    action->kind = scenario_action_kind_t::IMU_ANGLE;
+    action->name = args[0];
+    return true;
+  }
+
+  if (args[0] == "toggle") {
+    if (args.size() != 2
+        || !oneOf(args[1], {"gps", "gps_nmea", "autoconnect", "reconnect", "multiconnect",
+                            "companion", "watchdog", "ir", "show_title", "tx_adaptive",
+                            "conn_saver", "preset_picker", "recon_backoff"})) {
+      return fail(error, "toggle requires a known setting name");
+    }
+    action->kind = scenario_action_kind_t::TOGGLE;
+    action->name = args[1];
+    return true;
+  }
+
+  const std::initializer_list<const char *> pages = {
+      "connect", "scan", "delete", "power_off", "bulb_duration", "bulb", "settings", "display",
+      "features", "sensors", "infrared", "gps_rate", "gps_sentences", "gps_constellation",
+      "gps_power", "gps_assist", "gps", "gps_data", "nmea", "timer", "theme", "text_size",
+      "bluetooth", "tx_power", "about", "power", "feedback", "feedback_events", "feedback_volume",
+      "diagnostics", "device_info", "power_state", "ble", "interval_count", "interval_delay",
+      "interval_shutter", "interval_wait", "battery", "storage", "imu", "level",
+  };
+  const auto pageKnown = [&pages](const std::string &value) {
+    for (const char *page : pages) {
+      if (value == page) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (args[0] == "nav") {
+    if (args.size() != 2 || !pageKnown(args[1])) {
+      return fail(error, "nav requires a known page name");
+    }
+    action->kind = scenario_action_kind_t::NAV;
+    action->name = args[1];
+    return true;
+  }
+  if (args[0] == "scroll") {
+    if (args.size() != 2) {
+      return fail(error, "scroll requires top, bottom, next, or a signed pixel count");
+    }
+    action->kind = scenario_action_kind_t::SCROLL;
+    action->name = args[1];
+    if (oneOf(args[1], {"top", "bottom", "next"})) {
+      return true;
+    }
+    int64_t pixels = 0;
+    if (!parseSigned(args[1], -static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
+                     std::numeric_limits<int32_t>::max(), &pixels)) {
+      return fail(error, "scroll pixel count must be between -2147483647 and 2147483647");
+    }
+    action->integer = static_cast<int32_t>(pixels);
+    return true;
+  }
+  if (args[0] == "page") {
+    const std::initializer_list<const char *> pageActions = {
+        "main", "menu", "connect", "scan", "delete", "power_off", "connected", "ir", "shutter", "bulb",
+        "bulb_duration", "bulb_run", "cameras", "remote_timer", "remote_gps", "remote_disconnect",
+        "timer", "timer_run", "settings", "display", "features", "sensors", "infrared", "gps_rate",
+        "gps_sentences", "gps_constellation", "gps_power", "gps_assist", "gps", "gps_data", "nmea",
+        "theme", "text_size", "bluetooth", "tx_power", "about", "power", "feedback", "feedback_events",
+        "feedback_volume", "storage", "diagnostics", "device_info", "battery", "power_state", "ble",
+        "interval_count", "interval_delay", "interval_shutter", "interval_wait",
+    };
+    bool known = args.size() == 2;
+    if (known) {
+      known = false;
+      for (const char *page : pageActions) {
+        if (args[1] == page) {
+          known = true;
+          break;
+        }
+      }
+    }
+    if (!known) {
+      return fail(error, "page requires a known page name");
+    }
+    action->kind = scenario_action_kind_t::PAGE;
+    action->name = args[1];
+    return true;
+  }
+
+  return fail(error, "unknown action or argument list");
+}
+
+}  // namespace Furble::Sim

@@ -144,6 +144,16 @@ a regression.
   `exit`. `home` resets to the root menu and focuses Scan. `back` clicks the
   LVGL header back button and fails on the root page.
   See `docs/sim.md` for every action value and query key.
+- Scenario parsing is a pre-runtime gate: every verb has strict arity and
+  numeric validation, unknown verbs/options and trailing values are rejected
+  with status 2, and duplicate `seed` names are invalid. `action` lines are
+  parsed once into `sim/scenario_action_t`; runtime dispatch consumes that
+  typed value rather than reparsing whitespace-delimited text. UI action calls
+  classify outcomes as `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or
+  `INVALID`, and malformed direct calls fail closed. The valid root aliases
+  `page main` and `page menu` both dispatch to the root page. Signed pixel
+  scrolling accepts -2147483647 through 2147483647 (plus `top`, `bottom`, and
+  `next`); `INT32_MIN` is rejected because runtime negates the delta for LVGL.
 - `stall <ms>` advances virtual time without running `Platform::update`. On the
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
   ordinary `wait` keeps feeding it. The `watchdog` seed is therefore accepted
@@ -256,6 +266,10 @@ a regression.
   board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail.
+  The wrapper passes explicit `--seed` and `--fuzz-steps` values on every run;
+  those CLI values take precedence over matching `FURBLE_FUZZ_SEED` and
+  `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` also enables fuzzing when it
+  is supplied by itself.
 - `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented
   binary for the deeper memory hunt. Off by default so the plain build and CI
   stay fast.

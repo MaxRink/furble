@@ -121,10 +121,12 @@ The simulator command-line options are:
 | `--fuzz` | Run the seeded UI fuzzer instead of a scenario. |
 | `--seed N` | Select the UI fuzzer seed and enable it. |
 | `--fuzz-steps N` | Set the UI fuzzer event budget and enable it. |
-| `--fuzz-verbose` | Print each UI fuzzer event. |
+| `--fuzz-verbose` | Enable fuzzing and print each UI fuzzer event. |
 | `--help` | Print the option synopsis and exit. |
 
-The UI fuzzer also accepts `FURBLE_FUZZ_SEED` and `FURBLE_FUZZ_STEPS`. The
+The UI fuzzer also accepts `FURBLE_FUZZ_SEED` and `FURBLE_FUZZ_STEPS` as
+fallbacks. Explicit `--seed` and `--fuzz-steps` values take precedence over
+their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`, and
 `FURBLE_SIM_BIN`.
@@ -152,7 +154,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
-| `action` | `action COMMAND` invokes one of the simulator actions below. |
+| `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
@@ -261,8 +263,21 @@ The `nav` action clicks a real menu button. Its page names are:
 `bluetooth`, `about`, `power`, `feedback`, `diagnostics`, `device_info`,
 `power_state`, `ble`, `battery`, and `storage`.
 
-The `scroll` action accepts `top`, `bottom`, `next`, or a signed pixel count.
-The `page` action accepts `main`, `shutter`, `bulb`, `cameras`,
+Actions are parsed into a canonical typed representation before SDL, UI, or
+worker startup. Runtime dispatch uses that representation and reports one of
+four outcomes to its caller: `APPLIED` after successful handling,
+`VALID_NO_EFFECT` for an intentional no-op, `UNAVAILABLE` when a valid route or
+capability is absent on the modeled board, and `INVALID` for malformed or
+unhandled input. A queued UI action owns its input and result state, including
+when the UI request times out. The root aliases `page main` and `page menu` are
+both valid and select the root menu.
+
+The `scroll` action accepts `top`, `bottom`, `next`, or a signed pixel count in
+the inclusive range -2147483647 through 2147483647. `-2147483648` is rejected:
+the runtime negates pixel counts to form LVGL's signed int32 scroll delta, so
+that value cannot be represented safely.
+The `page` action accepts `main` and its equivalent root alias `menu`, plus
+`shutter`, `bulb`, `cameras`,
 `remote_timer`, `remote_gps`, `connected`, `settings`, `display`, `features`,
 `gps`, `timer`, `theme`, `text_size`, `bluetooth`, `about`, `power`, and
 `diagnostics`. The connected page map can also report `bulb_run`, `timer_run`,
