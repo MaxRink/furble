@@ -211,6 +211,7 @@ for source in \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
+  "$ROOT/src/FurbleUIGesture.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp"; do

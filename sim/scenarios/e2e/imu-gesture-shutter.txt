@@ -1,0 +1,31 @@
+# Shared IMU gesture detector end-to-end coverage. The SDL seam feeds the same
+# production detector used by hardware; two released impulses must produce one
+# shutter command on an active camera, while quiet samples produce none.
+seed fauxny true
+seed imu true
+seed imu_trigger true
+wait 400
+action connect
+wait 1500
+assert ui.connected yes
+assert camera.shutter_presses 0
+assert camera.shutter_releases 0
+
+# First tap: high acceleration, then release to baseline.
+action imu.accel 0 0 2.6
+wait 40
+action imu.accel 0 0 1
+wait 40
+# Second tap within the 80..400 ms double-tap window.
+action imu.accel 0 0 2.6
+wait 40
+action imu.accel 0 0 1
+wait 100
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+
+# Refractory and stationary gating prevent a duplicate frame.
+wait 800
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+exit

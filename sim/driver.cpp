@@ -199,9 +199,9 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
-      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",    "fb_output",
+      "brightness", "inactivity", "display_off", "gps_rate", "gps_constel",
+      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power", "scan_mode",
+      "text_size",  "auto_off",   "low_batt",    "imu_wake",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -212,21 +212,9 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",
-      "gps_nmea",
-      "fauxny",
-      "autoconnect",
-      "reconnect",
-      "sleep_conn",
-      "boot_splash",
-      "connect_fail",
-      "no_touch",
-      "saved_camera",
-      "scan_start_probe",
-      "scan_distinct",
-      "auto_off_charging",
-      "imu",
-      "imu_sensor",
+      "gps",         "gps_nmea",     "fauxny",           "autoconnect",
+      "reconnect",   "sleep_conn",  "boot_splash",      "connect_fail",
+      "no_touch",    "saved_camera", "scan_start_probe", "scan_distinct", "imu", "imu_trigger",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -674,16 +662,16 @@ std::string settingBoolValue(const std::string &name) {
 #if defined(FURBLE_M5STICKS3)
       {"watchdog",          Settings::WATCHDOG         },
 #endif
-      {"gps",               Settings::GPS              },
-      {"gps_nmea",          Settings::GPS_NMEA         },
-      {"ir",                Settings::IR               },
-      {"conn_saver",        Settings::CONN_SAVER       },
-      {"preset_picker",     Settings::PRESET_PICKER    },
-      {"show_title",        Settings::SHOW_TITLE       },
-      {"tx_adaptive",       Settings::TX_ADAPTIVE      },
-      {"recon_backoff",     Settings::RECON_BACKOFF    },
-      {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
-      {"imu",               Settings::IMU              },
+      {"gps",           Settings::GPS          },
+      {"gps_nmea",      Settings::GPS_NMEA     },
+      {"ir",            Settings::IR           },
+      {"conn_saver",    Settings::CONN_SAVER   },
+      {"preset_picker", Settings::PRESET_PICKER},
+      {"show_title",    Settings::SHOW_TITLE   },
+      {"tx_adaptive",   Settings::TX_ADAPTIVE  },
+      {"recon_backoff", Settings::RECON_BACKOFF},
+      {"imu",           Settings::IMU          },
+      {"imu_trigger",   Settings::IMU_TRIG     },
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
@@ -697,6 +685,7 @@ std::string settingBoolValue(const std::string &name) {
 std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
+      {"imu_wake",  Settings::IMU_WAKE },
   };
   const auto found = bytes.find(name);
   if (found == bytes.end()) {
@@ -941,6 +930,8 @@ void applyScenarioSettings(void) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
   saveBoolean("imu", Settings::IMU);
+  saveBoolean("imu_trigger", Settings::IMU_TRIG);
+  saveByte("imu_wake", Settings::IMU_WAKE);
   // Keep the host sensor surface in step with the setting used to construct
   // the UI. The SDL platform cannot initialize a physical IMU, so the shared
   // seam owns the enabled state for both page visibility and sensor reads.

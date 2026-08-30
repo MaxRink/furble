@@ -393,7 +393,11 @@ pixel-sized top-level window and that the moving tube bubble is not clipped.
 Checked-in scenarios cover the setting gate, live diagnostics, portrait and
 rotated level layouts, redraw stability, and overflow on all three panel sizes:
 `e2e/imu-gating.txt`, `e2e/imu-diagnostics.txt`, `e2e/level-spirit.txt`,
-`e2e/level-overflow.txt`, and `e2e/redraw-steady.txt`.
+`e2e/level-overflow.txt`, `e2e/imu-gesture-shutter.txt`,
+`e2e/imu-gesture-gating.txt`, and `e2e/redraw-steady.txt`. Gesture settings can
+be seeded with `imu_wake` (0..3) and `imu_trigger` (boolean); `imu.accel` drives
+the shared detector seam. The gesture gating scenario also checks that the
+Sensors page roller and switches disable when the simulated IMU disappears.
 
 ### Real-code host BLE faults
 

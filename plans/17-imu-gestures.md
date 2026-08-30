@@ -52,8 +52,8 @@ The shutter path is `Control::sendCommand(Control::CMD_SHUTTER_PRESS)` and
 
 | Enum | NVS key | Namespace | Type | Default | Notes |
 |---|---|---|---|---|---|
-| `IMU_WAKE` | `imu_wake` (8) | `FURBLE_STR` | `uint8_t` | `0` | 0 off, 1 tap, 2 shake, 3 both. 0 is current behaviour. |
-| `IMU_TRIG` | `imu_trigger` (11) | `FURBLE_STR` | `bool` | `false` | False is current behaviour. |
+| `IMU_WAKE` | `imu_wake` (63) | `FURBLE_STR` | `uint8_t` | `0` | 0 off, 1 tap, 2 shake, 3 both. 0 is current behaviour. |
+| `IMU_TRIG` | `imu_trigger` (64) | `FURBLE_STR` | `bool` | `false` | False is current behaviour. |
 
 Name strings: `"Wake Gesture"` and `"Double-Tap Shutter"`.
 
@@ -105,7 +105,8 @@ Detector design:
 
 Wake behaviour:
 
-- On a gesture matching `IMU_WAKE`, call the same display wake path PR12 uses,
+- On a gesture matching `IMU_WAKE`, call the display sleep/wake state machine
+  already integrated from PR12,
   and reset the LVGL inactivity counter so `processInactivity()`
   (`src/FurbleUI.cpp:2094-2112`) does not immediately dim again.
 - A wake gesture must never also fire the shutter. Gate `IMU_TRIG` on the display
@@ -142,8 +143,8 @@ from our own on-board measurement.
 
 ## Dependencies
 
-- PR12 (display off). Without it there is no off state to wake from, and the
-  wake gesture only restores brightness.
+- Repaired PR28 (display off). The display sleep/wake state machine is present
+  in this branch; gesture wake must use its shared power-lock and panel path.
 - PR16 (IMU enable). Hard dependency. `M5.Imu` returns nothing useful when
   `cfg.internal_imu` is false.
 - Independent of PR18, but both read the same accelerometer stream. If both are
@@ -211,6 +212,42 @@ Battery impact, on-board instrumentation only:
 2. 30 minutes connected and idle with all gestures off.
 3. 30 minutes connected and idle with Wake Gesture set to Both.
 4. Report both drain slopes in the PR body.
+
+## Implementation state
+
+Implemented:
+
+- Added `IMU_WAKE` with the `imu_wake` NVS key and `IMU_TRIG` with the
+  `imu_trigger` NVS key. Both default to the current disabled behavior.
+- Added a software accelerometer detector for tap, double tap, and shake.
+  The detector runs at 50 Hz only when a gesture feature is enabled and the
+  effective IMU setting is on.
+- Added Settings -> Sensors entries for Wake Gesture and Double-Tap Shutter.
+  Their menu entry, roller, and switch are disabled when the effective IMU or
+  live sensor availability is off; polling also stops in that state. The page
+  includes the false-trigger warning.
+- Added the Connected and Remote page checks, intervalometer guard, display
+  wake hook, inactivity reset, refractory period, and short shutter command
+  pair.
+- Added console and companion setting type and value cases. Console and
+  companion changes notify the UI task without touching LVGL from another task.
+- The requested S3 build was attempted twice. The first attempt was blocked by
+  the PlatformIO core lock. The second reached CMake but could not install the
+  ESP-IDF Python dependency because PyPI DNS is blocked in the sandbox.
+
+Deviations:
+
+- This branch is based on repaired PR28 and includes the PR12 display-off
+  state. Gesture wake calls the shared `UI::wakeDisplay()` path, restores the
+  configured brightness when waking from off/dim, and triggers LVGL activity.
+- Poll power cost and hardware behavior are not measured yet. Hardware
+  verification is pending.
+
+Rebase notes:
+
+- Wire IDs are `IMU_WAKE` 63 and `IMU_TRIG` 64. IDs 45 and 46 are reserved by
+  the shipped IMU setting and companion password; 47/48 are reserved by the
+  open hardware-motion roadmap, and 51-62 by the Wi-Fi/MQTT settings ledger.
 
 ## References
 

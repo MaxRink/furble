@@ -164,9 +164,9 @@ longitude, altitude, and UTC date and time. It is reachable both here and under
 ![Settings root](img/settings.png)
 
 The Settings menu groups every option. Its entries in order are Display,
-Features, Infrared, GPS, Timer, Theme, Text size, Bluetooth, About, Power,
-Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear only on
-boards with the matching hardware.
+Features, Sensors, Infrared, GPS, Timer, Theme, Text size, Bluetooth, About,
+Power, Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear
+only on boards with the matching hardware.
 
 The list is longer than the screen. The image above is the top; scrolling down
 reveals the rest:
@@ -361,7 +361,20 @@ Diagnostics groups read-only status pages.
 
 The Sensors page contains the **IMU** switch. It is off by default and requires
 Restart after changing it. When enabled, the Connected menu exposes **Level**;
-the live accelerometer page is also available under Diagnostics.
+the live accelerometer page is also available under Diagnostics. When the IMU
+is available, the page also contains **Wake Gesture** (Off, Tap, Shake, or
+Both) and **Double-Tap Shutter**. Wake gestures restore the display; the
+shutter option fires one debounced shutter command only on an active Connected
+or Remote page. Both controls are disabled whenever the IMU is unavailable.
+
+The deterministic `sim/scenarios/e2e/imu-gesture-gating.txt` scenario checks
+that the roller, switch, and Sensors navigation entry all disable when the
+sensor becomes unavailable. `imu-gesture-shutter.txt` checks the real shutter
+path and refractory period; the same scenarios are run for the 80x160,
+135x240, and 320x240 simulator panels.
+
+![Sensors settings](img/settings-sensors.png)
+![Wake gesture settings](img/settings-wake-gesture.png)
 
 ### Storage
 

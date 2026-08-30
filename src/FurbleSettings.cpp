@@ -27,7 +27,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
-    {IMU,               {IMU, 46, "IMU", "imu", FURBLE_STR}                                  },
+    {IMU,               {IMU, 45, "IMU", "imu", FURBLE_STR}                                  },
+    {IMU_WAKE,          {IMU_WAKE, 63, "Wake Gesture", "imu_wake", FURBLE_STR}               },
+    {IMU_TRIG,          {IMU_TRIG, 64, "Double-Tap Shutter", "imu_trigger", FURBLE_STR}      },
     {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
     {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
     {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
@@ -130,6 +132,8 @@ bool Settings::appliesImmediately(type_t type) {
     case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
+    case IMU_WAKE:
+    case IMU_TRIG:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
@@ -217,6 +221,8 @@ bool Settings::isDangerous(type_t type) {
     case SD_GPX:
     case GPX_PERIOD:
     case IMU:
+    case IMU_WAKE:
+    case IMU_TRIG:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -486,6 +492,7 @@ void Settings::init(void) {
         case IR_PROTO:
         case AUTO_OFF:
         case LOW_BATT:
+        case IMU_WAKE:
           save<uint8_t>(setting.type, 0);
           break;
         case AUTO_OFF_CHARGING:
@@ -527,6 +534,7 @@ void Settings::init(void) {
         } break;
         case GPS:
         case IMU:
+        case IMU_TRIG:
         case GPS_NMEA:
         case MULTICONNECT:
         case RECONNECT:

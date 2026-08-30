@@ -212,6 +212,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -250,7 +251,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::TX_ADAPTIVE:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -361,6 +363,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::IMU_WAKE:
+      if (!parseUnsigned(text, 3, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::CPU_FREQ:
       if (!parseUnsigned(text, 240, value) || ((value != 80) && (value != 160) && (value != 240))) {
         return false;
@@ -463,7 +472,8 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::TX_ADAPTIVE:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
