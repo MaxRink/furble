@@ -1,0 +1,3 @@
+seed brightness 1
+seed brightness 2
+exit

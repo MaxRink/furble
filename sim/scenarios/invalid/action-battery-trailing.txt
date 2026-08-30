@@ -1,0 +1,2 @@
+action battery 80 4000 0 false trailing
+exit

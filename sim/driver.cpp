@@ -68,6 +68,7 @@ struct Step {
   std::string name;
   std::string expected;
   uint32_t timeoutMilliseconds = 0;
+  scenario_action_t action;
 };
 
 constexpr uint32_t MAX_EVENTUAL_TIMEOUT_MS = 60000;
@@ -129,6 +130,9 @@ bool parseBool(const std::string &value) {
 
 uint32_t parseUnsigned(const std::string &value) {
   try {
+    if (value.empty() || value[0] == '+' || value[0] == '-') {
+      throw std::invalid_argument("signed or empty unsigned value");
+    }
     size_t parsed = 0;
     const unsigned long number = std::stoul(value, &parsed, 10);
     if (parsed != value.size() || number > std::numeric_limits<uint32_t>::max()) {
@@ -205,9 +209,36 @@ bool buttonKnown(const std::string &name) {
 int32_t parseSigned(const std::string &value, const char *name);
 uint16_t batteryVoltage(const std::string &value);
 
+uint64_t parseUnsigned64(const std::string &value, const char *name) {
+  try {
+    if (value.empty() || value[0] == '+' || value[0] == '-') {
+      throw std::invalid_argument("negative or empty");
+    }
+    size_t parsed = 0;
+    const uint64_t number = std::stoull(value, &parsed, 10);
+    if (parsed != value.size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+    return number;
+  } catch (const std::exception &) {
+    std::cerr << "Invalid " << name << ": " << value << '\n';
+    std::exit(2);
+  }
+}
+
 bool booleanSeedValue(const std::string &value) {
   return value == "0" || value == "1" || value == "true" || value == "false" || value == "yes"
          || value == "no" || value == "on" || value == "off";
+}
+
+std::vector<std::string> scriptWords(const std::string &line) {
+  std::istringstream input(line);
+  std::vector<std::string> result;
+  std::string word;
+  while (input >> word) {
+    result.push_back(word);
+  }
+  return result;
 }
 
 void validateSeed(const std::string &name, const std::string &value) {
@@ -332,43 +363,54 @@ void readScript(const std::string &path) {
       continue;
     }
 
+    const std::vector<std::string> args = scriptWords(trim(line));
+    const auto rejectArity = [](const std::string &name, const std::string &usage) {
+      std::cerr << name << " requires " << usage << '\n';
+      std::exit(2);
+    };
+    const auto exactArgs = [&args](size_t count) { return args.size() == count; };
+
     if (command == "seed") {
-      std::string name;
-      std::string value;
-      input >> name >> value;
-      std::string extra;
-      input >> extra;
-      if (name.empty() || value.empty() || !extra.empty()) {
-        std::cerr << "seed requires exactly a name and value\n";
+      if (!exactArgs(3)) {
+        rejectArity("seed", "exactly a name and value");
+      }
+      if (scenarioSettings.find(args[1]) != scenarioSettings.end()) {
+        std::cerr << "Duplicate scenario seed: " << args[1] << '\n';
         std::exit(2);
       }
-      validateSeed(name, value);
-      scenarioSettings[name] = value;
+      validateSeed(args[1], args[2]);
+      scenarioSettings[args[1]] = args[2];
       continue;
     }
 
     if (command == "wait" || command == "advance") {
+      if (!exactArgs(2)) {
+        rejectArity(command, "exactly one duration");
+      }
       Step step;
       step.type = StepType::WAIT;
-      input >> step.milliseconds;
+      step.milliseconds = parseUnsigned(args[1]);
       steps.push_back(step);
     } else if (command == "stall") {
+      if (!exactArgs(2)) {
+        rejectArity("stall", "exactly one non-zero duration");
+      }
       Step step;
       step.type = StepType::STALL;
-      input >> step.milliseconds;
+      step.milliseconds = parseUnsigned(args[1]);
       if (step.milliseconds == 0) {
-        std::cerr << "stall requires a non-zero duration\n";
-        std::exit(2);
+        rejectArity("stall", "exactly one non-zero duration");
       }
       steps.push_back(step);
     } else if (command == "key" || command == "press") {
-      std::string name;
-      input >> name;
+      if (!exactArgs(2)) {
+        rejectArity(command, "exactly one key");
+      }
       Step step;
       step.type = StepType::KEY;
-      step.key = keyCode(name);
+      step.key = keyCode(args[1]);
       if (step.key == SDLK_UNKNOWN) {
-        std::cerr << "Unknown simulator key: " << name << '\n';
+        std::cerr << "Unknown simulator key: " << args[1] << '\n';
         std::exit(2);
       }
       steps.push_back(step);
@@ -378,8 +420,10 @@ void readScript(const std::string &path) {
       // it, the button taps. The name is validated against the board's button
       // set here so pressing an absent button (BtnC on a Stick, BtnPWR on a
       // Core) fails at parse time.
-      std::string name;
-      input >> name;
+      if (args.size() < 2 || args.size() > 3) {
+        rejectArity(command, "a button and optional hold modifier");
+      }
+      std::string name = args[1];
       std::transform(name.begin(), name.end(), name.begin(),
                      [](unsigned char c) { return std::tolower(c); });
       if (!buttonKnown(name)) {
@@ -389,8 +433,7 @@ void readScript(const std::string &path) {
       Step step;
       step.type = StepType::BTN;
       step.name = name;
-      std::string hold;
-      input >> hold;
+      std::string hold = args.size() == 3 ? args[2] : "";
       if (hold == "hold" || hold == "long") {
         step.hold = true;
       } else if (!hold.empty()) {
@@ -399,18 +442,27 @@ void readScript(const std::string &path) {
       }
       steps.push_back(step);
     } else if (command == "capture") {
+      if (!exactArgs(2)) {
+        rejectArity("capture", "exactly one file name");
+      }
       Step step;
       step.type = StepType::CAPTURE;
-      input >> step.name;
+      step.name = args[1];
       steps.push_back(step);
     } else if (command == "uart-dump") {
+      if (!exactArgs(1)) {
+        rejectArity("uart-dump", "no arguments");
+      }
       Step step;
       step.type = StepType::UART_DUMP;
       steps.push_back(step);
     } else if (command == "uart-mode" || command == "gps-uart") {
+      if (!exactArgs(2)) {
+        rejectArity(command, "exactly one mode");
+      }
       Step step;
       step.type = StepType::UART_MODE;
-      input >> step.name;
+      step.name = args[1];
       if (step.name != "ack" && step.name != "nack" && step.name != "timeout"
           && step.name != "malformed" && step.name != "partial" && step.name != "write-error"
           && step.name != "pause") {
@@ -420,9 +472,12 @@ void readScript(const std::string &path) {
       }
       steps.push_back(step);
     } else if (command == "uart-event" || command == "gps-uart-event") {
+      if (!exactArgs(2)) {
+        rejectArity(command, "exactly one event");
+      }
       Step step;
       step.type = StepType::UART_EVENT;
-      input >> step.name;
+      step.name = args[1];
       if (step.name != "data" && step.name != "fifo" && step.name != "buffer"
           && step.name != "break" && step.name != "parity" && step.name != "frame"
           && step.name != "pattern") {
@@ -431,30 +486,38 @@ void readScript(const std::string &path) {
       }
       steps.push_back(step);
     } else if (command == "gps-restart") {
+      if (!exactArgs(2)) {
+        rejectArity("gps-restart", "exactly one mode");
+      }
       Step step;
       step.type = StepType::GPS_RESTART;
-      input >> step.name;
+      step.name = args[1];
       if (step.name != "hot" && step.name != "warm" && step.name != "cold") {
         std::cerr << "gps-restart requires hot, warm or cold\n";
         std::exit(2);
       }
       steps.push_back(step);
     } else if (command == "home") {
+      if (!exactArgs(1)) {
+        rejectArity("home", "no arguments");
+      }
       Step step;
       step.type = StepType::HOME;
       steps.push_back(step);
     } else if (command == "back") {
+      if (!exactArgs(1)) {
+        rejectArity("back", "no arguments");
+      }
       Step step;
       step.type = StepType::BACK;
       steps.push_back(step);
     } else if (command == "report") {
+      if (!exactArgs(2)) {
+        rejectArity("report", "exactly one file name");
+      }
       Step step;
       step.type = StepType::REPORT;
-      input >> step.name;
-      if (step.name.empty()) {
-        std::cerr << "report requires a file name\n";
-        std::exit(2);
-      }
+      step.name = args[1];
       steps.push_back(step);
     } else if (command == "action") {
       Step step;
@@ -465,39 +528,39 @@ void readScript(const std::string &path) {
         std::cerr << "action requires a name\n";
         std::exit(2);
       }
+      std::string error;
+      if (!parseScenarioAction(step.name, &step.action, &error)) {
+        std::cerr << "Invalid simulator action '" << step.name << "': " << error << '\n';
+        std::exit(2);
+      }
       steps.push_back(step);
     } else if (command == "print") {
+      if (!exactArgs(2)) {
+        rejectArity("print", "exactly one key");
+      }
       Step step;
       step.type = StepType::PRINT;
-      input >> step.name;
-      if (step.name.empty()) {
-        std::cerr << "print requires a key\n";
-        std::exit(2);
-      }
+      step.name = args[1];
       steps.push_back(step);
     } else if (command == "assert") {
+      if (!exactArgs(3)) {
+        rejectArity("assert", "exactly a key and an expected value");
+      }
       Step step;
       step.type = StepType::ASSERT;
-      input >> step.name;
-      input >> step.expected;
-      if (step.name.empty() || step.expected.empty()) {
-        std::cerr << "assert requires a key and an expected value\n";
-        std::exit(2);
-      }
+      step.name = args[1];
+      step.expected = args[2];
       steps.push_back(step);
     } else if (command == "assert-eventually" || command == "assert-eventually-virtual") {
+      if (!exactArgs(4)) {
+        rejectArity(command, "exactly TIMEOUT_MS KEY VALUE");
+      }
       Step step;
       step.type = command == "assert-eventually" ? StepType::ASSERT_EVENTUALLY
                                                  : StepType::ASSERT_EVENTUALLY_VIRTUAL;
-      std::string timeout;
-      input >> timeout >> step.name >> step.expected;
-      std::string extra;
-      input >> extra;
-      if (timeout.empty() || step.name.empty() || step.expected.empty() || !extra.empty()) {
-        std::cerr << command << " requires TIMEOUT_MS KEY VALUE with no trailing values\n";
-        std::exit(2);
-      }
-      step.timeoutMilliseconds = parseUnsigned(timeout);
+      step.timeoutMilliseconds = parseUnsigned(args[1]);
+      step.name = args[2];
+      step.expected = args[3];
       if (step.timeoutMilliseconds == 0 || step.timeoutMilliseconds > MAX_EVENTUAL_TIMEOUT_MS) {
         std::cerr << command << " timeout must be between 1 and " << MAX_EVENTUAL_TIMEOUT_MS
                   << " ms\n";
@@ -509,48 +572,60 @@ void readScript(const std::string &path) {
       // pending product fix lands, without failing the run today. A mismatch
       // prints XFAIL and continues; a match prints XPASS so the follow-up fix PR
       // knows to promote the line back to a plain "assert". See sim/CLAUDE.md.
+      if (!exactArgs(3)) {
+        rejectArity("xassert", "exactly a key and an expected value");
+      }
       Step step;
       step.type = StepType::XASSERT;
-      input >> step.name;
-      input >> step.expected;
-      if (step.name.empty() || step.expected.empty()) {
-        std::cerr << "xassert requires a key and an expected value\n";
-        std::exit(2);
-      }
+      step.name = args[1];
+      step.expected = args[2];
       steps.push_back(step);
     } else if (command == "assert_max") {
       // Numeric upper bound: the query value parsed as an integer must be at
       // most the expected value. Used for the redraw-storm probe, where a steady
       // page must hold its invalidation count low rather than at an exact value.
+      if (!exactArgs(3)) {
+        rejectArity("assert_max", "exactly a key and a maximum value");
+      }
       Step step;
       step.type = StepType::ASSERT_MAX;
-      input >> step.name;
-      input >> step.expected;
-      if (step.name.empty() || step.expected.empty()) {
-        std::cerr << "assert_max requires a key and a maximum value\n";
-        std::exit(2);
-      }
+      step.name = args[1];
+      step.expected = args[2];
+      parseSigned(step.expected, "assert_max");
       steps.push_back(step);
     } else if (command == "assert_min") {
       // Numeric lower bound: the query value parsed as an integer must be at
       // least the expected value. Used to assert a page rendered widgets
       // (visible_objects >= 1) and that the bubble tracked a tilt in the right
       // direction without pinning an exact per-panel pixel value.
+      if (!exactArgs(3)) {
+        rejectArity("assert_min", "exactly a key and a minimum value");
+      }
       Step step;
       step.type = StepType::ASSERT_MIN;
-      input >> step.name;
-      input >> step.expected;
-      if (step.name.empty() || step.expected.empty()) {
-        std::cerr << "assert_min requires a key and a minimum value\n";
-        std::exit(2);
-      }
+      step.name = args[1];
+      step.expected = args[2];
+      parseSigned(step.expected, "assert_min");
       steps.push_back(step);
     } else if (command == "exit") {
+      if (!exactArgs(1)) {
+        rejectArity("exit", "no arguments");
+      }
       Step step;
       step.type = StepType::EXIT;
       steps.push_back(step);
     } else {
       std::cerr << "Unknown simulator script command: " << command << '\n';
+      std::exit(2);
+    }
+  }
+
+  for (const Step &step : steps) {
+    if (step.type == StepType::ACTION && step.action.kind == scenario_action_kind_t::SIMPLE
+        && step.action.name == "link-lies-kill"
+        && (scenarioSettings.find("link_lies") == scenarioSettings.end()
+            || !parseBool(scenarioSettings.at("link_lies")))) {
+      std::cerr << "Invalid simulator action '" << step.name << "': requires seed link_lies true\n";
       std::exit(2);
     }
   }
@@ -583,48 +658,11 @@ uint16_t batteryVoltage(const std::string &value) {
   return static_cast<uint16_t>(voltage);
 }
 
-bool parseBatteryAction(const std::string &action) {
-  std::istringstream input(action);
-  std::string command;
-  input >> command;
-  if (command != "battery") {
-    return false;
-  }
-
-  std::string levelText;
-  std::string voltageText;
-  std::string currentText;
-  std::string chargingText;
-  if (!(input >> levelText >> voltageText >> currentText >> chargingText)) {
-    std::cerr << "action battery requires level voltage current charging\n";
-    std::exit(2);
-  }
-
-  const uint32_t level = parseUnsigned(levelText);
-  if (level > 100) {
-    std::cerr << "Invalid battery level: " << levelText << '\n';
-    std::exit(2);
-  }
-  const int32_t current = parseSigned(currentText, "battery_current");
-  const bool charging = parseBool(chargingText);
-  if (chargingText != "0" && chargingText != "1" && chargingText != "true"
-      && chargingText != "false" && chargingText != "yes" && chargingText != "no"
-      && chargingText != "on" && chargingText != "off") {
-    std::cerr << "Invalid battery charging flag: " << chargingText << '\n';
-    std::exit(2);
-  }
-  std::string extra;
-  if (input >> extra) {
-    std::cerr << "action battery has unexpected trailing value: " << extra << '\n';
-    std::exit(2);
-  }
-
-  simulatedBattery = {static_cast<uint8_t>(level), batteryVoltage(voltageText), current, charging};
-  return true;
-}
-
 uint32_t parseUnsigned(const std::string &value, const char *option, uint32_t maximum) {
   try {
+    if (value.empty() || value[0] == '+' || value[0] == '-') {
+      throw std::invalid_argument("signed or empty unsigned value");
+    }
     size_t parsed = 0;
     const unsigned long number = std::stoul(value, &parsed, 10);
     if (parsed != value.size() || number > maximum) {
@@ -790,8 +828,8 @@ void checkLivenessInvariant(void) {
 // false-connected divergence observed on hardware on 2026-08-28, which the
 // fake control cannot otherwise express. Gated behind "seed link_lies true" so
 // no scenario constructs the divergence by accident.
-bool applyLinkLiesAction(const std::string &action) {
-  if (action != "link-lies-kill") {
+bool applyLinkLiesAction(const scenario_action_t &action) {
+  if (action.kind != scenario_action_kind_t::SIMPLE || action.name != "link-lies-kill") {
     return false;
   }
   if (!scenarioSettingIsTrue("link_lies")) {
@@ -806,6 +844,32 @@ bool applyLinkLiesAction(const std::string &action) {
     }
   }
   return true;
+}
+
+const char *simActionResultName(UI::sim_action_result_t result) {
+  switch (result) {
+    case UI::sim_action_result_t::APPLIED:
+      return "APPLIED";
+    case UI::sim_action_result_t::VALID_NO_EFFECT:
+      return "VALID_NO_EFFECT";
+    case UI::sim_action_result_t::UNAVAILABLE:
+      return "UNAVAILABLE";
+    case UI::sim_action_result_t::INVALID:
+      return "INVALID";
+  }
+  return "INVALID";
+}
+
+bool expectedSimActionResult(const scenario_action_t &action, UI::sim_action_result_t actual) {
+  switch (action.expectation) {
+    case scenario_action_expectation_t::APPLIED:
+      return actual == UI::sim_action_result_t::APPLIED;
+    case scenario_action_expectation_t::VALID_NO_EFFECT:
+      return actual == UI::sim_action_result_t::VALID_NO_EFFECT;
+    case scenario_action_expectation_t::UNAVAILABLE:
+      return actual == UI::sim_action_result_t::UNAVAILABLE;
+  }
+  return false;
 }
 
 // Resolve an assertable state key to a string. UI keys run on the UI task, so
@@ -902,7 +966,23 @@ std::string queryValue(const std::string &key) {
         requestExit(2);
         return "";
       }
-      const size_t index = static_cast<size_t>(std::stoul(field.substr(0, dot)));
+      size_t parsed = 0;
+      size_t index = 0;
+      try {
+        const std::string indexText = field.substr(0, dot);
+        if (indexText.empty() || indexText[0] == '+' || indexText[0] == '-') {
+          throw std::invalid_argument("negative or empty index");
+        }
+        const unsigned long value = std::stoul(indexText, &parsed, 10);
+        if (parsed != indexText.size()) {
+          throw std::invalid_argument("trailing index");
+        }
+        index = static_cast<size_t>(value);
+      } catch (const std::exception &) {
+        std::cerr << "Invalid GPS config index: " << field.substr(0, dot) << '\n';
+        requestExit(2);
+        return "";
+      }
       const auto status = gps.getConfigStatus();
       if (index >= status.size()) {
         return "";
@@ -1143,28 +1223,81 @@ void configure(int argc, char **argv) {
   uint64_t fuzzSeed = 1;
   uint32_t fuzzSteps = 500;
   bool fuzzVerbose = false;
+  bool fuzzRequested = false;
+  bool seedOptionProvided = false;
+  bool stepsOptionProvided = false;
+  bool scriptOptionProvided = false;
+  bool fuzzOptionProvided = false;
+  bool fuzzVerboseProvided = false;
+  bool helpRequested = false;
   for (int i = 1; i < argc; ++i) {
     const std::string argument = argv[i];
-    if (argument == "--script" && i + 1 < argc) {
-      script = argv[++i];
+    const auto optionValue = [&](const char *option) {
+      if (i + 1 >= argc || argv[i + 1][0] == '-') {
+        std::cerr << option << " requires a value\n";
+        std::exit(2);
+      }
+      return std::string(argv[++i]);
+    };
+    if (argument == "--script") {
+      if (scriptOptionProvided) {
+        std::cerr << "Duplicate --script option\n";
+        std::exit(2);
+      }
+      scriptOptionProvided = true;
+      script = optionValue("--script");
+      if (script.empty()) {
+        std::cerr << "--script requires a non-empty path\n";
+        std::exit(2);
+      }
     } else if (argument == "--fuzz") {
+      if (fuzzOptionProvided) {
+        std::cerr << "Duplicate --fuzz option\n";
+        std::exit(2);
+      }
+      fuzzOptionProvided = true;
       fuzz = true;
-    } else if (argument == "--seed" && i + 1 < argc) {
+      fuzzRequested = true;
+    } else if (argument == "--seed") {
+      if (seedOptionProvided) {
+        std::cerr << "Duplicate --seed option\n";
+        std::exit(2);
+      }
       fuzz = true;
-      fuzzSeed = std::stoull(argv[++i]);
-    } else if (argument == "--fuzz-steps" && i + 1 < argc) {
+      fuzzRequested = true;
+      seedOptionProvided = true;
+      fuzzSeed = parseUnsigned64(optionValue("--seed"), "--seed");
+    } else if (argument == "--fuzz-steps") {
+      if (stepsOptionProvided) {
+        std::cerr << "Duplicate --fuzz-steps option\n";
+        std::exit(2);
+      }
       fuzz = true;
-      fuzzSteps = parseUnsigned(argv[++i], "--fuzz-steps", std::numeric_limits<uint32_t>::max());
+      fuzzRequested = true;
+      stepsOptionProvided = true;
+      const uint64_t steps = parseUnsigned64(optionValue("--fuzz-steps"), "--fuzz-steps");
+      if (steps == 0 || steps > std::numeric_limits<uint32_t>::max()) {
+        std::cerr << "Invalid --fuzz-steps: " << steps << '\n';
+        std::exit(2);
+      }
+      fuzzSteps = static_cast<uint32_t>(steps);
     } else if (argument == "--fuzz-verbose") {
+      if (fuzzVerboseProvided) {
+        std::cerr << "Duplicate --fuzz-verbose option\n";
+        std::exit(2);
+      }
+      fuzzVerboseProvided = true;
       fuzzVerbose = true;
-    } else if ((argument == "--capture-dir" || argument == "--out") && i + 1 < argc) {
-      captureDirectory = argv[++i];
-    } else if (argument == "--report-dir" && i + 1 < argc) {
-      reportDirectory = argv[++i];
+      fuzz = true;
+      fuzzRequested = true;
+    } else if (argument == "--capture-dir" || argument == "--out") {
+      captureDirectory = optionValue(argument.c_str());
+    } else if (argument == "--report-dir") {
+      reportDirectory = optionValue("--report-dir");
     } else if (argument == "--rig") {
       rig = true;
-    } else if (argument == "--rig-port" && i + 1 < argc) {
-      const uint32_t port = parseUnsigned(argv[++i], "--rig-port", 65535);
+    } else if (argument == "--rig-port") {
+      const uint32_t port = parseUnsigned(optionValue("--rig-port"), "--rig-port", 65535);
       if (port == 0) {
         std::cerr << "Invalid --rig-port: 0\n";
         std::exit(2);
@@ -1174,27 +1307,61 @@ void configure(int argc, char **argv) {
       ignoreUuidMismatch = true;
     } else if (argument == "--drop-notify") {
       dropNotify = true;
-    } else if (argument == "--delay-ms" && i + 1 < argc) {
-      delayMs = parseUnsigned(argv[++i], "--delay-ms", std::numeric_limits<uint32_t>::max());
+    } else if (argument == "--delay-ms") {
+      delayMs = parseUnsigned(optionValue("--delay-ms"), "--delay-ms",
+                              std::numeric_limits<uint32_t>::max());
     } else if (argument == "--help") {
-      std::cout << "furble-sim [--script FILE] [--out DIR] [--report-dir DIR] [--rig] "
-                   "[--rig-port PORT] [--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS] "
-                   "[--fuzz] [--seed N] [--fuzz-steps N] [--fuzz-verbose]\n";
-      std::exit(0);
+      helpRequested = true;
+    } else {
+      std::cerr << "Unknown simulator option: " << argument << '\n';
+      std::exit(2);
     }
   }
 
-  rigConfigure(rig, rigPort, ignoreUuidMismatch, dropNotify, delayMs);
+  // Environment fallbacks let CI drive the fuzzer without argv edits. Explicit
+  // command-line values are authoritative, including when a wrapper leaves
+  // the corresponding fallback variable exported.
+  if (const char *env = std::getenv("FURBLE_FUZZ_SEED"); env != nullptr) {
+    if (!seedOptionProvided) {
+      if (env[0] == '\0') {
+        std::cerr << "FURBLE_FUZZ_SEED must not be empty\n";
+        std::exit(2);
+      }
+      fuzz = true;
+      fuzzRequested = true;
+      fuzzSeed = parseUnsigned64(env, "FURBLE_FUZZ_SEED");
+    }
+  }
+  if (const char *env = std::getenv("FURBLE_FUZZ_STEPS"); env != nullptr) {
+    if (!stepsOptionProvided) {
+      if (env[0] == '\0') {
+        std::cerr << "FURBLE_FUZZ_STEPS must not be empty\n";
+        std::exit(2);
+      }
+      fuzz = true;
+      fuzzRequested = true;
+      const uint64_t steps = parseUnsigned64(env, "FURBLE_FUZZ_STEPS");
+      if (steps == 0 || steps > std::numeric_limits<uint32_t>::max()) {
+        std::cerr << "Invalid FURBLE_FUZZ_STEPS: " << env << '\n';
+        std::exit(2);
+      }
+      fuzzSteps = static_cast<uint32_t>(steps);
+    }
+  }
 
-  // Environment fallbacks let CI drive the fuzzer without argv edits.
-  if (const char *env = std::getenv("FURBLE_FUZZ_SEED"); env != nullptr && env[0] != '\0') {
-    fuzz = true;
-    fuzzSeed = std::stoull(env);
+  if (!script.empty() && fuzzRequested) {
+    std::cerr << "--script cannot be combined with fuzz options or FURBLE_FUZZ_*\n";
+    std::exit(2);
   }
-  if (const char *env = std::getenv("FURBLE_FUZZ_STEPS"); env != nullptr && env[0] != '\0') {
-    fuzz = true;
-    fuzzSteps = static_cast<uint32_t>(std::stoul(env));
+
+  if (helpRequested) {
+    std::cout << "furble-sim [--script FILE] [--out DIR] [--report-dir DIR] [--rig] "
+                 "[--rig-port PORT] [--ignore-uuid-mismatch] [--drop-notify] [--delay-ms MS] "
+                 "[--fuzz] [--seed N] [--fuzz-steps N] [--fuzz-verbose]\n";
+    std::exit(0);
   }
+
+  rigConfigure(rig, rigPort, ignoreUuidMismatch, dropNotify, delayMs);
 
   if (fuzz) {
     scenarioName = "fuzz";
@@ -1363,16 +1530,36 @@ void driverTick(void) {
     }
 
     case StepType::ACTION:
+    {
       if (scenarioUi == nullptr) {
         std::cerr << "Scenario action ran before the UI was ready: " << step.name << '\n';
         requestExit(1);
         return;
       }
-      if (!parseBatteryAction(step.name) && !applyLinkLiesAction(step.name)) {
-        scenarioUi->simScenarioAction(step.name.c_str());
+      UI::sim_action_result_t result = UI::sim_action_result_t::INVALID;
+      if (step.action.kind == scenario_action_kind_t::BATTERY) {
+        simulatedBattery = {step.action.batteryLevel, step.action.batteryVoltage,
+                            step.action.batteryCurrent, step.action.batteryCharging};
+        result = UI::sim_action_result_t::APPLIED;
+      } else if (!applyLinkLiesAction(step.action)) {
+        result = scenarioUi->simScenarioAction(step.action);
+      } else {
+        result = UI::sim_action_result_t::APPLIED;
+      }
+      if (!expectedSimActionResult(step.action, result)) {
+        std::cerr << "Simulator action '" << step.name << "' returned "
+                  << simActionResultName(result) << ", expected "
+                  << (step.action.expectation == scenario_action_expectation_t::APPLIED ? "APPLIED"
+                      : step.action.expectation == scenario_action_expectation_t::VALID_NO_EFFECT
+                          ? "VALID_NO_EFFECT"
+                          : "UNAVAILABLE")
+                  << '\n';
+        requestExit(result == UI::sim_action_result_t::INVALID ? 2 : 1);
+        return;
       }
       ++stepIndex;
       break;
+    }
 
     case StepType::ASSERT:
     {

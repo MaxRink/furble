@@ -1,0 +1,11 @@
+# Actions are parsed into typed values, so repeated whitespace has no runtime
+# effect. The DSL aliases remain accepted as part of the compatibility surface.
+action   page   main
+assert ui.page main
+action   page   menu
+assert ui.page main
+advance 1
+press left
+action   scroll   -2147483647
+action   scroll   2147483647
+exit

@@ -27,6 +27,14 @@ action scroll top
 assert ui.scroll_top 0
 assert ui.overflow yes
 
+# Signed pixel scrolling is bounded and preserves direction: the largest
+# positive step reaches the bottom, while the largest negative step returns to
+# the top without overflowing the LVGL int32 delta.
+action scroll 2147483647
+assert ui.scroll_bottom 0
+action scroll -2147483647
+assert ui.scroll_top 0
+
 # A single viewport step down leaves the page mid scroll: content is now above
 # the viewport and the page still overflows below. Returning to the top clears
 # the above-viewport remainder again.
