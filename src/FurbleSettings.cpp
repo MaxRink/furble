@@ -44,7 +44,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {AUTOCONNECT,        {AUTOCONNECT, 11, "Auto-Connect", "autoconnect", FURBLE_STR}         },
     {COMPANION,          {COMPANION, 12, "Companion", "companion", FURBLE_STR}                },
     {COMPANION_PASSWORD,
-     {COMPANION_PASSWORD, 45, "Companion password", "companion_pw", FURBLE_STR}               },
+     {COMPANION_PASSWORD, 47, "Companion password", "companion_pw", FURBLE_STR}               },
     {CPU_FREQ,           {CPU_FREQ, 17, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
     {BATT_STYLE,         {BATT_STYLE, 18, "Battery Style", "batt_style", FURBLE_STR}          },
     {SHOW_TITLE,         {SHOW_TITLE, 19, "Show Title", "show_title", FURBLE_STR}             },
