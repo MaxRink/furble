@@ -52,6 +52,7 @@ enum class StepType {
   ACTION,
   ASSERT,
   ASSERT_EVENTUALLY,
+  ASSERT_EVENTUALLY_VIRTUAL,
   XASSERT,
   ASSERT_MAX,
   ASSERT_MIN,
@@ -484,20 +485,21 @@ void readScript(const std::string &path) {
         std::exit(2);
       }
       steps.push_back(step);
-    } else if (command == "assert-eventually") {
+    } else if (command == "assert-eventually" || command == "assert-eventually-virtual") {
       Step step;
-      step.type = StepType::ASSERT_EVENTUALLY;
+      step.type = command == "assert-eventually" ? StepType::ASSERT_EVENTUALLY
+                                                 : StepType::ASSERT_EVENTUALLY_VIRTUAL;
       std::string timeout;
       input >> timeout >> step.name >> step.expected;
       std::string extra;
       input >> extra;
       if (timeout.empty() || step.name.empty() || step.expected.empty() || !extra.empty()) {
-        std::cerr << "assert-eventually requires TIMEOUT_MS KEY VALUE with no trailing values\n";
+        std::cerr << command << " requires TIMEOUT_MS KEY VALUE with no trailing values\n";
         std::exit(2);
       }
       step.timeoutMilliseconds = parseUnsigned(timeout);
       if (step.timeoutMilliseconds == 0 || step.timeoutMilliseconds > MAX_EVENTUAL_TIMEOUT_MS) {
-        std::cerr << "assert-eventually timeout must be between 1 and " << MAX_EVENTUAL_TIMEOUT_MS
+        std::cerr << command << " timeout must be between 1 and " << MAX_EVENTUAL_TIMEOUT_MS
                   << " ms\n";
         std::exit(2);
       }
@@ -1406,6 +1408,31 @@ void driverTick(void) {
         // while allowing background simulator tasks to process the state that
         // the preceding virtual-time steps made due.
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      break;
+    }
+
+    case StepType::ASSERT_EVENTUALLY_VIRTUAL:
+    {
+      if (!waiting) {
+        waitUntil = now + step.timeoutMilliseconds;
+        waiting = true;
+      }
+
+      const std::string actual = queryValue(step.name);
+      if (actual == step.expected) {
+        std::cout << "assert-eventually-virtual ok: " << step.name << " = " << actual << '\n';
+        waiting = false;
+        ++stepIndex;
+        break;
+      }
+      if (clockDeadlineReached(now, waitUntil)) {
+        std::cerr << "ASSERT-EVENTUALLY-VIRTUAL FAILED: " << step.name << " expected '"
+                  << step.expected << "' got '" << actual << "' after " << step.timeoutMilliseconds
+                  << " virtual ms\n";
+        std::cout.flush();
+        waiting = false;
+        requestExit(1);
       }
       break;
     }

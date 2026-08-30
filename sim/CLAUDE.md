@@ -140,8 +140,9 @@ a regression.
 - The full script verb set is `seed`, `wait`/`advance`, `key`/`press`,
   `btn`/`button`, `capture`, `uart-dump`, `uart-mode`, `uart-event`,
   `gps-restart`, `home`, `back`, `report`, `action`, `print`, `assert`,
-  `assert-eventually`, `xassert`, `stall`, and `exit`. `home` resets to the root menu and focuses
-  Scan. `back` clicks the LVGL header back button and fails on the root page.
+  `assert-eventually`, `assert-eventually-virtual`, `xassert`, `stall`, and
+  `exit`. `home` resets to the root menu and focuses Scan. `back` clicks the
+  LVGL header back button and fails on the root page.
   See `docs/sim.md` for every action value and query key.
 - `stall <ms>` advances virtual time without running `Platform::update`. On the
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
@@ -172,6 +173,10 @@ a regression.
   It is for cross-task state convergence after virtual time has advanced, not
   for extending a scenario's virtual-time budget. Timeout values must be from
   1 through 60000 ms. A timeout prints the last observed value and exits 1.
+- `assert-eventually-virtual <timeout-ms> <key> <value>` polls once per normal
+  UI tick until the query matches or the virtual deadline expires. Use it for a
+  bounded device timeout that must continue to run while it is observed. It is
+  nonblocking so `Platform::update`, LVGL, and scheduler handoffs keep running.
 - UI-task delays advance virtual time and then perform a short host scheduler
   handoff. Preserve that handoff: it lets joinable background task threads
   observe each part of a scripted wait instead of starting work only after the
