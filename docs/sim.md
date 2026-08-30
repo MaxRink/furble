@@ -160,15 +160,8 @@ text after a comment are ignored. Each line starts with one verb.
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, `setting.*`, and `platform.*`.
-
-The scenario-only `scan_distinct` seed makes the asynchronous scan worker
-publish two distinct FauxNY advertisements. The
-`scan-distinct-rows-heartbeat.txt` scenario checks that both rows are drained
-on the UI task while the watchdog remains armed.
-
-The `clock.ms` query reports the current virtual millisecond clock.
+`assert`, `xassert`, and `print` use the same query namespaces:
+`ui.*`, `control.*`, `camera.*`, `setting.*`, and `platform.*`.
 
 ### Effective `seed` names
 

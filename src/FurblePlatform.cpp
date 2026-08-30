@@ -21,8 +21,8 @@ namespace Furble {
 
 #if defined(FURBLE_M5STICKS3)
 namespace {
-using Watchdog::PM1_FEED_PERIOD_MS;
-using Watchdog::PM1_TIMEOUT_S;
+constexpr uint8_t WDT_TIMEOUT_S = 10;  // Keep the feed period below one third of this timeout.
+constexpr uint32_t WDT_FEED_PERIOD_MS = 1000;
 constexpr uint32_t TIMED_WAKE_MARKER = 0x49564c31;
 }  // namespace
 #endif
@@ -349,7 +349,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       ESP_LOGE(LOG_TAG, "Failed to save M5PM1 wake marker");
       (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
       restoreWatchdog();
-      return false;
+      return;
     }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
@@ -376,20 +376,11 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     M5.Rtc.clearIRQ();
     const int requested_seconds = static_cast<int>(seconds);
     const int programmed_seconds = M5.Rtc.setAlarmIRQ(requested_seconds);
-    // The BM8563 has one-second resolution up to 255 seconds and minute
-    // resolution above that. Accept an upward rounding, which is the only
-    // safe direction for a power-off interval, but reject a failed or shorter
-    // timer because it could wake before the saved resume deadline.
-    if ((programmed_seconds <= 0) || (programmed_seconds < requested_seconds)) {
+    if (programmed_seconds != requested_seconds) {
       ESP_LOGW(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
                programmed_seconds);
       M5.Rtc.disableIRQ();
       return false;
-    }
-
-    if (programmed_seconds != requested_seconds) {
-      ESP_LOGI(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
-               programmed_seconds);
     }
 
     M5.Display.sleep();

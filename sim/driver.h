@@ -24,6 +24,7 @@ bool scenarioSettingIsTrue(const char *name);
 void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);
+bool scenarioSettingIs(const char *name, const char *value);
 
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);

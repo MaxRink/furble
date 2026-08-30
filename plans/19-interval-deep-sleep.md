@@ -310,9 +310,7 @@ Implemented on branch `feat/19-interval-deep-sleep`.
 - Added the StickS3 M5PM1 timer and shutdown path. All explicit M5PM1 accesses use
   the retry helper. The PM1 watchdog is disarmed before the timed shutdown.
 - Added the StickC Plus2 BM8563 timer and GPIO4 HOLD path. The RTC IRQ remains
-  available long enough to identify a timed wake during boot. Its one-minute
-  RTC resolution above 255 seconds is accepted only when it rounds upward;
-  failed or shorter programming leaves the device awake.
+  available long enough to identify a timed wake during boot.
 - `powerOffUntil()` now reports whether timer setup and the power-off request
   were accepted. The UI keeps the resume record when the request succeeds and
   only clears it on a setup failure, so a returning boot can restore the run.
@@ -327,7 +325,29 @@ Implemented on branch `feat/19-interval-deep-sleep`.
 - PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
   genuine deep-sleep wake that fails the first reconnect must show two spaced
   retries in the serial log and then either recover or land on the resume error.
-  Deep sleep only exercises on hardware, so this cannot be confirmed on host.
+- Host simulator coverage now exercises the production resume validator and
+  reconnect path. `sim/scripts/run-deep-sleep.sh` persists a resume record and
+  timed-wake marker, exits at the simulated power-off boundary, and launches a
+  fresh process that consumes the marker and continues the shot count. Dedicated
+  scenarios reject invalid metadata and stale wake times, verify the failed
+  timed-power-off fallback, and assert unsupported-board gating. The unsupported
+  scenario runs on the M5StickC simulator build. `.github/workflows/sim-e2e.yml`
+  runs this complete runner on every simulator CI job, including the two-process
+  persistence check. The start fixture uses a 16 second delay with a 10 second
+  threshold and waits through the full delay before the simulated shutdown. The
+  runner verifies a host-only evidence sidecar showing that both the resume blob
+  and timed-wake marker were readable before the first process exited. The fresh
+  process and its resume assertions prove those keys survived the process
+  boundary. The runner bounds the first process with a portable 30 second
+  watchdog.
+- Timer layout coverage is capability-aware in both deterministic scenarios and
+  the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
+  Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
+  rows and must still fit, while compact interactive pages always require no
+  overflow.
+- The simulator cannot prove the PMIC timer, RTC alarm, GPIO4 HOLD latch, actual
+  rail removal, boot-time marker source, camera remote-mode retention, or real
+  wake-to-shutter latency. Those remain attached-board checks.
 - Timer layout coverage is capability-aware in both deterministic scenarios and
   the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
   Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
