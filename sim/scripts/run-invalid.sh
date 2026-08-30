@@ -6,7 +6,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 BIN=${FURBLE_SIM_BIN:-"$ROOT/sim/build/furble-sim"}
-DIR=${1:-"$ROOT/sim/scenarios/invalid"}
+BOARD=${FURBLE_SIM_BOARD_ID:-m5stick-s3}
 
 : "${SDL_VIDEODRIVER:=dummy}"
 : "${SDL_AUDIODRIVER:=dummy}"
@@ -18,8 +18,9 @@ if [ ! -x "$BIN" ]; then
 fi
 
 count=0
-for scenario in "$DIR"/*.txt; do
-  [ -f "$scenario" ] || continue
+scenarios=$(python3 "$ROOT/tools/check_sim_scenarios.py" --list-certified --suite invalid --board "$BOARD")
+for scenario in $scenarios; do
+  scenario="$ROOT/$scenario"
   name=$(basename "$scenario" .txt)
   count=$((count + 1))
   echo "=== invalid: $name ==="
@@ -37,7 +38,7 @@ for scenario in "$DIR"/*.txt; do
 done
 
 if [ "$count" -eq 0 ]; then
-  echo "no invalid scenarios found in $DIR" >&2
+  echo "no certified invalid scenarios owned for $BOARD" >&2
   exit 1
 fi
 

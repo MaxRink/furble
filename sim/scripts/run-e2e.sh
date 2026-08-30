@@ -9,7 +9,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 BIN=${FURBLE_SIM_BIN:-"$ROOT/sim/build/furble-sim"}
-DIR=${1:-"$ROOT/sim/scenarios/e2e"}
+BOARD=${FURBLE_SIM_BOARD_ID:-m5stick-s3}
 
 : "${SDL_VIDEODRIVER:=dummy}"
 : "${SDL_AUDIODRIVER:=dummy}"
@@ -30,7 +30,9 @@ fi
 
 status=0
 count=0
-for scenario in "$DIR"/*.txt; do
+scenarios=$(python3 "$ROOT/tools/check_sim_scenarios.py" --list-certified --suite e2e --board "$BOARD")
+for scenario in $scenarios; do
+  scenario="$ROOT/$scenario"
   name=$(basename "$scenario" .txt)
   count=$((count + 1))
   echo "=== $name ==="
@@ -44,7 +46,7 @@ for scenario in "$DIR"/*.txt; do
 done
 
 if [ "$count" -eq 0 ]; then
-  echo "no scenarios found in $DIR" >&2
+  echo "no certified end-to-end scenarios owned for $BOARD" >&2
   exit 1
 fi
 

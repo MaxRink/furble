@@ -334,6 +334,12 @@ a regression.
   overflow state for intentional-scroll pages. CI runs it on all three panel
   classes with optional capabilities enabled. Keep route identity and scroll
   endpoint assertions in `page-matrix.txt` rather than duplicating them here.
+- All simulator scenarios are catalogued in `sim/scenarios/manifest.json`.
+  Every entry declares its suite owner, board matrix, capabilities, and
+  expected exit status. Obsolete scenarios must be non-certified with a reason.
+  CI suite sweeps use the checker's `--list-certified` output rather than file
+  globs, so nested and newly added certified scenarios run on every declared
+  board. Keep suite runners manifest-driven.
 - `seed fb_output 0..4` models the persisted feedback output selection. Page
   and overflow matrices seed `fb_output 1` so the sound volume route is truly
   reachable when feedback capability is enabled. `feedback-hidden-route.txt`

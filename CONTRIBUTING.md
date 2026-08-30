@@ -84,6 +84,11 @@ workflow, choose **Run workflow**, and select the branch. Android dispatches
 run unit tests and an APK build by default; enable `run_emulator` when the
 slower emulator smoke test is needed. CI checks this trigger policy with
 `python3 tools/check_ci_workflows.py`.
+All simulator scenarios are catalogued in
+`sim/scenarios/manifest.json`. Check ownership and certification metadata with
+`python3 tools/check_sim_scenarios.py` after changing those scenarios.
+CI obtains each suite's certified paths from that manifest; do not introduce a
+directory glob or hand-maintained suite list as an alternate source of truth.
 Manual PlatformIO dispatches run the complete firmware matrix. They do not
 attempt to infer changed paths without a pull request or push comparison base.
 
