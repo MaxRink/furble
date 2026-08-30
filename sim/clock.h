@@ -9,10 +9,26 @@
 
 namespace Furble::Sim {
 
+using ClockAdvanceHook = void (*)(void);
+using SchedulerCallback = void (*)(void *);
+
 uint32_t clockMillis(void);
 uint64_t clockMicros(void);
+/** Set virtual time without quantizing sub-millisecond timer deadlines. */
+void setClockMicros(uint64_t microseconds);
 void setClockMillis(uint32_t milliseconds);
+/** Advance virtual time without quantizing sub-millisecond timer deadlines. */
+void advanceClockMicros(uint64_t microseconds);
 void advanceClock(uint32_t milliseconds);
+
+/** Install the scheduler wake hook used to release due virtual waiters. */
+void setClockAdvanceHook(ClockAdvanceHook hook);
+
+/** Run a timer callback through the simulator's serialized scheduler gate. */
+void runSchedulerTimerCallback(SchedulerCallback callback, void *argument);
+
+/** Update timer-service readiness while schedulerMutex is already held. */
+void schedulerTimerDueChanged(bool due);
 
 /**
  * Return the lock and wakeup primitive shared by virtual-time waiters.

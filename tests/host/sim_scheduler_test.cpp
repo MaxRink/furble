@@ -6,6 +6,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -91,6 +92,13 @@ int fail(int line) {
   std::cerr << "sim scheduler failure at line " << line << '\n';
   return 1;
 }
+
+// These match the production task priorities in src/main.cpp and the
+// connection task declarations. Keep scheduler tests tied to real firmware
+// values instead of synthetic priority bands.
+constexpr UBaseType_t kControlPriority = 4;
+constexpr UBaseType_t kGpsPriority = 3;
+constexpr UBaseType_t kCompanionPriority = 2;
 
 void waitFor(const std::atomic<bool> &value) {
   for (unsigned int attempt = 0; attempt < 10000 && !value.load(); ++attempt) {
@@ -294,6 +302,106 @@ void throwingTask(void *argument) {
   throw std::runtime_error("simulated worker failure");
 }
 
+struct PriorityTaskState {
+  TestEvent finished;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+  int marker;
+  int turns;
+
+  PriorityTaskState(std::mutex *mutex, std::vector<int> *values, int markerValue, int turnCount)
+      : orderMutex {mutex}, order {values}, marker {markerValue}, turns {turnCount} {}
+};
+
+void priorityTask(void *argument) {
+  auto &state = *static_cast<PriorityTaskState *>(argument);
+  vTaskDelay(5);
+  for (int turn = 0; turn < state.turns; ++turn) {
+    {
+      const std::lock_guard<std::mutex> lock(*state.orderMutex);
+      state.order->push_back(state.marker + turn);
+    }
+    vTaskDelay(0);
+  }
+  state.finished.signal();
+}
+
+struct OrderedQueueWaitState {
+  TestEvent finished;
+  QueueHandle_t queue;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+  int marker;
+  std::atomic<BaseType_t> result {pdFALSE};
+
+  OrderedQueueWaitState(QueueHandle_t queueHandle,
+                        std::mutex *mutex,
+                        std::vector<int> *values,
+                        int markerValue)
+      : queue {queueHandle}, orderMutex {mutex}, order {values}, marker {markerValue} {}
+};
+
+void orderedQueueWaitTask(void *argument) {
+  auto &state = *static_cast<OrderedQueueWaitState *>(argument);
+  uint32_t value = 0;
+  state.result.store(xQueueReceive(state.queue, &value, portMAX_DELAY));
+  {
+    const std::lock_guard<std::mutex> lock(*state.orderMutex);
+    state.order->push_back(state.marker);
+  }
+  state.finished.signal();
+}
+
+struct QueueSendPreemptState {
+  TestEvent finished;
+  QueueHandle_t queue;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+
+  QueueSendPreemptState(QueueHandle_t queueHandle, std::mutex *mutex, std::vector<int> *values)
+      : queue {queueHandle}, orderMutex {mutex}, order {values} {}
+};
+
+void queueSendPreemptTask(void *argument) {
+  auto &state = *static_cast<QueueSendPreemptState *>(argument);
+  const uint32_t value = 1;
+  if (xQueueSend(state.queue, &value, 0) == pdTRUE) {
+    const std::lock_guard<std::mutex> lock(*state.orderMutex);
+    state.order->push_back(2);
+  }
+  state.finished.signal();
+}
+
+struct TimedQueueWaitState {
+  TestEvent finished;
+  QueueHandle_t queue;
+  std::atomic<BaseType_t> result {pdFALSE};
+  std::atomic<uint32_t> value {0};
+
+  explicit TimedQueueWaitState(QueueHandle_t queueHandle) : queue {queueHandle} {}
+};
+
+void timedQueueWaitOnceTask(void *argument) {
+  auto &state = *static_cast<TimedQueueWaitState *>(argument);
+  uint32_t value = 0;
+  state.result.store(xQueueReceive(state.queue, &value, 5));
+  state.value.store(value);
+  state.finished.signal();
+}
+
+struct QueueOwnerDeleteState {
+  TestEvent finished;
+  QueueHandle_t queue;
+
+  explicit QueueOwnerDeleteState(QueueHandle_t queueHandle) : queue {queueHandle} {}
+};
+
+void queueOwnerDeleteTask(void *argument) {
+  auto &state = *static_cast<QueueOwnerDeleteState *>(argument);
+  vQueueDelete(state.queue);
+  state.finished.signal();
+}
+
 std::atomic<bool> timerFired {false};
 std::atomic<bool> cancelledTimerFired {false};
 std::atomic<int> timerCancellationResult {0};
@@ -332,6 +440,109 @@ void blockingTimerCallback(void *) {
     std::this_thread::yield();
   }
   blockingTimerFinished.store(true);
+}
+
+std::atomic<bool> subMillisecondTimerFired {false};
+std::mutex timerOrderMutex;
+std::vector<int> timerOrder;
+
+void subMillisecondTimerCallback(void *) {
+  {
+    const std::lock_guard<std::mutex> lock(timerOrderMutex);
+    timerOrder.push_back(1);
+  }
+  subMillisecondTimerFired.store(true);
+}
+
+struct TimerTaskState {
+  TestEvent finished;
+};
+
+void timerOrderTask(void *argument) {
+  auto &state = *static_cast<TimerTaskState *>(argument);
+  vTaskDelay(5);
+  {
+    const std::lock_guard<std::mutex> lock(timerOrderMutex);
+    timerOrder.push_back(2);
+  }
+  state.finished.signal();
+}
+
+struct CreatePreemptState {
+  TestEvent childFinished;
+  TestEvent finished;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+
+  CreatePreemptState(std::mutex *mutex, std::vector<int> *values)
+      : orderMutex {mutex}, order {values} {}
+};
+
+void createPreemptChildTask(void *argument) {
+  auto &state = *static_cast<CreatePreemptState *>(argument);
+  {
+    const std::lock_guard<std::mutex> lock(*state.orderMutex);
+    state.order->push_back(1);
+  }
+  state.childFinished.signal();
+}
+
+void createPreemptParentTask(void *argument) {
+  auto &state = *static_cast<CreatePreemptState *>(argument);
+  TaskHandle_t child = nullptr;
+  if (xTaskCreate(createPreemptChildTask, "created-high", 0, &state, kControlPriority, &child)
+      != pdPASS) {
+    state.finished.signal();
+    return;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(*state.orderMutex);
+    state.order->push_back(2);
+  }
+  state.finished.signal();
+}
+
+struct QueueResetPreemptSenderState {
+  TestEvent finished;
+  QueueHandle_t queue;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+
+  QueueResetPreemptSenderState(QueueHandle_t queueHandle,
+                               std::mutex *mutex,
+                               std::vector<int> *values)
+      : queue {queueHandle}, orderMutex {mutex}, order {values} {}
+};
+
+void queueResetPreemptSenderTask(void *argument) {
+  auto &state = *static_cast<QueueResetPreemptSenderState *>(argument);
+  const uint32_t value = 2;
+  if (xQueueSend(state.queue, &value, portMAX_DELAY) == pdTRUE) {
+    const std::lock_guard<std::mutex> lock(*state.orderMutex);
+    state.order->push_back(1);
+  }
+  state.finished.signal();
+}
+
+struct QueueResetPreemptOwnerState {
+  TestEvent finished;
+  QueueHandle_t queue;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+
+  QueueResetPreemptOwnerState(QueueHandle_t queueHandle,
+                              std::mutex *mutex,
+                              std::vector<int> *values)
+      : queue {queueHandle}, orderMutex {mutex}, order {values} {}
+};
+
+void queueResetPreemptOwnerTask(void *argument) {
+  auto &state = *static_cast<QueueResetPreemptOwnerState *>(argument);
+  if (xQueueReset(state.queue) == pdTRUE) {
+    const std::lock_guard<std::mutex> lock(*state.orderMutex);
+    state.order->push_back(2);
+  }
+  state.finished.signal();
 }
 
 }  // namespace
@@ -414,6 +625,262 @@ int main() {
   furble_sim_stop_all_tasks();
   furble_sim_reset_tasks();
 
+  // Runnable tasks at one virtual deadline are selected by FreeRTOS priority.
+  // A higher-priority task may continue to run through zero-tick yields, while
+  // equal-priority tasks rotate in deterministic creation order.
+  setClockMillis(0);
+  std::vector<int> priorityOrder;
+  std::mutex priorityOrderMutex;
+  PriorityTaskState highPriority {&priorityOrderMutex, &priorityOrder, 30, 3};
+  PriorityTaskState lowPriority {&priorityOrderMutex, &priorityOrder, 10, 3};
+  TaskHandle_t highPriorityTask = nullptr;
+  TaskHandle_t lowPriorityTask = nullptr;
+  if (xTaskCreate(priorityTask, "priority-high", 0, &highPriority, kControlPriority,
+                  &highPriorityTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(highPriorityTask);
+  if (xTaskCreate(priorityTask, "priority-low", 0, &lowPriority, kCompanionPriority,
+                  &lowPriorityTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(lowPriorityTask);
+  if (furble_sim_task_priority(highPriorityTask) != kControlPriority
+      || furble_sim_task_priority(lowPriorityTask) != kCompanionPriority
+      || furble_sim_task_creation_order(highPriorityTask)
+             >= furble_sim_task_creation_order(lowPriorityTask)) {
+    return fail(__LINE__);
+  }
+  advanceClock(5);
+  highPriority.finished.wait();
+  lowPriority.finished.wait();
+  const std::vector<int> expectedPriorityOrder {30, 31, 32, 10, 11, 12};
+  if (priorityOrder != expectedPriorityOrder) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // A queue wake selects the highest-priority waiter, then the oldest waiter
+  // among equal priorities. A single item must leave every other waiter
+  // blocked until another item arrives.
+  setClockMillis(0);
+  std::vector<int> queueOrder;
+  std::mutex queueOrderMutex;
+  QueueHandle_t orderedQueue = xQueueCreate(3, sizeof(uint32_t));
+  OrderedQueueWaitState orderedLow {orderedQueue, &queueOrderMutex, &queueOrder, 10};
+  OrderedQueueWaitState orderedHighFirst {orderedQueue, &queueOrderMutex, &queueOrder, 20};
+  OrderedQueueWaitState orderedHighSecond {orderedQueue, &queueOrderMutex, &queueOrder, 30};
+  TaskHandle_t orderedLowTask = nullptr;
+  TaskHandle_t orderedHighFirstTask = nullptr;
+  TaskHandle_t orderedHighSecondTask = nullptr;
+  if (orderedQueue == nullptr
+      || xTaskCreate(orderedQueueWaitTask, "ordered-low", 0, &orderedLow, kCompanionPriority,
+                     &orderedLowTask)
+             != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(orderedLowTask);
+  if (xTaskCreate(orderedQueueWaitTask, "ordered-high-first", 0, &orderedHighFirst,
+                  kControlPriority, &orderedHighFirstTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(orderedHighFirstTask);
+  if (xTaskCreate(orderedQueueWaitTask, "ordered-high-second", 0, &orderedHighSecond,
+                  kControlPriority, &orderedHighSecondTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(orderedHighSecondTask);
+  uint32_t queueValue = 1;
+  if (xQueueSend(orderedQueue, &queueValue, 0) != pdTRUE) {
+    return fail(__LINE__);
+  }
+  orderedHighFirst.finished.wait();
+  if (orderedLow.result.load() != pdFALSE || orderedHighSecond.result.load() != pdFALSE
+      || !furble_sim_task_blocked(orderedLowTask)
+      || !furble_sim_task_blocked(orderedHighSecondTask)) {
+    return fail(__LINE__);
+  }
+  queueValue = 2;
+  if (xQueueSend(orderedQueue, &queueValue, 0) != pdTRUE) {
+    return fail(__LINE__);
+  }
+  orderedHighSecond.finished.wait();
+  queueValue = 3;
+  if (xQueueSend(orderedQueue, &queueValue, 0) != pdTRUE) {
+    return fail(__LINE__);
+  }
+  orderedLow.finished.wait();
+  if (queueOrder != std::vector<int> {20, 30, 10}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+  vQueueDelete(orderedQueue);
+
+  // A send from a lower-priority task must yield at the queue boundary when it
+  // wakes a higher-priority receiver. The sender resumes only after receipt.
+  setClockMillis(0);
+  queueOrder.clear();
+  QueueHandle_t preemptQueue = xQueueCreate(1, sizeof(uint32_t));
+  OrderedQueueWaitState preemptReceiver {preemptQueue, &queueOrderMutex, &queueOrder, 1};
+  QueueSendPreemptState preemptSender {preemptQueue, &queueOrderMutex, &queueOrder};
+  TaskHandle_t preemptReceiverTask = nullptr;
+  TaskHandle_t preemptSenderTask = nullptr;
+  if (preemptQueue == nullptr
+      || xTaskCreate(orderedQueueWaitTask, "preempt-receiver", 0, &preemptReceiver,
+                     kControlPriority, &preemptReceiverTask)
+             != pdPASS
+      || xTaskCreate(queueSendPreemptTask, "preempt-sender", 0, &preemptSender, kCompanionPriority,
+                     &preemptSenderTask)
+             != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(preemptReceiverTask);
+  preemptSender.finished.wait();
+  preemptReceiver.finished.wait();
+  if (queueOrder != std::vector<int> {1, 2}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+  vQueueDelete(preemptQueue);
+
+  // Creating a higher-priority task from a modeled lower-priority task is a
+  // scheduler boundary. The child must run before xTaskCreate returns.
+  setClockMillis(0);
+  queueOrder.clear();
+  CreatePreemptState createPreempt {&queueOrderMutex, &queueOrder};
+  TaskHandle_t createParentTaskHandle = nullptr;
+  if (xTaskCreate(createPreemptParentTask, "create-parent", 0, &createPreempt, kCompanionPriority,
+                  &createParentTaskHandle)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  createPreempt.finished.wait();
+  if (queueOrder != std::vector<int> {1, 2}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // Resetting a full queue wakes a blocked higher-priority sender. The sender
+  // must preempt the lower-priority task at the reset boundary.
+  setClockMillis(0);
+  queueOrder.clear();
+  QueueHandle_t resetQueue = xQueueCreate(1, sizeof(uint32_t));
+  const uint32_t queuedValue = 1;
+  if (resetQueue == nullptr || xQueueSend(resetQueue, &queuedValue, 0) != pdTRUE) {
+    return fail(__LINE__);
+  }
+  QueueResetPreemptSenderState resetSender {resetQueue, &queueOrderMutex, &queueOrder};
+  QueueResetPreemptOwnerState resetOwner {resetQueue, &queueOrderMutex, &queueOrder};
+  TaskHandle_t resetSenderTask = nullptr;
+  TaskHandle_t resetOwnerTask = nullptr;
+  if (xTaskCreate(queueResetPreemptSenderTask, "reset-sender", 0, &resetSender, kControlPriority,
+                  &resetSenderTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(resetSenderTask);
+  if (xTaskCreate(queueResetPreemptOwnerTask, "reset-owner", 0, &resetOwner, kCompanionPriority,
+                  &resetOwnerTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  resetOwner.finished.wait();
+  resetSender.finished.wait();
+  if (queueOrder != std::vector<int> {1, 2}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+  vQueueDelete(resetQueue);
+
+  // A timed receive latches a timeout at the exact deadline. An item sent
+  // after that boundary must remain queued and cannot retroactively succeed.
+  setClockMillis(0);
+  QueueHandle_t deadlineQueue = xQueueCreate(1, sizeof(uint32_t));
+  TimedQueueWaitState deadlineWait {deadlineQueue};
+  TaskHandle_t deadlineTask = nullptr;
+  if (deadlineQueue == nullptr
+      || xTaskCreate(timedQueueWaitOnceTask, "deadline-receive", 0, &deadlineWait,
+                     kCompanionPriority, &deadlineTask)
+             != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(deadlineTask);
+  advanceClock(5);
+  deadlineWait.finished.wait();
+  if (deadlineWait.result.load() != pdFALSE) {
+    return fail(__LINE__);
+  }
+  queueValue = 9;
+  if (xQueueSend(deadlineQueue, &queueValue, 0) != pdTRUE) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+  vQueueDelete(deadlineQueue);
+
+  // Queue deletion from a task owner wakes an active blocked user and waits
+  // without holding the scheduler turn, so the final QueueUse can drain.
+  setClockMillis(0);
+  QueueHandle_t ownedQueue = xQueueCreate(1, sizeof(uint32_t));
+  QueueWaitState ownedWait;
+  WaitArgument ownedWaitArgument {&ownedWait, ownedQueue};
+  QueueOwnerDeleteState ownerDelete {ownedQueue};
+  TaskHandle_t ownedWaitTask = nullptr;
+  TaskHandle_t ownerDeleteTaskHandle = nullptr;
+  if (ownedQueue == nullptr
+      || xTaskCreate(queueWaitTask, "owned-queue-wait", 0, &ownedWaitArgument, kCompanionPriority,
+                     &ownedWaitTask)
+             != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(ownedWaitTask);
+  if (xTaskCreate(queueOwnerDeleteTask, "owned-queue-delete", 0, &ownerDelete, kControlPriority,
+                  &ownerDeleteTaskHandle)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  ownerDelete.finished.wait();
+  if (!ownedWait.returned.load() || ownedWait.result.load() != pdFALSE) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  setClockMillis(0);
+  priorityOrder.clear();
+  PriorityTaskState firstEqual {&priorityOrderMutex, &priorityOrder, 100, 3};
+  PriorityTaskState secondEqual {&priorityOrderMutex, &priorityOrder, 200, 3};
+  TaskHandle_t firstEqualTask = nullptr;
+  TaskHandle_t secondEqualTask = nullptr;
+  if (xTaskCreate(priorityTask, "equal-first", 0, &firstEqual, kGpsPriority, &firstEqualTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(firstEqualTask);
+  if (xTaskCreate(priorityTask, "equal-second", 0, &secondEqual, kGpsPriority, &secondEqualTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(secondEqualTask);
+  advanceClock(5);
+  firstEqual.finished.wait();
+  secondEqual.finished.wait();
+  const std::vector<int> expectedEqualOrder {100, 200, 101, 201, 102, 202};
+  if (priorityOrder != expectedEqualOrder) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
   setClockMillis(0);
   timerFired.store(false);
   const esp_timer_create_args_t timerArgs = {timerCallback, nullptr, ESP_TIMER_TASK,
@@ -433,6 +900,62 @@ int main() {
     return fail(__LINE__);
   }
   esp_timer_delete(timer);
+
+  // The FreeRTOS tick remains millisecond based, but esp_timer deadlines are
+  // microsecond based and must not be rounded by the scheduler clock API.
+  setClockMicros(0);
+  subMillisecondTimerFired.store(false);
+  const esp_timer_create_args_t subMillisecondArgs = {subMillisecondTimerCallback, nullptr,
+                                                      ESP_TIMER_TASK, "sub-ms", false};
+  esp_timer_handle_t subMillisecondTimer = nullptr;
+  if (esp_timer_create(&subMillisecondArgs, &subMillisecondTimer) != ESP_OK
+      || esp_timer_start_once(subMillisecondTimer, 1500) != ESP_OK) {
+    return fail(__LINE__);
+  }
+  advanceClockMicros(1499);
+  if (subMillisecondTimerFired.load()) {
+    return fail(__LINE__);
+  }
+  advanceClockMicros(1);
+  waitFor(subMillisecondTimerFired);
+  if (!subMillisecondTimerFired.load() || clockMicros() != 1500) {
+    return fail(__LINE__);
+  }
+  esp_timer_delete(subMillisecondTimer);
+
+  // The timer service callback and a task released at the same virtual tick
+  // share the scheduler gate. The modeled timer-service priority wins before
+  // the task runs, and the callback is never invoked concurrently.
+  if (ESP_TASK_TIMER_PRIO != configMAX_PRIORITIES - 3 || ESP_TASK_TIMER_PRIO <= kControlPriority) {
+    return fail(__LINE__);
+  }
+  setClockMillis(0);
+  timerOrder.clear();
+  subMillisecondTimerFired.store(false);
+  TimerTaskState timerTaskState;
+  TaskHandle_t timerOrderTaskHandle = nullptr;
+  if (xTaskCreate(timerOrderTask, "timer-order-task", 0, &timerTaskState, kControlPriority,
+                  &timerOrderTaskHandle)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  waitForBlocked(timerOrderTaskHandle);
+  esp_timer_handle_t orderedTimer = nullptr;
+  const esp_timer_create_args_t orderedTimerArgs = {subMillisecondTimerCallback, nullptr,
+                                                    ESP_TIMER_TASK, "timer-order", false};
+  if (esp_timer_create(&orderedTimerArgs, &orderedTimer) != ESP_OK
+      || esp_timer_start_once(orderedTimer, 5000) != ESP_OK) {
+    return fail(__LINE__);
+  }
+  advanceClock(5);
+  waitFor(subMillisecondTimerFired);
+  timerTaskState.finished.wait();
+  if (timerOrder != std::vector<int> {1, 2}) {
+    return fail(__LINE__);
+  }
+  esp_timer_delete(orderedTimer);
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
 
   esp_timer_handle_t stateTimer = nullptr;
   if (esp_timer_create(&timerArgs, &stateTimer) != ESP_OK

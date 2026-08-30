@@ -11,6 +11,7 @@ std::atomic<uint64_t> nowMicros {0};
 std::mutex schedulerLock;
 std::condition_variable schedulerWake;
 std::atomic<bool> stopping {false};
+ClockAdvanceHook clockAdvanceHook = nullptr;
 
 }  // namespace
 
@@ -23,14 +24,28 @@ uint64_t clockMicros(void) {
 }
 
 void setClockMillis(uint32_t milliseconds) {
+  setClockMicros(static_cast<uint64_t>(milliseconds) * 1000U);
+}
+
+void setClockMicros(uint64_t microseconds) {
   const std::lock_guard<std::mutex> lock(schedulerLock);
-  nowMicros.store(static_cast<uint64_t>(milliseconds) * 1000U);
+  nowMicros.store(microseconds);
+  if (clockAdvanceHook != nullptr) {
+    clockAdvanceHook();
+  }
   schedulerWake.notify_all();
 }
 
 void advanceClock(uint32_t milliseconds) {
+  advanceClockMicros(static_cast<uint64_t>(milliseconds) * 1000U);
+}
+
+void advanceClockMicros(uint64_t microseconds) {
   const std::lock_guard<std::mutex> lock(schedulerLock);
-  nowMicros.fetch_add(static_cast<uint64_t>(milliseconds) * 1000U);
+  nowMicros.fetch_add(microseconds);
+  if (clockAdvanceHook != nullptr) {
+    clockAdvanceHook();
+  }
   schedulerWake.notify_all();
 }
 
@@ -57,6 +72,11 @@ void schedulerStop(void) {
 void schedulerReset(void) {
   const std::lock_guard<std::mutex> lock(schedulerLock);
   stopping = false;
+}
+
+void setClockAdvanceHook(ClockAdvanceHook hook) {
+  const std::lock_guard<std::mutex> lock(schedulerLock);
+  clockAdvanceHook = hook;
 }
 
 }  // namespace Furble::Sim

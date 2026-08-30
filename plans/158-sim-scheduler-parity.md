@@ -66,12 +66,41 @@ the simulator's failure-result seam (upgrading an earlier success to nonzero),
 and wake the scheduler before the task publishes `finished`. Focused host
 coverage joins that worker and verifies the nonzero result.
 
+The next scheduler slice adds a deterministic dispatch gate at simulator
+FreeRTOS boundaries. Each task retains its requested priority, creation order,
+and ready order. A runnable task with the greatest priority is admitted first;
+equal-priority tasks rotate by a stable ready sequence. Deadline waiters are
+released as one virtual-time batch before host condition-variable wakeups are
+observed, and queue waiters are selected by priority then wait order. This
+removes the host thread wake race from same-tick scheduling while preserving
+the FreeRTOS priority rule. Zero-tick delays are explicit scheduler yields. The gate is
+cooperative at shim boundaries: arbitrary CPU work between boundaries still
+cannot model instruction-level preemption or core affinity and remains an
+explicit parity gap.
+
+Queue wake selection now applies the FreeRTOS priority rule before the FIFO wait
+tie-break and releases exactly one waiter per queue item. Timed queue waits
+latch `ready`, `timeout`, or `cancelled` before the waiter is scheduled, so a
+post-deadline item cannot retroactively satisfy the receive. Queue deletion
+wakes active users and defers reclamation until their queue-use guards drain;
+task-owned deletion temporarily yields the scheduler turn so that drain can
+complete without a lock-held deadlock.
+
+The esp_timer shim models its serialized dispatcher as the ESP-IDF 5.5.3
+`ESP_TASK_TIMER_PRIO` timer service task (`configMAX_PRIORITIES - 3`, normally
+22). A due timer marks that service runnable in the same virtual-time batch as
+FreeRTOS waiters before the first dispatch, and callbacks execute only after
+the same scheduler gate admits the service. Equal-deadline timers retain arm
+order.
+Task creation publishes its ready record before starting the host worker, so
+the scheduler never observes a task only after `xTaskCreate` returns.
+
 Phase 1 is not complete. Multiple workers that become ready on the same tick
-still rely on host scheduling rather than a deterministic FreeRTOS priority
-dispatcher. CPU execution consumes no virtual time, preemption and core
+now pass through a deterministic priority dispatcher at scheduler boundaries.
+CPU execution consumes no virtual time, instruction-level preemption and core
 affinity are not represented, and some non-FreeRTOS peripheral workers still
 need conversion to scheduler events. Current reports and traces must not claim
-deterministic task order or hardware timing.
+instruction-level task timing or hardware timing.
 
 `vTaskDelete(other)` is cooperative: it requests stop and waits for the target
 to publish quiescence before the caller can destroy caller-owned state. The
@@ -82,9 +111,9 @@ owner-destroyed rather than globally registered.
 
 One-shot timer callbacks now share a single serialized dispatcher, preserve arm
 order for equal deadlines, can cancel another due timer before its callback,
-and can delete themselves. The host clock still advances in whole milliseconds,
-so sub-millisecond deadlines are quantized. That is an explicit Phase 1 parity
-gap requiring focused tests before timer timing is called complete.
+and can delete themselves. The scheduler clock remains microsecond based for
+esp_timer deadlines while the FreeRTOS tick surface stays millisecond based.
+Focused host coverage verifies an exact sub-millisecond deadline.
 
 ## Findings driving the order
 
@@ -141,6 +170,10 @@ and `esp_timer` callbacks.
   the same precedence as the firmware contract.
 - A task scheduled at an exact deadline runs once, and uint32 tick wrap is
   covered by a focused test.
+- Same-tick runnable tasks select greatest FreeRTOS priority, and equal-
+  priority zero-tick yields rotate deterministically by ready order.
+- Sub-millisecond `esp_timer` deadlines remain exact even though the FreeRTOS
+  tick surface is millisecond based.
 - Repeated runs with the same board and script produce the same event trace,
   counters, and exit status without relying on host scheduling.
 - Normal exit, assertion failure, timeout, and injected worker failure all
