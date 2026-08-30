@@ -23,6 +23,7 @@
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "Scan.h"
@@ -982,6 +983,10 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "clock.ms") {
     return std::to_string(clockMillis());
+  }
+
+  if (key == "platform.timed_wake") {
+    return Platform::getInstance().canTimedWake() ? "yes" : "no";
   }
 
   std::cerr << "Unknown assert key: " << key << '\n';

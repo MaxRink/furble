@@ -46,7 +46,7 @@ Verified anchors against the current tree.
 | `src/FurbleUI.cpp` | 1815-1830 | Stop button. Must clear persisted resume state. |
 | `src/FurbleUIIntervalometer.cpp` | 14-18 | `Intervalometer::save()` writes the `INTERVAL` blob. Model the resume blob on it. |
 | `src/FurblePlatform.cpp` | 74-80 | `Platform::powerOff()`. S3 uses `m_M5PM1.shutdown()`, others `M5.Power.powerOff()`. Add a timed variant next to it. |
-| `include/FurblePlatform.h` | 33-41 | Public API. Add `bool canTimedWake()` and `void powerOffUntil(uint32_t seconds)`. |
+| `include/FurblePlatform.h` | 33-41 | Public API. Add `bool canTimedWake()` and `bool powerOffUntil(uint32_t seconds)`. |
 | `src/FurblePlatform.cpp` | 24-32 | Existing `M5.getBoard()` switch. Extend for the capability check. |
 
 ## New settings
@@ -57,6 +57,11 @@ Verified anchors against the current tree.
 | `IVL_SLEEP_THR` | `ivl_sleep_thr` (13) | `FURBLE_STR` | `uint32_t` | `60` | Minimum gap in seconds before sleeping. Only read when `IVL_SLEEP` is true, so the default changes nothing. |
 
 Name strings: `"Deep Sleep"` and `"Sleep Threshold"`.
+
+Wire ids: `IVL_SLEEP` uses 42 and `IVL_SLEEP_THR` uses 43. These were renumbered
+during the rebase onto the current ledger from the provisional 32 and 33, which
+now collide with the merged `IR_PROTO` (32) and `FB_OUTPUT` (33). They are free
+at the rebased base and are frozen for this slice.
 
 A `uint32_t` is used rather than a `uint16_t` because `Settings` already has
 `load<uint32_t>` and `save<uint32_t>` specialisations
@@ -293,6 +298,48 @@ Battery measurement uses on-board instrumentation only. No external power meter
 is available. Log battery percent and voltage to the console every 30 s while
 awake, and dump the log after the run. Readings while USB powered reflect
 charging, so all drain runs happen unplugged.
+
+## Implementation state
+
+Implemented on branch `feat/19-interval-deep-sleep`.
+
+- Added `IVL_SLEEP` and `IVL_SLEEP_THR` with persistent NVS settings.
+- Added the intervalometer menu controls and runtime hiding on unsupported boards.
+- Added NVS resume state with a wake marker, camera index, interval values, shot count,
+  target count, magic, version and intended wake time.
+- Added the StickS3 M5PM1 timer and shutdown path. All explicit M5PM1 accesses use
+  the retry helper. The PM1 watchdog is disarmed before the timed shutdown.
+- Added the StickC Plus2 BM8563 timer and GPIO4 HOLD path. The RTC IRQ remains
+  available long enough to identify a timed wake during boot. Its one-minute
+  RTC resolution above 255 seconds is accepted only when it rounds upward;
+  failed or shorter programming leaves the device awake.
+- `powerOffUntil()` now reports whether timer setup and the power-off request
+  were accepted. The UI keeps the resume record when the request succeeds and
+  only clears it on a setup failure, so a returning boot can restore the run.
+- Resume reconnects through the existing connection path with bounded retries. The
+  resume drives `connectAll(false)`, so `Control::connectAll(void)` runs its
+  non-infinite branch: it retries while the session-local failure count is below
+  two and now waits
+  `CONNECT_RETRY_GAP_MS` (3 s) in interruptible slices before each retry. A wake
+  that misses the camera gets two spaced retries rather than hammering the radio
+  or failing on the first miss. After the bounded retries a still-failed reconnect
+  clears the resume state and leaves an error on screen.
+- PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
+  genuine deep-sleep wake that fails the first reconnect must show two spaced
+  retries in the serial log and then either recover or land on the resume error.
+  Deep sleep only exercises on hardware, so this cannot be confirmed on host.
+- Timer layout coverage is capability-aware in both deterministic scenarios and
+  the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
+  Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
+  rows and must still fit, while compact interactive pages always require no
+  overflow. The simulator exposes `platform.timed_wake` so each scenario first
+  proves it is exercising the intended capability class.
+- The base tree has no GPS motion-policy hook, so no separate GPS policy change was
+  made.
+- The sandboxed worktree could not run PlatformIO. The
+  `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` build was run on the
+  harvest machine at commit time and succeeded.
+- Hardware testing is pending.
 
 ## References
 

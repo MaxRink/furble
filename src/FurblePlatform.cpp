@@ -5,6 +5,7 @@
 
 #include <M5PM1.h>
 #include <M5Unified.h>
+#include <driver/gpio.h>
 
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
@@ -22,8 +23,13 @@ namespace Furble {
 namespace {
 using Watchdog::PM1_FEED_PERIOD_MS;
 using Watchdog::PM1_TIMEOUT_S;
+constexpr uint32_t TIMED_WAKE_MARKER = 0x49564c31;
 }  // namespace
 #endif
+
+namespace {
+constexpr gpio_num_t STICKC_PLUS2_HOLD_PIN = GPIO_NUM_4;
+}  // namespace
 
 Platform &Platform::getInstance(void) {
   static Platform instance;
@@ -39,13 +45,20 @@ Platform &Platform::getInstance(void) {
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
+    // Preserve the Plus2 RTC alarm flag until consumeTimedWake() runs. Other
+    // boards disable the RTC IRQ again below.
+    cfg.disable_rtc_irq = false;
     M5.begin(cfg);
 
-    // The IMU keeps the M5Unified default axis order. The spirit level derives
-    // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
-    // That orientation is UNVERIFIED on all boards pending a hardware check.
+    const auto board = M5.getBoard();
+    if (board == m5::board_t::board_M5StickCPlus2) {
+      (void)gpio_set_direction(STICKC_PLUS2_HOLD_PIN, GPIO_MODE_OUTPUT);
+      (void)gpio_set_level(STICKC_PLUS2_HOLD_PIN, 1);
+    } else {
+      M5.Rtc.disableIRQ();
+    }
 
-    switch (M5.getBoard()) {
+    switch (board) {
       case m5::board_t::board_M5StickC:
       case m5::board_t::board_M5StickCPlus:
       case m5::board_t::board_M5Tough:
@@ -56,14 +69,10 @@ Platform &Platform::getInstance(void) {
     }
 
 #if defined(FURBLE_M5STICKS3)
-    instance.m_M5PM1.begin(&M5.In_I2C);
-    instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
-    instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
-    // Never lock the only recovery path which works when the ESP32 is wedged.
-    // The PMIC setting is retained independently of an ESP32 reset, so this
-    // must be an explicit write followed by a readback on every boot.
-    if (!instance.unlockDownloadRecovery()) {
-      ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
+    if (instance.m5pm1Access([]() { return instance.m_M5PM1.begin(&M5.In_I2C); })) {
+      (void)instance.m5pm1Access([]() { return instance.m_M5PM1.setSingleResetDisable(true); });
+      (void)instance.m5pm1Access([]() { return instance.m_M5PM1.setDoubleOffDisable(true); });
+      (void)instance.m5pm1Access([]() { return instance.m_M5PM1.setDownloadLock(true); });
     }
 #endif
 
@@ -100,95 +109,26 @@ void Platform::restart(void) {
 }
 
 #if defined(FURBLE_M5STICKS3)
-bool Platform::unlockDownloadRecovery(void) {
-  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
-    ESP_LOGW(LOG_TAG, "Unable to unlock M5PM1 download recovery");
-    return false;
-  }
-
-  bool locked = true;
-  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
-    ESP_LOGW(LOG_TAG, "Unable to verify M5PM1 download recovery");
-    return false;
-  }
-
-  if (locked) {
-    ESP_LOGE(LOG_TAG, "M5PM1 rejected download recovery unlock");
-    return false;
-  }
-
-  ESP_LOGI(LOG_TAG, "M5PM1 long-press download recovery enabled");
-  return true;
-}
-
-bool Platform::prepareFlash(void) {
-  // A serial upload can spend longer than the normal PMIC watchdog window in
-  // ROM download mode. The caller must be a deliberate local console user;
-  // the regular runtime watchdog is restored on the next application boot.
-  if (!watchdogEnable(false)) {
-    ESP_LOGE(LOG_TAG, "M5PM1 watchdog disable failed before flash");
-    (void)watchdogEnable(true);
-    return false;
-  }
-  uint8_t watchdogCount = 1;
-  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
-      || watchdogCount != 0) {
-    ESP_LOGE(LOG_TAG, "M5PM1 watchdog did not verify disabled for flash");
-    (void)watchdogEnable(true);
-    return false;
-  }
-
-  if (!unlockDownloadRecovery()) {
-    if (!watchdogEnable(true)) {
-      ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after flash preparation error");
-    }
-    return false;
-  }
-
-  ESP_LOGW(LOG_TAG, "M5PM1 watchdog disabled for flash; upload now, or run 'flash cancel'");
-  return true;
-}
-
-bool Platform::downloadRecoveryUnlocked(void) {
-  bool locked = true;
-  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
-    return false;
-  }
-  return !locked;
-}
-
-bool Platform::cancelFlashPreparation(void) {
-  if (!watchdogEnable(true)) {
-    ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after cancelled flash");
-    return false;
-  }
-  ESP_LOGI(LOG_TAG, "M5PM1 watchdog restored after cancelled flash");
-  return true;
-}
-
 bool Platform::watchdogEnable(bool enable) {
-  m_WatchdogEnabled = false;
-  m_WatchdogLastFeed = tick();
+  const bool wasEnabled = m_WatchdogEnabled;
+  const uint32_t lastFeed = m_WatchdogLastFeed;
 
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     ESP_LOGE(LOG_TAG, "Failed to set M5PM1 watchdog to %u seconds", static_cast<unsigned>(timeout));
+    m_WatchdogEnabled = wasEnabled;
+    m_WatchdogLastFeed = lastFeed;
     return false;
   }
 
-  uint8_t count = enable ? 0 : 1;
-  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
-      || (enable ? count == 0 : count != 0)) {
-    ESP_LOGE(LOG_TAG, "Failed to verify M5PM1 watchdog %s", enable ? "armed" : "disabled");
-    return false;
-  }
-
+  m_WatchdogLastFeed = tick();
   if (enable) {
     m_WatchdogEnabled = true;
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog armed for %u seconds", static_cast<unsigned>(PM1_TIMEOUT_S));
   } else {
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog disabled");
   }
+
   return true;
 }
 
@@ -364,6 +304,140 @@ void Platform::setDisplayOff(bool off) {
 }
 #endif
 
+bool Platform::canTimedWake(void) {
+  switch (M5.getBoard()) {
+#if defined(FURBLE_M5STICKS3)
+    case m5::board_t::board_M5StickS3:
+      return true;
+#endif
+    case m5::board_t::board_M5StickCPlus2:
+      return M5.Rtc.isEnabled();
+    default:
+      return false;
+  }
+}
+
+bool Platform::powerOffUntil(uint32_t seconds) {
+  if (seconds == 0) {
+    return powerOff();
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    const bool watchdogWasEnabled = m_WatchdogEnabled;
+    const auto restoreWatchdog = [this, watchdogWasEnabled]() {
+      if (watchdogWasEnabled && !watchdogEnable(true)) {
+        ESP_LOGE(LOG_TAG, "Failed to restore M5PM1 watchdog after timed wake setup failure");
+      }
+    };
+
+    if (!watchdogEnable(false)) {
+      return false;
+    }
+
+    if (!m5pm1Access(
+            [this, seconds]() { return m_M5PM1.timerSet(seconds, M5PM1_TIM_ACTION_POWERON); })) {
+      ESP_LOGE(LOG_TAG, "Failed to set M5PM1 wake timer");
+      restoreWatchdog();
+      return false;
+    }
+
+    const uint32_t marker = TIMED_WAKE_MARKER;
+    if (!m5pm1Access([this, &marker]() {
+          return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&marker), sizeof(marker));
+        })) {
+      ESP_LOGE(LOG_TAG, "Failed to save M5PM1 wake marker");
+      (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
+      restoreWatchdog();
+      return false;
+    }
+
+    if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
+      ESP_LOGE(LOG_TAG, "Failed to shut down M5PM1 for timed wake");
+      (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
+      uint32_t clear = 0;
+      (void)m5pm1Access([this, &clear]() {
+        return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
+      });
+      restoreWatchdog();
+      return false;
+    }
+    return true;
+  }
+#endif
+
+  if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+    if (!M5.Rtc.isEnabled()) {
+      ESP_LOGW(LOG_TAG, "StickC Plus2 RTC is unavailable, staying awake");
+      return false;
+    }
+
+    M5.Rtc.disableIRQ();
+    M5.Rtc.clearIRQ();
+    const int requested_seconds = static_cast<int>(seconds);
+    const int programmed_seconds = M5.Rtc.setAlarmIRQ(requested_seconds);
+    // The BM8563 has one-second resolution up to 255 seconds and minute
+    // resolution above that. Accept an upward rounding, which is the only
+    // safe direction for a power-off interval, but reject a failed or shorter
+    // timer because it could wake before the saved resume deadline.
+    if ((programmed_seconds <= 0) || (programmed_seconds < requested_seconds)) {
+      ESP_LOGW(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
+               programmed_seconds);
+      M5.Rtc.disableIRQ();
+      return false;
+    }
+
+    if (programmed_seconds != requested_seconds) {
+      ESP_LOGI(LOG_TAG, "StickC Plus2 RTC rounded wake from %d to %d seconds", requested_seconds,
+               programmed_seconds);
+    }
+
+    M5.Display.sleep();
+    (void)gpio_set_direction(STICKC_PLUS2_HOLD_PIN, GPIO_MODE_OUTPUT);
+    (void)gpio_set_level(STICKC_PLUS2_HOLD_PIN, 0);
+    return true;
+  }
+
+  ESP_LOGW(LOG_TAG, "Timed wake is unsupported on this board");
+  return false;
+}
+
+bool Platform::consumeTimedWake(void) {
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    uint8_t wakeSource = 0;
+    if (!m5pm1Access([this, &wakeSource]() {
+          return m_M5PM1.getWakeSource(&wakeSource, M5PM1_CLEAN_ONCE);
+        })) {
+      return false;
+    }
+
+    uint32_t marker = 0;
+    if (!m5pm1Access([this, &marker]() {
+          return m_M5PM1.readRtcRAM(0, reinterpret_cast<uint8_t *>(&marker), sizeof(marker));
+        })) {
+      return false;
+    }
+
+    const bool timedWake =
+        ((wakeSource & M5PM1_WAKE_SRC_TIM) != 0) && (marker == TIMED_WAKE_MARKER);
+    uint32_t clear = 0;
+    (void)m5pm1Access([this, &clear]() {
+      return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
+    });
+    return timedWake;
+  }
+#endif
+
+  if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+    const bool timedWake = M5.Rtc.isEnabled() && M5.Rtc.getIRQstatus();
+    M5.Rtc.disableIRQ();
+    return timedWake;
+  }
+
+  return false;
+}
+
 void Platform::initBattery(void) {
   // capabilities follow the PMIC, capacities are from the vendor product pages
   switch (M5.getBoard()) {
@@ -508,7 +582,7 @@ void Platform::update(void) {
   M5.update();
 #if defined(FURBLE_M5STICKS3)
   bool b = false;
-  if (m_M5PM1.btnGetState(&b) == M5PM1_OK) {
+  if (m5pm1Access([this, &b]() { return m_M5PM1.btnGetState(&b); })) {
     M5.BtnPWR.setRawState(tick(), b);
   }
   watchdogFeed();

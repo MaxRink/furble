@@ -98,6 +98,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   through that state machine, the plain warning rides the normal dim/sleep
   path, and the LVGL idle clock is never touched. `wakeDisplay` does not count
   as activity, only a real input press triggers `lv_display_trigger_activity`.
+  Intervalometer timed wake must retain its resume record when
+  `Platform::powerOffUntil()` accepts the power-cycle request; clear it only
+  after an explicit setup failure or normal completion.
   Modal boxes that steal focus must capture and restore the previous focus,
   the group is flat.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer

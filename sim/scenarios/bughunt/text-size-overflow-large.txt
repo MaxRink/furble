@@ -10,10 +10,10 @@
 # 135x240 boards.
 #
 # The compact pages carry an "assert ui.overflow no": the home menu, the Display
-# page, the Timer settings list, the Remote shutter page and the Connected page.
-# The long settings lists (features, gps, bluetooth, about, power, diagnostics)
-# hold more rows than a short panel can show, so they scroll by design and only
-# print their overflow state.
+# page, the Remote shutter page and the Connected page. The long settings lists
+# (features, gps, timer, bluetooth, about, power, diagnostics) can hold more rows
+# than a short panel can show, so they scroll by design. Timer has a
+# capability-dependent contract covered by the two timer-overflow scenarios.
 seed text_size 2
 seed fauxny true
 seed gps true
@@ -45,9 +45,10 @@ print ui.overflow
 action page settings
 action nav timer
 wait 100
-# Timer settings list (Count, Delay, Shutter, Wait): must fit on the narrow panels.
+# Timer's timed-wake rows are hidden on unsupported boards, so its exact contract
+# is asserted by board-specific scenarios.
 assert ui.page timer
-assert ui.overflow no
+print ui.overflow
 action page settings
 action nav bluetooth
 wait 100

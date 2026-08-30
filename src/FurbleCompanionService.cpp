@@ -287,7 +287,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -317,6 +317,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
       return SETTING_U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return SETTING_U32;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
@@ -352,7 +353,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
-    case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -391,6 +392,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     }
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
     {
       const uint32_t v = Settings::load<uint32_t>(type);
       value.resize(sizeof(v));
