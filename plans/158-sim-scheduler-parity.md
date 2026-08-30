@@ -47,6 +47,25 @@ disconnect release, and status compare/update under its mutex. Focused host
 coverage overlaps timed release with disconnect, requires exactly one release,
 and overlaps two unchanged status publications without a duplicate notify.
 
+The delete-other lifecycle slice now retains each task record in the scheduler
+registry through reset and models `running`, `stop_requested`, `finished`,
+`joining`, and `joined`. An external `vTaskDelete()` requests cooperative
+unwind, waits for the target to publish `finished`, and claims the single join;
+concurrent stop callers wait for that claimant. Self-delete remains
+nonblocking and unwinds at the task boundary. This cooperative unwind is safer
+for caller-owned simulator state than abrupt cleanup, but it is not abrupt
+FreeRTOS cleanup parity: code that never reaches a shim boundary can still
+delay quiescence. Production Companion remains blocked on this boundary until
+its worker-owned shutdown path is implemented and reviewed.
+The simulator-only task shim exposes the retained lifecycle and join waiter /
+claim state so host barriers can wait for exact protocol states rather than
+infer them from sleeps or task-body flags.
+
+Unexpected task exceptions are recorded on the retained task record, request
+the simulator's failure-result seam (upgrading an earlier success to nonzero),
+and wake the scheduler before the task publishes `finished`. Focused host
+coverage joins that worker and verifies the nonzero result.
+
 Phase 1 is not complete. Multiple workers that become ready on the same tick
 still rely on host scheduling rather than a deterministic FreeRTOS priority
 dispatcher. CPU execution consumes no virtual time, preemption and core
@@ -54,11 +73,12 @@ affinity are not represented, and some non-FreeRTOS peripheral workers still
 need conversion to scheduler events. Current reports and traces must not claim
 deterministic task order or hardware timing.
 
-`vTaskDelete(other)` is cooperative: it requests stop but does not wait for the
-target to reach another shim boundary. Before production Companion is compiled
-in SDL, add a delete-other lifecycle test and an explicit quiescence primitive
-so caller-owned GATT state cannot be destroyed while the target still runs.
-Queues are also owner-destroyed rather than globally registered.
+`vTaskDelete(other)` is cooperative: it requests stop and waits for the target
+to publish quiescence before the caller can destroy caller-owned state. The
+simulator's join is safer than abrupt cleanup, but it is not abrupt FreeRTOS
+cleanup parity when a worker never reaches another shim boundary. Production
+Companion remains blocked pending a worker-owned shutdown path. Queues are also
+owner-destroyed rather than globally registered.
 
 One-shot timer callbacks now share a single serialized dispatcher, preserve arm
 order for equal deadlines, can cancel another due timer before its callback,
