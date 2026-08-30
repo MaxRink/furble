@@ -22,12 +22,16 @@ void fuzzConfigure(uint64_t seed, uint32_t steps, bool verbose);
 // True once fuzzConfigure has armed the fuzzer.
 bool fuzzActive(void);
 
-// Advance the fuzzer by one simulator tick. Executes at most one event per call
-// with settle ticks in between so LVGL can process the transition. Runs on the
-// UI task, so LVGL reads stay single threaded. Requests orderly simulator
-// shutdown when the event budget is spent, with a non-zero result if a hard
-// invariant failed.
+// Advance the fuzzer by one simulator tick. Its Apply, Settle, Check, Escape,
+// and Finish phases keep invariant reads after LVGL has processed the event.
+// Runs on the UI task, so LVGL reads stay single threaded. Requests orderly
+// simulator shutdown when the event budget is spent, with a non-zero result if
+// a hard invariant failed.
 void fuzzTick(Furble::UI *ui);
+
+// Notify the fuzzer after the real UI task completes one lv_task_handler()
+// cycle. This is the only clock that advances the machine's settle budget.
+void fuzzCycleComplete(Furble::UI *ui);
 
 }  // namespace Furble::Sim
 

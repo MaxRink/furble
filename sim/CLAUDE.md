@@ -33,7 +33,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
-| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, and the scan-start probe. These are observability/input seams, not alternate policy. Plan 158 tracks remaining priority, preemption, same-tick dispatch, delete-other, queue ownership, and CPU-time gaps. |
+| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 tracks remaining priority, preemption, same-tick dispatch, delete-other, queue ownership, and CPU-time gaps. |
 
 ### Hardware identity status
 
@@ -249,8 +249,11 @@ a regression.
   `FURBLE_FUZZ_STEPS`) runs `sim/fuzz.cpp` instead of a script: a deterministic
   randomized stream of button, navigation, settings and modal events into the
   real UI, with crash, stale-focus, stacked-modal, must-fit-overflow, timer-leak
-  and navigation-trap invariants checked after every event. Same seed and board
-  reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+  and navigation-trap invariants checked after each event's completed settle
+  cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
+  phases and raw-output rejection sampling, while the UI task reports each
+  completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
+  board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail.
 - `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented

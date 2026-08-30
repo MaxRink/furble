@@ -305,9 +305,11 @@ jobs:
       # timer-leak and navigation-trap invariants after every event. The pinned
       # seeds keep the same event streams reproducible, so a UI change that
       # introduces any of those flips the matching seed to a non-zero exit. Run
-      # on both the 135x240 and the narrow 80x160 binary; the 80x160 panel is
-      # where a layout overflow regression bites first. See plans/105-ui-fuzzing.md.
-      - name: Fuzz the UI (135x240 and 80x160)
+      # on all three modeled panel binaries; the 80x160 panel is where a layout
+      # overflow regression bites first. This keeps timing and navigation
+      # findings from being panel-specific.
+      # See plans/105-ui-fuzzing.md.
+      - name: Fuzz the UI (135x240, 80x160, and 320x240)
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
@@ -316,6 +318,8 @@ jobs:
           echo "=== 135x240 (M5StickS3) ==="
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build/furble-sim" \
             sh sim/scripts/run-fuzz.sh
-          echo "=== 80x160 (M5StickC) ==="
-          FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-stickc/furble-sim" \
-            sh sim/scripts/run-fuzz.sh
+          for build in build-stickc build-core; do
+            echo "=== $build ==="
+            FURBLE_SIM_BIN="${{ github.workspace }}/sim/$build/furble-sim" \
+              sh sim/scripts/run-fuzz.sh
+          done

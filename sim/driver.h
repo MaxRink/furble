@@ -24,6 +24,8 @@ bool scenarioSettingIsTrue(const char *name);
 void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);
+/** Notify the fuzzer after the UI task completes its real LVGL cycle. */
+void fuzzCycleComplete(Furble::UI *ui);
 
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
@@ -33,6 +35,9 @@ bool exitRequested(void);
 
 /** Return the first requested simulator process result, or zero if unset. */
 int exitResult(void);
+
+/** Return how many times the continuous Connected-state liveness check fired. */
+uint32_t livenessViolationCount(void);
 
 // End-to-end scenario support. connectShouldFail() lets a scenario model a
 // camera that never establishes a link, mirroring the stale-connected hardware

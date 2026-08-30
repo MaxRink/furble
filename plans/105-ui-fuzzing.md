@@ -4,6 +4,13 @@ Status: tooling plus findings report. This PR adds a reusable simulator fuzzer
 and wires it into CI. It fixes no product bugs. Any product fix is a separate
 follow up PR, per the fault-hunting discipline.
 
+Implementation state: the fuzzer now has an extracted, dependency-free phase
+and random machine with explicit Apply, Settle, Check, Escape, and Finish
+phases. Invariant and timer-stop reads occur only after the requested number of
+completed LVGL cycles, while the continuous liveness check runs before every
+fuzzer tick. The native CI guard runs on all three modeled panel classes. No
+sanitizer CI or malformed-input validation is part of this slice.
+
 ## Goal
 
 Find UI bugs automatically across the whole on-screen UI rather than one scripted
@@ -45,13 +52,19 @@ The fuzzer drives input through the real per-board seams:
   real switch widgets, button-mode selection, the exposure preset stepper, and
   the companion pairing request plus accept/reject.
 
-The fuzzer runs one event per driver tick with a small random settle budget
-between events, so LVGL processes each transition (connect timer, modal raise,
-page animation) before the next event and the invariants read a settled frame.
+The fuzzer uses an explicit Apply, Settle, Check, Escape, and Finish phase
+machine. Each attempted event gets a small deterministic random settle budget,
+and a post-handler hook counts completed LVGL cycles, so LVGL processes each
+transition (connect timer, modal raise, page animation) before invariant and
+timer-stop reads. Escape is resumable: one modal rejection or back action is
+issued per tick, followed by settling, then Escape checks the resulting page
+until main is reached. Bounded random values use rejection sampling over the
+raw `mt19937_64` output, keeping the event and cadence stream independent of
+the standard library's `uniform_int_distribution` algorithm.
 
 ### Invariants
 
-After every event the fuzzer checks, through `UI::simQueryState`:
+After each event's settle phase the fuzzer checks, through `UI::simQueryState`:
 
 - no crash and, under the sanitizer build, no ASan or UBSan error;
 - no stale encoder focus (`focus == stale`), the freed-object / use-after-free
@@ -69,13 +82,19 @@ After every event the fuzzer checks, through `UI::simQueryState`:
 
 Findings print as `FUZZ FINDING [class] step=N page=P event=E detail=...` with
 the recent event trail for minimisation, and the run exits non-zero if any hard
-invariant failed. The run ends with a `FUZZ SUMMARY` line, a per-class count,
-and a `FUZZ COVERAGE` line listing every page the run reached.
+invariant failed. The run ends with a `FUZZ SUMMARY` line containing attempted,
+observed-delta, no-observed-delta, settled, timer-stop, and liveness counters,
+followed by event-class and per-page coverage counts. The two delta counters
+sum to attempted, and attempted equals settled after a normal completion.
 
 ### Files
 
 - `sim/fuzz.h`, `sim/fuzz.cpp`: the fuzzer. Compiled into the sim by the
   existing `sim/*.cpp` glob in `sim/build.sh` and `sim/CMakeLists.txt`.
+- `sim/fuzz_machine.h`, `sim/fuzz_machine.cpp`: dependency-free phase, settle,
+  counter, escape, and bounded-random logic used by the fuzzer and host tests.
+- `tests/host/sim_fuzz_machine_test.cpp`: pure cadence, exact-settle, escape,
+  counter, and deterministic-random regression tests.
 - `sim/driver.cpp`: parses `--fuzz`, `--seed N`, `--fuzz-steps N`,
   `--fuzz-verbose` (and `FURBLE_FUZZ_SEED` / `FURBLE_FUZZ_STEPS`), and calls the
   fuzzer from `driverTick` when armed.
@@ -161,10 +180,14 @@ flags the unexpected pass and the seed is promoted back to the guarded set.
 ## CI wiring
 
 `.github/workflows/sim-e2e.yml` gains a "Fuzz the UI" step after the layout
-sweep. It runs `sim/scripts/run-fuzz.sh` on the 135x240 and the 80x160 binary
-the workflow already builds, at 600 events per seed. The narrow 80x160 panel is
-where a layout overflow regression bites first. The step is inside the existing
-`sim/**`-triggered job, so no un-globbed scenario directory is involved.
+sweep. It runs `sim/scripts/run-fuzz.sh` on all three modeled binaries, the
+135x240, 80x160, and 320x240 builds the workflow already produces, at 600 events
+per seed. The narrow 80x160 panel is where a layout overflow regression bites
+first. The step is inside the existing `sim/**`-triggered job, so no un-globbed
+scenario directory is involved. The runner requires exactly one summary per
+seed and checks that its requested seed, budget, attempted count, and settled
+count agree, and that the observed-delta counters sum to attempted, before
+applying pass or expected-fail handling.
 
 ## Coverage gaps
 

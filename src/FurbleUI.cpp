@@ -8407,6 +8407,7 @@ void UI::task(void) {
       lv_task_handler();
 #if defined(FURBLE_SIM)
       Sim::profilerEndUiCycle();
+      Sim::fuzzCycleComplete(this);
 #endif
     }
     serviceStorage();
