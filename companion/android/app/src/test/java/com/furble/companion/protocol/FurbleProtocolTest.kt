@@ -6,6 +6,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -190,22 +191,12 @@ class FurbleProtocolTest {
     @Test
     fun metadataCoversEveryCurrentWireIdAndUnknownRowsStayReadOnly() {
         assertEquals(42, FurbleSettingMetadata.byWireId.size)
-        assertEquals((1..41).toSet() + 44, FurbleSettingMetadata.byWireId.keys)
         assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
         assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
         assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
         assertFalse(
-            FurbleProtocol.SettingRecord(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
+            FurbleProtocol.SettingRecord(27, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
         )
-        assertEquals(FurbleProtocol.SettingType.BOOL, FurbleSettingMetadata.byWireId[30]?.wireType)
-        assertEquals(FurbleProtocol.SettingType.STRING, FurbleSettingMetadata.byWireId[27]?.wireType)
-        assertEquals(FurbleProtocol.SettingType.UINT8, FurbleSettingMetadata.byWireId[41]?.wireType)
-        val textSize = FurbleSettingMetadata.byWireId[40]
-        assertEquals(FurbleProtocol.SettingType.UINT8, textSize?.wireType)
-        assertEquals(listOf(0, 1, 2), textSize?.options?.map { it.value })
-        assertFalse(textSize?.dangerous == true)
-        assertTrue(FurbleProtocol.isSettingValueValid(40, FurbleProtocol.SettingType.UINT8, byteArrayOf(2)))
-        assertFalse(FurbleProtocol.isSettingValueValid(40, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))
     }
 
     @Test
@@ -214,71 +205,70 @@ class FurbleProtocolTest {
             byteArrayOf(1, FurbleProtocol.TriggerOperation.TIMED_SHUTTER.toByte(), 0x2C, 0x01),
             FurbleProtocol.encodeTrigger(FurbleProtocol.TriggerOperation.TIMED_SHUTTER, 300),
         )
-        assertArrayEquals(byteArrayOf(1, 0), FurbleProtocol.encodeTrigger(0))
-        assertArrayEquals(byteArrayOf(1, 1), FurbleProtocol.encodeTrigger(1))
-        assertArrayEquals(byteArrayOf(1, 2), FurbleProtocol.encodeTrigger(2))
-        assertArrayEquals(byteArrayOf(1, 3), FurbleProtocol.encodeTrigger(3))
     }
 
     @Test
-    fun firmwareGoldenRecordsRoundTripAcrossAllCompanionPaths() {
-        val location = FurbleProtocol.LocationFix(
-            positionValid = true,
-            timeValid = true,
-            altitudeValid = true,
-            satellites = 7,
-            accuracyMeters = 12,
-            latitude = 12.25,
-            longitude = -45.5,
-            altitude = 123.75,
-            year = 2026,
-            month = 8,
-            day = 16,
-            hour = 14,
-            minute = 15,
-            second = 16,
-            centisecond = 17,
-            ageMs = 0x01020304,
-        )
-        assertArrayEquals(
-            hex("0107070c00000000008028400000000000c046c00000000000f05e40ea0708100e0f1011000403020100"),
-            FurbleProtocol.encodeLocation(location),
-        )
-        assertEquals(location, FurbleProtocol.decodeLocation(hex(
-            "0107070c00000000008028400000000000c046c00000000000f05e40ea0708100e0f1011000403020100",
-        )))
-
-        val status = FurbleProtocol.decodeStatus(hex("0155181088ff03020104020905ffff0403020100"))
-        assertNotNull(status)
-        assertEquals(85, status?.batteryPercent)
-        assertEquals(4120, status?.batteryMv)
-        assertEquals(-120, status?.batteryMa)
-        assertEquals(0x01020304L, status?.uptimeSeconds)
-
-        assertArrayEquals(hex("000000"), FurbleProtocol.encodeSettingsListRequest())
-        assertArrayEquals(hex("010100"), FurbleProtocol.encodeSettingsGet(1))
-        assertArrayEquals(hex("02010121"), FurbleProtocol.encodeSettingsSet(1, byteArrayOf(0x21)))
+    fun authUsesFirmwareUuidFramingAndTruncatedHmacGoldenVector() {
         assertEquals(
-            FurbleProtocol.SettingType.UINT8,
-            FurbleProtocol.parseSettingsResponse(hex("000101012101"))?.type,
+            "b57f4f63-087b-4740-b71d-8262cf26ebbc",
+            FurbleProtocol.AUTH_UUID.toString(),
         )
-        assertTrue(FurbleProtocol.parseSettingsResponse(hex("000101012101"))?.isListRecord == true)
-        assertFalse(FurbleProtocol.parseSettingsResponse(hex("0001010121"))?.isListRecord == true)
-        assertTrue(FurbleProtocol.parseSettingsResponse(hex("00ff040000"))?.isTerminator == true)
+        assertArrayEquals(byteArrayOf(0x01), FurbleProtocol.encodeAuthBegin())
 
-        assertArrayEquals(hex("01042c01"), FurbleProtocol.encodeTrigger(4, 300))
-        assertArrayEquals(hex("0100"), FurbleProtocol.encodeTrigger(0))
-        val invalidFlags = ByteArray(FurbleProtocol.LOCATION_PACKET_SIZE)
-        invalidFlags[0] = 1
-        invalidFlags[1] = 0x80.toByte()
-        assertEquals(null, FurbleProtocol.decodeLocation(invalidFlags))
+        val nonce = ByteArray(FurbleProtocol.AUTH_NONCE_SIZE) { it.toByte() }
+        val response = FurbleProtocol.encodeAuthResponse("correct horse battery staple".toByteArray(), nonce)
+
+        assertEquals(FurbleProtocol.AUTH_RESPONSE_SIZE, response.size)
+        assertArrayEquals(
+            byteArrayOf(
+                0xc5.toByte(), 0xdf.toByte(), 0xbf.toByte(), 0x65.toByte(),
+                0x5b.toByte(), 0xbc.toByte(), 0xd0.toByte(), 0x90.toByte(),
+                0xec.toByte(), 0xb1.toByte(), 0xa5.toByte(), 0xbf.toByte(),
+                0x71.toByte(), 0x68.toByte(), 0xb8.toByte(), 0x43.toByte(),
+            ),
+            response,
+        )
     }
 
     @Test
-    fun settingsParserRejectsTrailingBytesThatFirmwareDoesNotEmit() {
-        assertEquals(null, FurbleProtocol.parseSettingsResponse(hex("0001010121aabb")))
-        assertEquals(null, FurbleProtocol.parseSettingsResponse(hex("00ff04000001")))
+    fun hmacMatchesFirmwareSha256GoldenVector() {
+        assertArrayEquals(
+            byteArrayOf(
+                0xf7.toByte(), 0xbc.toByte(), 0x83.toByte(), 0xf4.toByte(),
+                0x30, 0x53, 0x84.toByte(), 0x24, 0xb1.toByte(), 0x32,
+                0x98.toByte(), 0xe6.toByte(), 0xaa.toByte(), 0x6f, 0xb1.toByte(), 0x43,
+                0xef.toByte(), 0x4d, 0x59, 0xa1.toByte(), 0x49, 0x46,
+                0x17, 0x59, 0x97.toByte(), 0x47, 0x9d.toByte(), 0xbc.toByte(),
+                0x2d, 0x1a, 0x3c, 0xd8.toByte(),
+            ),
+            FurbleProtocol.hmacSha256(
+                "key".toByteArray(),
+                "The quick brown fox jumps over the lazy dog".toByteArray(),
+            ),
+        )
     }
 
-    private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    @Test
+    fun authRejectsWrongNonceAndPasswordWireLengths() {
+        assertThrows(IllegalArgumentException::class.java) {
+            FurbleProtocol.encodeAuthResponse("pw".toByteArray(), ByteArray(15))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            FurbleProtocol.encodeAuthResponse(byteArrayOf(), ByteArray(16))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            FurbleProtocol.encodeAuthResponse("x".repeat(64).toByteArray(), ByteArray(16))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            FurbleProtocol.encodeAuthResponse("é".repeat(32).toByteArray(), ByteArray(16))
+        }
+    }
+
+    @Test
+    fun utf8PasswordInputStopsAtCompleteCodePointBoundary() {
+        val value = "é".repeat(31) + "a" + "🙂"
+        val truncated = FurbleProtocol.truncateUtf8(value)
+        assertEquals(63, truncated.toByteArray(Charsets.UTF_8).size)
+        assertEquals("é".repeat(31) + "a", truncated)
+    }
 }

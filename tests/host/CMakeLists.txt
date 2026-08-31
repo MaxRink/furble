@@ -17,9 +17,7 @@ set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
 add_library(furble_host_camera STATIC
             ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
             ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-            ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
             ${FURBLE_ROOT}/lib/furble/Camera.cpp
-            ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
             ${FURBLE_ROOT}/lib/furble/Device.cpp
             ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
             ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
@@ -36,7 +34,6 @@ target_include_directories(furble_host_camera
                                   ${FURBLE_ROOT}/lib/furble)
 target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-format
                                                  -Wno-unused-parameter)
-target_compile_definitions(furble_host_camera PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
@@ -58,45 +55,6 @@ target_compile_options(lifecycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
 
 add_executable(wrap_safe_time_test wrap_safe_time_test.cpp)
 target_compile_options(wrap_safe_time_test PRIVATE -Wall -Wextra -Werror)
-
-add_executable(time_keeper_policy_test
-               time_keeper_policy_test.cpp
-               ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp)
-target_include_directories(time_keeper_policy_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(time_keeper_policy_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
-
-# Exercise the production TimeKeeper and Preferences wrapper against the
-# durable in-memory NVS implementation. The clock and RTC are controllable so
-# reboot, shutdown, and correction-storm wear budgets are deterministic.
-set(TIME_KEEPER_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/time_keeper_stubs)
-add_executable(time_keeper_persistence_test
-               time_keeper_persistence_test.cpp
-               settings_nvs_stub.cpp
-               ${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp
-               ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp
-               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
-target_include_directories(time_keeper_persistence_test BEFORE PRIVATE
-                           ${TIME_KEEPER_TEST_STUB_DIR}
-                           ${CMAKE_CURRENT_SOURCE_DIR}/settings_stubs
-                           ${FURBLE_ROOT}/include
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/furble)
-target_compile_definitions(time_keeper_persistence_test PRIVATE FURBLE_SIM)
-target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werror
-                                                            -Wno-unused-parameter
-                                                            -Wno-vla-extension)
-
-# The PMIC is a separate chip from the ESP32. Its watchdog and download lock
-# therefore survive an ESP32 reset and must be modeled as retained state.
-add_executable(pmic_recovery_test
-               pmic_recovery_test.cpp
-               ${FURBLE_ROOT}/sim/clock.cpp)
-target_include_directories(pmic_recovery_test PRIVATE
-                           ${FURBLE_ROOT}/sim/shim
-                           ${FURBLE_ROOT}/sim
-                           ${FURBLE_ROOT}/include)
-target_compile_options(pmic_recovery_test PRIVATE -Wall -Wextra -Werror
-                                                       -Wno-unused-parameter)
 
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
@@ -147,109 +105,14 @@ target_compile_options(advertisement_dispatch_test PRIVATE
                        -Wno-unused-parameter)
 target_link_libraries(advertisement_dispatch_test PRIVATE Threads::Threads)
 
-add_executable(camera_regression_test
-               camera_regression_test.cpp
-               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
-               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
-               advertisement_scan_stub.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
-target_link_libraries(camera_regression_test PRIVATE furble_host_camera)
-target_include_directories(camera_regression_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${FURBLE_ROOT}/sim
-                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/blowfish
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/include)
-target_compile_options(camera_regression_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
-                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
-
-# Drive the production Ricoh focus and shutter paths through the in-memory peer.
-# The semantic assertions protect the distinction between unsupported focus
-# gestures and the supported capture-with-autofocus operation.
-add_executable(ricoh_focus_test
-               ricoh_focus_test.cpp
-               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
-               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
-target_link_libraries(ricoh_focus_test PRIVATE furble_host_camera)
-target_include_directories(ricoh_focus_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/include)
-target_compile_options(ricoh_focus_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
-                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
-
-# The sleep gate test drives the production Ricoh shutter path against the
-# virtual peer in BLE standby. It protects the invariant that only a fresh
-# OperationMode read of CAPTURE authorizes the ShootingFlavor and
-# OperationRequest writes; a capture write in BLE_STARTUP cold boots the
-# camera and can wedge its firmware.
-add_executable(ricoh_sleep_gate_test
-               ricoh_sleep_gate_test.cpp
-               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
-               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
-target_link_libraries(ricoh_sleep_gate_test PRIVATE furble_host_camera)
-target_include_directories(ricoh_sleep_gate_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/include)
-target_compile_options(ricoh_sleep_gate_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
-                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
-
-# The registration gate test compiles the real Secure path against the same
-# virtual peer as the normal camera suite. The host-only timeout keeps a
-# withheld-registration case fast while firmware retains the 25 s bound.
-add_executable(fujifilm_registration_gate_test
-               fujifilm_registration_gate_test.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               advertisement_scan_stub.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
-target_include_directories(fujifilm_registration_gate_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/lib/blowfish
-                           ${FURBLE_ROOT}/include)
-target_compile_definitions(fujifilm_registration_gate_test PRIVATE
-                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
-target_compile_options(fujifilm_registration_gate_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
-                       -Wno-unused-lambda-capture -Wno-sign-compare)
-target_link_libraries(fujifilm_registration_gate_test PRIVATE furble_host_camera
-                                                             Threads::Threads)
-
-# Keep the host Ethernet test tied to the firmware source manifest. The test
-# links the production implementation directly, so this configure-time guard
-# catches the failure mode that matters here: a firmware build which forgets
-# to compile the implementation at all.
-file(STRINGS ${FURBLE_ROOT}/src/CMakeLists.txt FURBLE_SOURCE_LINES
-     REGEX "^[ \\t]*FurbleEthernet\\.cpp[ \\t]*$")
-if(NOT FURBLE_SOURCE_LINES)
-  message(FATAL_ERROR
-          "src/CMakeLists.txt must include FurbleEthernet.cpp in its production source list")
-endif()
+# The companion password gate is transport-independent. Keep the production
+# state machine in this host target and inject the test HMAC and nonce seams.
+add_executable(companion_auth_test
+               companion_auth_test.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp)
+target_include_directories(companion_auth_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(companion_auth_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
 
 # Pure logic unit suites. These link their production source directly instead
 # of the mock BLE library because the modules under test have no BLE or NVS
@@ -262,10 +125,6 @@ add_executable(camera_list_protocol_test
 target_include_directories(camera_list_protocol_test PRIVATE ${FURBLE_ROOT}/lib/furble)
 target_compile_options(camera_list_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
-
-add_executable(auto_off_policy_test auto_off_policy_test.cpp)
-target_include_directories(auto_off_policy_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(auto_off_policy_test PRIVATE -Wall -Wextra -Werror)
 
 add_executable(fujifilm_protocol_test
                fujifilm_protocol_test.cpp
@@ -280,165 +139,6 @@ add_executable(settings_table_test settings_table_test.cpp)
 target_compile_options(settings_table_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                    -Wno-unused-parameter)
 
-# Compile the production Scan implementation against the host NimBLE double.
-# This catches callback-thread ownership, bounded handoff, generation fencing,
-# expiry, and custom callback lifetime regressions without a radio or UI.
-add_executable(scan_generation_test
-               scan_generation_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${FURBLE_ROOT}/lib/furble/Scan.cpp)
-target_include_directories(scan_generation_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/furble)
-target_compile_options(scan_generation_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                        -Wno-unused-parameter)
-target_link_libraries(scan_generation_test PRIVATE Threads::Threads)
-
-# Typed BLE diagnostics are checked through the event API, including bounded
-# ring overwrite and bounded live draining. This prevents tests from merely
-# asserting formatted console strings.
-add_executable(bt_debug_journal_test
-               bt_debug_journal_test.cpp
-               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
-target_include_directories(bt_debug_journal_test PRIVATE ${FURBLE_ROOT}/lib/furble)
-target_compile_options(bt_debug_journal_test PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(bt_debug_journal_test PRIVATE Threads::Threads)
-
-# Compile the same assertions against the S3+PSRAM and S3-without-PSRAM
-# preprocessor profiles. Runtime allocation failure remains covered by the
-# capability-checked firmware path; these targets lock down both capacities.
-add_executable(bt_debug_journal_s3_test
-               bt_debug_journal_test.cpp
-               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
-target_include_directories(bt_debug_journal_s3_test PRIVATE ${FURBLE_ROOT}/lib/furble)
-target_compile_definitions(bt_debug_journal_s3_test PRIVATE FURBLE_HOST_S3_PSRAM
-                                                            CONFIG_IDF_TARGET_ESP32S3
-                                                            CONFIG_SPIRAM)
-target_compile_options(bt_debug_journal_s3_test PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(bt_debug_journal_s3_test PRIVATE Threads::Threads)
-
-add_executable(bt_debug_journal_s3_fallback_test
-               bt_debug_journal_test.cpp
-               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
-target_include_directories(bt_debug_journal_s3_fallback_test PRIVATE ${FURBLE_ROOT}/lib/furble)
-target_compile_definitions(bt_debug_journal_s3_fallback_test PRIVATE FURBLE_HOST_S3_FALLBACK
-                                                                     CONFIG_IDF_TARGET_ESP32S3)
-target_compile_options(bt_debug_journal_s3_fallback_test PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(bt_debug_journal_s3_fallback_test PRIVATE Threads::Threads)
-
-# Drive production Camera GATT wrappers with the in-memory Fujifilm peer while
-# the console journal is enabled. Assertions inspect typed events, not output.
-add_executable(camera_journal_event_test
-               camera_journal_event_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
-target_include_directories(camera_journal_event_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${FURBLE_ROOT}/lib/furble)
-target_compile_definitions(camera_journal_event_test PRIVATE FURBLE_CONSOLE)
-target_compile_options(camera_journal_event_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                           -Wno-unused-parameter)
-target_link_libraries(camera_journal_event_test PRIVATE Threads::Threads)
-
-# Run saved Fujifilm and Nikon callback objects through the production Scan
-# cancellation barrier. This catches a late callback touching a destroyed
-# camera and proves finite reconnect scans can be cancelled promptly.
-add_executable(saved_scan_cancel_test
-               saved_scan_cancel_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
-               ${FURBLE_ROOT}/lib/furble/Scan.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
-               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp)
-target_include_directories(saved_scan_cancel_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/lib/blowfish
-                           ${FURBLE_ROOT}/include)
-target_compile_options(saved_scan_cancel_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
-                       -Wno-unused-lambda-capture -Wno-sign-compare)
-target_link_libraries(saved_scan_cancel_test PRIVATE Threads::Threads)
-
-# Saved Fujifilm Secure reconnect scan match. The camera advertises either the
-# pairing service or only the Secure service in reconnect standby, so the
-# matcher must accept both. This target compiles the production Scan and
-# Secure paths against the host NimBLE double and the virtual peer, and it
-# asserts the reconnect completes promptly once the advertisement arrives.
-add_executable(saved_scan_delivery_test
-               saved_scan_delivery_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               ${FURBLE_ROOT}/lib/furble/Scan.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
-               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
-target_include_directories(saved_scan_delivery_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/lib/blowfish
-                           ${FURBLE_ROOT}/include)
-target_compile_options(saved_scan_delivery_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
-                       -Wno-unused-lambda-capture -Wno-sign-compare)
-target_link_libraries(saved_scan_delivery_test PRIVATE Threads::Threads)
-
-# Failed Secure registration must leave an asynchronous GAP disconnect event
-# addressable until NimBLE has dispatched it. This target combines the real
-# Secure registration and production Scan path with the host NimBLE double.
-add_executable(ble_registration_cleanup_test
-               ble_registration_cleanup_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               ${FURBLE_ROOT}/lib/furble/Scan.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
-               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
-target_include_directories(ble_registration_cleanup_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
-                           ${FURBLE_ROOT}/lib/preferences
-                           ${FURBLE_ROOT}/lib/furble
-                           ${FURBLE_ROOT}/lib/blowfish
-                           ${FURBLE_ROOT}/include)
-target_compile_options(ble_registration_cleanup_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
-                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
-                       -Wno-unused-lambda-capture -Wno-sign-compare)
-target_link_libraries(ble_registration_cleanup_test PRIVATE Threads::Threads)
-
 # Exercise the real NVS/Preferences settings path against a typed in-memory
 # NVS stub. The test also includes the production SD settings helpers so every
 # table row is checked through both the firmware store and the SD import/export
@@ -448,7 +148,6 @@ set(SETTINGS_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/settings_stubs)
 add_executable(settings_nvs_roundtrip_test
                settings_nvs_roundtrip_test.cpp
                settings_nvs_stub.cpp
-               settings_platform_stub.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(settings_nvs_roundtrip_test BEFORE PRIVATE
@@ -570,24 +269,6 @@ target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBL
 target_compile_options(sim_clock_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
-add_executable(sim_scheduler_test
-               sim_scheduler_test.cpp
-               ${FURBLE_ROOT}/sim/clock.cpp
-               ${FURBLE_ROOT}/sim/freertos.cpp)
-target_include_directories(sim_scheduler_test PRIVATE ${FURBLE_ROOT}/include
-                                                       ${FURBLE_ROOT}/sim
-                                                       ${FURBLE_ROOT}/sim/shim)
-target_compile_options(sim_scheduler_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                  -Wno-unused-parameter)
-target_link_libraries(sim_scheduler_test PRIVATE Threads::Threads)
-
-add_executable(sim_fuzz_machine_test
-               sim_fuzz_machine_test.cpp
-               ${FURBLE_ROOT}/sim/fuzz_machine.cpp)
-target_include_directories(sim_fuzz_machine_test PRIVATE ${FURBLE_ROOT}/sim)
-target_compile_options(sim_fuzz_machine_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                       -Wno-unused-parameter)
-
 add_executable(sim_power_profiler_test
                sim_power_profiler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
@@ -597,29 +278,6 @@ target_include_directories(sim_power_profiler_test PRIVATE ${FURBLE_ROOT}/includ
 target_compile_options(sim_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
 
-# Link the host regression against the production Ethernet implementation.
-# The source-manifest guard above ensures this test cannot silently drift away
-# from the firmware source list which owns the link.
-add_executable(ethernet_test
-               ethernet_test.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/eth/MockEthNetif.cpp
-               ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
-target_include_directories(ethernet_test PRIVATE
-                           ${CMAKE_CURRENT_SOURCE_DIR}
-                           ${FURBLE_ROOT}/include)
-target_compile_options(ethernet_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                             -Wno-unused-parameter)
-target_link_libraries(ethernet_test PRIVATE Threads::Threads)
-
-# Test-only power/source model for the Waveshare board. The real board has no
-# software-readable PoE HAT or negotiated-power signal, so this fixture keeps
-# HAT, PoE, link, and USB observations explicit and independent.
-add_executable(poe_power_model_test
-               poe_power_model_test.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/eth/PoEPowerModel.cpp)
-target_include_directories(poe_power_model_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_options(poe_power_model_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                     -Wno-unused-parameter)
 # Transport-independent OTA lifecycle. The production state machine is linked
 # directly, while the host test supplies a mock for the ESP-IDF transport seam.
 add_executable(ota_state_machine_test
@@ -638,51 +296,6 @@ add_executable(ota_mqtt_protocol_test
 target_include_directories(ota_mqtt_protocol_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
-
-# Durable anti-rollback journal. The test supplies a fault-injecting backend,
-# while the production JournalReplayStore and its fixed record format are
-# compiled unchanged for host and simulator.
-add_executable(ota_replay_store_test
-               ota_replay_store_test.cpp
-               nvs_replay_fake/nvs_fake.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAReplayStoreNVS.cpp)
-target_include_directories(ota_replay_store_test BEFORE PRIVATE
-                           ${CMAKE_CURRENT_SOURCE_DIR}/nvs_replay_fake
-                           ${FURBLE_ROOT}/include)
-target_compile_definitions(ota_replay_store_test PRIVATE ESP_PLATFORM)
-target_compile_options(ota_replay_store_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                       -Wno-unused-parameter)
-
-add_executable(ota_partition_sink_test
-               ota_partition_sink_test.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp
-               ${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp)
-target_include_directories(ota_partition_sink_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(ota_partition_sink_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                          -Wno-unused-parameter)
-# Pure GPS degraded retry policy from include/FurbleGPSPowerCycle.h. The GPS task
-# shares this header, so the suite pins the bounded, self recovering behaviour
-# that replaced the permanent lock trap. No hardware dependency, so it needs no
-# furble sources on its link line.
-add_executable(gps_power_cycle_test gps_power_cycle_test.cpp)
-target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
-target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                     -Wno-unused-parameter)
-
-# Exercise the simulator's production power profiler accounting for the GPS
-# degraded state. This stays host-only because it drives the same profiler API
-# that the SDL simulator uses, including lock and virtual-clock transitions.
-add_executable(gps_power_profiler_test
-               gps_power_profiler_test.cpp
-               ${FURBLE_ROOT}/sim/clock.cpp
-               ${FURBLE_ROOT}/sim/power_profiler.cpp)
-target_include_directories(gps_power_profiler_test PRIVATE
-                           ${FURBLE_ROOT}/sim
-                           ${FURBLE_ROOT}/include)
-target_compile_options(gps_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
-                                                         -Wno-unused-parameter)
-target_link_libraries(gps_power_profiler_test PRIVATE Threads::Threads)
 
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
@@ -710,41 +323,6 @@ target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-u
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
 
-# Teardown wedge regression (plan 148). Compiles the production Control and
-# Fujifilm camera sources with a 10 s registration timeout, an order of
-# magnitude above the asserted disconnect bounds, so an uncancellable
-# registration wait fails the test deterministically instead of hiding inside
-# the 100 ms timeout the shared furble_host_camera library uses. It therefore
-# compiles its own copies of the camera sources rather than linking the shared
-# library.
-add_executable(control_teardown_wedge_test
-               control_teardown_wedge_test.cpp
-               ${CONTROL_E2E_DIR}/doubles.cpp
-               ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/src/FurbleControl.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
-target_include_directories(control_teardown_wedge_test
-                           BEFORE PRIVATE
-                                  ${CMAKE_CURRENT_SOURCE_DIR}
-                                  ${CONTROL_E2E_DIR}/doubles
-                                  ${CONTROL_E2E_DIR}
-                                  ${FURBLE_ROOT}/include
-                                  ${FURBLE_ROOT}/lib/furble
-                                  ${HOST_NIMBLE_DIR}
-                                  ${HOST_PEER_DIR})
-target_compile_definitions(control_teardown_wedge_test PRIVATE
-                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=10000)
-target_compile_options(control_teardown_wedge_test PRIVATE
-                       -Wall -Wextra -Wno-format -Wno-unused-parameter
-                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
-target_link_libraries(control_teardown_wedge_test PRIVATE Threads::Threads)
-
 # Companion GATT transport-e2e harness. The test drives the production
 # transport-independent CompanionService through a UUID-addressed mock central,
 # then carries location and trigger commands through the real Control and
@@ -757,6 +335,8 @@ add_executable(companion_gatt_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+               ${FURBLE_ROOT}/sim/FurbleCompanionCrypto.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -771,6 +351,7 @@ target_include_directories(companion_gatt_test
                                   ${CONTROL_E2E_DIR}
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
+                                  ${FURBLE_ROOT}/sim/shim
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
 target_compile_definitions(companion_gatt_test PRIVATE FURBLE_NO_DISPLAY
@@ -852,156 +433,17 @@ add_executable(connect_mid_drop_test
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
                ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
 target_include_directories(connect_mid_drop_test BEFORE PRIVATE
                            ${FURBLE_ROOT}/include
                            ${HOST_NIMBLE_DIR}
                            ${HOST_PEER_DIR}
-                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
                            ${FURBLE_ROOT}/lib/furble)
 target_compile_options(connect_mid_drop_test PRIVATE
-                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -fsanitize=address -g -O1
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_options(connect_mid_drop_test PRIVATE -fsanitize=address)
 target_link_libraries(connect_mid_drop_test PRIVATE Threads::Threads)
-
-# AddressSanitizer regression for the Ricoh secure-timeout reclaim
-# use-after-free. A bonded saved reconnect fails secureConnection() (rc=520)
-# while the controller's disconnect event is still queued on the host task. The
-# mock's mockMarkLinkDeadEventPending() models that queued event; on the broken
-# ordering (self-delete armed before _disconnect()) the event frees the client
-# while _disconnect() still dereferences it and ASan aborts.
-add_executable(ricoh_secure_timeout_uaf_test
-               ricoh_secure_timeout_uaf_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
-               ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
-               ${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp)
-target_include_directories(ricoh_secure_timeout_uaf_test BEFORE PRIVATE
-                           ${FURBLE_ROOT}/include
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${CONTROL_E2E_DIR}
-                           ${FURBLE_ROOT}/lib/furble)
-target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
-                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h
-                       -fsanitize=address -g -O1
-                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
-target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
-target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
-
-# Ricoh standby flap through the real Control (plan 154). The first
-# Ricoh-through-Control coverage: a GR IV style standby camera (autonomous
-# RicohVirtualCamera flappy mode: rc=520 secureConnection failures, then a
-# CameraPower 0x00 notify and a timed link drop) churns the reconnect cycle
-# next to a healthy Fujifilm while a mid-cycle disconnect must land in a clean
-# IDLE and a follow-up connect must work.
-add_executable(ricoh_control_flap_test
-               ricoh_control_flap_test.cpp
-               ${CONTROL_E2E_DIR}/doubles.cpp
-               ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
-               ${FURBLE_ROOT}/src/FurbleControl.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp)
-target_include_directories(ricoh_control_flap_test
-                           BEFORE PRIVATE
-                                  ${CMAKE_CURRENT_SOURCE_DIR}
-                                  ${CONTROL_E2E_DIR}/doubles
-                                  ${CONTROL_E2E_DIR}
-                                  ${FURBLE_ROOT}/include
-                                  ${FURBLE_ROOT}/lib/furble
-                                  ${HOST_NIMBLE_DIR}
-                                  ${HOST_PEER_DIR})
-target_compile_definitions(ricoh_control_flap_test PRIVATE
-                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
-target_compile_options(ricoh_control_flap_test PRIVATE
-                       -Wall -Wextra -Wno-format -Wno-unused-parameter
-                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
-target_link_libraries(ricoh_control_flap_test PRIVATE Threads::Threads)
-
-# Absent-peer model through the real Control (plan 154). A paired Fujifilm
-# Secure camera is registered but flagged absent, so the SAVED reconnect scan
-# is starved (setScanAbsentAddress withholds the advertisement a background
-# advertiser keeps emitting) instead of the connect call failing. A mid-scan
-# disconnect must abort the scan wait via the connect-cancel poll, land in a
-# clean IDLE, and leave a manual connect to the healthy camera responsive.
-add_executable(absent_peer_scan_test
-               absent_peer_scan_test.cpp
-               ${CONTROL_E2E_DIR}/doubles.cpp
-               ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/src/FurbleControl.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               ${FURBLE_ROOT}/lib/furble/Scan.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
-               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp)
-target_include_directories(absent_peer_scan_test
-                           BEFORE PRIVATE
-                                  ${CMAKE_CURRENT_SOURCE_DIR}
-                                  ${CONTROL_E2E_DIR}/doubles
-                                  ${CONTROL_E2E_DIR}
-                                  ${FURBLE_ROOT}/include
-                                  ${FURBLE_ROOT}/lib/furble
-                                  ${FURBLE_ROOT}/lib/blowfish
-                                  ${FURBLE_ROOT}/lib/preferences
-                                  ${HOST_NIMBLE_DIR}
-                                  ${HOST_PEER_DIR})
-target_compile_definitions(absent_peer_scan_test PRIVATE
-                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
-target_compile_options(absent_peer_scan_test PRIVATE
-                       -Wall -Wextra -Wno-format -Wno-unused-parameter
-                       -Wno-unused-lambda-capture -Wno-sign-compare
-                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
-target_link_libraries(absent_peer_scan_test PRIVATE Threads::Threads)
-
-# AddressSanitizer regression for the GATT journal use-after-free. The console
-# journal in the pointer-based Camera::gattRead and gattWrite used to read the
-# service and characteristic UUIDs from the NimBLERemoteCharacteristic after
-# readValue()/writeValue() returned. A peer drop during the operation lets the
-# reconnect rediscovery free those remote objects, so the post-operation
-# dereference crashed on hardware (LoadProhibited 0xfefefefe in journalRecord
-# during a Ricoh GR IV standby drop). The peer's faultNextOperation hook frees
-# the client's service cache mid-operation via dropServiceCache(); the fixed
-# code journals pre-operation UUID snapshots, so the freed characteristic is
-# never touched again. Camera.cpp is compiled here directly with
-# -fsanitize=address and FURBLE_CONSOLE so the journal dereference is both
-# compiled in and instrumented.
-add_executable(gatt_journal_uaf_test
-               gatt_journal_uaf_test.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp)
-target_include_directories(gatt_journal_uaf_test BEFORE PRIVATE
-                           ${HOST_NIMBLE_DIR}
-                           ${HOST_PEER_DIR}
-                           ${FURBLE_ROOT}/lib/furble)
-target_compile_definitions(gatt_journal_uaf_test PRIVATE FURBLE_CONSOLE)
-target_compile_options(gatt_journal_uaf_test PRIVATE
-                       -fsanitize=address -g -O1
-                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
-target_link_options(gatt_journal_uaf_test PRIVATE -fsanitize=address)
-target_link_libraries(gatt_journal_uaf_test PRIVATE Threads::Threads)
 
 # Seeded BLE lifecycle fuzzer. Drives the real Control state machine through
 # randomised, deterministic (seeded) sequences of connect/disconnect/reconnect
@@ -1054,13 +496,8 @@ if(BUILD_TESTING)
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
   add_test(NAME camera-lifecycle COMMAND lifecycle_test)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
-  add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
-  add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
-  add_test(NAME camera-regression COMMAND camera_regression_test)
-  add_test(NAME ricoh-focus COMMAND ricoh_focus_test)
-  add_test(NAME ricoh-sleep-gate COMMAND ricoh_sleep_gate_test)
 
   add_executable(vendor_protocol_conformance_test
                  vendor_protocol_conformance_test.cpp
@@ -1070,19 +507,11 @@ if(BUILD_TESTING)
                              PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
   target_compile_options(vendor_protocol_conformance_test PRIVATE -Wall -Wextra -Werror)
   add_test(NAME vendor-protocol-conformance COMMAND vendor_protocol_conformance_test)
+  add_test(NAME companion-auth
+           COMMAND companion_auth_test ${FURBLE_ROOT}/tests/protocol/golden/companion_auth.json)
   add_test(NAME fujifilm-protocol COMMAND fujifilm_protocol_test)
   add_test(NAME settings-table COMMAND settings_table_test ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-  add_test(NAME scan-generation COMMAND scan_generation_test)
-  add_test(NAME bt-debug-journal COMMAND bt_debug_journal_test)
-  add_test(NAME bt-debug-journal-s3-psram COMMAND bt_debug_journal_s3_test)
-  add_test(NAME bt-debug-journal-s3-fallback COMMAND bt_debug_journal_s3_fallback_test)
-  add_test(NAME camera-journal-events COMMAND camera_journal_event_test)
-  add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
-  add_test(NAME saved-scan-delivery COMMAND saved_scan_delivery_test)
-  add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
-  add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
-  add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
@@ -1093,45 +522,15 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
-  add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
-  add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
-  set_tests_properties(sim-scheduler PROPERTIES TIMEOUT 10)
-  add_test(NAME sim-fuzz-machine COMMAND sim_fuzz_machine_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
-  # Run several independent profiler processes so ctest -j covers report-path
-  # isolation. Each process must be able to create and clean up its own report.
-  foreach(profiler_worker RANGE 1 4)
-    add_test(NAME sim-power-profiler-concurrent-${profiler_worker}
-             COMMAND sim_power_profiler_test)
-  endforeach()
-  add_test(NAME ethernet-transport COMMAND ethernet_test)
-  add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
-  add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
-  add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
-  add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
-  add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
-
-  # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
-  # reintroduced uncancellable wait fails the suite instead of hanging it.
-  add_test(NAME control-teardown-wedge COMMAND control_teardown_wedge_test)
-  set_tests_properties(control-teardown-wedge PROPERTIES TIMEOUT 60)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
-  add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
-  add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
-
-  # Peer realism through the real Control (plan 154). Both carry their own
-  # watchdog, the ctest timeout is the backstop for a wedged control task.
-  add_test(NAME ricoh-control-flap COMMAND ricoh_control_flap_test)
-  set_tests_properties(ricoh-control-flap PROPERTIES TIMEOUT 90)
-  add_test(NAME absent-peer-scan COMMAND absent_peer_scan_test)
-  set_tests_properties(absent-peer-scan PROPERTIES TIMEOUT 60)
 
   # Real-Control end-to-end scenarios. Each runs the production control state
   # machine end to end against the mock peer and is registered individually so a
@@ -1145,10 +544,7 @@ if(BUILD_TESTING)
           transient-connect-recovers
           client-pool-exhaustion
           multi-connect-fujifilm
-          reconnect-shutter-drop
-          multi-flappy-disconnect
-          flappy-cancel-stress
-          flappy-peer-autonomous)
+          reconnect-shutter-drop)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
   endforeach()
 

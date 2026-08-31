@@ -10,10 +10,33 @@ import android.bluetooth.BluetoothGattService
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import com.furble.companion.protocol.FurbleGattContract
 import com.furble.companion.protocol.FurbleProtocol
 import java.util.ArrayDeque
 import java.util.UUID
+
+internal class AuthInputDispatcher(private val post: (() -> Unit) -> Unit) {
+    fun submit(input: ByteArray, consume: (ByteArray) -> Unit) {
+        val owned = input.copyOf()
+        post { consume(owned) }
+    }
+}
+
+internal class AuthAttemptTracker {
+    private var generation = 0L
+    private var activeGeneration: Long? = null
+
+    fun begin(): Long {
+        activeGeneration = ++generation
+        return generation
+    }
+
+    fun cancel() {
+        activeGeneration = null
+        generation++
+    }
+
+    fun accepts(candidate: Long): Boolean = activeGeneration == candidate && candidate == generation
+}
 
 /**
  * One event-driven GATT session. Every ATT operation waits for its callback
@@ -31,12 +54,15 @@ class GattConnection(
         fun onStatus(snapshot: FurbleProtocol.StatusSnapshot)
         fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?)
         fun onSettings(response: FurbleProtocol.SettingsResponse)
+        fun onAuthAvailability(supported: Boolean)
+        fun onAuthResult(result: Int)
         fun onDisconnected()
         fun onError(message: String)
     }
 
     private val appContext = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
+    private val authInputDispatcher = AuthInputDispatcher { task -> handler.post { task() } }
     private val operations = ArrayDeque<Operation>()
     private val callback = Callback()
 
@@ -46,10 +72,15 @@ class GattConnection(
     private var statusCharacteristic: BluetoothGattCharacteristic? = null
     private var settingsCharacteristic: BluetoothGattCharacteristic? = null
     private var triggerCharacteristic: BluetoothGattCharacteristic? = null
+    private var authCharacteristic: BluetoothGattCharacteristic? = null
     private var capabilityCharacteristic: BluetoothGattCharacteristic? = null
     private var currentOperation: Operation? = null
     private var isReady = false
     private var mtu = 23
+    private var authPassword: ByteArray? = null
+    private var authChallengePending = false
+    private val authAttemptTracker = AuthAttemptTracker()
+    private var authGeneration = 0L
 
     fun connect() {
         handler.post {
@@ -74,6 +105,14 @@ class GattConnection(
 
     fun close() {
         handler.post { closeInternal(notify = true) }
+    }
+
+    fun cancelAuthentication() {
+        handler.post {
+            authAttemptTracker.cancel()
+            operations.removeAll { it is Operation.WriteCharacteristic && it.characteristic.uuid == FurbleProtocol.AUTH_UUID }
+            clearAuthSecrets()
+        }
     }
 
     fun writeLocation(bytes: ByteArray) {
@@ -124,6 +163,42 @@ class GattConnection(
         }
     }
 
+    /** Starts the firmware challenge. The password is held only until its HMAC is sent. */
+    fun authenticate(passwordUtf8: ByteArray) {
+        authInputDispatcher.submit(passwordUtf8, ::authenticateOwned)
+    }
+
+    private fun authenticateOwned(passwordUtf8: ByteArray) {
+        try {
+            if (!isReady) {
+                listener.onError("furble is not ready for authentication")
+                return
+            }
+            if (passwordUtf8.size !in 1..FurbleProtocol.COMPANION_PASSWORD_MAX) {
+                listener.onError("Companion password must be 1..${FurbleProtocol.COMPANION_PASSWORD_MAX} UTF-8 bytes")
+                return
+            }
+            if (authCharacteristic == null) {
+                listener.onError("The furble does not expose its AUTH characteristic")
+                return
+            }
+            authPassword?.fill(0)
+            authPassword = passwordUtf8.copyOf()
+            authChallengePending = true
+            authGeneration = authAttemptTracker.begin()
+            enqueueCharacteristicWrite(
+                uuid = FurbleProtocol.AUTH_UUID,
+                value = FurbleProtocol.encodeAuthBegin(),
+                writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+                waitForCallback = true,
+            )
+        } finally {
+            // Once copied into authPassword or the queued operation, the
+            // dispatch-owned input is no longer needed.
+            passwordUtf8.fill(0)
+        }
+    }
+
     private fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
         if (status != BluetoothGatt.GATT_SUCCESS) {
             fail("Service discovery failed with status $status")
@@ -134,6 +209,7 @@ class GattConnection(
         statusCharacteristic = service?.getCharacteristic(FurbleProtocol.STATUS_UUID)
         settingsCharacteristic = service?.getCharacteristic(FurbleProtocol.SETTINGS_UUID)
         triggerCharacteristic = service?.getCharacteristic(FurbleProtocol.TRIGGER_UUID)
+        authCharacteristic = service?.getCharacteristic(FurbleProtocol.AUTH_UUID)
         capabilityCharacteristic = service?.getCharacteristic(FurbleProtocol.CAPABILITY_UUID)
         if (service == null || locationCharacteristic == null || statusCharacteristic == null ||
             settingsCharacteristic == null || triggerCharacteristic == null
@@ -141,37 +217,11 @@ class GattConnection(
             fail("The furble companion service is missing a required characteristic")
             return
         }
-        if (!hasProperties(
-                locationCharacteristic,
-                FurbleGattContract.LOCATION_PROPERTIES,
-            ) || !hasProperties(
-                statusCharacteristic,
-                FurbleGattContract.STATUS_PROPERTIES,
-            ) || !hasProperties(
-                settingsCharacteristic,
-                FurbleGattContract.SETTINGS_PROPERTIES,
-            ) || !hasProperties(
-                triggerCharacteristic,
-                FurbleGattContract.TRIGGER_PROPERTIES,
-            ) || (capabilityCharacteristic != null && !hasProperties(
-                capabilityCharacteristic,
-                FurbleGattContract.CAPABILITY_PROPERTIES,
-            ))
-        ) {
-            fail("The furble companion service has incompatible characteristic properties")
-            return
-        }
+        listener.onAuthAvailability(authCharacteristic != null)
         if (!gatt.requestMtu(256)) {
             fail("The phone could not request the required BLE MTU")
         }
     }
-
-    private fun hasProperties(
-        characteristic: BluetoothGattCharacteristic?,
-        required: Int,
-    ): Boolean = characteristic?.let {
-        FurbleGattContract.supports(it.properties, required)
-    } == true
 
     private fun onMtuChanged(negotiatedMtu: Int, status: Int) {
         if (status != BluetoothGatt.GATT_SUCCESS || negotiatedMtu < 45) {
@@ -189,6 +239,8 @@ class GattConnection(
         val capability = capabilityCharacteristic
         val statusDescriptor = status.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
         val settingsDescriptor = settings.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
+        val auth = authCharacteristic
+        val authDescriptor = auth?.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
         if (statusDescriptor == null || settingsDescriptor == null) {
             fail("furble notification descriptors are missing")
             return
@@ -198,21 +250,47 @@ class GattConnection(
             return
         }
         enqueueDescriptorWrite(statusDescriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) {
-            if (!it) return@enqueueDescriptorWrite
+            if (!it) {
+                fail("furble status notification setup failed; retry the connection")
+                return@enqueueDescriptorWrite
+            }
             if (!currentGatt.setCharacteristicNotification(settings, true)) {
                 fail("Android could not enable furble settings indications")
                 return@enqueueDescriptorWrite
             }
             enqueueDescriptorWrite(settingsDescriptor, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) {
-                if (!it) return@enqueueDescriptorWrite
-                if (capability != null) {
-                    enqueueCharacteristicRead(FurbleProtocol.CAPABILITY_UUID, optional = true)
+                if (!it) {
+                    fail("furble settings indication setup failed; retry the connection")
+                    return@enqueueDescriptorWrite
                 }
-                enqueueCharacteristicRead(FurbleProtocol.STATUS_UUID)
-                isReady = true
-                listener.onReady()
+                if (auth == null) {
+                    finishReady(capability)
+                    return@enqueueDescriptorWrite
+                }
+                if (authDescriptor == null) {
+                    fail("furble AUTH indication setup failed; retry the connection")
+                    return@enqueueDescriptorWrite
+                }
+                if (!currentGatt.setCharacteristicNotification(auth, true)) {
+                    fail("Android could not enable furble AUTH indications")
+                    return@enqueueDescriptorWrite
+                }
+                enqueueDescriptorWrite(authDescriptor, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) {
+                    if (!it) {
+                        fail("furble AUTH indication setup failed; retry the connection")
+                        return@enqueueDescriptorWrite
+                    }
+                    finishReady(capability)
+                }
             }
         }
+    }
+
+    private fun finishReady(capability: BluetoothGattCharacteristic?) {
+        if (capability != null) enqueueCharacteristicRead(FurbleProtocol.CAPABILITY_UUID, optional = true)
+        enqueueCharacteristicRead(FurbleProtocol.STATUS_UUID)
+        isReady = true
+        listener.onReady()
     }
 
     private fun enqueueCharacteristicRead(uuid: UUID, optional: Boolean = false) {
@@ -287,6 +365,11 @@ class GattConnection(
     private fun finishCurrent(success: Boolean, failureMessage: String?) {
         val operation = currentOperation ?: return
         currentOperation = null
+        if (operation is Operation.WriteCharacteristic &&
+            operation.characteristic.uuid == FurbleProtocol.AUTH_UUID && !success
+        ) {
+            clearAuthSecrets()
+        }
         if (!success && failureMessage != null) listener.onError(failureMessage)
         if (operation is Operation.WriteDescriptor) operation.completion(success)
         pump()
@@ -306,7 +389,9 @@ class GattConnection(
         statusCharacteristic = null
         settingsCharacteristic = null
         triggerCharacteristic = null
+        authCharacteristic = null
         capabilityCharacteristic = null
+        clearAuthSecrets()
         val oldGatt = gatt
         gatt = null
         oldGatt?.disconnect()
@@ -323,7 +408,51 @@ class GattConnection(
             FurbleProtocol.STATUS_UUID -> FurbleProtocol.decodeStatus(value)?.let(listener::onStatus)
             FurbleProtocol.CAPABILITY_UUID -> listener.onCapabilities(FurbleProtocol.parseCapability(value))
             FurbleProtocol.SETTINGS_UUID -> FurbleProtocol.parseSettingsResponse(value)?.let(listener::onSettings)
+            FurbleProtocol.AUTH_UUID -> dispatchAuth(value)
         }
+    }
+
+    private fun dispatchAuth(value: ByteArray) {
+        if (value.size == FurbleProtocol.AUTH_NONCE_SIZE && authChallengePending) {
+            if (!authAttemptTracker.accepts(authGeneration)) return
+            val password = authPassword ?: run {
+                listener.onError("furble sent an AUTH challenge without a password")
+                return
+            }
+            authPassword = null
+            authChallengePending = false
+            val response = try {
+                FurbleProtocol.encodeAuthResponse(password, value)
+            } catch (error: IllegalArgumentException) {
+                password.fill(0)
+                listener.onError(error.message ?: "Invalid furble AUTH challenge")
+                return
+            }
+            password.fill(0)
+            enqueueCharacteristicWrite(
+                uuid = FurbleProtocol.AUTH_UUID,
+                value = response,
+                writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+                waitForCallback = true,
+            )
+            response.fill(0)
+            return
+        }
+        if (value.size == 1) {
+            if (!authAttemptTracker.accepts(authGeneration)) return
+            listener.onAuthResult(value[0].toInt() and 0xff)
+            clearAuthSecrets()
+        } else {
+            listener.onError("furble sent an invalid AUTH indication")
+            clearAuthSecrets()
+        }
+    }
+
+    private fun clearAuthSecrets() {
+        authPassword?.fill(0)
+        authPassword = null
+        authChallengePending = false
+        authAttemptTracker.cancel()
     }
 
     private sealed interface Operation {
@@ -452,6 +581,11 @@ class GattConnection(
                 if (operation is Operation.WriteCharacteristic &&
                     operation.waitForCallback && operation.characteristic.uuid == characteristic.uuid
                 ) {
+                    if (operation.characteristic.uuid == FurbleProtocol.AUTH_UUID &&
+                        status != BluetoothGatt.GATT_SUCCESS
+                    ) {
+                        clearAuthSecrets()
+                    }
                     finishCurrent(
                         status == BluetoothGatt.GATT_SUCCESS,
                         "furble write failed with status $status",

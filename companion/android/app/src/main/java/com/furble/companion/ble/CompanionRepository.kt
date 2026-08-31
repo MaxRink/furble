@@ -25,13 +25,18 @@ import com.furble.companion.location.FusedLocationProvider
 import com.furble.companion.permissions.AppPermissions
 import com.furble.companion.permissions.PermissionSnapshot
 import com.furble.companion.protocol.FurbleProtocol
+import com.furble.companion.security.EncryptedPasswordStore
+import com.furble.companion.security.PasswordStore
 import java.util.regex.Pattern
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-class CompanionRepository(context: Context) {
+class CompanionRepository(
+    context: Context,
+    passwordStoreOverride: PasswordStore? = null,
+) {
     companion object {
         const val DEFAULT_LOCATION_INTERVAL_SECONDS = 10
         private const val LOCATION_INTERVAL_KEY = "location_interval_seconds"
@@ -40,6 +45,7 @@ class CompanionRepository(context: Context) {
 
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences("companion", Context.MODE_PRIVATE)
+    private val passwordStore: PasswordStore = passwordStoreOverride ?: EncryptedPasswordStore(appContext)
     private val handler = Handler(Looper.getMainLooper())
     private val companionDeviceManager =
         appContext.getSystemService(CompanionDeviceManager::class.java)
@@ -52,6 +58,10 @@ class CompanionRepository(context: Context) {
                 LOCATION_INTERVAL_KEY,
                 DEFAULT_LOCATION_INTERVAL_SECONDS,
             ),
+            storedPassword = passwordStore.read().let { value ->
+                value?.fill(0)
+                value != null
+            },
         ),
     )
     val state: StateFlow<CompanionUiState> = _state.asStateFlow()
@@ -63,10 +73,16 @@ class CompanionRepository(context: Context) {
     private var gattConnection: GattConnection? = null
     private var pendingSettingId: Int? = null
     private val pendingSettingValues = mutableMapOf<Int, ByteArray>()
+    private var pendingPassword: ByteArray? = null
+    private var connectionGeneration = 0L
+    private var pendingPasswordGeneration = 0L
     private var locationProvider: FusedLocationProvider? = null
 
     private val triggerController = DeadManTriggerController(
-        send = { operation, holdMs -> gattConnection?.sendTrigger(operation, holdMs) },
+        send = { operation, holdMs ->
+            if (_state.value.protectedReady()) gattConnection?.sendTrigger(operation, holdMs)
+            else setError("Authenticate with furble before using the trigger")
+        },
         onActiveChanged = { shutterHeld, focusHeld ->
             _state.update { it.copy(shutterHeld = shutterHeld, focusHeld = focusHeld) }
         },
@@ -321,6 +337,10 @@ class CompanionRepository(context: Context) {
     fun requestSettings() {
         handler.post {
             if (!_state.value.settingsSupported) return@post
+            if (!_state.value.protectedReady()) {
+                setError("Authenticate with furble before reading settings")
+                return@post
+            }
             if (_state.value.connection != ConnectionState.READY) return@post
             _state.update { it.copy(settings = emptyList(), settingsLoading = true) }
             gattConnection?.requestSettingsList()
@@ -337,6 +357,10 @@ class CompanionRepository(context: Context) {
 
     fun requestSettingChange(record: FurbleProtocol.SettingRecord, value: ByteArray) {
         handler.post {
+            if (!_state.value.protectedReady()) {
+                setError("Authenticate with furble before changing settings")
+                return@post
+            }
             if (!_state.value.settingsSupported || _state.value.connection != ConnectionState.READY) {
                 setError("Settings are unavailable until a compatible furble is connected")
                 return@post
@@ -364,6 +388,11 @@ class CompanionRepository(context: Context) {
     fun confirmPendingSetting() {
         handler.post {
             val pending = _state.value.pendingSettingConfirmation ?: return@post
+            if (!_state.value.protectedReady() || _state.value.connection != ConnectionState.READY) {
+                _state.update { it.copy(pendingSettingConfirmation = null) }
+                setError("Authentication or connection was lost; setting change canceled")
+                return@post
+            }
             _state.update { it.copy(pendingSettingConfirmation = null) }
             sendSetting(pending.record.id, pending.value)
         }
@@ -397,6 +426,37 @@ class CompanionRepository(context: Context) {
 
     fun clearError() = _state.update { it.copy(error = null) }
 
+    fun authenticate(password: String) {
+        handler.post {
+            val length = password.toByteArray(Charsets.UTF_8).size
+            if (length !in 1..FurbleProtocol.COMPANION_PASSWORD_MAX) {
+                setError("Companion password must be 1..${FurbleProtocol.COMPANION_PASSWORD_MAX} UTF-8 bytes")
+                return@post
+            }
+            if (_state.value.connection != ConnectionState.READY) {
+                setError("Connect to furble before authenticating")
+                return@post
+            }
+            _state.update { it.copy(auth = AuthState.AUTHENTICATING, error = null) }
+            pendingPassword?.fill(0)
+            val passwordBytes = password.toByteArray(Charsets.UTF_8)
+            pendingPassword = passwordBytes.copyOf()
+            pendingPasswordGeneration = connectionGeneration
+            gattConnection?.authenticate(passwordBytes)
+            passwordBytes.fill(0)
+        }
+    }
+
+    fun forgetPassword() {
+        triggerController.releaseAll()
+        passwordStore.clear()
+        pendingPassword?.fill(0)
+        pendingPassword = null
+        pendingPasswordGeneration = ++connectionGeneration
+        gattConnection?.cancelAuthentication()
+        _state.update { it.copy(storedPassword = false, auth = AuthState.UNKNOWN) }
+    }
+
     private fun ensureBondAndConnect() {
         val address = associationAddress ?: return
         val device = try {
@@ -428,11 +488,16 @@ class CompanionRepository(context: Context) {
             runCatching { bluetoothAdapter?.getRemoteDevice(address) }.getOrNull()
         } ?: return
         gattConnection?.close()
+        connectionGeneration++
         pendingSettingId = null
         pendingSettingValues.clear()
+        pendingPassword?.fill(0)
+        pendingPassword = null
         _state.update {
             it.copy(
                 connection = ConnectionState.CONNECTING,
+                auth = AuthState.UNKNOWN,
+                authSupported = false,
                 status = null,
                 capability = null,
                 settingsSupported = false,
@@ -453,7 +518,21 @@ class CompanionRepository(context: Context) {
 
                 override fun onReady() {
                     if (gattConnection !== session) return
-                    _state.update { it.copy(connection = ConnectionState.READY, settingsLoading = true) }
+                    val savedPassword = passwordStore.read()
+                    val authSupported = _state.value.authSupported
+                    _state.update {
+                        it.copy(
+                            connection = ConnectionState.READY,
+                            auth = if (!authSupported) AuthState.NOT_REQUIRED else
+                                if (savedPassword == null) AuthState.UNKNOWN else AuthState.AUTHENTICATING,
+                            storedPassword = savedPassword != null && authSupported,
+                            settingsLoading = true,
+                        )
+                    }
+                    if (savedPassword != null) {
+                        if (authSupported) session.authenticate(savedPassword)
+                        savedPassword.fill(0)
+                    }
                     syncLocationUpdates()
                 }
 
@@ -467,7 +546,7 @@ class CompanionRepository(context: Context) {
                     _state.update {
                         it.copy(capability = capability, settingsSupported = supportsSettings)
                     }
-                    if (supportsSettings) requestSettings()
+                    if (supportsSettings && _state.value.protectedReady()) requestSettings()
                 }
 
                 override fun onSettings(response: FurbleProtocol.SettingsResponse) {
@@ -475,16 +554,73 @@ class CompanionRepository(context: Context) {
                     handleSettingsResponse(response)
                 }
 
+                override fun onAuthAvailability(supported: Boolean) {
+                    if (gattConnection !== session) return
+                    if (!supported || _state.value.auth == AuthState.AUTHENTICATED) triggerController.releaseAll()
+                    _state.update {
+                        it.copy(
+                            authSupported = supported,
+                            auth = if (supported) AuthState.UNKNOWN else AuthState.NOT_REQUIRED,
+                        )
+                    }
+                    _state.update { it.copy(pendingSettingConfirmation = null) }
+                }
+
+                override fun onAuthResult(result: Int) {
+                    if (gattConnection !== session) return
+                    when (result) {
+                        FurbleProtocol.AUTH_RESULT_AUTHENTICATED -> {
+                            _state.update { it.copy(auth = AuthState.AUTHENTICATED) }
+                            if (_state.value.settingsSupported) requestSettings()
+                            // The candidate is saved only after firmware accepts it.
+                            pendingPassword?.takeIf { pendingPasswordGeneration == connectionGeneration }?.let {
+                                passwordStore.write(it)
+                                it.fill(0)
+                                pendingPassword = null
+                                _state.update { state -> state.copy(storedPassword = true) }
+                            }
+                        }
+                        FurbleProtocol.AUTH_RESULT_NOT_REQUIRED -> {
+                            pendingPassword?.fill(0)
+                            pendingPassword = null
+                            _state.update { it.copy(auth = AuthState.NOT_REQUIRED) }
+                        }
+                        FurbleProtocol.AUTH_RESULT_DROPPED -> {
+                            triggerController.releaseAll()
+                            pendingPassword?.fill(0)
+                            pendingPassword = null
+                            passwordStore.clear()
+                            _state.update { it.copy(auth = AuthState.DROPPED, storedPassword = false, pendingSettingConfirmation = null) }
+                            setError("furble rejected three passwords and disconnected")
+                        }
+                        FurbleProtocol.AUTH_RESULT_REJECTED -> {
+                            triggerController.releaseAll()
+                            pendingPassword?.fill(0)
+                            pendingPassword = null
+                            passwordStore.clear()
+                            _state.update { it.copy(auth = AuthState.REJECTED, storedPassword = false, pendingSettingConfirmation = null) }
+                            setError("furble rejected the companion password")
+                        }
+                        else -> setError(FurbleProtocol.authResultLabel(result))
+                    }
+                }
+
                 override fun onDisconnected() {
                     if (gattConnection !== session) return
+                    val authTerminal = _state.value.auth == AuthState.DROPPED
                     gattConnection = null
                     pendingSettingId = null
                     pendingSettingValues.clear()
+                    pendingPassword?.fill(0)
+                    pendingPassword = null
+                    pendingPasswordGeneration = ++connectionGeneration
                     triggerController.onLinkLost()
                     locationProvider?.stop()
                     _state.update {
                         it.copy(
                             connection = if (devicePresent) ConnectionState.ASSOCIATED else ConnectionState.OUT_OF_RANGE,
+                            auth = if (authTerminal) AuthState.DROPPED else AuthState.UNKNOWN,
+                            authSupported = false,
                             status = null,
                             capability = null,
                             settingsSupported = false,
@@ -563,8 +699,11 @@ class CompanionRepository(context: Context) {
         locationProvider?.stop()
         gattConnection?.close()
         gattConnection = null
+        connectionGeneration++
         pendingSettingId = null
         pendingSettingValues.clear()
+        pendingPassword?.fill(0)
+        pendingPassword = null
         triggerController.onLinkLost()
         if (clearData) {
             _state.update {

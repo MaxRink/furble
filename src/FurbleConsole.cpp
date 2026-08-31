@@ -671,6 +671,9 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::COMPANION:
       CompanionGatt::getInstance().reloadSetting();
       break;
+    case Settings::COMPANION_PASSWORD:
+      CompanionGatt::getInstance().reloadPassword();
+      break;
     default:
       break;
   }
@@ -720,9 +723,6 @@ int cmdProvision(int argc, char **argv) {
   if (bundle.wifiPsk.has_value()) {
     printProvisionDeferred("wifi_psk");
   }
-  if (bundle.companionPassword.has_value()) {
-    printProvisionDeferred("companion_password");
-  }
   if (bundle.mqttUri.has_value()) {
     printProvisionDeferred("mqtt_uri");
   }
@@ -739,6 +739,10 @@ int cmdProvision(int argc, char **argv) {
     const auto *setting = Settings::getByWireId(field.wireId);
     printf("provision: setting %u (%s) applied\n", static_cast<unsigned>(field.wireId),
            (setting != nullptr) ? setting->key : "unknown");
+  }
+  if (bundle.companionPassword.has_value()) {
+    printf("provision: setting %u (companion_pw) applied\n",
+           static_cast<unsigned>(ProvisionTLV::COMPANION_PASSWORD_WIRE_ID));
   }
   if ((report.settingsApplied == 0) && (report.deferredFields == 0)) {
     printf("provision: no fields\n");

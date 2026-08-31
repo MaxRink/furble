@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "begin": "0100",
+  "nonce": "000102030405060708090a0b0c0d0e0f",
+  "challenge": "0100000102030405060708090a0b0c0d0e0f",
+  "password_utf8": "correct horse battery staple",
+  "proof": "0101c5dfbf655bbcd090ecb1a5bf7168b843",
+  "result_authenticated": "010201"
+}

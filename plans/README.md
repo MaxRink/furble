@@ -200,7 +200,7 @@ charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
 source and the fetched/open persistent-time and WiFi charging branches; those
 refs do not expose 43. Off-wire
 id 0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`,
-and `BATTERY_SAVER`. Wire id 45 is reserved for the companion-password
+and `BATTERY_SAVER`. Wire id 47 is allocated to the companion-password
 contract. Stacked branches with provisional ids must renumber at
 rebase; ids only freeze when a PR merges.
 
