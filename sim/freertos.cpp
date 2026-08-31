@@ -538,6 +538,12 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     if (Furble::Sim::schedulerStopping()) {
       return pdFALSE;
     }
+    // ESP-IDF publishes the handle before admitting the task. A higher-
+    // priority child can run as soon as readiness is published, so the
+    // caller's storage must already contain the handle at that boundary.
+    if (task_handle != nullptr) {
+      *task_handle = static_cast<TaskHandle_t>(state.get());
+    }
     state->priority = priority;
     state->creation_order = nextTaskOrder++;
     state->ready_order = nextReadyOrder++;
@@ -576,9 +582,6 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     preemptForHigherPriorityLocked(lock);
   }
 
-  if (task_handle != nullptr) {
-    *task_handle = static_cast<TaskHandle_t>(state.get());
-  }
   return pdPASS;
 }
 

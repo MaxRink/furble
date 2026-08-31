@@ -473,6 +473,8 @@ struct CreatePreemptState {
   TestEvent finished;
   std::mutex *orderMutex;
   std::vector<int> *order;
+  TaskHandle_t *childHandleStorage = nullptr;
+  std::atomic<bool> childSawPublishedHandle {false};
 
   CreatePreemptState(std::mutex *mutex, std::vector<int> *values)
       : orderMutex {mutex}, order {values} {}
@@ -480,6 +482,11 @@ struct CreatePreemptState {
 
 void createPreemptChildTask(void *argument) {
   auto &state = *static_cast<CreatePreemptState *>(argument);
+  // The ESP-IDF contract publishes the handle before a higher-priority child
+  // can run. Check that contract from inside the child, before its parent can
+  // observe xTaskCreate returning.
+  state.childSawPublishedHandle.store(state.childHandleStorage != nullptr
+                                      && *state.childHandleStorage != nullptr);
   {
     const std::lock_guard<std::mutex> lock(*state.orderMutex);
     state.order->push_back(1);
@@ -490,6 +497,7 @@ void createPreemptChildTask(void *argument) {
 void createPreemptParentTask(void *argument) {
   auto &state = *static_cast<CreatePreemptState *>(argument);
   TaskHandle_t child = nullptr;
+  state.childHandleStorage = &child;
   if (xTaskCreate(createPreemptChildTask, "created-high", 0, &state, kControlPriority, &child)
       != pdPASS) {
     state.finished.signal();
@@ -762,7 +770,7 @@ int main() {
     return fail(__LINE__);
   }
   createPreempt.finished.wait();
-  if (queueOrder != std::vector<int> {1, 2}) {
+  if (queueOrder != std::vector<int> {1, 2} || !createPreempt.childSawPublishedHandle.load()) {
     return fail(__LINE__);
   }
   furble_sim_stop_all_tasks();

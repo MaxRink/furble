@@ -125,8 +125,8 @@ but was not a hardware-faithful simulator:
   callback ordering, timeout, or link truth failures.
 - The host used detached threads, wall-clock queue waits, host timers, and a
   virtual firmware clock. The current foundation replaces those waits and
-  lifecycles, but same-tick host-thread dispatch remains nondeterministic and
-  CPU execution still consumes no virtual time.
+  lifecycles; its deterministic dispatch gate resolves same-tick ordering at
+  scheduler boundaries, while CPU execution still consumes no virtual time.
 - The production Control review reported concurrency leads involving stale
   connect generations, callback-before-delete client lifetime, same-Camera
   reconnect, target queue allocation, and release discarded by queue reset.
