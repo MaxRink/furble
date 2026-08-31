@@ -30,6 +30,9 @@ void fuzzCycleComplete(Furble::UI *ui);
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
 
+/** Request failure shutdown, upgrading an earlier success result if needed. */
+void requestFailureExit(void);
+
 /** Return true once a scenario, fuzzer, or panel close requested shutdown. */
 bool exitRequested(void);
 

@@ -1,7 +1,9 @@
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -10,8 +12,10 @@
 
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "clock.h"
+#include "driver.h"
 #include "power_profiler.h"
 
 struct FurbleSimQueue {
@@ -29,11 +33,24 @@ namespace {
 
 struct SimTaskExit {};
 
+enum class SimTaskLifecycle : uint8_t {
+  running,
+  stop_requested,
+  finished,
+  joining,
+  joined,
+};
+
 struct SimTask {
   std::thread worker;
   std::atomic<bool> stopping {false};
-  bool finished = false;
+  SimTaskLifecycle lifecycle = SimTaskLifecycle::running;
   bool blocked = false;
+  bool failed = false;
+  std::exception_ptr failure;
+  // Callers waiting for the worker to finish and the single join claimant.
+  size_t join_waiters = 0;
+  bool join_claimed = false;
 };
 
 class QueueUse {
@@ -51,12 +68,34 @@ class QueueUse {
   FurbleSimQueue *queue_;
 };
 
+// Keep joined records in the registry so a TaskHandle_t remains an observable,
+// inert record after reset. They are reclaimed with the process, not while a
+// caller may still retain a simulator handle.
 std::vector<std::shared_ptr<SimTask>> tasks;
 thread_local SimTask *currentTask = nullptr;
 thread_local const char *simTaskName = "ui";
 
 bool taskStopping(void) {
   return currentTask != nullptr && currentTask->stopping.load();
+}
+
+std::shared_ptr<SimTask> findTaskLocked(SimTask *task) {
+  if (task == nullptr) {
+    return nullptr;
+  }
+  for (const auto &record : tasks) {
+    if (record.get() == task) {
+      return record;
+    }
+  }
+  return nullptr;
+}
+
+void requestTaskStopLocked(const std::shared_ptr<SimTask> &task) {
+  task->stopping.store(true);
+  if (task->lifecycle == SimTaskLifecycle::running) {
+    task->lifecycle = SimTaskLifecycle::stop_requested;
+  }
 }
 
 void exitStoppedTask(void) {
@@ -99,7 +138,59 @@ bool waitUntilLocked(std::unique_lock<std::mutex> &lock,
 
 void markTaskFinished(const std::shared_ptr<SimTask> &task) {
   const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
-  task->finished = true;
+  task->blocked = false;
+  if (task->lifecycle == SimTaskLifecycle::running
+      || task->lifecycle == SimTaskLifecycle::stop_requested) {
+    task->lifecycle = SimTaskLifecycle::finished;
+  }
+  Furble::Sim::schedulerCondition().notify_all();
+}
+
+void joinTask(const std::shared_ptr<SimTask> &task) {
+  std::thread worker;
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  if (task->worker.joinable() && task->worker.get_id() == std::this_thread::get_id()) {
+    return;
+  }
+
+  for (;;) {
+    if (task->lifecycle == SimTaskLifecycle::joined) {
+      return;
+    }
+    if (task->lifecycle == SimTaskLifecycle::joining) {
+      ++task->join_waiters;
+      Furble::Sim::schedulerCondition().notify_all();
+      Furble::Sim::schedulerCondition().wait(
+          lock, [&task]() { return task->lifecycle == SimTaskLifecycle::joined; });
+      --task->join_waiters;
+      Furble::Sim::schedulerCondition().notify_all();
+      return;
+    }
+    if (task->lifecycle != SimTaskLifecycle::finished) {
+      ++task->join_waiters;
+      Furble::Sim::schedulerCondition().notify_all();
+      Furble::Sim::schedulerCondition().wait(lock, [&task]() {
+        return task->lifecycle == SimTaskLifecycle::finished
+               || task->lifecycle == SimTaskLifecycle::joining
+               || task->lifecycle == SimTaskLifecycle::joined;
+      });
+      --task->join_waiters;
+      Furble::Sim::schedulerCondition().notify_all();
+      continue;
+    }
+
+    task->lifecycle = SimTaskLifecycle::joining;
+    task->join_claimed = true;
+    worker = std::move(task->worker);
+    break;
+  }
+
+  lock.unlock();
+  if (worker.joinable()) {
+    worker.join();
+  }
+  lock.lock();
+  task->lifecycle = SimTaskLifecycle::joined;
   Furble::Sim::schedulerCondition().notify_all();
 }
 
@@ -155,6 +246,14 @@ BaseType_t xTaskCreate(TaskFunction_t task,
         task(parameter);
       } catch (const SimTaskExit &) {
         // Teardown and vTaskDelete(NULL) use the same cooperative exit path.
+      } catch (...) {
+        {
+          const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+          state->failed = true;
+          state->failure = std::current_exception();
+        }
+        Furble::Sim::requestFailureExit();
+        Furble::Sim::schedulerStop();
       }
       currentTask = nullptr;
       markTaskFinished(state);
@@ -169,18 +268,24 @@ BaseType_t xTaskCreate(TaskFunction_t task,
 }
 
 void vTaskDelete(TaskHandle_t taskHandle) {
-  SimTask *task = taskHandle == nullptr ? currentTask : static_cast<SimTask *>(taskHandle);
-  if (task == nullptr) {
+  SimTask *rawTask = taskHandle == nullptr ? currentTask : static_cast<SimTask *>(taskHandle);
+  if (rawTask == nullptr) {
     return;
   }
+  std::shared_ptr<SimTask> task;
   {
     const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
-    task->stopping.store(true);
+    task = findTaskLocked(rawTask);
+    if (task == nullptr) {
+      return;
+    }
+    requestTaskStopLocked(task);
   }
   Furble::Sim::schedulerCondition().notify_all();
-  if (task == currentTask) {
+  if (task.get() == currentTask) {
     throw SimTaskExit {};
   }
+  joinTask(task);
 }
 
 void vTaskDelay(TickType_t ticks) {
@@ -222,24 +327,19 @@ void furble_sim_stop_all_tasks(void) {
     const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
     snapshot = tasks;
     for (const auto &task : snapshot) {
-      task->stopping.store(true);
+      requestTaskStopLocked(task);
     }
   }
   Furble::Sim::schedulerCondition().notify_all();
 
   for (const auto &task : snapshot) {
-    if (task->worker.joinable() && task->worker.get_id() != std::this_thread::get_id()) {
-      task->worker.join();
-    }
+    joinTask(task);
   }
 
   // Task owners can delete their timers while unwinding. Stop and join the
   // remaining timer workers only after those owners have quiesced, so the
   // timer registry cannot hand teardown a pointer concurrently being freed.
   furble_sim_stop_all_timers();
-
-  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
-  tasks.clear();
 }
 
 void furble_sim_reset_tasks(void) {
@@ -256,7 +356,41 @@ bool furble_sim_task_blocked(TaskHandle_t taskHandle) {
     return false;
   }
   const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
-  return static_cast<SimTask *>(taskHandle)->blocked;
+  const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+  return task != nullptr && task->blocked;
+}
+
+FurbleSimTaskLifecycle furble_sim_task_lifecycle(TaskHandle_t taskHandle) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+  if (task == nullptr) {
+    return FURBLE_SIM_TASK_JOINED;
+  }
+  switch (task->lifecycle) {
+    case SimTaskLifecycle::running:
+      return FURBLE_SIM_TASK_RUNNING;
+    case SimTaskLifecycle::stop_requested:
+      return FURBLE_SIM_TASK_STOP_REQUESTED;
+    case SimTaskLifecycle::finished:
+      return FURBLE_SIM_TASK_FINISHED;
+    case SimTaskLifecycle::joining:
+      return FURBLE_SIM_TASK_JOINING;
+    case SimTaskLifecycle::joined:
+      return FURBLE_SIM_TASK_JOINED;
+  }
+  return FURBLE_SIM_TASK_JOINED;
+}
+
+size_t furble_sim_task_join_waiters(TaskHandle_t taskHandle) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+  return task == nullptr ? 0 : task->join_waiters;
+}
+
+bool furble_sim_task_join_claimed(TaskHandle_t taskHandle) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+  return task != nullptr && task->join_claimed;
 }
 
 QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size) {
