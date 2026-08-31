@@ -8,20 +8,38 @@ name: Simulator end-to-end
 'on':
   pull_request:
     paths:
-      - 'src/FurbleUI*'
-      - 'src/FurbleGPS.cpp'
-      - 'src/FurbleSettings.cpp'
-      - 'src/FurbleSpinValue.cpp'
-      - 'src/FurbleCalibrate.cpp'
-      - 'src/FurblePower.cpp'
-      - 'src/FurbleCompanionService.cpp'
-      - 'include/FurbleUI.h'
-      - 'include/FurbleControl.h'
-      - 'include/FurbleSettings.h'
+      - 'src/**'
+      - 'include/**'
+      - 'lib/furble/**'
+      - 'lib/preferences/**'
+      - 'lib/blowfish/**'
       - 'components/icons/**'
       - 'sim/**'
+      - 'tests/host/nimble/**'
+      - 'tests/host/peer/**'
+      - 'tests/corpus/**'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
+      - 'tools/check_sim_scenarios.py'
+      - 'sim/scenarios/manifest.json'
+      - '.github/workflows/sim-e2e.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/furble/**'
+      - 'lib/preferences/**'
+      - 'lib/blowfish/**'
+      - 'components/icons/**'
+      - 'sim/**'
+      - 'tests/host/nimble/**'
+      - 'tests/host/peer/**'
+      - 'tests/corpus/**'
+      - 'sdkconfig.*'
+      - 'tools/gen_lv_conf.py'
+      - 'tools/check_sim_scenarios.py'
+      - 'sim/scenarios/manifest.json'
       - '.github/workflows/sim-e2e.yml'
   workflow_dispatch:
 
@@ -75,11 +93,35 @@ jobs:
       - name: Generate LVGL configuration
         run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
 
+      - name: Check simulator scenario ownership
+        run: python3 tools/check_sim_scenarios.py
+
       - name: Build simulator
         env:
           FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
           FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
         run: sh sim/build.sh
+
+      - name: Run certified bug-hunt scenarios (M5StickS3)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_IR: 1
+          FURBLE_SIM_FEEDBACK: 1
+          FURBLE_SIM_SD: 1
+        run: |
+          if ! scenarios=$(python3 tools/check_sim_scenarios.py \
+              --list-certified --suite bughunt --board m5stick-s3); then
+            echo "Failed to select certified M5StickS3 bug-hunt scenarios." >&2
+            exit 1
+          fi
+          if [ -z "$scenarios" ]; then
+            echo "No certified M5StickS3 bug-hunt scenarios selected." >&2
+            exit 1
+          fi
+          for scenario in $scenarios; do
+            sim/build/furble-sim --script "$scenario"
+          done
 
       # The GPS decoder runs on a host thread while UI timers query its status.
       # Keep one focused ThreadSanitizer scenario in CI so parser ownership
@@ -158,6 +200,45 @@ jobs:
           FURBLE_SIM_M5GFX_BOARD: board_M5Stack
         run: sh sim/build.sh
 
+      - name: Run certified bug-hunt scenarios on alternate boards
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_IR: 1
+          FURBLE_SIM_FEEDBACK: 1
+          FURBLE_SIM_SD: 1
+        run: |
+          for board_binary in \
+            "m5stick-c:sim/build-stickc/furble-sim" \
+            "m5stack-core:sim/build-core/furble-sim"; do
+            board=${board_binary%%:*}
+            binary=${board_binary#*:}
+            if ! scenarios=$(python3 tools/check_sim_scenarios.py \
+                --list-certified --suite bughunt --board "$board"); then
+              echo "Failed to select certified $board bug-hunt scenarios." >&2
+              exit 1
+            fi
+            if [ -z "$scenarios" ]; then
+              echo "No certified $board bug-hunt scenarios selected." >&2
+              exit 1
+            fi
+            for scenario in $scenarios; do
+              "$binary" --script "$scenario"
+            done
+          done
+
+      - name: Run certified end-to-end scenarios on alternate boards
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          FURBLE_SIM_BOARD_ID=m5stick-c \
+            FURBLE_SIM_BIN=sim/build-stickc/furble-sim \
+            sh sim/scripts/run-e2e.sh
+          FURBLE_SIM_BOARD_ID=m5stack-core \
+            FURBLE_SIM_BIN=sim/build-core/furble-sim \
+            sh sim/scripts/run-e2e.sh
+
       # Prove the IMU spirit level page (PR #28) is sim-verified on every panel
       # class. level-overflow.txt injects a tilt sweep through the sim IMU seam
       # and asserts the bubble tracks the tilt, the page renders and nothing
@@ -227,18 +308,6 @@ jobs:
             "${{ github.workspace }}/sim/build-stickc/furble-sim" \
               --script "${{ github.workspace }}/sim/scenarios/bughunt/$scenario.txt"
           done
-
-      # The 320x240 M5Stack Core panel, so the connection-state coverage below
-      # runs on all three panel widths. Its own build dir keeps the other two
-      # binaries intact.
-      - name: Build 320x240 (M5Stack Core) simulator
-        env:
-          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
-          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
-          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-core
-          FURBLE_SIM_FURBLE_BOARD: FURBLE_M5COREX
-          FURBLE_SIM_M5GFX_BOARD: board_M5Stack
-        run: sh sim/build.sh
 
       # Complete modeled-page and layout matrix. Keep one scenario for all
       # panel classes so route reachability, optional capability pages and

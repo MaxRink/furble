@@ -22,6 +22,7 @@ name: Power model gate
       - 'sdkconfig.*'
       - 'tools/power-model/**'
       - 'tools/gen_lv_conf.py'
+      - 'tools/check_sim_scenarios.py'
       - '.github/workflows/power-gate.yml'
   workflow_dispatch:
 
@@ -93,10 +94,19 @@ jobs:
           REPORT_DIR: ${{ runner.temp }}/power-reports
           BASELINE_DIR: tools/power-model/baseline
         run: |
-          set -uo pipefail
+          set -euo pipefail
           mkdir -p "$REPORT_DIR"
           failed=0
-          for scenario in sim/scenarios/*.txt; do
+          if ! scenarios=$(python3 tools/check_sim_scenarios.py \
+              --list-certified --suite power-gate --board m5stick-s3); then
+            echo "Failed to select certified power-gate scenarios." >&2
+            exit 1
+          fi
+          if [ -z "$scenarios" ]; then
+            echo "No certified power-gate scenarios selected." >&2
+            exit 1
+          fi
+          for scenario in $scenarios; do
             name="$(basename "$scenario" .txt)"
             baseline="$BASELINE_DIR/$name.json"
             report="$REPORT_DIR/$name.json"
