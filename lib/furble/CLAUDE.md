@@ -10,9 +10,10 @@ protocol core.
   is one subclass pair (.h/.cpp): Fujifilm Basic/Secure, CanonEOS
   Smart/Remote, Nikon Smart/Remote, Sony, the Ricoh Imaging family (RICOH and
   PENTAX K), Panasonic Lumix, DJI Osmo, and FauxNY (software test camera).
-- `Ricoh` owns the shared Ricoh Imaging GATT family. PENTAX K bodies reuse its
-  persisted `Camera::Type::RICOH`, security flow, UUIDs, and command bytes until
-  hardware testing proves a model-specific delta.
+- `Ricoh` owns the currently guarded GR IV compatibility path. Advertisement
+  identity and GATT model are separate checks. PENTAX K advertisements remain
+  discovery-only until hardware testing proves that their model, security,
+  UUIDs, and command bytes are safe to route through this class.
 - New camera types get a new `Camera::Type` enum value. Values are persisted
   in NVS: never renumber or reuse existing ones (MOBILE_DEVICE is deprecated
   but its value stays reserved).
@@ -68,10 +69,10 @@ protocol core.
   Secure attempt, and keep active promotion behind a bounded wait that aborts
   on link loss or Control cancellation.
 - Ricoh fresh pairing treats a bonded-address security failure as a stale local
-  bond: delete that bond and return failure so the next bounded control retry
-  can perform numeric comparison. Saved reconnect failures preserve the bond;
-  do not reconnect inline from the security callback or alter callback/client
-  lifetime ownership.
+  bond: delete that bond and return failure. New associations are unsupported
+  until an application-owned, lifetime-safe numeric-comparison flow exists.
+  Saved reconnect failures preserve the bond; do not reconnect inline from the
+  security callback or alter callback/client lifetime ownership.
 - Ricoh `focusPress()` and `focusRelease()` are intentional no-ops. The
   documented Focus Mode characteristic configures a focus mode, while
   Operation Request starts capture. Do not map focus to a timer or capture

@@ -52,10 +52,15 @@ int main() {
   // https://github.com/sky18Dragon/RICOH-GR-Live-View-Shooting/blob/main/docs/power_state_policy.md
   // https://github.com/sky18Dragon/RICOH-GR-Live-View-Shooting/blob/main/docs/known_issues.md
   Furble::Host::RicohVirtualCamera::Config config;
+  config.advertisement_name = "RICOH GR IV";
+  config.gatt_model = "RICOH GR IV";
+  config.profile = Furble::Host::RicohVirtualCamera::Profile::GR_IV;
+  config.camera_bonded = true;
   config.camera_power = 0x01;
   config.operation_mode = MODE_BLE_STARTUP;
   Furble::Host::RicohVirtualCamera peer(config);
   NimBLEDevice::setMockPeer(&peer);
+  NimBLEDevice::setBonded(true);
   const auto advertisement = peer.advertisement();
   Furble::Ricoh camera(&advertisement);
   if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),

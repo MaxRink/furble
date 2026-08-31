@@ -172,6 +172,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
 | [159-camera-peer-certification.md](159-camera-peer-certification.md) | Capture-backed, fail-closed virtual camera peers and exact feature-level compatibility certification |
 | [160-sim-scenario-ownership.md](160-sim-scenario-ownership.md) | Complete simulator scenario ownership manifest and exact CI trigger coverage |
+| [161-ricoh-peer-safety.md](161-ricoh-peer-safety.md) | Ricoh and Pentax discovery-only peer profiles with fail-closed production safety |
 
 ## Design documents
 

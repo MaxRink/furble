@@ -122,13 +122,16 @@ bool runScenario() {
   FujifilmVirtualCamera good(goodConfig);
 
   RicohVirtualCamera::Config flapConfig;
-  flapConfig.name = "RICOH GR IV";
+  flapConfig.advertisement_name = "RICOH GR IV";
+  flapConfig.gatt_model = "RICOH GR IV";
   flapConfig.address = NimBLEAddress(0x3490EABB7D73ULL, 0);
+  flapConfig.camera_bonded = true;
   RicohVirtualCamera flap(flapConfig);
   flap.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/1000);
 
   NimBLEDevice::setMockPeerForAddress(good.advertisement().getAddress(), &good);
   NimBLEDevice::setMockPeerForAddress(flap.advertisement().getAddress(), &flap);
+  NimBLEDevice::setBonded(true);
 
   const NimBLEAdvertisedDevice goodAdvertisement = good.advertisement();
   const NimBLEAdvertisedDevice flapAdvertisement = flap.advertisement();

@@ -224,6 +224,26 @@ target_compile_options(ricoh_sleep_gate_test PRIVATE
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
+# Keep unsupported Ricoh-family advertisements discovery-only. The production
+# class must require an exact readable model and OperationMode before it can
+# issue any shutter or GPS write.
+add_executable(ricoh_model_safety_test
+               ricoh_model_safety_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(ricoh_model_safety_test PRIVATE furble_host_camera)
+target_include_directories(ricoh_model_safety_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(ricoh_model_safety_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
 # The registration gate test compiles the real Secure path against the same
 # virtual peer as the normal camera suite. The host-only timeout keeps a
 # withheld-registration case fast while firmware retains the 25 s bound.
@@ -590,6 +610,16 @@ add_executable(virtual_ble_runtime_test
 target_include_directories(virtual_ble_runtime_test PRIVATE ${FURBLE_ROOT}/sim/ble)
 target_compile_options(virtual_ble_runtime_test PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(virtual_ble_runtime_test PRIVATE Threads::Threads)
+
+# Ricoh family profiles intentionally expose only immutable synthetic model
+# discovery until exact hardware ATT captures establish control semantics.
+add_executable(ricoh_virtual_ble_profile_test
+               ricoh_virtual_ble_profile_test.cpp
+               ${FURBLE_ROOT}/sim/ble/RicohPeerProfiles.cpp
+               ${FURBLE_ROOT}/sim/ble/VirtualBleRuntime.cpp)
+target_include_directories(ricoh_virtual_ble_profile_test PRIVATE ${FURBLE_ROOT}/sim/ble)
+target_compile_options(ricoh_virtual_ble_profile_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(ricoh_virtual_ble_profile_test PRIVATE Threads::Threads)
 
 add_executable(sim_action_parser_test sim_action_parser_test.cpp
                ${FURBLE_ROOT}/sim/scenario_action.cpp)
@@ -1122,6 +1152,7 @@ if(BUILD_TESTING)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME virtual-ble-runtime COMMAND virtual_ble_runtime_test)
+  add_test(NAME ricoh-virtual-ble-profile COMMAND ricoh_virtual_ble_profile_test)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
   add_test(NAME sim-connect-deadline COMMAND sim_connect_deadline_test)
   add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
@@ -1159,6 +1190,7 @@ if(BUILD_TESTING)
   # watchdog, the ctest timeout is the backstop for a wedged control task.
   add_test(NAME ricoh-control-flap COMMAND ricoh_control_flap_test)
   set_tests_properties(ricoh-control-flap PROPERTIES TIMEOUT 90)
+  add_test(NAME ricoh-model-safety COMMAND ricoh_model_safety_test)
   add_test(NAME absent-peer-scan COMMAND absent_peer_scan_test)
   set_tests_properties(absent-peer-scan PROPERTIES TIMEOUT 60)
 

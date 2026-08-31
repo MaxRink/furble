@@ -353,6 +353,13 @@ class NimBLEClient {
   // result so a test can assert the accept or reject decision.
   bool mockPeerRequestConnParams(const ble_gap_upd_params &params);
 
+  // Drive the real client security callbacks from a virtual peer. These are
+  // deliberately explicit test hooks. A peer must not silently invent a
+  // passkey or accept numeric comparison on behalf of the application.
+  void mockPasskeyEntry(void);
+  uint32_t mockPasskeyDisplay(void);
+  void mockConfirmPasskey(uint32_t pin);
+
   // Central-initiated connection updates are asynchronous in NimBLE. Expose
   // enough state for the regression test to prove production waited for the
   // controller result instead of rereading the old parameters immediately.
@@ -463,6 +470,8 @@ class NimBLEDevice {
   static bool setMTU(uint16_t mtu);
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
   static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
+  static size_t confirmPasskeyCount();
+  static bool lastConfirmPasskeyAccepted();
   static void setMockPeer(NimBLEMockPeer *peer);
   // Route a client to a peer by the advertised BLE address. The single-peer
   // setter remains the fallback used by existing tests; address routing lets

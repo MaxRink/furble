@@ -19,8 +19,14 @@ bool check(bool condition, const char *message) {
 int main() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
-  Furble::Host::RicohVirtualCamera peer;
+  Furble::Host::RicohVirtualCamera::Config config;
+  config.advertisement_name = "RICOH GR IV";
+  config.gatt_model = "RICOH GR IV";
+  config.profile = Furble::Host::RicohVirtualCamera::Profile::GR_IV;
+  config.camera_bonded = true;
+  Furble::Host::RicohVirtualCamera peer(config);
   NimBLEDevice::setMockPeer(&peer);
+  NimBLEDevice::setBonded(true);
   const auto advertisement = peer.advertisement();
   Furble::Ricoh camera(&advertisement);
   if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),

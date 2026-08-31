@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 
 #include "RicohVirtualCamera.h"
@@ -20,8 +22,32 @@ const NimBLEUUID BT_CONTROL_SERVICE {0x0F291746, 0x0C80, 0x4726, 0x87A73C501FD3B
 const NimBLEUUID PAIRED_NAME_CHARACTERISTIC {0xFE3A32F8, 0xA189, 0x42DE, 0xA391BC81AE4DAA76};
 const NimBLEUUID GPS_SERVICE {0x84A0DD62, 0xE8AA, 0x4D0F, 0x91DB819B6724C69E};
 const NimBLEUUID GPS_CHARACTERISTIC {0x28F59D60, 0x8B8E, 0x4FCD, 0xA81F61BDB46595A9};
-const NimBLEUUID LOCATION_SERVICE {0xF37F568F, 0x9071, 0x445D, 0xA9385441F2E82399};
-const NimBLEUUID LOCATION_CHARACTERISTIC {0x9111CDD0, 0x9F01, 0x45C4, 0xA2D4E09E8FB0424D};
+std::string canonicalModel(std::string model) {
+  while (!model.empty()
+         && (model.back() == '\0' || std::isspace(static_cast<unsigned char>(model.back())))) {
+    model.pop_back();
+  }
+  size_t first = 0;
+  while (first < model.size() && std::isspace(static_cast<unsigned char>(model[first]))) {
+    ++first;
+  }
+  model.erase(0, first);
+  std::transform(model.begin(), model.end(), model.begin(), [](char value) {
+    return static_cast<char>(std::toupper(static_cast<unsigned char>(value)));
+  });
+  return model;
+}
+
+bool exactGrIv(const std::string &model) {
+  return canonicalModel(model) == "RICOH GR IV";
+}
+
+bool fullControlProfile(const RicohVirtualCamera::Config &config) {
+  // This explicit test-only path is retained for legacy production safety
+  // regressions. It is not capture evidence and is not used by sim/ble.
+  return config.profile == RicohVirtualCamera::Profile::GR_IV
+         && exactGrIv(config.advertisement_name) && exactGrIv(config.gatt_model);
+}
 
 }  // namespace
 
@@ -44,12 +70,14 @@ std::string RicohVirtualCamera::key(const NimBLEUUID &service, const NimBLEUUID 
 NimBLEAdvertisedDevice RicohVirtualCamera::advertisement() const {
   NimBLEAdvertisedDevice device;
   device.setAddress(m_Config.address);
-  device.setName(m_Config.name);
+  device.setName(m_Config.advertisement_name);
   device.setRSSI(-55);
   device.addServiceUUID(INFO_SERVICE);
-  device.addServiceUUID(CAMERA_SERVICE);
-  device.addServiceUUID(SHOOTING_SERVICE);
-  device.addServiceUUID(BT_CONTROL_SERVICE);
+  if (fullControlProfile(m_Config)) {
+    device.addServiceUUID(CAMERA_SERVICE);
+    device.addServiceUUID(SHOOTING_SERVICE);
+    device.addServiceUUID(BT_CONTROL_SERVICE);
+  }
   return device;
 }
 
@@ -57,8 +85,20 @@ bool RicohVirtualCamera::cameraBonded() const {
   return m_Config.camera_bonded;
 }
 
+RicohVirtualCamera::Profile RicohVirtualCamera::profile() const {
+  return m_Config.profile;
+}
+
+size_t RicohVirtualCamera::associationConfirmations() const {
+  return m_AssociationConfirmations;
+}
+
 void RicohVirtualCamera::removeCameraBond() {
   m_Config.camera_bonded = false;
+}
+
+void RicohVirtualCamera::setCameraBond(bool bonded) {
+  m_Config.camera_bonded = bonded;
 }
 
 void RicohVirtualCamera::setCameraPower(uint8_t power) {
@@ -166,6 +206,7 @@ bool RicohVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddr
   }
   m_Client = &client;
   m_Connected = true;
+  m_OperationModeReads = 0;
   const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
   m_Subscriptions.clear();
   return true;
@@ -187,18 +228,24 @@ void RicohVirtualCamera::disconnect(NimBLEClient &client, int reason) {
 }
 
 bool RicohVirtualCamera::hasService(const NimBLEUUID &service) const {
-  return matches(service, INFO_SERVICE) || matches(service, CAMERA_SERVICE)
-         || matches(service, SHOOTING_SERVICE) || matches(service, BT_CONTROL_SERVICE)
-         || matches(service, GPS_SERVICE) || matches(service, LOCATION_SERVICE);
+  if (matches(service, INFO_SERVICE))
+    return true;
+  if (!fullControlProfile(m_Config))
+    return false;
+  return matches(service, CAMERA_SERVICE) || matches(service, SHOOTING_SERVICE)
+         || matches(service, BT_CONTROL_SERVICE) || matches(service, GPS_SERVICE);
 }
 
 bool RicohVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
                                            const NimBLEUUID &characteristic) const {
   if (matches(service, INFO_SERVICE))
-    return matches(characteristic, MODEL_CHARACTERISTIC);
+    return m_Config.expose_model && matches(characteristic, MODEL_CHARACTERISTIC);
+  if (!fullControlProfile(m_Config))
+    return false;
   if (matches(service, CAMERA_SERVICE)) {
     return matches(characteristic, POWER_CHARACTERISTIC)
-           || matches(characteristic, OPERATION_MODE_CHARACTERISTIC);
+           || (m_Config.expose_operation_mode
+               && matches(characteristic, OPERATION_MODE_CHARACTERISTIC));
   }
   if (matches(service, SHOOTING_SERVICE)) {
     return matches(characteristic, SHOOTING_FLAVOR_CHARACTERISTIC)
@@ -210,7 +257,7 @@ bool RicohVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
     return matches(characteristic, PAIRED_NAME_CHARACTERISTIC);
   if (matches(service, GPS_SERVICE))
     return matches(characteristic, GPS_CHARACTERISTIC);
-  return matches(service, LOCATION_SERVICE) && matches(characteristic, LOCATION_CHARACTERISTIC);
+  return false;
 }
 
 bool RicohVirtualCamera::discoverCharacteristic(NimBLEClient &client,
@@ -222,12 +269,12 @@ bool RicohVirtualCamera::discoverCharacteristic(NimBLEClient &client,
 
 bool RicohVirtualCamera::canWrite(const NimBLEUUID &service,
                                   const NimBLEUUID &characteristic) const {
+  if (!fullControlProfile(m_Config))
+    return false;
   return (matches(service, SHOOTING_SERVICE)
           && (matches(characteristic, SHOOTING_FLAVOR_CHARACTERISTIC)
               || matches(characteristic, OPERATION_REQUEST_CHARACTERISTIC)))
-         || (matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC))
-         || (matches(service, LOCATION_SERVICE)
-             && matches(characteristic, LOCATION_CHARACTERISTIC));
+         || (matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC));
 }
 
 bool RicohVirtualCamera::write(NimBLEClient &client,
@@ -248,7 +295,7 @@ NimBLEAttValue RicohVirtualCamera::read(NimBLEClient &client,
   if (!m_Connected || m_Client != &client)
     return {};
   if (matches(service, INFO_SERVICE) && matches(characteristic, MODEL_CHARACTERISTIC)) {
-    return NimBLEAttValue(m_Config.name);
+    return NimBLEAttValue(m_Config.gatt_model);
   }
   if (matches(service, BT_CONTROL_SERVICE) && matches(characteristic, PAIRED_NAME_CHARACTERISTIC)) {
     return NimBLEAttValue("furble");
@@ -259,6 +306,10 @@ NimBLEAttValue RicohVirtualCamera::read(NimBLEClient &client,
   if (matches(service, CAMERA_SERVICE) && matches(characteristic, OPERATION_MODE_CHARACTERISTIC)) {
     if (m_Config.operation_mode_read_fails)
       return {};
+    if (m_Config.operation_mode_malformed
+        || (m_Config.operation_mode_malformed_after_initial && m_OperationModeReads > 0))
+      return NimBLEAttValue({m_Config.operation_mode, 0xff});
+    ++m_OperationModeReads;
     return NimBLEAttValue({m_Config.operation_mode});
   }
   return NimBLEAttValue({0x00});
@@ -305,15 +356,17 @@ bool RicohVirtualCamera::secureConnection(NimBLEClient &client) {
       return false;
     }
   }
+  const bool localBonded = NimBLEDevice::isBonded(m_Config.address);
+  if (!localBonded || !m_Config.camera_bonded) {
+    // A first pairing needs an application-owned decision. Drive the real
+    // callback so the production client can reject it, then leave both bond
+    // stores untouched. The old peer silently manufactured a bond here.
+    ++m_AssociationConfirmations;
+    client.mockConfirmPasskey(123456);
+    return false;
+  }
   if (!m_Config.accept_numeric_comparison)
     return false;
-  const bool localBonded = NimBLEDevice::isBonded(m_Config.address);
-  if (localBonded != m_Config.camera_bonded)
-    return false;
-  if (!localBonded) {
-    NimBLEDevice::setBonded(true);
-    m_Config.camera_bonded = true;
-  }
   if (m_FlappyEnabled) {
     armFlappyDrop(client);
   }

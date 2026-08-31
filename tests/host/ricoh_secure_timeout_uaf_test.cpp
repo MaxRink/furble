@@ -67,7 +67,8 @@ bool testSecureTimeoutReclaimDoesNotCrash() {
   NimBLEDevice::setBonded(true);  // bonded(before)=yes, pairType=saved
 
   Furble::Host::RicohVirtualCamera::Config config;
-  config.name = "RICOH GR IV";
+  config.advertisement_name = "RICOH GR IV";
+  config.gatt_model = "RICOH GR IV";
   config.address = NimBLEAddress(kAddress, 0);
   config.camera_bonded = true;
   Furble::Host::RicohVirtualCamera inner(config);

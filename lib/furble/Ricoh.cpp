@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 #include <NimBLEAddress.h>
 #include <NimBLEAdvertisedDevice.h>
@@ -14,7 +15,6 @@
 #include <esp_timer.h>
 
 #include "Ricoh.h"
-#include "protocol/AdvertisementProtocol.h"
 
 namespace Furble {
 
@@ -38,14 +38,34 @@ const NimBLEUUID Ricoh::PAIRED_DEVICE_NAME_CHR_UUID {0xFE3A32F8, 0xA189, 0x42DE,
 const NimBLEUUID Ricoh::GPS_SVC_UUID {0x84A0DD62, 0xE8AA, 0x4D0F, 0x91DB819B6724C69E};
 const NimBLEUUID Ricoh::GPS_INFO_CHR_UUID {0x28F59D60, 0x8B8E, 0x4FCD, 0xA81F61BDB46595A9};
 
-const NimBLEUUID Ricoh::LOCATION_CONTROL_SVC_UUID {0xF37F568F, 0x9071, 0x445D, 0xA9385441F2E82399};
-const NimBLEUUID Ricoh::LOCATION_CONTROL_CHR_UUID {0x9111CDD0, 0x9F01, 0x45C4, 0xA2D4E09E8FB0424D};
-
 namespace {
 
 constexpr uint32_t GPS_MIN_INTERVAL_MS = 10 * 1000;
 constexpr double GPS_MIN_DELTA_DEG = 0.00001;
 constexpr double GPS_MIN_DELTA_ALT_M = 1.0;
+
+std::string canonicalModel(std::string model) {
+  while (!model.empty()
+         && (model.back() == '\0' || std::isspace(static_cast<unsigned char>(model.back())))) {
+    model.pop_back();
+  }
+  size_t first = 0;
+  while (first < model.size() && std::isspace(static_cast<unsigned char>(model[first]))) {
+    ++first;
+  }
+  model.erase(0, first);
+  for (char &character : model)
+    character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+  return model;
+}
+
+bool isSupportedModel(const std::string &model) {
+  const std::string canonical = canonicalModel(model);
+  // This is the only model string already present in the incident fixtures.
+  // It is a routing guard, not a certification claim. New spellings require a
+  // signed exact-model capture before they can be added.
+  return canonical == "RICOH GR IV";
+}
 
 double bswapd64(double x) {
   uint64_t t;
@@ -60,7 +80,7 @@ double bswapd64(double x) {
 bool validTimesync(const Camera::timesync_t &timesync) {
   return timesync.year >= 2000 && timesync.year <= 2099 && timesync.month >= 1
          && timesync.month <= 12 && timesync.day >= 1 && timesync.day <= 31 && timesync.hour <= 23
-         && timesync.minute <= 59 && timesync.second <= 60 && timesync.centisecond <= 99;
+         && timesync.minute <= 59 && timesync.second <= 59 && timesync.centisecond <= 99;
 }
 
 const char *powerName(uint8_t value) {
@@ -134,11 +154,13 @@ Ricoh::Ricoh(const void *data, size_t len) : Camera(Type::RICOH, PairType::SAVED
 
   const ricoh_t *ricoh = static_cast<const ricoh_t *>(data);
   m_Name = std::string(ricoh->name);
+  m_AdvertisementName = m_Name;
   m_Address = NimBLEAddress(ricoh->address, ricoh->type);
 }
 
 Ricoh::Ricoh(const NimBLEAdvertisedDevice *pDevice) : Camera(Type::RICOH, PairType::NEW) {
-  m_Name = pDevice->getName();
+  m_AdvertisementName = pDevice->getName();
+  m_Name = m_AdvertisementName;
   if (m_Name.empty())
     m_Name = "RICOH";
   m_Address = pDevice->getAddress();
@@ -147,17 +169,14 @@ Ricoh::Ricoh(const NimBLEAdvertisedDevice *pDevice) : Camera(Type::RICOH, PairTy
 }
 
 bool Ricoh::nameMatches(const std::string &name) {
-  return AdvertisementProtocol::matchesRicohName(name);
+  return isSupportedModel(name);
 }
 
 bool Ricoh::matches(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice == nullptr) {
     return false;
   }
-  return pDevice->isAdvertisingService(INFO_SVC_UUID)
-         || pDevice->isAdvertisingService(CAMERA_SVC_UUID)
-         || pDevice->isAdvertisingService(SHOOTING_SVC_UUID)
-         || pDevice->isAdvertisingService(BT_CONTROL_SVC_UUID) || nameMatches(pDevice->getName());
+  return nameMatches(pDevice->getName());
 }
 
 Ricoh::SecurityMode Ricoh::securityMode() const {
@@ -170,6 +189,11 @@ bool Ricoh::_connect(void) {
   // stale pointers would dangle into the freed client.
   clearRemoteState();
   m_Progress = 0;
+
+  if (!isSupportedModel(m_AdvertisementName)) {
+    ESP_LOGW(LOG_TAG, "Ricoh advertisement identity has no capture-backed route; refusing connect");
+    return false;
+  }
 
   bool bondedBefore = NimBLEDevice::isBonded(m_Address);
   ESP_LOGI(LOG_TAG, "Ricoh bonded(before)=%s pairType=%s", bondedBefore ? "yes" : "no",
@@ -210,28 +234,47 @@ bool Ricoh::_connect(void) {
   m_Progress = 30;
 
   NimBLERemoteService *pSvc = m_Client->getService(INFO_SVC_UUID);
-  if (pSvc != nullptr) {
-    NimBLERemoteCharacteristic *pModel = pSvc->getCharacteristic(MODEL_CHR_UUID);
-    if (pModel != nullptr && pModel->canRead()) {
-      NimBLEAttValue modelValue;
-      if (gattRead(pModel, modelValue)) {
-        std::string model = static_cast<std::string>(modelValue);
-        if (!model.empty()) {
-          ESP_LOGI(LOG_TAG, "Ricoh Model = %s", model.c_str());
-          m_Name = model;
-        }
-      }
-    }
+  if (pSvc == nullptr) {
+    ESP_LOGW(LOG_TAG, "Ricoh model service unavailable; refusing an unverified peer");
+    return false;
   }
+  NimBLERemoteCharacteristic *pModel = pSvc->getCharacteristic(MODEL_CHR_UUID);
+  if (pModel == nullptr || !pModel->canRead()) {
+    ESP_LOGW(LOG_TAG, "Ricoh model characteristic unavailable; refusing an unverified peer");
+    return false;
+  }
+  NimBLEAttValue modelValue;
+  if (!gattRead(pModel, modelValue) || modelValue.length() == 0) {
+    ESP_LOGW(LOG_TAG, "Ricoh model read failed; refusing an unverified peer");
+    return false;
+  }
+  const std::string model = static_cast<std::string>(modelValue);
+  if (!isSupportedModel(model)) {
+    ESP_LOGW(LOG_TAG, "Ricoh model '%s' is not an exact supported GR IV model", model.c_str());
+    return false;
+  }
+  ESP_LOGI(LOG_TAG, "Ricoh Model = %s", model.c_str());
+  m_Name = model;
+  m_ModelVerified = true;
   m_Progress = 45;
 
   pSvc = m_Client->getService(CAMERA_SVC_UUID);
-  if (pSvc != nullptr) {
-    m_Power = pSvc->getCharacteristic(POWER_CHR_UUID);
-    m_OperationMode = pSvc->getCharacteristic(OPERATION_MODE_CHR_UUID);
-  } else {
-    ESP_LOGW(LOG_TAG, "Ricoh Camera service unavailable");
+  if (pSvc == nullptr) {
+    ESP_LOGW(LOG_TAG, "Ricoh Camera service unavailable; refusing an unverified peer");
+    return false;
   }
+  m_Power = pSvc->getCharacteristic(POWER_CHR_UUID);
+  m_OperationMode = pSvc->getCharacteristic(OPERATION_MODE_CHR_UUID);
+  if (m_OperationMode == nullptr || !m_OperationMode->canRead()) {
+    ESP_LOGW(LOG_TAG, "Ricoh OperationMode unavailable; refusing an unverified peer");
+    return false;
+  }
+  NimBLEAttValue initialOperationMode;
+  if (!gattRead(m_OperationMode, initialOperationMode) || initialOperationMode.length() != 1) {
+    ESP_LOGW(LOG_TAG, "Ricoh OperationMode initial read was missing or malformed");
+    return false;
+  }
+  m_LastOperationMode = initialOperationMode[0];
   m_Progress = 60;
 
   pSvc = m_Client->getService(SHOOTING_SVC_UUID);
@@ -262,13 +305,6 @@ bool Ricoh::_connect(void) {
   }
   m_Progress = 82;
 
-  pSvc = m_Client->getService(LOCATION_CONTROL_SVC_UUID);
-  if (pSvc != nullptr) {
-    m_LocationControl = pSvc->getCharacteristic(LOCATION_CONTROL_CHR_UUID);
-  } else {
-    ESP_LOGW(LOG_TAG, "Ricoh Location Control service unavailable");
-  }
-
   pSvc = m_Client->getService(BT_CONTROL_SVC_UUID);
   if (pSvc != nullptr) {
     m_PairedDeviceName = pSvc->getCharacteristic(PAIRED_DEVICE_NAME_CHR_UUID);
@@ -285,7 +321,6 @@ bool Ricoh::_connect(void) {
   logChr(m_CaptureStatus, "CaptureStatus");
   logChr(m_SelfTimer, "SelfTimer");
   logChr(m_GpsInfo, "GpsInfo");
-  logChr(m_LocationControl, "LocationControl");
   logChr(m_PairedDeviceName, "PairedDeviceName");
   ESP_LOGI(LOG_TAG, "Ricoh state probe end");
 
@@ -314,9 +349,9 @@ void Ricoh::clearRemoteState(void) {
   m_SelfTimer = nullptr;
   m_PairedDeviceName = nullptr;
   m_GpsInfo = nullptr;
-  m_LocationControl = nullptr;
   m_LastPower = STATE_UNKNOWN;
   m_LastOperationMode = STATE_UNKNOWN;
+  m_ModelVerified = false;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
 }
@@ -379,10 +414,6 @@ bool Ricoh::setShootingFlavor(ShootingFlavor flavor) {
   return writeByte(m_ShootingFlavor, static_cast<uint8_t>(flavor), "ShootingFlavor");
 }
 
-bool Ricoh::setLocationControl(bool enabled) {
-  return writeByte(m_LocationControl, enabled ? 0x01 : 0x00, "LocationControl");
-}
-
 bool Ricoh::captureAllowed(void) {
   // A GR IV in BLE standby keeps the link up and reports CameraPower ON while
   // OperationMode is BLE_STARTUP. A capture write in that state cold boots the
@@ -395,16 +426,12 @@ bool Ricoh::captureAllowed(void) {
     ESP_LOGW(LOG_TAG, "Ricoh shutter refused: not connected");
     return false;
   }
-  if (m_OperationMode == nullptr || !m_OperationMode->canRead()) {
-    // The Ricoh matcher also accepts bodies that expose the shooting service
-    // without the GR camera service. Those cannot report a power state and
-    // shot fine before this gate, so the gate only applies when the
-    // characteristic exists. The GR IV always exposes it.
-    ESP_LOGW(LOG_TAG, "Ricoh OperationMode unavailable; allowing capture");
-    return true;
+  if (!m_ModelVerified || m_OperationMode == nullptr || !m_OperationMode->canRead()) {
+    ESP_LOGW(LOG_TAG, "Ricoh capture refused: model or OperationMode is unverified");
+    return false;
   }
   NimBLEAttValue value;
-  if (!gattRead(m_OperationMode, value) || value.length() < 1) {
+  if (!gattRead(m_OperationMode, value) || value.length() != 1) {
     ESP_LOGW(LOG_TAG, "Ricoh shutter refused: OperationMode read failed");
     return false;
   }
@@ -445,7 +472,7 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     ESP_LOGW(LOG_TAG, "Ricoh GPS skipped: not connected");
     return;
   }
-  if (m_GpsInfo == nullptr || !m_GpsInfo->canWrite()) {
+  if (!m_ModelVerified || m_GpsInfo == nullptr || !m_GpsInfo->canWrite()) {
     ESP_LOGW(LOG_TAG, "Ricoh GPS characteristic unavailable");
     return;
   }
@@ -469,9 +496,6 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
 
   if (!moved && !intervalElapsed)
     return;
-
-  if (!m_HasGpsWrite)
-    setLocationControl(true);
 
   ricoh_geo_t geo = {
       .latitude = bswapd64(gps.latitude),
@@ -519,21 +543,23 @@ bool Ricoh::serialise(void *buffer, size_t bytes) const {
 }
 
 void Ricoh::onPassKeyEntry(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Ricoh passkey entry for %s; injecting fallback 123456",
+  ESP_LOGW(LOG_TAG, "Ricoh passkey entry for %s requires user input; refusing an implicit key",
            connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectPassKey(connInfo, 123456);
 }
 
 uint32_t Ricoh::onPassKeyDisplay(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Ricoh passkey display for %s; returning fallback 123456",
+  ESP_LOGW(LOG_TAG, "Ricoh passkey display for %s is unsupported without user confirmation",
            connInfo.getAddress().toString().c_str());
-  return 123456;
+  // NimBLE has no cancellation return value for this callback. An out of
+  // range value makes ble_sm_inject_io reject the response instead of
+  // silently accepting a fixed or default passkey.
+  return std::numeric_limits<uint32_t>::max();
 }
 
 void Ricoh::onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {
-  ESP_LOGI(LOG_TAG, "Ricoh confirm passkey %06lu for %s", pin,
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectConfirmPasskey(connInfo, true);
+  ESP_LOGW(LOG_TAG, "Ricoh passkey %06lu for %s requires explicit user confirmation; rejecting",
+           static_cast<unsigned long>(pin), connInfo.getAddress().toString().c_str());
+  NimBLEDevice::injectConfirmPasskey(connInfo, false);
 }
 
 void Ricoh::onAuthenticationComplete(NimBLEConnInfo &connInfo) {

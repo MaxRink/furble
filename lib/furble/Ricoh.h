@@ -21,9 +21,16 @@ namespace Furble {
  * that state cold boots the camera and can wedge its firmware. Focus is
  * unsupported: the documented Focus Mode characteristic configures a mode but
  * does not trigger autofocus, and no separate half-press command has been
- * verified. GPS geotagging uses the shared Ricoh Imaging GPS and
- * location-control characteristics. Pairing uses MITM LE Secure Connections
- * with numeric comparison.
+ * verified. GPS geotagging retains the existing 32-byte write as an
+ * uncertified compatibility path. The similarly named location-control and
+ * WLAN characteristics are not written because their GR IV semantics are not
+ * captured. Pairing rejects new associations until an application-owned,
+ * lifetime-safe numeric-comparison flow exists. An absent, malformed, or
+ * unknown model and an unreadable OperationMode are hard failures.
+ *
+ * Advertisement identity and the GATT model are independent gates. The
+ * observed HDF scan identity is discovery evidence only until an exact
+ * capture-backed production matcher exists.
  *
  * Protocol reference: dm-zharov/ricoh-gr-bluetooth-api, Android HCI snoop analysis.
  */
@@ -51,6 +58,10 @@ class Ricoh: public Camera {
     uint64_t address;
     uint8_t type;
   } ricoh_t;
+
+  // Advertisement identity is retained separately from the post-connect
+  // model characteristic. A scan name never proves the GATT model.
+  std::string m_AdvertisementName;
 
   enum class OperationCode : uint8_t {
     NOP = 0,
@@ -118,10 +129,6 @@ class Ricoh: public Camera {
   static const NimBLEUUID GPS_SVC_UUID;
   static const NimBLEUUID GPS_INFO_CHR_UUID;
 
-  // Location Control Service
-  static const NimBLEUUID LOCATION_CONTROL_SVC_UUID;
-  static const NimBLEUUID LOCATION_CONTROL_CHR_UUID;
-
   NimBLERemoteCharacteristic *m_Power = nullptr;
   NimBLERemoteCharacteristic *m_OperationMode = nullptr;
   NimBLERemoteCharacteristic *m_ShootingFlavor = nullptr;
@@ -130,7 +137,6 @@ class Ricoh: public Camera {
   NimBLERemoteCharacteristic *m_SelfTimer = nullptr;
   NimBLERemoteCharacteristic *m_PairedDeviceName = nullptr;
   NimBLERemoteCharacteristic *m_GpsInfo = nullptr;
-  NimBLERemoteCharacteristic *m_LocationControl = nullptr;
 
   // Camera state cache seeded by the _connect() state probe and refreshed by
   // notifications. Diagnostic only: the capture gate never trusts this cache
@@ -138,6 +144,7 @@ class Ricoh: public Camera {
   // forever. Capture authorization always uses a fresh OperationMode read.
   std::atomic<uint8_t> m_LastPower {STATE_UNKNOWN};
   std::atomic<uint8_t> m_LastOperationMode {STATE_UNKNOWN};
+  bool m_ModelVerified = false;
 
   uint32_t m_LastGpsWriteMs = 0;
   bool m_HasGpsWrite = false;
@@ -163,7 +170,6 @@ class Ricoh: public Camera {
   bool writeOperation(OperationCode code, OperationParameter parameter);
   bool subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char *label);
   bool setShootingFlavor(ShootingFlavor flavor);
-  bool setLocationControl(bool enabled);
 };
 
 }  // namespace Furble

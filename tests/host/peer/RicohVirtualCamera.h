@@ -2,6 +2,7 @@
 #define FURBLE_HOST_RICOH_VIRTUAL_CAMERA_H
 
 #include <condition_variable>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
@@ -15,9 +16,23 @@ namespace Host {
 
 class RicohVirtualCamera final: public NimBLEMockPeer {
  public:
+  enum class Profile : uint8_t {
+    GR_IV,
+    GR_IV_HDF,
+    PENTAX_K3_III,
+    PENTAX_K3_III_MONO,
+    UNKNOWN,
+  };
+
   struct Config {
-    std::string name = "RICOH GR III";
+    // Scan identity and post-connect model are separate wire values. The
+    // incident HDF scan identity is GR_H264457, not a model-name alias.
+    std::string advertisement_name = "GR_H264457";
+    std::string gatt_model = "RICOH GR IV HDF";
+    Profile profile = Profile::GR_IV_HDF;
     NimBLEAddress address = NimBLEAddress(0x223344556677ULL, 0);
+    bool expose_model = true;
+    bool expose_operation_mode = true;
     bool camera_bonded = false;
     bool accept_numeric_comparison = true;
     // CameraPower and OperationMode single-byte values. A GR IV in BLE
@@ -26,6 +41,8 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
     uint8_t camera_power = 0x01;
     uint8_t operation_mode = 0x00;
     bool operation_mode_read_fails = false;
+    bool operation_mode_malformed = false;
+    bool operation_mode_malformed_after_initial = false;
   };
 
   struct Write {
@@ -46,7 +63,10 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
 
   NimBLEAdvertisedDevice advertisement() const;
   bool cameraBonded() const;
+  Profile profile() const;
+  size_t associationConfirmations() const;
   void removeCameraBond();
+  void setCameraBond(bool bonded);
   void setCameraPower(uint8_t power);
   void setOperationMode(uint8_t mode);
   void setOperationModeReadFails(bool fails);
@@ -132,6 +152,8 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   bool m_Connected = false;
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;
+  size_t m_OperationModeReads = 0;
+  size_t m_AssociationConfirmations = 0;
   std::map<std::string, Subscription> m_Subscriptions;
 
   // Standby-flap state. See FujifilmVirtualCamera for the locking model: the

@@ -231,7 +231,11 @@ bool testSecureRegistrationDropStopsGATT() {
 bool testRicohBondPolicy() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
-  Furble::Host::RicohVirtualCamera peer;
+  Furble::Host::RicohVirtualCamera::Config config;
+  config.advertisement_name = "RICOH GR IV";
+  config.gatt_model = "RICOH GR IV";
+  config.profile = Furble::Host::RicohVirtualCamera::Profile::GR_IV;
+  Furble::Host::RicohVirtualCamera peer(config);
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   NimBLEDevice::setBonded(true);
@@ -243,9 +247,13 @@ bool testRicohBondPolicy() {
              "fresh Ricoh pairing clears only the stale local bond"))
     return false;
 
+  // New pairing is intentionally unsupported until the application owns a
+  // user-confirmation flow. Model the next attempt as a saved reconnect after
+  // the camera-side bond has been restored by that external flow.
+  peer.setCameraBond(true);
+  NimBLEDevice::setBonded(true);
   auto retry = std::make_unique<Furble::Ricoh>(&advertisement);
-  if (!check(retry->connect(ESP_PWR_LVL_P3, 1000),
-             "Ricoh retry performs numeric-comparison pairing"))
+  if (!check(retry->connect(ESP_PWR_LVL_P3, 1000), "Ricoh retry uses the restored saved bond"))
     return false;
   retry->shutterPress();
   bool flavor = false;

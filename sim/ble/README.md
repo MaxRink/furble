@@ -31,3 +31,13 @@ queue and a separate wrap-safe callout queue.
 They are not an implementation of NimBLE. Production integration is blocked
 until the pinned `esp-nimble-cpp` 2.5.0 C host/controller is placed below this
 boundary and receives an independent qualification record from plan 159.
+
+`RicohPeerProfiles` provides immutable synthetic discovery profiles for GR IV,
+GR IV HDF, Pentax K-3 III, Pentax K-3 III Monochrome, and an unknown Ricoh
+family identity. They expose only the model information service. The UUIDs are
+the existing production references, while handles, values, and addresses are
+synthetic fixtures. The HDF fixture keeps the observed `GR_H264457` scan name
+separate from its synthetic GATT model value. Controller operations are
+explicitly unsupported and every runtime result remains synthetic and
+uncertified. No profile models capture-backed control writes, pairing prompts,
+timing, or a physical shutter outcome.

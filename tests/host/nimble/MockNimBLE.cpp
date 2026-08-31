@@ -100,6 +100,8 @@ uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next conne
 size_t g_ConnParamApplyDelayReads = 1;
 bool g_Bonded = false;
 size_t g_DeleteBondCount = 0;
+size_t g_ConfirmPasskeyCount = 0;
+bool g_LastConfirmPasskeyAccepted = false;
 // Absent-peer model: addresses whose advertisements the scan never delivers.
 std::vector<NimBLEAddress> g_AbsentAddresses;
 
@@ -736,6 +738,30 @@ bool NimBLEClient::mockPeerRequestConnParams(const ble_gap_upd_params &params) {
   return accepted;
 }
 
+void NimBLEClient::mockPasskeyEntry(void) {
+  if (m_Callbacks == nullptr || !m_Connected) {
+    return;
+  }
+  NimBLEConnInfo info = getConnInfo();
+  m_Callbacks->onPassKeyEntry(info);
+}
+
+uint32_t NimBLEClient::mockPasskeyDisplay(void) {
+  if (m_Callbacks == nullptr || !m_Connected) {
+    return 0;
+  }
+  NimBLEConnInfo info = getConnInfo();
+  return m_Callbacks->onPassKeyDisplay(info);
+}
+
+void NimBLEClient::mockConfirmPasskey(uint32_t pin) {
+  if (m_Callbacks == nullptr || !m_Connected) {
+    return;
+  }
+  NimBLEConnInfo info = getConnInfo();
+  m_Callbacks->onConfirmPasskey(info, pin);
+}
+
 NimBLERemoteService *NimBLEClient::getService(const NimBLEUUID &service) {
   if (!m_Connected || (m_Peer == nullptr) || !m_Peer->hasService(service)) {
     return nullptr;
@@ -1012,7 +1038,18 @@ bool NimBLEDevice::setMTU(uint16_t) {
 }
 
 void NimBLEDevice::injectPassKey(NimBLEConnInfo &, uint32_t) {}
-void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool) {}
+void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool accept) {
+  ++g_ConfirmPasskeyCount;
+  g_LastConfirmPasskeyAccepted = accept;
+}
+
+size_t NimBLEDevice::confirmPasskeyCount() {
+  return g_ConfirmPasskeyCount;
+}
+
+bool NimBLEDevice::lastConfirmPasskeyAccepted() {
+  return g_LastConfirmPasskeyAccepted;
+}
 
 size_t NimBLEDevice::liveClientCount() {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
@@ -1115,6 +1152,8 @@ void NimBLEDevice::resetMock() {
   g_ConnParamApplyDelayReads = 1;
   g_Bonded = false;
   g_DeleteBondCount = 0;
+  g_ConfirmPasskeyCount = 0;
+  g_LastConfirmPasskeyAccepted = false;
   g_AbsentAddresses.clear();
 }
 
