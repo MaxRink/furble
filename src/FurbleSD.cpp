@@ -174,8 +174,6 @@ bool validMultiselect(const Settings::multiselect_t &value) {
   if (value.count > Settings::MULTISELECT_MAX) {
     return false;
   }
-
-  // Every name slot must be null terminated so later string use is safe.
   for (size_t i = 0; i < Settings::MULTISELECT_MAX; i++) {
     bool terminated = false;
     for (size_t j = 0; j < Settings::MULTISELECT_NAME_MAX; j++) {

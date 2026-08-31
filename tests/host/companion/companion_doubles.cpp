@@ -35,6 +35,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::TX_ADAPTIVE,   {Settings::TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", "furble"}     },
     {Settings::MULTICONNECT,
      {Settings::MULTICONNECT, 8, "Multi-Connect", "multiconnect", "furble"}                        },
+    {Settings::MULTISELECT,   {Settings::MULTISELECT, 62, "Multi-Select", "multiselect", "furble"} },
     {Settings::RECONNECT,     {Settings::RECONNECT, 9, "Infinite-ReConnect", "reconnect", "furble"}},
     {Settings::RECON_BACKOFF,
      {Settings::RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", "furble"}                 },

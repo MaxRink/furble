@@ -37,7 +37,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {GPS_ASSIST,        {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
     {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
     {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
-    {MULTISELECT,       {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
+    {MULTISELECT,       {MULTISELECT, 62, "Multi-Select", "multiselect", FURBLE_STR}         },
     {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
     {RECON_BACKOFF,     {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
     {FAUXNY,            {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
@@ -105,6 +105,9 @@ bool Settings::appliesImmediately(type_t type) {
     case GPS_NMEA:
     case GPS_CONSTEL:
     case MULTICONNECT:
+    // The multi-select blob is read at connect time, so a companion write of
+    // the selection set takes effect without a restart.
+    case MULTISELECT:
     case RECONNECT:
     case RECON_BACKOFF:
     case FAUXNY:
@@ -141,7 +144,6 @@ bool Settings::appliesImmediately(type_t type) {
     case TEXT_SIZE:
     case INTERVAL:
     case TOUCH_CALIBRATION:
-    case MULTISELECT:
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
@@ -507,6 +509,11 @@ void Settings::init(void) {
           };
           save<interval_t>(setting.type, interval);
         } break;
+        case MULTISELECT:
+        {
+          const multiselect_t selection = {};
+          save<multiselect_t>(setting.type, selection);
+        } break;
         case BULB:
           save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
           break;
@@ -520,11 +527,6 @@ void Settings::init(void) {
           save<bool>(setting.type, true);
           break;
 #endif
-        case MULTISELECT:
-        {
-          multiselect_t selection = {};
-          save<multiselect_t>(setting.type, selection);
-        } break;
         case GPS:
         case IMU:
         case GPS_NMEA:

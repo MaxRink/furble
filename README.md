@@ -326,6 +326,20 @@ previously paired device and leading to the remote menu.
 
 From the remote menu you may choose to disconnect, control the shutter or activate the intervalometer.
 
+### Companion camera management
+
+When the Companion feature is enabled, the Cameras characteristic exposes saved
+cameras for listing, selection, connection, and all-camera disconnect. Each
+saved camera receives a stable ID in the range 1 through 254. ID 0 means that a
+camera is not saved, and `0xff` selects all cameras. IDs are monotonic and are
+not reused after a camera is deleted, including across reboot and legacy index
+migration. The firmware publishes camera index generations transactionally and
+defers deletion of old camera records until both recoverable generations no
+longer reference them.
+
+See the [companion camera management reference](docs/companion-camera-management.md)
+for the persistence and selection details.
+
 More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/Usage-Guide)
 
 ### GPS Location Tagging

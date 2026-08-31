@@ -200,26 +200,28 @@ void CanonEOSSmart::focusRelease(void) {
 
 void CanonEOSSmart::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (m_GeoEnabled) {
-    struct tm time_str = {
-        .tm_sec = static_cast<int>(timesync.second),
-        .tm_min = static_cast<int>(timesync.minute),
-        .tm_hour = static_cast<int>(timesync.hour),
-        .tm_mday = static_cast<int>(timesync.day),
-        .tm_mon = static_cast<int>(timesync.month - 1),
-        .tm_year = static_cast<int>(timesync.year - 1900),
-        .tm_wday = 0,
-        .tm_yday = 0,
-        .tm_isdst = -1,
-    };
+    // Assign the portable C fields individually.  glibc adds tm_gmtoff and
+    // tm_zone, so a C++ designated initializer triggers -Wmissing-field-
+    // initializers under the companion GCC -Werror build.
+    struct tm time_str = {};
+    time_str.tm_sec = static_cast<int>(timesync.second);
+    time_str.tm_min = static_cast<int>(timesync.minute);
+    time_str.tm_hour = static_cast<int>(timesync.hour);
+    time_str.tm_mday = static_cast<int>(timesync.day);
+    time_str.tm_mon = static_cast<int>(timesync.month - 1);
+    time_str.tm_year = static_cast<int>(timesync.year - 1900);
+    time_str.tm_wday = 0;
+    time_str.tm_yday = 0;
+    time_str.tm_isdst = -1;
 
     time_t timestamp = mktime(&time_str);
     canon_geo_t geo = {
         .header = 0x04,
-        .latitude_direction = gps.latitude < 0.0 ? 'S' : 'N',
+        .latitude_direction = static_cast<uint8_t>(gps.latitude < 0.0 ? 'S' : 'N'),
         .latitude = static_cast<float>(std::abs(gps.latitude)),
-        .longitude_direction = gps.longitude < 0.0 ? 'W' : 'E',
+        .longitude_direction = static_cast<uint8_t>(gps.longitude < 0.0 ? 'W' : 'E'),
         .longitude = static_cast<float>(std::abs(gps.longitude)),
-        .elevation_sign = gps.altitude < 0.0 ? '-' : '+',
+        .elevation_sign = static_cast<uint8_t>(gps.altitude < 0.0 ? '-' : '+'),
         .elevation = static_cast<float>(std::abs(gps.altitude)),
         .timestamp = static_cast<uint32_t>(timestamp),
     };

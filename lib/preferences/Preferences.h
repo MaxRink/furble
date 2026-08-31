@@ -16,12 +16,17 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 namespace Furble {
 
 class Preferences {
  public:
+  static constexpr bool validNvsKey(const char *key, size_t offset = 0) {
+    return key != nullptr && offset < 16
+           && (key[offset] == '\0' ? offset != 0 : validNvsKey(key, offset + 1));
+  }
   Preferences();
   ~Preferences();
 

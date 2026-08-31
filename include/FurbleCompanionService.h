@@ -4,6 +4,7 @@
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -40,6 +41,8 @@ enum companion_char_id_t : uint8_t {
   COMPANION_CHAR_STATUS = 0x03,
   COMPANION_CHAR_SETTINGS = 0x04,
   COMPANION_CHAR_TRIGGER = 0x05,
+  COMPANION_CHAR_CAMERAS = 0x06,
+  COMPANION_CHAR_CAPABILITY = 0x07,
   COMPANION_CHAR_OTA_CONTROL = 0x10,
   COMPANION_CHAR_OTA_DATA = 0x11,
 };
@@ -50,6 +53,7 @@ class CompanionService {
   static constexpr uint8_t WIRE_VERSION = 2;
   static constexpr uint8_t CAPABILITY_VERSION = 1;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = 1U << 0;
+  static constexpr uint32_t FEATURE_CAMERAS = 1U << 1;
   static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
 
   typedef struct __attribute__((packed)) {
@@ -95,9 +99,22 @@ class CompanionService {
     uint32_t features;
   } companion_capability_t;
 
+  typedef struct __attribute__((packed)) {
+    uint8_t status;
+    uint8_t camera_id;
+    uint8_t cam_type;
+    uint8_t flags;
+    uint8_t progress;
+    int8_t rssi;
+    uint8_t state;
+    uint8_t name_len;
+  } companion_camera_record_t;
+
   static_assert(sizeof(companion_fix_t) == 42, "companion fix wire size changed");
   static_assert(sizeof(companion_status_t) == 20, "companion status wire size changed");
   static_assert(sizeof(companion_capability_t) == 6, "companion capability wire size changed");
+  static_assert(sizeof(companion_camera_record_t) == 8,
+                "companion camera record wire size changed");
 
   explicit CompanionService(CompanionTransport &transport);
 
@@ -120,8 +137,10 @@ class CompanionService {
 
   void handleLocation(const uint8_t *data, size_t len);
   void handleSettings(const uint8_t *data, size_t len);
+  void handleCameras(const uint8_t *data, size_t len);
   void handleTrigger(const uint8_t *data, size_t len);
   void notifyStatus(bool force = false);
+  void notifyCameras(bool force = false);
   companion_status_t getStatus(void) const;
   void releaseHeldCommands(void);
 
@@ -149,10 +168,48 @@ class CompanionService {
     SETTING_REJECTED,
   };
 
+  enum camera_status_t : uint8_t {
+    CAMERA_OK,
+    CAMERA_UNKNOWN_ID,
+    CAMERA_REJECTED,
+    CAMERA_BUSY,
+  };
+
+  enum camera_state_t : uint8_t {
+    CAMERA_IDLE,
+    CAMERA_CONNECTING,
+    CAMERA_CONNECTED,
+    CAMERA_RECONNECTING,
+    CAMERA_LOST,
+    CAMERA_DISCONNECTING,
+  };
+
+  static constexpr uint8_t CAMERA_SAVED = 1 << 0;
+  static constexpr uint8_t CAMERA_SELECTED = 1 << 1;
+  static constexpr uint8_t CAMERA_ACTIVE_TARGET = 1 << 2;
+  static constexpr uint8_t CAMERA_CONNECTED_FLAG = 1 << 3;
+
+  struct camera_snapshot_t {
+    uint8_t status = CAMERA_OK;
+    uint8_t camera_id = 0xff;
+    uint8_t cam_type = 0;
+    uint8_t flags = 0;
+    uint8_t progress = 0;
+    int8_t rssi = INT8_MIN;
+    uint8_t state = CAMERA_IDLE;
+    std::string name;
+  };
+
   static uint64_t nowMs(void);
   bool allowTrigger(void);
   void notifySettings(const std::vector<uint8_t> &value);
   static void timedShutter(void *param);
+
+  std::vector<camera_snapshot_t> getCameraSnapshots(void) const;
+  static bool cameraSnapshotEqual(const camera_snapshot_t &left, const camera_snapshot_t &right);
+  static void appendCameraRecord(std::vector<uint8_t> &response, const camera_snapshot_t &snapshot);
+  bool updateCameraSelection(uint8_t cameraId, bool selected);
+  bool applyCameraSelection(void);
 
   static setting_type_t settingType(Settings::type_t type);
   static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
@@ -176,6 +233,10 @@ class CompanionService {
   companion_status_t m_LastStatus = {};
   bool m_HaveLastStatus = false;
   uint64_t m_LastStatusNotificationMs = 0;
+
+  std::vector<camera_snapshot_t> m_LastCameraSnapshots;
+  bool m_HaveLastCameraSnapshots = false;
+  uint64_t m_LastCameraNotificationMs = 0;
 
   uint64_t m_CommandWindowMs = 0;
   uint8_t m_CommandCount = 0;

@@ -1,7 +1,8 @@
 # 51 - Companion app feature parity
 
-Status: firmware settings parity v2 and the Android settings editors are
-implemented. The camera phase remains design only.
+Status: firmware settings parity v2, the Android settings editors, and firmware
+camera management are all implemented. The app cameras tab and the rig scenarios
+(phased delivery steps 4 and 5) remain outstanding.
 
 ## Implementation state, firmware settings parity v2
 
@@ -11,20 +12,19 @@ implemented. The camera phase remains design only.
   bit 0 as the inverse of `appliesImmediately`. Bit 1 marks `COMPANION`,
   `TX_POWER`, `TX_ADAPTIVE` (wire ID 28), `SLEEP_CONN` and `CPU_FREQ`.
 - The capability characteristic is `b57f4f64-087b-4740-b71d-8262cf26ebbc`.
-  Its capability version is 1, its wire version is 2, and it advertises only
-  feature bit 0 for settings v2. The Cameras characteristic is not included.
+  Its capability version is 1 and its wire version is 2. It advertises feature
+  bit 0 for settings v2 and, since the camera work below landed, feature bit 1
+  for the Cameras characteristic.
 - GPS, GPS baud, GPS rate, GPS sentence filtering and GPS constellation writes
   reload the receiver through the existing GPS path.
 - A companion disable written over the companion link waits one second before
   removing the service. The settings response is indicated first.
 - The INTERVAL companion blob uses a stable packed 12-byte wire form, four
   {uint16 value little endian, uint8 unit} fields in count, delay, shutter,
-  wait order. `src/FurbleCompanion.cpp` locks it with
+  wait order. `src/FurbleCompanionService.cpp` locks it with
   `static_assert(sizeof(interval_wire_t) == 12)` and packs and unpacks against
   the NVS `interval_t`. The 24-byte NVS layout is unchanged. This matches the
   companion app `decodeInterval`, which already assumes 12 bytes.
-- No new NVS setting was added. Existing defaults, keys and wire ids are
-  unchanged. Hardware verification is still pending.
 
 ## Implementation state, Android settings editors
 
@@ -43,10 +43,42 @@ The Android settings portion is implemented. The app now:
   trailing the value (status, id, type, length, value, flags), and keeps a
   strict fallback for the retired flags-before-length prototype form.
 
-This Android change consumes the firmware capability and settings parity
-contract described in sections 1 and 4, which the stacked settings parity v2
-firmware change below implements. The camera phase in section 5 is still
-pending.
+## Implementation state, firmware camera management
+
+- Firmware adds the Cameras characteristic at `b57f4f63` and advertises feature
+  bit 1 through the capability characteristic. This is phased delivery step 2.
+- Camera index entries now carry a stable, monotonic `camera_id`. The index
+  blob grew by one byte per entry, so `CameraListProtocol::decodeIndex` accepts
+  both the current record size and the legacy id-less size and never discards a
+  saved camera. `CameraListProtocol::assignCameraIds` then gives migrated
+  entries deterministic ids, and `CameraList::allocateCameraId` draws new ids
+  from a monotonic counter persisted in the same NVS namespace, guarded by
+  `syncCameraIdFloor` so a delete of the highest id never hands it back. Ids are
+  never reused, `0` is invalid, and `0xff` remains the all-cameras protocol
+  value.
+- Camera list, select, deselect, connect, disconnect and delta state records
+  are implemented in `CompanionService::handleCameras` and `notifyCameras`.
+  State notifications use the plans/25 wire states and cached connection RSSI,
+  with one-second steady-state rate limiting, mirroring the status channel.
+- `MULTISELECT` is a hidden fixed blob setting, initialized empty and assigned
+  wire id 62. It persists the selected camera names using the existing plan 25
+  selection model, and the companion select and deselect ops edit it.
+- Disconnect is all-targets in v1 because `Control` has no per-target
+  addressing. The camera wire id is retained for a future targeted operation.
+- Pairing, authentication and companion link loss behavior are unchanged.
+- `tests/host/camera_list_protocol_test.cpp` covers the migration path: an old
+  id-less blob decodes with no lost camera, `assignCameraIds` numbers migrated
+  entries and continues above any existing id, and the ids survive a re-encode
+  round trip. The protocol conformance goldens for the MULTISELECT setting were
+  regenerated for the 12-byte blob wire form.
+- The expanded Linux host target exposed a partial `struct tm` initialization
+  in the existing Lumix geotag path. The record is now zero-initialized before
+  assigning its portable fields, so glibc extension fields cannot fail the
+  companion harness under `-Werror`. The same gate exposed three Nikon GPS
+  direction characters assigned to byte fields; those conversions are now
+  explicit. The complete host suite passes 49/49 locally.
+- Hardware verification of the phone round-trip is still outstanding because the
+  companion tab that consumes this characteristic (step 4) is not built yet.
 
 The companion app from [50-companion-app-design.md](50-companion-app-design.md)
 shipped with status, trigger, location push and a first settings editor. The

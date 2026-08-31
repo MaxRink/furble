@@ -1,9 +1,11 @@
 #include <esp_timer.h>
 
+#include "CameraList.h"
 #include "Device.h"
 #include "Scan.h"
 
 #include "FurbleCompanion.h"
+#include "FurbleControl.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -25,12 +27,17 @@ uint64_t CompanionGatt::nowMs(void) {
 
 void CompanionGatt::init(void) {
   if (Settings::load<Settings::COMPANION>()) {
+    CameraList::load();
     enable(false);
   }
 }
 
 void CompanionGatt::reloadSetting(bool pairingWindow) {
   if (Settings::load<Settings::COMPANION>()) {
+    if ((Control::getInstance().getState() == Control::STATE_IDLE)
+        && (Control::getInstance().getTargetCount() == 0) && !Scan::getInstance().isActive()) {
+      CameraList::load();
+    }
     enable(pairingWindow);
   } else {
     scheduleDisable();
@@ -188,6 +195,8 @@ void CompanionGatt::disable(void) {
     m_Location = nullptr;
     m_Status = nullptr;
     m_Settings = nullptr;
+    m_Cameras = nullptr;
+    m_Capability = nullptr;
     m_Trigger = nullptr;
     m_Capability = nullptr;
     m_Firmware = nullptr;
@@ -247,13 +256,20 @@ void CompanionGatt::createGatt(void) {
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_AUTHEN, 512);
   m_Settings->setCallbacks(this);
 
+  m_Cameras = m_GattService->createCharacteristic(CAMERAS_UUID,
+                                                  NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE
+                                                      | NIMBLE_PROPERTY::NOTIFY
+                                                      | NIMBLE_PROPERTY::WRITE_AUTHEN,
+                                                  512);
+  m_Cameras->setCallbacks(this);
+
   m_Capability = m_GattService->createCharacteristic(
       CAPABILITY_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC,
       sizeof(companion_capability_t));
   const companion_capability_t capability = {
       CAPABILITY_VERSION,
       WIRE_VERSION,
-      FEATURE_SETTINGS_V2,
+      FEATURE_SETTINGS_V2 | FEATURE_CAMERAS,
   };
   m_Capability->setValue(reinterpret_cast<const uint8_t *>(&capability), sizeof(capability));
 
@@ -436,6 +452,7 @@ void CompanionGatt::serviceTask(void) {
     }
 
     m_Service.notifyStatus();
+    m_Service.notifyCameras();
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 
@@ -564,6 +581,8 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
     m_Service.handleLocation(value.data(), value.size());
   } else if (characteristic == m_Settings) {
     m_Service.handleSettings(value.data(), value.size());
+  } else if (characteristic == m_Cameras) {
+    m_Service.handleCameras(value.data(), value.size());
   } else if (characteristic == m_Trigger) {
     m_Service.handleTrigger(value.data(), value.size());
   }
@@ -572,10 +591,14 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
 void CompanionGatt::onSubscribe(NimBLECharacteristic *characteristic,
                                 NimBLEConnInfo &connInfo,
                                 uint16_t subValue) {
-  (void)characteristic;
   (void)subValue;
-  if (isCompanionConnection(connInfo)) {
+  if (!isCompanionConnection(connInfo)) {
+    return;
+  }
+  if (characteristic == m_Status) {
     m_Service.notifyStatus(true);
+  } else if (characteristic == m_Cameras) {
+    m_Service.notifyCameras(true);
   }
 }
 
@@ -599,19 +622,38 @@ uint16_t CompanionGatt::getMaxPayload(void) const {
 }
 
 void CompanionGatt::notify(uint8_t charId, const uint8_t *data, size_t len) {
-  if (charId != COMPANION_CHAR_STATUS || data == nullptr || m_Status == nullptr || !isConnected()) {
+  if (data == nullptr || !isConnected()) {
     return;
   }
-  m_Status->setValue(data, len);
-  m_Status->notify(m_CompanionConnHandle);
+  if (charId == COMPANION_CHAR_STATUS) {
+    if (m_Status == nullptr) {
+      return;
+    }
+    m_Status->setValue(data, len);
+    m_Status->notify(m_CompanionConnHandle);
+  } else if (charId == COMPANION_CHAR_CAMERAS) {
+    if (m_Cameras == nullptr) {
+      return;
+    }
+    m_Cameras->notify(data, len, m_CompanionConnHandle);
+  }
 }
 
 void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
-  if (charId != COMPANION_CHAR_SETTINGS || data == nullptr || m_Settings == nullptr
-      || !isConnected()) {
+  if (data == nullptr || !isConnected()) {
     return;
   }
-  m_Settings->indicate(data, len, m_CompanionConnHandle);
+  if (charId == COMPANION_CHAR_SETTINGS) {
+    if (m_Settings == nullptr) {
+      return;
+    }
+    m_Settings->indicate(data, len, m_CompanionConnHandle);
+  } else if (charId == COMPANION_CHAR_CAMERAS) {
+    if (m_Cameras == nullptr) {
+      return;
+    }
+    m_Cameras->indicate(data, len, m_CompanionConnHandle);
+  }
 }
 
 void CompanionGatt::error(uint8_t charId, uint8_t attError) {
