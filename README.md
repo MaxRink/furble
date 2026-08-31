@@ -22,9 +22,8 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, plus an Android companion app
-- A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
-  under Settings > Sensors; the Level page appears while connected.
+- A host SDL simulator for the UI, Android and Apple companion apps, and an
+  optional firmware shared-password gate for privileged companion writes
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or
@@ -95,7 +94,7 @@ The following devices have been tested and confirmed to work:
 | Fujifilm X & GFX   | ✔️        | ✔️       | ✔️               | ✔️[^1]   | ✔️       |
 | Canon EOS (Remote) | ✔️        | ✔️       | ✔️               | ✔️       | :x:[^2] |
 | Canon EOS (Smart)  | ✔️        | ✔️       | ✔️               | :x:[^2] | ✔️       |
-| Ricoh              | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
+| Ricoh              | ✔️        | ✔️       | ✔️[^3]           | ✔️       | ✔️       |
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
@@ -103,8 +102,6 @@ The following devices have been tested and confirmed to work:
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
 [^2]: Non-existent
 [^3]: Auto-shutter release only, no manual exposure control
-[^4]: Focus-only controls are unsupported and do not send a camera command.
-The supported shutter command performs an immediate capture with autofocus.
 
 ## Supported Controllers
 
@@ -142,13 +139,6 @@ interface.
 2. Open the [furble browser installer](https://maxrink.github.io/furble/).
 3. Select the device model and click `Install`.
 4. Approve the serial port when the browser asks.
-
-For M5StickS3, the installer first opens the running developer-console image
-and requires all PMIC safety acknowledgements before it offers the firmware
-port. Approve the same port again to continue flashing. If the running image
-does not answer, follow the physical battery-power-loss recovery procedure
-shown by the installer. This prevents a retained PMIC watchdog or download
-lock from making a serial upload unsafe.
 
 If the installer offers to erase the device, decline to keep existing settings
 and paired cameras. Accept the erase when starting from a clean device.
@@ -215,21 +205,14 @@ Log output shares the port, so `log * warn` is usually the first thing worth
 typing. Every command prints one fact per line as `key: value`, so a host script
 can parse it with a split on the first colon.
 
-Development builds identify their source as `dev+g<revision>` in the About
-page, companion BLE Device Information, and the `version` command. The revision
-is Git's unambiguous abbreviation of at least eight characters. A dirty checkout
-adds the deterministic `.dirty` suffix; explicit release versions are shown
-unchanged.
-
 ```
 version                             firmware and IDF version
 status                              state, targets, uptime, heap, battery, reset reason
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
-imu status                         read-only IMU type/read diagnostic
-time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write every setting
+companion password set | clear       configure the companion shared password
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection
@@ -247,11 +230,6 @@ reboot
 
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
-
-On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
-voltage as unknown and current as unavailable. It does not infer USB or
-optional PoE power from Ethernet link state. The optional PoE HAT has no
-software-readable presence or negotiation signal.
 
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once, settings the UI caches when it starts do not. `settings get` and
@@ -271,34 +249,13 @@ and reboot before attaching a JTAG debugger, because halting the CPU stops the w
 
 If the M5StickS3 is powered off and will not turn on, single click the side button.
 
-If the device is wedged, the screen is dark, and USB is not enumerating, first
-try the PMIC-safe uploader below while the application can still answer. USB
-unplugging alone is not a PMIC reset: an already-set `DL_LOCK` survives an ESP
-reset, a PMIC watchdog reset, and removal of USB power while the battery is
-connected. If the lock is already set and the application cannot clear it, the
-device needs true PMIC power loss (battery disconnect/depletion or service)
-before the side-button recovery can work:
+If the device is wedged, the screen is dark, and USB is not enumerating:
 
-1. Remove battery power or have the battery fully depleted/service-disconnected.
-2. Restore battery power, then press and hold the side button for about two seconds.
+1. Unplug the USB cable.
+2. Press and hold the side button for about two seconds.
 3. When the green LED inside the device flashes, release the button.
-4. Connect USB. The port should enumerate in download mode.
+4. Plug the USB cable back in. The port should enumerate.
 5. Reflash with `pio run -e m5stick-s3 -t upload`.
-
-For a responsive developer-console build, use the PMIC-safe uploader. It
-disarms the external watchdog before entering ROM download mode, verifies that
-the long-press recovery path is unlocked, and starts PlatformIO only after both
-checks pass:
-
-```sh
-python3 tools/flash_prepare.py --port /dev/cu.usbmodemXXXX \
-  --env m5stick-s3-debug
-```
-
-If preflight cannot reach the application, it refuses to flash and prints the
-manual recovery steps above. A cancelled preflight should be followed by
-`flash cancel` on the console, or by a reboot, so normal watchdog protection is
-restored.
 
 ## Usage
 
@@ -488,11 +445,6 @@ different.
 All Ricoh GR IV series cameras are theoretically supported. This support was
 graciously implemented by @sky18Dragon.
 The current implementation will _not_ work with GR III or GR II.
-Focus-only controls are intentionally unsupported. The documented Ricoh Focus
-Mode setting does not trigger autofocus, and no separate half-press command has
-been verified. The BLE `OperationRequest` `{0x01, 0x01}` sequence is a capture
-request with autofocus, not a focus-only command. See the [Ricoh BLE protocol
-reference](https://github.com/dm-zharov/ricoh-gr-bluetooth-api).
 
 #### Nikon
 

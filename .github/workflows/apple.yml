@@ -1,0 +1,77 @@
+name: Apple companion
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "companion/apple/**"
+      - "plans/127-apple-companion.md"
+      - ".github/workflows/apple.yml"
+  push:
+    branches: [master]
+    paths:
+      - "companion/apple/**"
+      - "plans/127-apple-companion.md"
+      - ".github/workflows/apple.yml"
+
+permissions:
+  contents: read
+
+env:
+  # macos-14 plus an explicit Xcode path prevents a runner image update from
+  # silently changing the Apple SDK used by this workflow.
+  XCODE_VERSION: "16.2"
+
+jobs:
+  apple-project:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select pinned Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          xcodebuild -version | grep -F "Xcode ${XCODE_VERSION}"
+      - name: Generate native project
+        working-directory: companion/apple
+        run: scripts/generate-xcode-project.sh
+      - name: Select an available iOS simulator
+        run: |
+          IOS_SIMULATOR_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          test -n "$IOS_SIMULATOR_ID"
+          xcrun simctl boot "$IOS_SIMULATOR_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$IOS_SIMULATOR_ID" -b
+          echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
+      - name: Build and test iOS simulator target
+        working-directory: companion/apple
+        run: >-
+          xcodebuild
+          -project FurbleCompanion.xcodeproj
+          -scheme FurbleCompanion-iOS
+          -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID}"
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          test
+      - name: Build and test macOS target
+        working-directory: companion/apple
+        run: >-
+          xcodebuild
+          -project FurbleCompanion.xcodeproj
+          -scheme FurbleCompanion-macOS
+          -destination 'platform=macOS'
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          test
+
+  swift-package:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select pinned Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          xcodebuild -version | grep -F "Xcode ${XCODE_VERSION}"
+      - name: Test shared Apple package
+        working-directory: companion/apple
+        run: swift test --configuration release

@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "FurbleCompanionAuth.h"
 #if defined(FURBLE_HOST_COMPANION_TEST)
 // The host transport test replaces the NVS-backed Settings implementation with
 // a typed in-memory double. Firmware builds keep the normal Settings header.
@@ -32,6 +33,7 @@ class CompanionTransport {
   virtual void notify(uint8_t charId, const uint8_t *data, size_t len) = 0;
   virtual void indicate(uint8_t charId, const uint8_t *data, size_t len) = 0;
   virtual void error(uint8_t charId, uint8_t attError) = 0;
+  virtual void disconnect(void) {}
 };
 
 enum companion_char_id_t : uint8_t {
@@ -40,6 +42,7 @@ enum companion_char_id_t : uint8_t {
   COMPANION_CHAR_STATUS = 0x03,
   COMPANION_CHAR_SETTINGS = 0x04,
   COMPANION_CHAR_TRIGGER = 0x05,
+  COMPANION_CHAR_AUTH = 0x06,
   COMPANION_CHAR_OTA_CONTROL = 0x10,
   COMPANION_CHAR_OTA_DATA = 0x11,
 };
@@ -51,6 +54,21 @@ class CompanionService {
   static constexpr uint8_t CAPABILITY_VERSION = 1;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = 1U << 0;
   static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
+  static constexpr uint8_t AUTH_VERSION = 0x01;
+  static constexpr uint8_t AUTH_OP_BEGIN = 0x00;
+  static constexpr uint8_t AUTH_OP_PROOF = 0x01;
+  static constexpr uint8_t AUTH_OP_RESULT = 0x02;
+  static constexpr size_t AUTH_CHALLENGE_SIZE = 2 + CompanionAuth::NONCE_SIZE;
+  static constexpr size_t AUTH_PROOF_PACKET_SIZE = 2 + CompanionAuth::RESPONSE_SIZE;
+  static constexpr size_t AUTH_RESULT_SIZE = 3;
+  // Kept as a source-compatible alias for host rigs that only initiate auth.
+  static constexpr uint8_t AUTH_BEGIN = AUTH_OP_BEGIN;
+  static constexpr uint8_t AUTH_RESULT_AUTHENTICATED = 0x01;
+  static constexpr uint8_t AUTH_RESULT_REJECTED = 0x02;
+  static constexpr uint8_t AUTH_RESULT_DROPPED = 0x03;
+  static constexpr uint8_t AUTH_RESULT_NOT_REQUIRED = 0x04;
+  static constexpr uint8_t AUTH_ATT_ERROR = 0x80;
+  static constexpr size_t COMPANION_PASSWORD_MAX = 63;
 
   typedef struct __attribute__((packed)) {
     uint8_t version;
@@ -119,8 +137,11 @@ class CompanionService {
   void setSettingReloadCallback(std::function<void(bool)> callback);
 
   void handleLocation(const uint8_t *data, size_t len);
+  void handleAuth(const uint8_t *data, size_t len);
   void handleSettings(const uint8_t *data, size_t len);
   void handleTrigger(const uint8_t *data, size_t len);
+  void reloadPassword(void);
+  bool isPasswordAuthenticated(void) const;
   void notifyStatus(bool force = false);
   companion_status_t getStatus(void) const;
   void releaseHeldCommands(void);
@@ -150,6 +171,7 @@ class CompanionService {
   };
 
   static uint64_t nowMs(void);
+  bool allowProtected(uint8_t charId) const;
   bool allowTrigger(void);
   void notifySettings(const std::vector<uint8_t> &value);
   static void timedShutter(void *param);
@@ -166,6 +188,11 @@ class CompanionService {
                              bool listRecord);
 
   CompanionTransport &m_Transport;
+  CompanionAuth m_Auth;
+  // NimBLE may invoke a disconnect callback while a characteristic callback
+  // is still draining. Keep the connection-local auth state serialized across
+  // those callbacks without holding the lock while calling transport code.
+  mutable std::mutex m_AuthMutex;
   esp_timer_handle_t m_TimedShutterTimer = nullptr;
   std::function<void(bool)> m_SettingReloadCallback;
 

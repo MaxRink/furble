@@ -19,9 +19,10 @@ wire id as the first value byte. Unknown optional records are ignored, unknown
 required records fail, and a malformed or duplicate record rejects the whole
 blob without changing the output bundle.
 
-The parser accepts WiFi, MQTT, and companion-password fields for forward
-compatibility. Those fields are validated but remain deferred until their
-respective backends land. No secret is printed by the console.
+The parser accepts WiFi, MQTT, and companion-password fields. WiFi and MQTT
+remain deferred until their respective backends land. The companion-password
+field is applied to the firmware's write-only wire-id 46 setting. No secret is
+printed by the console.
 
 ## Apply behavior
 
@@ -32,9 +33,11 @@ interval wire representation. A failed preflight leaves existing settings
 unchanged.
 
 After each successful write the console invokes the same live-setting reload
-behavior used by the companion path for GPS, feedback, TX power, and companion
-enablement. Settings that are restart-only remain persisted and are reported
-as applied to storage, not claimed to be live.
+behavior used by the companion path for GPS, feedback, TX power, companion
+enablement, and companion-password rotation. Settings that are restart-only
+remain persisted and are reported as applied to storage, not claimed to be
+live. A dedicated companion-password field and a wire-id 46 setting cannot
+both appear in one bundle.
 
 ## Deliberate transport boundary
 
@@ -45,9 +48,9 @@ slice for the browser flasher and must be designed around the same validated
 bundle path rather than creating a second settings writer.
 
 WiFi credential persistence and MQTT application remain blocked on the WiFi
-and MQTT implementation. Companion-password persistence remains blocked on the
-companion secret-store work. Browser WebSerial and real-device provisioning
-remain hardware or browser acceptance work.
+and MQTT implementation. Companion-password persistence uses the existing
+write-only NVS setting and is applied by this firmware slice. Browser WebSerial
+and real-device provisioning remain hardware or browser acceptance work.
 
 ## Verification
 
