@@ -24,6 +24,15 @@ button layout when `FURBLE_SIM_NO_TOUCH` is set.
 
 ## Production-path parity
 
+The strict synthetic BLE transport in `sim/ble` is a lower-level test
+foundation. It enforces exact GATT properties, permissions, CCCD values,
+security state, MTU, PHY, connection parameters, RPA identity, and
+notification/indication confirmation. It records unbounded traces and keeps
+ATT status separate from modeled physical outcomes. It is deliberately not a
+replacement for the pinned `esp-nimble-cpp` C host/controller, does not run the
+production connection stack, and cannot produce camera certification evidence.
+Synthetic and inferred peer behavior remains `UNCERTIFIED` under plan 159.
+
 The simulator's shared-code boundary is audited in [`sim/CLAUDE.md`](../sim/CLAUDE.md).
 In brief, scan startup, generation fencing, queue draining, `CameraList` updates,
 display mode/flush, LVGL timers, and the `Control` state machine are production

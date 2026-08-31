@@ -579,6 +579,18 @@ target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBL
 target_compile_options(sim_clock_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
+# This strict virtual BLE boundary is independent of the expanded C++
+# MockNimBLE facade. It enforces GATT properties, permissions, CCCD state,
+# link security, generations, and physical outcomes while remaining synthetic
+# and therefore uncertified by the camera oracle.
+add_executable(virtual_ble_runtime_test
+               virtual_ble_runtime_test.cpp
+               ${FURBLE_ROOT}/sim/ble/VirtualBleRuntime.cpp
+               ${FURBLE_ROOT}/sim/ble/nimble_boundary.cpp)
+target_include_directories(virtual_ble_runtime_test PRIVATE ${FURBLE_ROOT}/sim/ble)
+target_compile_options(virtual_ble_runtime_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(virtual_ble_runtime_test PRIVATE Threads::Threads)
+
 add_executable(sim_action_parser_test sim_action_parser_test.cpp
                ${FURBLE_ROOT}/sim/scenario_action.cpp)
 target_include_directories(sim_action_parser_test PRIVATE ${FURBLE_ROOT}/sim)
@@ -1109,6 +1121,7 @@ if(BUILD_TESTING)
   add_test(NAME battery-saver COMMAND battery_saver_test)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
+  add_test(NAME virtual-ble-runtime COMMAND virtual_ble_runtime_test)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
   add_test(NAME sim-connect-deadline COMMAND sim_connect_deadline_test)
   add_test(NAME sim-scheduler COMMAND sim_scheduler_test)

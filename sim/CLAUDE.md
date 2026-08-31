@@ -12,6 +12,12 @@ calibrated virtual peers. Current shared-source seams include
 `UI::simulatorHome`, `UI::simulatorBack`, and the orderly exit check in
 `UI::task`; the seam inventory below is authoritative.
 
+The strict synthetic transport in `sim/ble` is a lower-level conformance
+foundation. It is not the pinned `esp-nimble-cpp` host/controller and is never
+certification evidence. Production connection parity remains blocked until the
+real NimBLE C boundary, production sources, and capture-backed peers are
+integrated and qualified.
+
 The complete build, panel, scenario DSL, query, fault-injection, and
 scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
 as the directory-local contract and keep the reference synchronized with the
