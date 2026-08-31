@@ -320,6 +320,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
       return SETTING_U32;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -404,6 +405,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       value.assign(v.begin(), v.end());
       return value.size() <= 255;
     }
+    case Settings::COMPANION_PASSWORD:
+      return false;
     case Settings::INTERVAL:
     {
       const interval_t v = Settings::load<interval_t>(type);
