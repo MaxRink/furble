@@ -1,0 +1,2 @@
+action imu.accel 0 nan 1
+exit

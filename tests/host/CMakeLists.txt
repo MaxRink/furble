@@ -570,6 +570,11 @@ target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBL
 target_compile_options(sim_clock_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
+add_executable(sim_action_parser_test sim_action_parser_test.cpp
+               ${FURBLE_ROOT}/sim/scenario_action.cpp)
+target_include_directories(sim_action_parser_test PRIVATE ${FURBLE_ROOT}/sim)
+target_compile_options(sim_action_parser_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(sim_scheduler_test
                sim_scheduler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
@@ -1095,6 +1100,7 @@ if(BUILD_TESTING)
   add_test(NAME battery-saver COMMAND battery_saver_test)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
+  add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
   add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
   set_tests_properties(sim-scheduler PROPERTIES TIMEOUT 10)
   add_test(NAME sim-fuzz-machine COMMAND sim_fuzz_machine_test)

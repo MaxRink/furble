@@ -121,10 +121,12 @@ The simulator command-line options are:
 | `--fuzz` | Run the seeded UI fuzzer instead of a scenario. |
 | `--seed N` | Select the UI fuzzer seed and enable it. |
 | `--fuzz-steps N` | Set the UI fuzzer event budget and enable it. |
-| `--fuzz-verbose` | Print each UI fuzzer event. |
+| `--fuzz-verbose` | Enable fuzzing and print each UI fuzzer event. |
 | `--help` | Print the option synopsis and exit. |
 
-The UI fuzzer also accepts `FURBLE_FUZZ_SEED` and `FURBLE_FUZZ_STEPS`. The
+The UI fuzzer also accepts `FURBLE_FUZZ_SEED` and `FURBLE_FUZZ_STEPS` as
+fallbacks. Explicit `--seed` and `--fuzz-steps` values take precedence over
+their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`, and
 `FURBLE_SIM_BIN`.
@@ -152,7 +154,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
-| `action` | `action COMMAND` invokes one of the simulator actions below. |
+| `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
@@ -176,7 +178,7 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
-`auto_off`, and `low_batt`.
+`auto_off`, `low_batt`, and `fb_output`.
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -188,11 +190,13 @@ Battery seeds select the initial deterministic platform sample:
 
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `sleep_conn`, and
-`boot_splash`. The M5StickS3 model also accepts `watchdog`; other board models
-reject that seed because they cannot apply it.
+`boot_splash`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
+`imu_sensor` controls modeled IMU presence. The M5StickS3 model also accepts
+`watchdog`; other board models reject that seed because they cannot apply it.
 
 The scenario-only settings are `saved_camera`, `connect_fail`, `no_touch`,
-`link_lies`, `liveness_check`, and `liveness_grace_ms`. `saved_camera` adds an
+`scan_start_probe`, `scan_distinct`, `link_lies`, `liveness_check`, and
+`liveness_grace_ms`. `saved_camera` adds an
 inactive saved camera, `connect_fail` makes the fake camera reject connect, and
 `no_touch` selects the physical-button layout. `link_lies` arms the
 `link-lies-kill` action described under fault injection. `liveness_check
@@ -200,8 +204,8 @@ false` opts a scenario out of the continuous liveness invariant enforcement
 (detection still counts violations), and `liveness_grace_ms` overrides the
 3000 ms divergence grace period. The interval settings are `interval_count`, `interval_delay`,
 `interval_shutter`, and `interval_wait`; `bulb_duration` seeds the bulb timer.
-`gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`, or
-`write-error` before the GPS task starts.
+`gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`,
+`write-error`, or `pause` before the GPS task starts.
 
 ### `action` commands
 
@@ -233,7 +237,52 @@ action preset-step-down
 action companion-pair-request
 action companion-accept
 action companion-reject
+action imu.enable
+action imu.disable
+action imu.accel.fail
+action imu.accel.recover
+action imu.gyro.fail
+action imu.gyro.recover
+action invalidate.reset
+action select
+action bulb-stop
 ```
+
+The parameterized action forms are:
+
+```text
+action toggle NAME
+action nav PAGE
+action scroll top|bottom|next|PIXELS
+action page PAGE
+action imu.accel X Y Z
+action imu.gyro X Y Z
+action imu.roll DEGREES
+action imu.pitch DEGREES
+```
+
+`toggle NAME` accepts `gps`, `gps_nmea`, `autoconnect`, `reconnect`,
+`multiconnect`, `companion`, `watchdog`, `ir`, `show_title`, `tx_adaptive`,
+`conn_saver`, `preset_picker`, and `recon_backoff`.
+
+`nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
+`bulb`, `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
+`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
+`gps_data`, `nmea`, `timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
+`about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
+`diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
+`interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
+`imu`, and `level`.
+
+`page PAGE` accepts `main`, `menu`, `connect`, `scan`, `delete`, `power_off`,
+`connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
+`remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
+`settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
+`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
+`gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`, `about`,
+`power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
+`diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
+`interval_delay`, `interval_shutter`, and `interval_wait`.
 
 The battery action changes the platform sample at runtime:
 
@@ -250,23 +299,28 @@ cameras for multi-connect coverage. `action companion-pair-request` injects a
 pending companion PIN without a rig TCP peer; `action companion-accept` and
 `action companion-reject` click the real pairing dialog buttons.
 
-The `toggle` action accepts these setting names:
-`gps`, `gps_nmea`, `autoconnect`, `reconnect`, `multiconnect`, `companion`,
-`watchdog`, `ir`, `show_title`, `tx_adaptive`, `conn_saver`, `preset_picker`,
-and `recon_backoff`. `watchdog` is present in the M5StickS3 build.
+`watchdog` is present in the M5StickS3 build. The lists above are the canonical
+toggle, navigation, and page vocabularies.
 
-The `nav` action clicks a real menu button. Its page names are:
-`connect`, `scan`, `delete`, `bulb`, `settings`, `display`, `features`,
-`infrared`, `gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`,
-`bluetooth`, `about`, `power`, `feedback`, `diagnostics`, `device_info`,
-`power_state`, `ble`, `battery`, and `storage`.
+Actions are parsed into a canonical typed representation before SDL, UI, or
+worker startup. Runtime dispatch uses that representation and reports one of
+four outcomes to its caller: `APPLIED` after successful handling,
+`VALID_NO_EFFECT` for an intentional no-op, `UNAVAILABLE` when a valid route or
+capability is absent on the modeled board, and `INVALID` for malformed or
+unhandled input. A plain `action COMMAND` requires `APPLIED`; it fails the
+scenario if the action has no effect or is unavailable. To assert an intentional
+alternative, use `action expect no-effect COMMAND` or `action expect unavailable
+COMMAND`. `action expect applied COMMAND` is accepted for clarity. A queued UI
+action owns its input and result state, including when the UI request times out.
+The root aliases `page main` and `page menu` are both valid and select the root
+menu.
 
-The `scroll` action accepts `top`, `bottom`, `next`, or a signed pixel count.
-The `page` action accepts `main`, `shutter`, `bulb`, `cameras`,
-`remote_timer`, `remote_gps`, `connected`, `settings`, `display`, `features`,
-`gps`, `timer`, `theme`, `text_size`, `bluetooth`, `about`, `power`, and
-`diagnostics`. The connected page map can also report `bulb_run`, `timer_run`,
-and `remote_disconnect` while a run or disconnect transition is active.
+The `scroll` action accepts `top`, `bottom`, `next`, or a signed pixel count in
+the inclusive range -2147483647 through 2147483647. `-2147483648` is rejected:
+the runtime negates pixel counts to form LVGL's signed int32 scroll delta, so
+that value cannot be represented safely.
+The connected page map includes the run and disconnect transition pages listed
+in the canonical `page PAGE` vocabulary above.
 
 ### Query keys
 

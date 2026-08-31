@@ -11,7 +11,7 @@ assert ui.imu_button_visible no
 assert ui.level_button_visible no
 action nav diagnostics
 wait 150
-action nav imu
+action expect unavailable nav imu
 assert ui.page diagnostics
 assert ui.imu_accel_x none
 exit

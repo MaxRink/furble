@@ -83,6 +83,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Under `FURBLE_SIM`, a driver exit request is observed inside the locked UI
   phase. Unlock and return from the task so simulator workers can be joined;
   never terminate the process from this production source.
+  Simulator scenario actions enter through the typed parser in
+  `sim/scenario_action.{h,cpp}` and are dispatched from that same canonical
+  representation. `UI::simScenarioAction` reports `APPLIED`,
+  `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct calls must
+  fail closed. Queue closures own their action and result state so a timed-out
+  `simRunOnUi` request cannot retain stack references. Keep the explicit
+  `page main` and `page menu` root routes, and reject scroll `INT32_MIN` because
+  the signed value is negated for LVGL's int32 scroll delta.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:
