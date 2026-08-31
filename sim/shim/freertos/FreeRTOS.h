@@ -22,6 +22,15 @@ typedef void (*TaskFunction_t)(void *);
 #define pdMS_TO_TICKS(ms) (static_cast<TickType_t>(ms))
 #define ESP_INTR_FLAG_IRAM 0
 
+// ESP-IDF 5.5.3 derives the esp_timer task priority from the configured
+// FreeRTOS priority range. Keep the host shim on the same production value.
+#ifndef configMAX_PRIORITIES
+#define configMAX_PRIORITIES 25
+#endif
+#ifndef ESP_TASK_TIMER_PRIO
+#define ESP_TASK_TIMER_PRIO (configMAX_PRIORITIES - 3)
+#endif
+
 BaseType_t xTaskCreate(TaskFunction_t task,
                        const char *name,
                        uint32_t stack_size,

@@ -23,4 +23,10 @@ size_t furble_sim_task_join_waiters(TaskHandle_t task_handle);
 /** Return whether a caller has claimed this task's join. */
 bool furble_sim_task_join_claimed(TaskHandle_t task_handle);
 
+/** Return the FreeRTOS priority supplied when this task was created. */
+UBaseType_t furble_sim_task_priority(TaskHandle_t task_handle);
+
+/** Return the deterministic creation order assigned by the simulator. */
+uint64_t furble_sim_task_creation_order(TaskHandle_t task_handle);
+
 #endif

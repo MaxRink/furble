@@ -100,7 +100,7 @@ inline void furbleSimTimerDispatcherRun(void) {
     timer->active = false;
     timer->callback_running = true;
     lock.unlock();
-    timer->callback(timer->arg);
+    Furble::Sim::runSchedulerTimerCallback(timer->callback, timer->arg);
     lock.lock();
     timer->callback_running = false;
     if (timer->delete_requested) {
@@ -130,6 +130,7 @@ inline void furble_sim_stop_all_timers(void) {
       timer->active = false;
       timer->generation++;
     }
+    Furble::Sim::schedulerTimerDueChanged(false);
     if (furbleSimTimerDispatcher().joinable()) {
       dispatcher = std::move(furbleSimTimerDispatcher());
     }
@@ -179,6 +180,7 @@ inline esp_err_t esp_timer_delete(esp_timer_handle_t timer) {
       return ESP_OK;
     }
     furbleSimEraseTimerLocked(timer);
+    Furble::Sim::schedulerTimerDueChanged(furbleSimNextDueTimerLocked() != nullptr);
   }
   delete timer;
   return ESP_OK;
@@ -203,6 +205,7 @@ inline esp_err_t esp_timer_stop(esp_timer_handle_t timer) {
     }
     timer->active = false;
     timer->generation++;
+    Furble::Sim::schedulerTimerDueChanged(furbleSimNextDueTimerLocked() != nullptr);
   }
   Furble::Sim::schedulerCondition().notify_all();
   return ESP_OK;
@@ -222,6 +225,7 @@ inline esp_err_t esp_timer_start_once(esp_timer_handle_t timer, uint64_t timeout
     timer->arm_sequence = ++furbleSimTimerArmSequence();
     timer->next_deadline = Furble::Sim::clockMicros() + timeout_us;
     furbleSimEnsureTimerDispatcherLocked();
+    Furble::Sim::schedulerTimerDueChanged(furbleSimNextDueTimerLocked() != nullptr);
   }
   Furble::Sim::schedulerCondition().notify_all();
   return ESP_OK;

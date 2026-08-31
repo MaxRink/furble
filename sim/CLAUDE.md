@@ -33,7 +33,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
-| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Priority, preemption, same-tick dispatch, queue ownership, and CPU-time gaps remain. |
+| Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
 
 ### Hardware identity status
 
@@ -51,8 +51,18 @@ errors. Equal timer deadlines preserve arm order, and a callback can cancel a
 second due timer or delete itself. On exit, companion-rig socket workers join
 first, then tasks and the timer dispatcher join, and only then may the rig
 service owning timer callback arguments be destroyed. Same-tick task ordering and FreeRTOS
-priority/preemption are not yet deterministic and must not be described as
-parity-complete.
+priority are now deterministic at simulator scheduler boundaries. Deadline
+waiters are released in one virtual-time batch. Queue wakes select exactly one
+waiter by priority, then FIFO tie-break;
+timed waits latch their outcome at the deadline. Queue deletion defers
+reclamation until active queue users drain, including task-owned deletion.
+The esp_timer dispatcher is modeled as a serialized ESP-IDF 5.5.3
+`ESP_TASK_TIMER_PRIO` timer service task (`configMAX_PRIORITIES - 3`, normally
+22) and enters the same scheduler gate before invoking a callback. Due timer
+and FreeRTOS wait sources are batched before the first dispatch. Zero-tick
+delays yield through the priority gate. Instruction-level
+preemption, core affinity, and CPU-time accounting remain unsupported and must
+not be described as parity-complete.
 The next vertical slice replaces the connection fakes with production sources
 and MockNimBLE peers. Peripheral models and current tables then require board
 calibration and differential traces against hardware. Physical radio timing,
@@ -181,7 +191,8 @@ a regression.
   handoff. Preserve that handoff: it lets joinable background task threads
   observe each part of a scripted wait instead of starting work only after the
   entire virtual-time budget has elapsed. The handoff does not provide
-  deterministic priority or preemption; plan 158 tracks that remaining gap.
+  instruction-level preemption or core affinity; scheduler boundaries now use
+  the deterministic priority gate described by plan 158.
 - `action drop` and `action drop <n>` model a dropped fake peer link. `seed
   connect_fail true` makes the fake camera reject connection. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
