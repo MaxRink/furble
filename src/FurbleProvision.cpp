@@ -100,6 +100,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return ProvisionTLV::ValueType::STRING;
 
     case Settings::INTERVAL:

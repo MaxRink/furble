@@ -147,6 +147,7 @@ bool Settings::appliesImmediately(type_t type) {
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
+    case COMPANION_PASSWORD:
     case CONN_SAVER:
     case FB_OUTPUT:
     case PRESET_PICKER:
@@ -175,6 +176,7 @@ bool Settings::isDangerous(type_t type) {
     case CPU_FREQ:
     case SLEEP_CONN:
     case COMPANION:
+    case COMPANION_PASSWORD:
     // Enabling the profile changes connection and sleep behaviour, the same
     // link-affecting class as the SLEEP_CONN it bundles.
     case BATTERY_SAVER:
@@ -477,6 +479,9 @@ void Settings::init(void) {
           break;
         case BUTTON_MODE:
           save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);
+          break;
+        case COMPANION_PASSWORD:
+          save<std::string>(setting.type, "");
           break;
         case TX_POWER:
         case SCAN_MODE:

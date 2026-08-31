@@ -232,6 +232,9 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       value = Settings::load<std::string>(setting.type);
       return true;
 
+    case Settings::COMPANION_PASSWORD:
+      return false;
+
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
@@ -444,6 +447,9 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       }
       Settings::save<std::string>(setting.type, text);
       return true;
+
+    case Settings::COMPANION_PASSWORD:
+      return false;
 
     case Settings::GPS:
     case Settings::IMU:
