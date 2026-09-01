@@ -46,8 +46,9 @@ There are no changes to any `src/` file.
 
 Measured with the audit's method (clang `-fprofile-instr-generate
 -fcoverage-mapping`, `llvm-profdata` and `llvm-cov`), `src/FurbleConsole.cpp`
-line coverage moved from 0.00 percent to 90.42 percent across 608 assertions.
-The remaining gap is the compile-time `command()` table builder, the transient
+line coverage moved from 0.00 percent to just over 90 percent across 609
+assertions. Repeat runs measure 90.07 to 90.42 percent, the small spread being
+the timing-dependent power log tick. The remaining gap is the compile-time `command()` table builder, the transient
 Control states, and the camera type names that need a target of each vendor.
 
 ## Build inventory gate
@@ -84,8 +85,15 @@ assertion, with a non-zero exit.
 
 ## Deviations
 
-None. The console suite required no host seam in `src/`, so the whole change is
-test-side.
+None in `src/`. The console suite required no host seam there, so the whole
+change is test-side.
+
+One thing did not survive first contact with Linux. The detached console task
+loops forever, exactly as it does on device, so returning from `main()` let the
+runtime destroy the globals it was still blocked on. That segfaulted under
+glibc and passed by luck on macOS. The suite now parks the task at a known
+point inside the transport read before it returns, where it sleeps and touches
+nothing else for the rest of the process.
 
 ## Follow-ups
 
