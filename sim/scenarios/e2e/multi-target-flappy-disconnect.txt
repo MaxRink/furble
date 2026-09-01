@@ -1,0 +1,58 @@
+# Hardware failure 2026-08-28 (a): a multi-target session with one flappy
+# standby camera wedged on a user disconnect. The control state stayed
+# "disconnecting" with a connect still in progress, so the session never
+# returned to idle and no later connect could start.
+#
+# Two saved cameras: a healthy Fujifilm and a Ricoh GR IV in BLE standby that
+# fails the security handshake the way a supervision timeout does (rc=520)
+# before it lets a connect through. Connect both from the UI, let the GR run
+# its standby drop (CameraPower 0x00 then a severed link), then disconnect from
+# the UI while the session is mid reconnect cycle. The teardown must return to
+# idle inside the bound, leave no target and no quarantined target behind, and
+# let a fresh connect reach active.
+#
+# Mutation check: dropping the cancelConnect() arm from Control::disconnect()
+# leaves control.connect_in_progress at yes past the bound, which fails this
+# scenario. See plans/161-sim-real-control.md.
+seed ble_peers fuji-ricoh-flappy
+seed ble_saved true
+seed reconnect true
+wait 300
+assert control.state idle
+assert control.zombies 0
+
+# Connect both. The GR's first handshake dies at rc=520, so the session only
+# completes after the reconnect retry, which is the real 2.5 s first retry.
+action connect-two
+wait 4000
+assert control.state active
+assert control.targets 2
+assert control.connected 2
+assert ui.connected yes
+
+# The GR runs its standby drop and the healthy link goes with it, so the
+# control task is in the middle of a reconnect cycle.
+action ble-standby
+action drop
+wait 200
+assert control.state connecting
+assert ui.connected no
+
+# Disconnect from the UI mid-cycle. This is the exact window that wedged.
+action disconnect
+assert-eventually-virtual 3000 control.state idle
+assert-eventually-virtual 3000 control.connect_in_progress no
+assert control.targets 0
+
+# Nothing may stay quarantined once the drain bound has passed.
+wait 3000
+assert control.state idle
+assert-eventually-virtual 3000 control.zombies 0
+
+# A fresh connect must still reach active.
+action connect-two
+assert-eventually-virtual 12000 control.state active
+assert control.connected 2
+assert-eventually-virtual 3000 ui.connected yes
+assert ui.liveness_violations 0
+exit

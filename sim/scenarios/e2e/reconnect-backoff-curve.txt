@@ -1,0 +1,59 @@
+# The real reconnect backoff curve on virtual time. With the substitutes there
+# was no retry timing at all: the fake control re-entered connecting the moment
+# a link dropped. The production curve is
+# ReconnectBackoff::delayMs(): FIRST_RETRY_MS 2500 for the first retry, then
+# BASE_MS 5000 shifted left by the attempt number up to MAX_MS 120000.
+#
+# Connect a saved Fujifilm, make the radio refuse connects, drop the link, and
+# walk the curve by the attempt counter the control task publishes.
+seed ble_peers fuji
+seed ble_saved true
+seed reconnect true
+seed recon_backoff true
+wait 300
+
+action connect
+wait 3200
+assert control.state active
+assert control.connected 1
+assert control.reconnect_attempt 0
+
+# The link dies and no reconnect can succeed.
+action ble-connect-fail
+action drop
+wait 300
+assert control.state connecting
+assert control.connected 0
+assert control.infinite_reconnect yes
+assert control.reconnect_backoff yes
+# The first attempt has already run and failed, so the task is now holding the
+# short first retry.
+assert control.reconnect_attempt 1
+
+# 2300 ms into a 2500 ms first retry: still the same attempt.
+wait 2000
+assert control.reconnect_attempt 1
+# Past 2500 ms: the second attempt has run, failed, and is holding 5000 << 1.
+wait 700
+assert control.reconnect_attempt 2
+
+# 9000 ms into that 10000 ms wait: still the same attempt.
+wait 9000
+assert control.reconnect_attempt 2
+wait 2000
+assert control.reconnect_attempt 3
+
+# The UI stays honest for the whole backoff: reconnecting, never Connected.
+assert ui.connected no
+assert ui.reconnecting yes
+
+# The radio comes back. The next attempt off the curve reconnects and the
+# attempt counter resets.
+action ble-connect-ok
+wait 25000
+assert control.state active
+assert control.connected 1
+assert control.reconnect_attempt 0
+assert ui.connected yes
+assert ui.liveness_violations 0
+exit

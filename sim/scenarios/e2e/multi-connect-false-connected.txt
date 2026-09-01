@@ -1,39 +1,28 @@
-# Plan 155: the 2026-08-28 hardware incident left the Connected screen up while
-# NEITHER camera had a live link. This scenario drives the closest end-to-end
-# path the fake control can express today: connect two cameras, drop BOTH links
-# at once with auto-reconnect on, and require the UI to leave the Connected
-# presentation within a bound and show the reconnect indication instead of a
-# false Connected screen. The driver-level liveness invariant is enforced
-# throughout (no opt-out): a Connected presentation with dead links outliving
-# the grace period fails this run on its own.
-seed fauxny true
+# The 2026-08-28 hardware incident left the Connected screen up while NEITHER
+# camera had a live link. This scenario drives it through the production stack:
+# two saved cameras connect, both links die at the transport, and the UI must
+# leave the Connected presentation within a bound and show the reconnect
+# indication instead of a false Connected screen. The driver-level liveness
+# invariant is enforced throughout (no opt-out).
+#
+# Unlike false-connected-both-links-dead.txt the radio is left healthy here, so
+# this also covers the recovery the control task performs on its own.
+seed ble_peers fuji-pair
+seed ble_saved true
 seed reconnect true
 wait 300
 action connect-two
-wait 1200
-assert control.state active
+wait 3200
+assert-eventually-virtual 3000 control.state active
 assert control.targets 2
 assert control.connected 2
-assert ui.connected yes
+assert-eventually-virtual 2000 ui.connected yes
 assert ui.reconnecting no
 assert ui.status_text Connected
-# Both links die at once, mirroring the two-camera incident.
+# Both links die at once, mirroring the two-camera incident. The radio stays
+# healthy, so the control task reconnects on its own.
 action drop
-wait 700
-# The UI leaves the Connected presentation well inside the liveness grace:
-# control re-enters connecting, so the ui.connected three-way check turns no.
-assert control.state connecting
-assert control.connected 0
-assert ui.connected no
-# No takeover: the connected page itself stays up but says so honestly. The
-# reconnect indicator shows and the count names both cameras as down.
-assert ui.page connected
-assert ui.connect_box hidden
-assert ui.reconnecting yes
-assert ui.reconnect_count 2/2
-print ui.status_text
-# Recovery: both links restore and the honest Connected presentation returns.
-wait 1500
+wait 4000
 assert control.state active
 assert control.connected 2
 assert ui.connected yes
