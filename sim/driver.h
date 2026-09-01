@@ -40,6 +40,16 @@ bool exitRequested(void);
 /** Return the first requested simulator process result, or zero if unset. */
 int exitResult(void);
 
+/** Return true once a scenario `restart` step asked for a simulated reboot. */
+bool restartRequested(void);
+
+/**
+ * Re-execute the simulator to complete a `restart` step. Call only after the
+ * orderly shutdown has joined every task, because it replaces the process
+ * image. Returns only when the re-exec itself fails.
+ */
+void restartProcess(void);
+
 /** Return how many times the continuous Connected-state liveness check fired. */
 uint32_t livenessViolationCount(void);
 

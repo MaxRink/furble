@@ -170,6 +170,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [152-menu-focus-outline-dedup.md](152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |
 | [154-host-flappy-peer-realism.md](154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
 | [155-sim-ui-liveness.md](155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
+| [156-restart-restore-seam.md](156-restart-restore-seam.md) | Sim restart verb and host Control reset seam, the reboot-lockout reland gate |
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
 | [159-camera-peer-certification.md](159-camera-peer-certification.md) | Capture-backed, fail-closed virtual camera peers and exact feature-level compatibility certification |
 | [160-sim-scenario-ownership.md](160-sim-scenario-ownership.md) | Complete simulator scenario ownership manifest and exact CI trigger coverage |

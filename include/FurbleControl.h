@@ -226,6 +226,24 @@ class Control {
   /** Enable or disable adaptive connection parameters on active cameras. */
   void setConnSaver(bool enabled);
 
+#if defined(FURBLE_HOST_CONTROL_TEST)
+  /**
+   * Reset the singleton to a fresh-boot state (host tests only).
+   *
+   * Simulates the RAM side of a device restart so one test process can run a
+   * pre-reboot session and a post-reboot session against the same Control.
+   * Drops the command queue, quiesces the per-target teardown tasks through
+   * the production disconnect path (a host thread cannot be killed mid-flight
+   * the way a reboot kills a FreeRTOS task), holds the machine in
+   * STATE_DISCONNECTING while it reaps the drain through the production
+   * reapZombieTargets() predicate, then wipes every session flag a reboot
+   * clears and publishes a fresh STATE_IDLE last. The control task itself
+   * keeps running, exactly as it is recreated at boot. Never compiled into
+   * firmware: only host test targets define FURBLE_HOST_CONTROL_TEST.
+   */
+  void resetForTest(void);
+#endif
+
 #if defined(FURBLE_SIM)
   /**
    * Simulate a mid-session BLE link drop on the active target (test only).
@@ -341,6 +359,10 @@ class Control {
   bool m_ReconnectBackoff = false;
   uint32_t m_ReconnectAttempt = 0;
   bool m_ReconnectHintLogged = false;
+  // Consecutive failed connect cycles, used only by the non-infinite retry
+  // budget in connectAll(). A member rather than a function-local static so a
+  // reboot clears it with the rest of the session state.
+  uint32_t m_ConnectFailCount = 0;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

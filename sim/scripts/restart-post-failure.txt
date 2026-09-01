@@ -1,0 +1,12 @@
+# Negative fixture for the restart seam (plan 156). A failure raised after the
+# `restart` step must be the run's status: the rebooted process runs the rest
+# of the script, and its failing assert exits 1 rather than being masked by the
+# re-exec chain. Kept here rather than under sim/scenarios because every
+# manifest suite declares a fixed status (0, or the parser's 2 for the invalid
+# fixtures) and this one exits 1. run-invalid.sh runs it.
+wait 200
+assert ui.page main
+restart
+wait 300
+assert ui.page settings
+exit

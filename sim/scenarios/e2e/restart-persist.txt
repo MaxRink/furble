@@ -1,0 +1,41 @@
+# Restart seam foundation (plan 156). Change a persistent setting through its
+# real switch widget, reboot the simulated device with `restart`, and prove the
+# NVS-backed value survived, the UI booted back to the main menu, and the
+# machine is still commandable (navigation keeps working). The restore-behavior
+# scenarios for the boot-time session restore land with the PR #159 reland and
+# build on this one.
+#
+# `reconnect` is deliberately not seeded: a seed is reapplied on every boot,
+# including the resumed one, so the persisted NVS value must be the only source
+# of the post-restart state. The saved camera comes from the `saved_camera`
+# seed, which the sim reapplies at boot because the sim CameraList is a
+# process-local fake with no NVS backing (see plan 156 for the seam limits).
+seed saved_camera true
+wait 300
+assert ui.page main
+assert camera.count 1
+assert setting.reconnect 0
+action page settings
+wait 200
+assert ui.page settings
+action page features
+wait 200
+assert ui.page features
+action toggle reconnect
+wait 200
+assert setting.reconnect 1
+restart
+wait 400
+# The toggled setting survived the reboot through the preferences file.
+assert setting.reconnect 1
+assert camera.count 1
+# The UI booted to the expected page.
+assert ui.page main
+# The machine is commandable: navigation still works after the restart.
+action page settings
+wait 200
+assert ui.page settings
+action page menu
+wait 200
+assert ui.page main
+exit

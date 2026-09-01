@@ -711,6 +711,10 @@ target_include_directories(control_e2e_test
                                   ${FURBLE_ROOT}/lib/furble
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
+# FURBLE_HOST_CONTROL_TEST compiles Control::resetForTest(), the host-only
+# restart seam (plan 156). Firmware builds never define it, so the reset does
+# not exist on device.
+target_compile_definitions(control_e2e_test PRIVATE FURBLE_HOST_CONTROL_TEST)
 target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-unused-parameter
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
@@ -1154,7 +1158,9 @@ if(BUILD_TESTING)
           reconnect-shutter-drop
           multi-flappy-disconnect
           flappy-cancel-stress
-          flappy-peer-autonomous)
+          flappy-peer-autonomous
+          restart-restore-commandable
+          restart-stalled-peer-reclaim)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
   endforeach()
 

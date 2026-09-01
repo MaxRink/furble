@@ -184,7 +184,6 @@ Control &Control::getInstance(void) {
 }
 
 Control::state_t Control::connectAll(void) {
-  static uint32_t failcount = 0;
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
@@ -225,7 +224,7 @@ Control::state_t Control::connectAll(void) {
 
     m_ConnectCamera = camera;
     if (!camera->connect(m_Power, timeout)) {
-      failcount++;
+      m_ConnectFailCount++;
       break;
     } else {
       m_ConnectCamera = nullptr;
@@ -242,14 +241,14 @@ Control::state_t Control::connectAll(void) {
     }
 
     if (allConnected()) {
-      failcount = 0;
+      m_ConnectFailCount = 0;
       m_ReconnectAttempt = 0;
       m_ReconnectHintLogged = false;
       return STATE_ACTIVE;
     }
   }
 
-  if (m_InfiniteReconnect || (failcount < 2)) {
+  if (m_InfiniteReconnect || (m_ConnectFailCount < 2)) {
     if (m_InfiniteReconnect) {
       const uint32_t delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
 
@@ -1041,6 +1040,95 @@ void Control::setConnSaver(bool enabled) {
     camera->setConnSaverEnabled(enabled);
   }
 }
+
+#if defined(FURBLE_HOST_CONTROL_TEST)
+void Control::resetForTest(void) {
+  // A reboot loses the pending command queue. Drop it first: disconnect()
+  // below publishes STATE_IDLE the moment the teardown is handed to the drain,
+  // which reopens the control task to a queued CMD_CONNECT. That connect would
+  // run against a machine with no targets left, where allConnected() is
+  // vacuously true, publish STATE_ACTIVE, and race the fresh IDLE this reset
+  // ends with.
+  xQueueReset(m_Queue);
+
+  // Quiesce through the production teardown: a host thread cannot be killed
+  // mid-flight the way a reboot kills a FreeRTOS task, so every per-target task
+  // must have left Camera::disconnect() before this reset frees the objects
+  // those tasks write through. disconnect() waits for exactly that, hands the
+  // stopped targets to the zombie drain, and returns in IDLE.
+  disconnect();
+
+  // Hold the machine in the terminal DISCONNECTING state for the rest of the
+  // reset. Together with the queue reset above it means no command, queued
+  // before or during the reset, can start a connect against half-reset state.
+  setState(STATE_DISCONNECTING);
+  xQueueReset(m_Queue);
+
+  // Reap the drain here rather than waiting for the control task to do it.
+  // reapZombieTargets() is what knows a stopped target whose link still reads
+  // up belongs to a gone peer and needs reclaimClient() before it is freed;
+  // freeing such a target directly would leave the orphaned client pointing at
+  // a destroyed owner. Expiring the drain deadline first selects that reclaim
+  // path, which is right for a reboot: the device is going down, so there is
+  // nothing left to wait for the peer's supervision timeout for.
+  const TickType_t start = xTaskGetTickCount();
+  for (;;) {
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      m_ZombieDeadline = xTaskGetTickCount();
+    }
+    reapZombieTargets();
+    // Anything left is a target whose task has not stopped, so it is still
+    // writing through its own object. Give it the teardown budget, then leave
+    // it quarantined for the control task exactly as a real boot would leave
+    // nothing at all: never freed from here.
+    if (!teardownDraining()
+        || (xTaskGetTickCount() - start) >= pdMS_TO_TICKS(DISCONNECT_WAIT_MAX_MS)) {
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
+  }
+
+  // Park the control task before returning, so the caller really does get the
+  // fresh-boot task state this reset promises. disconnect() waits out
+  // m_ConnectInProgress, but connectAll() clears that flag before its
+  // interruptible retry wait, so the task can still be sleeping out a reconnect
+  // backoff. STATE_DISCONNECTING (held above) is what breaks that wait; this
+  // probe waits for the proof. A command is only ever dequeued at the top of
+  // the task loop, and CMD_GPS_UPDATE is dropped in this state, so the queue
+  // going empty means the task has left connectAll() and is back in its
+  // receive.
+  cmd_t probe = CMD_GPS_UPDATE;
+  if (xQueueSend(m_Queue, &probe, 0) == pdTRUE) {
+    const TickType_t probeStart = xTaskGetTickCount();
+    while (uxQueueMessagesWaiting(m_Queue) > 0
+           && (xTaskGetTickCount() - probeStart) < pdMS_TO_TICKS(DISCONNECT_WAIT_MAX_MS)) {
+      vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
+    }
+  }
+
+  // A reboot reloads the transmit power cap from NVS. Read it outside the
+  // mutex like every other settings read.
+  const esp_power_level_t bootPower = Settings::load<esp_power_level_t>(Settings::TX_POWER);
+
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_Targets.clear();
+    m_ConnectCamera = nullptr;
+    m_Power = bootPower;
+    resetAdaptiveState();
+  }
+
+  // Wipe the session flags a reboot clears, then publish the fresh IDLE last.
+  m_InfiniteReconnect = false;
+  m_ReconnectBackoff = false;
+  m_ReconnectAttempt = 0;
+  m_ReconnectHintLogged = false;
+  m_ConnectFailCount = 0;
+  m_ConnectAbort = false;
+  setState(STATE_IDLE);
+}
+#endif
 
 };  // namespace Furble
 

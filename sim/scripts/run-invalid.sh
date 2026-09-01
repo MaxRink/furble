@@ -57,6 +57,17 @@ expect_invalid() {
   fi
 }
 
+expect_status() {
+  want=$1
+  shift
+  rc=0
+  "$@" || rc=$?
+  if [ "$rc" -ne "$want" ]; then
+    echo "FAIL command returned $rc, expected $want: $*" >&2
+    exit 1
+  fi
+}
+
 # Keep command-line validation in the same pre-runtime gate as script parsing.
 expect_invalid "$BIN" --unknown-option
 expect_invalid "$BIN" --script
@@ -64,4 +75,11 @@ expect_invalid "$BIN" --seed not-a-number
 expect_invalid "$BIN" --script "$ROOT/sim/scripts/smoke.txt" --fuzz
 expect_invalid env FURBLE_FUZZ_STEPS=not-a-number "$BIN" --fuzz
 expect_invalid env FURBLE_FUZZ_STEPS=0 "$BIN" --fuzz
+
+# The restart seam (plan 156). A continuation step outside the script's range
+# is a pre-runtime rejection like any other bad input, and a failure raised
+# after the `restart` step must survive the re-exec as the run's own status
+# instead of being masked by the reboot.
+expect_invalid env FURBLE_SIM_RESTART_STEP=99999 "$BIN" --script "$ROOT/sim/scripts/smoke.txt"
+expect_status 1 "$BIN" --script "$ROOT/sim/scripts/restart-post-failure.txt"
 echo "CLI and environment validation passed."

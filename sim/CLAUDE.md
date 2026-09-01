@@ -149,10 +149,17 @@ a regression.
   simulator seam.
 - The full script verb set is `seed`, `wait`/`advance`, `key`/`press`,
   `btn`/`button`, `capture`, `uart-dump`, `uart-mode`, `uart-event`,
-  `gps-restart`, `home`, `back`, `report`, `action`, `print`, `assert`,
-  `assert-eventually`, `assert-eventually-virtual`, `xassert`, `stall`, and
-  `exit`. `home` resets to the root menu and focuses Scan. `back` clicks the
-  LVGL header back button and fails on the root page.
+  `gps-restart`, `home`, `back`, `report`, `restart`, `action`, `print`,
+  `assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`,
+  `stall`, and `exit`. `home` resets to the root menu and focuses Scan. `back`
+  clicks the LVGL header back button and fails on the root page. `restart`
+  models a device reboot by re-executing the simulator binary once the orderly
+  shutdown has joined every task, then resuming the script at the next step:
+  all RAM state (threads, singletons, virtual clock, driver counters) is wiped
+  like an esp_restart() while the NVS preferences file persists like flash.
+  Seeds are reapplied on the resumed boot, so a persistence assertion must not
+  seed the setting it toggles, and the process-local fake CameraList does not
+  persist (see plans/156-restart-restore-seam.md for the seam limits).
   See `docs/sim.md` for every action value and query key.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
