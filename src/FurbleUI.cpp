@@ -2358,6 +2358,12 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && command == "connect") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     if (CameraList::size() == 0) {
+      // Saved cameras first: a scenario that seeded virtual BLE peers connects
+      // those, exactly as the Connect page would. Only a scenario with nothing
+      // saved falls back to the FauxNY test camera.
+      CameraList::load();
+    }
+    if (CameraList::size() == 0) {
       CameraList::addFauxNY();
     }
     auto camera = CameraList::last();
@@ -2374,6 +2380,9 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   // multi-select screen.
   if (simpleAction && command == "connect-two") {
     m_SimActionResult = sim_action_result_t::APPLIED;
+    if (CameraList::size() < 2) {
+      CameraList::load();
+    }
     while (CameraList::size() < 2) {
       CameraList::addFauxNY();
     }
@@ -4559,21 +4568,7 @@ void UI::serviceRequests(void) {
           scan.start(
               [](void *param) {
                 auto *menu = static_cast<menu_t *>(param);
-#if defined(FURBLE_SIM)
-                // ScanSim only publishes events. Materialize its FauxNY test
-                // row here so CameraList remains UI-task owned, and coalesce
-                // duplicate advertisements by address/list membership.
-                const bool isNewSimAdvertisement =
-                    CameraList::size() == 0
-                    || (Sim::scenarioSettingIsTrue("scan_distinct")
-                        && Scan::getInstance().currentResultId() == 1);
-                if (isNewSimAdvertisement) {
-                  CameraList::addFauxNY();
-                  updateItems(*menu);
-                }
-#else
                 updateItems(*menu);
-#endif
               },
               &menu);
           m_Mutex.lock();
@@ -5635,17 +5630,7 @@ void UI::startScan(void) {
   scan.start(
       [](void *param) {
         auto *menu = static_cast<menu_t *>(param);
-#if defined(FURBLE_SIM)
-        const bool isNewSimAdvertisement = CameraList::size() == 0
-                                           || (Sim::scenarioSettingIsTrue("scan_distinct")
-                                               && Scan::getInstance().currentResultId() == 1);
-        if (isNewSimAdvertisement) {
-          CameraList::addFauxNY();
-          updateItems(*menu);
-        }
-#else
         updateItems(*menu);
-#endif
       },
       &menu, [](void *) { lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN); });
   m_Mutex.lock();

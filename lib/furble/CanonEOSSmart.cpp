@@ -215,11 +215,14 @@ void CanonEOSSmart::updateGeoData(const gps_t &gps, const timesync_t &timesync) 
     time_t timestamp = mktime(&time_str);
     canon_geo_t geo = {
         .header = 0x04,
-        .latitude_direction = gps.latitude < 0.0 ? 'S' : 'N',
+        // The direction fields are uint8_t. Cast the character literals so the
+        // braced initializer is not a narrowing conversion, which clang rejects
+        // outright and gcc only warns about.
+        .latitude_direction = static_cast<uint8_t>(gps.latitude < 0.0 ? 'S' : 'N'),
         .latitude = static_cast<float>(std::abs(gps.latitude)),
-        .longitude_direction = gps.longitude < 0.0 ? 'W' : 'E',
+        .longitude_direction = static_cast<uint8_t>(gps.longitude < 0.0 ? 'W' : 'E'),
         .longitude = static_cast<float>(std::abs(gps.longitude)),
-        .elevation_sign = gps.altitude < 0.0 ? '-' : '+',
+        .elevation_sign = static_cast<uint8_t>(gps.altitude < 0.0 ? '-' : '+'),
         .elevation = static_cast<float>(std::abs(gps.altitude)),
         .timestamp = static_cast<uint32_t>(timestamp),
     };

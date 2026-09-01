@@ -13,7 +13,11 @@
 #include <vector>
 
 #include "NimBLEScan.h"
-#include "esp_log.h"
+// Angle include on purpose. The host suite resolves this to the no-op
+// esp_log.h beside this header; the simulator resolves it to its own shim
+// earlier on the include path, so only one set of ESP_LOG macros is ever
+// defined in a translation unit.
+#include <esp_log.h>
 
 enum esp_power_level_t : int8_t {
   ESP_PWR_LVL_N12 = -12,
@@ -492,6 +496,11 @@ class NimBLEDevice {
   // The most recently created client, so a test can drive link loss on the
   // client a Camera created internally.
   static NimBLEClient *lastClient();
+  // The live client currently connected to this advertised address, or nullptr.
+  // A harness that owns several cameras at once (the simulator's multi-connect
+  // sessions) needs to address one link without knowing which client the
+  // Camera allocated for it.
+  static NimBLEClient *connectedClientForAddress(const NimBLEAddress &address);
   // Force the next NimBLEClient::connect() to fail, modelling a connect that
   // never establishes. This stands in for the failure class that actually leaks
   // on hardware: a reconnect whose pairing scan times out because the camera

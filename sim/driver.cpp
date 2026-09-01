@@ -30,6 +30,7 @@
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "Scan.h"
+#include "ble_sim.h"
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
@@ -297,11 +298,10 @@ void validateSeed(const std::string &name, const std::string &value) {
       "no_touch",
       "saved_camera",
       "scan_start_probe",
-      "scan_distinct",
+      "ble_saved",
       "auto_off_charging",
       "imu",
       "imu_sensor",
-      "link_lies",
       "liveness_check",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
@@ -354,6 +354,15 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::cerr << "Invalid battery_charging: " << value << '\n';
       std::exit(2);
     }
+    return;
+  } else if (name == "ble_peers") {
+    if (!bleTopologyIsValid(value)) {
+      std::cerr << "Invalid ble_peers: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "scan_timeout") {
+    parseUnsigned(value);
     return;
   } else if (name == "gps_uart_mode") {
     if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
@@ -657,11 +666,18 @@ void readScript(const std::string &path) {
   }
 
   for (const Step &step : steps) {
-    if (step.type == StepType::ACTION && step.action.kind == scenario_action_kind_t::SIMPLE
-        && step.action.name == "link-lies-kill"
-        && (scenarioSettings.find("link_lies") == scenarioSettings.end()
-            || !parseBool(scenarioSettings.at("link_lies")))) {
-      std::cerr << "Invalid simulator action '" << step.name << "': requires seed link_lies true\n";
+    if (step.type != StepType::ACTION
+        || step.action.kind != scenario_action_kind_t::SIMPLE) {
+      continue;
+    }
+    // The transport faults act on virtual BLE peers, so a scenario that uses
+    // one without seeding a topology is a scripting error, not a silent no-op.
+    if ((step.action.name == "ble-kill" || step.action.name == "ble-standby"
+         || step.action.name == "ble-connect-fail" || step.action.name == "ble-connect-ok")
+        && (scenarioSettings.find("ble_peers") == scenarioSettings.end()
+            || scenarioSettings.at("ble_peers") == "none")) {
+      std::cerr << "Invalid simulator action '" << step.name
+                << "': requires seed ble_peers <topology>\n";
       std::exit(2);
     }
   }
@@ -863,28 +879,47 @@ void checkLivenessInvariant(void) {
             << " camera links live\n";
 }
 
-// "action link-lies-kill" silently kills every connected fake camera link
-// while leaving the control state machine untouched: isConnected() turns
-// false, control stays ACTIVE, and nothing schedules a reconnect. This is the
-// false-connected divergence observed on hardware on 2026-08-28, which the
-// fake control cannot otherwise express. Gated behind "seed link_lies true" so
-// no scenario constructs the divergence by accident.
-bool applyLinkLiesAction(const scenario_action_t &action) {
-  if (action.kind != scenario_action_kind_t::SIMPLE || action.name != "link-lies-kill") {
+// Transport faults. These act on the real MockNimBLE link behind a production
+// Camera, so the observable is exactly the observable on hardware: the link is
+// gone and whatever the production stack does next is what the scenario sees.
+// There is no simulator-side control-state override any more.
+//
+//   ble-kill         sever every live link and leave the GAP disconnect event
+//                    queued, so the camera keeps reporting connected over a
+//                    link that is physically dead
+//   ble-standby      run the standby drop of every flappy virtual peer: the
+//                    peer re-arms its handshake failure budget, announces its
+//                    power state and severs the link
+//   ble-connect-fail make NimBLEClient::connect() fail at the transport
+//   ble-connect-ok   let connects succeed again
+//
+// Returns true when the action was one of these, so the caller does not also
+// dispatch it into the UI.
+bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
+  if (action.kind != scenario_action_kind_t::SIMPLE) {
     return false;
   }
-  if (!scenarioSettingIsTrue("link_lies")) {
-    std::cerr << "action link-lies-kill requires: seed link_lies true\n";
-    requestExit(2);
+
+  if (action.name == "ble-kill") {
+    *applied = bleDropLink(-1, /*deliverCallback=*/false);
     return true;
   }
-  for (size_t n = 0; n < CameraList::size(); n++) {
-    auto camera = CameraList::get(n);
-    if (camera != nullptr && camera->isConnected()) {
-      camera->disconnect();
-    }
+  if (action.name == "ble-standby") {
+    *applied = blePeerStandbyDrop(-1);
+    return true;
   }
-  return true;
+  if (action.name == "ble-connect-fail") {
+    bleSetConnectFail(true);
+    *applied = true;
+    return true;
+  }
+  if (action.name == "ble-connect-ok") {
+    bleSetConnectFail(false);
+    *applied = true;
+    return true;
+  }
+
+  return false;
 }
 
 const char *simActionResultName(UI::sim_action_result_t result) {
@@ -967,6 +1002,12 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
+  }
+  if (key == "scan.advertisements") {
+    return std::to_string(bleAdvertisementCount());
+  }
+  if (key == "ble.peers") {
+    return std::to_string(blePeerCount());
   }
   if (key == "scan.start_probe_blocked") {
     return Scan::getInstance().startProbeBlocked() ? "1" : "0";
@@ -1238,6 +1279,17 @@ bool scenarioSettingIsTrue(const char *name) {
   }
   const auto found = scenarioSettings.find(name);
   return found != scenarioSettings.end() && parseBool(found->second);
+}
+
+std::string scenarioSetting(const char *name, const char *fallback) {
+  if (name == nullptr) {
+    return fallback == nullptr ? std::string() : std::string(fallback);
+  }
+  const auto found = scenarioSettings.find(name);
+  if (found == scenarioSettings.end()) {
+    return fallback == nullptr ? std::string() : std::string(fallback);
+  }
+  return found->second;
 }
 
 void registerUI(UI *ui) {
@@ -1633,10 +1685,11 @@ void driverTick(void) {
         simulatedBattery = {step.action.batteryLevel, step.action.batteryVoltage,
                             step.action.batteryCurrent, step.action.batteryCharging};
         result = UI::sim_action_result_t::APPLIED;
-      } else if (!applyLinkLiesAction(step.action)) {
-        result = scenarioUi->simScenarioAction(step.action);
+      } else if (bool applied = false; applyTransportFaultAction(step.action, &applied)) {
+        result = applied ? UI::sim_action_result_t::APPLIED
+                         : UI::sim_action_result_t::VALID_NO_EFFECT;
       } else {
-        result = UI::sim_action_result_t::APPLIED;
+        result = scenarioUi->simScenarioAction(step.action);
       }
       if (!expectedSimActionResult(step.action, result)) {
         std::cerr << "Simulator action '" << step.name << "' returned "

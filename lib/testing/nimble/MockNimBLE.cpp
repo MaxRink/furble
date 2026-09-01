@@ -1168,6 +1168,16 @@ NimBLEClient *NimBLEDevice::lastClient() {
   return g_Clients.empty() ? nullptr : g_Clients.back().get();
 }
 
+NimBLEClient *NimBLEDevice::connectedClientForAddress(const NimBLEAddress &address) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  for (const auto &client : g_Clients) {
+    if (client->isConnected() && client->m_Address == address) {
+      return client.get();
+    }
+  }
+  return nullptr;
+}
+
 void NimBLEDevice::setConnectShouldFail(bool fail) {
   g_ConnectShouldFail = fail;
 }
@@ -1184,8 +1194,14 @@ void NimBLEDevice::setConnParamApplyDelayReads(size_t reads) {
   g_ConnParamApplyDelayReads = reads;
 }
 
+#if !defined(FURBLE_SIM)
+// Host suites have no clock of their own, so the mock supplies a monotonic one.
+// The simulator already owns a virtual clock and defines this in its esp_timer
+// shim, so leave it alone there: two definitions would fight, and the wall
+// clock would make every scenario's timing nondeterministic.
 extern "C" int64_t esp_timer_get_time(void) {
   static const auto start = std::chrono::steady_clock::now();
   const auto elapsed = std::chrono::steady_clock::now() - start;
   return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
 }
+#endif

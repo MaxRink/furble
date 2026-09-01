@@ -113,6 +113,12 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // client its timer may still reference.
   void setFlappy(uint32_t fail_attempts, uint32_t drop_after_ms);
 
+  // Run the standby drop body directly, without the wall-clock timer. The
+  // simulator runs on virtual time, where a thread sleeping on the host clock
+  // would neither fire at the modelled moment nor stay deterministic, so it
+  // schedules the drop itself and calls this. Returns false when no link is up.
+  bool triggerStandbyDrop();
+
   // dropLinkOnWrite models a supervision-timeout link loss that lands in the
   // middle of the connect handshake: when the central writes the named
   // characteristic the peer severs the link and delivers onDisconnect inline,

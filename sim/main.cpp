@@ -17,10 +17,9 @@
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "Scan.h"
+#include "ble_sim.h"
 #include "capture.h"
 #include "driver.h"
-
-const char *LOG_TAG = FURBLE_STR;
 
 namespace {
 
@@ -105,6 +104,25 @@ int runSimulator() {
   }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+
+  // Bring the virtual radio up right after the BLE stack, the same order the
+  // firmware brings up NimBLE before any camera exists. The peers advertise to
+  // the production Scan and answer the production Camera connect paths.
+  std::string topology = Sim::scenarioSetting("ble_peers", "none");
+  const bool connectFail = Sim::scenarioSettingIsTrue("connect_fail");
+  if (connectFail && topology == "none") {
+    // A camera that never establishes a link needs a radio to fail at. FauxNY
+    // has none, so the connect-failure seed implies one real virtual peer.
+    topology = "fuji";
+  }
+  Sim::bleStartPeers(topology);
+  if (topology != "none" && (connectFail || Sim::scenarioSettingIsTrue("ble_saved"))) {
+    Sim::bleSaveRegisteredPeers();
+  }
+  if (connectFail) {
+    Sim::bleSetConnectFail(true);
+  }
+
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
@@ -120,7 +138,9 @@ int runSimulator() {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   ui.task();
-  Scan::getInstance().shutdown();
+  Scan::getInstance().stop();
+  Scan::getInstance().joinStartProbes();
+  Sim::bleStopPeers();
   // No rig worker may arm or touch a service timer after this point. The
   // esp_timer API deletes callbacks asynchronously on hardware, so keep the
   // callback argument alive until the simulator dispatcher has joined.
