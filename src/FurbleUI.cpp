@@ -1217,10 +1217,15 @@ void UI::setTheme(std::string name, uint8_t textSize) {
     // set LV_OBJ_FLAG_STATE_TRICKLE, so focusing a row propagates
     // LV_STATE_FOCUSED to its child icon and label. Attaching style_button (which
     // carries the outline) to those children draws a second and third ring inside
-    // the row. Keep the outline off image and label widgets so the selected item
-    // shows a single ring around the whole item.
-    const bool outlineTarget =
-        !lv_obj_check_type(obj, &lv_image_class) && !lv_obj_check_type(obj, &lv_label_class);
+    // the row. Keep the outline off image and label widgets. Menu row containers
+    // are excluded as well: the LVGL default theme already fills a focused
+    // lv_menu_cont with the primary accent colour, so the ring on top of that
+    // fill is a redundant second highlight. Switches, rollers, sliders and
+    // plain buttons get no focus fill from the theme, so the ring stays their
+    // only focus cue.
+    const bool outlineTarget = !lv_obj_check_type(obj, &lv_image_class)
+                               && !lv_obj_check_type(obj, &lv_label_class)
+                               && !lv_obj_check_type(obj, &lv_menu_cont_class);
     if (lv_obj_check_type(obj, &lv_button_class) || lv_obj_check_type(obj, &lv_roller_class)
         || lv_obj_check_type(obj, &lv_slider_class) || lv_obj_check_type(obj, &lv_switch_class)) {
       lv_obj_add_style(obj, &style_button, LV_STATE_FOCUS_KEY);

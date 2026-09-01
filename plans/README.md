@@ -167,6 +167,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [148-teardown-connect-cancel.md](148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
 | [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
 | [150-nimble-taskdata-race.md](150-nimble-taskdata-race.md) | Vendored esp-nimble-cpp fix for the task data release use-after-scope race |
+| [152-menu-focus-outline-dedup.md](152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |
 | [154-host-flappy-peer-realism.md](154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
 | [155-sim-ui-liveness.md](155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
