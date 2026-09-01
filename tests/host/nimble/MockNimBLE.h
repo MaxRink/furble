@@ -450,6 +450,15 @@ class NimBLEDevice {
   static void setSecurityRespKey(uint8_t key_distribution);
   static void setOwnAddrType(uint8_t address_type);
 
+  // Mirrors of the real NimBLEDevice accessors the developer console's
+  // 'debug ble' dump reports from: whether the host stack is up, the
+  // controller address, the configured transmit power, and the live client
+  // for a peer address (a target with no client is the leak signature).
+  static bool isInitialized();
+  static NimBLEAddress getAddress();
+  static int getPower();
+  static NimBLEClient *getClientByPeerAddress(const NimBLEAddress &address);
+
   static NimBLEClient *createClient();
   // Return a client to the pool. Mirrors NimBLEDevice::deleteClient(): it only
   // deletes a client that is still in the live client list, so calling it on a

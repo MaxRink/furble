@@ -89,6 +89,8 @@ NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
 std::vector<NimBLEClient *> g_PendingReap;  // clients queued for async reap
+bool g_Initialised = false;
+int g_Power = 0;
 bool g_ConnectShouldFail = false;
 size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
 size_t g_MaxClients = 0;        // 0 means unlimited
@@ -896,16 +898,41 @@ std::string NimBLEUtils::dataToHexString(const uint8_t *data, size_t length) {
 
 void NimBLEDevice::init(const std::string &name) {
   (void)name;
+  g_Initialised = true;
+}
+
+bool NimBLEDevice::isInitialized() {
+  return g_Initialised;
+}
+
+NimBLEAddress NimBLEDevice::getAddress() {
+  // A fixed controller address. The mock has no radio, so this only has to be
+  // stable and printable.
+  return NimBLEAddress(0x0011223344ULL, 0);
+}
+
+int NimBLEDevice::getPower() {
+  return g_Power;
+}
+
+NimBLEClient *NimBLEDevice::getClientByPeerAddress(const NimBLEAddress &address) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  for (const auto &client : g_Clients) {
+    if (client->m_Address == address) {
+      return client.get();
+    }
+  }
+  return nullptr;
 }
 
 bool NimBLEDevice::setPower(int8_t power) {
-  (void)power;
+  g_Power = power;
   return true;
 }
 
 bool NimBLEDevice::setPower(int8_t power, NimBLETxPowerType type) {
-  (void)power;
   (void)type;
+  g_Power = power;
   return true;
 }
 
