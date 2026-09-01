@@ -8,7 +8,7 @@ wait 400
 
 # A dead sensor also hides the main menu Level entry.
 assert ui.level_main_button_visible no
-action nav level_main
+action expect unavailable nav level_main
 wait 150
 assert ui.page main
 

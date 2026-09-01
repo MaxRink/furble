@@ -2701,6 +2701,9 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     if (name == "level_main") {
       if (m_LevelMainButton != nullptr && !lv_obj_has_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_send_event(m_LevelMainButton, LV_EVENT_CLICKED, this);
+        m_SimActionResult = sim_action_result_t::APPLIED;
+      } else {
+        m_SimActionResult = sim_action_result_t::UNAVAILABLE;
       }
       return;
     }
