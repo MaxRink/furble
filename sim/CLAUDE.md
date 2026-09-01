@@ -4,11 +4,11 @@ Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
 Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
 shipping sources are allowed only for observability, deterministic navigation,
 or orderly host exit, and firmware builds must compile the unchanged production
-path. The current build still contains simulator substitutes for Control,
-Camera, CameraList, and Scan, so it is not yet a hardware-identical build of the
-production connection stack. The target architecture is to remove those policy
-substitutes and run the production sources against a MockNimBLE boundary and
-calibrated virtual peers. Current shared-source seams include
+path. The connection stack is now production: `src/FurbleControl.cpp`,
+`lib/furble/Camera.cpp`, `CameraList.cpp`, `Scan.cpp`, `Device.cpp` and every
+vendor class compile into the simulator over the shared MockNimBLE boundary
+(`lib/testing/nimble`) and the virtual camera peers (`lib/testing/peer`). The
+simulator substitutes for Control, Camera, CameraList and Scan are gone. Current shared-source seams include
 `UI::simulatorHome`, `UI::simulatorBack`, and the orderly exit check in
 `UI::task`; the seam inventory below is authoritative.
 
@@ -26,10 +26,10 @@ and target boundary (a new seam needs a contract test and an entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
 | --- | --- | --- |
-| BLE discovery | `UI::startScan` and UI-side result materialization are shared; production `Scan` and `CameraList` are not in the SDL build | `sim/shim/Scan.h`, `sim/ScanSim.cpp`, and `sim/CameraListSim.cpp` replace scan lifecycle, radio events, matching, and list persistence. The worker publishes immutable fake events and never touches LVGL. `tests/host` separately compiles production `lib/furble/Scan.cpp` against fake NimBLE. |
+| BLE discovery | Production `Scan` and `CameraList`, including advertisement matching and preferences-backed list persistence | `sim/BleSim.cpp` owns a virtual radio task that advertises the seeded virtual peers into the mock `NimBLEScan` and models the controller-owned discovery timer. Scan start responsiveness probing and the scan-end callback counter are `FURBLE_SIM` observability inside production `Scan`. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
-| Camera links | UI connection handlers are shared; production `Control`, `Camera`, and `CameraList` are not yet in the SDL build | `sim/FurbleControlSim.cpp`, the fake camera/list, and `sim/ScanSim.cpp` provide the current deterministic peer and link-drop hooks. They are temporary policy substitutes. The target is production `Control`/`Camera`/`CameraList`/`Scan` over MockNimBLE and virtual peers; `action link-lies-kill` remains an interim fault injection until that boundary exists. |
+| Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
@@ -63,9 +63,15 @@ and FreeRTOS wait sources are batched before the first dispatch. Zero-tick
 delays yield through the priority gate. Instruction-level
 preemption, core affinity, and CPU-time accounting remain unsupported and must
 not be described as parity-complete.
-The next vertical slice replaces the connection fakes with production sources
-and MockNimBLE peers. Peripheral models and current tables then require board
-calibration and differential traces against hardware. Physical radio timing,
+Plan 161 completed that slice: the connection fakes are gone and the production
+sources run against MockNimBLE peers. Two parity gaps remain on this boundary
+and must not be described as closed. A link severed without its GAP disconnect
+event (`action ble-kill`) leaves `Camera::isConnected()` true, so the liveness
+invariant cannot see that class of false-connected. And the host scheduler can
+still starve a task that only wakes on a virtual-clock deadline while the UI
+thread drives time forward, which is why the long Fujifilm registration wait is
+not used inside a certified scenario. Peripheral models and current tables
+require board calibration and differential traces against hardware. Physical radio timing,
 analog current, sensor noise, and unavailable peripherals are irreducible
 boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
@@ -78,10 +84,12 @@ result. Inferred, synthetic, missing, or conflicting behavior must return
 
 `FURBLE_SIM` conditionals in shared sources are audited at each release:
 `FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h` and
-`FurbleControlSim.cpp` (link-drop injection), `FurbleGPS.cpp` (state/timer
+`FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
+also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
+(scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
 profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
 (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
-queries, deterministic input, scan-start probe, UI-task scan materialization,
+queries, deterministic input, scan-start probe,
 disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
 simulator and console alike. `FURBLE_SIM_*` environment variables select only
 host capabilities, captures, preferences, themes, text size, sanitizers, and
@@ -178,8 +186,8 @@ a regression.
   StickS3 simulator this lets scenarios expire the virtual M5PM1 watchdog while
   ordinary `wait` keeps feeding it. The `watchdog` seed is therefore accepted
   only by the StickS3 model. Specialized pre-start seeds also include
-  `bulb_duration`, `gps_uart_mode`, `link_lies`, `liveness_check`, and
-  `liveness_grace_ms`; keep their values synchronized with
+  `bulb_duration`, `gps_uart_mode`, `ble_peers`, `ble_saved`, `scan_timeout`,
+  `liveness_check`, and `liveness_grace_ms`; keep their values synchronized with
   `docs/sim.md` and `validateSeed`.
   The simulator suppresses only the first post-stall bookkeeping feed, so the
   following assertion observes retained PMIC state before another normal UI
@@ -213,8 +221,15 @@ a regression.
   entire virtual-time budget has elapsed. The handoff does not provide
   instruction-level preemption or core affinity; scheduler boundaries now use
   the deterministic priority gate described by plan 158.
-- `action drop` and `action drop <n>` model a dropped fake peer link. `seed
-  connect_fail true` makes the fake camera reject connection. The rig options
+- Camera-link faults are transport faults on the real MockNimBLE link.
+  `action drop` and `action drop <n>` sever a live link with the GAP disconnect
+  delivered; `action ble-kill` severs it and leaves the event queued;
+  `action ble-standby` runs a flappy peer's standby drop;
+  `action ble-connect-fail` and `action ble-connect-ok` toggle transport
+  connect failure; `action ble-withhold-registration` and
+  `action ble-allow-registration` hold a Fujifilm peer's registration
+  confirmation. `seed connect_fail true` registers one
+  virtual peer and fails its connects. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
   `--delay-ms`.
 - The SDL harness models the IMU through `sim/ImuSim.cpp`, which is the host
@@ -232,10 +247,12 @@ a regression.
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
   boundary.
-- The `scan_distinct` scenario-only boolean makes the asynchronous scan worker
-  publish two distinct FauxNY advertisements. The
-  `scan-distinct-rows-heartbeat.txt` scenario asserts both rows and the live
-  watchdog after the UI task drains them.
+- `seed ble_peers <topology>` selects the virtual radio topology (`none`,
+  `fuji`, `fuji-pair`, `fuji-ricoh-flappy`) and `seed ble_saved true` persists
+  its cameras through the production `CameraList::match` and `save`. The
+  `scan-distinct-rows-heartbeat.txt` scenario asserts both matched rows and the
+  live watchdog after the UI task drains them. `seed scan_timeout N` bounds the
+  discovery scan so the production scan-end callback runs.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA

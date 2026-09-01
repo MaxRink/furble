@@ -14,7 +14,23 @@ ownership, or teardown defects.
 
 ## Implementation state
 
-The current PR implements the first scheduler foundation: a shared 64-bit
+Phase 2 is implemented by plan 163: production `Control`, `Camera`,
+`CameraList`, `Scan`, `Device` and every vendor class now build in the SDL
+simulator over the shared MockNimBLE boundary and the virtual camera peers,
+the four simulator substitutes are deleted, and `link_lies` is gone in favour
+of transport-level faults that never touch control state. Steps 1, 2 and 4 of
+Phase 2 are done. Step 3 (generation and cancellation tests for every handshake
+phase) is partly covered by the existing host suite and step 5 (a differential
+trace against hardware) is not started.
+
+Phase 2 also surfaced one Phase 3 item that must not be described as closed: a
+task that only wakes on a virtual-clock deadline can be starved while the UI
+thread drives virtual time forward in large steps. It shows up as a control
+task that stops re-polling `Camera::connectCancelled()` inside a long vendor
+wait, so an interactive disconnect falls back to its 30 s cap. Plan 163 records
+the reproducer.
+
+The first PR under this plan implements the first scheduler foundation: a shared 64-bit
 virtual clock, virtual FreeRTOS and esp_timer deadlines, queue-front sends,
 joinable task workers and one timer dispatcher, cooperative shutdown, orderly
 simulator exit, and focused deadline, wrap, queue, timer, and shutdown tests.
