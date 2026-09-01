@@ -1292,12 +1292,13 @@ int main(void) {
   testConsoleTaskTransport();
   testDebugWithLiveCamera();
 
+  // The console task is detached and loops forever, exactly as it does on
+  // device. Park it before returning, otherwise the runtime destroys the
+  // globals it is still blocked on and the process segfaults on its way out.
+  check(ConsoleHost::parkConsoleTask(5000), "the console task parks for shutdown");
+
   std::cerr << (g_Failures == 0 ? "PASS" : "FAIL") << ": " << (g_Checks - g_Failures) << "/"
             << g_Checks << " checks\n";
-
-  // The console task is detached and never joined, exactly as the control task
-  // is in the other host suites. It is quiescent with no input queued, so a
-  // normal return is safe and lets the coverage runtime write its profile.
   fflush(stdout);
   std::remove(capturePath);
   return (g_Failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;

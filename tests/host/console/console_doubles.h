@@ -158,6 +158,18 @@ void feedBytes(const std::string &bytes);
 /** Wait until the transport has consumed every fed byte. */
 bool waitForInputDrained(int timeout_ms);
 
+/**
+ * Park the console task so the process can exit safely.
+ *
+ * The console task is detached and loops forever, exactly as it does on
+ * device. Returning from main() while it is blocked on the transport would let
+ * the runtime destroy the globals it is waiting on. This wakes it at a known
+ * point inside the transport read and leaves it sleeping there, touching
+ * nothing else, for the rest of the process. Returns false if it did not park
+ * within the timeout.
+ */
+bool parkConsoleTask(int timeout_ms);
+
 /** Reset every recorded call and injected result to its default. */
 void resetDoubles(void);
 

@@ -345,6 +345,10 @@ std::mutex g_InputMutex;
 std::condition_variable g_InputCond;
 std::deque<uint8_t> g_Input;
 
+// Set once, at the end of the run. See ConsoleHost::parkConsoleTask().
+bool g_Parked = false;
+bool g_ParkAcknowledged = false;
+
 std::string g_CapturePath;
 
 }  // namespace
@@ -362,7 +366,18 @@ int usb_serial_jtag_read_bytes(void *buffer, uint32_t length, uint32_t ticks_to_
   std::unique_lock<std::mutex> lock(g_InputMutex);
   if (g_Input.empty()) {
     g_InputCond.wait_for(lock, std::chrono::milliseconds(ticks_to_wait),
-                         [] { return !g_Input.empty(); });
+                         [] { return !g_Input.empty() || g_Parked; });
+    if (g_Parked) {
+      // The run is over. Acknowledge, drop the lock and stay here forever, so
+      // the console task never touches a global again while the process tears
+      // itself down around it.
+      g_ParkAcknowledged = true;
+      lock.unlock();
+      g_InputCond.notify_all();
+      while (true) {
+        std::this_thread::sleep_for(std::chrono::hours(1));
+      }
+    }
     if (g_Input.empty()) {
       return 0;
     }
@@ -892,6 +907,14 @@ void feedBytes(const std::string &bytes) {
     }
   }
   g_InputCond.notify_all();
+}
+
+bool parkConsoleTask(int timeout_ms) {
+  std::unique_lock<std::mutex> lock(g_InputMutex);
+  g_Parked = true;
+  g_InputCond.notify_all();
+  return g_InputCond.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                              [] { return g_ParkAcknowledged; });
 }
 
 bool waitForInputDrained(int timeout_ms) {
