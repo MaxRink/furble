@@ -75,6 +75,17 @@ void bleSaveRegisteredPeers(void);
 /** Count a camera command that reached a camera task (observability only). */
 void noteCameraCommand(int cmd);
 
+/**
+ * Make every Fujifilm peer withhold its registration confirmation.
+ *
+ * The camera answers every link and GATT operation but never confirms
+ * registration, which is a camera sitting in its own settings screen. The
+ * production connect then blocks in its registration wait, so a disconnect
+ * arriving in that window has to cancel an in-flight connect: the plan 148
+ * teardown wedge, and the shape of the 2026-08-28 multi-target wedge.
+ */
+bool bleSetWithholdRegistration(bool withhold);
+
 /** Number of advertisements the virtual radio has delivered. */
 size_t bleAdvertisementCount(void);
 

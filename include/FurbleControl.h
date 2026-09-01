@@ -172,7 +172,7 @@ class Control {
   /** Retrieve current control state. */
   state_t getState(void) const;
 
-#if defined(FURBLE_CONSOLE)
+#if defined(FURBLE_CONSOLE) || defined(FURBLE_SIM)
   /**
    * Full control state machine snapshot for the debug console.
    *
@@ -202,7 +202,7 @@ class Control {
 
   /** Capture the control state snapshot under m_Mutex. */
   debug_state_t getDebugState(void) const;
-#endif
+#endif  // FURBLE_CONSOLE || FURBLE_SIM
 
   /** Retrieve the number of active camera targets. */
   size_t getTargetCount(void) const;

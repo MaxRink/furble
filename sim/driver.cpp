@@ -299,6 +299,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "saved_camera",
       "scan_start_probe",
       "ble_saved",
+      "recon_backoff",
       "auto_off_charging",
       "imu",
       "imu_sensor",
@@ -673,7 +674,9 @@ void readScript(const std::string &path) {
     // The transport faults act on virtual BLE peers, so a scenario that uses
     // one without seeding a topology is a scripting error, not a silent no-op.
     if ((step.action.name == "ble-kill" || step.action.name == "ble-standby"
-         || step.action.name == "ble-connect-fail" || step.action.name == "ble-connect-ok")
+         || step.action.name == "ble-connect-fail" || step.action.name == "ble-connect-ok"
+         || step.action.name == "ble-withhold-registration"
+         || step.action.name == "ble-allow-registration")
         && (scenarioSettings.find("ble_peers") == scenarioSettings.end()
             || scenarioSettings.at("ble_peers") == "none")) {
       std::cerr << "Invalid simulator action '" << step.name
@@ -892,6 +895,10 @@ void checkLivenessInvariant(void) {
 //                    power state and severs the link
 //   ble-connect-fail make NimBLEClient::connect() fail at the transport
 //   ble-connect-ok   let connects succeed again
+//   ble-withhold-registration / ble-allow-registration
+//                    make every Fujifilm peer answer the link but never
+//                    confirm registration, so the production connect blocks
+//                    in its registration wait
 //
 // Returns true when the action was one of these, so the caller does not also
 // dispatch it into the UI.
@@ -906,6 +913,14 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
   }
   if (action.name == "ble-standby") {
     *applied = blePeerStandbyDrop(-1);
+    return true;
+  }
+  if (action.name == "ble-withhold-registration") {
+    *applied = bleSetWithholdRegistration(true);
+    return true;
+  }
+  if (action.name == "ble-allow-registration") {
+    *applied = bleSetWithholdRegistration(false);
     return true;
   }
   if (action.name == "ble-connect-fail") {
@@ -980,6 +995,32 @@ std::string queryValue(const std::string &key) {
     }
     if (sub == "targets") {
       return std::to_string(control.getTargetCount());
+    }
+    // The internals the 2026-08-28 wedge was diagnosed from: a control task
+    // stuck in disconnecting with a connect still in progress, and quarantined
+    // targets that never drained. Production exposes them to the debug console;
+    // the simulator reads the same snapshot.
+    const auto debug = control.getDebugState();
+    if (sub == "zombies") {
+      return std::to_string(debug.zombieCount);
+    }
+    if (sub == "connect_in_progress") {
+      return debug.connectInProgress ? "yes" : "no";
+    }
+    if (sub == "connect_abort") {
+      return debug.connectAbort ? "yes" : "no";
+    }
+    if (sub == "reconnect_attempt") {
+      return std::to_string(debug.reconnectAttempt);
+    }
+    if (sub == "reconnect_backoff") {
+      return debug.reconnectBackoff ? "yes" : "no";
+    }
+    if (sub == "infinite_reconnect") {
+      return debug.infiniteReconnect ? "yes" : "no";
+    }
+    if (sub == "connecting_camera") {
+      return debug.connectingCamera;
     }
   }
   if (prefixed("camera.")) {
@@ -1187,12 +1228,17 @@ void applyScenarioSettings(void) {
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);
+  const auto scanTimeout = scenarioSettings.find("scan_timeout");
+  if (scanTimeout != scenarioSettings.end()) {
+    Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));
+  }
   saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
   saveBoolean("reconnect", Settings::RECONNECT);
+  saveBoolean("recon_backoff", Settings::RECON_BACKOFF);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
 #if defined(FURBLE_M5STICKS3)

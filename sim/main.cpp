@@ -138,14 +138,25 @@ int runSimulator() {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   ui.task();
+
+  // Tear the control session down before anything else unwinds. The firmware
+  // never leaves UI::task, so on device this teardown only runs on the restart
+  // path; on the host, process exit would otherwise destroy the NimBLE client
+  // pool and the control targets in an unspecified static order, and the
+  // target destructor's Camera::disconnect() would dereference a freed client.
+  control.disconnect(Control::DISCONNECT_WAIT_MAX_MS, /*forRestart=*/true);
   Scan::getInstance().stop();
   Scan::getInstance().joinStartProbes();
-  Sim::bleStopPeers();
   // No rig worker may arm or touch a service timer after this point. The
   // esp_timer API deletes callbacks asynchronously on hardware, so keep the
   // callback argument alive until the simulator dispatcher has joined.
   Sim::quiesceRig();
   furble_sim_stop_all_tasks();
+  // The virtual peers are released only after every task has joined. The
+  // control task, its per-target tasks and the virtual radio all hold pointers
+  // into a peer, so freeing them while any of those still runs is a
+  // use-after-free at shutdown.
+  Sim::bleStopPeers();
   Sim::stopRig();
   return Sim::exitResult();
 }

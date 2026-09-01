@@ -754,7 +754,7 @@ Control::state_t Control::getState(void) const {
   return m_State;
 }
 
-#if defined(FURBLE_CONSOLE)
+#if defined(FURBLE_CONSOLE) || defined(FURBLE_SIM)
 Control::debug_state_t Control::getDebugState(void) const {
   debug_state_t snapshot = {};
 
@@ -792,7 +792,7 @@ Control::debug_state_t Control::getDebugState(void) const {
 
   return snapshot;
 }
-#endif
+#endif  // FURBLE_CONSOLE || FURBLE_SIM
 
 size_t Control::getTargetCount(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);

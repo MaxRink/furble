@@ -88,7 +88,9 @@ void addRicoh(uint64_t address, const std::string &name, uint32_t flappyFailAtte
   Host::RicohVirtualCamera::Config config;
   config.name = name;
   config.address = NimBLEAddress(address, 0);
-  config.camera_bonded = true;
+  // Unbonded on both sides at boot, so the first handshake that gets through
+  // bonds the pair exactly as it does the first time a GR is paired.
+  config.camera_bonded = false;
   auto peer = std::make_unique<VirtualPeer>();
   peer->name = name;
   peer->address = config.address;
@@ -277,6 +279,18 @@ bool blePeerStandbyDrop(int index) {
   }
 
   return dropped;
+}
+
+bool bleSetWithholdRegistration(bool withhold) {
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  bool applied = false;
+  for (const auto &peer : peers) {
+    if (peer->fujifilm != nullptr) {
+      peer->fujifilm->setWithholdRegistration(withhold);
+      applied = true;
+    }
+  }
+  return applied;
 }
 
 size_t bleAdvertisementCount(void) {
