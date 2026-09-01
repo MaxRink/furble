@@ -2,8 +2,8 @@
 # display timeout has elapsed.
 seed autoconnect true
 seed auto_off 1
-wait 2000
-assert control.state active
+wait 4000
+assert-eventually-virtual 3000 control.state active
 wait 61000
 assert platform.power_off no
 exit

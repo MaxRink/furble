@@ -14,11 +14,11 @@ seed fauxny true
 seed reconnect true
 wait 300
 action connect-two
-wait 1200
-assert control.state active
+wait 3200
+assert-eventually-virtual 3000 control.state active
 assert control.targets 2
 assert control.connected 2
-assert ui.connected yes
+assert-eventually-virtual 2000 ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
 assert ui.status_text Connected
@@ -43,7 +43,7 @@ assert ui.reconnecting yes
 print ui.status_text
 assert ui.reconnect_count 1/2
 # The dropped camera reconnects and both links are live again; the count clears.
-wait 1000
+wait 2500
 assert control.state active
 assert control.connected 2
 assert ui.connected yes

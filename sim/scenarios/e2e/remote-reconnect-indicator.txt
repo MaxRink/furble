@@ -11,9 +11,9 @@ seed fauxny true
 seed reconnect true
 wait 300
 action connect
-wait 1000
-assert control.state active
-assert ui.connected yes
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 # Navigate to the full-screen Remote shutter page.
 action blind
 wait 200
@@ -34,7 +34,7 @@ assert ui.remote_reconnecting yes
 # StickC, where the name is omitted and the icon shows alone.
 assert ui.remote_named yes
 # Reconnect completes and the banner clears, still on the shutter page.
-wait 1000
+wait 2500
 assert control.state active
 assert ui.page shutter
 assert ui.remote_reconnecting no

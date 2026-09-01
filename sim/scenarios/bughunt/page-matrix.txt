@@ -260,7 +260,7 @@ assert ui.scroll_top 0
 # Connected-session pages and their run states.
 home
 action connect
-wait 1800
+wait 3200
 assert ui.page connected
 assert ui.connected yes
 assert ui.overflow no

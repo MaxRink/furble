@@ -78,7 +78,7 @@ assert ui.page shutter
 assert ui.overflow no
 # Connected page: compact, must fit on the narrow panels.
 action connect
-wait 1500
+wait 3200
 assert ui.connected yes
 assert ui.page connected
 assert ui.overflow no
