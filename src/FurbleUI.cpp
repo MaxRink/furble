@@ -368,6 +368,9 @@ UI::UI(const interval_t &interval)
     abort();
   }
 
+  Camera::setPairingRequestCallback(
+      [](Camera *camera) { UI::sendRequest(Request::CAMERA_PAIRING, 0, camera); });
+
   // The backlight PWM is clocked from the APB bus. DFS scaling the APB
   // frequency modulates the PWM and the whole screen flickers, so pin the
   // APB clock while the display is on. Display off can release this later.
@@ -774,6 +777,153 @@ void UI::startCompanionPairingTimer(void) {
   if (m_CompanionPairingTimer == nullptr) {
     m_CompanionPairingTimer = lv_timer_create(companionPairingTimer, 250, this);
   }
+}
+
+void UI::startPairingTimer(void) {
+  if (m_PairingTimer == nullptr) {
+    m_PairingTimer = lv_timer_create(pairingTimer, 250, this);
+  } else {
+    lv_timer_resume(m_PairingTimer);
+  }
+}
+
+void UI::stopPairingTimer(void) {
+  if (m_PairingTimer != nullptr) {
+    lv_timer_pause(m_PairingTimer);
+  }
+}
+
+void UI::closePairingDialog(void) {
+  if ((m_PairingDialog != nullptr) && lv_obj_is_valid(m_PairingDialog)) {
+    lv_msgbox_close_async(m_PairingDialog);
+  }
+  m_PairingDialog = nullptr;
+  m_PairingCamera.reset();
+  m_PairingIsCamera = false;
+  if ((m_PairingPrevFocus != nullptr) && lv_obj_is_valid(m_PairingPrevFocus)) {
+    lv_group_focus_obj(m_PairingPrevFocus);
+  }
+  m_PairingPrevFocus = nullptr;
+  stopPairingTimer();
+}
+
+void UI::showCameraPairing(Camera *camera) {
+  if ((camera == nullptr) || (m_PairingDialog != nullptr)) {
+    return;
+  }
+
+  std::shared_ptr<Camera> owner = Control::getInstance().getConnectingCamera();
+  if (owner.get() != camera) {
+    owner.reset();
+    for (const auto &targetCamera : Control::getInstance().getTargetCameras()) {
+      if (targetCamera.get() == camera) {
+        owner = targetCamera;
+        break;
+      }
+    }
+  }
+  if (!owner || !owner->hasPendingPairing()) {
+    return;
+  }
+  if (owner->pairingTimedOut()) {
+    owner->cancelPairing();
+    return;
+  }
+
+  const Camera::PairingType type = owner->getPairingType();
+  if (type == Camera::PairingType::NONE) {
+    return;
+  }
+
+  m_PairingCamera = owner;
+  m_PairingIsCamera = true;
+  m_PairingPrevFocus = lv_group_get_focused(m_Group);
+  m_PairingDialog = lv_msgbox_create(nullptr);
+  lv_obj_set_style_max_width(m_PairingDialog, m_Width - 4, 0);
+  lv_msgbox_add_title(m_PairingDialog, "Pair camera");
+
+  lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *name = lv_label_create(content);
+  lv_label_set_text(name, owner->getDisplayName().c_str());
+  lv_obj_set_width(name, LV_PCT(100));
+  lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
+
+  const bool confirm = type == Camera::PairingType::NUMERIC_COMPARISON;
+  if (m_Height >= 170) {
+    lv_obj_t *instruction = lv_label_create(content);
+    lv_label_set_text(instruction,
+                      confirm ? "Confirm it matches the camera" : "Enter this code on the camera");
+    lv_obj_set_width(instruction, LV_PCT(100));
+    lv_label_set_long_mode(instruction, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(instruction, LV_TEXT_ALIGN_CENTER, 0);
+  }
+
+  lv_obj_t *code = lv_label_create(content);
+  lv_label_set_text_fmt(code, "%06lu", static_cast<unsigned long>(owner->getPairingCode()));
+  lv_obj_set_style_text_align(code, LV_TEXT_ALIGN_CENTER, 0);
+
+  lv_obj_t *accept = nullptr;
+  if (confirm) {
+    accept = lv_msgbox_add_footer_button(m_PairingDialog, m_Width < 100 ? "Yes" : "Confirm");
+    addToInputGroup(m_Group, accept);
+    lv_obj_add_event_cb(
+        accept,
+        [](lv_event_t *event) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+          auto camera = ui->m_PairingCamera.lock();
+          if (camera) {
+            camera->answerPairing(true);
+          }
+          ui->closePairingDialog();
+        },
+        LV_EVENT_CLICKED, this);
+  }
+
+  lv_obj_t *cancel = lv_msgbox_add_footer_button(m_PairingDialog, m_Width < 100 ? "No" : "Cancel");
+  addToInputGroup(m_Group, cancel);
+  lv_obj_add_event_cb(
+      cancel,
+      [](lv_event_t *event) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+        auto camera = ui->m_PairingCamera.lock();
+        if (camera) {
+          camera->cancelPairing();
+        }
+        ui->closePairingDialog();
+      },
+      LV_EVENT_CLICKED, this);
+  lv_group_focus_obj(accept != nullptr ? accept : cancel);
+}
+
+void UI::pairingTimer(lv_timer_t *timer) {
+  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+  if (ui->m_PairingDialog != nullptr) {
+    auto camera = ui->m_PairingCamera.lock();
+    if (!camera || !camera->hasPendingPairing()) {
+      ui->closePairingDialog();
+    } else if (camera->pairingTimedOut()) {
+      camera->cancelPairing();
+      ui->closePairingDialog();
+    }
+    return;
+  }
+  auto connecting = Control::getInstance().getConnectingCamera();
+  if (connecting && connecting->hasPendingPairing()) {
+    ui->showCameraPairing(connecting.get());
+    return;
+  }
+  for (const auto &camera : Control::getInstance().getTargetCameras()) {
+    if (camera && camera->hasPendingPairing()) {
+      ui->showCameraPairing(camera.get());
+      return;
+    }
+  }
+  ui->stopPairingTimer();
 }
 
 void UI::closeCompanionPairingDialog(void) {
@@ -5532,12 +5682,12 @@ void UI::intervalometer(lv_timer_t *timer) {
 
 QueueHandle_t UI::m_RequestQueue = NULL;
 
-bool UI::sendRequest(Request request, int32_t arg) {
+bool UI::sendRequest(Request request, int32_t arg, Camera *camera) {
   if (m_RequestQueue == NULL) {
     return false;
   }
 
-  const request_t item = {request, arg};
+  const request_t item = {request, arg, camera};
 
   return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
 }
@@ -5693,6 +5843,11 @@ void UI::serviceRequests(void) {
       case Request::FEEDBACK_TEST:
         // Runs here because signal() touches the LVGL feedback timer.
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
+        break;
+
+      case Request::CAMERA_PAIRING:
+        m_ConnectContext.ui->startPairingTimer();
+        m_ConnectContext.ui->showCameraPairing(item.camera);
         break;
 
 #if defined(FURBLE_CONSOLE)

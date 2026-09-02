@@ -73,9 +73,7 @@ class UI {
 #include <functional>
 #endif
 #include <initializer_list>
-#if defined(FURBLE_SIM)
 #include <memory>
-#endif
 #include <mutex>
 #include <optional>
 #include <string>
@@ -86,6 +84,8 @@ class UI {
 #include <unordered_map>
 #include <vector>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include <lvgl.h>
 
 #include "FurbleCalibrate.h"
@@ -116,6 +116,7 @@ class UI {
    * every build.
    */
   enum class Request {
+#if defined(FURBLE_CONSOLE)
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
     CONNECT_SAVED,   /**< arg: stable saved camera id, including 0xff for the selection */
     DISCONNECT,      /**< arg: unused */
@@ -135,6 +136,8 @@ class UI {
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
+#endif
+    CAMERA_PAIRING, /**< camera: camera requesting a pairing prompt */
   };
 
   /**
@@ -145,7 +148,7 @@ class UI {
    *
    * @return true if the request was queued.
    */
-  static bool sendRequest(Request request, int32_t arg);
+  static bool sendRequest(Request request, int32_t arg, Camera *camera = nullptr);
 
   /** Notify the UI task that a gesture-related setting changed elsewhere. */
   static void notifyGestureSettingsChanged(void);
@@ -549,6 +552,7 @@ class UI {
   typedef struct {
     Request request;
     int32_t arg;
+    Camera *camera;
   } request_t;
 
   static constexpr UBaseType_t m_RequestQueueLength = 8;
@@ -766,6 +770,18 @@ class UI {
   lv_obj_t *m_StorageGPXSwitch = nullptr;
   bool m_StorageVisible = false;
   uint32_t m_StorageGeneration = 0;
+  lv_timer_t *m_PairingTimer = nullptr;
+  lv_obj_t *m_PairingDialog = nullptr;
+  // Weak reference to the camera behind the current camera pairing modal. A
+  // disconnect can free the Camera while the modal is still up, so the footer
+  // callbacks and the pairing timer lock() this before touching the camera and
+  // treat an expired reference as gone.
+  std::weak_ptr<Camera> m_PairingCamera;
+  // True while the open modal is a camera pairing prompt. Kept separate from
+  // m_PairingCamera because an expired weak reference cannot distinguish a
+  // camera modal whose camera was freed from a companion modal.
+  bool m_PairingIsCamera = false;
+  lv_obj_t *m_PairingPrevFocus = nullptr;
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
@@ -1354,16 +1370,19 @@ class UI {
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);
 
-  /** Poll for a pending companion numeric-comparison request. */
-  static void companionPairingTimer(lv_timer_t *timer);
+  /** Poll for a pending companion or camera pairing request. */
+  static void pairingTimer(lv_timer_t *timer);
 
-  /** Start the companion pairing prompt timer. */
-  void startCompanionPairingTimer(void);
+  /** Start the pairing prompt timer. */
+  void startPairingTimer(void);
 
-  /** Stop the companion pairing prompt timer. */
-  void stopCompanionPairingTimer(void);
+  /** Pause the pairing prompt timer when no pairing request is pending. */
+  void stopPairingTimer(void);
 
-  /** Close the pairing prompt and restore the focus captured before it opened. */
+  /** Close the current pairing prompt. */
+  void closePairingDialog(void);
+
+  /** Close the companion prompt when the companion setting is disabled. */
   void closeCompanionPairingDialog(void);
 
   /**
@@ -1389,6 +1408,11 @@ class UI {
 
   /** Close the connect error box and restore the focus captured before it opened. */
   void closeConnectErrorDialog(void);
+  /** Show a companion numeric-comparison prompt. */
+  void showCompanionPairing(void);
+
+  /** Show a camera pairing-code prompt. */
+  void showCameraPairing(Camera *camera);
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);
