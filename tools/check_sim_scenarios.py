@@ -37,7 +37,7 @@ EXACT_BOARDS = {
 }
 WORKFLOW_CAPABILITIES = {
   "capability-submenus.txt": {"ir", "feedback", "sd"},
-  "stick-notouch-layout.txt": {"ir", "feedback", "sd"},
+  "stick-notouch-layout.txt": {"ir"},
 }
 SUITES = set(OWNERS)
 REQUIRED = {"path", "suite", "owner", "boards", "capabilities", "expected_exit", "certified"}

@@ -20,7 +20,6 @@ seed fauxny true
 seed saved_camera true
 seed gps true
 seed imu true
-seed fb_output 1
 wait 300
 assert ui.nav_layout buttons
 

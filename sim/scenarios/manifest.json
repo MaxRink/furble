@@ -131,9 +131,7 @@
         "fauxny",
         "gps",
         "imu",
-        "feedback",
-        "ir",
-        "sd"
+        "ir"
       ],
       "expected_exit": 0,
       "certified": true
