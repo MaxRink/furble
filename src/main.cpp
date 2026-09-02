@@ -2,6 +2,8 @@
 #include <freertos/queue.h>
 
 #if defined(FURBLE_NO_DISPLAY)
+#include <atomic>
+
 #include <M5Unified.h>
 #include <esp_timer.h>
 #endif
@@ -89,6 +91,15 @@ typedef struct {
 
 QueueHandle_t g_HeadlessRequestQueue = NULL;
 
+/**
+ * Outcome token for the request just serviced.
+ *
+ * The same contract the display build answers: a workflow handler prints its
+ * own lines and serviceRequests() ends the answer with 'result: <token>', so
+ * a host script reads one machine readable outcome whichever build it drives.
+ */
+std::atomic<const char *> g_ConsoleResult {nullptr};
+
 void printCameras(bool reload) {
   if (reload) {
     CameraList::load();
@@ -104,16 +115,22 @@ void printCameras(bool reload) {
     // The same list carries saved cameras and scan results, and a scan can
     // rediscover a saved camera. Say which each row is.
     printf("camera%u.saved: %s\n", static_cast<unsigned>(n),
-           CameraList::isSaved(camera.get()) ? "true" : "false");
+           CameraList::isSavedAddress(camera.get()) ? "true" : "false");
     printf("camera%u.selected: %s\n", static_cast<unsigned>(n),
            camera->isActive() ? "true" : "false");
   }
 }
 
 void deleteCameras(int32_t index) {
+  // The same answer the display build's Request::DELETE handler prints, minus
+  // the Delete page refresh this build has no page to do. A refusal is a
+  // console line rather than a log line: it is the answer to a command a
+  // script just typed, so it has to reach the console stream whatever the log
+  // level is.
   CameraList::load();
   if ((index >= 0) && (static_cast<size_t>(index) >= CameraList::size())) {
-    ESP_LOGE(LOG_TAG, "console: no saved camera at index %ld", index);
+    g_ConsoleResult = "no_saved_camera";
+    printf("error: no saved camera at index %ld\n", static_cast<long>(index));
     return;
   }
 
@@ -126,6 +143,7 @@ void deleteCameras(int32_t index) {
     CameraList::remove(CameraList::get(n).get());
     deleted++;
   }
+  g_ConsoleResult = "ok";
   printf("count: %u\n", deleted);
   CameraList::load();
 }
@@ -185,14 +203,26 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
+  // Drop the previous answer here, so a console verb which waits cannot read a
+  // stale token as this request's outcome.
+  g_ConsoleResult = nullptr;
+
   const headless_request_t item = {request, arg};
   return xQueueSend(g_HeadlessRequestQueue, &item, 0) == pdTRUE;
+}
+
+const char *UI::consoleResult(void) {
+  return g_ConsoleResult;
 }
 
 void UI::serviceRequests(void) {
   headless_request_t item;
 
   while (xQueueReceive(g_HeadlessRequestQueue, &item, 0) == pdTRUE) {
+    // The workflow verbs end with one machine readable outcome line. The
+    // requests which predate it leave this null and print nothing extra.
+    g_ConsoleResult = nullptr;
+
     switch (item.request) {
       case Request::CONNECT:
         connectCamera(item.arg);
@@ -239,6 +269,11 @@ void UI::serviceRequests(void) {
       case Request::FEEDBACK_TEST:
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
+    }
+
+    const char *result = g_ConsoleResult;
+    if (result != nullptr) {
+      printf("result: %s\n", result);
     }
   }
 }

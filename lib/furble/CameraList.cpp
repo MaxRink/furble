@@ -214,7 +214,7 @@ size_t CameraList::getSaveCount(void) {
   return index.size();
 }
 
-bool CameraList::isSaved(const Furble::Camera *camera) {
+bool CameraList::isSavedAddress(const Furble::Camera *camera) {
   if (camera == nullptr) {
     return false;
   }

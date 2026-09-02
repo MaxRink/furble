@@ -1309,6 +1309,72 @@ void testDebugWithLiveCamera(void) {
  * argument reaching the UI queue double, which is the seam, plus the usage and
  * refusal text a script has to read.
  */
+/**
+ * The wait is part of the contract, so drive a UI task which takes its time.
+ *
+ * docs/console-commands.md promises that a workflow verb holds the prompt
+ * until the UI task has answered, because the gate a script needs to see is
+ * decided there. Everywhere else in this suite the double answers inside
+ * sendRequest(), which cannot tell a verb that waits from one that returns
+ * straight away. Here it answers 20ms later from another thread, as the real
+ * UI task does, so a verb which does not wait returns before its answer is
+ * printed and before its token exists.
+ */
+void testWorkflowVerbsWaitForTheirAnswer(void) {
+  std::cerr << "test: a workflow verb holds the prompt until the UI task answers\n";
+
+  struct WaitCase {
+    const char *line;
+    const char *answerLine;
+    const char *token;
+    bool refused;
+  };
+
+  const std::vector<WaitCase> cases = {
+      {"delete 99",               "error: no saved camera at index 99", "no_saved_camera", true },
+      {"delete 0",                "deleted: X100VI",                    "ok",              false},
+      {"delete all",              "count: 2",                           "ok",              false},
+      {"multiconnect select 9",   "error: no saved camera at index 9",  "no_saved_camera", true },
+      {"multiconnect select 0",   "selected: true",                     "ok",              false},
+      {"multiconnect deselect 9", "error: no saved camera at index 9",  "no_saved_camera", true },
+      {"ui back",                 "page: back",                         "ok",              false},
+  };
+
+  for (const auto &entry : cases) {
+    ConsoleHost::ui().requests.clear();
+    ConsoleHost::ui().answerLine = entry.answerLine;
+    ConsoleHost::ui().answer = entry.token;
+    ConsoleHost::ui().answerDelayMs = 20;
+
+    const Result result = runDirect(entry.line);
+    const std::string what = std::string("'") + entry.line + "'";
+    const std::string tokenLine = std::string("result: ") + entry.token;
+    const size_t answerAt = result.out.find(entry.answerLine);
+    const size_t tokenAt = result.out.find(tokenLine);
+
+    checkContains(result.out, entry.answerLine, what + " waits for the answer the UI task prints");
+    checkContains(result.out, tokenLine, what + " waits for the token, not just the queue send");
+    check((answerAt != std::string::npos) && (tokenAt != std::string::npos) && (answerAt < tokenAt),
+          what + " prints the token after the answer it belongs to");
+    check(entry.refused ? (result.rc != 0) : (result.rc == 0),
+          what + " exits with the outcome the token reports");
+    check(!ConsoleHost::ui().requests.empty(), what + " reached the UI task");
+  }
+
+  // A UI task which never answers is a failure, not a success: the verb has no
+  // outcome to report, so it must not acknowledge one.
+  ConsoleHost::ui().answerLine = nullptr;
+  ConsoleHost::ui().answer = nullptr;
+  ConsoleHost::ui().answerDelayMs = 0;
+  const Result silent = runDirect("delete 0");
+  checkContains(silent.out, "no answer from the ui task",
+                "an unanswered workflow verb says so rather than claiming success");
+  check(silent.rc != 0, "an unanswered workflow verb exits non-zero");
+
+  ConsoleHost::joinUIAnswer();
+  ConsoleHost::ui().answer = "ok";
+}
+
 void testWorkflowCommands(void) {
   std::cerr << "test: the pairing, delete, multi-connect and shooting workflows dispatch\n";
 
@@ -1332,7 +1398,7 @@ void testWorkflowCommands(void) {
   check(ConsoleHost::ui().requests.empty(), "a refused pair queues nothing for the UI task");
 
   const Result paired = runDirect("pair 1");
-  checkContains(paired.out, "queued: pair", "pair acknowledges like the other request verbs");
+  check(paired.rc == 0, "pair returns the outcome the UI task answered with");
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAIR
             && ConsoleHost::ui().requests.back().arg == 1,
@@ -1348,11 +1414,11 @@ void testWorkflowCommands(void) {
                 "delete rejects a non-numeric index");
   check(ConsoleHost::ui().requests.empty(), "a refused delete queues nothing");
 
-  checkContains(runDirect("delete 3").out, "queued: delete", "delete is queued");
+  check(runDirect("delete 3").rc == 0, "delete returns the outcome the UI task answered with");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DELETE
             && ConsoleHost::ui().requests.back().arg == 3,
         "delete queues the saved camera index");
-  checkContains(runDirect("delete all").out, "queued: delete all", "delete all is queued");
+  check(runDirect("delete all").rc == 0, "delete all returns its outcome");
   check(ConsoleHost::ui().requests.back().arg == -1,
         "delete all queues the negative index the handler reads as a sweep");
 
@@ -1375,13 +1441,11 @@ void testWorkflowCommands(void) {
                 "multiconnect select rejects a non-numeric index");
   check(ConsoleHost::ui().requests.empty(), "a refused multiconnect select queues nothing");
 
-  checkContains(runDirect("multiconnect select 2").out, "queued: multiconnect select",
-                "multiconnect select is queued");
+  check(runDirect("multiconnect select 2").rc == 0, "multiconnect select returns its outcome");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_SELECT
             && ConsoleHost::ui().requests.back().arg == 2,
         "multiconnect select queues the saved camera index");
-  checkContains(runDirect("multiconnect deselect 2").out, "queued: multiconnect deselect",
-                "multiconnect deselect is queued");
+  check(runDirect("multiconnect deselect 2").rc == 0, "multiconnect deselect returns its outcome");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_DESELECT,
         "multiconnect deselect queues the matching request");
 
@@ -1398,7 +1462,7 @@ void testWorkflowCommands(void) {
                 "interval start refuses without a connection");
   check(ConsoleHost::ui().requests.empty(), "a refused interval start queues nothing");
 
-  checkContains(runDirect("interval stop").out, "queued: interval stop", "interval stop is queued");
+  check(runDirect("interval stop").rc == 0, "interval stop returns its outcome");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::INTERVAL
             && ConsoleHost::ui().requests.back().arg == 0,
         "interval stop queues the stop argument");
@@ -1414,7 +1478,7 @@ void testWorkflowCommands(void) {
   checkContains(runDirect("bulb start").out, "no active connection",
                 "bulb start refuses without a connection");
   check(ConsoleHost::ui().requests.empty(), "a refused bulb start queues nothing");
-  checkContains(runDirect("bulb stop").out, "queued: bulb stop", "bulb stop is queued");
+  check(runDirect("bulb stop").rc == 0, "bulb stop returns its outcome");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BULB
             && ConsoleHost::ui().requests.back().arg == 0,
         "bulb stop queues the stop argument");
@@ -1432,8 +1496,7 @@ void testWorkflowCommands(void) {
   check(ConsoleHost::ui().requests.empty(), "a refused brightness queues nothing");
 
   runDirect("settings set brightness 32");
-  checkContains(runDirect("display brightness 96").out, "queued: display brightness",
-                "display brightness is queued");
+  check(runDirect("display brightness 96").rc == 0, "display brightness returns its outcome");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_BRIGHTNESS
             && ConsoleHost::ui().requests.back().arg == 96,
         "display brightness carries the value to the UI task");
@@ -1464,18 +1527,19 @@ void testWorkflowCommands(void) {
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAGE,
         "ui page asks the UI task for the current page name");
-  checkContains(runDirect("ui back").out, "queued: ui back", "ui back is queued");
+  check(runDirect("ui back").rc == 0, "ui back returns the outcome the UI task answered with");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BACK,
         "ui back queues the header back button");
 
-  // Power off. The console says so before the request lands, because the rail
-  // goes with it.
+  // Power off. The handler prints its token before it pulls the rail, so the
+  // verb waits for that answer like every other workflow verb.
   ConsoleHost::ui().requests.clear();
-  const Result powerOff = runDirect("power off");
-  checkContains(powerOff.out, "queued: power off", "power off acknowledges before it is queued");
+  check(runDirect("power off").rc == 0, "power off returns the outcome it was answered with");
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::POWER_OFF,
         "power off queues the UI task shutdown sequence");
+
+  testWorkflowVerbsWaitForTheirAnswer();
 }
 
 int main(void) {

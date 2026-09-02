@@ -110,7 +110,9 @@ registration gate and the save on success behave identically either way.
 Each workflow verb ends its answer with one machine readable outcome line,
 `result: <token>`. The tokens are `ok`, `no_scan_result`, `no_saved_camera`,
 `not_running`, `no_button`, `range` and `selection_full`, so a host script never
-has to match on prose.
+has to match on prose. The answer is printed by the UI task, so the verb waits
+for it before returning to the prompt, and the token is also the exit status:
+`ok` returns 0 and every other token returns 1.
 
 `pair <scan index>` is the Scan page row click. The index names a row of the
 most recent `scan list`; an index that names no scan result comes back as
@@ -144,7 +146,9 @@ deliberately not offered: those tables exist only in the simulator build.
 
 On the display-less Waveshare board the verbs that drive an LVGL page answer
 `not supported in this build`: `pair`, `interval`, `bulb`, `display`,
-`power off`, `ui`, and `multiconnect select | deselect | clear`.
+`power off`, `ui`, and `multiconnect select | deselect | clear`. The verbs that
+do work there answer with the same lines and the same `result:` token the
+display build answers with; `delete` simply has no Delete page to refresh.
 
 ## bt
 

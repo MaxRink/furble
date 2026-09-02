@@ -45,7 +45,7 @@ bool testDispatchAndDeduplication() {
  * A scan result is not a saved camera until it is saved.
  *
  * The connectable list carries both, so the console tells them apart with
- * CameraList::isSaved(). It reads the store, which is what makes it correct
+ * CameraList::isSavedAddress(). It reads the store, which is what makes it correct
  * for a scan that rediscovers a camera the device already knows.
  */
 bool testSavedFlag() {
@@ -57,18 +57,18 @@ bool testSavedFlag() {
   device.setManufacturerData(lumix.data(), lumix.size());
   device.addServiceUUID(NimBLEUUID("054ac620-3214-11e6-ac0d-0002a5d5c51b"));
 
-  CHECK(!Furble::CameraList::isSaved(nullptr));
+  CHECK(!Furble::CameraList::isSavedAddress(nullptr));
   CHECK(Furble::CameraList::match(&device));
 
   const auto camera = Furble::CameraList::last();
-  CHECK(!Furble::CameraList::isSaved(camera.get()));
+  CHECK(!Furble::CameraList::isSavedAddress(camera.get()));
 
   Furble::CameraList::save(camera.get());
-  CHECK(Furble::CameraList::isSaved(camera.get()));
+  CHECK(Furble::CameraList::isSavedAddress(camera.get()));
   CHECK(Furble::CameraList::getSaveCount() == 1);
 
   Furble::CameraList::remove(camera.get());
-  CHECK(!Furble::CameraList::isSaved(camera.get()));
+  CHECK(!Furble::CameraList::isSavedAddress(camera.get()));
 
   Furble::CameraList::clear();
   return true;

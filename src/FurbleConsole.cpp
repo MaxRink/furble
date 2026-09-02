@@ -153,6 +153,9 @@ int sendRequest(UI::Request request, int32_t arg, const char *what) {
   return 0;
 }
 
+/** How long a console verb waits for the UI task to answer it. */
+constexpr uint32_t UI_ANSWER_MS = 100;
+
 /**
  * Queue a request that prints from the UI task and wait for the output.
  *
@@ -164,8 +167,34 @@ int sendPrintingRequest(UI::Request request, int32_t arg) {
     return fail("ui request queue unavailable");
   }
 
-  vTaskDelay(pdMS_TO_TICKS(100));
+  vTaskDelay(pdMS_TO_TICKS(UI_ANSWER_MS));
   return 0;
+}
+
+/**
+ * Queue a workflow request, wait for its answer, and exit with its outcome.
+ *
+ * The gate a workflow verb needs is decided on the task which owns the list or
+ * the widget, so the answer is printed from there and ends with one machine
+ * readable 'result: <token>' line. Waiting keeps that answer ahead of the next
+ * prompt, and the token becomes the exit status, so a refused verb never
+ * acknowledges a workflow which did not run.
+ */
+int sendWorkflowRequest(UI::Request request, int32_t arg) {
+  if (!UI::sendRequest(request, arg)) {
+    return fail("ui request queue unavailable");
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(UI_ANSWER_MS));
+
+  const char *result = UI::consoleResult();
+  if (result == nullptr) {
+    // The UI task had not drained the queue when the wait expired. Say so
+    // rather than reporting an outcome it never gave.
+    return fail("no answer from the ui task");
+  }
+
+  return (strcmp(result, "ok") == 0) ? 0 : 1;
 }
 
 /*
@@ -768,10 +797,15 @@ int cmdUI(int argc, char **argv) {
   return fail("not supported in this build");
 #else
   if (back) {
-    return sendRequest(UI::Request::BACK, 0, "ui back");
+    return sendWorkflowRequest(UI::Request::BACK, 0);
   }
 
-  return sendPrintingRequest(audit ? UI::Request::AUDIT : UI::Request::PAGE, 0);
+  if (audit) {
+    // The audit dumps the widget tree and reports no outcome token.
+    return sendPrintingRequest(UI::Request::AUDIT, 0);
+  }
+
+  return sendWorkflowRequest(UI::Request::PAGE, 0);
 #endif
 }
 
@@ -1127,15 +1161,12 @@ int cmdPower(int argc, char **argv) {
     // the link down before the PMIC call, and all of that lives on the UI task.
     return fail("not supported in this build");
 #else
-    // The rail goes with the request, so flush the acknowledgement immediately
-    // after queueing it. Printing first would claim success even when the
-    // queue refused.
-    if (!UI::sendRequest(UI::Request::POWER_OFF, 0)) {
-      return fail("ui request queue unavailable");
-    }
-    printf("queued: power off\n");
+    // The handler prints its own token before it pulls the rail, so this
+    // waits for that answer like every other workflow verb. On a device the
+    // wait simply ends with the power.
+    const int rc = sendWorkflowRequest(UI::Request::POWER_OFF, 0);
     fflush(stdout);
-    return 0;
+    return rc;
 #endif
   }
 
@@ -1511,12 +1542,7 @@ int cmdPair(int argc, char **argv) {
   // Only the UI task knows whether the connectable list currently holds scan
   // results, so the refusal for an index that names nothing is printed from
   // there. Wait for it, so a script reads the answer before the next prompt.
-  if (!UI::sendRequest(UI::Request::PAIR, index)) {
-    return fail("ui request queue unavailable");
-  }
-  printf("queued: pair\n");
-  vTaskDelay(pdMS_TO_TICKS(100));
-  return 0;
+  return sendWorkflowRequest(UI::Request::PAIR, index);
 #endif
 }
 
@@ -1526,7 +1552,7 @@ int cmdDelete(int argc, char **argv) {
   }
 
   if (!strcmp(argv[1], "all")) {
-    return sendRequest(UI::Request::DELETE, -1, "delete all");
+    return sendWorkflowRequest(UI::Request::DELETE, -1);
   }
 
   int32_t index = 0;
@@ -1534,7 +1560,7 @@ int cmdDelete(int argc, char **argv) {
     return fail("expected a camera index from 'cameras list', or all");
   }
 
-  return sendRequest(UI::Request::DELETE, index, "delete");
+  return sendWorkflowRequest(UI::Request::DELETE, index);
 }
 
 int cmdMultiConnect(int argc, char **argv) {
@@ -1561,7 +1587,7 @@ int cmdMultiConnect(int argc, char **argv) {
     // Writing the empty set from here would leave the loaded active flags and
     // the drawn checkboxes set, and the next Connect press would serialise the
     // whole set straight back.
-    return sendPrintingRequest(UI::Request::MULTI_CLEAR, 0);
+    return sendWorkflowRequest(UI::Request::MULTI_CLEAR, 0);
 #endif
   }
 
@@ -1584,8 +1610,8 @@ int cmdMultiConnect(int argc, char **argv) {
   // the camera list to resolve an index onto one.
   return fail("not supported in this build");
 #else
-  return sendRequest(select ? UI::Request::MULTI_SELECT : UI::Request::MULTI_DESELECT, index,
-                     select ? "multiconnect select" : "multiconnect deselect");
+  return sendWorkflowRequest(select ? UI::Request::MULTI_SELECT : UI::Request::MULTI_DESELECT,
+                             index);
 #endif
 }
 
@@ -1687,7 +1713,7 @@ int cmdInterval(int argc, char **argv) {
   return fail("not supported in this build");
 #else
   if (!strcmp(argv[1], "status")) {
-    return sendPrintingRequest(UI::Request::INTERVAL, -1);
+    return sendWorkflowRequest(UI::Request::INTERVAL, -1);
   }
 
   const bool start = !strcmp(argv[1], "start");
@@ -1698,12 +1724,7 @@ int cmdInterval(int argc, char **argv) {
     if (start && (Control::getInstance().getState() != Control::STATE_ACTIVE)) {
       return fail("no active connection");
     }
-    if (!UI::sendRequest(UI::Request::INTERVAL, start ? 1 : 0)) {
-      return fail("ui request queue unavailable");
-    }
-    printf("queued: interval %s\n", start ? "start" : "stop");
-    vTaskDelay(pdMS_TO_TICKS(100));
-    return 0;
+    return sendWorkflowRequest(UI::Request::INTERVAL, start ? 1 : 0);
   }
 
   return fail("expected start, stop or status");
@@ -1721,7 +1742,7 @@ int cmdBulb(int argc, char **argv) {
   return fail("not supported in this build");
 #else
   if (!strcmp(argv[1], "status")) {
-    return sendPrintingRequest(UI::Request::BULB, -1);
+    return sendWorkflowRequest(UI::Request::BULB, -1);
   }
 
   const bool start = !strcmp(argv[1], "start");
@@ -1732,12 +1753,7 @@ int cmdBulb(int argc, char **argv) {
     if (start && (Control::getInstance().getState() != Control::STATE_ACTIVE)) {
       return fail("no active connection");
     }
-    if (!UI::sendRequest(UI::Request::BULB, start ? 1 : 0)) {
-      return fail("ui request queue unavailable");
-    }
-    printf("queued: bulb %s\n", start ? "start" : "stop");
-    vTaskDelay(pdMS_TO_TICKS(100));
-    return 0;
+    return sendWorkflowRequest(UI::Request::BULB, start ? 1 : 0);
   }
 
   return fail("expected start, stop or status");
@@ -1756,7 +1772,7 @@ int cmdDisplay(int argc, char **argv) {
   if (!strcmp(argv[1], "status")) {
     // Printed from the UI task, because the usable brightness range is a board
     // fact held there and a script needs it to pick a value this board accepts.
-    return sendPrintingRequest(UI::Request::DISPLAY_BRIGHTNESS, -1);
+    return sendWorkflowRequest(UI::Request::DISPLAY_BRIGHTNESS, -1);
   }
 
   if (!strcmp(argv[1], "mode")) {
@@ -1785,12 +1801,7 @@ int cmdDisplay(int argc, char **argv) {
     // 'settings set brightness' only persists, so it needs a reboot. The
     // board's usable range is narrower than 0-255 and only the UI task knows
     // it, so wait for the answer rather than reporting a queue depth.
-    if (!UI::sendRequest(UI::Request::DISPLAY_BRIGHTNESS, static_cast<int32_t>(value))) {
-      return fail("ui request queue unavailable");
-    }
-    printf("queued: display brightness\n");
-    vTaskDelay(pdMS_TO_TICKS(100));
-    return 0;
+    return sendWorkflowRequest(UI::Request::DISPLAY_BRIGHTNESS, static_cast<int32_t>(value));
   }
 
   return fail("expected status, mode or brightness");

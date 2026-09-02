@@ -49,8 +49,22 @@ class UI {
   /** Create the request queue used by the headless main loop. */
   static void init(void);
 
-  /** Queue an operation for the headless main loop. */
+  /**
+   * Queue an operation for the headless main loop.
+   *
+   * Clears the outcome token first, so a caller which waits for the answer
+   * cannot read the previous request's token as this one's.
+   */
   static bool sendRequest(Request request, int32_t arg);
+
+  /**
+   * Outcome token of the workflow request last serviced, null if none.
+   *
+   * The console contract is the same one the display build answers: the
+   * handler prints its own lines and ends with 'result: <token>', and the
+   * console takes the token as its exit status.
+   */
+  static const char *consoleResult(void);
 
   /** Drain queued console operations in the headless main loop. */
   static void serviceRequests(void);
@@ -139,9 +153,20 @@ class UI {
    * LVGL is not thread safe, so anything touching it has to run on the UI task.
    * Safe to call from any task.
    *
+   * Clears the outcome token first, so a caller which waits for the answer
+   * cannot read the previous request's token as this one's.
+   *
    * @return true if the request was queued.
    */
   static bool sendRequest(Request request, int32_t arg);
+
+  /**
+   * Outcome token of the workflow request last serviced, null if none.
+   *
+   * The console reads it after waiting for the answer, so a refused verb exits
+   * non-zero instead of acknowledging a workflow that never ran.
+   */
+  static const char *consoleResult(void);
 #endif
 
   UI(const interval_t &interval);
@@ -564,8 +589,10 @@ class UI {
    *
    * The verbs which report one set this, and serviceRequests() prints it as
    * the last line of the answer. Null for the requests which predate it.
+   *
+   * Written on the UI task and read on the console task, hence the atomic.
    */
-  static const char *m_ConsoleResult;
+  static std::atomic<const char *> m_ConsoleResult;
 
   /**
    * Print one 'key: value' answer line for a console request.

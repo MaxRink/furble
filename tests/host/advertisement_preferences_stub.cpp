@@ -1,6 +1,6 @@
 // In-memory Preferences for the CameraList dispatch test.
 //
-// CameraList::save(), remove() and isSaved() are a store round trip, so a
+// CameraList::save(), remove() and isSavedAddress() are a store round trip, so a
 // no-op stub cannot tell a saved camera from a scan result. This keeps one
 // namespace of blobs in a map, which is all those three paths need, without
 // pulling the ESP-IDF NVS stub and its conflicting FreeRTOS headers into a

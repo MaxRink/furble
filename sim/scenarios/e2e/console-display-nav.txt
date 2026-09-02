@@ -15,6 +15,9 @@ assert console.result ok
 assert console.mode gui
 assert console.brightness 96
 assert console.brightness_max 240
+# The slider only ever produces multiples of the step, so a script which also
+# asserts what the Display page draws needs to know it.
+assert console.brightness_step 16
 
 # Below the board minimum the panel is black, and a persisted black panel needs
 # a reflash to undo. Refuse rather than clamp silently, and leave the stored

@@ -38,9 +38,39 @@ struct UIRequest {
 struct UIState {
   std::vector<UIRequest> requests;
   bool queueAvailable = true;
+
+  /**
+   * Outcome token the UI task double answers a request with.
+   *
+   * The real handler ends every workflow answer with 'result: <token>' and the
+   * console takes it as its exit status, so the double serves one too. Null
+   * models a UI task which has not answered yet.
+   */
+  const char *answer = "ok";
+
+  /**
+   * Line the double prints ahead of the token, and the switch for printing.
+   *
+   * Null prints nothing at all, which is what the rest of the suite wants: it
+   * asserts on what the command printed, not on the UI task's half of the
+   * answer. A test which cares about the wait sets both this and a delay.
+   */
+  const char *answerLine = nullptr;
+
+  /**
+   * Milliseconds the double takes to answer, modelling the real UI task.
+   *
+   * Zero answers inside sendRequest(). Anything else answers from another
+   * thread, so a verb which does not wait returns before the answer is
+   * printed and before its token exists.
+   */
+  int answerDelayMs = 0;
 };
 
 UIState &ui(void);
+
+/** Join a delayed UI answer, so nothing prints into the next capture. */
+void joinUIAnswer(void);
 
 struct GPSState {
   bool enabled = true;

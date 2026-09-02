@@ -59,6 +59,14 @@ action console bulb -1
 wait 200
 assert console.state running
 
+# The run page name carries a trailing space in the menu, which 'ui page' trims
+# so a script can compare it as one token. This is the page whose identity the
+# bulb verbs depend on, since leaving it stops the exposure.
+action console page
+wait 200
+assert console.result ok
+assert console.page Bulb
+
 # Stop sends the Stop button event, which releases the shutter and leaves the
 # run page. bulbStop() alone does neither.
 action console bulb 0

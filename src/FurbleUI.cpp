@@ -452,8 +452,11 @@ UI::UI(const interval_t &interval)
   lv_sysmon_hide_performance(m_Display);
 #endif
 
-#if defined(FURBLE_CONSOLE)
-  // diagnostic: log what invalidates, rate limited to avoid flooding
+#if defined(FURBLE_CONSOLE) && !defined(FURBLE_SIM)
+  // Diagnostic: log what invalidates, rate limited to avoid flooding. Device
+  // builds only. It runs on every invalidation, and the simulator now defines
+  // FURBLE_CONSOLE for the request handlers, so leaving it in would put a new
+  // per-invalidate cost into every scenario and power regression run.
   lv_display_add_event_cb(
       m_Display,
       [](lv_event_t *e) {
@@ -2500,7 +2503,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       // Saved cameras first: a scenario that seeded virtual BLE peers connects
       // those, exactly as the Connect page would. Only a scenario with nothing
       // saved falls back to the FauxNY test camera.
-      CameraList::load();
+      reloadCameraList();
     }
     if (CameraList::size() == 0) {
       CameraList::addFauxNY();
@@ -2520,7 +2523,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && command == "connect-two") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     if (CameraList::size() < 2) {
-      CameraList::load();
+      reloadCameraList();
     }
     while (CameraList::size() < 2) {
       CameraList::addFauxNY();
@@ -4857,7 +4860,7 @@ void UI::intervalometer(lv_timer_t *timer) {
 #if defined(FURBLE_CONSOLE)
 QueueHandle_t UI::m_RequestQueue = NULL;
 bool UI::m_ScanListLive = false;
-const char *UI::m_ConsoleResult = nullptr;
+std::atomic<const char *> UI::m_ConsoleResult {nullptr};
 
 #if defined(FURBLE_SIM)
 namespace {
@@ -4904,9 +4907,18 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
+  // Drop the previous answer here rather than only on the UI task: a caller
+  // which waits would otherwise read a stale token as this request's outcome
+  // when the UI task has not drained the queue yet.
+  m_ConsoleResult = nullptr;
+
   const request_t item = {request, arg};
 
   return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
+}
+
+const char *UI::consoleResult(void) {
+  return m_ConsoleResult;
 }
 
 void UI::serviceRequests(void) {
@@ -5019,7 +5031,7 @@ void UI::serviceRequests(void) {
           // can rediscover a saved camera. Say which each row is, so a script
           // knows whether 'connect' or 'pair' is the verb for it.
           consolePrint("camera%u.saved: %s\n", static_cast<unsigned>(n),
-                       CameraList::isSaved(camera.get()) ? "true" : "false");
+                       CameraList::isSavedAddress(camera.get()) ? "true" : "false");
           consolePrint("camera%u.selected: %s\n", static_cast<unsigned>(n),
                        camera->isActive() ? "true" : "false");
         }
@@ -5136,8 +5148,16 @@ void UI::serviceRequests(void) {
             break;
           }
         }
+        // m_BulbRunStr and m_IntervalometerRunStr end in a space, which the
+        // menu draws but a script cannot compare against. Trim it so every
+        // page answers as one token.
+        std::string page(name);
+        while (!page.empty() && (page.back() == ' ')) {
+          page.pop_back();
+        }
+
         m_ConsoleResult = "ok";
-        consolePrint("page: %s\n", name);
+        consolePrint("page: %s\n", page.c_str());
       } break;
 
       case Request::INTERVAL:
@@ -5245,6 +5265,7 @@ void UI::serviceRequests(void) {
           consolePrint("brightness: %u\n", Settings::load<Settings::BRIGHTNESS>());
           consolePrint("brightness_min: %u\n", m_MinimumBrightness);
           consolePrint("brightness_max: %u\n", maximum);
+          consolePrint("brightness_step: %u\n", m_BrightnessSteps);
           consolePrint("inactivity: %u\n", Settings::load<Settings::INACTIVITY>());
           consolePrint("display_off: %u\n", Settings::load<Settings::DISPLAY_OFF>());
           break;
@@ -5272,9 +5293,14 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::POWER_OFF:
+        // doPowerOff() does not return on a device, so the answer has to be
+        // complete before the call rather than printed after the switch.
         m_ConsoleResult = "ok";
+        consolePrint("result: ok\n");
         doPowerOff();
-        break;
+        // Only the host and the simulator reach this, where doPowerOff()
+        // returns. Skip the tail so the token is not printed twice.
+        continue;
 
       case Request::GPS_RELOAD:
         GPS::getInstance().reloadSetting();
@@ -5345,8 +5371,9 @@ void UI::serviceRequests(void) {
 #endif
     }
 
-    if (m_ConsoleResult != nullptr) {
-      consolePrint("result: %s\n", m_ConsoleResult);
+    const char *result = m_ConsoleResult;
+    if (result != nullptr) {
+      consolePrint("result: %s\n", result);
     }
   }
 }

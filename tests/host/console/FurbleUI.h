@@ -3,7 +3,8 @@
 // The real header pulls in LVGL and the whole widget tree. The console only
 // ever queues a request for the UI task, so the double records every request
 // and lets a test assert the exact request and argument a command produced.
-// The request set matches the display build, which is the superset.
+// The request set matches the display build, which is the superset, in the
+// same order: the double is a mirror, so a reordering has to be deliberate.
 #ifndef FURBLE_UI_H
 #define FURBLE_UI_H
 
@@ -26,7 +27,6 @@ class UI {
     PAIR,
     MULTI_SELECT,
     MULTI_DESELECT,
-    MULTI_CLEAR,
     GPS_RELOAD,
     GPS_POWER,
     IR_RELOAD,
@@ -38,6 +38,7 @@ class UI {
     BACK,
     INTERVAL,
     BULB,
+    MULTI_CLEAR,
     DISPLAY_BRIGHTNESS,
     POWER_OFF,
     POWER_RELOAD,
@@ -46,6 +47,9 @@ class UI {
   };
 
   static bool sendRequest(Request request, int32_t arg);
+
+  /** Outcome token of the request the UI task double last answered. */
+  static const char *consoleResult(void);
 };
 
 }  // namespace Furble

@@ -196,7 +196,14 @@ Every verb below ends its answer with one machine readable outcome line,
 
 The refusals are printed by the UI task, which owns the list or the widget the
 verb addresses, so these verbs wait for the answer before returning to the
-prompt rather than reporting a queue depth.
+prompt rather than reporting a queue depth. The token is also the exit status:
+`ok` returns 0 and every other token returns 1, so a script can branch on the
+return code without parsing at all.
+
+The wait is a bounded 100 ms, which is twenty times the UI loop's queue drain
+interval. A UI task still busy after it, with a `delete all` sweep or a scan
+start, answers `error: no answer from the ui task` and a non-zero status rather
+than an outcome it never gave.
 
 ### Pairing a camera
 
@@ -289,10 +296,19 @@ reflash to undo, so it is refused with `result: range` rather than clamped
 silently. `display status` reports `brightness_min` and `brightness_max` so a
 script can pick a value this board accepts.
 
+Any value in the range is accepted and applied verbatim, but the slider itself
+only ever produces multiples of `brightness_step`, which `display status`
+reports alongside the range. So `display brightness 100` lights the panel at
+100 and the Display page then draws its slider at 96, the nearest step it can
+represent. Use a multiple of the step when a script also asserts what the page
+shows.
+
 `display mode gui | console` is the same path `settings set display_mode`
-takes, including the live UI request. `ui back` is the header back button plus
-the two things pressing it implies on a real device: it force-enables the
-button and returns the input to MENU mode.
+takes, including the live UI request. `ui page` answers one whitespace-free
+token: the two run pages carry a trailing space in the menu, which the answer
+trims. `ui back` is the header back button plus the two things pressing it
+implies on a real device: it force-enables the button and returns the input to
+MENU mode.
 
 ### Headless builds
 
@@ -311,6 +327,13 @@ build would connect and then forget the camera.
 and the BLE bond together. `delete all` sweeps the whole saved list, which the
 menus offer no button for. Both print one `deleted: <name>` line per camera and
 a final `count:`.
+
+The headless build answers `delete` too, and answers it the same way: the same
+`deleted:` and `count:` lines, the same `error: no saved camera at index N`
+refusal, and the same `result:` token. The one thing it does not do is refresh
+a Delete page, because it has none. The whole sweep runs as one request, so a
+`delete all` over a large saved list holds the UI task for as many NVS commits
+and bond removals as there are cameras.
 
 ## imu
 
