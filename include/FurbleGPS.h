@@ -127,9 +127,51 @@ class GPS {
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
 
+  /** GPS power and lock state. */
+  enum class cycle_state_t : uint8_t {
+    DISABLED,
+    ACQUIRING,
+    MEASURING,
+    BURST,
+    WAITING,
+    STANDBY,
+    RAIL_OFF,
+    RESYNC,
+    DEGRADED,
+  };
+
   struct cycle_status_t {
     bool degraded;
     uint32_t retries;
+  };
+
+  /**
+   * Receiver state the fix snapshot does not carry.
+   *
+   * status_t reports the navigation solution. This reports the receiver around
+   * it: which power cycle state it is in, how it is being duty cycled, the fix
+   * interval it was configured for, how long ago it last spoke, and whether
+   * assisted start data is loaded. The GPS Data page and the console read this,
+   * so a receiver that is alive but not fixing can be told apart from one that
+   * has gone quiet.
+   */
+  struct receiver_status_t {
+    /** Power cycle state name, from cycleStateName(). Never null. */
+    const char *cycle_state;
+    /** Applied power policy, one of POWER_ALWAYS_ON, STANDBY, RAIL_CYCLE. */
+    uint8_t power_policy;
+    /** Applied duty cycle interval in seconds, 0 when duty cycling is off. */
+    uint8_t duty_seconds;
+    /** Configured fix interval in milliseconds, 0 for the receiver default. */
+    uint16_t rate_ms;
+    /** Milliseconds since the last received sentence, 0 when never seen. */
+    uint32_t last_sentence_age_ms;
+    /** Has any sentence been received since the receiver was enabled? */
+    bool have_sentence;
+    /** Assisted start mode setting, 0 when assisted start is off. */
+    uint8_t aid_mode;
+    /** Is a usable position and time cache loaded for assisted start? */
+    bool aid_cache_valid;
   };
 
   cycle_status_t getCycleStatusSnapshot(void) const {
@@ -188,6 +230,15 @@ class GPS {
   /** Get the printable name of a binary configuration state. */
   static const char *configStateName(config_state_t state);
 
+  /** Get the printable name of a power cycle state. */
+  static const char *cycleStateName(cycle_state_t state);
+
+  /** Get the printable name of a fix source. */
+  static const char *sourceName(source_t source);
+
+  /** Get a coherent copy of the receiver power, rate and assist state. */
+  receiver_status_t getReceiverStatus(void) const;
+
  private:
   GPS() {};
 
@@ -228,19 +279,6 @@ class GPS {
 
   /** Longest raw NMEA sentence kept for the debug page. */
   static constexpr const size_t SENTENCE_LEN = 96;
-
-  /** GPS power and lock state. */
-  enum class cycle_state_t : uint8_t {
-    DISABLED,
-    ACQUIRING,
-    MEASURING,
-    BURST,
-    WAITING,
-    STANDBY,
-    RAIL_OFF,
-    RESYNC,
-    DEGRADED,
-  };
 
   typedef struct {
     uint32_t magic;
@@ -376,6 +414,9 @@ class GPS {
 
   uint8_t m_PowerPolicy = POWER_ALWAYS_ON;
   uint8_t m_DutySeconds = 0;
+  // applied fix interval, cached from the rate setting at enable() so status
+  // readers never perform an NVS read on a periodic path
+  uint16_t m_RateMs = 0;
   cycle_state_t m_CycleState = cycle_state_t::DISABLED;
   bool m_BurstActive = false;
   bool m_DutyWake = false;

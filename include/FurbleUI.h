@@ -350,6 +350,20 @@ class UI {
     virtual void save(void) = 0;
   };
 
+  /**
+   * Receiver detail labels on the GPS Data page.
+   *
+   * The page timer is a plain callback with the menu as its user data, so these
+   * live beside the static m_GPSDataTimer rather than on the instance. The
+   * timer writes them through the changed-check setters, the simulator queries
+   * only read the rendered text back.
+   */
+  typedef struct {
+    lv_obj_t *fix;
+    lv_obj_t *quality;
+    lv_obj_t *cycle;
+  } gps_data_t;
+
   /** Labels on the raw NMEA page. */
   typedef struct {
     lv_obj_t *fix;
@@ -658,6 +672,7 @@ class UI {
 
   static lv_timer_t *m_ConnectTimer;
   static lv_timer_t *m_GPSDataTimer;
+  static gps_data_t m_GPSData;
   static lv_timer_t *m_CamerasTimer;
   static lv_timer_t *m_LevelTimer;
   static lv_timer_t *m_IntervalPageRefresh;
