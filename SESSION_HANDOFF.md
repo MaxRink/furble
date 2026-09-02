@@ -751,3 +751,36 @@ Durable context lives in
 
 Memories are point-in-time observations, not live state. If one names a file,
 function, or flag, verify it still exists before acting on it.
+
+## Addendum 2026-09-02 evening
+
+- PR #261 (real Control in the sim, plan 161) merged at ab638874 after both
+  bench checks on the X100VI: the connect-failed box auto-dismisses without
+  a wedge, and the red reconnect indicator appears when the camera powers
+  off. Master is ab638874. tests/host/peer moved to lib/testing/peer;
+  FurbleControlSim is gone.
+- Open lanes and their state:
+  - #264 (plan 165 no-touch layout certification): rebase onto ab638874
+    requested (plans/README.md row conflict), then review re-verify, then
+    merge, then the hardware-verified layout-fix PR from plan 165.
+  - #266 (plan 167 Fujifilm name = model + 5-byte serial): reviewed, fix
+    round running (seed no_touch in scenario, multi-connect keying past 15
+    chars, 80x160 rows scroll, Cameras page rows, serial claim unverified
+    against DIS 0x2A25). Merges before #245.
+  - #245 (plan 151 stale bond): redesigned (2 consecutive secure failures
+    on bonded link-up -> deleteBond once -> fresh in-link pair -> else
+    needsRepair -> dismissable "Pairing lost"; cancel terminates the link;
+    already-saved refusal). Review found a vendor-agnostic name fallback
+    (refuses a second same-model body) and three surviving mutations on
+    counter reset; fix round running; then the 8-step bench from plan 151.
+  - #265 (plan 166 console workflow verbs): fix round running; console
+    pair will call UI::beginPairing() once #245 lands.
+  - #63 (pairing codes shown on furble): rebased to e88b1875, CI green,
+    review running; then hardware gate (X100VI fresh pair code, GR IV
+    numeric comparison accept + cancel).
+- Merge order: #264, #266, #245, #265, #63. Every rebase now crosses the
+  peer move and the manifest.
+- The stick runs the #261 build (dev+gc82cfd30), which equals master for
+  runtime behaviour. Next flash is #245's rebased head for its bench.
+- Bench observations still open: user wants the pairing code on furble
+  (#63) and a dismissable error on connect failure (#245).
