@@ -213,8 +213,17 @@ of that peer, then requires that the reset finishes without waiting out the
 drain deadline, lands in IDLE with no targets, that the late supervision
 timeout resolving after the pre-reboot Camera is dropped is a no-op rather
 than a use-after-free, and that a connect after the reboot still reaches
-ACTIVE. Run under `-fsanitize=address`, which is what makes the
-use-after-free check mean anything.
+ACTIVE. The use-after-free step carries no `check()`: the assertion is the
+sanitizer. `control_e2e_asan_test` in `tests/host/CMakeLists.txt` builds this
+harness with `-fsanitize=address`, and both restart scenarios are registered
+against it as `control-e2e-asan-*` tests. It compiles `MockNimBLE.cpp` and
+`lib/furble/Camera.cpp` directly rather than linking `furble_host_camera`,
+because the access is the mock loading the freed callbacks object's vptr to
+dispatch the late `onDisconnect`, and both the read and the freed object live
+in that unsanitized library. On a mutated build the report is a `READ of size
+8` in `NimBLEClient::mockCompleteStalledTerminate`, freed by the
+`FujifilmBasic` shared_ptr destroy. So CI reports the class as an ASan abort
+rather than a segfault or a pass.
 
 ## Mutation verification
 
@@ -265,10 +274,12 @@ promptly, with no late-callback use-after-free.
 Re-verified after the rebase onto the scheduler-parity foundation and again
 after the review fixes.
 
-- Full host suite green (`ctest`, 87 of 87, the 85 on master plus
-  `control-e2e-restart-restore-commandable` and
-  `control-e2e-restart-stalled-peer-reclaim`).
-- Both restart scenarios green under `-fsanitize=address`.
+- Full host suite green (`ctest`, 90 of 90 as measured in CI, the 88 on master
+  plus the two `control-e2e-asan-*` tests).
+- The sanitizer coverage is a committed configuration, not a local run: the
+  `control_e2e_asan_test` target builds this harness with
+  `-fsanitize=address`, and both restart scenarios are registered against it,
+  so `ctest` runs each of them twice, plain and instrumented.
 - Full sim e2e suite green (`sim/scripts/run-e2e.sh`, 74 of 74, the 73 on
   master plus the new `restart-persist` scenario), whose log shows the
   orderly shutdown, the fresh boot after the re-exec, and the persisted
@@ -293,3 +304,35 @@ after the review fixes.
   firmware build file. CI's ten firmware builds are the on-device check; no
   firmware build was run locally for this branch.
 - clang-format 21 clean.
+
+## Follow-up
+
+Review findings from the merge of PR #251, landed as a follow-up.
+
+- The post-restart failure fixture (`sim/scripts/restart-post-failure.txt`)
+  does not discriminate the pending-flag fix. Its failing assert runs in the
+  resumed process, so it guards the re-exec chain against masking a failure
+  that happens after the reboot, which is worth keeping, but it says nothing
+  about a failure raised before the exec. That window is now essentially
+  unreachable anyway: the `restart` step advances `stepIndex` and returns, and
+  `UI::task()` checks `Sim::exitRequested()` on the line after `driverTick()`,
+  so the UI task leaves at once and no further driver tick runs. The pending
+  flag not pinning the exit code is still the right shape, because it is what
+  keeps the `main()` gate meaningful for anything a background task might
+  raise during the shutdown itself.
+- `control_e2e_asan_test` now builds the end-to-end harness with
+  `-fsanitize=address` and registers both restart scenarios as
+  `control-e2e-asan-*`, so the gone-peer use-after-free class is a committed CI
+  configuration rather than a manual local run. The step it guards has no
+  `check()`; a comment says why, since the sanitizer is the assertion.
+- `reapZombieTargets()` and `teardownDraining()` are no longer control-task
+  only. Their header comments say so, and say that both take `m_Mutex`.
+- The queue drop that closes the leftover-command window is not airtight: a
+  command enqueued in the microsecond between `disconnect()`'s own
+  `STATE_IDLE` publish and the `STATE_DISCONNECTING` hold could still be taken.
+  Nothing enqueues there, because the reset models a reboot the whole device
+  takes and the only queue writers are the UI and console tasks. Recorded in
+  the code rather than papered over. The probe comment is likewise honest
+  about what it proves: the task has left `connectAll()` and come back round
+  through `xQueueReceive()`, and whatever is left of that iteration can do
+  nothing in the terminal state being held.
