@@ -1052,6 +1052,74 @@ target_compile_options(control_fuzz PRIVATE -Wall -Wextra -Wno-format -Wno-unuse
 target_link_options(control_fuzz PRIVATE ${FUZZ_SANITIZER_FLAGS})
 target_link_libraries(control_fuzz PRIVATE Threads::Threads)
 
+# USB console command suite (plan 162). CLAUDE.md names the developer console
+# as the automation surface, yet src/FurbleConsole.cpp was compiled by neither
+# the host suite nor the simulator, so all 1851 of its lines were unmeasured.
+#
+# This target compiles the real console against a faithful double of the small
+# ESP-IDF console API (a registration table, the built in help command and a
+# tokenizing esp_console_run) plus a USB-Serial/JTAG receive queue a test types
+# into. Every command handler therefore runs unmodified, driven the way a host
+# script drives the device.
+#
+# Real firmware is linked wherever a host model exists: the Control state
+# machine and the Camera stack against MockNimBLE, Settings and Preferences
+# against the in-memory NVS store, Power, and the provisioning decoder. The
+# hardware-bound subsystems (GPS receiver, BtDebug HCI dumping, IR, feedback,
+# SD, the PMIC platform) are doubled at their boundary, so the console's own
+# parsing and dispatch still execute and a test asserts the call landed.
+set(HOST_CONSOLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/console)
+add_executable(console_commands_test
+               console_commands_test.cpp
+               ${HOST_CONSOLE_DIR}/console_shim.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleConsole.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurblePower.cpp
+               ${FURBLE_ROOT}/src/FurbleProvision.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/ProvisionTLV.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp)
+target_include_directories(console_commands_test BEFORE PRIVATE
+                           ${HOST_CONSOLE_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/settings_stubs
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/preferences)
+target_compile_definitions(console_commands_test PRIVATE
+                           # Every command prints to stdout, so the suite reads
+                           # its assertions back out of a captured stdout. Keep
+                           # that file in the build tree, not in /tmp.
+                           FURBLE_CONSOLE_CAPTURE_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+                           FURBLE_CONSOLE
+                           FURBLE_M5STICKS3
+                           FURBLE_VERSION="host"
+                           CONFIG_ESP_CONSOLE_UART_NUM=0
+                           CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
+                           CONFIG_SPIRAM
+                           CONFIG_LV_USE_PERF_MONITOR
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(console_commands_test PRIVATE
+                       -include ${HOST_CONSOLE_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -Wno-unused-const-variable -Wno-c99-designator
+                       -Wno-c++20-designator
+                       # include/FurblePower.h names an anonymous struct through
+                       # a typedef, which is the house style across the firmware
+                       # headers. Nothing here depends on C linkage for it.
+                       -Wno-non-c-typedef-for-linkage)
+target_link_libraries(console_commands_test PRIVATE Threads::Threads)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -1120,6 +1188,12 @@ if(BUILD_TESTING)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
+  # The console suite drives the real console task through its transport, and
+  # 'perf tasks' samples over a full second, so give it room while still
+  # bounding a wedged command.
+  add_test(NAME console-commands COMMAND console_commands_test)
+  set_tests_properties(console-commands PROPERTIES TIMEOUT 120)
+
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
