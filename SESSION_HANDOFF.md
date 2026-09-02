@@ -58,6 +58,22 @@ running; when it lands ratchet the sim floors with --lower --reason), #245
 spinners (ppid 1 shell-snapshot shells plus yes) drove load to 135 for hours;
 kill them and check uptime whenever agents look slow.
 
+Later still on 2026-09-02: R1 (#261, 2e1084dc, CI 33/33, re-review running)
+found a REAL PRODUCTION BUG through the real-Control sim: UI::doConnect()
+readies the connect timer while Control::connectAll() has only queued
+CMD_CONNECT; if the timer ticks before the control task leaves STATE_IDLE the
+handler pauses the timer and nothing resumes it, so the connected page runs
+with a dead liveness poll and later drops are never surfaced. Hardware masks
+it by preemption order (priority-4 control task). Fix PR owed right after #261
+merges (same UI/Control files), with hardware verification; #261 carries
+documented xassert expected-fails on ui.reconnecting until then (plans/161
+residual gap 4). Second latent bug from fuzz: 320x240 intervalometer page
+overflow at seed 3 (pinned XFAIL). Coverage grand union 70.26 (floor 69.26).
+GPS status page PR #263 (plan 164) open, review running. #245 still parked on
+the X100VI. Never point a build's managed_components at the main checkout: an
+agent's symlinked build pruned lvgl__lvgl and h2zero__esp-nimble-cpp there;
+restored by copy from ~/furble-build-wt/.mc-seed.
+
 Environment 2026-09-02: OrbStack VM `furble-build` recreated (it had
 vanished) with clang, clang-format 21.1.5, SDL2, sim deps at
 ~/furble/sim/.pio/libdeps/sim; NEVER share ~/furble between concurrent jobs,
