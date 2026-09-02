@@ -1049,6 +1049,13 @@ void Control::resetForTest(void) {
   // run against a machine with no targets left, where allConnected() is
   // vacuously true, publish STATE_ACTIVE, and race the fresh IDLE this reset
   // ends with.
+  //
+  // Not airtight, and does not need to be: a command enqueued in the microsecond
+  // window between disconnect()'s own STATE_IDLE publish and the
+  // STATE_DISCONNECTING hold below could still be taken. Nothing enqueues there.
+  // The only writers are the UI and console tasks, and the reset models a reboot
+  // the whole device takes, so there is no concurrent user of the queue left to
+  // race with.
   xQueueReset(m_Queue);
 
   // Quiesce through the production teardown: a host thread cannot be killed
@@ -1095,9 +1102,11 @@ void Control::resetForTest(void) {
   // interruptible retry wait, so the task can still be sleeping out a reconnect
   // backoff. STATE_DISCONNECTING (held above) is what breaks that wait; this
   // probe waits for the proof. A command is only ever dequeued at the top of
-  // the task loop, and CMD_GPS_UPDATE is dropped in this state, so the queue
-  // going empty means the task has left connectAll() and is back in its
-  // receive.
+  // the task loop, so the queue going empty means the task has left
+  // connectAll() and has come back round through xQueueReceive(). It may still
+  // be finishing that iteration, but the iteration can no longer do anything:
+  // the state it reads is the terminal STATE_DISCONNECTING and CMD_GPS_UPDATE
+  // is dropped there. That is the fresh-boot parked task, one tick early.
   cmd_t probe = CMD_GPS_UPDATE;
   if (xQueueSend(m_Queue, &probe, 0) == pdTRUE) {
     const TickType_t probeStart = xTaskGetTickCount();

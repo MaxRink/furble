@@ -1026,10 +1026,12 @@ bool scenarioRestartStalledPeerReclaim() {
   camera.reset();
 
   // The supervision timeout finally resolves. With the reclaim it lands on the
-  // detached no-op callbacks; without it, it writes through freed memory and
-  // ASan aborts here.
+  // detached no-op callbacks. Without it, it writes through the freed Camera:
+  // there is no check() for that, because the assertion is the sanitizer. Under
+  // the control_e2e_asan_test build this line aborts the process; under a plain
+  // build it is an unchecked read that may or may not survive, which is why CI
+  // runs the ASan target.
   client->mockCompleteStalledTerminate(0x08);
-  check(true, "the late disconnect after the gone-peer restart is not a use-after-free");
 
   // And the rebooted machine still connects.
   NimBLEDevice::resetMock();

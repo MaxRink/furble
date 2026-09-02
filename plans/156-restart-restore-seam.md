@@ -213,8 +213,12 @@ of that peer, then requires that the reset finishes without waiting out the
 drain deadline, lands in IDLE with no targets, that the late supervision
 timeout resolving after the pre-reboot Camera is dropped is a no-op rather
 than a use-after-free, and that a connect after the reboot still reaches
-ACTIVE. Run under `-fsanitize=address`, which is what makes the
-use-after-free check mean anything.
+ACTIVE. The use-after-free step carries no `check()`: the assertion is the
+sanitizer. `control_e2e_asan_test` in `tests/host/CMakeLists.txt` builds this
+harness with `-fsanitize=address`, compiling `lib/furble/Camera.cpp` and the
+mock directly because that is where the late `onDisconnect` writes, and both
+restart scenarios are registered against it as `control-e2e-asan-*` tests. So
+CI reports the class as an ASan abort rather than a segfault or a pass.
 
 ## Mutation verification
 
@@ -293,3 +297,35 @@ after the review fixes.
   firmware build file. CI's ten firmware builds are the on-device check; no
   firmware build was run locally for this branch.
 - clang-format 21 clean.
+
+## Follow-up
+
+Review findings from the merge of PR #251, landed as a follow-up.
+
+- The post-restart failure fixture (`sim/scripts/restart-post-failure.txt`)
+  does not discriminate the pending-flag fix. Its failing assert runs in the
+  resumed process, so it guards the re-exec chain against masking a failure
+  that happens after the reboot, which is worth keeping, but it says nothing
+  about a failure raised before the exec. That window is now essentially
+  unreachable anyway: the `restart` step advances `stepIndex` and returns, and
+  `UI::task()` checks `Sim::exitRequested()` on the line after `driverTick()`,
+  so the UI task leaves at once and no further driver tick runs. The pending
+  flag not pinning the exit code is still the right shape, because it is what
+  keeps the `main()` gate meaningful for anything a background task might
+  raise during the shutdown itself.
+- `control_e2e_asan_test` now builds the end-to-end harness with
+  `-fsanitize=address` and registers both restart scenarios as
+  `control-e2e-asan-*`, so the gone-peer use-after-free class is a committed CI
+  configuration rather than a manual local run. The step it guards has no
+  `check()`; a comment says why, since the sanitizer is the assertion.
+- `reapZombieTargets()` and `teardownDraining()` are no longer control-task
+  only. Their header comments say so, and say that both take `m_Mutex`.
+- The queue drop that closes the leftover-command window is not airtight: a
+  command enqueued in the microsecond between `disconnect()`'s own
+  `STATE_IDLE` publish and the `STATE_DISCONNECTING` hold could still be taken.
+  Nothing enqueues there, because the reset models a reboot the whole device
+  takes and the only queue writers are the UI and console tasks. Recorded in
+  the code rather than papered over. The probe comment is likewise honest
+  about what it proves: the task has left `connectAll()` and come back round
+  through `xQueueReceive()`, and whatever is left of that iteration can do
+  nothing in the terminal state being held.

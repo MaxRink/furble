@@ -719,6 +719,47 @@ target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-u
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
 
+# AddressSanitizer variant of the same harness, for the restart scenarios
+# (plan 156). Their use-after-free class lives in the late onDisconnect a gone
+# peer's reclaimed client fires, which writes through lib/furble/Camera.cpp, so
+# that translation unit has to be instrumented for the access to be caught as an
+# ASan report rather than a segfault or, worse, a pass. The furble_host_camera
+# library is not built with the sanitizer, so this target compiles the same
+# sources directly, exactly as control_reclaim_uaf_test does, and repeats the
+# library's short registration timeout so the scenarios keep their timing.
+add_executable(control_e2e_asan_test
+               ${CONTROL_E2E_DIR}/control_e2e.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+target_include_directories(control_e2e_asan_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR}
+                                  ${HOST_CORPUS_DIR})
+target_compile_definitions(control_e2e_asan_test
+                           PRIVATE FURBLE_HOST_CONTROL_TEST
+                                   FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(control_e2e_asan_test PRIVATE -Wall -Wextra -Wno-format
+                       -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h
+                       -fsanitize=address -g -O1)
+target_link_options(control_e2e_asan_test PRIVATE -fsanitize=address)
+target_link_libraries(control_e2e_asan_test PRIVATE Threads::Threads)
+
 # Teardown wedge regression (plan 148). Compiles the production Control and
 # Fujifilm camera sources with a 10 s registration timeout, an order of
 # magnitude above the asserted disconnect bounds, so an uncancellable
@@ -1236,6 +1277,13 @@ if(BUILD_TESTING)
           restart-restore-commandable
           restart-stalled-peer-reclaim)
     add_test(NAME control-e2e-${scenario} COMMAND control_e2e_test ${scenario})
+  endforeach()
+
+  # The restart scenarios also run instrumented, because the gone-peer reboot
+  # asserts the absence of a use-after-free and only the sanitizer can see it.
+  foreach(scenario restart-restore-commandable
+          restart-stalled-peer-reclaim)
+    add_test(NAME control-e2e-asan-${scenario} COMMAND control_e2e_asan_test ${scenario})
   endforeach()
 
   # Regression guards for the FujifilmBasic missing-shutter connect faults.

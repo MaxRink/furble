@@ -285,7 +285,10 @@ class Control {
   /**
    * Destroy quarantined targets whose task has finished.
    *
-   * Control task only. Takes m_Mutex. A target force-completed while its task
+   * Control task, plus the host-only resetForTest() reset path under
+   * FURBLE_HOST_CONTROL_TEST, which reaps through this predicate rather than
+   * freeing quarantined targets itself. Takes m_Mutex, so callers must not
+   * hold it. A target force-completed while its task
    * was still tearing down the camera is held in m_ZombieTargets, not freed,
    * because that task still writes m_Stopped through its own object. Once
    * m_Stopped has flipped the task no longer touches the object, so it is safe
@@ -296,7 +299,9 @@ class Control {
   /**
    * Is a prior teardown still draining?
    *
-   * Control task only. Takes m_Mutex. True while any force-completed target is
+   * Control task, plus the host-only resetForTest() reset path under
+   * FURBLE_HOST_CONTROL_TEST, which polls it while draining. Takes m_Mutex, so
+   * callers must not hold it. True while any force-completed target is
    * still quarantined in m_ZombieTargets. connectAll() must not start a new
    * connection while this holds: a fresh NimBLE client allocated here would
    * race the client that a zombie's teardown task is still releasing, the
@@ -344,7 +349,8 @@ class Control {
   // task was still tearing down the camera (restart path), or handed off by the
   // non-blocking interactive disconnect so the wait runs here instead of on the
   // UI task. Held, not freed, until the task sets m_Stopped and the link is
-  // really down. Reaped by reapZombieTargets() on the control task. Guarded by
+  // really down. Reaped by reapZombieTargets(), on the control task and on the
+  // host-only reset path. Guarded by
   // m_Mutex.
   std::vector<std::unique_ptr<Control::Target>> m_ZombieTargets;
 
