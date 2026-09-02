@@ -1479,7 +1479,19 @@ int cmdPair(int argc, char **argv) {
     }
   }
 
-  if ((camera == nullptr) || !camera->answerPairing(accept)) {
+  if ((camera == nullptr) || !camera->hasPendingPairing()) {
+    return fail("no camera pairing request");
+  }
+
+  // A passkey-display prompt has nothing to confirm: the code is typed on the
+  // camera, and the modal offers Cancel only. Accepting it would report a
+  // success for an answer that is never injected, so refuse it here and keep
+  // the console contract the same shape as the modal.
+  if (accept && (camera->getPairingType() == Camera::PairingType::PASSKEY_DISPLAY)) {
+    return fail("passkey display prompt, use pair no to cancel");
+  }
+
+  if (!camera->answerPairing(accept)) {
     return fail("no camera pairing request");
   }
 
@@ -2130,7 +2142,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
-    command("pair", "pair yes | no", cmdPair),
+    command("pair", "pair yes | no, answer a camera pairing prompt", cmdPair),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),

@@ -509,6 +509,14 @@ class UI {
     // cannot spin the timer forever.
     bool connectRequested;
     uint32_t connectRequestedAt;
+    // Snapshot of Control's connecting camera, refreshed only when Control
+    // reports a new generation. getConnectingCamera() takes Control's mutex,
+    // and this timer runs at 20 Hz on the LVGL task while a connect is in
+    // flight, so polling it every tick would put frame rendering behind every
+    // m_Mutex section. The generation is lock free, so the common tick reads
+    // one atomic and reuses the strong reference it already holds.
+    std::shared_ptr<Camera> connectingCamera;
+    uint32_t connectingGeneration;
   } ConnectContext_t;
 
   static std::mutex m_Mutex;
@@ -1260,6 +1268,18 @@ class UI {
 
   /** Pause the pairing prompt timer when no pairing request is pending. */
   void stopPairingTimer(void);
+
+  /**
+   * Pause the pairing timer only when nothing can still need it.
+   *
+   * A second camera can raise a prompt while the first camera's modal is up.
+   * That prompt is not shown until the visible modal closes, so the timer must
+   * keep running while any owned camera still holds a pending request.
+   */
+  static void pausePairingTimerIfIdle(UI *ui);
+
+  /** Does any camera Control owns hold a pending pairing request? */
+  static bool anyCameraPairingPending(void);
 
   /** Close the current pairing prompt. */
   void closePairingDialog(void);

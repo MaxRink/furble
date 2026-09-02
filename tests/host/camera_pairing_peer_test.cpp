@@ -15,6 +15,8 @@
 
 #include "Camera.h"
 #include "Device.h"
+#include "FujifilmBasic.h"
+#include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
 #include "Ricoh.h"
 #include "RicohVirtualCamera.h"
@@ -29,11 +31,13 @@ Furble::Camera *g_Camera = nullptr;
 Furble::Camera::PairingType g_Type = Furble::Camera::PairingType::NONE;
 uint32_t g_Code = 0;
 uint32_t g_Count = 0;
+bool g_Accept = true;
 
 // Stands in for the UI request queue: the security callback runs on the
 // NimBLE host task and must not block there, so it only records the request
-// and wakes the answering thread.
-void pairingCallback(Furble::Camera *camera) {
+// and wakes the answering thread. The return value is the queue result, which
+// is what tells Camera whether anything will answer.
+bool pairingCallback(Furble::Camera *camera) {
   {
     const std::lock_guard<std::mutex> lock(g_Mutex);
     g_Camera = camera;
@@ -42,6 +46,7 @@ void pairingCallback(Furble::Camera *camera) {
     g_Count++;
   }
   g_Cv.notify_all();
+  return g_Accept;
 }
 
 void resetRequest(void) {
@@ -151,15 +156,63 @@ int main() {
     }
   }
 
-  // Passkey display. The camera has a keypad, so furble displays the code and
-  // the user types it there; the peer accepts only the code furble showed.
+  // An expired prompt must reject. The window is aligned to the SMP timeout,
+  // so a Confirm that arrives after it is a Confirm the stack can no longer
+  // honour; downgrading it here is what stops furble authorizing a comparison
+  // it had already promised to refuse.
   {
     NimBLEDevice::resetMock();
     Furble::Device::init(ESP_PWR_LVL_P3);
     resetRequest();
 
     Furble::Host::RicohVirtualCamera::Config config;
-    config.pairing_code = 123456;
+    config.pairing_code = 271828;
+    Furble::Host::RicohVirtualCamera peer(config);
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Ricoh camera(&advertisement);
+
+    std::atomic<bool> connected {true};
+    std::thread host(
+        [&camera, &connected]() { connected.store(camera.connect(ESP_PWR_LVL_P3, 5000)); });
+
+    if (!check(waitForRequest(), "the expiring handshake publishes a request")) {
+      host.join();
+      return 1;
+    }
+    if (!check(camera.hostExpirePairing(), "the pending request can be expired")
+        || !check(camera.pairingTimedOut(), "the expired request reports timed out")) {
+      camera.cancelPairing();
+      host.join();
+      return 1;
+    }
+    // A late Confirm, exactly what a user walking back to the device produces.
+    if (!check(camera.answerPairing(true), "the expired request is still consumed")) {
+      host.join();
+      return 1;
+    }
+    host.join();
+    if (!check(NimBLEDevice::mockPasskeyConfirmCount() == 1,
+               "the expired answer reaches NimBLE exactly once")
+        || !check(!NimBLEDevice::mockLastPasskeyAccept(),
+                  "a Confirm after the deadline is injected as a reject")
+        || !check(!connected.load(), "an expired numeric comparison fails the connection")
+        || !check(!camera.hasPendingPairing(), "expiry clears the request")) {
+      return 1;
+    }
+  }
+
+  // Passkey display. The code furble shows must be the code NimBLE will inject,
+  // which is NimBLEDevice::getSecurityPasskey(), not a constant compiled into
+  // furble. The peer is the camera keypad and accepts only what furble showed.
+  {
+    NimBLEDevice::resetMock();
+    Furble::Device::init(ESP_PWR_LVL_P3);
+    resetRequest();
+    NimBLEDevice::setSecurityPasskey(802134);
+
+    Furble::Host::RicohVirtualCamera::Config config;
+    config.pairing_code = 802134;
     config.passkey_display = true;
     Furble::Host::RicohVirtualCamera peer(config);
     NimBLEDevice::setMockPeer(&peer);
@@ -171,7 +224,9 @@ int main() {
         || !check(g_Count == 1, "the display prompt is published once")
         || !check(g_Type == Furble::Camera::PairingType::PASSKEY_DISPLAY,
                   "a display peer raises passkey display")
-        || !check(g_Code == 123456, "the displayed passkey is the code furble showed")
+        || !check(g_Code == 802134, "the published code is the passkey NimBLE reports")
+        || !check(peer.lastDisplayedPasskey() == 802134,
+                  "the passkey handed to the stack is the one shown")
         || !check(NimBLEDevice::mockPasskeyConfirmCount() == 0,
                   "passkey display never injects a numeric comparison answer")
         || !check(!camera.hasPendingPairing(),
@@ -179,6 +234,98 @@ int main() {
       return 1;
     }
     camera.disconnect();
+  }
+
+  // A headless image has no UI task, so nothing registers a handler. The
+  // request must still be answered the way it was before the prompt existed,
+  // which is NimBLE's own default onConfirmPasskey: inject true. Anything else
+  // turns a connect that worked on waveshare-s3-eth into one that hangs until
+  // the peer abandons its SMP procedure.
+  {
+    NimBLEDevice::resetMock();
+    Furble::Device::init(ESP_PWR_LVL_P3);
+    resetRequest();
+    Furble::Camera::setPairingRequestCallback(nullptr);
+
+    Furble::Host::RicohVirtualCamera::Config config;
+    config.pairing_code = 161803;
+    Furble::Host::RicohVirtualCamera peer(config);
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Ricoh camera(&advertisement);
+
+    const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
+    Furble::Camera::setPairingRequestCallback(pairingCallback);
+    if (!check(connected, "a headless build still completes numeric-comparison pairing")
+        || !check(g_Count == 0, "no handler was called")
+        || !check(NimBLEDevice::mockPasskeyConfirmCount() == 1,
+                  "the unhandled request is answered exactly once")
+        || !check(NimBLEDevice::mockLastPasskeyAccept(),
+                  "the unhandled request is accepted, as NimBLE's default does")
+        || !check(!camera.hasPendingPairing(), "nothing is left pending with no timer to expire")) {
+      return 1;
+    }
+    camera.disconnect();
+  }
+
+  // Same shape when a handler exists but cannot take the request, which is a
+  // full UI request queue. The prompt will never be shown and the pairing timer
+  // is never started, so leaving it pending would strand the handshake.
+  {
+    NimBLEDevice::resetMock();
+    Furble::Device::init(ESP_PWR_LVL_P3);
+    resetRequest();
+    g_Accept = false;
+
+    Furble::Host::RicohVirtualCamera::Config config;
+    config.pairing_code = 141421;
+    Furble::Host::RicohVirtualCamera peer(config);
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Ricoh camera(&advertisement);
+
+    const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
+    g_Accept = true;
+    if (!check(connected, "a declined request still completes the handshake")
+        || !check(g_Count == 1, "the handler was offered the request")
+        || !check(NimBLEDevice::mockPasskeyConfirmCount() == 1,
+                  "the declined request is answered exactly once")
+        || !check(NimBLEDevice::mockLastPasskeyAccept(), "the declined request keeps the default")
+        || !check(!camera.hasPendingPairing(), "a declined request is not left pending")) {
+      return 1;
+    }
+    camera.disconnect();
+  }
+
+  // An answer recorded against a connection that has since been replaced must
+  // never authorize the live one. The prompt is raised against a handle that is
+  // not the client's, so Confirm has to drop the link instead of injecting.
+  {
+    NimBLEDevice::resetMock();
+    Furble::Device::init(ESP_PWR_LVL_P3);
+    resetRequest();
+
+    Furble::Host::FujifilmVirtualCamera peer;
+    NimBLEDevice::setMockPeer(&peer);
+    const NimBLEAdvertisedDevice advertisement = peer.advertisement();
+    Furble::FujifilmBasic camera(&advertisement);
+
+    if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "the stale-handle case connects")) {
+      return 1;
+    }
+    NimBLEClient *client = NimBLEDevice::lastClient();
+    if (!check(client != nullptr, "the connected client is available")) {
+      return 1;
+    }
+    const uint16_t stale = static_cast<uint16_t>(client->getConnHandle() + 1);
+    camera.hostSetPairingRequest(Furble::Camera::PairingType::NUMERIC_COMPARISON, 428913, stale);
+    if (!check(g_Count == 1, "the stale request is published")
+        || !check(camera.answerPairing(true), "the stale request is consumed")
+        || !check(NimBLEDevice::mockPasskeyConfirmCount() == 0,
+                  "a stale answer is never injected into the live link")
+        || !check(!camera.isConnected(), "a stale answer drops the link it cannot authorize")) {
+      return 1;
+    }
   }
 
   Furble::Camera::setPairingRequestCallback(nullptr);

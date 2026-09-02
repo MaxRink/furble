@@ -277,17 +277,32 @@ void Camera::cancelPairing(void) {
   answerPairing(false);
 }
 
-#if defined(FURBLE_HOST_TEST)
-void Camera::hostSetPairingRequest(PairingType type, uint32_t code) {
+#if defined(FURBLE_HOST_TEST) || defined(FURBLE_SIM)
+bool Camera::hostSetPairingRequest(PairingType type, uint32_t code, uint16_t handle) {
   NimBLEConnInfo connInfo;
+  if (m_Client != nullptr) {
+    // Publish against the live link so the answer injects for real, exactly as
+    // the security callback's own connection info does.
+    connInfo = m_Client->getConnInfo();
+  }
+  if (handle != BLE_HS_CONN_HANDLE_NONE) {
+    connInfo.mockSetConnHandle(handle);
+  }
+  // A request that arrives while one is already pending runs the duplicate
+  // guard instead of becoming the visible prompt, which is a no-op from the
+  // caller's point of view even though the guard does answer it.
+  const bool wasPending = hasPendingPairing();
   publishPairingRequest(type, code, connInfo);
+  return !wasPending && hasPendingPairing();
 }
 
-void Camera::hostExpirePairing(void) {
+bool Camera::hostExpirePairing(void) {
   const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
-  if (m_PairingType != PairingType::NONE) {
-    m_PairingDeadlineMs = nowMs();
+  if (m_PairingType == PairingType::NONE) {
+    return false;
   }
+  m_PairingDeadlineMs = nowMs();
+  return true;
 }
 #endif
 
@@ -299,6 +314,18 @@ void Camera::publishPairingRequest(PairingType type, uint32_t code, NimBLEConnIn
              static_cast<unsigned>(type), static_cast<unsigned long>(code));
     if (type == PairingType::NUMERIC_COMPARISON) {
       NimBLEDevice::injectConfirmPasskey(connInfo, false);
+    }
+    return;
+  }
+
+  if (autoAcceptPairing()) {
+    // This vendor has no SMP-level code to compare, so there is nothing to
+    // show and nothing to ask. Answer where the request was raised, which is
+    // what NimBLE's default callback does.
+    ESP_LOGI(LOG_TAG, "Camera %s pairing auto-accepted, vendor has no comparison step",
+             m_Name.c_str());
+    if (type == PairingType::NUMERIC_COMPARISON) {
+      NimBLEDevice::injectConfirmPasskey(connInfo, true);
     }
     return;
   }
@@ -335,9 +362,19 @@ void Camera::publishPairingRequest(PairingType type, uint32_t code, NimBLEConnIn
 #endif
 
   const pairing_request_callback_t callback = m_PairingRequestCallback.load();
-  if (callback != nullptr) {
-    callback(this);
+  if ((callback != nullptr) && callback(this)) {
+    return;
   }
+
+  // Nothing will answer this prompt. A headless image has no UI task to show
+  // it, the UI queue can be full, and the request queue is also the only thing
+  // that starts the timer that would otherwise expire it. Leaving it pending
+  // would strand the peer's SMP procedure until it times out, turning a
+  // connect that used to work into a connect that fails. Answer it here with
+  // NimBLE's own default instead, which is what this code path did before the
+  // prompt existed.
+  ESP_LOGW(LOG_TAG, "No pairing answerer for %s, accepting as NimBLE does", m_Name.c_str());
+  answerPairing(true);
 }
 
 void Camera::clearPairingRequest(void) {
@@ -349,17 +386,25 @@ void Camera::clearPairingRequest(void) {
 }
 
 void Camera::onPassKeyEntry(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Camera passkey entry for %s; injecting fallback %06lu",
-           connInfo.getAddress().toString().c_str(), static_cast<unsigned long>(m_DefaultPasskey));
+  const uint32_t passkey = NimBLEDevice::getSecurityPasskey();
+  ESP_LOGW(LOG_TAG, "Camera passkey entry for %s; injecting %06lu",
+           connInfo.getAddress().toString().c_str(), static_cast<unsigned long>(passkey));
 #if defined(FURBLE_CONSOLE)
   printf("pair.entry: required\n");
 #endif
-  NimBLEDevice::injectPassKey(connInfo, m_DefaultPasskey);
+  NimBLEDevice::injectPassKey(connInfo, passkey);
 }
 
 uint32_t Camera::onPassKeyDisplay(NimBLEConnInfo &connInfo) {
-  publishPairingRequest(PairingType::PASSKEY_DISPLAY, m_DefaultPasskey, connInfo);
-  return m_DefaultPasskey;
+  // NimBLE injects NimBLEDevice::getSecurityPasskey() for a BLE_SM_IOACT_DISP
+  // action and only falls back to this callback's return value while that is
+  // still its 123456 default (NimBLEClient.cpp, BLE_GAP_EVENT_PASSKEY_ACTION).
+  // Publishing the same value is what keeps the screen and the wire in step:
+  // a build that configures its own passkey then displays that passkey, not a
+  // constant baked in here.
+  const uint32_t passkey = NimBLEDevice::getSecurityPasskey();
+  publishPairingRequest(PairingType::PASSKEY_DISPLAY, passkey, connInfo);
+  return passkey;
 }
 
 void Camera::onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {

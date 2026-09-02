@@ -233,16 +233,16 @@ Control::state_t Control::connectAll(void) {
       if (m_ConnectAbort || (m_State == STATE_DISCONNECTING)) {
         break;
       }
-      m_ConnectCamera = camera;
+      setConnectCameraLocked(camera);
     }
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
       const std::lock_guard<std::mutex> lock(m_Mutex);
-      m_ConnectCamera = nullptr;
+      setConnectCameraLocked(nullptr);
       break;
     }
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    m_ConnectCamera = nullptr;
+    setConnectCameraLocked(nullptr);
   }
 
   {
@@ -250,7 +250,7 @@ Control::state_t Control::connectAll(void) {
     m_ConnectInProgress = false;
 
     if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
-      m_ConnectCamera = nullptr;
+      setConnectCameraLocked(nullptr);
       return m_State;
     }
 
@@ -601,7 +601,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
         m_ZombieTargets.push_back(std::move(target));
       }
       m_Targets.clear();
-      m_ConnectCamera = nullptr;
+      setConnectCameraLocked(nullptr);
     }
     setState(STATE_IDLE);
     return true;
@@ -645,7 +645,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     }
 
     m_Targets.clear();
-    m_ConnectCamera = nullptr;
+    setConnectCameraLocked(nullptr);
   }
   setState(STATE_IDLE);
   return completed;
@@ -764,6 +764,23 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
 std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_ConnectCamera;
+}
+
+uint32_t Control::getConnectingCameraGeneration(void) const {
+  return m_ConnectCameraGeneration.load(std::memory_order_acquire);
+}
+
+void Control::setConnectCameraLocked(std::shared_ptr<Camera> camera) {
+  m_ConnectCamera = std::move(camera);
+  // Zero is reserved as the "never assigned" value a reader uses to mark its
+  // own snapshot invalid, so the counter skips it on wrap. Released after the
+  // pointer is stored, so a reader that sees a new generation and then takes
+  // m_Mutex is guaranteed the matching camera.
+  uint32_t next = m_ConnectCameraGeneration.load(std::memory_order_relaxed) + 1;
+  if (next == 0) {
+    next = 1;
+  }
+  m_ConnectCameraGeneration.store(next, std::memory_order_release);
 }
 
 Control::state_t Control::getState(void) const {
@@ -1152,7 +1169,7 @@ void Control::resetForTest(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_Targets.clear();
-    m_ConnectCamera = nullptr;
+    setConnectCameraLocked(nullptr);
     m_Power = bootPower;
     resetAdaptiveState();
   }

@@ -1,0 +1,45 @@
+# Two cameras raising a pairing prompt at once (plan 66 / #63). Only one modal
+# exists, so the second camera's request waits behind the first. Closing the
+# first modal is exactly the moment the second becomes showable, so the pairing
+# timer must not be paused there: a paused timer leaves that request never
+# shown, never expired and never rejected, with the peer's SMP procedure hanging
+# on it.
+seed ble_peers fuji-pair
+seed ble_saved true
+wait 300
+
+action connect-two
+assert-eventually-virtual 12000 control.connected 2
+
+# First camera raises a prompt and owns the modal.
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.pairing_code 428913
+
+# Second camera raises its own. The visible modal keeps its code, because the
+# code being confirmed must never differ from the code on screen.
+action camera-pair-request confirm 314159
+wait 400
+assert ui.modal open
+assert ui.pairing_code 428913
+assert ui.pairing_timer running
+
+# Answering the first prompt must hand the modal to the waiting one.
+action camera-pair-accept
+wait 800
+assert ui.pairing_pending yes
+assert ui.modal open
+assert ui.pairing_code 314159
+assert ble.pairing_answers 1
+assert ble.pairing_answer accept
+
+# The second answer reaches the stack on its own camera.
+action camera-pair-reject
+wait 500
+assert ui.modal closed
+assert ui.pairing_pending no
+assert ble.pairing_answers 2
+assert ble.pairing_answer reject
+assert ui.pairing_timer paused
+exit

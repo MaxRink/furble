@@ -234,6 +234,11 @@ class NimBLEConnInfo {
 
   uint16_t getConnHandle() const { return m_Handle; }
 
+  // Stamp the handle of the link this info describes. Real NimBLE fills the
+  // handle from the GAP descriptor; the mock stamps it from the client, so an
+  // answer recorded against an earlier link is detectable as stale.
+  void mockSetConnHandle(uint16_t handle) { m_Handle = handle; }
+
  private:
   uint16_t m_Interval;
   uint16_t m_Latency;
@@ -402,6 +407,10 @@ class NimBLEClient {
   mutable size_t m_PendingConnInfoReads = 0;
   mutable bool m_ConnParamUpdatePending = false;
   uint32_t m_ConnectTimeout = 0;
+  // The GAP connection handle of the live link, or BLE_HS_CONN_HANDLE_NONE
+  // when there is none. Every successful connect takes a fresh value, so the
+  // production stale-handle guard has a real handle to compare against.
+  uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
   bool m_DeferredDelete = false;
@@ -468,6 +477,10 @@ class NimBLEDevice {
   static bool setPower(int8_t power);
   static bool setPower(int8_t power, NimBLETxPowerType type);
   static void setSecurityAuth(bool bonding, bool mitm, bool secure_connections);
+  // The passkey NimBLE displays for a BLE_SM_IOACT_DISP action. Defaults to
+  // NimBLE's own 123456 so an unconfigured build behaves identically.
+  static void setSecurityPasskey(uint32_t passkey);
+  static uint32_t getSecurityPasskey();
   static void setSecurityIOCap(uint8_t capability);
   static void setSecurityInitKey(uint8_t key_distribution);
   static void setSecurityRespKey(uint8_t key_distribution);

@@ -83,7 +83,10 @@ The following devices have been tested and confirmed to work:
    - Canon PowerShot G9 X Mark II ([@Mich2e](https://github.com/Mich2e))
 - Ricoh
    - Ricoh GR IV HDF ([@sky18Dragon](https://github.com/sky18Dragon))
-   - Numeric-comparison pairing displays the camera's six-digit code on the furble screen before confirmation.
+   - Numeric-comparison pairing displays the camera's six-digit code on the
+     furble screen before confirmation. Untested on hardware: the modal, the
+     layout and the injected answer are covered by the host peer handshake and
+     the simulator, but no GR IV has run it on a bench yet.
 - Nikon
    - Nikon COOLPIX B600
    - Nikon Z6 III ([@herrfrei](https://github.com/herrfrei))

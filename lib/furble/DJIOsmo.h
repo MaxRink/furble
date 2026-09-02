@@ -91,6 +91,20 @@ class DJIOsmo: public Camera {
   bool _connect(void) override final;
   void _disconnect(void) override final;
 
+  /**
+   * The Osmo protocol has no SMP-level comparison to show.
+   *
+   * DJI's own reference implementation, the Osmo-GPS-Controller-Demo this
+   * vendor is built from (see plans/74-dji-osmo.md), never calls
+   * esp_ble_gap_set_security_param, sets no IO capability and no
+   * ESP_LE_AUTH_* requirement, and issues every GATT operation with
+   * ESP_GATT_AUTH_REQ_NONE. The link is just works. What the user approves is
+   * the protocol's own first-pair verification and camera approval response
+   * over 0xFFF5, not a Bluetooth passkey, so there is no code to compare and a
+   * prompt would only be a dead end.
+   */
+  bool autoAcceptPairing(void) const override final { return true; }
+
   static uint16_t readLE16(const uint8_t *data);
   static uint32_t readLE32(const uint8_t *data);
   static void writeLE16(uint8_t *data, uint16_t value);

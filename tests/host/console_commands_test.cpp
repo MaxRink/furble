@@ -1269,7 +1269,11 @@ void testDebugWithLiveCamera(void) {
   // The camera pairing prompt (plan 66 / #63). The console is the automation
   // surface for a code the user would otherwise only see on the modal, and
   // 'pair yes' has to find the request on a Control target, not only on the
-  // camera Control happens to be connecting.
+  // camera Control happens to be connecting. The console answers a prompt the
+  // UI is holding open, so register the handler a display build registers;
+  // without one the request is answered where it is raised and never waits.
+  Furble::Camera::setPairingRequestCallback([](Furble::Camera *) { return true; });
+
   const Result noRequest = runDirect("pair yes");
   check(noRequest.rc != 0, "pair fails when nothing is pending");
   checkContains(noRequest.out, "no camera pairing request", "the refusal names the reason");
@@ -1281,12 +1285,21 @@ void testDebugWithLiveCamera(void) {
   checkContains(answered.out, "pair: yes", "pair yes reports the answer");
   check(!camera->hasPendingPairing(), "answering clears the pending request");
 
+  // A passkey-display prompt has nothing to confirm, so 'pair yes' must say so
+  // rather than report a success for an answer that is never injected.
   camera->hostSetPairingRequest(Furble::Camera::PairingType::PASSKEY_DISPLAY, 654321);
+  const Result displayYes = runDirect("pair yes");
+  check(displayYes.rc != 0, "pair yes is refused on a passkey display prompt");
+  checkContains(displayYes.out, "passkey display prompt", "the refusal names the prompt kind");
+  check(camera->hasPendingPairing(), "a refused answer leaves the display prompt pending");
+
   const Result rejected = runDirect("pair no");
   check(rejected.rc == 0, "pair no answers a passkey display request");
   checkContains(rejected.out, "pair: no", "pair no reports the answer");
   check(!camera->hasPendingPairing(), "rejection clears the pending request");
   checkContains(runDirect("pair maybe").out, "expected yes or no", "pair rejects a bad answer");
+
+  Furble::Camera::setPairingRequestCallback(nullptr);
 
   // 'debug all' is the single paste a bug report carries.
   const Result all = runDirect("debug all");

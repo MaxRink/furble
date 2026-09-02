@@ -122,6 +122,15 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   bool secureConnection(NimBLEClient &client) override;
   void onPasskeyConfirmed(bool accept) override;
   void onPasskeyEntered(uint32_t passkey) override;
+
+  /**
+   * The passkey the central returned from onPassKeyDisplay.
+   *
+   * This is the value NimBLE would inject and the camera keypad would have to
+   * match, so a test can assert the code on furble's screen is the code the
+   * stack actually used rather than a constant compiled into furble.
+   */
+  uint32_t lastDisplayedPasskey(void) const;
   bool updateConnectionParams(NimBLEClient &client,
                               uint16_t min_interval,
                               uint16_t max_interval,
@@ -174,10 +183,11 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   // MITM handshake state. secureConnection() waits on m_PairingCv for the
   // central's injected answer, which arrives on the thread that called
   // answerPairing(), so the two threads model the real host task and UI task.
-  std::mutex m_PairingMutex;
+  mutable std::mutex m_PairingMutex;
   std::condition_variable m_PairingCv;
   bool m_PairingAnswered = false;
   bool m_PairingAccepted = false;
+  uint32_t m_LastDisplayedPasskey = 0;
 };
 
 }  // namespace Host

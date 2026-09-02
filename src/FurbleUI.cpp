@@ -348,8 +348,11 @@ UI::UI(const interval_t &interval)
     abort();
   }
 
+  // Returning the queue result matters: a full queue means no prompt will ever
+  // be shown and no timer will ever expire the request, so Camera answers it
+  // itself rather than stranding the peer's SMP procedure.
   Camera::setPairingRequestCallback(
-      [](Camera *camera) { UI::sendRequest(Request::CAMERA_PAIRING, 0, camera); });
+      [](Camera *camera) { return UI::sendRequest(Request::CAMERA_PAIRING, 0, camera); });
 
   // The backlight PWM is clocked from the APB bus. DFS scaling the APB
   // frequency modulates the PWM and the whole screen flickers, so pin the
@@ -697,7 +700,8 @@ UI::UI(const interval_t &interval)
   configureControl(ControlMode::MENU);
 
   // create connection timer
-  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false, {}, 0, false, false, 0};
+  m_ConnectContext = {this, NULL, NULL,  NULL,  NULL, NULL,    false,
+                      {},   0,    false, false, 0,    nullptr, 0};
   m_ConnectTimer = lv_timer_create(connectTimerHandler, 50, &m_ConnectContext);
   lv_timer_pause(m_ConnectTimer);
 
@@ -731,6 +735,27 @@ void UI::stopPairingTimer(void) {
   }
 }
 
+bool UI::anyCameraPairingPending(void) {
+  auto &control = Control::getInstance();
+  auto connecting = control.getConnectingCamera();
+  if (connecting && connecting->hasPendingPairing()) {
+    return true;
+  }
+  for (const auto &camera : control.getTargetCameras()) {
+    if (camera && camera->hasPendingPairing()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void UI::pausePairingTimerIfIdle(UI *ui) {
+  if (Companion::getInstance().isEnabled() || anyCameraPairingPending()) {
+    return;
+  }
+  ui->stopPairingTimer();
+}
+
 void UI::closePairingDialog(void) {
   if ((m_PairingDialog != nullptr) && lv_obj_is_valid(m_PairingDialog)) {
     lv_msgbox_close_async(m_PairingDialog);
@@ -747,9 +772,10 @@ void UI::closePairingDialog(void) {
   }
   m_PairingPrevFocus = nullptr;
 
-  if (!Companion::getInstance().isEnabled()) {
-    stopPairingTimer();
-  }
+  // A second camera's prompt is held behind the visible modal, so this close is
+  // exactly when it becomes showable. Pausing here regardless would strand it:
+  // never shown, never expired, never rejected.
+  pausePairingTimerIfIdle(this);
 }
 
 void UI::closeCompanionPairingDialog(void) {
@@ -856,6 +882,10 @@ void UI::showCameraPairing(Camera *camera) {
   lv_obj_t *name = lv_label_create(content);
   lv_label_set_text(name, owner->getName().c_str());
   lv_obj_set_width(name, LV_PCT(100));
+  // Pin the name to a single line. LV_LABEL_LONG_DOT only ellipsizes against a
+  // fixed height; with the default content height a long camera name wraps
+  // instead, and three wrapped lines push the modal off the 160 px panel.
+  lv_obj_set_height(name, lv_font_get_line_height(lv_obj_get_style_text_font(name, LV_PART_MAIN)));
   lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -986,9 +1016,7 @@ void UI::pairingTimer(lv_timer_t *timer) {
 
   // A camera callback can race with disconnect and leave no owned camera by
   // the time this poll runs. Do not keep a 250 ms wakeup alive in that case.
-  if (!companion.isEnabled()) {
-    ui->stopPairingTimer();
-  }
+  pausePairingTimerIfIdle(ui);
 }
 
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
@@ -2463,19 +2491,39 @@ void UI::configureControl(ControlMode mode, bool set) {
 namespace {
 
 // Resolve the camera a scenario pairing action targets: the camera Control is
-// connecting, otherwise the first owned target. Returning the owning shared_ptr
-// keeps the camera alive for the duration of the action.
-std::shared_ptr<Camera> simPairingCamera(void) {
-  auto camera = Control::getInstance().getConnectingCamera();
-  if (camera) {
-    return camera;
+// connecting, otherwise an owned target. Returning the owning shared_ptr keeps
+// the camera alive for the duration of the action.
+//
+// `pending` selects which half of the fleet is wanted. A new request goes to
+// the first camera that does not already hold one, so injecting twice in a row
+// models two cameras raising a prompt (the multi-connect case). An expiry or a
+// pending-state query wants the camera that does hold one.
+std::shared_ptr<Camera> simPairingCamera(bool pending) {
+  auto &control = Control::getInstance();
+  std::shared_ptr<Camera> first;
+  auto consider = [&](const std::shared_ptr<Camera> &camera) {
+    if (!camera) {
+      return false;
+    }
+    if (!first) {
+      first = camera;
+    }
+    return camera->hasPendingPairing() == pending;
+  };
+
+  auto connecting = control.getConnectingCamera();
+  if (consider(connecting)) {
+    return connecting;
   }
-  for (const auto &targetCamera : Control::getInstance().getTargetCameras()) {
-    if (targetCamera) {
+  for (const auto &targetCamera : control.getTargetCameras()) {
+    if (consider(targetCamera)) {
       return targetCamera;
     }
   }
-  return nullptr;
+  // Every camera is already on the wanted side, so fall back to the first one.
+  // A second request against a camera that already holds one is the duplicate
+  // the production guard has to refuse, and the scenario asserts that refusal.
+  return first;
 }
 
 }  // namespace
@@ -2964,24 +3012,25 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     return;
   }
 
-  // Inject a pending CAMERA pairing prompt (plan 66 / #63) on the connecting or
-  // active camera and let the real pairing timer raise the camera modal, exactly
-  // as the NimBLE security callback does on device. The real BLE handshake never
-  // runs in the sim, so this seam stands in for the callback; showCameraPairing
-  // and the modal render are the production code under test.
+  // Raise a CAMERA pairing prompt (plan 66 / #63) on the connecting or active
+  // camera. The simulator runs the production Camera against MockNimBLE, so
+  // only the controller event is substituted: the request is published through
+  // the same publishPairingRequest() the real onConfirmPasskey calls, against
+  // the live client's connection info. Confirm and Cancel therefore inject a
+  // real answer through NimBLEDevice, which ble.pairing_answer reads back.
   //   camera-pair-request confirm <code>   numeric comparison with a code
   //   camera-pair-request display <code>   passkey display with a code
   // The code is fixed by the scenario so captures stay deterministic.
   if (action.kind == Sim::scenario_action_kind_t::PAIRING_REQUEST) {
     m_SimActionResult = sim_action_result_t::UNAVAILABLE;
-    auto camera = simPairingCamera();
+    auto camera = simPairingCamera(false);
     if (!camera) {
       return;
     }
     const Camera::PairingType type = action.mode == "display"
                                          ? Camera::PairingType::PASSKEY_DISPLAY
                                          : Camera::PairingType::NUMERIC_COMPARISON;
-    m_SimActionResult = camera->simSetPendingPairing(type, action.index)
+    m_SimActionResult = camera->hostSetPairingRequest(type, action.index)
                             ? sim_action_result_t::APPLIED
                             : sim_action_result_t::VALID_NO_EFFECT;
     startPairingTimer();
@@ -3018,16 +3067,16 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     return;
   }
 
-  // Advance a pending request past its two minute deadline so the timeout path
-  // runs without a two minute wall-clock wait.
+  // Advance a pending request past its response deadline so the timeout path
+  // runs without a wall-clock wait.
   if (simpleAction && command == "camera-pair-expire") {
-    m_SimActionResult = sim_action_result_t::UNAVAILABLE;
-    auto camera = simPairingCamera();
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
+    auto camera = simPairingCamera(true);
     if (!camera) {
       return;
     }
-    m_SimActionResult = camera->simExpirePendingPairing() ? sim_action_result_t::APPLIED
-                                                          : sim_action_result_t::VALID_NO_EFFECT;
+    m_SimActionResult = camera->hostExpirePairing() ? sim_action_result_t::APPLIED
+                                                    : sim_action_result_t::VALID_NO_EFFECT;
     startPairingTimer();
     return;
   }
@@ -4644,8 +4693,17 @@ std::string UI::simQueryState(const char *key) {
   }
 
   if (query == "pairing_pending") {
-    auto camera = simPairingCamera();
-    return (camera && camera->hasPendingPairing()) ? "yes" : "no";
+    return anyCameraPairingPending() ? "yes" : "no";
+  }
+
+  // Whether the pairing timer is still armed. A prompt held behind a visible
+  // modal needs it, so this is the guard against orphaning a second camera's
+  // request when the first modal closes.
+  if (query == "pairing_timer") {
+    if (m_PairingTimer == nullptr) {
+      return "none";
+    }
+    return lv_timer_get_paused(m_PairingTimer) ? "paused" : "running";
   }
 
   return "";
@@ -4866,11 +4924,31 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
     ctx->connectRequested = false;
   }
 
+  // Outside the connect phase there is no progress to render, so drop the
+  // snapshot rather than leave the UI holding a strong reference to a camera
+  // Control has already released. Generation zero marks it invalid, which is
+  // also the value Control reports before it has ever published a camera.
+  if ((state != Control::STATE_CONNECT) && (state != Control::STATE_CONNECTING)) {
+    ctx->connectingCamera.reset();
+    ctx->connectingGeneration = 0;
+  }
+
   switch (state) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
       lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
-      camera = control.getConnectingCamera();
+      // Refresh the snapshot only when Control reports a different connecting
+      // camera. The generation read is lock free, so the 20 Hz steady tick no
+      // longer takes Control's mutex on the LVGL task; the strong reference
+      // held in the context keeps the camera alive to read progress from.
+      {
+        const uint32_t generation = control.getConnectingCameraGeneration();
+        if (generation != ctx->connectingGeneration) {
+          ctx->connectingGeneration = generation;
+          ctx->connectingCamera = control.getConnectingCamera();
+        }
+      }
+      camera = ctx->connectingCamera;
 
       if (ctx->sessionEstablished) {
         // Mid-session reconnect. A live session already owns the screen, so do
