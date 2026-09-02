@@ -89,6 +89,8 @@ NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
 std::vector<NimBLEClient *> g_PendingReap;  // clients queued for async reap
+// Host stack state, guarded by g_ClientsMutex like the rest of the mock's
+// globals so a reader on the console task never races Device::init().
 bool g_Initialised = false;
 int g_Power = 0;
 bool g_ConnectShouldFail = false;
@@ -898,10 +900,12 @@ std::string NimBLEUtils::dataToHexString(const uint8_t *data, size_t length) {
 
 void NimBLEDevice::init(const std::string &name) {
   (void)name;
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   g_Initialised = true;
 }
 
 bool NimBLEDevice::isInitialized() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   return g_Initialised;
 }
 
@@ -912,6 +916,7 @@ NimBLEAddress NimBLEDevice::getAddress() {
 }
 
 int NimBLEDevice::getPower() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   return g_Power;
 }
 
@@ -926,12 +931,14 @@ NimBLEClient *NimBLEDevice::getClientByPeerAddress(const NimBLEAddress &address)
 }
 
 bool NimBLEDevice::setPower(int8_t power) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   g_Power = power;
   return true;
 }
 
 bool NimBLEDevice::setPower(int8_t power, NimBLETxPowerType type) {
   (void)type;
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
   g_Power = power;
   return true;
 }
@@ -1143,6 +1150,8 @@ void NimBLEDevice::resetMock() {
   g_Bonded = false;
   g_DeleteBondCount = 0;
   g_AbsentAddresses.clear();
+  g_Initialised = false;
+  g_Power = 0;
 }
 
 void NimBLEDevice::setScanAbsentAddress(const NimBLEAddress &address, bool absent) {

@@ -48,8 +48,16 @@ Measured with the audit's method (clang `-fprofile-instr-generate
 -fcoverage-mapping`, `llvm-profdata` and `llvm-cov`), `src/FurbleConsole.cpp`
 line coverage moved from 0.00 percent to just over 90 percent across 609
 assertions. Repeat runs measure 90.07 to 90.42 percent, the small spread being
-the timing-dependent power log tick. The remaining gap is the compile-time `command()` table builder, the transient
-Control states, and the camera type names that need a target of each vendor.
+the timing-dependent power log tick. The remaining gap is the compile-time
+`command()` table builder, the transient Control states, and the camera type
+names that need a target of each vendor.
+
+The suite asserts the top-level command set exactly. Subcommands are asserted
+from three sides instead: an unknown one is rejected, every documented one is
+accepted, and the usage text the command prints names every documented one. The
+handlers decide with a chain of `strcmp` and expose no list, so a subcommand
+added to a handler and to its usage text but not to the test's table would not
+fail. A removed or renamed one does.
 
 ## Build inventory gate
 
@@ -95,6 +103,14 @@ glibc and passed by luck on macOS. The suite now parks the task at a known
 point inside the transport read before it returns, where it sleeps and touches
 nothing else for the rest of the process.
 
+The control task is started detached and is deliberately not parked the same
+way. Parking it would need a hook in `src/FurbleControl.cpp`, and it does not
+need one: it is quiescent after the final `disconnect()`, and what it blocks on
+is a heap allocated queue the shim never frees, not a namespace scope static
+with a destructor. That is the difference that made the console task crash and
+leaves this one safe. If a later change gives the control task a static it
+waits on, it will need the same parking.
+
 ## Follow-ups
 
 - `src/FurblePlatform.cpp`, `src/FurbleFeedback.cpp`, `src/FurbleIR.cpp` and
@@ -102,6 +118,21 @@ nothing else for the rest of the process.
   drop out of the exemption file when its build lands.
 - `cameraTypeName()` needs one target of each vendor to cover, which means
   linking the remaining vendor camera classes into the console target.
+- The host `splitArgv()` is not `esp_console_split_argv()`. It has no backslash
+  escapes, it treats a tab as a separator, and it enforces neither
+  `max_cmdline_args` (32) nor `max_cmdline_length` (128). The variadic
+  `gps binary` command therefore truncates silently at 31 arguments on device,
+  real behaviour the harness cannot currently catch. Bringing the double up to
+  the real splitter would close that.
+- The suite dispatches most commands on the test thread while the production
+  console task concurrently runs `powerLogTick()`. Under ThreadSanitizer that
+  reports races on `g_PowerLog` which are harness artefacts, not firmware bugs:
+  on device only the console task touches it. Routing `runDirect()` through
+  `runLine()` so the task executes every handler would remove them, at the cost
+  of the return code the task discards.
+- The inventory gate understands a fixed set of CMake forms, listed in its
+  module docstring. A build file that names a firmware source some other way is
+  invisible to it, which fails closed for sources and open for exemptions.
 - Plan number 162 was taken because 161 is claimed by the in-flight
   feat/sim-real-control PR. If that PR lands first the numbers stand; if it is
   renumbered, this one does not move.

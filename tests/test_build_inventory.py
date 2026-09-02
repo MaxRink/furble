@@ -6,6 +6,26 @@ compiles. Nothing in CI stopped a new firmware source from landing outside both
 build lists. This gate closes that hole. Every src/ and lib/ .cpp must be built
 by the host suite, built by the simulator, or carry an explicit one-line reason
 in tests/build_inventory_exemptions.json.
+
+The CMake forms this gate understands, which are the forms the two build files
+actually use:
+
+  - a source path built from a variable reference, such as
+    ${FURBLE_ROOT}/src/FurbleGPS.cpp or ${FURBLE_PROTOCOL_DIR}/ProvisionTLV.cpp,
+    optionally double or single quoted. A bare relative path is not recognised,
+    because neither build file names a firmware source that way.
+  - set(VAR value) for the variables those paths reference, taking the first
+    whitespace separated token as the value. Nested references are expanded.
+  - a # comment to end of line, which is stripped before any path is read, so a
+    commented out source counts as not built. A quoted # is not treated as a
+    comment, which matches CMake for the plain assignments these files use.
+
+sim/build.sh is read with its own $ROOT and ${ROOT} form, with the same comment
+stripping.
+
+Anything outside these forms is invisible to the gate. That fails closed for a
+source (it reports as uncovered) and open for an exemption (it reports as
+redundant), so a parse gap is loud rather than silent.
 """
 from pathlib import Path
 import json
@@ -33,6 +53,30 @@ FIRMWARE_DIRS = (
 SET_RE = re.compile(r"set\(\s*([A-Za-z0-9_]+)\s+([^)\n]*)", re.IGNORECASE)
 CMAKE_PATH_RE = re.compile(r"\$\{[A-Za-z0-9_]+\}[^\s\"')]*\.cpp")
 SHELL_PATH_RE = re.compile(r"\$\{?ROOT\}?/[^\s\"']*\.cpp")
+
+
+def strip_comments(text: str) -> str:
+  """Remove every # comment to end of line, keeping a quoted # intact.
+
+  A commented out source has to read as not built, and a comment that merely
+  mentions a path must not make that path look built. Both build files quote
+  paths rather than embedding a bare #, so a simple quote aware scan is enough.
+  """
+  out = []
+  for line in text.splitlines():
+    quote = None
+    cut = len(line)
+    for index, character in enumerate(line):
+      if quote is not None:
+        if character == quote:
+          quote = None
+      elif character in "\"'":
+        quote = character
+      elif character == "#":
+        cut = index
+        break
+    out.append(line[:cut])
+  return "\n".join(out)
 
 
 def normalise(path: str) -> str:
@@ -103,7 +147,7 @@ def host_sources(root: Path) -> set:
   path = root / HOST_CMAKE
   if not path.exists():
     return set()
-  return cmake_paths(path.read_text(encoding="utf-8"), "tests/host")
+  return cmake_paths(strip_comments(path.read_text(encoding="utf-8")), "tests/host")
 
 
 def sim_block(text: str) -> str:
@@ -127,7 +171,7 @@ def sim_cmake_sources(root: Path) -> set:
   path = root / SIM_CMAKE
   if not path.exists():
     return set()
-  text = path.read_text(encoding="utf-8")
+  text = strip_comments(path.read_text(encoding="utf-8"))
   return cmake_paths(text, "sim", sim_block(text))
 
 
@@ -137,7 +181,7 @@ def sim_shell_sources(root: Path) -> set:
   if not path.exists():
     return set()
   paths = set()
-  for token in SHELL_PATH_RE.findall(path.read_text(encoding="utf-8")):
+  for token in SHELL_PATH_RE.findall(strip_comments(path.read_text(encoding="utf-8"))):
     candidate = normalise(re.sub(r"^\$\{?ROOT\}?/", "", token))
     if is_firmware(candidate):
       paths.add(candidate)
@@ -240,6 +284,33 @@ class BuildInventoryTest(unittest.TestCase):
       cmake.write_text(text.replace(dropped, ""), encoding="utf-8")
       self.assertIn("uncovered firmware source: lib/furble/CanonEOS.cpp is in neither build "
                     "list nor %s" % EXEMPTIONS, check_inventory(root))
+
+  def test_commented_out_source_is_reported_uncovered(self):
+    # A source commented out of the host build is not compiled, so the gate has
+    # to see it as uncovered rather than reading the path out of the comment.
+    with tempfile.TemporaryDirectory() as directory:
+      root = self.copy_fixture(Path(directory))
+      cmake = root / HOST_CMAKE
+      text = cmake.read_text(encoding="utf-8")
+      live = "               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp\n"
+      self.assertIn(live, text)
+      commented = "               # ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp\n"
+      cmake.write_text(text.replace(live, commented), encoding="utf-8")
+      self.assertNotIn("lib/furble/CanonEOS.cpp", host_sources(root))
+      self.assertIn("uncovered firmware source: lib/furble/CanonEOS.cpp is in neither build "
+                    "list nor %s" % EXEMPTIONS, check_inventory(root))
+
+  def test_comment_mentioning_an_exempted_path_is_not_a_build(self):
+    # A comment that names an exempted file must not make it look built, which
+    # would fire the redundant-exemption check on a file nothing compiles.
+    with tempfile.TemporaryDirectory() as directory:
+      root = self.copy_fixture(Path(directory))
+      cmake = root / HOST_CMAKE
+      cmake.write_text(cmake.read_text(encoding="utf-8")
+                       + "\n# See ${FURBLE_ROOT}/src/FurbleUIAudit.cpp for the widget walk.\n",
+                       encoding="utf-8")
+      self.assertNotIn("src/FurbleUIAudit.cpp", host_sources(root))
+      self.assertEqual(check_inventory(root), [])
 
   def test_stale_exemption_is_rejected(self):
     with tempfile.TemporaryDirectory() as directory:

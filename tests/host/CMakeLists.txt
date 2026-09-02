@@ -1097,6 +1097,10 @@ target_include_directories(console_commands_test BEFORE PRIVATE
                            ${FURBLE_ROOT}/lib/furble
                            ${FURBLE_ROOT}/lib/preferences)
 target_compile_definitions(console_commands_test PRIVATE
+                           # Every command prints to stdout, so the suite reads
+                           # its assertions back out of a captured stdout. Keep
+                           # that file in the build tree, not in /tmp.
+                           FURBLE_CONSOLE_CAPTURE_DIR="${CMAKE_CURRENT_BINARY_DIR}"
                            FURBLE_CONSOLE
                            FURBLE_M5STICKS3
                            FURBLE_VERSION="host"

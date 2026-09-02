@@ -210,10 +210,16 @@ void testCommandTable(void) {
   }
 }
 
-// Test 2. Each command's accepted subcommand set, asserted from both sides: an
-// unknown subcommand is rejected, and every documented one is not.
+// Test 2. Each command's documented subcommand set, asserted from three sides:
+// an unknown subcommand is rejected, every documented one is not, and the usage
+// text the command prints on rejection names every documented one.
+//
+// The handlers decide their subcommands with a chain of strcmp and expose no
+// list, so this cannot detect a subcommand added to a handler and to its usage
+// text but not to the table below. It does catch a removed or renamed
+// subcommand, and it pins the usage text a host script reads to this table.
 void testSubcommandSets(void) {
-  std::cerr << "test: each command accepts exactly its documented subcommands ("
+  std::cerr << "test: each command's documented subcommands are accepted and named ("
             << expectedSubcommandCount() << " total)\n";
 
   for (const auto &contract : SUBCOMMANDS) {
@@ -228,6 +234,8 @@ void testSubcommandSets(void) {
       const Result accepted = runDirect(command + " " + subcommand + suffix);
       check(!contains(accepted.out, contract.rejection),
             command + " " + subcommand + " is an accepted subcommand");
+      checkContains(unknown.out, subcommand,
+                    command + " names '" + subcommand + "' in its usage text");
     }
   }
 }
@@ -1263,10 +1271,10 @@ void testDebugWithLiveCamera(void) {
 
 int main(void) {
   // Every command prints to stdout, so the suite reads its assertions back out
-  // of a captured stdout. The path carries the process id so two concurrent
-  // runs never share a capture file.
-  char capturePath[64];
-  snprintf(capturePath, sizeof(capturePath), "/tmp/furble-console-%d.out",
+  // of a captured stdout. The file lives in the build tree, and carries the
+  // process id so two concurrent runs never share one.
+  char capturePath[256];
+  snprintf(capturePath, sizeof(capturePath), "%s/furble-console-%d.out", FURBLE_CONSOLE_CAPTURE_DIR,
            static_cast<int>(getpid()));
   ConsoleHost::startCapture(capturePath);
   Furble::Settings::init();
