@@ -354,7 +354,12 @@ bool RicohVirtualCamera::runPairingHandshake(NimBLEClient &client) {
     // Passkey display: the central shows a code and the user types it on the
     // camera. The peer is the camera keypad, so it checks what the central
     // displayed against the code this camera generated.
-    accepted = callbacks->onPassKeyDisplay(info) == m_Config.pairing_code;
+    const uint32_t displayed = callbacks->onPassKeyDisplay(info);
+    {
+      const std::lock_guard<std::mutex> lock(m_PairingMutex);
+      m_LastDisplayedPasskey = displayed;
+    }
+    accepted = displayed == m_Config.pairing_code;
   } else {
     callbacks->onConfirmPasskey(info, m_Config.pairing_code);
     std::unique_lock<std::mutex> lock(m_PairingMutex);
@@ -369,6 +374,11 @@ bool RicohVirtualCamera::runPairingHandshake(NimBLEClient &client) {
     callbacks->onAuthenticationComplete(info);
   }
   return accepted;
+}
+
+uint32_t RicohVirtualCamera::lastDisplayedPasskey(void) const {
+  const std::lock_guard<std::mutex> lock(m_PairingMutex);
+  return m_LastDisplayedPasskey;
 }
 
 void RicohVirtualCamera::onPasskeyConfirmed(bool accept) {

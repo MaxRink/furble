@@ -9,6 +9,7 @@
 #include <mutex>
 #include <thread>
 
+#include "Camera.h"
 #include "Device.h"
 #include "FujifilmBasic.h"
 #include "FujifilmVirtualCamera.h"
@@ -31,6 +32,12 @@ void getConnHandleHook() {
   g_HookCondition.wait(lock, [] { return g_ReleaseHandle; });
 }
 
+// A build with no answerer accepts the request where it is raised, so this
+// test has to model the display build whose modal holds it open.
+bool pairingCallback(Furble::Camera *) {
+  return true;
+}
+
 void disconnectCallbackHook() {
   const std::lock_guard<std::mutex> lock(g_HookMutex);
   g_DisconnectEntered = true;
@@ -50,6 +57,7 @@ void waitFor(bool &value, const char *message) {
 int main() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Camera::setPairingRequestCallback(pairingCallback);
 
   Furble::Host::FujifilmVirtualCamera peer;
   NimBLEDevice::setMockPeer(&peer);
@@ -113,6 +121,7 @@ int main() {
     return 1;
   }
 
+  Furble::Camera::setPairingRequestCallback(nullptr);
   NimBLEDevice::resetMock();
   std::cout << "camera pairing lifetime race: PASS\n";
   return 0;

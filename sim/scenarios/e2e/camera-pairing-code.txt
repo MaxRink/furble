@@ -2,18 +2,19 @@
 # Bluetooth code the user must compare; furble must render that code on its own
 # screen so the user can confirm numeric comparison with confidence.
 #
-# The real BLE pairing handshake never runs in the sim, so the camera-pair-request
-# seam injects a pending pairing on the connecting camera and the real pairing
-# timer raises the same modal showCameraPairing builds on device. Only the real
-# Fujifilm/Ricoh passkey exchange needs hardware now: the render and layout are
-# proven here. The code is fixed so the run stays deterministic.
-seed fauxny true
+# The simulator runs the production Camera against MockNimBLE, so a connected
+# virtual peer gives the prompt a real link: the request is published through
+# the same publishPairingRequest the NimBLE security callback calls, and
+# Confirm injects a real answer that ble.pairing_answer reads back off the
+# stack. Only the controller event that raises the callback is substituted.
+# The code is fixed by the scenario so the capture stays deterministic.
+seed ble_peers fuji
+seed ble_saved true
 wait 300
 
-# Bring up the FauxNY camera through the real connect flow so Control owns a
-# camera the pairing timer can resolve.
 action connect
-wait 200
+assert-eventually-virtual 8000 control.state active
+assert control.connected 1
 
 # Numeric comparison: the modal shows the code with Confirm and Cancel so the
 # user can approve the match.
@@ -27,4 +28,13 @@ assert ui.pairing_kind confirm
 assert ui.pairing_code 428913
 assert ui.pairing_overflow no
 capture camera-pairing-code
+
+# Confirm must reach the stack as an accept and leave the link up.
+action camera-pair-accept
+wait 500
+assert ui.modal closed
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer accept
+assert control.connected 1
 exit
