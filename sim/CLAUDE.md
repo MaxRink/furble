@@ -316,7 +316,10 @@ a regression.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but
   inactive camera so the Connect and Delete lists render and their buttons
   enable; the `nav` action reaches `scan`, `connect`, `delete`, `infrared`,
-  `feedback` and `storage` in addition to the settings pages.
+  `feedback` and `storage` in addition to the settings pages. `nav level_main`
+  clicks the home menu Level entry (plan 153), which is a second button onto
+  the shared Level page and so has no `nav level` alias of its own; it reports
+  `unavailable` while the IMU gate hides the entry.
 - `sim/scenarios/bughunt/page-matrix.txt` is the release gate for modeled-page
   reachability and layout. It walks the root, Connect/Scan/Delete lists, every
   settings and diagnostics route, optional Infrared/Feedback/Storage pages,
@@ -358,6 +361,10 @@ a regression.
   disabled setting and hides both optional pages. The spirit level filter,
   sensitivity curve and auto-rotate all run on the injected sample.
   `imu_accel_x/y/z` read the rendered Diagnostics > IMU live label back.
+  `imu_button_visible` and `level_button_visible` report the Diagnostics and
+  Connected page entries, and `level_main_button_visible` reports the home menu
+  Level entry, so a scenario can prove the IMU gate hides every route rather
+  than only the page contents.
   `imu_accel_updates` and `imu_gyro_updates` count actual label redraws; validity
   is tracked independently so one failed sensor does not redraw the other.
   Script actions are queued onto the UI task before touching LVGL; the

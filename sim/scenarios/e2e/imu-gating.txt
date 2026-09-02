@@ -12,6 +12,16 @@ action expect unavailable nav level_main
 wait 150
 assert ui.page main
 
+# The main menu open branch refreshes the gate every time the home page loads,
+# so a runtime IMU loss hides the entry on the next return home.
+action imu.disable
+action nav settings
+wait 150
+home
+wait 150
+assert ui.page main
+assert ui.level_main_button_visible no
+
 action nav settings
 wait 150
 assert ui.imu_button_visible no

@@ -1509,23 +1509,33 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   // The home menu carries seven rows once the Level entry joins it and the IR
-  // capability row is present. At the default padding of 6 the seventh row
-  // overflows the 135x240 panel by one pixel, so the home rows trim to 5 and
-  // all seven fit with headroom. Every other page keeps the roomier padding.
+  // setting is on (Connect, Scan, Delete, IR, Settings, Level, Power off). A
+  // row is the 24 px icon plus the top and bottom padding, and the text size
+  // setting does not change it, so the fit is fixed arithmetic against the
+  // 215 px page: at the default padding of 6 six rows already overflow by one
+  // pixel, at 5 seven rows overflow by 23 px, and at 3 seven rows take 210 px
+  // and fit with 5 px to spare. home-seven-rows.txt guards this in the sim.
+  // Every other page keeps the roomier padding.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
   const bool mainPage = menu.page == m_MainMenu.page;
-  const int32_t pad = connectedPage ? 0 : (mainPage ? 5 : 6);
+  const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
-  // (Connect, Scan, Delete, Settings, Power off) fits without scrolling. The
-  // Connected page carries the most rows now that it also holds the Cameras
-  // entry, so it drops to zero padding to keep the extra row on-panel, matching
-  // the large narrow panels above.
+  // (Connect, Scan, Delete, IR, Settings, Level, Power off) fits without
+  // scrolling. It has no icons, so a row is one text line plus the padding
+  // and the text size grows it. This board defaults to Small and clamps Large
+  // to Normal; at padding 1 seven Normal rows overflow by 5 px, at zero
+  // padding they fit. The home page therefore joins the Connected page,
+  // which carries the most rows now that it also holds the Cameras entry, at
+  // zero padding. Other pages keep 1, matching the large narrow panels
+  // above. home-seven-rows-large.txt guards this.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
-  lv_obj_set_style_pad_top(cont, connectedPage ? 0 : 1, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, connectedPage ? 0 : 1, LV_STATE_DEFAULT);
+  const bool mainPage = menu.page == m_MainMenu.page;
+  const int32_t pad = (connectedPage || mainPage) ? 0 : 1;
+  lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
 #endif
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);

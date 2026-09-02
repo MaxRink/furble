@@ -17,6 +17,9 @@
 seed text_size 0
 seed fauxny true
 seed gps true
+# The IMU seed puts the home Level row in place so the home fit assert below
+# covers the fullest home menu the setting allows.
+seed imu true
 wait 300
 # The seeded Small size was loaded on boot.
 assert setting.text_size 0
