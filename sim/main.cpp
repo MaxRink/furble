@@ -17,10 +17,9 @@
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "Scan.h"
+#include "ble_sim.h"
 #include "capture.h"
 #include "driver.h"
-
-const char *LOG_TAG = FURBLE_STR;
 
 namespace {
 
@@ -105,6 +104,25 @@ int runSimulator() {
   }
 
   Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+
+  // Bring the virtual radio up right after the BLE stack, the same order the
+  // firmware brings up NimBLE before any camera exists. The peers advertise to
+  // the production Scan and answer the production Camera connect paths.
+  std::string topology = Sim::scenarioSetting("ble_peers", "none");
+  const bool connectFail = Sim::scenarioSettingIsTrue("connect_fail");
+  if (connectFail && topology == "none") {
+    // A camera that never establishes a link needs a radio to fail at. FauxNY
+    // has none, so the connect-failure seed implies one real virtual peer.
+    topology = "fuji";
+  }
+  Sim::bleStartPeers(topology);
+  if (topology != "none" && (connectFail || Sim::scenarioSettingIsTrue("ble_saved"))) {
+    Sim::bleSaveRegisteredPeers();
+  }
+  if (connectFail) {
+    Sim::bleSetConnectFail(true);
+  }
+
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
@@ -120,12 +138,25 @@ int runSimulator() {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   ui.task();
-  Scan::getInstance().shutdown();
+
+  // Tear the control session down before anything else unwinds. The firmware
+  // never leaves UI::task, so on device this teardown only runs on the restart
+  // path; on the host, process exit would otherwise destroy the NimBLE client
+  // pool and the control targets in an unspecified static order, and the
+  // target destructor's Camera::disconnect() would dereference a freed client.
+  control.disconnect(Control::DISCONNECT_WAIT_MAX_MS, /*forRestart=*/true);
+  Scan::getInstance().stop();
+  Scan::getInstance().joinStartProbes();
   // No rig worker may arm or touch a service timer after this point. The
   // esp_timer API deletes callbacks asynchronously on hardware, so keep the
   // callback argument alive until the simulator dispatcher has joined.
   Sim::quiesceRig();
   furble_sim_stop_all_tasks();
+  // The virtual peers are released only after every task has joined. The
+  // control task, its per-target tasks and the virtual radio all hold pointers
+  // into a peer, so freeing them while any of those still runs is a
+  // use-after-free at shutdown.
+  Sim::bleStopPeers();
   Sim::stopRig();
   return Sim::exitResult();
 }

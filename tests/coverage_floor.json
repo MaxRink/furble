@@ -1,17 +1,26 @@
 {
   "files": {
-    "lib/furble/Camera.cpp": 73.46,
-    "lib/furble/Scan.cpp": 88.86,
+    "lib/furble/Camera.cpp": 73.75,
+    "lib/furble/Scan.cpp": 90.2,
     "src/FurbleConsole.cpp": 89.08,
-    "src/FurbleControl.cpp": 73.9,
-    "src/FurbleUI.cpp": 79.4
+    "src/FurbleControl.cpp": 77.13,
+    "src/FurbleUI.cpp": 79.53
+  },
+  "lowered": {
+    "keys": [
+      "stack sim m5stack-core (320x240): 42.20 to 35.12",
+      "stack sim m5stick-c (80x160): 43.29 to 35.90",
+      "stack sim m5stick-s3 (135x240): 57.16 to 50.13",
+      "stack sim union: 57.86 to 50.66"
+    ],
+    "reason": "real Control in the sim grew the instrumented denominator"
   },
   "stacks": {
-    "host": 62.45,
-    "sim m5stack-core (320x240)": 42.2,
-    "sim m5stick-c (80x160)": 43.29,
-    "sim m5stick-s3 (135x240)": 57.16,
-    "sim union": 57.86
+    "host": 62.55,
+    "sim m5stack-core (320x240)": 35.12,
+    "sim m5stick-c (80x160)": 35.9,
+    "sim m5stick-s3 (135x240)": 50.13,
+    "sim union": 50.66
   },
-  "union": 68.03
+  "union": 69.26
 }

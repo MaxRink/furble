@@ -3,6 +3,12 @@
 
 #include <esp_timer.h>
 #include <cstdio>
+#if defined(FURBLE_SIM)
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <utility>
+#endif
 
 #include "Device.h"
 #if defined(FURBLE_CONSOLE)
@@ -270,6 +276,10 @@ bool Scan::start(std::function<void(void *)> scanCallback,
     m_DeadlineUs = timeout == 0 ? 0 : monotonicUs() + (timeout * 1000000ULL);
   }
 
+#if defined(FURBLE_SIM)
+  runStartProbe();
+#endif
+
   bool physical = false;
   if (m_Scan != nullptr) {
     m_Scan->setScanCallbacks(m_CallbackProxy.get());
@@ -420,6 +430,12 @@ void Scan::processPendingCallbacks(void) {
         event.callback(event.privateData);
       }
     } else if (event.callback != nullptr) {
+#if defined(FURBLE_SIM)
+      {
+        const std::lock_guard<std::mutex> lock(m_StateMutex);
+        ++m_EndCallbackCount;
+      }
+#endif
       event.callback(event.privateData);
     }
   }
@@ -429,5 +445,77 @@ size_t Scan::droppedResultCount(void) const {
   const std::lock_guard<std::mutex> lock(m_StateMutex);
   return m_DroppedResults;
 }
+
+#if defined(FURBLE_SIM)
+void Scan::setStartProbe(std::function<void()> probe) {
+  const std::lock_guard<std::mutex> lock(m_StateMutex);
+  m_StartProbe = std::move(probe);
+}
+
+bool Scan::startProbeBlocked(void) const {
+  const std::lock_guard<std::mutex> lock(m_StateMutex);
+  return m_StartProbeBlocked;
+}
+
+size_t Scan::endCallbackCount(void) const {
+  const std::lock_guard<std::mutex> lock(m_StateMutex);
+  return m_EndCallbackCount;
+}
+
+void Scan::runStartProbe(void) {
+  // Only runs when a scenario installed a probe with setStartProbe(), which
+  // the UI does only under "seed scan_start_probe true". Without a probe this
+  // returns before touching a thread or the wall clock.
+  std::function<void()> probe;
+  {
+    const std::lock_guard<std::mutex> lock(m_StateMutex);
+    m_StartProbeBlocked = false;
+    probe = m_StartProbe;
+  }
+  if (!probe) {
+    return;
+  }
+
+  // A callback-shaped probe running concurrently with the start. If it has to
+  // wait for the UI lock the start path is holding a lock a NimBLE callback
+  // could need, which is the watchdog-sensitive starvation this guards.
+  const auto completed = std::make_shared<std::atomic<bool>>(false);
+  std::thread worker([probe, completed]() {
+    probe();
+    completed->store(true, std::memory_order_release);
+  });
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+  while (!completed->load(std::memory_order_acquire)
+         && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::yield();
+  }
+
+  const bool blocked = !completed->load(std::memory_order_acquire);
+  {
+    const std::lock_guard<std::mutex> lock(m_StateMutex);
+    m_StartProbeBlocked = blocked;
+    if (blocked) {
+      m_ProbeWorkers.push_back(std::move(worker));
+    }
+  }
+  if (!blocked) {
+    worker.join();
+  }
+}
+
+void Scan::joinStartProbes(void) {
+  std::vector<std::thread> workers;
+  {
+    const std::lock_guard<std::mutex> lock(m_StateMutex);
+    workers.swap(m_ProbeWorkers);
+  }
+  for (auto &worker : workers) {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+}
+#endif
 
 }  // namespace Furble

@@ -74,6 +74,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
+    "${FURBLE_ROOT}/src/FurbleControl.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp"
@@ -87,7 +88,34 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
+    "${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp"
+    "${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp"
+    "${FURBLE_ROOT}/lib/furble/Camera.cpp"
+    "${FURBLE_ROOT}/lib/furble/CameraList.cpp"
+    "${FURBLE_ROOT}/lib/furble/CanonEOS.cpp"
+    "${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp"
+    "${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp"
+    "${FURBLE_ROOT}/lib/furble/Device.cpp"
+    "${FURBLE_ROOT}/lib/furble/DJIOsmo.cpp"
+    "${FURBLE_ROOT}/lib/furble/FauxNY.cpp"
+    "${FURBLE_ROOT}/lib/furble/Fujifilm.cpp"
+    "${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp"
+    "${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp"
+    "${FURBLE_ROOT}/lib/furble/Lumix.cpp"
+    "${FURBLE_ROOT}/lib/furble/Nikon.cpp"
+    "${FURBLE_ROOT}/lib/furble/NikonBase.cpp"
+    "${FURBLE_ROOT}/lib/furble/NikonRemote.cpp"
+    "${FURBLE_ROOT}/lib/furble/NikonSmart.cpp"
+    "${FURBLE_ROOT}/lib/furble/Ricoh.cpp"
+    "${FURBLE_ROOT}/lib/furble/Scan.cpp"
+    "${FURBLE_ROOT}/lib/furble/Sony.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/CameraListProtocol.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
+    "${FURBLE_ROOT}/lib/testing/nimble/MockNimBLE.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/FujifilmVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/RicohVirtualCamera.cpp"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
     ${ICON_SOURCES})
 
@@ -116,6 +144,9 @@ target_include_directories(
     "${FURBLE_ROOT}/components/icons"
     "${FURBLE_ROOT}/lib/preferences"
     "${FURBLE_ROOT}/lib/furble"
+    "${FURBLE_ROOT}/lib/blowfish"
+    "${FURBLE_ROOT}/lib/testing/nimble"
+    "${FURBLE_ROOT}/lib/testing/peer"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src"
     "${M5GFX_DIR}/src"
     "${M5UNIFIED_DIR}/src"
@@ -146,7 +177,8 @@ target_compile_options(
     -Wno-unused-parameter
     "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_log.h"
     "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_system.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_heap_caps.h")
+    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_heap_caps.h"
+    "-include${CMAKE_CURRENT_LIST_DIR}/shim/freertos/FreeRTOS.h")
 target_link_libraries(furble-sim PRIVATE lvgl SDL2::SDL2)
 
 if(APPLE)

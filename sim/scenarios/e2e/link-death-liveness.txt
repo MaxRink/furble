@@ -1,0 +1,55 @@
+# Plan 155 successor. The old scenario armed a simulator-only "link_lies" seed
+# that disconnected the fake cameras behind the fake control state machine's
+# back, so the UI kept presenting Connected forever. That divergence cannot be
+# constructed against the production control task: it leaves STATE_ACTIVE within
+# one 50 ms tick of allConnected() going false, so the UI has no window in which
+# to lie. The invariant's teeth are proven by mutation instead, recorded in
+# plans/161-sim-real-control.md.
+#
+# What this scenario now guards is the real fault the seed was standing in for:
+# a single camera's link dies at the transport, with the radio refusing
+# reconnects, and the UI must stop presenting Connected well inside the liveness
+# grace. Enforcement is on, so a Connected presentation that outlived the grace
+# would fail the run on its own.
+seed ble_peers fuji
+seed ble_saved true
+seed reconnect true
+seed liveness_grace_ms 500
+wait 300
+
+action connect
+wait 3200
+assert control.state active
+assert control.connected 1
+assert ui.connected yes
+assert ui.liveness_violations 0
+
+# The link dies at the transport with the GAP disconnect delivered, exactly as
+# a supervision timeout reports it, and no reconnect can succeed.
+action ble-connect-fail
+action drop
+wait 200
+assert control.connected 0
+assert ui.connected no
+# A drop indicator is raised by the connected page's liveness poll, which runs
+# every LIVENESS_POLL_PERIOD_MS (500 ms), so it legitimately appears up to that
+# plus one 50 ms control tick after the link dies. The bound below is that
+# budget with headroom, not a relaxation: a parked or dead timer never satisfies
+# it. See plans/161-sim-real-control.md.
+assert-eventually-virtual 2000 ui.reconnecting yes
+
+# Sit in the outage well past the grace period. The invariant is enforced and
+# must not fire, because the presentation is honest.
+wait 2000
+assert control.connected 0
+assert ui.connected no
+assert ui.liveness_violations 0
+
+# Recovery restores the honest Connected presentation.
+action ble-connect-ok
+wait 12000
+assert control.state active
+assert control.connected 1
+assert ui.connected yes
+assert ui.liveness_violations 0
+exit

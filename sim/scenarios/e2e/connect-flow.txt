@@ -9,8 +9,8 @@ action connect
 wait 200
 assert control.state connecting
 assert ui.connect_box visible
-wait 1500
-assert control.state active
+wait 2800
+assert-eventually-virtual 3000 control.state active
 assert control.connected 1
-assert ui.connected yes
+assert-eventually-virtual 2000 ui.connected yes
 exit

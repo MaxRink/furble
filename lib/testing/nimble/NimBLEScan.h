@@ -29,13 +29,20 @@ class NimBLEScan {
   void setInterval(uint16_t) {}
   void setWindow(uint16_t) {}
   void setScanCallbacks(NimBLEScanCallbacks *callbacks, bool = false) { m_Callbacks = callbacks; }
-  bool start(uint32_t, bool = false) {
+  bool start(uint32_t duration_ms, bool = false) {
+    m_DurationMs = duration_ms;
     m_Scanning = nimbleMockGapScanStartAllowed();
     return m_Scanning;
   }
   void stop() { m_Scanning = false; }
   void clearResults() {}
   bool isScanning() const { return m_Scanning; }
+  // Requested scan duration in milliseconds, zero for an unbounded scan. The
+  // controller owns the discovery timer on hardware. The simulator's virtual
+  // radio owns it here, so it needs the duration the production Scan asked for
+  // to deliver the scan-end event at the right virtual time. Host tests emit
+  // scan end explicitly and ignore this.
+  uint32_t durationMs() const { return m_DurationMs; }
   NimBLEScanCallbacks *callbacks() const { return m_Callbacks; }
   void emitResult(const NimBLEAdvertisedDevice *device) {
     if ((m_Callbacks != nullptr) && nimbleMockScanDeliveryAllowed(device)) {
@@ -52,6 +59,7 @@ class NimBLEScan {
  private:
   NimBLEScanCallbacks *m_Callbacks = nullptr;
   bool m_Scanning = false;
+  uint32_t m_DurationMs = 0;
 };
 
 #endif

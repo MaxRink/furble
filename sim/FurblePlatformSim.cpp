@@ -101,7 +101,9 @@ uint8_t Platform::getPWRClickCount(void) {
 void Platform::update(void) {
   M5.update();
   furble_sim_uart_update();
-  Scan::getInstance().update();
+  // The production Scan expires its own deadline from isActive(); the virtual
+  // radio delivers advertisements and the scan-end event on its own task, so
+  // there is nothing for the platform tick to pump here any more.
 #if defined(FURBLE_M5STICKS3)
   if (!Sim::consumeWatchdogFeedSuppression()) {
     watchdogFeed();

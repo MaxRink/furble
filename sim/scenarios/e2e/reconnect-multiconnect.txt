@@ -14,11 +14,11 @@ seed fauxny true
 seed reconnect true
 wait 300
 action connect-two
-wait 1200
-assert control.state active
+wait 3200
+assert-eventually-virtual 3000 control.state active
 assert control.targets 2
 assert control.connected 2
-assert ui.connected yes
+assert-eventually-virtual 2000 ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
 assert ui.status_text Connected
@@ -36,14 +36,14 @@ assert control.connected 1
 # regression the rejected page-takeover approach introduced.
 assert ui.connect_box hidden
 assert ui.page connected
-assert ui.reconnecting yes
+assert-eventually-virtual 2000 ui.reconnecting yes
 # The title now names the per-device state: 1 of the 2 cameras is reconnecting.
 # The full string is "Reconnecting (1/2)"; the count is asserted as a single
 # token here and printed for the record.
 print ui.status_text
 assert ui.reconnect_count 1/2
 # The dropped camera reconnects and both links are live again; the count clears.
-wait 1000
+wait 2500
 assert control.state active
 assert control.connected 2
 assert ui.connected yes

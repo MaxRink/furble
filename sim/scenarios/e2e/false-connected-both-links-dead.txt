@@ -1,0 +1,63 @@
+# Hardware failure 2026-08-28 (c): the Connected screen stayed up while neither
+# camera had a live link. Two saved cameras are connected, then both links die
+# at the transport with the radio refusing new connects, so nothing can paper
+# over the outage. The UI must leave the Connected presentation well inside the
+# liveness grace and say it is reconnecting instead.
+#
+# The liveness invariant runs enforced throughout (no opt-out) and now compares
+# the UI presentation against the real Camera::isConnected(), which is the value
+# that lied on hardware.
+#
+# Mutation check: disabling the invariant in sim/driver.cpp must not change this
+# result, because the scenario asserts the presentation directly. Disabling the
+# UI's drop handling does fail it. See plans/161-sim-real-control.md.
+seed ble_peers fuji-pair
+seed ble_saved true
+seed reconnect true
+seed liveness_grace_ms 500
+wait 300
+
+action connect-two
+wait 3200
+assert control.state active
+assert control.targets 2
+assert control.connected 2
+assert ui.connected yes
+assert ui.reconnecting no
+assert ui.status_text Connected
+
+# Both links die at the transport and no reconnect can succeed.
+action ble-connect-fail
+action drop
+wait 200
+# The control task has left the active state and is retrying against a radio
+# that refuses every connect.
+assert control.state connecting
+assert control.connected 0
+assert ui.connected no
+assert ui.page connected
+assert ui.connect_box hidden
+# A drop indicator is raised by the connected page's liveness poll, which runs
+# every LIVENESS_POLL_PERIOD_MS (500 ms), so it legitimately appears up to that
+# plus one 50 ms control tick after the link dies. The bound below is that
+# budget with headroom, not a relaxation: a parked or dead timer never satisfies
+# it. See plans/161-sim-real-control.md.
+assert-eventually-virtual 2000 ui.reconnecting yes
+assert ui.reconnect_count 2/2
+
+# Sit well past the liveness grace with both links dead. The invariant never
+# fires, because the UI stopped presenting Connected the moment they died.
+wait 2000
+assert ui.connected no
+assert ui.liveness_violations 0
+
+# Recovery: the radio comes back and the honest Connected presentation returns.
+action ble-connect-ok
+wait 12000
+assert control.state active
+assert control.connected 2
+assert ui.connected yes
+assert ui.reconnecting no
+assert ui.reconnect_count 0/2
+assert ui.liveness_violations 0
+exit

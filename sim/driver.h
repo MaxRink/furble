@@ -2,6 +2,8 @@
 #define FURBLE_SIM_DRIVER_H
 
 #include <cstdint>
+#include <string>
+
 #include "scenario_action.h"
 
 namespace Furble {
@@ -22,6 +24,8 @@ void startProfiler(void);
 void preparePreferences(void);
 void applyScenarioSettings(void);
 bool scenarioSettingIsTrue(const char *name);
+/** Read a scenario seed value, or the fallback when it was not seeded. */
+std::string scenarioSetting(const char *name, const char *fallback);
 void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);

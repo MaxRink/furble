@@ -10,16 +10,16 @@ seed fauxny true
 seed reconnect true
 wait 300
 action connect-two
-wait 1200
-assert control.state active
+wait 3000
+assert-eventually-virtual 3000 control.state active
 assert control.connected 2
 assert camera.shutter_presses 0
 assert camera.shutter_releases 0
 # Both connected: one press fans out to both cameras (+2).
 action shutter
 wait 200
-assert camera.shutter_presses 2
-assert camera.shutter_releases 2
+assert-eventually-virtual 1000 camera.shutter_presses 2
+assert-eventually-virtual 1000 camera.shutter_releases 2
 # Drop camera 0. Camera 1 stays connected and the trigger stays live.
 action drop 0
 wait 200
@@ -30,18 +30,18 @@ assert control.connected 1
 # still fires while camera 0 reconnects.
 action shutter
 wait 200
-assert camera.shutter_presses 3
-assert camera.shutter_releases 3
+assert-eventually-virtual 1000 camera.shutter_presses 3
+assert-eventually-virtual 1000 camera.shutter_releases 3
 # Camera 0 reconnects. The press made while it was down must NOT replay: the
 # aggregate stays at 3, not 4.
-wait 1000
+wait 2800
 assert control.state active
 assert control.connected 2
-assert camera.shutter_presses 3
-assert camera.shutter_releases 3
+assert-eventually-virtual 1000 camera.shutter_presses 3
+assert-eventually-virtual 1000 camera.shutter_releases 3
 # Both live again: a press fans out to both once more (+2 -> 5).
 action shutter
 wait 200
-assert camera.shutter_presses 5
-assert camera.shutter_releases 5
+assert-eventually-virtual 1000 camera.shutter_presses 5
+assert-eventually-virtual 1000 camera.shutter_releases 5
 exit

@@ -15,7 +15,7 @@ wait 400
 # Connected page with a live camera: the header battery and GPS status poll must
 # not repaint every tick when the readings hold.
 action connect
-wait 1800
+wait 3200
 assert ui.connected yes
 action invalidate.reset
 wait 1500

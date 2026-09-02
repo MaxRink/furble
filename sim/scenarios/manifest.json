@@ -173,6 +173,18 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/timer-page-large-text.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "open bug: the intervalometer settings page overflows by 3 px on 320x240 at the Large text size, so this scenario fails today. Promote it in the PR that fixes the page. See plan 161."
+    },
+    {
       "path": "sim/scenarios/connected-gps-active-30s.txt",
       "suite": "power-gate",
       "owner": "sim-power",
@@ -502,6 +514,17 @@
     },
     {
       "path": "sim/scenarios/e2e/exposure-preset.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/false-connected-both-links-dead.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -882,15 +905,13 @@
       "certified": true
     },
     {
-      "path": "sim/scenarios/e2e/link-lies-invariant.txt",
+      "path": "sim/scenarios/e2e/link-death-liveness.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3"
       ],
-      "capabilities": [
-        "fauxny"
-      ],
+      "capabilities": [],
       "expected_exit": 0,
       "certified": true
     },
@@ -927,14 +948,34 @@
       "boards": [
         "m5stick-s3"
       ],
-      "capabilities": [
-        "fauxny"
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/multi-target-flappy-disconnect.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
       ],
+      "capabilities": [],
       "expected_exit": 0,
       "certified": true
     },
     {
       "path": "sim/scenarios/e2e/pmic-flash-recovery.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/reconnect-backoff-curve.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [

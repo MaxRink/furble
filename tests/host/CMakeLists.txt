@@ -25,8 +25,8 @@ if(FURBLE_COVERAGE)
 endif()
 
 set(FURBLE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-set(HOST_NIMBLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nimble)
-set(HOST_PEER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/peer)
+set(HOST_NIMBLE_DIR ${FURBLE_ROOT}/lib/testing/nimble)
+set(HOST_PEER_DIR ${FURBLE_ROOT}/lib/testing/peer)
 set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
 
 add_library(furble_host_camera STATIC

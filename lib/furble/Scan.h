@@ -8,6 +8,10 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#if defined(FURBLE_SIM)
+#include <functional>
+#include <thread>
+#endif
 
 #include <NimBLEAdvertisedDevice.h>
 #include <NimBLEScan.h>
@@ -102,6 +106,28 @@ class Scan: public NimBLEScanCallbacks {
   /** Number of advertisements dropped by the bounded handoff queue. */
   size_t droppedResultCount(void) const;
 
+#if defined(FURBLE_SIM)
+  /**
+   * Install the simulator's cross-task start responsiveness probe.
+   *
+   * Observability only. NimBLEScan::start() can run callbacks from another
+   * task while it is bringing the scan up, so the simulator runs a
+   * callback-shaped probe concurrently and records whether it had to wait for
+   * the UI lock. That is the watchdog-sensitive starvation boundary the scan
+   * start scenarios guard; it changes no scan behaviour.
+   */
+  void setStartProbe(std::function<void()> probe);
+
+  /** Whether the most recent probed start waited for the UI lock. */
+  bool startProbeBlocked(void) const;
+
+  /** Number of scan-end callbacks delivered to the discovery caller. */
+  size_t endCallbackCount(void) const;
+
+  /** Join any probe worker that blocked, once the UI lock is free again. */
+  void joinStartProbes(void);
+#endif
+
   void onResult(const NimBLEAdvertisedDevice *pDevice) override;
 
   void onScanEnd(const NimBLEScanResults &results, int reason) override;
@@ -154,6 +180,9 @@ class Scan: public NimBLEScanCallbacks {
   void handleScanEnd(uint64_t generation, const NimBLEScanResults &results, int reason);
   void expire(void);
   static uint64_t monotonicUs(void);
+#if defined(FURBLE_SIM)
+  void runStartProbe(void);
+#endif
 
   NimBLEServer *m_Server = nullptr;
   NimBLEScan *m_Scan = nullptr;
@@ -180,6 +209,12 @@ class Scan: public NimBLEScanCallbacks {
   std::unique_ptr<CallbackProxy> m_CallbackProxy;
   Mode m_Mode = Mode::FULL;
   uint32_t m_Timeout = 0;
+#if defined(FURBLE_SIM)
+  std::function<void()> m_StartProbe;
+  std::vector<std::thread> m_ProbeWorkers;
+  bool m_StartProbeBlocked = false;
+  size_t m_EndCallbackCount = 0;
+#endif
 };
 
 }  // namespace Furble

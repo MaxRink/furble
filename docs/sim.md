@@ -25,14 +25,17 @@ button layout when `FURBLE_SIM_NO_TOUCH` is set.
 ## Production-path parity
 
 The simulator's shared-code boundary is audited in [`sim/CLAUDE.md`](../sim/CLAUDE.md).
-In brief, scan startup, generation fencing, queue draining, `CameraList` updates,
-display mode/flush, LVGL timers, and the `Control` state machine are production
-code. `sim/ScanSim.cpp` is only the asynchronous radio event source; its worker
-cannot touch `CameraList` or LVGL. The production `lib/furble/Scan.cpp` is also
-compiled by the host tests against fake NimBLE, so simulator convenience does
-not hide production scan behavior.
+In brief, the whole connection stack is production: `Control`, `Camera`,
+`CameraList`, `Scan`, `Device` and every vendor class compile into the
+simulator over the shared MockNimBLE boundary in `lib/testing/nimble` and the
+virtual camera peers in `lib/testing/peer`. Scan startup, generation fencing,
+queue draining, advertisement matching, list persistence, display mode/flush
+and LVGL timers are all production code. The simulator supplies only the radio
+below NimBLE: `sim/BleSim.cpp` runs a virtual radio task that advertises the
+seeded peers and models the controller-owned discovery timer, and it injects
+faults at the transport only.
 
-M5GFX SDL, FreeRTOS/ESP-IDF calls, NimBLE radio events, camera links, UART/GPS
+M5GFX SDL, FreeRTOS/ESP-IDF calls, the NimBLE transport, UART/GPS
 bytes, PMIC/power, NVS, and optional IR/feedback/SD hardware are the remaining
 lowest-level host seams. Script actions dispatch real LVGL/control handlers;
 `simulatorHome`/`simulatorBack` and timing-sensitive gesture setup are the
@@ -171,17 +174,18 @@ text after a comment are ignored. Each line starts with one verb.
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
 | `assert-eventually-virtual` | `assert-eventually-virtual TIMEOUT_MS KEY VALUE` polls once per normal UI tick while virtual time, platform updates, and background tasks continue. TIMEOUT_MS must be 1 through 60000 virtual milliseconds; a timeout reports the last value and exits 1. |
-| `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
+| `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |
 | `exit` | Ends the simulator with status 0. |
 
 `assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
 `print` use the same query namespaces:
 `ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
 
-The scenario-only `scan_distinct` seed makes the asynchronous scan worker
-publish two distinct FauxNY advertisements. The
-`scan-distinct-rows-heartbeat.txt` scenario checks that both rows are drained
-on the UI task while the watchdog remains armed.
+The `ble_peers` seed selects the virtual radio topology. Its peers advertise to
+the production `Scan` and answer the production `Camera` connect paths, so the
+`scan-distinct-rows-heartbeat.txt` scenario now proves that two real
+advertisements are matched by `CameraList::match` and drained on the UI task
+while the watchdog remains armed.
 
 The `clock.ms` query reports the current virtual millisecond clock.
 
@@ -201,17 +205,35 @@ Battery seeds select the initial deterministic platform sample:
 `false`).
 
 These boolean settings are applied before the UI is constructed:
-`gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `sleep_conn`, and
+`gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `recon_backoff`,
+`sleep_conn`, and
 `boot_splash`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
 `imu_sensor` controls modeled IMU presence. The M5StickS3 model also accepts
 `watchdog`; other board models reject that seed because they cannot apply it.
+`scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
+until the page is left, so a scenario that asserts a scan-end callback must
+seed a bounded value.
+
+`ble_peers` selects the virtual BLE radio topology from a strict allowlist:
+
+| Topology | Peers |
+| --- | --- |
+| `none` | no peers (the default) |
+| `fuji` | one healthy Fujifilm Basic camera |
+| `fuji-pair` | two healthy Fujifilm Basic cameras |
+| `fuji-ricoh-flappy` | one healthy Fujifilm plus a Ricoh GR IV in BLE standby that fails one security handshake the way a supervision timeout does (rc=520) before letting a connect through |
+
+`ble_saved true` persists the topology's cameras through the production
+`CameraList::match` and `CameraList::save`, so the scenario boots with saved
+cameras exactly as a device does after the user scanned and connected once.
 
 The scenario-only settings are `saved_camera`, `connect_fail`, `no_touch`,
-`scan_start_probe`, `scan_distinct`, `link_lies`, `liveness_check`, and
+`scan_start_probe`, `ble_saved`, `liveness_check`, and
 `liveness_grace_ms`. `saved_camera` adds an
-inactive saved camera, `connect_fail` makes the fake camera reject connect, and
-`no_touch` selects the physical-button layout. `link_lies` arms the
-`link-lies-kill` action described under fault injection. `liveness_check
+inactive saved camera, `connect_fail` registers one virtual Fujifilm peer and
+makes `NimBLEClient::connect()` fail at the transport (FauxNY has no radio to
+fail at), and
+`no_touch` selects the physical-button layout. `liveness_check
 false` opts a scenario out of the continuous liveness invariant enforcement
 (detection still counts violations), and `liveness_grace_ms` overrides the
 3000 ms divergence grace period. The interval settings are `interval_count`, `interval_delay`,
@@ -233,7 +255,12 @@ action connect-two
 action disconnect
 action drop
 action drop N
-action link-lies-kill
+action ble-kill
+action ble-standby
+action ble-connect-fail
+action ble-connect-ok
+action ble-withhold-registration
+action ble-allow-registration
 action cancel
 action shutter
 action button-mode one-button
@@ -284,7 +311,7 @@ action imu.pitch DEGREES
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
-`imu`, and `level`.
+`imu`, `level`, and `level_main`.
 
 `page PAGE` accepts `main`, `menu`, `connect`, `scan`, `delete`, `power_off`,
 `connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
@@ -305,9 +332,10 @@ action battery LEVEL VOLTAGE_MV CURRENT_MA CHARGING
 For example, `action battery 80 4000 0 false` simulates a recovered,
 discharging pack. The next battery timer sample consumes the new value.
 
-`action drop` drops every active fake camera. `action drop N` drops target
-`N`, using zero-based target numbering. `action connect-two` selects two fake
-cameras for multi-connect coverage. `action companion-pair-request` injects a
+`action drop` severs the live link of every control target. `action drop N`
+drops target `N`, using zero-based target numbering. `action connect-two`
+selects two cameras for multi-connect coverage: the seeded virtual peers when a
+topology is seeded, otherwise the FauxNY test cameras. `action companion-pair-request` injects a
 pending companion PIN without a rig TCP peer; `action companion-accept` and
 `action companion-reject` click the real pairing dialog buttons.
 
@@ -422,12 +450,25 @@ The other namespaces are:
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.
 - `control.connected` and `control.targets`: numeric target counts.
+- `control.zombies`: number of quarantined targets still draining. A teardown
+  that never drains leaves this above zero.
+- `control.connect_in_progress` and `control.connect_abort`: `yes` or `no`.
+  The 2026-08-28 multi-target wedge was diagnosed from exactly this pair
+  (`control.state disconnecting` with `control.connect_in_progress yes`).
+- `control.reconnect_attempt`: number of reconnect retries already performed,
+  which walks the `ReconnectBackoff::delayMs()` curve.
+- `control.reconnect_backoff` and `control.infinite_reconnect`: `yes` or `no`.
+- `control.connecting_camera`: name of the camera currently being connected.
 - `camera.count`: numeric camera-list row count, useful for scan de-duplication
   assertions.
-- `scan.end_callbacks`: numeric count of simulated scan-end callbacks delivered
-  by the current scan. A discovery scan should deliver exactly one callback.
+- `scan.end_callbacks`: numeric count of scan-end callbacks delivered by the
+  current scan. A bounded discovery scan should deliver exactly one callback.
+- `scan.advertisements`: number of advertisements the virtual radio has
+  delivered.
+- `ble.peers`: number of virtual peers registered by the seeded topology.
 - `camera.shutter_presses`, `camera.shutter_releases`, `camera.focus_presses`,
-  and `camera.focus_releases`: numeric fake-camera command counts.
+  and `camera.focus_releases`: numeric counts of the camera commands that
+  reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,
@@ -440,19 +481,39 @@ The other namespaces are:
 
 ### SDL simulator faults
 
-- `seed connect_fail true` makes `Camera::connect` return false. Combine it
-  with `action connect` to exercise the connect-failed UI path.
-- `action drop` models a peer link drop for every active fake camera. `action
-  drop N` drops one zero-based target. With `seed reconnect true`, the
+All camera-link faults are now transport faults on the real MockNimBLE link
+behind a production `Camera`. Nothing overrides the control state machine, so
+whatever the production stack does after a fault is what the scenario observes.
+
+- `seed connect_fail true` registers one virtual Fujifilm peer, saves it, and
+  makes `NimBLEClient::connect()` fail. Combine it with `action connect` to
+  exercise the connect-failed UI path.
+- `action drop` severs the live link of every control target with the GAP
+  disconnect delivered, which is how a supervision timeout is reported.
+  `action drop N` drops one zero-based target. With `seed reconnect true` the
   control state re-enters `connecting`; without it, the state returns to
   `idle` when no other link remains. `action connect-two` keeps a surviving
-  link active while one target is dropped.
-- `seed link_lies true` arms `action link-lies-kill`, which kills every
-  connected fake camera link without informing the control state machine:
-  `isConnected()` turns false while the control state stays `active` and no
-  reconnect is scheduled. This constructs the false-connected divergence from
-  the 2026-08-28 hardware incident, which `action drop` cannot express because
-  it always advances the state machine.
+  link active while one target is dropped. A FauxNY camera has no radio, so
+  the equivalent observable (`Camera::resetConnectionState()`) is used for it.
+- `action ble-kill` severs every live link and leaves the GAP disconnect event
+  queued, so the camera keeps reporting connected over a link that is
+  physically gone. This is the one fault the liveness invariant cannot see,
+  because `Camera::isConnected()` is still true; see the residual gaps in
+  `plans/161-sim-real-control.md`.
+- `action ble-standby` runs the standby drop of every flappy virtual peer: the
+  peer re-arms its handshake failure budget, announces its power state (a
+  Ricoh sends CameraPower 0x00, Fujifilm is silent) and severs the link. The
+  simulator schedules it from the scenario rather than from the peer's
+  wall-clock timer so it lands at a known virtual time.
+- `action ble-connect-fail` and `action ble-connect-ok` toggle transport-level
+  connect failure at runtime, which is how a scenario holds a session in the
+  reconnect backoff long enough to assert the curve.
+- `action ble-withhold-registration` and `action ble-allow-registration` make
+  every Fujifilm peer answer the link and every GATT operation but never
+  confirm registration, so the production connect blocks in its registration
+  wait. That is a camera sitting in its own settings screen.
+- These actions require `seed ble_peers <topology>`; the scenario parser
+  rejects them otherwise rather than letting them be silent no-ops.
 - Every scripted scenario runs a continuous liveness invariant on each driver
   tick: if the UI presents the Connected screen (the `ui.connected` three-way
   check) while fewer camera links are actually up than the session has
@@ -556,7 +617,9 @@ handshake writes, link drops during a handshake, and deferred client deletion.
    `sim/scripts/run-async-stress.sh`; keep cross-task regressions in that set.
 3. Prefer `assert` for a fixed contract. Use `xassert` only for a known gap
    that is expected to fail today. It records XFAIL and continues; an XPASS
-   is the signal to promote the line to `assert` after the product fix.
+   fails the run, which is the signal to promote the line to `assert` after the
+   product fix. For a gap already closed on some panels and open on others, use
+   `xassert board-varies KEY VALUE`, which prints on a match instead of failing.
 4. Run the smallest panel first, then run the same file with the other board
    builds if the behavior is panel-independent. A physical button name must
    exist on every board used by the scenario.
@@ -577,9 +640,11 @@ after an XFAIL:
 
 ```text
 xassert ui.page connected
-xassert ui.page main
+xassert board-varies ui.page main
 print ui.page
 exit
 ```
 
-The first line prints XFAIL, the second prints XPASS, and the process exits 0.
+The first line prints XFAIL and continues, the second prints XPASS
+(board-varies), and the process exits 0. A plain `xassert ui.page main` would
+print XPASS and exit 1 instead, because a closed gap must be promoted.

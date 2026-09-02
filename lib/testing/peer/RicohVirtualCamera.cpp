@@ -137,14 +137,23 @@ void RicohVirtualCamera::armFlappyDrop(NimBLEClient &client) {
     if (!m_Connected || (m_Client != &client)) {
       return;
     }
-    // Re-arm the secure-failure budget so the reconnect churns, announce the
-    // power state the way the GR IV does before its standby drop, then sever
-    // the link.
-    m_FlappyFailRemaining = m_FlappyFailAttempts;
-    m_Config.camera_power = 0x00;
-    emitNotification(CAMERA_SERVICE, POWER_CHARACTERISTIC, {0x00});
-    client.mockDropLink(0x08, /*fire_callback=*/true);
+    triggerStandbyDrop();
   });
+}
+
+bool RicohVirtualCamera::triggerStandbyDrop() {
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  if (!m_Connected || (m_Client == nullptr)) {
+    return false;
+  }
+  // Re-arm the secure-failure budget so the reconnect churns, announce the
+  // power state the way the GR IV does before its standby drop, then sever
+  // the link.
+  m_FlappyFailRemaining = m_FlappyFailAttempts;
+  m_Config.camera_power = 0x00;
+  emitNotification(CAMERA_SERVICE, POWER_CHARACTERISTIC, {0x00});
+  m_Client->mockDropLink(0x08, /*fire_callback=*/true);
+  return true;
 }
 
 void RicohVirtualCamera::requestFlappyCancel() {

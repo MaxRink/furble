@@ -63,6 +63,9 @@ INCLUDES="\
 -I$ROOT/components/icons \
 -I$ROOT/lib/preferences \
 -I$ROOT/lib/furble \
+-I$ROOT/lib/blowfish \
+-I$ROOT/lib/testing/nimble \
+-I$ROOT/lib/testing/peer \
 -I$ROOT/components \
 -I$DEP_ROOT/TinyGPSPlus/src \
 -I$DEP_ROOT/M5GFX/src \
@@ -154,6 +157,10 @@ fi
 CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"
+# The production connection stack declares FreeRTOS queue, task and tick types
+# in its headers and picks them up transitively from ESP-IDF on device. Force
+# include the host shim so the same headers compile unchanged here.
+CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/freertos/FreeRTOS.h"
 # glibc hides strnlen and other POSIX names under strict -std=c11, which
 # breaks the LVGL clib build on Linux. _DEFAULT_SOURCE restores them and is
 # inert on macOS.
@@ -244,6 +251,7 @@ for source in \
   "$ROOT/src/FurbleBootScreen.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
+  "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurbleOTAPartitionSink.cpp" \
@@ -257,7 +265,34 @@ for source in \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
+  "$ROOT/lib/blowfish/Blowfish.cpp" \
+  "$ROOT/lib/furble/BtDebugJournal.cpp" \
+  "$ROOT/lib/furble/Camera.cpp" \
+  "$ROOT/lib/furble/CameraList.cpp" \
+  "$ROOT/lib/furble/CanonEOS.cpp" \
+  "$ROOT/lib/furble/CanonEOSRemote.cpp" \
+  "$ROOT/lib/furble/CanonEOSSmart.cpp" \
+  "$ROOT/lib/furble/Device.cpp" \
+  "$ROOT/lib/furble/DJIOsmo.cpp" \
+  "$ROOT/lib/furble/FauxNY.cpp" \
+  "$ROOT/lib/furble/Fujifilm.cpp" \
+  "$ROOT/lib/furble/FujifilmBasic.cpp" \
+  "$ROOT/lib/furble/FujifilmSecure.cpp" \
+  "$ROOT/lib/furble/Lumix.cpp" \
+  "$ROOT/lib/furble/Nikon.cpp" \
+  "$ROOT/lib/furble/NikonBase.cpp" \
+  "$ROOT/lib/furble/NikonRemote.cpp" \
+  "$ROOT/lib/furble/NikonSmart.cpp" \
+  "$ROOT/lib/furble/Ricoh.cpp" \
+  "$ROOT/lib/furble/Scan.cpp" \
+  "$ROOT/lib/furble/Sony.cpp" \
+  "$ROOT/lib/furble/protocol/AdvertisementProtocol.cpp" \
+  "$ROOT/lib/furble/protocol/CameraListProtocol.cpp" \
+  "$ROOT/lib/furble/protocol/FujifilmProtocol.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
+  "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \
+  "$ROOT/lib/testing/peer/FujifilmVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/RicohVirtualCamera.cpp" \
   "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp"; do
   compile_cpp "$source"
 done

@@ -5,6 +5,9 @@
 #include "Device.h"
 
 #include "FurbleControl.h"
+#if defined(FURBLE_SIM)
+#include "ble_sim.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
@@ -113,6 +116,12 @@ void Control::Target::task(void) {
 
   while (true) {
     cmd_t cmd = this->getCommand();
+#if defined(FURBLE_SIM)
+    // Observability only. The simulator counts the commands that actually
+    // reach a camera task, which is where a shutter press stops being a UI
+    // event and becomes radio traffic. No policy is changed here.
+    Sim::noteCameraCommand(static_cast<int>(cmd));
+#endif
     switch (cmd) {
       case CMD_SHUTTER_PRESS:
         m_Camera->noteConnActivity(true);
@@ -745,7 +754,7 @@ Control::state_t Control::getState(void) const {
   return m_State;
 }
 
-#if defined(FURBLE_CONSOLE)
+#if defined(FURBLE_CONSOLE) || defined(FURBLE_SIM)
 Control::debug_state_t Control::getDebugState(void) const {
   debug_state_t snapshot = {};
 
@@ -783,7 +792,7 @@ Control::debug_state_t Control::getDebugState(void) const {
 
   return snapshot;
 }
-#endif
+#endif  // FURBLE_CONSOLE || FURBLE_SIM
 
 size_t Control::getTargetCount(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);

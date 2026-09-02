@@ -240,12 +240,21 @@ void FujifilmVirtualCamera::armFlappyDrop(NimBLEClient &client) {
     if (!m_Connected || (m_Client != &client)) {
       return;
     }
-    // Re-arm the handshake failure budget so the reconnect churns, then sever
-    // the link. The Fujifilm protocol has no power notification, so the drop
-    // is silent, exactly as the standby drop looks to the central.
-    m_FlappyFailRemaining = m_FlappyFailAttempts;
-    client.mockDropLink(0x08, /*fire_callback=*/true);
+    triggerStandbyDrop();
   });
+}
+
+bool FujifilmVirtualCamera::triggerStandbyDrop() {
+  const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
+  if (!m_Connected || (m_Client == nullptr)) {
+    return false;
+  }
+  // Re-arm the handshake failure budget so the reconnect churns, then sever
+  // the link. The Fujifilm protocol has no power notification, so the drop
+  // is silent, exactly as the standby drop looks to the central.
+  m_FlappyFailRemaining = m_FlappyFailAttempts;
+  m_Client->mockDropLink(0x08, /*fire_callback=*/true);
+  return true;
 }
 
 void FujifilmVirtualCamera::requestFlappyCancel() {

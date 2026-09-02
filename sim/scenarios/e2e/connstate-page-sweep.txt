@@ -23,9 +23,14 @@ seed reconnect true
 seed gps true
 wait 400
 action connect
-wait 1000
-assert control.state active
-assert ui.connected yes
+wait 3200
+assert-eventually-virtual 3000 control.state active
+# A drop indicator is raised by the connected page's liveness poll, which runs
+# every LIVENESS_POLL_PERIOD_MS (500 ms), so it legitimately appears up to that
+# plus one 50 ms control tick after the link dies. The bound below is that
+# budget with headroom, not a relaxation: a parked or dead timer never satisfies
+# it. See plans/161-sim-real-control.md.
+assert-eventually-virtual 2000 ui.connected yes
 
 # --- connected menu (root) -------------------------------------------------
 # Baseline: connected, nothing down, no alert on any surface.
@@ -35,8 +40,8 @@ action drop
 wait 700
 assert control.state connecting
 assert ui.page connected
-assert ui.link_alert yes
-wait 1000
+assert-eventually-virtual 2000 ui.link_alert yes
+wait 2500
 assert control.state active
 assert ui.link_alert no
 
@@ -51,9 +56,9 @@ assert ui.page_banner no
 action drop
 wait 700
 assert ui.page shutter
-assert ui.link_alert yes
-assert ui.page_banner yes
-wait 1000
+assert-eventually-virtual 2000 ui.link_alert yes
+assert-eventually-virtual 2000 ui.page_banner yes
+wait 2500
 assert ui.link_alert no
 assert ui.page_banner no
 
@@ -68,9 +73,9 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page bulb
-assert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 xassert ui.page_banner yes
-wait 1000
+wait 2500
 assert ui.link_alert no
 
 # --- Cameras (multi-camera status) -----------------------------------------
@@ -83,8 +88,8 @@ assert ui.page_banner none
 action drop
 wait 700
 assert ui.page cameras
-assert ui.link_alert yes
-wait 1000
+assert-eventually-virtual 2000 ui.link_alert yes
+wait 2500
 assert ui.link_alert no
 
 # --- Intervalometer (connected sub-page) -----------------------------------
@@ -95,8 +100,8 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page remote_timer
-assert ui.link_alert yes
-wait 1000
+assert-eventually-virtual 2000 ui.link_alert yes
+wait 2500
 assert ui.link_alert no
 
 # --- GPS Data (connected sub-page) -----------------------------------------
@@ -107,7 +112,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page remote_gps
-assert ui.link_alert yes
-wait 1000
+assert-eventually-virtual 2000 ui.link_alert yes
+wait 2500
 assert ui.link_alert no
 exit

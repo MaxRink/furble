@@ -3,11 +3,11 @@
 seed fauxny true
 wait 300
 action connect
-wait 1500
+wait 3200
 assert ui.connected yes
 assert camera.shutter_presses 0
 action shutter
 wait 200
-assert camera.shutter_presses 1
-assert camera.shutter_releases 1
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
 exit

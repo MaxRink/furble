@@ -30,6 +30,7 @@
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "Scan.h"
+#include "ble_sim.h"
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
@@ -73,6 +74,9 @@ struct Step {
   std::string name;
   std::string expected;
   uint32_t timeoutMilliseconds = 0;
+  // xassert only: the documented gap is board dependent, so a match is
+  // informational rather than a promotion signal. See the xassert parser.
+  bool boardVaries = false;
   scenario_action_t action;
 };
 
@@ -286,23 +290,12 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",
-      "gps_nmea",
-      "fauxny",
-      "autoconnect",
-      "reconnect",
-      "sleep_conn",
-      "boot_splash",
-      "connect_fail",
-      "no_touch",
-      "saved_camera",
-      "scan_start_probe",
-      "scan_distinct",
-      "auto_off_charging",
-      "imu",
-      "imu_sensor",
-      "link_lies",
-      "liveness_check",
+      "gps",           "gps_nmea",          "fauxny",
+      "autoconnect",   "reconnect",         "sleep_conn",
+      "boot_splash",   "connect_fail",      "no_touch",
+      "saved_camera",  "scan_start_probe",  "ble_saved",
+      "recon_backoff", "auto_off_charging", "imu",
+      "imu_sensor",    "liveness_check",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -354,6 +347,15 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::cerr << "Invalid battery_charging: " << value << '\n';
       std::exit(2);
     }
+    return;
+  } else if (name == "ble_peers") {
+    if (!bleTopologyIsValid(value)) {
+      std::cerr << "Invalid ble_peers: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "scan_timeout") {
+    parseUnsigned(value);
     return;
   } else if (name == "gps_uart_mode") {
     if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
@@ -606,15 +608,29 @@ void readScript(const std::string &path) {
     } else if (command == "xassert") {
       // Expected-fail assert. Documents a value the app SHOULD produce once a
       // pending product fix lands, without failing the run today. A mismatch
-      // prints XFAIL and continues; a match prints XPASS so the follow-up fix PR
-      // knows to promote the line back to a plain "assert". See sim/CLAUDE.md.
-      if (!exactArgs(3)) {
-        rejectArity("xassert", "exactly a key and an expected value");
-      }
+      // prints XFAIL and continues; a match fails the run so the follow-up fix
+      // PR knows to promote the line back to a plain "assert". See sim/CLAUDE.md.
+      //
+      // "xassert board-varies KEY VALUE" is the one exception: a gap that is
+      // already closed on some panels and open on others. One scenario file
+      // runs on every board, so a match there is expected on the good panels
+      // and must not fail the run. It still prints, so the line is visible.
       Step step;
       step.type = StepType::XASSERT;
-      step.name = args[1];
-      step.expected = args[2];
+      if (args.size() > 1 && args[1] == "board-varies") {
+        if (!exactArgs(4)) {
+          rejectArity("xassert board-varies", "exactly a key and an expected value");
+        }
+        step.boardVaries = true;
+        step.name = args[2];
+        step.expected = args[3];
+      } else {
+        if (!exactArgs(3)) {
+          rejectArity("xassert", "exactly a key and an expected value");
+        }
+        step.name = args[1];
+        step.expected = args[2];
+      }
       steps.push_back(step);
     } else if (command == "assert_max") {
       // Numeric upper bound: the query value parsed as an integer must be at
@@ -657,11 +673,19 @@ void readScript(const std::string &path) {
   }
 
   for (const Step &step : steps) {
-    if (step.type == StepType::ACTION && step.action.kind == scenario_action_kind_t::SIMPLE
-        && step.action.name == "link-lies-kill"
-        && (scenarioSettings.find("link_lies") == scenarioSettings.end()
-            || !parseBool(scenarioSettings.at("link_lies")))) {
-      std::cerr << "Invalid simulator action '" << step.name << "': requires seed link_lies true\n";
+    if (step.type != StepType::ACTION || step.action.kind != scenario_action_kind_t::SIMPLE) {
+      continue;
+    }
+    // The transport faults act on virtual BLE peers, so a scenario that uses
+    // one without seeding a topology is a scripting error, not a silent no-op.
+    if ((step.action.name == "ble-kill" || step.action.name == "ble-standby"
+         || step.action.name == "ble-connect-fail" || step.action.name == "ble-connect-ok"
+         || step.action.name == "ble-withhold-registration"
+         || step.action.name == "ble-allow-registration")
+        && (scenarioSettings.find("ble_peers") == scenarioSettings.end()
+            || scenarioSettings.at("ble_peers") == "none")) {
+      std::cerr << "Invalid simulator action '" << step.name
+                << "': requires seed ble_peers <topology>\n";
       std::exit(2);
     }
   }
@@ -863,28 +887,59 @@ void checkLivenessInvariant(void) {
             << " camera links live\n";
 }
 
-// "action link-lies-kill" silently kills every connected fake camera link
-// while leaving the control state machine untouched: isConnected() turns
-// false, control stays ACTIVE, and nothing schedules a reconnect. This is the
-// false-connected divergence observed on hardware on 2026-08-28, which the
-// fake control cannot otherwise express. Gated behind "seed link_lies true" so
-// no scenario constructs the divergence by accident.
-bool applyLinkLiesAction(const scenario_action_t &action) {
-  if (action.kind != scenario_action_kind_t::SIMPLE || action.name != "link-lies-kill") {
+// Transport faults. These act on the real MockNimBLE link behind a production
+// Camera, so the observable is exactly the observable on hardware: the link is
+// gone and whatever the production stack does next is what the scenario sees.
+// There is no simulator-side control-state override any more.
+//
+//   ble-kill         sever every live link and leave the GAP disconnect event
+//                    queued, so the camera keeps reporting connected over a
+//                    link that is physically dead
+//   ble-standby      run the standby drop of every flappy virtual peer: the
+//                    peer re-arms its handshake failure budget, announces its
+//                    power state and severs the link
+//   ble-connect-fail make NimBLEClient::connect() fail at the transport
+//   ble-connect-ok   let connects succeed again
+//   ble-withhold-registration / ble-allow-registration
+//                    make every Fujifilm peer answer the link but never
+//                    confirm registration, so the production connect blocks
+//                    in its registration wait
+//
+// Returns true when the action was one of these, so the caller does not also
+// dispatch it into the UI.
+bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
+  if (action.kind != scenario_action_kind_t::SIMPLE) {
     return false;
   }
-  if (!scenarioSettingIsTrue("link_lies")) {
-    std::cerr << "action link-lies-kill requires: seed link_lies true\n";
-    requestExit(2);
+
+  if (action.name == "ble-kill") {
+    *applied = bleDropLink(-1, /*deliverCallback=*/false);
     return true;
   }
-  for (size_t n = 0; n < CameraList::size(); n++) {
-    auto camera = CameraList::get(n);
-    if (camera != nullptr && camera->isConnected()) {
-      camera->disconnect();
-    }
+  if (action.name == "ble-standby") {
+    *applied = blePeerStandbyDrop(-1);
+    return true;
   }
-  return true;
+  if (action.name == "ble-withhold-registration") {
+    *applied = bleSetWithholdRegistration(true);
+    return true;
+  }
+  if (action.name == "ble-allow-registration") {
+    *applied = bleSetWithholdRegistration(false);
+    return true;
+  }
+  if (action.name == "ble-connect-fail") {
+    bleSetConnectFail(true);
+    *applied = true;
+    return true;
+  }
+  if (action.name == "ble-connect-ok") {
+    bleSetConnectFail(false);
+    *applied = true;
+    return true;
+  }
+
+  return false;
 }
 
 const char *simActionResultName(UI::sim_action_result_t result) {
@@ -946,6 +1001,32 @@ std::string queryValue(const std::string &key) {
     if (sub == "targets") {
       return std::to_string(control.getTargetCount());
     }
+    // The internals the 2026-08-28 wedge was diagnosed from: a control task
+    // stuck in disconnecting with a connect still in progress, and quarantined
+    // targets that never drained. Production exposes them to the debug console;
+    // the simulator reads the same snapshot.
+    const auto debug = control.getDebugState();
+    if (sub == "zombies") {
+      return std::to_string(debug.zombieCount);
+    }
+    if (sub == "connect_in_progress") {
+      return debug.connectInProgress ? "yes" : "no";
+    }
+    if (sub == "connect_abort") {
+      return debug.connectAbort ? "yes" : "no";
+    }
+    if (sub == "reconnect_attempt") {
+      return std::to_string(debug.reconnectAttempt);
+    }
+    if (sub == "reconnect_backoff") {
+      return debug.reconnectBackoff ? "yes" : "no";
+    }
+    if (sub == "infinite_reconnect") {
+      return debug.infiniteReconnect ? "yes" : "no";
+    }
+    if (sub == "connecting_camera") {
+      return debug.connectingCamera;
+    }
   }
   if (prefixed("camera.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("camera."));
@@ -967,6 +1048,12 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
+  }
+  if (key == "scan.advertisements") {
+    return std::to_string(bleAdvertisementCount());
+  }
+  if (key == "ble.peers") {
+    return std::to_string(blePeerCount());
   }
   if (key == "scan.start_probe_blocked") {
     return Scan::getInstance().startProbeBlocked() ? "1" : "0";
@@ -1139,12 +1226,17 @@ void applyScenarioSettings(void) {
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);
+  const auto scanTimeout = scenarioSettings.find("scan_timeout");
+  if (scanTimeout != scenarioSettings.end()) {
+    Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));
+  }
   saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
   saveBoolean("reconnect", Settings::RECONNECT);
+  saveBoolean("recon_backoff", Settings::RECON_BACKOFF);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
 #if defined(FURBLE_M5STICKS3)
@@ -1231,6 +1323,17 @@ bool scenarioSettingIsTrue(const char *name) {
   }
   const auto found = scenarioSettings.find(name);
   return found != scenarioSettings.end() && parseBool(found->second);
+}
+
+std::string scenarioSetting(const char *name, const char *fallback) {
+  if (name == nullptr) {
+    return fallback == nullptr ? std::string() : std::string(fallback);
+  }
+  const auto found = scenarioSettings.find(name);
+  if (found == scenarioSettings.end()) {
+    return fallback == nullptr ? std::string() : std::string(fallback);
+  }
+  return found->second;
 }
 
 void registerUI(UI *ui) {
@@ -1626,10 +1729,11 @@ void driverTick(void) {
         simulatedBattery = {step.action.batteryLevel, step.action.batteryVoltage,
                             step.action.batteryCurrent, step.action.batteryCharging};
         result = UI::sim_action_result_t::APPLIED;
-      } else if (!applyLinkLiesAction(step.action)) {
-        result = scenarioUi->simScenarioAction(step.action);
+      } else if (bool applied = false; applyTransportFaultAction(step.action, &applied)) {
+        result =
+            applied ? UI::sim_action_result_t::APPLIED : UI::sim_action_result_t::VALID_NO_EFFECT;
       } else {
-        result = UI::sim_action_result_t::APPLIED;
+        result = scenarioUi->simScenarioAction(step.action);
       }
       if (!expectedSimActionResult(step.action, result)) {
         std::cerr << "Simulator action '" << step.name << "' returned "
@@ -1716,14 +1820,24 @@ void driverTick(void) {
     case StepType::XASSERT:
     {
       // Expected-fail assertion: a known gap awaiting a separate product fix.
-      // Never aborts the run, so CI stays green while the gap is documented.
+      // Asymmetric, like FURBLE_FUZZ_XFAIL_SEEDS. A mismatch is the documented
+      // gap, so it prints and the run continues and CI stays green. A match
+      // means the gap closed, and that has to be promoted back to a hard assert
+      // deliberately rather than sitting as a silently passing xassert nobody
+      // revisits, so it fails the run and says so.
       const std::string actual = queryValue(step.name);
       if (actual != step.expected) {
         std::cout << "XFAIL (WILL_FAIL): " << step.name << " expected '" << step.expected
                   << "' got '" << actual << "'\n";
+      } else if (step.boardVaries) {
+        std::cout << "XPASS (board-varies): " << step.name << " = " << actual
+                  << ". This panel is already correct; the gap remains on another.\n";
       } else {
-        std::cout << "XPASS (gap fixed, promote to assert): " << step.name << " = " << actual
-                  << '\n';
+        std::cerr << "XPASS: " << step.name << " = " << actual
+                  << ". The documented gap is closed; promote this xassert back to assert.\n";
+        std::cout.flush();
+        requestExit(1);
+        return;
       }
       ++stepIndex;
       break;

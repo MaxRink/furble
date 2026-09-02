@@ -76,6 +76,12 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   // NimBLEDevice::resetMock() frees the client its timer may reference.
   void setFlappy(uint32_t fail_attempts, uint32_t drop_after_ms);
 
+  // Run the standby drop body directly, without the wall-clock timer. The
+  // simulator runs on virtual time, where a thread sleeping on the host clock
+  // would neither fire at the modelled moment nor stay deterministic, so it
+  // schedules the drop itself and calls this. Returns false when no link is up.
+  bool triggerStandbyDrop();
+
   bool acceptConnection(NimBLEClient &client, const NimBLEAddress &address) override;
   void disconnect(NimBLEClient &client, int reason) override;
   bool hasService(const NimBLEUUID &service) const override;

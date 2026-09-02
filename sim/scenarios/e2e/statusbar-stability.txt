@@ -25,9 +25,14 @@ assert ui.bt_icon hidden
 
 # --- connected: same icon set, battery unmoved, BT icon absent -----------
 action connect
-wait 1000
-assert control.state active
-assert ui.connected yes
+wait 3200
+assert-eventually-virtual 3000 control.state active
+# A drop indicator is raised by the connected page's liveness poll, which runs
+# every LIVENESS_POLL_PERIOD_MS (500 ms), so it legitimately appears up to that
+# plus one 50 ms control tick after the link dies. The bound below is that
+# budget with headroom, not a relaxation: a parked or dead timer never satisfies
+# it. See plans/161-sim-real-control.md.
+assert-eventually-virtual 2000 ui.connected yes
 assert ui.battery_drift 0
 assert ui.bt_icon hidden
 
@@ -35,10 +40,10 @@ assert ui.bt_icon hidden
 action drop
 wait 700
 assert control.state connecting
-assert ui.reconnecting yes
-xassert ui.battery_drift 0
-assert ui.bt_icon red
-wait 1000
+assert-eventually-virtual 2000 ui.reconnecting yes
+xassert board-varies ui.battery_drift 0
+assert-eventually-virtual 2000 ui.bt_icon red
+wait 2500
 assert control.state active
 # recovered: icon set is back to the baseline, so this holds on every panel.
 assert ui.battery_drift 0
@@ -47,16 +52,16 @@ assert ui.bt_icon hidden
 # --- GPS on: the GPS icon now also occupies the row ----------------------
 action toggle gps
 wait 400
-xassert ui.battery_drift 0
+xassert board-varies ui.battery_drift 0
 
 # --- reconnecting with GPS on: two extra icons versus the baseline -------
 action drop
 wait 700
-assert ui.reconnecting yes
-xassert ui.battery_drift 0
-assert ui.bt_icon red
-wait 1000
+assert-eventually-virtual 2000 ui.reconnecting yes
+xassert board-varies ui.battery_drift 0
+assert-eventually-virtual 2000 ui.bt_icon red
+wait 2500
 assert ui.bt_icon hidden
 # GPS icon still shown, so still off the baseline icon set on the narrow panel.
-xassert ui.battery_drift 0
+xassert board-varies ui.battery_drift 0
 exit

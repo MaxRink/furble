@@ -12,7 +12,7 @@
 seed fauxny true
 wait 300
 action connect
-wait 1500
+wait 3200
 assert ui.connected yes
 action blind
 wait 300

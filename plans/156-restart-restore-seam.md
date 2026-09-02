@@ -97,10 +97,18 @@ Seam limits, stated honestly:
 - Seeds are re-applied on the resumed boot, exactly like boot-time
   configuration. A scenario asserting NVS persistence must therefore not
   seed the setting it toggles, or the seed masks the persistence.
-- The sim `CameraList` (`sim/CameraListSim.cpp`) is a process-local fake
-  with no NVS backing, so a saved camera does not persist through the
-  preferences file; the `saved_camera` and `autoconnect` seeds re-create it
-  at boot. Real saved-camera NVS persistence is host-test territory.
+- The sim `CameraList` was a process-local fake with no NVS backing when this
+  plan was written. Plan 161 replaced it with the production `CameraList` over
+  `lib/preferences` on the simulator preferences file, so a saved camera now
+  does persist across a restart. The `saved_camera` and `autoconnect` seeds
+  still re-create it at boot; that is idempotent because
+  `CameraList::add_index()` overwrites an existing entry by name rather than
+  appending a second one.
+- Restart during a live BLE session is untested. Plan 161 made the path
+  reachable (`sim/main.cpp` tears the control session down before exit), but no
+  scenario drives it: `restart-persist.txt` restarts from idle. A restart
+  mid-session touches teardown, the NimBLE client pool and the saved-camera
+  reload at once and needs its own scenario.
 - The virtual clock restarts at zero (unless `clock_ms` is seeded), like a
   reboot resetting uptime. Wall-clock state, liveness counters, capture and
   report accounting restart too.

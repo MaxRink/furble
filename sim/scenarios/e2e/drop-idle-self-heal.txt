@@ -1,24 +1,29 @@
-# Note A: an active-to-idle drop (reconnect off) must self-heal the timer.
+# Note A: an active-to-idle drop must self-heal the connect timer.
 #
 # The connect timer no longer pauses on STATE_ACTIVE so it can observe drops.
-# A reconnect passes through connecting, but a drop with reconnect off goes
-# straight to idle, and nothing else pauses the timer there. The STATE_IDLE
-# branch must pause it so it does not spin forever on a torn-down link. Connect
-# the FauxNY camera with reconnect off, drop the link, and confirm the UI no
-# longer presents as connected, the box stays hidden, and the timer is parked.
-seed fauxny true
+# A reconnect passes through connecting, but a drop that cannot be recovered
+# ends the session, and nothing else pauses the timer there. The STATE_IDLE
+# branch must pause it so it does not spin forever on a torn-down link.
+#
+# With the production control task a drop never goes straight to idle: the task
+# always attempts the reconnect first. Reaching idle therefore needs a link that
+# really cannot come back, so this connects a virtual Fujifilm peer with
+# reconnect off, kills the radio, drops the link, and lets the connect attempts
+# fail out. The connect timer must then park.
+seed ble_peers fuji
+seed ble_saved true
 wait 300
 action connect
-wait 1000
-assert control.state active
-assert ui.connected yes
+wait 3200
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 assert ui.connect_box hidden
 assert ui.connect_timer running
-# Drop with reconnect off: control goes straight to idle.
+# Drop with reconnect off and no radio to reconnect through.
+action ble-connect-fail
 action drop
-wait 700
-assert control.state idle
+assert-eventually-virtual 10000 control.state idle
 assert ui.connected no
 assert ui.connect_box hidden
-assert ui.connect_timer paused
+assert-eventually-virtual 3000 ui.connect_timer paused
 exit

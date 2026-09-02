@@ -13,9 +13,9 @@ seed fauxny true
 seed reconnect true
 wait 300
 action connect
-wait 1000
-assert control.state active
-assert ui.connected yes
+wait 3200
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 assert ui.connect_box hidden
 assert ui.reconnecting no
 assert ui.status_text Connected
@@ -29,13 +29,13 @@ assert control.state connecting
 # The connected view stays up: no progress-box takeover, still on the page.
 assert ui.connect_box hidden
 assert ui.page connected
-assert ui.reconnecting yes
+assert-eventually-virtual 2000 ui.reconnecting yes
 # The status-row Bluetooth symbol shows and is red, so the drop is unmistakable.
-assert ui.bt_color red
+assert-eventually-virtual 2000 ui.bt_color red
 # Single camera: no count, just the word.
 assert ui.status_text Reconnecting
 # The reconnect completes and both the indicator and the title clear.
-wait 1000
+wait 2500
 assert control.state active
 assert ui.connected yes
 assert ui.connect_box hidden
