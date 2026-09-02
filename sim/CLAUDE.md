@@ -362,6 +362,21 @@ a regression.
 - `FURBLE_SIM_NO_TOUCH=1` selects the non-touch physical-button layout without a
   scenario seed, so a harness can pick it per board. `FURBLE_SIM_RIG=0` builds
   without the rig so the shipped one-line header title renders.
+- The SDL panel always attaches a mouse-driven touch device, so an unseeded run
+  renders the touch layout on every modeled board. The Stick boards never have a
+  touch panel, so their shipped layout is the non-touch one: it reserves a 26 px
+  navbar band at the bottom of the window content and floats the three button
+  indicators over the screen. `bughunt/stick-notouch-layout.txt` seeds
+  `no_touch true` and is certified for `m5stick-s3` and `m5stick-c` only, so the
+  existing certified bug-hunt steps run it on both Stick binaries. Every other
+  overflow scenario measures the touch layout, which is 26 px taller. Its first
+  assertion is `ui.nav_layout buttons`, so a lost seed fails loudly rather than
+  passing against the wrong layout. See `plans/165-sim-no-touch-layout.md`.
+- `ui.nav_layout` reports `touch` or `buttons`. `ui.indicator_clearance` reports
+  `clear`, `overlap` or `n/a` for the current page, and `ui.indicator_overlaps`
+  gives the count. Only the drawn text extent of a label counts, not its
+  flex-stretched box, and areas are clamped to the page viewport so rows
+  scrolled out of sight are ignored.
   `FURBLE_SIM_CAPTURE_SPLASH=<png>` snapshots the boot splash before the LVGL UI
   starts.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but

@@ -1,0 +1,123 @@
+# Layout audit for the physical-button layout the Stick boards actually ship.
+#
+# The M5StickC, M5StickC Plus and M5StickS3 have no touch panel, so
+# M5.Touch.isEnabled() is false on hardware and UI::begin() builds the
+# non-touch layout: a reserved navigation bar band at the bottom of the window
+# content plus three floating button indicators drawn over the screen. The SDL
+# panel always attaches a mouse-driven touch device, so every other scenario
+# measures the touch layout instead, which is 26 px taller and has no
+# indicators. This one seeds "no_touch true" to detach the panel device, so the
+# shipped Stick layout is the one under test. See plans/165.
+#
+# The first assertion is a hard guard: without it a run that lost the seed would
+# silently fall back to the touch layout and pass for the wrong reason.
+#
+# WILL_FAIL lines (xassert) record layout gaps that only exist on the shipped
+# Stick layout. Each carries the measured pixel count. An XPASS is the signal to
+# promote the line to a hard assert.
+seed no_touch true
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed imu true
+seed fb_output 1
+wait 300
+assert ui.nav_layout buttons
+
+# Home menu, six rows. Fits and clears the indicators on both Stick panels.
+assert ui.page main
+assert ui.overflow no
+assert ui.indicator_clearance clear
+
+# Display page: short on every panel.
+action nav display
+wait 150
+assert ui.page display
+assert ui.overflow no
+assert ui.indicator_clearance clear
+
+# Sensors tile. It fits the 135x240 panel but overflows the 80x160 panel by
+# 10 px once the navbar band is reserved.
+action page settings
+action nav sensors
+wait 150
+assert ui.page sensors
+print ui.scroll_bottom
+xassert ui.overflow no
+assert ui.indicator_clearance clear
+
+# Timer settings list. It fits both panels, but two rows render under the right
+# indicator at 80x160, where the indicator sits at the vertical middle.
+action page settings
+action nav timer
+wait 150
+assert ui.page timer
+assert ui.overflow no
+print ui.indicator_overlaps
+xassert ui.indicator_clearance clear
+
+# Seven home rows: the Infrared entry appears once the IR switch is on. The
+# seventh row overflows the 135x240 panel by 21 px on the shipped layout.
+home
+wait 150
+action nav infrared
+wait 150
+assert ui.page infrared
+action toggle ir
+wait 150
+home
+wait 250
+assert ui.page main
+print ui.scroll_bottom
+xassert ui.overflow no
+assert ui.indicator_clearance clear
+
+# Connected session. The connected page overflows the 135x240 panel by 25 px
+# and its centred Disconnect row renders under the right indicator.
+action connect
+wait 1800
+assert ui.page connected
+assert ui.connected yes
+print ui.scroll_bottom
+print ui.indicator_overlaps
+xassert ui.overflow no
+xassert ui.indicator_clearance clear
+
+# Remote shutter page: 64 px of overflow on the 135x240 panel.
+action page shutter
+wait 150
+assert ui.page shutter
+print ui.scroll_bottom
+xassert ui.overflow no
+assert ui.indicator_clearance clear
+
+# Bulb and camera list pages fit both panels; the 80x160 panel draws one row
+# under the right indicator.
+action page bulb
+wait 150
+assert ui.page bulb
+assert ui.overflow no
+print ui.indicator_overlaps
+xassert ui.indicator_clearance clear
+
+action page cameras
+wait 150
+assert ui.page cameras
+assert ui.overflow no
+print ui.indicator_overlaps
+xassert ui.indicator_clearance clear
+
+# Running intervalometer view.
+action page connected
+wait 150
+action intervalometer
+wait 150
+assert ui.page timer_run
+assert ui.overflow no
+print ui.indicator_overlaps
+xassert ui.indicator_clearance clear
+action stop
+wait 150
+assert ui.interval_state idle
+assert ui.page connected
+exit

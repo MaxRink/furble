@@ -20,7 +20,16 @@ together:
 
 The default is the M5StickS3 135x240 panel. The Core panel models the 320x240
 Core class used by the simulator; the Stick panels use the non-touch physical
-button layout when `FURBLE_SIM_NO_TOUCH` is set.
+button layout when `FURBLE_SIM_NO_TOUCH` is set or a scenario seeds
+`no_touch true`.
+
+The SDL panel always attaches a mouse-driven touch device, so an unseeded run
+renders the touch layout on every modeled board. The Stick boards have no touch
+panel, so their shipped layout is the non-touch one: it reserves a 26 px
+navigation bar band at the bottom of the window content and floats three button
+indicators over the screen. `bughunt/stick-notouch-layout.txt` seeds `no_touch`
+and is the scenario that measures that layout. Every other overflow scenario
+measures the touch layout. See [`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md).
 
 ## Production-path parity
 
@@ -394,6 +403,9 @@ The complete `ui.*` query set is:
 | `ui.focus` | `none`, `stale`, or `ok`. |
 | `ui.focus_on_page` | `yes` or `no`. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
+| `ui.nav_layout` | `touch` or `buttons`. |
+| `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
+| `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
@@ -478,6 +490,18 @@ The other namespaces are:
   M5StickS3 build.
 
 ## Fault injection and fuzzing
+
+`ui.nav_layout` reports which navigation layout the running build rendered:
+`touch` for the touch grid, `buttons` for the physical-button layout. A scenario
+that means to measure the shipped Stick layout asserts this first, so a lost
+`no_touch` seed fails loudly instead of passing against the wrong layout.
+
+`ui.indicator_clearance` reports whether any visible label or icon on the
+current page sits under a floating navigation indicator: `clear`, `overlap`, or
+`n/a` on a build with no indicators. `ui.indicator_overlaps` reports the count
+for diagnosis. Label boxes are stretched by their flex row, so only the drawn
+text extent is measured, and areas are clamped to the page viewport so rows
+scrolled out of sight are not counted.
 
 ### SDL simulator faults
 

@@ -120,6 +120,25 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/stick-notouch-layout.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "feedback",
+        "ir",
+        "sd"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/text-size-clamp-stickc.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

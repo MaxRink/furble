@@ -5,12 +5,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
 #include <thread>
 #include <tuple>
+#include <vector>
 
 #include <M5Unified.h>
 #include <esp_chip_info.h>
@@ -2964,6 +2966,110 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   lv_menu_set_page(m_MainMenu.main, page);
 }
 
+uint32_t UI::countIndicatorOverlaps(void) {
+  if (M5.Touch.isEnabled()) {
+    return 0;
+  }
+  lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if (page == nullptr) {
+    return 0;
+  }
+  lv_obj_update_layout(page);
+
+  std::vector<lv_area_t> indicators;
+  for (lv_obj_t *indicator : {m_Left, m_OK, m_Right}) {
+    if (indicator == nullptr || !lv_obj_is_valid(indicator) || !lv_obj_is_visible(indicator)) {
+      continue;
+    }
+    lv_area_t area;
+    lv_obj_get_coords(indicator, &area);
+    indicators.push_back(area);
+  }
+  if (indicators.empty()) {
+    return 0;
+  }
+
+  // Coordinates are inclusive pixel bounds, so touching edges are not an
+  // overlap.
+  const auto intersects = [](const lv_area_t &a, const lv_area_t &b) {
+    return (a.x1 <= b.x2) && (a.x2 >= b.x1) && (a.y1 <= b.y2) && (a.y2 >= b.y1);
+  };
+
+  // A scrolled page keeps coordinates for rows that are clipped away, so every
+  // area is clamped to the page viewport before it is tested.
+  lv_area_t viewport;
+  lv_obj_get_coords(page, &viewport);
+
+  // A label object is often stretched by its flex row while the glyphs occupy
+  // only part of it. Only the drawn text can visually collide with an
+  // indicator, so shrink the box to the text extent and honour the text
+  // alignment. Icons fill their box, so they are measured as they are.
+  const auto drawnArea = [](lv_obj_t *obj, const lv_area_t &coords) {
+    if (!lv_obj_check_type(obj, &lv_label_class)) {
+      return coords;
+    }
+    lv_area_t box = coords;
+    box.x1 += lv_obj_get_style_pad_left(obj, LV_PART_MAIN);
+    box.y1 += lv_obj_get_style_pad_top(obj, LV_PART_MAIN);
+    box.x2 -= lv_obj_get_style_pad_right(obj, LV_PART_MAIN);
+    box.y2 -= lv_obj_get_style_pad_bottom(obj, LV_PART_MAIN);
+    const int32_t boxWidth = box.x2 - box.x1 + 1;
+    const int32_t boxHeight = box.y2 - box.y1 + 1;
+    const int32_t textWidth = lv_obj_get_self_width(obj);
+    const int32_t textHeight = lv_obj_get_self_height(obj);
+    if ((textWidth > 0) && (textWidth < boxWidth)) {
+      switch (lv_obj_get_style_text_align(obj, LV_PART_MAIN)) {
+        case LV_TEXT_ALIGN_CENTER:
+          box.x1 += (boxWidth - textWidth) / 2;
+          box.x2 = box.x1 + textWidth - 1;
+          break;
+        case LV_TEXT_ALIGN_RIGHT:
+          box.x1 = box.x2 - textWidth + 1;
+          break;
+        default:
+          box.x2 = box.x1 + textWidth - 1;
+          break;
+      }
+    }
+    if ((textHeight > 0) && (textHeight < boxHeight)) {
+      box.y2 = box.y1 + textHeight - 1;
+    }
+    return box;
+  };
+
+  uint32_t overlaps = 0;
+  std::function<void(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+    if ((obj == nullptr) || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
+      return;
+    }
+    // Only leaf content counts. A row container spans the full page width by
+    // construction, so counting it would report an overlap on every page.
+    if (lv_obj_check_type(obj, &lv_label_class) || lv_obj_check_type(obj, &lv_image_class)) {
+      lv_area_t coords;
+      lv_obj_get_coords(obj, &coords);
+      lv_area_t area = drawnArea(obj, coords);
+      if (intersects(area, viewport)) {
+        area.x1 = std::max(area.x1, viewport.x1);
+        area.y1 = std::max(area.y1, viewport.y1);
+        area.x2 = std::min(area.x2, viewport.x2);
+        area.y2 = std::min(area.y2, viewport.y2);
+        for (const lv_area_t &indicator : indicators) {
+          if (intersects(area, indicator)) {
+            overlaps++;
+            break;
+          }
+        }
+      }
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+      visit(lv_obj_get_child(obj, i));
+    }
+  };
+  visit(page);
+
+  return overlaps;
+}
+
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
   if (query == "sim_action_on_ui") {
@@ -3596,6 +3702,33 @@ std::string UI::simQueryState(const char *key) {
     const int32_t below = lv_obj_get_scroll_bottom(page);
     const int32_t above = lv_obj_get_scroll_top(page);
     return (below > 0 || above > 0) ? "yes" : "no";
+  }
+
+  // Which navigation layout the running build rendered. A board with a touch
+  // panel gets the touch grid; a board without one gets the physical-button
+  // layout with the floating indicators and the reserved navbar band. The
+  // shipped Stick boards always report "buttons" on hardware, so a scenario
+  // that means to measure their layout asserts this first and fails loudly if
+  // the run silently fell back to the touch grid.
+  if (query == "nav_layout") {
+    return M5.Touch.isEnabled() ? "touch" : "buttons";
+  }
+
+  // Whether any visible label or icon on the current page sits under a floating
+  // navigation indicator. The Left and OK indicators occupy the reserved navbar
+  // band, but the Right indicator floats over the content area, so a wide
+  // centred row can render beneath it. "clear" means nothing intersects,
+  // "overlap" means at least one widget does, and "n/a" means this build has no
+  // floating indicators. "indicator_overlaps" reports the count for diagnosis.
+  if (query == "indicator_clearance" || query == "indicator_overlaps") {
+    const uint32_t overlaps = countIndicatorOverlaps();
+    if (query == "indicator_overlaps") {
+      return std::to_string(overlaps);
+    }
+    if (M5.Touch.isEnabled() || (m_Left == nullptr && m_OK == nullptr && m_Right == nullptr)) {
+      return "n/a";
+    }
+    return (overlaps > 0) ? "overlap" : "clear";
   }
 
   // Pixels of content still below the current viewport, so a scroll scenario can
