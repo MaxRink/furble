@@ -396,15 +396,19 @@ jobs:
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-stickc/furble-sim" \
             sh sim/scripts/run-fuzz.sh
           echo "=== build-core ==="
-          # Seed 3 is pinned expected-fail on 320x240 only. It reproduces a
-          # deterministic layout overflow on the intervalometer settings page
-          # (step 447, page=timer) that the large-text overflow sweep cannot
-          # see, because that sweep does not run on this board. The bug is not
-          # introduced here; a different event stream reaches it. See
-          # plans/161-sim-real-control.md. Promote the seed back out of this
-          # list when the page is fixed; run-fuzz.sh fails loudly if it starts
-          # passing.
-          FURBLE_FUZZ_SEEDS="1 2 7 42 99 1000 31337" \
-            FURBLE_FUZZ_XFAIL_SEEDS=3 \
-            FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-core/furble-sim" \
+          # Seed 3 was pinned expected-fail on 320x240 for a deterministic
+          # layout overflow on the intervalometer settings page (step 447,
+          # page=timer). It is promoted back into the guarded set because it
+          # passes here on three of three runs with zero findings.
+          #
+          # State this precisely: the page was not fixed. The plan 166
+          # scheduler fairness change alters how far the control task gets per
+          # UI slice, so the event stream reaches a different page at step 447
+          # and no longer walks into the overflow. The underlying 320x240
+          # layout bug is still there and still uncovered, because EXACT_BOARDS
+          # in tools/check_sim_scenarios.py restricts text-size-overflow-large
+          # to m5stick-s3 and m5stick-c. Closing that gap belongs to a layout PR
+          # that can verify on the board. See plans/161-sim-real-control.md and
+          # plans/166-sim-teardown-livelock.md.
+          FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-core/furble-sim" \
             sh sim/scripts/run-fuzz.sh

@@ -147,11 +147,15 @@ a regression.
   byte-identical PNGs.
 - Fuzzer reproducibility is not total. Two runs of the same seed on the same
   binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
-  event stream and the pages it reaches are deterministic. The `FUZZ SUMMARY`
-  line is not: `observed_delta` and `no_observed_delta` count how many events
-  produced a visible change by the time the settle cycles finished, which
-  depends on how many `lv_task_handler` cycles the host got through, so they
-  vary run to run. Compare events and coverage, not the delta counters.
+  event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
+  now enforces that with a replay of one guarded seed. Firmware behaviour under
+  the fuzzer is not reproducible line for line: two runs can still differ by one
+  connect attempt, because production code blocks on plain host mutexes the
+  simulator scheduler cannot see, so how far a connect gets before a disconnect
+  lands is host timed. Closing that needs the scheduler-visible mutex plan 158
+  Phase 3 owns. `observed_delta` and `no_observed_delta` move for the same
+  reason and are masked in the replay. Compare the fuzz report lines, not the
+  log, and do not tighten the replay to the whole log until that gap closes.
 - Exception: `gps.txt` renders the TinyGPSPlus fix age from the real host
   clock, so `gps.png` is not byte-reproducible and must not be a golden
   baseline as-is.
@@ -287,6 +291,42 @@ a regression.
   cannot race simulator teardown or be silently narrowed. Seed names are
   allowlisted and each seed requires exactly two arguments, preventing typos or
   trailing values from being silently ignored.
+- Every bound inside the simulator except one is denominated in virtual time,
+  so none of them can see a stall that stops virtual time advancing at all. The
+  host wall-clock stall watchdog (`sim/watchdog.cpp`) is that one exception. It
+  samples the virtual clock, the scheduler progress counter and the recorded
+  phase, and on no movement for `FURBLE_SIM_WATCHDOG_SECONDS` host seconds
+  (default 120, 0 disables) it prints the phase, the virtual clock, the
+  scheduler task table and a native backtrace of every registered thread, then
+  exits non-zero. Register a new long-lived thread with
+  `Furble::Sim::watchdogRegisterThread` so it appears in that report.
+- Do not tighten that bound. Boot runs before any simulator task exists and
+  advances neither the virtual clock nor the scheduler counter, so across it the
+  recorded phase is the only progress the watchdog can see. A 30 second bound
+  was measured reporting a healthy boot on a deliberately hammered host. Each
+  boot step records its own phase so a slow but progressing boot keeps resetting
+  the bound; a wedged run is permanent, so a generous bound costs nothing.
+  Record a new phase with `Furble::Sim::watchdogPhase` when you add a boot step.
+- M5GFX starts a `dbg` thread that infers "a debugger stopped us" from a 1 ms
+  `SDL_Delay` overshooting 64 ms, and latches `Panel_sdl` step-exec mode for
+  512 ms. A loaded host overshoots that sleep routinely, and step-exec makes
+  `Panel_sdl::display()` spin until the main thread pumps `Panel_sdl::loop()`,
+  which our main thread will not do until `Platform::init()` has registered the
+  panel, behind that very `display()`. That deadlocked boot for hours at full
+  CPU. The `SDL_CreateThread` interposer in `sim/sdl_lifecycle.cpp` therefore
+  does not start the detector; `FURBLE_SIM_SDL_STEP_DETECT=1` restores it for
+  an interactive debugging session, where the stall watchdog reports the
+  deadlock instead of spinning on it. Do not reintroduce a busy-wait in
+  `sim/main.cpp`: spinning made the load that provokes the stall worse.
+- `run-e2e.sh` and `run-watchdog.sh` bound every scenario with `timeout -k 10`
+  (`FURBLE_SIM_SCENARIO_TIMEOUT`, default 300 s). `run-fuzz.sh` keeps its own
+  larger per-seed bound (`FURBLE_FUZZ_SEED_TIMEOUT`, default 600 s), because a
+  seed is 600 events rather than one scenario. A wedged run must fail its leg,
+  never hang the job. All three require GNU `timeout`, or `gtimeout` from
+  coreutils on macOS, and say so if neither is installed.
+- A teardown that force-completes fails the run. `sim/main.cpp` checks the
+  boolean `Control::disconnect()` already returned and calls
+  `requestFailureExit()`; do not discard it again.
 - `sim/scripts/run-watchdog.sh` is the explicit M5StickS3 watchdog gate. It
   runs all retained-PMIC feed and boundary scenarios against the default freshly built
   binary; do not substitute a stale binary or a different panel profile.

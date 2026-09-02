@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include "clock.h"
 #include "driver.h"
 #include "power_profiler.h"
+#include "watchdog.h"
 
 struct FurbleSimQueue {
   FurbleSimQueue(size_t length, size_t itemSize) : capacity {length}, item_size {itemSize} {}
@@ -124,7 +126,7 @@ bool timerServiceExecuting = false;
 //   2. the bound itself has elapsed. It is deliberately far above any
 //      legitimate handoff, which is microseconds even on a loaded runner.
 constexpr std::chrono::milliseconds SCHEDULER_STALL_BOUND {2000};
-uint64_t schedulerProgress = 0;
+std::atomic<uint64_t> schedulerProgress {0};
 thread_local SimTask *currentTask = nullptr;
 thread_local const char *simTaskName = "ui";
 
@@ -201,6 +203,28 @@ void dispatchNextLocked(void) {
   runningTask = next;
 }
 
+// Host ceiling on one UI-thread handoff. This is load bearing, not a safety
+// net, so do not lower it casually.
+//
+// Most handoffs end in microseconds: the tasks released by the clock advance
+// take their turns and block again, which clears `runnable` and satisfies the
+// wait. The case that matters is the other one. A task blocked on a plain host
+// mutex the scheduler cannot see is still `runnable`, because `runnable` is
+// only cleared by an explicit scheduler boundary, so the wait cannot observe it
+// finishing and runs the full ceiling. That elapsed host time is exactly what
+// lets the mutex holder run and release, and it is why the fix for issue 267
+// works: on core fuzz seed 2 the ceiling is reached on 87 of 3620 handoffs and
+// accounts for 21.8 s of the 23.9 s run.
+//
+// So the ceiling trades runtime for the progress of a host-mutex holder.
+// Lowering it re-starves that holder, which is the issue 267 failure. Raising
+// it only costs runtime. The right fix is to stop guessing with a timeout at
+// all: make the scheduler aware of host-mutex waiters so they clear `runnable`
+// like every other blocking boundary, and the wait ends on a real event. That
+// is the scheduler-visible mutex plan 158 Phase 3 owns, tracked with this
+// ceiling as the interim.
+constexpr std::chrono::milliseconds UI_HANDOFF_BOUND {250};
+
 void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
   if (currentTask == nullptr) {
     return;
@@ -219,11 +243,11 @@ void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
   };
 
   while (!ready()) {
-    const uint64_t progress = schedulerProgress;
+    const uint64_t progress = schedulerProgress.load();
     if (Furble::Sim::schedulerCondition().wait_for(lock, SCHEDULER_STALL_BOUND, ready)) {
       return;
     }
-    if (schedulerProgress != progress) {
+    if (schedulerProgress.load() != progress) {
       // The scheduler moved while we waited, so this is a slow host, not a
       // deadlock. Keep waiting for our turn and leave the order alone.
       continue;
@@ -612,6 +636,7 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     state->worker = std::thread([state, task, parameter, name]() {
       currentTask = state.get();
       simTaskName = name == nullptr ? "task" : name;
+      Furble::Sim::watchdogRegisterThread(simTaskName);
       bool admitted = false;
       {
         std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
@@ -634,6 +659,7 @@ BaseType_t xTaskCreate(TaskFunction_t task,
         Furble::Sim::schedulerStop();
       }
       currentTask = nullptr;
+      Furble::Sim::watchdogUnregisterThread();
       markTaskFinished(state);
     });
     tasks.push_back(state);
@@ -669,9 +695,26 @@ void vTaskDelay(TickType_t ticks) {
   if (std::strcmp(simTaskName, "ui") == 0 && currentTask == nullptr) {
     Furble::Sim::profilerTaskDelay(simTaskName, ticks);
     Furble::Sim::advanceClock(ticks);
-    // Keep a small host scheduling handoff. It does not contribute to virtual
-    // time, but lets a task awakened by this clock advance run promptly.
-    std::this_thread::sleep_for(std::chrono::microseconds(50));
+    // On FreeRTOS this delay blocks the caller and every ready task runs. The
+    // UI thread is not a scheduler task, so it has to model that explicitly:
+    // hand the scheduler over until nothing is runnable again, meaning every
+    // task released by the clock advance has had a turn and blocked on its
+    // next deadline or queue.
+    //
+    // A fixed 50 microsecond host sleep here instead of this handoff starves
+    // any task that needs several turns, or one host mutex release, to unwind.
+    // It made a camera teardown miss the connect cancellation it was polling
+    // for and fall back to its 30 s cap on every fuzz seed.
+    //
+    // The wait ends early only when every task has reached a scheduler
+    // boundary. A task blocked on a plain host mutex has not, and stays
+    // `runnable`, so that case runs the full UI_HANDOFF_BOUND and it is the
+    // elapsed host time, not the condition, that lets the mutex holder finish.
+    // See the comment on UI_HANDOFF_BOUND.
+    std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+    Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
+      return Furble::Sim::schedulerStopping() || nextRunnableTaskLocked() == nullptr;
+    });
     return;
   }
 
@@ -804,6 +847,34 @@ uint64_t furble_sim_task_creation_order(TaskHandle_t taskHandle) {
   const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
   const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
   return task == nullptr ? UINT64_MAX : task->creation_order;
+}
+
+uint64_t furble_sim_scheduler_progress(void) {
+  return schedulerProgress.load();
+}
+
+void furble_sim_report_tasks(std::string &out) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex(), std::try_to_lock);
+  if (!lock.owns_lock()) {
+    out += "SIM WATCHDOG: scheduler lock is held, task table unavailable.\n";
+    return;
+  }
+  out += "SIM WATCHDOG: tasks (" + std::to_string(tasks.size()) + ")\n";
+  if (runningTask == nullptr) {
+    out += "  turn holder: none\n";
+  }
+  for (const auto &task : tasks) {
+    out += "  task prio=" + std::to_string(static_cast<unsigned long>(task->priority))
+           + " lifecycle=" + std::to_string(static_cast<unsigned>(task->lifecycle))
+           + " running=" + (runningTask == task.get() ? "yes" : "no") + " blocked="
+           + (task->blocked ? "yes" : "no") + " runnable=" + (task->runnable ? "yes" : "no")
+           + " parked=" + (task->parked ? "yes" : "no")
+           + " wait=" + std::to_string(static_cast<unsigned>(task->wait_kind));
+    if (task->wait_has_deadline) {
+      out += " deadline_ms=" + std::to_string(static_cast<unsigned long>(task->wait_deadline));
+    }
+    out += "\n";
+  }
 }
 
 bool furble_sim_task_join_claimed(TaskHandle_t taskHandle) {

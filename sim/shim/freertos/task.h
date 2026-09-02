@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 #include "FreeRTOS.h"
 
@@ -28,5 +29,20 @@ UBaseType_t furble_sim_task_priority(TaskHandle_t task_handle);
 
 /** Return the deterministic creation order assigned by the simulator. */
 uint64_t furble_sim_task_creation_order(TaskHandle_t task_handle);
+
+/**
+ * Return the scheduler's monotonic progress counter. Every dispatch, block,
+ * release and boundary entry bumps it, so an unchanged value means nothing in
+ * the scheduler moved. The stall watchdog samples it without taking the
+ * scheduler lock, which a stalled run may never release.
+ */
+uint64_t furble_sim_scheduler_progress(void);
+
+/**
+ * Append one line per retained task describing its scheduler state. Used by
+ * the stall watchdog, so it takes the scheduler lock only if it is free and
+ * says so plainly when it is not.
+ */
+void furble_sim_report_tasks(std::string &out);
 
 #endif

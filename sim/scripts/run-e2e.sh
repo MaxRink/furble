@@ -10,6 +10,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 BIN=${FURBLE_SIM_BIN:-"$ROOT/sim/build/furble-sim"}
 BOARD=${FURBLE_SIM_BOARD_ID:-m5stick-s3}
+# Wall-clock ceiling for one scenario. Every other bound in the simulator is
+# denominated in virtual time, so none of them can see a stall that stops
+# virtual time advancing at all. Without this a wedged boot spun at full CPU
+# until the whole CI job timed out, with no output naming the scenario. -k
+# follows up with SIGKILL because a wedged run ignores SIGTERM.
+SCENARIO_TIMEOUT=${FURBLE_SIM_SCENARIO_TIMEOUT:-300}
 
 : "${SDL_VIDEODRIVER:=dummy}"
 : "${SDL_AUDIODRIVER:=dummy}"
@@ -28,6 +34,20 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
+# GNU timeout, or the coreutils build Homebrew installs as gtimeout on macOS.
+# This bound is the only thing standing between a wedged run and a hung CI job,
+# so a missing tool is a hard failure rather than a silent run without it.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT=gtimeout
+else
+  echo "GNU timeout is required to bound a simulator run." >&2
+  echo "On macOS: brew install coreutils, which provides gtimeout." >&2
+  exit 1
+fi
+
+
 status=0
 count=0
 scenarios=$(python3 "$ROOT/tools/check_sim_scenarios.py" --list-certified --suite e2e --board "$BOARD")
@@ -36,11 +56,15 @@ for scenario in $scenarios; do
   name=$(basename "$scenario" .txt)
   count=$((count + 1))
   echo "=== $name ==="
-  if "$BIN" --script "$scenario"; then
+  if "$TIMEOUT" -k 10 "$SCENARIO_TIMEOUT" "$BIN" --script "$scenario"; then
     echo "PASS $name"
   else
     rc=$?
-    echo "FAIL $name (exit $rc)"
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      echo "FAIL $name (timed out after ${SCENARIO_TIMEOUT}s)"
+    else
+      echo "FAIL $name (exit $rc)"
+    fi
     status=1
   fi
 done
