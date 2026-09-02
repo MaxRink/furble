@@ -29,6 +29,11 @@ assert ui.connect_box hidden
 # That gap belongs to plan 158 Phase 3; see plans/161-sim-real-control.md. The
 # contract this scenario actually guards is the self-heal below, which stays a
 # hard assert.
+#
+# This xassert is environment dependent, not a pending product fix: an idle
+# host wins the race and prints XPASS, a loaded CI runner loses it and prints
+# XFAIL. Do NOT promote it to assert on an XPASS. It becomes a hard assert only
+# once the simulator's UI task is priority gated.
 xassert ui.connect_timer running
 # Drop with reconnect off and no radio to reconnect through.
 action ble-connect-fail
