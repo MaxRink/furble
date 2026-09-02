@@ -241,11 +241,21 @@ Every mutation was reverted; no mutation is left in the tree.
    deadlock breaker rather than a time slice: a healthy handoff is
    microseconds, so it never fires on a deadlock-free trace. The principled fix
    is to model FreeRTOS mutex blocking, which plan 158 Phase 3 owns.
-4. No modelled radio latency. A virtual peer's connect completes in well under
+4. The simulator's UI task is not priority gated. It is the pseudo-task that
+   drives virtual time, so it can run ahead of a higher-priority real task that
+   a queue send has just released. `doConnect()` resumes and readies the
+   connect timer while `Control::connectAll()` has only queued `CMD_CONNECT`,
+   so the timer's first tick can land while the control task is still in
+   `STATE_IDLE` and pause itself. On device the control task runs at priority 4
+   and preempts the LVGL task immediately, so it always wins that race.
+   `drop-idle-self-heal` records the precondition with `xassert` rather than
+   enforcing it; its real contract, the self-heal after the outage, stays a
+   hard assert. This is plan 158 Phase 3 work.
+5. No modelled radio latency. A virtual peer's connect completes in well under
    a millisecond, so the sim cannot yet exercise the seconds-long connect
    windows that hardware has. Real timing must come from the calibrated peer
    work in plan 159.
-5. The simulator tears the control session down before process exit
+6. The simulator tears the control session down before process exit
    (`Control::disconnect(..., forRestart=true)` in `sim/main.cpp`). The
    firmware never leaves `UI::task`, so this path only runs on the restart
    route on device. Without it the NimBLE client pool and the control targets
