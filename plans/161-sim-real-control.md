@@ -337,37 +337,30 @@ Every mutation was reverted; no mutation is left in the tree.
 
 ## Coverage
 
-Re-measured with the audit's method (clang `-fprofile-instr-generate
--fcoverage-mapping`, `llvm-profdata` merge, `llvm-cov export -format=lcov`,
-then the audit's `merge.py`), over the full host suite (85 tests) and the full
-certified simulator corpus (127 scenarios across power-gate, bughunt, e2e and
-invalid).
+| Stack | Covered | Instrumented | Coverage | Previous floor |
+| --- | ---: | ---: | ---: | ---: |
+| host | 7,758 | 12,208 | 63.55% | 62.45% |
+| sim m5stick-s3 (135x240) | 8,516 | 16,656 | 51.13% | 57.16% |
+| sim m5stick-c (80x160) | 6,125 | 16,599 | 36.90% | 43.29% |
+| sim m5stack-core (320x240) | 5,992 | 16,589 | 36.12% | 42.20% |
+| sim union | 8,636 | 16,718 | 51.66% | 57.86% |
+| **grand union** | **14,405** | **20,503** | **70.26%** | 68.03% |
 
-| Metric | fork/master 792815cd | This PR |
-| --- | --- | --- |
-| Union firmware lines | 18388 | 18485 |
-| Union firmware covered | 12127 | 12476 |
-| Union firmware line coverage | 65.95 percent | 67.49 percent |
-| Simulator firmware lines compiled | 11712 | 16629 |
-| Simulator firmware lines covered | 6804 | 8495 |
-| Simulator firmware line coverage | 58.09 percent | 51.09 percent |
-| Host-only firmware line coverage | 57.44 percent | 57.44 percent |
+Measured with `tools/coverage.py` from PR #260, which is now the authority
+here. Every simulator stack percentage falls and the grand union rises, for one
+reason: the simulator's instrumented denominator grew from 11,712 to 16,718
+firmware lines because it now compiles the whole connection stack it previously
+did not compile at all. The absolute number of firmware lines the simulator
+covers rose from 6,804 to 8,636, and the grand union, the number that says how
+much of the firmware the tests actually reach, went 68.03 to 70.26.
 
-The simulator percentage falls while its absolute coverage rises by 1691 lines
-(+24.9 percent), because the denominator grew by the whole connection stack the
-simulator previously did not compile at all. The union is the number that
-matters and it moved 65.95 to 67.49.
-
-Per-file union movement on the newly shared sources:
-
-| File | Union before | Union after |
-| --- | --- | --- |
-| `lib/furble/CameraList.cpp` | 13.95 | 68.84 |
-| `src/FurbleControl.cpp` | 69.55 | 77.20 |
-| `lib/furble/FujifilmBasic.cpp` | 70.54 | 86.05 |
-| `lib/furble/Scan.cpp` | 89.86 | 90.62 |
-| `lib/furble/Camera.cpp` | 68.09 | 68.65 |
-| `lib/furble/Ricoh.cpp` | 59.19 | 59.67 |
+The four simulator stack floors were lowered with
+`tools/coverage.py --ratchet --lower --reason "real Control in the sim grew the
+instrumented denominator"`, which records the reason in
+`tests/coverage_floor.json` rather than dropping them silently. Every other
+floor ratcheted up: grand union 68.03 to 69.26, host 62.45 to 62.55,
+`src/FurbleControl.cpp` 73.90 to 77.13, `lib/furble/Scan.cpp` 88.86 to 90.20,
+`lib/furble/Camera.cpp` 73.46 to 73.75, `src/FurbleUI.cpp` 79.40 to 79.53.
 
 ## Implementation state
 
