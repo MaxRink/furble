@@ -5,7 +5,58 @@ sim-realism session. This is an untracked working note in the main checkout,
 same convention as `HARDWARE_DEBUG_NOTES.md`. **Do not commit it.**
 
 Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
-`fork/master` at handoff: **14a05f39**.
+`fork/master` at handoff: **70774434** (2026-09-02). The 2026-08-30 sections below are historical; read the 2026-09-02 addendum first.
+
+---
+
+## 0. 2026-09-02 addendum (read first)
+
+Between 2026-08-30 and 09-01 another agent merged PRs #253 to #258: plan 158
+scheduler parity (virtual clock, joinable tasks, orderly shutdown), task
+quiescence, scheduler priority, truthful fuzz invariants, strict typed
+scenario actions (`sim/scenario_action.{h,cpp}`, nav targets are TWO
+allowlists: the parse-time page list and the canonical validator; every action
+must publish an outcome via `m_SimActionResult`; hidden targets use
+`action expect unavailable nav X`), and plan 160 scenario ownership
+(`sim/scenarios/manifest.json`, a LIST of dicts; `tools/check_sim_scenarios.py`;
+CI runs only certified entries). Plan 159 is the camera peer certification
+design and evidence ledger, no peers yet.
+
+Measured coverage audit on 792815cd (reports were in /private/tmp/cov-reports,
+may be gone): host 57.4 %, sim 58.1 %, union **66.0 %** of firmware lines; 10
+files compiled by neither harness (19.5 % of SLOC). Ranked plan: R1 real
+Control/Camera/CameraList/Scan in the sim (pivot, in flight as
+`feat/sim-real-control-2`, plan 161), R2 restart seam (#251), R3 real
+FurblePlatform.cpp in the sim, R4 console in host (DONE, #259, plan 162, 0 to
+90 %), R5 vendor sweep (gated by plan 159 provenance), R6 feedback/IR in sim,
+R7 three-panel coverage floor in CI, R8 power calibration.
+
+Merged 2026-09-02: #247 (focus ring dedup), #246 (Level on the main menu; home
+rows padding 3 on 135x240 fit seven rows at all text sizes, zero padding on
+80x160; new IR-enabled scenarios home-seven-rows*.txt; device audit on
+dev+g223c99ad: labels 7, issues 0), #259 (console host coverage plus
+tests/test_build_inventory.py gate with tests/build_inventory_exemptions.json;
+a commented-out CMake line no longer counts as built).
+
+Open and where they stand: #251 restart seam at 55e1ed93 (three review majors
+fixed: post-restart failure cancels the reboot, queue reset before IDLE with
+DISCONNECTING held, zombies reaped via production reapZombieTargets; 87/87
+host; targeted re-review in flight; merge next, then R1 absorbs it). #252
+sync points at 996a8ab5, plan 157, firmware byte-identical proof, 86/86,
+independent review in flight. #245 Fujifilm follow-ups at aec2c7d2, 84/84,
+waits on the X100VI (unreachable on 09-02). R1 not yet pushed.
+
+Environment 2026-09-02: OrbStack VM `furble-build` recreated (it had
+vanished) with clang, clang-format 21.1.5, SDL2, sim deps at
+~/furble/sim/.pio/libdeps/sim; NEVER share ~/furble between concurrent jobs,
+give each verification its own `git worktree` there (a concurrent checkout
+silently tested the wrong branch once). Stick now on /dev/cu.usbmodem2101,
+running dev+g223c99ad (equals master UI). Console driver restored durably at
+~/furble-build-wt/serdrive.py, logs in ~/furble-build-wt/bench-logs/.
+PlatformIO pipx venv pinned to Python 3.13 and its IDF tooling venv rebuilt
+(cryptography/pydantic have no 3.14 wheels); a warm S3 firmware build is about
+5 to 12 minutes. Neither camera reachable on 09-02 (GR IV fully off, not in
+standby); infinite-reconnect retry cadence measured at ~10 s on the revert build.
 
 ---
 
@@ -40,23 +91,17 @@ These have caused real damage when violated. Carry them forward verbatim.
   (`clang-format --dry-run -Werror`), 2-space indent, and **no em-dashes or
   en-dashes anywhere** (code, comments, docs, commit messages, PR bodies).
 - Camera protocol changes must cite their data source in the PR body.
-- Commit messages end with
-  `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - Pushes to fork PR branches are pre-authorized by the user (standing, saved in
   memory). Hardware flashing is pre-authorized. Merging is the coordinator's
   call once review, CI on the exact head, and hardware gates all pass.
-- Merge with
-  `gh api --method PUT "repos/MaxRink/furble/pulls/N/merge-async" -f merge_method=merge`.
-  Plain `gh pr merge` is blocked by the permission classifier.
+
 
 ### User directives added this session
 
 - **Builds run inside the OrbStack VM** with build files stored in the VM.
-- **New subagents use `model: "opus"`.**
 - **All work must be pushed to git.** Do not leave committed-but-unpushed or
   uncommitted work in a worktree when an agent dies. Push it, mark it clearly
   as unverified in the commit message and PR body, and let review catch up.
-
 ---
 
 ## 3. What the user cares about right now
