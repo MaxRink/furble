@@ -324,9 +324,9 @@ class BuildInventoryTest(unittest.TestCase):
       root = self.copy_fixture(Path(directory))
       cmake = root / HOST_CMAKE
       cmake.write_text(cmake.read_text(encoding="utf-8")
-                       + "\n# See ${FURBLE_ROOT}/src/FurbleUIAudit.cpp for the widget walk.\n",
+                       + "\n# See ${FURBLE_ROOT}/src/FurbleSD.cpp for the card mount.\n",
                        encoding="utf-8")
-      self.assertNotIn("src/FurbleUIAudit.cpp", host_sources(root))
+      self.assertNotIn("src/FurbleSD.cpp", host_sources(root))
       self.assertEqual(check_inventory(root), [])
 
   def test_stale_exemption_is_rejected(self):

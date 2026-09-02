@@ -1,0 +1,68 @@
+# The console list and delete verbs against a real multi-entry saved list.
+# Everything here is the production request handler in src/FurbleUI.cpp, posted
+# through the same UI::Request src/FurbleConsole.cpp posts.
+seed saved_cameras 3
+seed multiconnect true
+wait 400
+assert ui.page main
+
+# The saved list reloads and prints three rows, each flagged as saved. The row
+# flags are the whole reason a script can tell a saved camera from a scan
+# result, since the same list carries both.
+action console cameras 1
+wait 200
+assert console.saved 3
+assert console.count 3
+assert console.camera0.saved true
+assert console.camera2.saved true
+
+# CameraList::load() rebuilds every Camera and resets the active flags, so the
+# handler seeds the remembered multi-connect set back before reporting. With
+# nothing remembered every row is unselected.
+assert console.camera0.selected false
+
+# Select the middle camera, then confirm the reload path reports it. Without
+# the seeding this would read false however the store looked.
+action console multi-select 1
+wait 200
+assert console.result ok
+assert console.selected true
+
+action console cameras 1
+wait 200
+assert console.camera0.selected false
+assert console.camera1.selected true
+assert console.camera2.selected false
+
+# Deleting one entry drops it from the store and the list.
+action console delete 0
+wait 200
+assert console.result ok
+assert console.count 1
+
+action console cameras 1
+wait 200
+assert console.saved 2
+assert console.count 2
+
+# An index past the end of the saved list is refused rather than silently
+# ignored, and deletes nothing.
+action console delete 9
+wait 200
+assert console.result no_saved_camera
+
+action console cameras 1
+wait 200
+assert console.saved 2
+
+# The sweep the menus have no button for.
+action console delete -1
+wait 200
+assert console.result ok
+assert console.count 2
+
+action console cameras 1
+wait 200
+assert console.saved 0
+assert console.count 0
+exit

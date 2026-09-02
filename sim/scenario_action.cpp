@@ -140,6 +140,19 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical simple action");
       }
       return true;
+    case scenario_action_kind_t::CONSOLE:
+      // The argument is a signed int32 because the request contract uses -1
+      // for 'print status' and a negative index for the sweeping forms, so
+      // allZero() cannot apply here.
+      if (!action.mode.empty() || action.index != 0 || action.batteryLevel != 0
+          || action.batteryVoltage != 0 || action.batteryCurrent != 0 || action.batteryCharging
+          || action.values[0] != 0.0F || action.values[1] != 0.0F || action.values[2] != 0.0F
+          || !known(action.name, {"cameras", "connect", "scan", "pair", "delete", "multi-select",
+                                  "multi-deselect", "multi-clear", "interval", "bulb", "display",
+                                  "page", "back"})) {
+        return fail(error, "noncanonical console action");
+      }
+      return true;
     case scenario_action_kind_t::BUTTON_MODE:
       if (!action.name.empty() || !allZero(action)
           || !known(action.mode, {"one-button", "two-button"})) {
@@ -537,6 +550,26 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     }
     action->kind = scenario_action_kind_t::NAV;
     action->name = args[1];
+    return accept();
+  }
+  if (args[0] == "console") {
+    // Drive one UI::Request the way src/FurbleConsole.cpp does, so a scenario
+    // exercises the production request handler rather than a copy of it. The
+    // console's own parsing is covered by the host command suite; this is the
+    // UI side of the same seam.
+    if (args.size() < 2 || args.size() > 3) {
+      return fail(error, "console requires a request name and an optional integer argument");
+    }
+    action->kind = scenario_action_kind_t::CONSOLE;
+    action->name = args[1];
+    if (args.size() == 3) {
+      int64_t value = 0;
+      if (!parseSigned(args[2], -static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
+                       std::numeric_limits<int32_t>::max(), &value)) {
+        return fail(error, "console argument must be a signed 32-bit integer");
+      }
+      action->integer = static_cast<int32_t>(value);
+    }
     return accept();
   }
   if (args[0] == "scroll") {
