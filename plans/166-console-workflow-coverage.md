@@ -57,7 +57,22 @@ outcome a host script can branch on without matching prose. The tokens are
 `ok`, `no_scan_result`, `no_saved_camera`, `not_running`, `no_button`, `range`
 and `selection_full`. Because the refusals are produced on the UI task, which
 owns the list or the widget the verb addresses, those verbs wait for the answer
-rather than reporting a queue depth.
+rather than reporting a queue depth, and the token is the verb's exit status:
+`ok` returns 0, every other token returns 1.
+
+All of them go through one `sendWorkflowRequest()` helper for that, so the
+contract cannot be half applied. An earlier revision let `delete`,
+`multiconnect select | deselect` and `ui back` return on the queue send while
+the documents promised the wait, which made a refused destructive verb look
+like a success to a script reading to the next prompt. The wait is a bounded
+100 ms against a 5 ms queue drain, and a UI task still busy after it answers
+`error: no answer from the ui task` with a non-zero status rather than an
+outcome it never gave.
+
+The headless build answers the same contract from its own request loop in
+`src/main.cpp`: the same lines, the same `result:` token, the same non-zero
+status on a refusal. It is a second request loop by construction, because it
+has no LVGL and no UI task, but it is no longer a second answer format.
 
 `cameras list` and `scan list` gained `camera<N>.saved` and
 `camera<N>.selected` on every row. The saved flag earns its keep on `scan
@@ -65,7 +80,7 @@ list`: the connectable list carries saved cameras and scan results in the same
 sequence, a scan can rediscover a camera the device already knows, and without
 the flag a script cannot tell which verb applies to a row. `cameras list`
 reloads the saved list first, so every row it prints is saved by construction.
-The flag is answered by a new `CameraList::isSaved()`, which reads the store,
+The flag is answered by a new `CameraList::isSavedAddress()`, which reads the store,
 since that is the only authority.
 
 `CameraList::load()` rebuilds every Camera and so resets the active flags. The
@@ -157,7 +172,7 @@ argument, the usage and refusal text, the acknowledgement line, and that a
 refused verb queues nothing at all. The command table and subcommand contracts
 were extended, so a dropped registration or a renamed subcommand fails the
 suite. `tests/host/advertisement_dispatch_test.cpp` covers
-`CameraList::isSaved()` across a save and a remove, against an in-memory
+`CameraList::isSavedAddress()` across a save and a remove, against an in-memory
 Preferences stub that replaces the previous no-op one.
 
 The refusals that only the UI task can produce are asserted by the simulator
@@ -189,19 +204,79 @@ back through a new `console.<key>` assert namespace fed by a single
 PR #261 landed first and put the production `Control`, `Camera`, `CameraList`
 and `Scan` into the simulator over MockNimBLE, which removed the simulator's
 own list substitute. So the scenarios here run against the same
-`CameraList::isSaved()`, `save()` and `remove()` the firmware runs, and the
+`CameraList::isSavedAddress()`, `save()` and `remove()` the firmware runs, and the
 pairing scenario's save on a successful registration is the production
 registration path rather than a model of it. A `saved_cameras N` seed stands up
 a multi-entry saved list, because `delete all` and the multi-connect cap cannot
 be exercised against one camera.
 
-One coverage floor moved down. Defining `FURBLE_CONSOLE` for the simulator
-also compiles the BT journal call sites in `lib/furble/Scan.cpp`, which need the
-custom scan callback path only `bt scan` and `bt explore` take. `BtDebug` is not
-in the simulator build, so those four extra instrumented lines are unreachable
-from a scenario and the file reads 90.05 against a 90.20 floor. Every other
-number moved up: both sim panels by about three points, `src/FurbleUI.cpp` from
-79.53 to 81.20, and the grand union from 69.26 to 70.47.
+### Measured coverage
+
+The numbers below are the CI coverage artifacts, master run 33633532620 on
+`ab638874` against run 33640436617 on this head. An earlier revision of this
+plan compared each file against its floor rather than against master, which
+made the union look like a full point of improvement when it is not.
+
+| Panel or file | master | this head |
+| :--- | ---: | ---: |
+| grand union | 70.42 | 70.45 |
+| host | 63.52 | 64.71 |
+| sim m5stick-s3 | 51.47 | 52.16 |
+| sim m5stick-c | 36.71 | 37.61 |
+| sim m5stack-core | 36.28 | 37.14 |
+| `src/FurbleUI.cpp` | 80.71 | 81.20 |
+| `lib/furble/Camera.cpp` | 74.75 | 74.75 |
+| `src/FurbleConsole.cpp` | 90.03 | **89.55** |
+| `lib/furble/Scan.cpp` | 91.20 | **90.05** |
+| `src/FurbleUIAudit.cpp` | not built | 0.00 |
+
+The union moves 0.03 points, not a point. The work adds 584 covered lines but
+822 instrumented ones, and 186 of those are `src/FurbleUIAudit.cpp` entering the
+simulator build at 0.00 percent: it compiles there now, but no scenario drives
+`ui audit` and `audit` is not in the `action console` vocabulary, so it dilutes
+the union rather than lifting it.
+
+Two files regress, and both regress for the same reason: `FURBLE_CONSOLE`
+compiles code into the simulator which no scenario can reach.
+
+`src/FurbleConsole.cpp` 90.03 to 89.55, 1572/1746 to 1713/1913. It is not in the
+simulator build at all, so this is the host suite alone: the new verbs add 167
+instrumented lines, 141 of them covered. The uncovered remainder is the
+`FURBLE_NO_DISPLAY` refusal arms and the queue-unavailable arms of the new
+verbs, which the host build does not compile and does not fault in.
+
+`lib/furble/Scan.cpp` 91.20 to 90.05, 311/341 to 353/392. Defining
+`FURBLE_CONSOLE` for the simulator compiles the BT journal call sites, 51 more
+instrumented lines with 42 of them covered. Seven of the nine which are not are
+`Scan.cpp:187-189` and `328-331`, the journal on the custom callbacks scan
+overload `Scan::start(NimBLEScanCallbacks *, ...)`. Its console caller is
+`src/FurbleBtDebug.cpp`, which the simulator does not build, and no certified
+scenario drives the vendor reconnect which is its other caller. The last two are
+`Scan.cpp:213-214`, where llvm-cov splits the scan-end journal call across two
+lines and counts only its continuation. So one floor moved down, to 89.50
+against a measured 90.05, and `tests/coverage_floor.json` records that reason.
+
+Every floor still passes, so nothing is blocked, and the other floors are left
+where they are rather than ratcheted up so this PR does not raise the bar for
+the PRs merging ahead of it.
+
+The second review round changed `src/FurbleConsole.cpp` again. Routing every
+workflow verb through one `sendWorkflowRequest()` removed the duplicated queue
+and print blocks, and a local `tools/coverage.py --check` on that head, rebased
+onto `f425fd38`, measures the file at 89.92 percent (1712/1904) with the grand
+union at 70.29 percent and every floor passing. The CI coverage floor job on
+this head is the authority for the published numbers.
+
+### Follow-ups not taken here
+
+- `src/FurbleUIAudit.cpp` is at 0.00 percent. Adding `audit` to the `action
+  console` vocabulary in `sim/scenario_action.cpp` plus one assert would turn
+  186 diluting lines into real coverage. It needs `UIAudit::dump()` to print
+  through `UI::consolePrint()` first, so a scenario can read the answer.
+- `delete all` runs the whole sweep in one request under the UI mutex, N NVS
+  commits and N bond removals with LVGL stalled, where the Delete page only
+  ever does one per click. Bounded by the saved list size, but it wants a
+  yielding sweep before a bench script points it at a large list.
 
 Five certified e2e scenarios cover pairing (including the save on a successful
 registration), the list and delete verbs, the multi-connect round trip and its
@@ -212,10 +287,43 @@ refusal with page and back.
 
 Rebased onto fork master `ab638874`, which carries PR #261.
 
-PR #245 introduces `UI::beginPairing()`, the single entry point for starting a
-pairing from a scan result. The `Request::PAIR` handler here is deliberately
-thin, the same three steps the Scan page row click takes, so it becomes a call
-to `beginPairing()` once #245 lands. Merge order is #266, then #245, then this.
+Merge order is #266, then #245, then this. Two things this PR touches are
+things #245 also touches, so the rebase has a checklist rather than a sentence.
+
+**The saved flag.** #245 adds `CameraList::isSaved()`, matching on
+`CameraListProtocol::sameSavedIdentity()`: vendor type plus address, with the
+advertised name as a fallback for Fujifilm Secure. This PR needs only the narrow
+address-key test and deliberately does not claim that name, so it calls its
+helper `CameraList::isSavedAddress()`. At the rebase, drop
+`isSavedAddress()` and point `camera<N>.saved` at #245's `isSaved()`, which is
+the better rule. That changes the flag's semantics in one case worth knowing
+about: a re-addressed Fujifilm Secure body starts reading `true` where the
+address-key test read `false`.
+
+**The pairing handler.** `Request::PAIR` is deliberately thin, the same three
+steps the Scan page row click takes, so it wants to become a call to
+`UI::beginPairing()`. That swap is not literal. `beginPairing()` is
+`setActive(true)` plus `doConnect(e)`; it does not set
+`m_ConnectContext.menuName = m_ScanStr`, because the Scan page path already set
+it in `startScan()`. The console path never enters the page, so a literal swap
+drops the one line which makes a successful registration save the camera, which
+is the whole point of the verb. The rebase must either keep that assignment in
+the handler or give `beginPairing()` a parameter for it.
+
+Rebase checklist:
+
+1. Keep `m_ConnectContext.menuName = m_ScanStr` in the `PAIR` handler, or carry
+   it into `beginPairing()`.
+2. Keep the assertion which already guards it: the `console-pairing` scenario's
+   `assert console.saved 1` after a successful registration. Removing the menu
+   name assignment fails it with `expected '1' got '0'`, which is mutation 5 of
+   the review round two, so the guard is proven and must survive the rebase.
+3. Replace `CameraList::isSavedAddress()` with #245's `CameraList::isSaved()`
+   and re-read the `camera<N>.saved` assertions in `console-camera-list`.
+4. `beginPairing()` also refuses an already-saved camera and does not clear the
+   other cameras' active flags, both of which the `PAIR` handler does today.
+   Neither has a token in the table yet, so adding `already_saved` is part of
+   the swap, not a follow-up.
 
 ## Implementation state
 

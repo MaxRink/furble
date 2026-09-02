@@ -14,7 +14,7 @@
       "stack sim m5stick-s3 (135x240): 57.16 to 50.13",
       "stack sim union: 57.86 to 50.66"
     ],
-    "reason": "real Control in the sim grew the instrumented denominator. The simulator also builds FURBLE_CONSOLE so the UI request handlers are compiled and exercised, and that compiles the BT journal call sites in Scan.cpp with them. Those need the custom scan callback path only 'bt scan' and 'bt explore' take, and BtDebug is not in the simulator build, so the extra instrumented lines cannot be reached from a scenario."
+    "reason": "real Control in the sim grew the instrumented denominator. The simulator also builds FURBLE_CONSOLE so the UI request handlers are compiled and exercised, and that compiles the BT journal call sites in Scan.cpp with them: 51 more instrumented lines, 42 of them covered, measured against master run 33633532620. Seven of the nine which are not are Scan.cpp:187-189 and 328-331, the journal on the custom callbacks scan overload. Its console caller is FurbleBtDebug.cpp, which the simulator does not build, and no certified scenario drives the vendor reconnect which is the other caller. The last two are Scan.cpp:213-214, where llvm-cov splits the scan-end journal call across two lines and counts only its continuation."
   },
   "stacks": {
     "host": 62.55,
