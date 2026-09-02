@@ -1312,36 +1312,31 @@ void testDebugWithLiveCamera(void) {
 void testWorkflowCommands(void) {
   std::cerr << "test: the pairing, delete, multi-connect and shooting workflows dispatch\n";
 
-  // Pairing. The index names a row of 'scan list', so it is refused outright
-  // when no scan owns the list: those rows are saved cameras and 'connect' is
-  // their verb.
-  Furble::Scan::getInstance().setActive(false);
+  // Pairing. The index names a row of 'scan list'. Whether the connectable
+  // list currently holds scan results is only knowable on the UI task, which
+  // owns it, so the refusal for an index that names nothing is asserted by the
+  // simulator scenario. What belongs here is the argument shape and the
+  // dispatch.
   ConsoleHost::ui().requests.clear();
 
   const Result pairUsage = runDirect("pair");
   checkContains(pairUsage.out, "usage: pair <scan index>", "pair with no index prints its usage");
   check(pairUsage.rc != 0, "pair with no index returns non-zero");
+  check(ConsoleHost::ui().requests.empty(), "a pair with no index queues nothing");
 
   const Result pairBad = runDirect("pair abc");
   checkContains(pairBad.out, "expected a scan result index", "pair rejects a non-numeric index");
   check(pairBad.rc != 0, "a non-numeric pair index returns non-zero");
   checkContains(runDirect("pair -1").out, "expected a scan result index",
                 "pair rejects a negative index");
-
-  const Result pairIdle = runDirect("pair 0");
-  checkContains(pairIdle.out, "no scan result at index 0",
-                "pair refuses an index when no scan is running");
-  check(pairIdle.rc != 0, "pair without a scan returns non-zero");
   check(ConsoleHost::ui().requests.empty(), "a refused pair queues nothing for the UI task");
 
-  Furble::Scan::getInstance().setActive(true);
   const Result paired = runDirect("pair 1");
   checkContains(paired.out, "queued: pair", "pair acknowledges like the other request verbs");
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAIR
             && ConsoleHost::ui().requests.back().arg == 1,
         "pair queues the scan result index for the UI task");
-  Furble::Scan::getInstance().setActive(false);
 
   // Delete, the Delete page. 'all' is the sweep the page has no button for.
   ConsoleHost::ui().requests.clear();
@@ -1363,9 +1358,14 @@ void testWorkflowCommands(void) {
 
   // The multi-connect selection. Listing and clearing are pure Settings, so
   // they run here; resolving an index onto a camera name is the UI task's.
-  runDirect("multiconnect clear");
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("multiconnect clear").rc == 0, "multiconnect clear returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_CLEAR,
+        "multiconnect clear runs on the UI task, which owns the active flags");
+
   const Result multiEmpty = runDirect("multiconnect list");
-  checkContains(multiEmpty.out, "count: 0", "an empty multi-connect selection lists as zero");
+  checkContains(multiEmpty.out, "count: ", "multiconnect list reports the selection size");
   checkContains(multiEmpty.out, "enabled: ", "multiconnect list reports the feature setting");
 
   ConsoleHost::ui().requests.clear();
@@ -1440,10 +1440,16 @@ void testWorkflowCommands(void) {
   check(Furble::Settings::load<Furble::Settings::BRIGHTNESS>() == 32,
         "display brightness applies and persists on the UI task, not the console task");
 
+  // The usable brightness range is a board fact the UI task holds, so status
+  // prints from there. The simulator scenario asserts the printed range and
+  // the refusal below the board minimum.
+  ConsoleHost::ui().requests.clear();
   const Result displayStatus = runDirect("display status");
   check(displayStatus.rc == 0, "display status returns success");
-  checkContains(displayStatus.out, "brightness: ", "display status reports the brightness");
-  checkContains(displayStatus.out, "mode: ", "display status reports the display mode");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_BRIGHTNESS
+            && ConsoleHost::ui().requests.back().arg == -1,
+        "display status asks the UI task to print, so it can report the board range");
 
   ConsoleHost::ui().requests.clear();
   runDirect("display mode console");

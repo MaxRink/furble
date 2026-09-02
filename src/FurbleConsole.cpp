@@ -1127,12 +1127,14 @@ int cmdPower(int argc, char **argv) {
     // the link down before the PMIC call, and all of that lives on the UI task.
     return fail("not supported in this build");
 #else
-    // The console dies with the rail, so say so before the request lands.
-    printf("queued: power off\n");
-    fflush(stdout);
+    // The rail goes with the request, so flush the acknowledgement immediately
+    // after queueing it. Printing first would claim success even when the
+    // queue refused.
     if (!UI::sendRequest(UI::Request::POWER_OFF, 0)) {
       return fail("ui request queue unavailable");
     }
+    printf("queued: power off\n");
+    fflush(stdout);
     return 0;
 #endif
   }
@@ -1462,22 +1464,6 @@ int cmdCameras(int argc, char **argv) {
   return sendPrintingRequest(UI::Request::CAMERAS, 1);
 }
 
-int cmdConnect(int argc, char **argv) {
-  // No index connects the multi-connect selection.
-  int32_t index = -1;
-
-  if (argc >= 2) {
-    char *end = nullptr;
-    long value = strtol(argv[1], &end, 0);
-    if ((end == argv[1]) || (value < 0)) {
-      return fail("expected a camera index from 'cameras list'");
-    }
-    index = static_cast<int32_t>(value);
-  }
-
-  return sendRequest(UI::Request::CONNECT, index, "connect");
-}
-
 /**
  * Parse a list index argument.
  *
@@ -1493,6 +1479,17 @@ bool parseIndex(const char *text, int32_t &index) {
   }
   index = static_cast<int32_t>(value);
   return true;
+}
+
+int cmdConnect(int argc, char **argv) {
+  // No index connects the multi-connect selection.
+  int32_t index = -1;
+
+  if ((argc >= 2) && !parseIndex(argv[1], index)) {
+    return fail("expected a camera index from 'cameras list'");
+  }
+
+  return sendRequest(UI::Request::CONNECT, index, "connect");
 }
 
 int cmdPair(int argc, char **argv) {
@@ -1511,15 +1508,15 @@ int cmdPair(int argc, char **argv) {
   // connect and then forget the camera.
   return fail("not supported in this build");
 #else
-  if (!Scan::getInstance().isActive()) {
-    // The scan owns the list the index refers to. Without one the list holds
-    // saved cameras, and 'connect' is the verb for those.
-    printf("error: no scan result at index %ld, run 'scan start' first\n",
-           static_cast<long>(index));
-    return 1;
+  // Only the UI task knows whether the connectable list currently holds scan
+  // results, so the refusal for an index that names nothing is printed from
+  // there. Wait for it, so a script reads the answer before the next prompt.
+  if (!UI::sendRequest(UI::Request::PAIR, index)) {
+    return fail("ui request queue unavailable");
   }
-
-  return sendRequest(UI::Request::PAIR, index, "pair");
+  printf("queued: pair\n");
+  vTaskDelay(pdMS_TO_TICKS(100));
+  return 0;
 #endif
 }
 
@@ -1558,10 +1555,14 @@ int cmdMultiConnect(int argc, char **argv) {
   }
 
   if (!strcmp(argv[1], "clear")) {
-    const Settings::multiselect_t empty = {};
-    Settings::save<Settings::MULTISELECT>(empty);
-    printf("count: 0\n");
-    return 0;
+#if defined(FURBLE_NO_DISPLAY)
+    return fail("not supported in this build");
+#else
+    // Writing the empty set from here would leave the loaded active flags and
+    // the drawn checkboxes set, and the next Connect press would serialise the
+    // whole set straight back.
+    return sendPrintingRequest(UI::Request::MULTI_CLEAR, 0);
+#endif
   }
 
   const bool select = !strcmp(argv[1], "select");
@@ -1689,17 +1690,20 @@ int cmdInterval(int argc, char **argv) {
     return sendPrintingRequest(UI::Request::INTERVAL, -1);
   }
 
-  if (!strcmp(argv[1], "start")) {
-    // Same precondition as any shutter command: the frames go nowhere without
-    // a live link.
-    if (Control::getInstance().getState() != Control::STATE_ACTIVE) {
+  const bool start = !strcmp(argv[1], "start");
+  if (start || !strcmp(argv[1], "stop")) {
+    // Same precondition as any shutter command: a frame goes nowhere without a
+    // live link. The run-state refusals are printed by the UI task, which owns
+    // the state, so wait for them rather than reporting a queue depth.
+    if (start && (Control::getInstance().getState() != Control::STATE_ACTIVE)) {
       return fail("no active connection");
     }
-    return sendRequest(UI::Request::INTERVAL, 1, "interval start");
-  }
-
-  if (!strcmp(argv[1], "stop")) {
-    return sendRequest(UI::Request::INTERVAL, 0, "interval stop");
+    if (!UI::sendRequest(UI::Request::INTERVAL, start ? 1 : 0)) {
+      return fail("ui request queue unavailable");
+    }
+    printf("queued: interval %s\n", start ? "start" : "stop");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    return 0;
   }
 
   return fail("expected start, stop or status");
@@ -1720,15 +1724,20 @@ int cmdBulb(int argc, char **argv) {
     return sendPrintingRequest(UI::Request::BULB, -1);
   }
 
-  if (!strcmp(argv[1], "start")) {
-    if (Control::getInstance().getState() != Control::STATE_ACTIVE) {
+  const bool start = !strcmp(argv[1], "start");
+  if (start || !strcmp(argv[1], "stop")) {
+    // Same precondition as any shutter command: an exposure goes nowhere without a
+    // live link. The run-state refusals are printed by the UI task, which owns
+    // the state, so wait for them rather than reporting a queue depth.
+    if (start && (Control::getInstance().getState() != Control::STATE_ACTIVE)) {
       return fail("no active connection");
     }
-    return sendRequest(UI::Request::BULB, 1, "bulb start");
-  }
-
-  if (!strcmp(argv[1], "stop")) {
-    return sendRequest(UI::Request::BULB, 0, "bulb stop");
+    if (!UI::sendRequest(UI::Request::BULB, start ? 1 : 0)) {
+      return fail("ui request queue unavailable");
+    }
+    printf("queued: bulb %s\n", start ? "start" : "stop");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    return 0;
   }
 
   return fail("expected start, stop or status");
@@ -1745,13 +1754,9 @@ int cmdDisplay(int argc, char **argv) {
   return fail("not supported in this build");
 #else
   if (!strcmp(argv[1], "status")) {
-    printf("mode: %s\n", Settings::load<uint8_t>(Settings::DISPLAY_MODE) == Settings::CONSOLE
-                             ? "console"
-                             : "gui");
-    printf("brightness: %u\n", Settings::load<Settings::BRIGHTNESS>());
-    printf("inactivity: %u\n", Settings::load<Settings::INACTIVITY>());
-    printf("display_off: %u\n", Settings::load<Settings::DISPLAY_OFF>());
-    return 0;
+    // Printed from the UI task, because the usable brightness range is a board
+    // fact held there and a script needs it to pick a value this board accepts.
+    return sendPrintingRequest(UI::Request::DISPLAY_BRIGHTNESS, -1);
   }
 
   if (!strcmp(argv[1], "mode")) {
@@ -1777,9 +1782,15 @@ int cmdDisplay(int argc, char **argv) {
       return fail("expected 0-255");
     }
     // The Display page slider applies the brightness and then persists it.
-    // 'settings set brightness' only persists, so it needs a reboot.
-    return sendRequest(UI::Request::DISPLAY_BRIGHTNESS, static_cast<int32_t>(value),
-                       "display brightness");
+    // 'settings set brightness' only persists, so it needs a reboot. The
+    // board's usable range is narrower than 0-255 and only the UI task knows
+    // it, so wait for the answer rather than reporting a queue depth.
+    if (!UI::sendRequest(UI::Request::DISPLAY_BRIGHTNESS, static_cast<int32_t>(value))) {
+      return fail("ui request queue unavailable");
+    }
+    printf("queued: display brightness\n");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    return 0;
   }
 
   return fail("expected status, mode or brightness");

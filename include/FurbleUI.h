@@ -123,7 +123,8 @@ class UI {
     BACK,               /**< arg: unused, the header back button */
     INTERVAL,           /**< arg: -1 prints status, non-zero starts, zero stops */
     BULB,               /**< arg: -1 prints status, non-zero starts, zero stops */
-    DISPLAY_BRIGHTNESS, /**< arg: panel brightness, applied live and persisted */
+    MULTI_CLEAR,        /**< arg: unused, empties the multi-connect selection */
+    DISPLAY_BRIGHTNESS, /**< arg: -1 prints display status, else the brightness to apply */
     POWER_OFF,          /**< arg: unused */
     POWER_RELOAD,       /**< arg: unused */
     SD_RELOAD,          /**< arg: unused */
@@ -207,6 +208,17 @@ class UI {
 
   /** Report an assertable UI state value for scripted end-to-end scenarios. */
   std::string simQueryState(const char *key);
+
+#if defined(FURBLE_SIM) && defined(FURBLE_CONSOLE)
+  /**
+   * Report one answer line of the last serviced console request.
+   *
+   * The simulator has no console transport, so this is how a scenario reads
+   * what a UI::Request actually answered. Empty when the last request printed
+   * no line with that key.
+   */
+  static std::string simConsoleField(const char *name);
+#endif
 
   /**
    * Drive a physical button through the board's real input-device wiring.
@@ -537,6 +549,33 @@ class UI {
   void serviceRequests(void);
 #endif
 
+#if defined(FURBLE_CONSOLE)
+  /**
+   * The connectable list currently holds scan results, not saved cameras.
+   *
+   * Both live in CameraList, and only the task which last rebuilt it knows
+   * which. 'pair' names a row of a scan, so it has to refuse when the list is
+   * the saved one and 'connect' is the verb instead.
+   */
+  static bool m_ScanListLive;
+
+  /**
+   * Outcome token for the workflow request just serviced.
+   *
+   * The verbs which report one set this, and serviceRequests() prints it as
+   * the last line of the answer. Null for the requests which predate it.
+   */
+  static const char *m_ConsoleResult;
+
+  /**
+   * Print one 'key: value' answer line for a console request.
+   *
+   * The single output path for the request handlers, so the simulator can
+   * observe what a scenario's request answered without a console transport.
+   */
+  static void consolePrint(const char *format, ...) __attribute__((format(printf, 1, 2)));
+#endif
+
   static ConnectContext_t m_ConnectContext;
 
   const uint32_t m_KeyLeft = LV_KEY_LEFT;
@@ -792,6 +831,10 @@ class UI {
   Intervalometer m_Intervalometer;
 
   lv_obj_t *m_BulbStart = nullptr;
+  // The Bulb run page Stop button. Held because the console sends its real
+  // event: the callback restarts a finished exposure, releases the shutter and
+  // leaves the run page, none of which bulbStop() alone does.
+  lv_obj_t *m_BulbStop = nullptr;
   Bulb m_Bulb;
 
   status_t m_Status;
@@ -1157,12 +1200,21 @@ class UI {
   static void updateMultiConnectButton(lv_obj_t *button);
 
   /**
-   * Saved camera at the given index is in the remembered multi-connect set.
+   * Reload the saved camera list.
+   *
+   * The single load site in the UI, so the console's view of whether the list
+   * holds scan results or saved cameras cannot drift out of step with it.
+   */
+  static void reloadCameraList(void);
+
+  /**
+   * Saved camera at the given index is in the given remembered multi-connect set.
    *
    * The set is remembered by camera name, so it can only be resolved against a
-   * loaded CameraList, on the task which owns it.
+   * loaded CameraList, on the task which owns it. The caller supplies the set
+   * so a whole-list seed costs one store read rather than one per row.
    */
-  static bool loadMultiConnectSelection(size_t index);
+  static bool multiConnectSelectionHas(const Settings::multiselect_t &selection, size_t index);
 
   /** Apply the remembered multi-connect set to the loaded camera list. */
   static void seedMultiConnectSelection(void);
