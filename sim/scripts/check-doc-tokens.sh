@@ -24,7 +24,6 @@ sources = "\n".join(
         "sim/scenario_action.cpp",
         "src/FurbleUI.cpp",
         "sim/main.cpp",
-        "sim/FurbleControlSim.cpp",
         "tests/host",
     )
     if (root / path).is_file()
@@ -154,7 +153,7 @@ def validate_seed_predicates(seed_text):
             "parseUnsigned(value) > 100",
         }:
             continue
-        if predicate == "!booleanSeedValue(value)":
+        if predicate in {"!booleanSeedValue(value)", "!bleTopologyIsValid(value)"}:
             continue
         if re.fullmatch(
             r'value\s*!=\s*"[^"]+"(?:\s*&&\s*value\s*!=\s*"[^"]+")+', predicate):
@@ -192,7 +191,8 @@ def seed_contract(seed_text):
         if match.group(1) != "!=" or not (literal.startswith('"') and literal.endswith('"')):
             raise ValueError("unrecognized validateSeed value comparison")
     for call in re.finditer(r'(?<![\w:])([A-Za-z_]\w*)\s*\([^)]*\bvalue\b', body):
-        if call.group(1) not in {"if", "parseUnsigned", "batteryVoltage", "parseSigned", "booleanSeedValue"}:
+        if call.group(1) not in {"if", "parseUnsigned", "batteryVoltage", "parseSigned",
+                                 "booleanSeedValue", "bleTopologyIsValid"}:
             raise ValueError(f"unrecognized validateSeed value call: {call.group(1)}")
     for call in re.finditer(r'(?<![\w:])([A-Za-z_]\w*)\s*\([^)]*\bname\b', body):
         if call.group(1) not in {"find", "if"}:

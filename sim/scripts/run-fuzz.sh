@@ -18,6 +18,7 @@
 #   FURBLE_FUZZ_SEEDS      space or newline separated seed list (default below)
 #   FURBLE_FUZZ_XFAIL_SEEDS seeds required to fail (default empty)
 #   FURBLE_FUZZ_STEPS      events per seed (default 600)
+#   FURBLE_FUZZ_SEED_TIMEOUT  wall-clock seconds per seed (default 600)
 
 set -u
 
@@ -26,6 +27,9 @@ BIN=${FURBLE_SIM_BIN:-"$ROOT/sim/build/furble-sim"}
 SEEDS=${FURBLE_FUZZ_SEEDS:-"1 2 3 7 42 99 1000 31337"}
 XFAIL=${FURBLE_FUZZ_XFAIL_SEEDS:-}
 STEPS=${FURBLE_FUZZ_STEPS:-600}
+# Wall-clock ceiling for one seed. Generous against a loaded runner, tight
+# enough that a hung seed fails the job instead of burning its whole budget.
+SEED_TIMEOUT=${FURBLE_FUZZ_SEED_TIMEOUT:-600}
 
 : "${SDL_VIDEODRIVER:=dummy}"
 : "${SDL_AUDIODRIVER:=dummy}"
@@ -93,12 +97,28 @@ for seed in $SEEDS $XFAIL; do
   # Keep both explicit arguments in the wrapper contract: CLI seed/steps win
   # over any FURBLE_FUZZ_SEED/FURBLE_FUZZ_STEPS fallback inherited by the run.
   output_file=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz.XXXXXX") || exit 1
-  if "$BIN" --seed "$seed" --fuzz-steps "$STEPS" >"$output_file" 2>&1; then
+  # Hard per-seed bound. A simulator scheduler deadlock leaves the process
+  # spinning on a condition variable that no signal can reach, and it ignores
+  # SIGTERM, so CI would hang for the whole job timeout with no output. -k
+  # follows up with SIGKILL. A timed out seed is a failure, not a pass.
+  if timeout -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$seed" --fuzz-steps "$STEPS" \
+      >"$output_file" 2>&1; then
     rc=0
   else
     rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      echo "fuzz seed $seed exceeded ${SEED_TIMEOUT}s and was killed" >&2
+    fi
   fi
   cat "$output_file"
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    # A killed seed produced no summary. Report the timeout, not a summary
+    # parse error, and never let it look like an expected finding.
+    echo "FAIL fuzz seed $seed (timed out after ${SEED_TIMEOUT}s)"
+    rm -f "$output_file"
+    status=1
+    continue
+  fi
   if ! validate_summary "$output_file" "$seed" "$STEPS"; then
     status=1
   fi

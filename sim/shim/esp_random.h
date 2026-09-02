@@ -1,6 +1,7 @@
 #ifndef FURBLE_SIM_ESP_RANDOM_H
 #define FURBLE_SIM_ESP_RANDOM_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -11,8 +12,10 @@
 // per call. The first value keeps the historical 0x28, so the first FauxNY
 // camera still renders as "FauxNY-40" in the documentation captures.
 inline uint32_t esp_random(void) {
-  static uint32_t next = 0x28u;
-  return next++;
+  // Atomic: the UI task, the control task and the virtual radio can all reach
+  // a camera constructor, so a plain counter would be a data race.
+  static std::atomic<uint32_t> next {0x28u};
+  return next.fetch_add(1, std::memory_order_relaxed);
 }
 
 inline void esp_fill_random(void *data, size_t bytes) {

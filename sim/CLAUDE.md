@@ -8,9 +8,11 @@ path. The connection stack is now production: `src/FurbleControl.cpp`,
 `lib/furble/Camera.cpp`, `CameraList.cpp`, `Scan.cpp`, `Device.cpp` and every
 vendor class compile into the simulator over the shared MockNimBLE boundary
 (`lib/testing/nimble`) and the virtual camera peers (`lib/testing/peer`). The
-simulator substitutes for Control, Camera, CameraList and Scan are gone. Current shared-source seams include
-`UI::simulatorHome`, `UI::simulatorBack`, and the orderly exit check in
-`UI::task`; the seam inventory below is authoritative.
+simulator substitutes for Control, Camera, CameraList and Scan are gone.
+
+Current shared-source seams include `UI::simulatorHome`, `UI::simulatorBack`,
+and the orderly exit check in `UI::task`; the seam inventory below is
+authoritative.
 
 The complete build, panel, scenario DSL, query, fault-injection, and
 scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
@@ -106,7 +108,11 @@ a regression.
 
 ## Build entry points
 
-- `sim/build.sh`: the verified direct-clang path on macOS. Run
+- `sim/build.sh`: the verified direct-clang path on macOS. Its incremental
+  check is `make -q` over the compiler depfile, which compares whole-second
+  timestamps, so an edit landing in the same second as the object it should
+  invalidate is missed. Touch the file again or remove the object if a rebuild
+  looks like it skipped a change you just made. Run
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
   the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
   project-header edits rebuild only their dependents; `make -q` evaluates the

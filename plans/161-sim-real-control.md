@@ -139,10 +139,14 @@ explicit bound (2000 to 12000 ms), which is a bound, not a relaxation.
 `seed link_lies` and `action link-lies-kill` are gone. They constructed a
 divergence by reaching behind the fake control state machine, which plan 158
 explicitly did not want carried forward. In their place, `sim/scenario_action.cpp`
-gained a strict typed set of transport faults:
+gained a strict typed set of faults, all of them transport faults except where
+noted for FauxNY:
 
 - `action drop` / `action drop N` sever a live link with the GAP disconnect
-  delivered (HCI reason 0x08, the supervision timeout shape).
+  delivered (HCI reason 0x08, the supervision timeout shape). One exception:
+  FauxNY has no radio, so there is no transport to sever and
+  `Camera::resetConnectionState()` stands in for its link loss. Every camera
+  with a virtual peer behind it takes the transport path.
 - `action ble-kill` severs every live link and leaves the disconnect event
   queued.
 - `action ble-standby` runs a flappy peer's standby drop.

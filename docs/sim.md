@@ -25,14 +25,17 @@ button layout when `FURBLE_SIM_NO_TOUCH` is set.
 ## Production-path parity
 
 The simulator's shared-code boundary is audited in [`sim/CLAUDE.md`](../sim/CLAUDE.md).
-In brief, scan startup, generation fencing, queue draining, `CameraList` updates,
-display mode/flush, LVGL timers, and the `Control` state machine are production
-code. `sim/ScanSim.cpp` is only the asynchronous radio event source; its worker
-cannot touch `CameraList` or LVGL. The production `lib/furble/Scan.cpp` is also
-compiled by the host tests against fake NimBLE, so simulator convenience does
-not hide production scan behavior.
+In brief, the whole connection stack is production: `Control`, `Camera`,
+`CameraList`, `Scan`, `Device` and every vendor class compile into the
+simulator over the shared MockNimBLE boundary in `lib/testing/nimble` and the
+virtual camera peers in `lib/testing/peer`. Scan startup, generation fencing,
+queue draining, advertisement matching, list persistence, display mode/flush
+and LVGL timers are all production code. The simulator supplies only the radio
+below NimBLE: `sim/BleSim.cpp` runs a virtual radio task that advertises the
+seeded peers and models the controller-owned discovery timer, and it injects
+faults at the transport only.
 
-M5GFX SDL, FreeRTOS/ESP-IDF calls, NimBLE radio events, camera links, UART/GPS
+M5GFX SDL, FreeRTOS/ESP-IDF calls, the NimBLE transport, UART/GPS
 bytes, PMIC/power, NVS, and optional IR/feedback/SD hardware are the remaining
 lowest-level host seams. Script actions dispatch real LVGL/control handlers;
 `simulatorHome`/`simulatorBack` and timing-sensitive gesture setup are the
@@ -308,7 +311,7 @@ action imu.pitch DEGREES
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
-`imu`, and `level`.
+`imu`, `level`, and `level_main`.
 
 `page PAGE` accepts `main`, `menu`, `connect`, `scan`, `delete`, `power_off`,
 `connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
@@ -329,9 +332,10 @@ action battery LEVEL VOLTAGE_MV CURRENT_MA CHARGING
 For example, `action battery 80 4000 0 false` simulates a recovered,
 discharging pack. The next battery timer sample consumes the new value.
 
-`action drop` drops every active fake camera. `action drop N` drops target
-`N`, using zero-based target numbering. `action connect-two` selects two fake
-cameras for multi-connect coverage. `action companion-pair-request` injects a
+`action drop` severs the live link of every control target. `action drop N`
+drops target `N`, using zero-based target numbering. `action connect-two`
+selects two cameras for multi-connect coverage: the seeded virtual peers when a
+topology is seeded, otherwise the FauxNY test cameras. `action companion-pair-request` injects a
 pending companion PIN without a rig TCP peer; `action companion-accept` and
 `action companion-reject` click the real pairing dialog buttons.
 

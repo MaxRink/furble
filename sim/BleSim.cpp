@@ -46,6 +46,7 @@ struct VirtualPeer {
 std::mutex peersMutex;
 std::vector<std::unique_ptr<VirtualPeer>> peers;
 size_t advertisementCount = 0;
+// Guarded by peersMutex like the peer list it serves.
 bool radioRunning = false;
 
 // Camera command counters. The simulator counts the commands that actually
@@ -166,6 +167,7 @@ bool bleTopologyIsValid(const std::string &topology) {
 }
 
 void bleStartPeers(const std::string &topology) {
+  bool startRadio = false;
   {
     const std::lock_guard<std::mutex> lock(peersMutex);
     if (topology == "fuji") {
@@ -180,10 +182,15 @@ void bleStartPeers(const std::string &topology) {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addRicoh(RICOH_ADDRESS, "RICOH GR IV", 1);
     }
+    // Nothing advertises without peers, so a scenario that seeds no topology
+    // pays for no radio task at all.
+    startRadio = !peers.empty() && !radioRunning;
+    if (startRadio) {
+      radioRunning = true;
+    }
   }
 
-  if (!radioRunning) {
-    radioRunning = true;
+  if (startRadio) {
     // Priority 3 matches the per-target camera tasks: the radio is peer work,
     // not control-plane work, so it must never outrank the control task.
     xTaskCreate(radioTask, "ble-radio", 4096, nullptr, 3, nullptr);
@@ -196,6 +203,7 @@ void bleSaveRegisteredPeers(void) {
 
 void bleStopPeers(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
+  radioRunning = false;
   for (const auto &peer : peers) {
     if (peer->fujifilm != nullptr) {
       peer->fujifilm->setFlappy(0, 0);
