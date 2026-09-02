@@ -107,10 +107,15 @@ the menus run. A console verb parses and gates, then hands one request to the
 UI task, which runs the handler the button click runs. The pairing prompt, the
 registration gate and the save on success behave identically either way.
 
+Each workflow verb ends its answer with one machine readable outcome line,
+`result: <token>`. The tokens are `ok`, `no_scan_result`, `no_saved_camera`,
+`not_running`, `no_button`, `range` and `selection_full`, so a host script never
+has to match on prose.
+
 `pair <scan index>` is the Scan page row click. The index names a row of the
-most recent `scan list`, and the verb is refused unless a scan is running,
-because otherwise that list holds saved cameras and `connect` is their verb. A
-console scan runs until `scan stop`, so a full onboarding is `scan start`,
+most recent `scan list`; an index that names no scan result comes back as
+`result: no_scan_result`, which is also the answer when the list holds saved
+cameras and `connect` is their verb. A full onboarding is `scan start`,
 `scan list`, `pair 0`, then `bt pair yes` if the camera raises a prompt. On
 success the camera is saved, and `cameras list` shows it as
 `camera<N>.saved: true`.
@@ -123,13 +128,23 @@ checkbox and persists the remembered set; `multiconnect list` and
 
 `interval start | stop | status` drives the Timer page and
 `bulb start | stop | status` the Bulb page. Both refuse to start without an
-active connection, since both fire the shutter.
+active connection, since both fire the shutter, and both refuse to stop with
+`result: not_running` when no run is in progress: the stop click releases the
+shutter and leaves the run page, and the Bulb Stop button restarts a finished
+exposure rather than stopping it.
 
 `display brightness <value>` applies live, matching the Display page slider;
-`settings set brightness` only persists. `power off` runs the Off menu entry.
-`ui page` names the current page and `ui back` presses the header back button.
-Navigating to an arbitrary page by name is deliberately not offered: those
-tables exist only in the simulator build.
+`settings set brightness` only persists. The slider's range is narrower than
+0-255 and is a board fact, so a value outside it is refused with
+`result: range` rather than clamped; `display status` reports the range.
+`power off` runs the Off menu entry. `ui page` names the current page and
+`ui back` presses the header back button, which also force-enables that button
+and returns the input to MENU mode. Navigating to an arbitrary page by name is
+deliberately not offered: those tables exist only in the simulator build.
+
+On the display-less Waveshare board the verbs that drive an LVGL page answer
+`not supported in this build`: `pair`, `interval`, `bulb`, `display`,
+`power off`, `ui`, and `multiconnect select | deselect | clear`.
 
 ## bt
 

@@ -128,7 +128,8 @@ stop all behave identically whichever way the workflow is driven.
 | Scan for cameras | `scan start` / `scan stop` / `scan list` | existing |
 | Scan page, tap a result to pair | `pair <scan index>` | added |
 | Answer the pairing prompt | `bt pair yes \| no \| key <6 digits>` | existing |
-| Saved camera list | `cameras list` | existing, now flags saved and selected rows |
+| Saved camera list | `cameras list` | existing, now flags every row selected |
+| Scan results, saved or not | `scan list` | existing, now flags every row saved and selected |
 | Connect page, tap a saved camera | `connect <index>` | existing |
 | Connect page, multi-select checkboxes | `multiconnect select \| deselect <index>` | added |
 | Connect page, the remembered set | `multiconnect list \| clear` | added |
@@ -148,6 +149,7 @@ stop all behave identically whichever way the workflow is driven.
 | Level page readout | `imu status` | existing |
 | GPS pages | `gps ...`, see below | existing |
 | Display page, brightness | `display brightness <value>` | added, applies live |
+| Display page, values and usable range | `display status` | added |
 | Display page, inactivity and screen off | `settings set inactivity \| display_off` | existing, applies on reboot |
 | Display mode | `display mode gui \| console` | existing as `settings set display_mode` |
 | Off menu entry | `power off` | added |
@@ -157,6 +159,7 @@ stop all behave identically whichever way the workflow is driven.
 | Page layout dump | `ui audit` | existing |
 | Current page name | `ui page` | added |
 | Header back button | `ui back` | added |
+| Forget the multi-connect set | `multiconnect clear` | added |
 | Boot autoconnect | `settings set autoconnect on \| off` | existing |
 | Restart | `reboot` | existing |
 
@@ -176,12 +179,38 @@ around:
 - **Settings export and import to SD.** `settings list`, `settings set` and
   `provision` already carry the same data over the console.
 
+### Answering a workflow verb
+
+Every verb below ends its answer with one machine readable outcome line,
+`result: <token>`, so a host script never has to match on prose:
+
+| Token | Meaning |
+| :--- | :--- |
+| `ok` | the workflow ran |
+| `no_scan_result` | `pair` was given an index that names no scan result |
+| `no_saved_camera` | an index named no saved camera |
+| `not_running` | `interval stop` or `bulb stop` with no run in progress |
+| `no_button` | the page holding that control has not been built yet |
+| `range` | `display brightness` outside the board's usable range |
+| `selection_full` | the multi-connect set already holds `MULTISELECT_MAX` names |
+
+The refusals are printed by the UI task, which owns the list or the widget the
+verb addresses, so these verbs wait for the answer before returning to the
+prompt rather than reporting a queue depth.
+
 ### Pairing a camera
 
 `pair` is the Scan page row click. The index is a row of the most recent
-`scan list`, not of `cameras list`, and the verb is refused unless a scan is
-running, because without one that list holds saved cameras and `connect` is
-their verb. A console scan runs until `scan stop`, so the usual sequence is:
+`scan list`, not of `cameras list`. Only the UI task knows whether the
+connectable list currently holds scan results, so an index that names nothing
+comes back as `error: no scan result at index N` with `result:
+no_scan_result`. That is also the answer when the list holds saved cameras,
+because `connect` is their verb.
+
+A console `scan start` applies the same duty and timeout settings the Scan page
+applies, so it ends after `scan_timeout` seconds like any other scan (zero
+scans until `scan stop`). The results stay pairable after it ends, exactly as
+the Scan page keeps its rows clickable. The usual sequence is:
 
 ```
 log * warn
@@ -190,9 +219,15 @@ scan list
 pair 0
 ```
 
-`cameras list` marks every row `camera<N>.saved: true|false`, so a script can
-tell a scan result apart from a saved camera even when a scan rediscovers one
-it already knows.
+`scan list` marks every row `camera<N>.saved: true|false`. That is where the
+distinction earns its keep: the connectable list carries saved cameras and scan
+results in the same sequence, and a scan can rediscover a camera the device
+already knows, so the flag is how a script tells whether a row wants `pair` or
+`connect`. `cameras list` reloads the saved list first, so every row it prints
+is saved by construction and the flag reads `true` throughout.
+
+Both also print `camera<N>.selected`, the row's place in the remembered
+multi-connect set.
 
 Cameras which use a pairing confirmation answer the prompt with
 `bt pair yes | no | key <6 digits>`. Fujifilm Secure and Ricoh raise it during
@@ -206,21 +241,69 @@ Scan page saves it, and `cameras list` shows it with `saved: true`.
 The remembered set is stored by camera name, so an index is resolved against
 the saved list on the UI task. `multiconnect select <index>` ticks one
 checkbox and persists the whole set, the same pair of steps the Connect page
-takes when its `Connect N` button is pressed. `multiconnect list` prints the
-remembered names and whether the feature is enabled; `multiconnect clear`
-empties it. `connect` with no index then connects that set.
+takes when its `Connect N` button is pressed. It reports `selected:` from what
+the store actually took, not from the flag it just set: the set holds at most
+eight names and a ninth select is refused with `result: selection_full` rather
+than silently dropped.
+
+Names are stored truncated to 15 characters, so two saved cameras sharing that
+prefix are indistinguishable to the remembered set. That is a limitation of the
+stored format, not of these verbs.
+
+`multiconnect list` prints the remembered names and whether the feature is
+enabled. `multiconnect clear` runs on the UI task so it empties the loaded
+active flags and the drawn checkboxes along with the store; clearing only the
+store would let the next Connect press write the whole set straight back.
+`connect` with no index then connects that set.
 
 ### Timer and bulb
 
 Both fire the shutter, so both refuse to start without an active connection.
-`interval start` and `bulb start` send the real button event, which starts the
-run and then navigates to its run page in that order. That ordering matters for
-the bulb: leaving the Bulb run page stops the exposure, so a start that skipped
-the navigation would be cancelled by the next page change.
+All four verbs send the real button event rather than calling a start or stop
+helper, because both buttons carry behaviour beyond it.
+
+`interval start` and `bulb start` start the run and then navigate to its run
+page, in that order. That ordering matters for the bulb: leaving the Bulb run
+page stops the exposure, so a start that skipped the navigation would be
+cancelled by the next page change.
+
+`interval stop` and `bulb stop` release the shutter and click the header back
+button, which returns to whatever page the UI was on. Both refuse with
+`result: not_running` when no run is in progress: the synthetic click would
+otherwise release a shutter a script is deliberately holding and navigate away,
+and the Bulb Stop button restarts a finished exposure rather than stopping it.
 
 `interval status` reports `state`, `remaining` (`65535` for an infinite count),
 `next_ms`, and the configured `count`, `count_unit`, `delay_ms`, `shutter_ms`
 and `wait_ms`. `bulb status` reports `state`, `remaining_ms` and `duration_ms`.
+Both countdowns read zero once their deadline has passed.
+
+### Display
+
+`display brightness <value>` applies the value and then persists it, which is
+the pair of calls the Display page slider makes; `settings set brightness` only
+persists, so it needs a reboot. The slider's range is narrower than 0-255 and
+is a board fact: 32 to 240 on most panels, 48 to 240 on the StickC and
+StickC-Plus. A value below the minimum leaves a black panel that needs a
+reflash to undo, so it is refused with `result: range` rather than clamped
+silently. `display status` reports `brightness_min` and `brightness_max` so a
+script can pick a value this board accepts.
+
+`display mode gui | console` is the same path `settings set display_mode`
+takes, including the live UI request. `ui back` is the header back button plus
+the two things pressing it implies on a real device: it force-enables the
+button and returns the input to MENU mode.
+
+### Headless builds
+
+The display-less Waveshare ESP32-S3-ETH carries the console but no UI task, so
+the verbs which drive an LVGL page or resolve an index against a list it owns
+answer `not supported in this build`: `pair`, `interval`, `bulb`, `display`,
+`power off`, all three `ui` subcommands, and `multiconnect select | deselect |
+clear`. `cameras`, `connect`, `delete`, `disconnect`, `scan`, `shutter`,
+`focus` and `multiconnect list` work there. Pairing needs the save on a
+successful registration, which lives on the UI task; without it the headless
+build would connect and then forget the camera.
 
 ### Deleting a camera
 

@@ -242,7 +242,12 @@ seed a bounded value.
 `CameraList::match` and `CameraList::save`, so the scenario boots with saved
 cameras exactly as a device does after the user scanned and connected once.
 
-The scenario-only settings are `saved_camera`, `connect_fail`, `no_touch`,
+`multiconnect` enables the multi-connect feature before the UI is constructed.
+`saved_cameras N` seeds N saved cameras, up to `MULTISELECT_MAX + 1`, so the
+list and multi-connect verbs can be exercised against more than one entry. It is
+ignored when `autoconnect` or `saved_camera` already seeded one.
+
+The scenario-only settings are `saved_camera`, `saved_cameras`, `connect_fail`, `no_touch`,
 `scan_start_probe`, `ble_saved`, `liveness_check`, and
 `liveness_grace_ms`. `saved_camera` adds an
 inactive saved camera, `connect_fail` registers one virtual Fujifilm peer and
@@ -306,6 +311,7 @@ The parameterized action forms are:
 
 ```text
 action toggle NAME
+action console REQUEST [ARG]
 action nav PAGE
 action scroll top|bottom|next|PIXELS
 action page PAGE
@@ -314,6 +320,19 @@ action imu.gyro X Y Z
 action imu.roll DEGREES
 action imu.pitch DEGREES
 ```
+
+`console REQUEST [ARG]` posts one developer-console request through production
+`UI::sendRequest()`, exactly as `src/FurbleConsole.cpp` does, and the normal UI
+loop services it. `REQUEST` accepts `cameras`, `connect`, `scan`, `pair`,
+`delete`, `multi-select`, `multi-deselect`, `multi-clear`, `interval`, `bulb`,
+`display`, `page`, and `back`. `ARG` is the signed 32-bit request argument,
+default zero, following the same contract the console uses: `-1` asks for a
+status printout, a non-negative value is a list index or a level, and `delete
+-1` is the whole-list sweep.
+
+`serviceRequests()` runs after `driverTick()` in the same UI loop iteration, so
+a scenario must `wait` before asserting the answer, exactly as a host script
+waits for the next prompt.
 
 `toggle NAME` accepts `gps`, `gps_nmea`, `autoconnect`, `reconnect`,
 `multiconnect`, `companion`, `watchdog`, `ir`, `show_title`, `tx_adaptive`,
@@ -376,6 +395,25 @@ the runtime negates pixel counts to form LVGL's signed int32 scroll delta, so
 that value cannot be represented safely.
 The connected page map includes the run and disconnect transition pages listed
 in the canonical `page PAGE` vocabulary above.
+
+### Console answer keys
+
+`console.<name>` returns one answer line of the last serviced console request,
+keyed by the name before its colon, and the empty string when the last request
+printed no such line. The handlers print one fact per line as `key: value`, so
+these keys are exactly the ones a host script parses off the serial console:
+`result`, `saved`, `count`, `camera<N>.name`, `camera<N>.type`,
+`camera<N>.saved`, `camera<N>.selected`, `pairing`, `deleted`, `camera`,
+`selected`, `page`, `state`, `remaining`, `next_ms`, `count_unit`, `delay_ms`,
+`shutter_ms`, `wait_ms`, `remaining_ms`, `duration_ms`, `interval`, `bulb`,
+`mode`, `brightness`, `brightness_min`, `brightness_max`, `inactivity`,
+`display_off` and `error`.
+
+`console.result` is the outcome token every workflow request ends with: `ok`,
+`no_scan_result`, `no_saved_camera`, `not_running`, `no_button`, `range` or
+`selection_full`. Assert values are a single token, so a value containing a
+space (a camera name, an error sentence) cannot be compared directly; assert
+the token instead.
 
 ### Query keys
 

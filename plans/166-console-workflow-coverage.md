@@ -52,13 +52,30 @@ for exactly this reason.
 | Current page name | `ui page` |
 | Header back button | `ui back` |
 
-`cameras list` gained `camera<N>.saved` and `camera<N>.selected` on every row.
-The connectable list carries saved cameras and scan results in the same
-sequence, and a scan can rediscover a camera the device already knows, so
-without those flags a script cannot tell which verb applies to a row. The flag
-is answered by a new `CameraList::isSaved()`, which reads the store, since that
-is the only authority. The existing `saved:` and `count:` lines are unchanged,
-so scripts which parse them keep working.
+Every one of them ends its answer with `result: <token>`, a machine readable
+outcome a host script can branch on without matching prose. The tokens are
+`ok`, `no_scan_result`, `no_saved_camera`, `not_running`, `no_button`, `range`
+and `selection_full`. Because the refusals are produced on the UI task, which
+owns the list or the widget the verb addresses, those verbs wait for the answer
+rather than reporting a queue depth.
+
+`cameras list` and `scan list` gained `camera<N>.saved` and
+`camera<N>.selected` on every row. The saved flag earns its keep on `scan
+list`: the connectable list carries saved cameras and scan results in the same
+sequence, a scan can rediscover a camera the device already knows, and without
+the flag a script cannot tell which verb applies to a row. `cameras list`
+reloads the saved list first, so every row it prints is saved by construction.
+The flag is answered by a new `CameraList::isSaved()`, which reads the store,
+since that is the only authority.
+
+`CameraList::load()` rebuilds every Camera and so resets the active flags. The
+Connect page seeds the remembered multi-connect set back before it draws its
+checkboxes, and the console reload path now does the same, or every row would
+have reported `selected: false` whatever the store held. Every load site in the
+UI goes through one `UI::reloadCameraList()` so that cannot drift.
+
+The existing `saved:` and `count:` lines are unchanged, so scripts which parse
+them keep working.
 
 ## Pairing
 
@@ -68,22 +85,48 @@ That menu name is the gate which saves the camera when its registration
 succeeds, and the console scan never set it because it never entered the page,
 so the request sets it. Nothing else about the flow differs from a tap.
 
-The console refuses an index when no scan is running, because without one the
-connectable list holds saved cameras and `connect` is their verb. A console
-scan runs until `scan stop`, since the console scan path does not apply the
-scan timeout setting, so the gate does not fight the normal sequence. A camera
-which raises a pairing confirmation is answered with `bt pair yes`, as before.
+Whether the connectable list currently holds scan results is knowable only on
+the task which last rebuilt it, so that is where the refusal lives: `pair`
+answers `no_scan_result` when the list is the saved one or the index names
+nothing. An earlier revision gated on `Scan::isActive()` from the console task,
+which was wrong twice over. The console scan path did not apply the scan
+timeout setting, so it inherited whatever the last UI scan left behind and its
+results could outlive it by an arbitrary amount; and scan results stay pairable
+after a scan ends, exactly as the Scan page keeps its rows clickable. The
+console scan now applies the same duty and timeout settings `startScan()`
+applies.
+
+A camera which raises a pairing confirmation is answered with `bt pair yes`, as
+before.
 
 ## Timer and bulb
 
-Both send the real button event rather than calling the private start helper.
-The load-page callback is registered after the click callback on both buttons,
-so one synthetic click starts the run and then navigates to its run page, in
-that order. That ordering is load bearing for the bulb: leaving the Bulb run
-page stops the exposure, so a start which skipped the navigation would be
-cancelled by the next page change. Both refuse to start without an active
+All four verbs send the real button event rather than calling a start or stop
+helper, because both buttons carry behaviour beyond it.
+
+The load-page callback is registered after the click callback on both Start
+buttons, so one synthetic click starts the run and then navigates to its run
+page, in that order. That ordering is load bearing for the bulb: leaving the
+Bulb run page stops the exposure, so a start which skipped the navigation would
+be cancelled by the next page change. Both refuse to start without an active
 connection, matching the existing shutter command gate, because both fire the
 shutter.
+
+Stop is the same argument in reverse. The Stop callbacks release the shutter
+and click the header back button, neither of which `bulbStop()` or a paused
+timer does, so the Bulb run page Stop button is now held as a member for the
+same reason the Start button already was. Both stops are gated on the run
+state: without the gate a synthetic click would release a shutter a script is
+deliberately holding and navigate the UI out from under it, and the Bulb Stop
+button restarts a finished exposure rather than stopping it.
+
+## Display brightness
+
+The Display page slider spans the board's minimum brightness to 240 in steps of
+16, and that minimum is a board fact the console task cannot see. Below it the
+panel is black, and a persisted black panel needs a reflash to undo, so a value
+outside the range is refused with `result: range` rather than clamped silently.
+`display status` prints the range from the UI task so a script can read it.
 
 ## Not covered, and why
 
@@ -117,14 +160,46 @@ suite. `tests/host/advertisement_dispatch_test.cpp` covers
 `CameraList::isSaved()` across a save and a remove, against an in-memory
 Preferences stub that replaces the previous no-op one.
 
+The refusals that only the UI task can produce are asserted by the simulator
+scenarios rather than the host suite, because that is where the deciding state
+lives.
+
 Five mutations were checked and all were caught: dropping the `pair` enqueue,
 dropping the multi-connect enqueue, sending `delete all` a positive index,
 making `interval status` print nothing, and removing the no-scan gate from
 `pair`.
 
+## Simulator coverage
+
+The UI-side request handlers are the half of this work that the host command
+suite cannot reach: `tests/host` never compiles `src/FurbleUI.cpp`. The
+simulator now builds with `FURBLE_CONSOLE`, in both `sim/CMakeLists.txt` and
+`sim/build.sh`, so those handlers are compiled and executed rather than only
+compiled by the firmware build. `src/FurbleUIAudit.cpp` comes with it and left
+the build inventory exemption list. `src/FurbleConsole.cpp` itself stays out:
+it is the serial transport and the command parser, both already driven end to
+end by the host suite against the real ESP-IDF console API, and
+`sim/FurbleConsoleSim.cpp` supplies the few entry points other firmware calls.
+
+A scenario drives a request with `action console <request> [arg]`, which posts
+through `UI::sendRequest()` exactly as the console does, and reads the answer
+back through a new `console.<key>` assert namespace fed by a single
+`UI::consolePrint()` output path. `console.result` is the outcome token.
+
+The simulator's `CameraList` grew from a single saved flag into a real store of
+saved names, because `delete all` and the multi-connect cap cannot be exercised
+against one camera. Its `remove()` now leaves the loaded list alone, matching
+the firmware, where erasing in place would have shifted the indices under a
+caller sweeping the list.
+
+Five certified e2e scenarios cover pairing (including the save on a successful
+registration), the list and delete verbs, the multi-connect round trip and its
+eight-name cap, the timer and bulb run-state transitions, and the display range
+refusal with page and back.
+
 ## Implementation state
 
-Implemented by PR #TBD against fork master. The plan number races 165, which is
+Implemented by PR #265 against fork master. The plan number races 165, which is
 PR #264 and in flight; 161 is #261 and 164 has merged.
 
 The on-device pairing run is owed and has not been performed: `scan start`,
