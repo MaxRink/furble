@@ -37,17 +37,23 @@ About page and exposed through companion BLE Device Information.
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
-| `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
+| `power` | `stats`, `log <seconds>` / `log off` for a CSV power log, or `off` to shut down. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
-| `ui` | `ui audit`, dump the current page layout. |
+| `ui` | `audit` dumps the page layout, `page` names the current page, `back` presses the header back button. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
+| `pair` | `pair <scan index>`, onboard a camera from `scan list`. |
+| `delete` | `delete <saved index>` or `delete all`, forgets the camera and its bond. |
+| `multiconnect` | `list`, `select <index>`, `deselect <index>`, `clear`. |
 | `disconnect` | Disconnect all cameras. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `focus` | `press` or `release`. |
+| `interval` | `start`, `stop`, or `status`, the Timer page. |
+| `bulb` | `start`, `stop`, or `status`, the Bulb page. |
+| `display` | `status`, `mode gui\|console`, or `brightness <value>`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
 | `scan` | `start`, `stop`, or `list`. |
 | `bt` | Bluetooth diagnostics, see below. |
@@ -108,6 +114,121 @@ StickC-Plus, and Core2 when its backup supply is healthy. StickS3 has no
 battery-backed calendar RTC, so it restores the last NVS value with an explicit
 uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
+## Workflow coverage
+
+Every workflow the on-device menus offer is scriptable here, through the same
+production code the menus run. A console verb never carries its own copy of a
+UI behaviour: it parses, gates, and hands one `UI::Request` to the UI task,
+which then runs exactly the handler the button click runs. So the pairing
+prompt, the registration gate, the save on success and the shutter release on
+stop all behave identically whichever way the workflow is driven.
+
+| UI workflow | Console verb | State |
+| :--- | :--- | :--- |
+| Scan for cameras | `scan start` / `scan stop` / `scan list` | existing |
+| Scan page, tap a result to pair | `pair <scan index>` | added |
+| Answer the pairing prompt | `bt pair yes \| no \| key <6 digits>` | existing |
+| Saved camera list | `cameras list` | existing, now flags saved and selected rows |
+| Connect page, tap a saved camera | `connect <index>` | existing |
+| Connect page, multi-select checkboxes | `multiconnect select \| deselect <index>` | added |
+| Connect page, the remembered set | `multiconnect list \| clear` | added |
+| Multi-connect on or off | `settings set multiconnect on \| off` | existing |
+| Connect page, the `Connect N` button | `connect` with no index | existing |
+| Delete page, tap a saved camera | `delete <index>` | added |
+| Forget every saved camera | `delete all` | added, no menu equivalent |
+| Cameras page, per-target link state | `cameras status` | existing |
+| Remote shutter | `shutter press \| release \| hold <ms>` | existing |
+| Remote focus | `focus press \| release` | existing |
+| Bulb page, start and stop an exposure | `bulb start \| stop` | added |
+| Bulb page, exposure state and duration | `bulb status` | added |
+| Timer page, start and stop the intervalometer | `interval start \| stop` | added |
+| Timer page, run state and configured spinners | `interval status` | added |
+| Disconnect | `disconnect` | existing |
+| IR shutter | `ir fire [protocol]` | existing |
+| Level page readout | `imu status` | existing |
+| GPS pages | `gps ...`, see below | existing |
+| Display page, brightness | `display brightness <value>` | added, applies live |
+| Display page, inactivity and screen off | `settings set inactivity \| display_off` | existing, applies on reboot |
+| Display mode | `display mode gui \| console` | existing as `settings set display_mode` |
+| Off menu entry | `power off` | added |
+| Battery page | `status`, `power stats` | existing |
+| Feedback test tones | `feedback test <event>` | existing |
+| Every other Settings page control | `settings get \| set <name> <value>` | existing |
+| Page layout dump | `ui audit` | existing |
+| Current page name | `ui page` | added |
+| Header back button | `ui back` | added |
+| Boot autoconnect | `settings set autoconnect on \| off` | existing |
+| Restart | `reboot` | existing |
+
+Four workflows have no console verb, for reasons that are not worth working
+around:
+
+- **Navigate to a named page.** The name to page tables live only in the
+  simulator build. Adding a second navigation mechanism to firmware to serve
+  the console is not worth it, so `ui page` reads and `ui back` steps out, and
+  nothing jumps to an arbitrary page.
+- **Touch calibration.** The calibration page needs real touches at real
+  screen coordinates.
+- **Timer and Bulb configuration.** Count, delay, shutter, wait and bulb
+  duration live in struct settings that only the LVGL rollers write, and the
+  UI reads them once at construction. `interval status` and `bulb status`
+  report the live values so a script can at least assert them.
+- **Settings export and import to SD.** `settings list`, `settings set` and
+  `provision` already carry the same data over the console.
+
+### Pairing a camera
+
+`pair` is the Scan page row click. The index is a row of the most recent
+`scan list`, not of `cameras list`, and the verb is refused unless a scan is
+running, because without one that list holds saved cameras and `connect` is
+their verb. A console scan runs until `scan stop`, so the usual sequence is:
+
+```
+log * warn
+scan start
+scan list
+pair 0
+```
+
+`cameras list` marks every row `camera<N>.saved: true|false`, so a script can
+tell a scan result apart from a saved camera even when a scan rediscovers one
+it already knows.
+
+Cameras which use a pairing confirmation answer the prompt with
+`bt pair yes | no | key <6 digits>`. Fujifilm Secure and Ricoh raise it during
+registration, so a full unattended onboarding is `scan start`, `pair <n>`, then
+`bt pair yes` when the prompt appears. The camera itself may also need a
+confirmation on its own body. On success the camera is saved, exactly as the
+Scan page saves it, and `cameras list` shows it with `saved: true`.
+
+### Multi-connect
+
+The remembered set is stored by camera name, so an index is resolved against
+the saved list on the UI task. `multiconnect select <index>` ticks one
+checkbox and persists the whole set, the same pair of steps the Connect page
+takes when its `Connect N` button is pressed. `multiconnect list` prints the
+remembered names and whether the feature is enabled; `multiconnect clear`
+empties it. `connect` with no index then connects that set.
+
+### Timer and bulb
+
+Both fire the shutter, so both refuse to start without an active connection.
+`interval start` and `bulb start` send the real button event, which starts the
+run and then navigates to its run page in that order. That ordering matters for
+the bulb: leaving the Bulb run page stops the exposure, so a start that skipped
+the navigation would be cancelled by the next page change.
+
+`interval status` reports `state`, `remaining` (`65535` for an infinite count),
+`next_ms`, and the configured `count`, `count_unit`, `delay_ms`, `shutter_ms`
+and `wait_ms`. `bulb status` reports `state`, `remaining_ms` and `duration_ms`.
+
+### Deleting a camera
+
+`delete <index>` is the Delete page row click, and it removes the stored entry
+and the BLE bond together. `delete all` sweeps the whole saved list, which the
+menus offer no button for. Both print one `deleted: <name>` line per camera and
+a final `count:`.
+
 ## imu
 
 - `imu status` performs a read-only probe: it reports the persisted opt-in,
@@ -134,7 +255,8 @@ the web installer Capture BT debug dump panel.
 - `bt scan [seconds | all [seconds] | stop]` sniffs advertisements.
 - `bt explore <addr> [pair <mode>] [keep] | read | stop [keep]` walks a peer's
   GATT. Pair modes are none, just-works, and numeric-display.
-- `bt pair yes | no | key <6 digits>` answers a pairing prompt.
+- `bt pair yes | no | key <6 digits>` answers a pairing prompt, including the
+  one a `pair <scan index>` onboarding raises.
 - `bt journal on | off | dump [n] | clear` records a GATT journal.
 
 The journal is a fixed 32-event ring on boards without PSRAM and a 128-event

@@ -25,17 +25,23 @@ About page and exposed through companion BLE Device Information.
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
-| `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
+| `power` | `stats`, `log <seconds>` / `log off` for a CSV power log, or `off` to shut down. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
-| `ui` | `ui audit`, dump the current page layout. |
+| `ui` | `audit` dumps the page layout, `page` names the current page, `back` presses the header back button. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
+| `pair` | `pair <scan index>`, onboard a camera from `scan list`. |
+| `delete` | `delete <saved index>` or `delete all`, forgets the camera and its bond. |
+| `multiconnect` | `list`, `select <index>`, `deselect <index>`, `clear`. |
 | `disconnect` | Disconnect all cameras. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `focus` | `press` or `release`. |
+| `interval` | `start`, `stop`, or `status`, the Timer page. |
+| `bulb` | `start`, `stop`, or `status`, the Bulb page. |
+| `display` | `status`, `mode gui\|console`, or `brightness <value>`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
 | `scan` | `start`, `stop`, or `list`. |
 | `bt` | Bluetooth diagnostics, see below. |
@@ -94,12 +100,44 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 These enqueue camera commands directly. They bypass the button-mode dispatch and
 the shutter-lock state.
 
+## Workflow coverage
+
+Every workflow the menus offer is scriptable, through the same production code
+the menus run. A console verb parses and gates, then hands one request to the
+UI task, which runs the handler the button click runs. The pairing prompt, the
+registration gate and the save on success behave identically either way.
+
+`pair <scan index>` is the Scan page row click. The index names a row of the
+most recent `scan list`, and the verb is refused unless a scan is running,
+because otherwise that list holds saved cameras and `connect` is their verb. A
+console scan runs until `scan stop`, so a full onboarding is `scan start`,
+`scan list`, `pair 0`, then `bt pair yes` if the camera raises a prompt. On
+success the camera is saved, and `cameras list` shows it as
+`camera<N>.saved: true`.
+
+`delete <index>` is the Delete page row click, dropping the stored entry and
+the BLE bond together; `delete all` sweeps the list, which the menus have no
+button for. `multiconnect select | deselect <index>` ticks a Connect page
+checkbox and persists the remembered set; `multiconnect list` and
+`multiconnect clear` read and empty it.
+
+`interval start | stop | status` drives the Timer page and
+`bulb start | stop | status` the Bulb page. Both refuse to start without an
+active connection, since both fire the shutter.
+
+`display brightness <value>` applies live, matching the Display page slider;
+`settings set brightness` only persists. `power off` runs the Off menu entry.
+`ui page` names the current page and `ui back` presses the header back button.
+Navigating to an arbitrary page by name is deliberately not offered: those
+tables exist only in the simulator build.
+
 ## bt
 
 - `bt scan [seconds | all [seconds] | stop]` sniffs advertisements.
 - `bt explore <addr> [pair <mode>] [keep] | read | stop [keep]` walks a peer's
   GATT.
-- `bt pair yes | no | key <6 digits>` answers a pairing prompt.
+- `bt pair yes | no | key <6 digits>` answers a pairing prompt, including the
+  one a `pair <scan index>` onboarding raises.
 - `bt journal on | off | dump [n] | clear` records a GATT journal.
 
 The journal is a fixed 32-event ring on boards without PSRAM and a 128-event
