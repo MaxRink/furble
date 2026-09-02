@@ -814,6 +814,13 @@ class UI {
   bool simulatorHomeOnUi(void);
   bool simulatorBackOnUi(void);
   bool simPressButtonOnUi(const char *name, bool hold);
+
+  /**
+   * Count the visible labels and icons on the current page that intersect a
+   * floating navigation indicator. Returns zero on a touch build, which has no
+   * indicators.
+   */
+  uint32_t countIndicatorOverlaps(void);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
