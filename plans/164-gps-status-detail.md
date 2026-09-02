@@ -25,29 +25,58 @@ the ordering of the documents on the plans branch differs.
 
 ## What the page shows now
 
-Three rows are appended below the fix rows, in the smallest font so they read as
+Two rows are appended below the fix rows, in the smallest font so they read as
 secondary:
 
 | Row | Fields |
 | :--- | :--- |
-| `fix yes uart PDTA` | Fix present, fix source, and the four validity flags |
-| `hdop 0.9 nmea 3s` | Horizontal dilution of precision, and sentence age |
-| `waiting @1000ms` | Power cycle state, and the configured fix interval |
+| `uart nmea 3s` | Fix source, and how long ago the receiver last sent a sentence |
+| `waiting` | Power cycle state, plus the retry count while degraded |
 
-The validity flags are position, date, time and altitude. An upper case letter
-means that field is valid, lower case means it is not. `nmea never` replaces the
-age when no sentence has arrived yet. `@default` replaces the interval when the
-rate setting leaves the receiver on its own rate. A degraded cycle appends its
-retry count, so the row reads `degraded @1000ms x1`.
+`nmea n/a` replaces the age when no sentence has arrived yet. The source reads
+`uart`, `comp` for a companion phone, or `none`. A degraded cycle appends its
+retry count, so the row reads `degraded x1`.
 
-Each row packs several fields because vertical space is the binding constraint,
-not horizontal space. Three rows of one field each would not fit.
+## The row budget, which is the whole design
+
+The interesting constraint on this page is not the one that looks obvious.
+
+Vertically, the page filled its 135x240 panel almost exactly. Two rows of the
+smallest font fit only after the date and time were merged onto one row, which
+is what the 320x240 Core branch a few lines above already did. That merge is the
+only change this makes to the existing rows.
+
+Horizontally, the constraint is the navigation indicators. On the Stick boards
+the three button indicators are `LV_OBJ_FLAG_FLOATING` children of the screen,
+not part of the page layout, and the right hand one is a 24 pixel square aligned
+`LV_ALIGN_RIGHT_MID` with a 65 pixel offset. On a 240 pixel panel that places it
+over y 173 to 197, exactly where the last rows of a full page land. A centred
+row wider than about 87 pixels runs underneath it. At `lv_font_montserrat_10`
+that is fourteen characters.
+
+Fourteen characters per row, two rows, is the entire budget. Everything the
+scoping note asked for did not fit, so the fields were ranked by whether the
+user can find them anywhere else:
+
+- Fix source, sentence age and power cycle state are nowhere else in the UI.
+  They are on the page.
+- The configured rate is in `Settings` > `GPS` > `Rate`, where the user set it.
+- HDOP, the sentence counters and the degraded retry text are on the Raw NMEA
+  page. The retry count still appears here because it costs three characters on
+  a row that is otherwise short.
+- The per-field validity flags did not survive the cut. They are the most
+  cryptic of the candidates and the least actionable.
+
+Three earlier drafts of this page each rendered correctly in the simulator's
+default touch layout and were wrong on hardware. The touch layout has no
+navigation indicators, so the first draft's three wide rows fit there and ran
+under the indicator on the shipped Stick layout. `FURBLE_SIM_NO_TOUCH=1` is what
+exposed it, and no CI job sets it. That gap is noted below.
 
 ## Why the 80x160 panel is excluded
 
-The M5StickC page already filled its panel exactly. There was roughly one line
-of slack left, and the three detail rows need six lines there once they wrap at
-80 pixels.
+The M5StickC page already filled its panel exactly, with roughly one line of
+slack. The detail rows wrap at 80 pixels, so two rows need four lines there.
 
 Letting the page overflow was not an option. The GPS Data page carries no
 focusable control, and furble's button navigation scrolls a page only by moving
@@ -56,9 +85,9 @@ be scrolled by the buttons at all. On the M5StickC, overflowing rows would be
 rendered below the fold with no way for the user to reach them.
 
 So the rows are compiled out on `FURBLE_M5STICKC`, in the same spirit as the
-existing `FURBLE_M5COREX` date and time split a few lines above. The Raw NMEA
-page has a focusable Hot restart button, so it does scroll, and it keeps
-carrying HDOP, the receiver counters and the degraded retry count on that board.
+`FURBLE_M5COREX` date and time split they sit below. The Raw NMEA page has a
+focusable Hot restart button, so it does scroll, and it keeps carrying HDOP, the
+receiver counters and the degraded retry count on that board.
 
 This is a stated limitation, not an oversight. Making the M5StickC fit would
 mean compressing the existing fix rows on that panel, which changes rendering on
@@ -86,11 +115,9 @@ The page needed state that had no accessor. `GPS::getReceiverStatus()` returns a
 `sim/driver.cpp` now calls it instead of keeping its own copy of the same
 switch.
 
-The page shows `cycle_state`, `rate_ms` and `last_sentence_age_ms`. The power
-policy, duty interval and assisted start fields are in the struct because they
-are receiver state a caller may want, and because omitting them would mean
-another accessor later. They are not on the page: the policy and interval are
-already visible in `Settings` > `GPS` > `Power saving`, and rows are scarce.
+The page shows `cycle_state` and `last_sentence_age_ms`. The rest of the struct
+is receiver state a caller may want, and omitting it would only mean another
+accessor later; the row budget above is why none of it is rendered.
 
 ### Locking
 
@@ -110,8 +137,8 @@ runs on a 1 Hz LVGL timer, and live timers in this codebase must not touch NVS.
 `m_ExpectedInterval` was the obvious candidate and is the wrong one. It becomes
 the *measured* burst period once the cycle has timed the receiver, so under a 5
 second standby duty cycle it reads 5000 ms while the rate setting says 1000 ms.
-Reporting that as "rate" was actively misleading; the first draft did, and the
-simulator caught it.
+Reporting that as "rate" was actively misleading; a draft did, and the simulator
+caught it. The field is correct now even though the page no longer renders it.
 
 ## Tests
 
@@ -127,11 +154,23 @@ Two certified end-to-end scenarios, both registered in
 Both assert `ui.overflow no`. On this page that is not a cosmetic check, it is a
 reachability check: an overflowing row cannot be scrolled to.
 
-The scenarios read the labels through eight new simulator queries, which parse
+The scenarios read the labels through four new simulator queries, which parse
 the rendered label text rather than recomputing the value. An absent row reads
 back as `none`, so a dropped label fails the assertion instead of passing
-silently. Mutation check: removing the fix row update fails
-`gps-receiver-detail` with `expected 'yes' got 'none'`.
+silently. Mutation check: removing the source row update fails
+`gps-receiver-detail` with `expected 'uart' got 'none'`.
+
+### The gap these tests do not close
+
+`sim/scripts/run-e2e.sh` does not set `FURBLE_SIM_NO_TOUCH`, so every end-to-end
+scenario runs the touch layout, where the floating navigation indicators do not
+exist and the page viewport is 24 pixels taller. `ui.overflow` is therefore
+measured against a layout no Stick board ships. The overflow numbers here were
+taken by hand with `FURBLE_SIM_NO_TOUCH=1` on all three panels.
+
+A non-touch leg for the overflow sweep would close this for every page, not just
+this one. It belongs in its own change: it will find pre-existing overflow, the
+80x160 GPS Data page among it.
 
 No host unit test was added. The GPS layer has no host harness for the real
 `FurbleGPS.cpp`: `tests/host/gps_power_cycle_test.cpp` tests the pure
@@ -150,8 +189,8 @@ Implemented and merged as one pull request.
   `receiver_status_t`, `getReceiverStatus()`, `cycleStateName()`,
   `sourceName()`, `m_RateMs` cache.
 - `include/FurbleUI.h`, `src/FurbleUI.cpp`: `gps_data_t` label handles, the
-  `addGPSDetailLabel()` row helper, the three rows on the page timer, and the
-  eight simulator queries.
+  `addGPSDetailLabel()` row helper, the two rows on the page timer, the merged
+  date and time row on 135x240, and the four simulator queries.
 - `sim/driver.cpp`: `gps.source` reuses `GPS::sourceName()`.
 - `sim/scenarios/`: two scenarios and their manifest entries.
 - `docs/sim.md`, `docs/ui-walkthrough.md`, `docs/settings-and-controls.md`.
@@ -159,14 +198,21 @@ Implemented and merged as one pull request.
 ### Deviations from the original scope
 
 - The scoping note asked for separate fix/source, HDOP, degraded and validity
-  lines. Four rows overflowed 135x240, so the fields are packed into three.
-- The scoping note asked for the power policy and duty seconds on the page.
-  They are in the API only, for the reason given above.
+  lines, and for the rate on the page. The row budget above allows two rows of
+  fourteen characters, so HDOP, the validity flags, the explicit fix yes/no and
+  the rate are not rendered. The first three are on the Raw NMEA page and the
+  rate is in Settings.
+- The power policy, duty seconds and assisted start fields are in the API only,
+  for the same reason.
 - The scoping note asked for a host unit test if the GPS layer has host tests.
   It does not, for the reason given above.
+- The date and time merge on 135x240 is not in the scoping note. It is what
+  makes the vertical room for the two rows.
 
 ### Owed
 
 An on-device look at the page on the M5StickS3. The rows are verified in the
-simulator on all three modeled panels, which shares the real UI code, but the
-font 10 rows have not been read on the physical 135x240 panel.
+simulator on all three modeled panels, in both the touch and the non-touch
+layout, and the simulator shares the real UI code. The font 10 rows have still
+not been read on the physical 135x240 panel, and the clearance from the floating
+indicator is a few pixels, not a comfortable margin.

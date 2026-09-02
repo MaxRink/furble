@@ -380,13 +380,9 @@ The complete `ui.*` query set is:
 | `ui.gps_lon` | Rendered longitude value. |
 | `ui.gps_satellites` | Rendered satellite count. |
 | `ui.gps_fix` | `yes` when the GPS source is active, otherwise `no`. |
-| `ui.gps_fix_rendered` | `yes` or `no` from the rendered fix row, `none` when absent. |
-| `ui.gps_source` | Rendered fix source: `uart`, `companion`, `none`, or `none` when absent. |
-| `ui.gps_valid` | Rendered validity flags, such as `PDTA`. |
-| `ui.gps_hdop` | Rendered HDOP value. |
-| `ui.gps_link_age` | Rendered seconds since the last sentence, or `never`. |
+| `ui.gps_source` | Rendered fix source: `uart`, `comp`, `none`, or `none` when the row is absent. |
+| `ui.gps_link_age` | Rendered seconds since the last sentence, or `n/a`. |
 | `ui.gps_cycle` | Rendered power cycle state, such as `waiting` or `degraded`. |
-| `ui.gps_rate` | Rendered fix interval, such as `1000ms`, or `default`. |
 | `ui.gps_retries` | Rendered degraded retry count, `0` when the row shows none. |
 | `ui.focus_outline_count` | Numeric outline count, or `none`. |
 | `ui.lock_outline` | Numeric outline width, or `none`. |

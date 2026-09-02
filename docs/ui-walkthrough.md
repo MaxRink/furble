@@ -159,14 +159,18 @@ The GPS Data page shows the live fix: age, satellite count, speed, latitude and
 longitude, altitude, and UTC date and time. It is reachable both here and under
 `Settings` > `GPS` > `GPS Data`.
 
-Below the fix, three smaller rows report the receiver itself, so a receiver that
+Below the fix, two smaller rows report the receiver itself, so a receiver that
 is alive but not fixing reads differently from one that has gone quiet:
 
 | Row | Reads |
 | :--- | :--- |
-| `fix yes uart PDTA` | Whether there is a fix, where it came from (`uart`, `companion` or `none`), and which fields are valid. The flags are position, date, time and altitude, upper case when valid and lower case when not. |
-| `hdop 0.9 nmea 3s` | Horizontal dilution of precision, and how long ago the receiver last sent a sentence. `nmea never` means nothing has arrived yet. |
-| `waiting @1000ms` | The receiver power cycle state and the configured fix interval. `@default` means the receiver's own rate. A degraded cycle appends its retry count, as `degraded @1000ms x1`. |
+| `uart nmea 3s` | Where the fix came from (`uart`, `comp` for a companion phone, or `none`), and how long ago the receiver last sent a sentence. `nmea n/a` means nothing has arrived yet. |
+| `waiting` | The receiver power cycle state: `disabled`, `acquiring`, `measuring`, `burst`, `waiting`, `standby`, `rail_off`, `resync` or `degraded`. A degraded cycle appends its retry count, as `degraded x1`. |
+
+The rows are short on purpose. On the Stick boards the right hand navigation
+indicator floats over the bottom of the page, and a wider row would run
+underneath it. For the same reason the date and time share one row here, as they
+already did on the 320x240 Core.
 
 The 80x160 M5StickC does not show these rows. That panel has no room left on the
 page, and the page carries no focusable control for the buttons to scroll it

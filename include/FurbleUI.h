@@ -359,8 +359,7 @@ class UI {
    * only read the rendered text back.
    */
   typedef struct {
-    lv_obj_t *fix;
-    lv_obj_t *quality;
+    lv_obj_t *source;
     lv_obj_t *cycle;
   } gps_data_t;
 
