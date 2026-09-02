@@ -195,6 +195,14 @@ registration path rather than a model of it. A `saved_cameras N` seed stands up
 a multi-entry saved list, because `delete all` and the multi-connect cap cannot
 be exercised against one camera.
 
+One coverage floor moved down. Defining `FURBLE_CONSOLE` for the simulator
+also compiles the BT journal call sites in `lib/furble/Scan.cpp`, which need the
+custom scan callback path only `bt scan` and `bt explore` take. `BtDebug` is not
+in the simulator build, so those four extra instrumented lines are unreachable
+from a scenario and the file reads 90.05 against a 90.20 floor. Every other
+number moved up: both sim panels by about three points, `src/FurbleUI.cpp` from
+79.53 to 81.20, and the grand union from 69.26 to 70.47.
+
 Five certified e2e scenarios cover pairing (including the save on a successful
 registration), the list and delete verbs, the multi-connect round trip and its
 eight-name cap, the timer and bulb run-state transitions, and the display range

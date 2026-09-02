@@ -1,19 +1,20 @@
 {
   "files": {
     "lib/furble/Camera.cpp": 73.75,
-    "lib/furble/Scan.cpp": 90.2,
+    "lib/furble/Scan.cpp": 89.5,
     "src/FurbleConsole.cpp": 89.08,
     "src/FurbleControl.cpp": 77.13,
     "src/FurbleUI.cpp": 79.53
   },
   "lowered": {
     "keys": [
+      "lib/furble/Scan.cpp: 90.20 to 89.50",
       "stack sim m5stack-core (320x240): 42.20 to 35.12",
       "stack sim m5stick-c (80x160): 43.29 to 35.90",
       "stack sim m5stick-s3 (135x240): 57.16 to 50.13",
       "stack sim union: 57.86 to 50.66"
     ],
-    "reason": "real Control in the sim grew the instrumented denominator"
+    "reason": "real Control in the sim grew the instrumented denominator. The simulator also builds FURBLE_CONSOLE so the UI request handlers are compiled and exercised, and that compiles the BT journal call sites in Scan.cpp with them. Those need the custom scan callback path only 'bt scan' and 'bt explore' take, and BtDebug is not in the simulator build, so the extra instrumented lines cannot be reached from a scenario."
   },
   "stacks": {
     "host": 62.55,
