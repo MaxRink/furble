@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -1524,6 +1525,25 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
   lv_image_set_src(icon, symbol);
 }
 
+int32_t UI::floatingIndicatorReserve(void) {
+  // The Stick boards float m_Left, m_OK and m_Right over the page instead of
+  // reserving a navbar row, so full width content draws under the right one.
+  // Everything else reserves a navbar and needs nothing kept clear. Keep this
+  // board list in step with the indicator construction in UI::UI().
+  if (M5.Touch.isEnabled()) {
+    return 0;
+  }
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+    case m5::board_t::board_M5StickCPlus:
+    case m5::board_t::board_M5StickCPlus2:
+    case m5::board_t::board_M5StickS3:
+      return ICON_HEADER_SIZE;
+    default:
+      return 0;
+  }
+}
+
 lv_obj_t *UI::addMenuItem(const menu_t &menu,
                           const lv_image_dsc_t *icon,
                           const char *text,
@@ -1605,10 +1625,28 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #if defined(FURBLE_M5COREX)
       lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
 #endif
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     } else {
+      // A camera row is the only icon-less menu item, and a camera name is now
+      // composed by the vendor client, so it can be wider than an 80x160 row.
+      // Wrap it instead of scrolling it. LV_LABEL_LONG_SCROLL_CIRCULAR runs a
+      // permanent animation that invalidates the row on every frame, which is
+      // the redraw trap the project guide names, and it hides most of the name
+      // at any instant. rebuildCamerasPage() already made the same choice for
+      // the same reason.
+      //
+      // A wrapped row is taller and fills its width, so it reaches the floating
+      // navigation indicators the Stick boards draw over the page. Keep the
+      // right indicator's width clear; a scrolled single line never got that
+      // far down the page. Only where there is something to keep clear: writing
+      // a zero here would replace the theme's menu_cont horizontal padding on
+      // every board that reserves a navbar instead.
+      if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+        lv_obj_set_style_pad_right(cont, reserve, LV_PART_MAIN);
+      }
       lv_obj_set_width(label, LV_PCT(100));
+      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     }
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_STATE_TRICKLE);
@@ -1802,13 +1840,11 @@ void UI::saveMultiConnectSelection(void) {
 
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
-    if (!camera->isActive() || (selection.count >= Settings::MULTISELECT_MAX)) {
+    if (!camera->isActive()) {
       continue;
     }
 
-    snprintf(selection.name[selection.count], Settings::MULTISELECT_NAME_MAX, "%s",
-             camera->getName().c_str());
-    selection.count++;
+    Settings::multiselectAdd(selection, camera->getName().c_str());
   }
 
   // skip the NVS write when the remembered set is unchanged
@@ -3102,6 +3138,29 @@ uint32_t UI::countIndicatorOverlaps(void) {
   return overlaps;
 }
 
+namespace {
+
+/**
+ * The label carrying a menu row's text, or nullptr.
+ *
+ * addMenuItem() builds a row as a container whose first label child holds the
+ * text. A multi-connect row is a checkbox and carries its own text instead.
+ */
+lv_obj_t *simRowLabel(lv_obj_t *row) {
+  if (row == nullptr || !lv_obj_is_valid(row)) {
+    return nullptr;
+  }
+  for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
+    lv_obj_t *child = lv_obj_get_child(row, i);
+    if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
+      return child;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
+
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
   if (query == "sim_action_on_ui") {
@@ -3717,6 +3776,56 @@ std::string UI::simQueryState(const char *key) {
       }
     }
     return "no";
+  }
+
+  // Text carried by the focused menu row. A camera list row renders the name
+  // the vendor client derived, so a scenario can assert the rendered name
+  // rather than trusting the model behind it. Spaces are reported as
+  // underscores because the scenario DSL is whitespace separated and an
+  // expected value is a single token, the same reason reconnect_count reports
+  // "i/n" instead of the formatted title.
+  if (query == "row_text") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused == nullptr || !lv_obj_is_valid(focused)) {
+      return "none";
+    }
+    const char *text = nullptr;
+    // A multi-connect row is a checkbox and carries its own text.
+    if (lv_obj_check_type(focused, &lv_checkbox_class)) {
+      text = lv_checkbox_get_text(focused);
+    } else {
+      lv_obj_t *label = simRowLabel(focused);
+      if (label != nullptr) {
+        text = lv_label_get_text(label);
+      }
+    }
+    if (text == nullptr) {
+      return "none";
+    }
+    std::string reported(text);
+    for (char &character : reported) {
+      if (std::isspace(static_cast<unsigned char>(character))) {
+        character = '_';
+      }
+    }
+    return reported.empty() ? std::string("none") : reported;
+  }
+
+  // Whether the focused menu row is running LVGL's scroll animation. A label in
+  // LV_LABEL_LONG_SCROLL_CIRCULAR whose text is wider than the row scrolls
+  // forever and invalidates the row on every frame, which is the redraw trap
+  // the project guide names. Camera rows wrap instead, and a scenario asserts
+  // that here rather than assuming a composed name fits.
+  if (query == "row_scrolling") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused == nullptr || !lv_obj_is_valid(focused)) {
+      return "none";
+    }
+    lv_obj_t *label = simRowLabel(focused);
+    if (label == nullptr) {
+      return "none";
+    }
+    return (lv_anim_get(label, nullptr) != nullptr) ? "yes" : "no";
   }
 
   // Report whether the current page's content is taller than its viewport, i.e.
@@ -5072,6 +5181,13 @@ void UI::rebuildCamerasPage(menu_t &menu) {
   for (const auto &target : targets) {
     lv_obj_t *label = lv_label_create(menu.page);
     lv_obj_set_width(label, LV_PCT(100));
+    // The composed camera name plus the status word wraps onto a second line,
+    // which reaches the navigation indicators the Stick boards float over the
+    // page. Keep the right indicator's width clear, as the camera list rows do,
+    // and leave the theme's padding alone where there is nothing to clear.
+    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+      lv_obj_set_style_pad_right(label, reserve, LV_PART_MAIN);
+    }
     // The text is near static, so clip with dots instead of a circular
     // scroll that would invalidate the row on every tick.
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
@@ -5781,16 +5897,8 @@ void UI::addConnectMenu(void) {
         for (size_t n = 0; n < CameraList::size(); n++) {
           auto camera = CameraList::get(n);
           if (multiconnect) {
-            bool selected = false;
-            const size_t count = std::min<size_t>(selection.count, Settings::MULTISELECT_MAX);
-            for (size_t i = 0; i < count; i++) {
-              if (strncmp(selection.name[i], camera->getName().c_str(),
-                          Settings::MULTISELECT_NAME_MAX - 1)
-                  == 0) {
-                selected = true;
-                break;
-              }
-            }
+            const bool selected =
+                Settings::multiselectContains(selection, camera->getName().c_str());
 
             camera->setActive(selected);
             lv_obj_t *item = addCameraItem(n, menu, MODE_MULTICONNECT);

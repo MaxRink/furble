@@ -22,6 +22,16 @@ Public headers for the app layer in src/, one header per module
   NVS writes.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46. Wire id 45 is
   reserved for the companion-password contract and must not be reused.
+- `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
+  the stored record size. `Settings::load<multiselect_t>()` and the SD settings
+  importer both read the old layout through `multiselect_legacy_t` and widen it.
+  Changing that constant again means adding another legacy layout, not dropping
+  every saved selection.
+- `FurbleUI.h` declares `UI::floatingIndicatorReserve()`. Its board list is the
+  set of boards whose navigation indicators float over the page instead of
+  sitting in a navbar, and it must track the indicator construction in
+  `UI::UI()`. It returns zero elsewhere, and callers must not write that zero
+  over a theme padding.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.

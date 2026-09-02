@@ -6,6 +6,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <memory>
 
@@ -18,6 +20,14 @@ namespace Furble {
 
 const NimBLEUUID FujifilmSecure::SERVICE_UUID {0xa9d2b304, 0xe8d6, 0x4902, 0x8336352b772d7597};
 const NimBLEUUID FujifilmSecure::PRI_SVC_UUID {0x731893f9, 0x744e, 0x4899, 0xb7e3174106ff2b82};
+
+std::string FujifilmSecure::composeName(const std::string &advertisedName, const serial_t &serial) {
+  static_assert(SERIAL_LEN == FujifilmProtocol::SERIAL_BYTES,
+                "the stored serial must match the advertised serial");
+  std::array<uint8_t, FujifilmProtocol::SERIAL_BYTES> bytes;
+  std::copy(std::begin(serial.data), std::end(serial.data), bytes.begin());
+  return FujifilmProtocol::deviceName(advertisedName, bytes);
+}
 
 /**
  * Determine if the advertised BLE device is a Fujifilm secure camera.
@@ -42,6 +52,11 @@ FujifilmSecure::FujifilmSecure(const void *data, size_t len)
   m_Name = std::string(fujifilm->name);
   m_Address = NimBLEAddress(fujifilm->address, fujifilm->type);
   m_Serial = fujifilm->serial;
+  // Saved entries written before the serial reached the display name still
+  // carry the serial in NVS, so composing here upgrades them on load. The
+  // composition is idempotent, so an entry saved after this change is
+  // unaffected.
+  m_Name = composeName(m_Name, m_Serial);
   m_Queue = xQueueCreate(3, sizeof(bool));
 }
 
@@ -58,6 +73,11 @@ FujifilmSecure::FujifilmSecure(const NimBLEAdvertisedDevice *pDevice)
     std::memcpy(m_Serial.data, advertisement.serial.data(), advertisement.serial.size());
   }
   m_Queue = xQueueCreate(3, sizeof(bool));
+
+  ESP_LOGI(LOG_TAG, "Advertised name = %s", m_Name.c_str());
+  // Fujifilm advertises the bare model, so two bodies of the same model are
+  // indistinguishable in the scan list. Append the advertised serial.
+  m_Name = composeName(m_Name, m_Serial);
 
   ESP_LOGI(LOG_TAG, "Name = %s", m_Name.c_str());
   ESP_LOGI(LOG_TAG, "Address = %s", m_Address.toString().c_str());
@@ -364,6 +384,11 @@ bool FujifilmSecure::serialise(void *buffer, size_t bytes) const {
   }
   nvs_t *x = static_cast<nvs_t *>(buffer);
   strncpy(x->name, m_Name.c_str(), MAX_NAME);
+  // strncpy writes no terminator when the name fills the field, and the saved
+  // constructor reads it back with std::string(). Terminate it here, as Lumix,
+  // Ricoh and DJIOsmo already do. This name is now longer than the advertised
+  // one, so the guard matters more than it did.
+  x->name[MAX_NAME - 1] = '\0';
   x->address = (uint64_t)m_Address;
   x->type = m_Address.getType();
   x->serial = m_Serial;

@@ -1,0 +1,71 @@
+# A Fujifilm Secure body advertises the bare model in its BLE local name, so
+# the scan list and the saved list both read "FUJIFILM X100VI" whichever body it
+# was. The vendor client now composes the advertised model plus the advertised
+# serial. Prove that composed name is what the lists actually render, and that
+# the longer row still fits the panel. Runs on all three panel classes; the
+# 80x160 board is the tightest.
+#
+# The name comes out of the production path: the virtual Fujifilm peer
+# advertises, the production Scan delivers it, and the production
+# FujifilmSecure constructors compose the name. Nothing here restates the
+# expected format except the assertion itself.
+#
+# "seed no_touch true" detaches the SDL mouse-touch device so the sim builds the
+# non-touch physical-button layout. No Stick board ships a touch panel, so the
+# touch layout would measure a list geometry that no shipped device renders.
+seed no_touch true
+seed ble_peers fuji-secure
+seed ble_saved true
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+# Saved list: the registered body is the first row and takes focus on entry.
+action nav connect
+wait 300
+assert ui.page connect
+assert ui.row_text FUJIFILM_X100VI_1C4F9
+assert ui.focus_on_page yes
+assert ui.overflow no
+# The row wraps instead of scrolling. A circular scroll would animate forever
+# and invalidate the row on every frame, which the composed name would trigger
+# on 80x160. Asserting it keeps that state measured rather than assumed.
+assert ui.row_scrolling no
+# A wrapped row is wider and taller than the bare model name was, so prove it
+# still clears the floating navigation indicators (plan 165's query).
+assert ui.indicator_clearance clear
+
+home
+wait 200
+# Scan list: the same body arrives through the production scan path and builds
+# a row of its own, which must still fit the panel.
+action nav scan
+wait 600
+assert ui.page scan
+assert-eventually 2000 camera.count 1
+assert ui.overflow no
+assert ui.indicator_clearance clear
+# The row text is asserted on the saved list above rather than here. Entering
+# the scan page does not focus a result, and how many key presses reach one
+# differs per panel because the wide layout shares its input group with the
+# root menu. Both lists build a row through the same addCameraItem path from
+# the same Camera, and fujifilm_device_name_test covers the advertisement
+# constructor that produced this one.
+
+home
+wait 200
+# Cameras page: a connected body renders "<name>   <status>" in a full width
+# label that wraps, so the composed name makes that row taller. Prove the page
+# still fits every panel.
+action connect
+wait 3200
+assert-eventually-virtual 3000 control.state active
+action page cameras
+wait 300
+assert ui.page cameras
+assert ui.overflow no
+assert ui.indicator_clearance clear
+
+exit

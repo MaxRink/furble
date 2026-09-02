@@ -18,6 +18,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
+- The remembered multi-connect set is keyed on the camera's displayed name, and
+  a vendor client may compose that name. Store and compare it only through
+  `Settings::multiselectAdd()` and `Settings::multiselectContains()`, which
+  compare the whole stored string. A prefix comparison ticks the wrong body of
+  the same model. `Settings::load<multiselect_t>()` widens a record written in
+  the pre-32-byte layout, so changing `MULTISELECT_NAME_MAX` again means adding
+  another legacy layout rather than dropping every saved selection.
 - The IMU setting is a persisted bool at wire id 46, defaults off, and applies
   on reboot because it controls `M5.begin()` capability discovery. IMU pages
   must be gated on both that setting and `M5.Imu.isEnabled()`; the Level timer
@@ -75,6 +82,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
+  circular scroll on a row wider than the panel animates forever and
+  invalidates the row on every frame, which `ui.row_scrolling` and
+  `ui.invalidate_count` measure. A wrapped row is taller and fills its width, so
+  it reaches the indicators the Stick boards float over the page: any full width
+  row must keep `UI::floatingIndicatorReserve()` clear on the right, and
+  `ui.indicator_clearance` is the check.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.
