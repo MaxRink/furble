@@ -6,18 +6,19 @@ wait 400
 assert ui.page main
 
 # Status reports the board's usable range alongside the current values, so a
-# script can pick a value this board accepts.
+# script can pick a value this board accepts. The minimum is per board (32 on
+# most panels, 48 on the StickC and StickC-Plus) so only the shared maximum is
+# asserted by value here.
 action console display -1
 wait 200
 assert console.result ok
 assert console.mode gui
 assert console.brightness 96
-assert console.brightness_min 32
 assert console.brightness_max 240
 
 # Below the board minimum the panel is black, and a persisted black panel needs
 # a reflash to undo. Refuse rather than clamp silently, and leave the stored
-# value alone.
+# value alone. Eight is below every board's minimum.
 action console display 8
 wait 200
 assert console.result range
