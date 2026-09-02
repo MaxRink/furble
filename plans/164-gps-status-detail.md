@@ -211,6 +211,11 @@ Implemented and merged as one pull request.
 
 ### Owed
 
+`docs/img/gps-data.png` is refreshed for this page. The rest of the committed
+walkthrough gallery is stale repo-wide, it predates the focus outline change
+among others, so this refreshes only the page this change touches. A gallery
+refresh belongs in its own change.
+
 An on-device look at the page on the M5StickS3. The rows are verified in the
 simulator on all three modeled panels, in both the touch and the non-touch
 layout, and the simulator shares the real UI code. The font 10 rows have still
