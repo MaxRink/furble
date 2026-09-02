@@ -35,9 +35,9 @@ action console pair 0
 wait 300
 assert console.result ok
 assert control.state connecting
-wait 1500
-assert control.state active
-assert ui.connected yes
+wait 2800
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 
 # Reaching STATE_ACTIVE from the Scan page saves the camera, which is the whole
 # point of routing through the same path the row click takes.

@@ -9,8 +9,9 @@ seed interval_shutter 1
 seed interval_wait 1
 wait 400
 action connect
-wait 1500
-assert control.state active
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 
 # Neither run is in progress, so stop has nothing to stop. Without the gate the
 # synthetic click would release a shutter a script may be holding and navigate

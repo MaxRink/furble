@@ -186,16 +186,28 @@ through `UI::sendRequest()` exactly as the console does, and reads the answer
 back through a new `console.<key>` assert namespace fed by a single
 `UI::consolePrint()` output path. `console.result` is the outcome token.
 
-The simulator's `CameraList` grew from a single saved flag into a real store of
-saved names, because `delete all` and the multi-connect cap cannot be exercised
-against one camera. Its `remove()` now leaves the loaded list alone, matching
-the firmware, where erasing in place would have shifted the indices under a
-caller sweeping the list.
+PR #261 landed first and put the production `Control`, `Camera`, `CameraList`
+and `Scan` into the simulator over MockNimBLE, which removed the simulator's
+own list substitute. So the scenarios here run against the same
+`CameraList::isSaved()`, `save()` and `remove()` the firmware runs, and the
+pairing scenario's save on a successful registration is the production
+registration path rather than a model of it. A `saved_cameras N` seed stands up
+a multi-entry saved list, because `delete all` and the multi-connect cap cannot
+be exercised against one camera.
 
 Five certified e2e scenarios cover pairing (including the save on a successful
 registration), the list and delete verbs, the multi-connect round trip and its
 eight-name cap, the timer and bulb run-state transitions, and the display range
 refusal with page and back.
+
+## Sequencing
+
+Rebased onto fork master `ab638874`, which carries PR #261.
+
+PR #245 introduces `UI::beginPairing()`, the single entry point for starting a
+pairing from a scan result. The `Request::PAIR` handler here is deliberately
+thin, the same three steps the Scan page row click takes, so it becomes a call
+to `beginPairing()` once #245 lands. Merge order is #266, then #245, then this.
 
 ## Implementation state
 
