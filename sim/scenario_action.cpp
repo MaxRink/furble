@@ -223,7 +223,8 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "battery",
                                   "storage",
                                   "imu",
-                                  "level"})) {
+                                  "level",
+                                  "level_main"})) {
         return fail(error, "noncanonical navigation action");
       }
       return true;
@@ -510,6 +511,7 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "storage",
       "imu",
       "level",
+      "level_main",
   };
   const auto pageKnown = [&pages](const std::string &value) {
     for (const char *page : pages) {

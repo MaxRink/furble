@@ -17,6 +17,12 @@
 seed text_size 2
 seed fauxny true
 seed gps true
+# The IMU is deliberately not seeded here. Seeding it adds the Level row to
+# the Connected page as well as the home page, and on the 80x160 panel the
+# Connected page then scrolls at this size (13 px, a pre-existing gap noted
+# in plan 153), which would fail the Connected page assert below for a reason
+# unrelated to the text size. The Level row's home fit at Large is guarded by
+# home-seven-rows-large.txt on every panel instead.
 wait 300
 # The seeded Large size was loaded on boot.
 assert setting.text_size 2

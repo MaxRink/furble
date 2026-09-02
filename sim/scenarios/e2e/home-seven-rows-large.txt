@@ -1,0 +1,36 @@
+# Seven home rows must fit the 135x240 panel without scrolling. The Level entry
+# (plan 153) is the sixth home row and the Infrared entry is the seventh once
+# the IR setting is on. IR is not a seed: it only flips through the switch on
+# the Infrared page, so no other scenario ever renders the full home menu. This
+# one toggles it the way a user does and then asserts the home page reports no
+# scrollable extent. It runs with FURBLE_SIM_IR=1 so the Infrared page exists.
+# This is the Large text size repeat of home-seven-rows.txt.
+seed fauxny true
+seed imu true
+seed text_size 2
+wait 300
+assert setting.text_size 2
+assert ui.page main
+assert ui.level_main_button_visible yes
+assert ui.overflow no
+
+action nav infrared
+wait 150
+assert ui.page infrared
+action toggle ir
+wait 150
+home
+wait 200
+assert ui.page main
+assert ui.overflow no
+assert ui.scroll_bottom 0
+
+# The Level route still opens from the fuller home menu and Back returns home.
+action nav level_main
+wait 200
+assert ui.page level
+back
+wait 150
+assert ui.page main
+assert ui.overflow no
+exit

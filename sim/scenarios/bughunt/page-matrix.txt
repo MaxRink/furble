@@ -32,6 +32,18 @@ action nav delete
 wait 150
 assert ui.page delete
 assert ui.overflow no
+# The home Level entry (plan 153) is a root route, so walk it from the root and
+# prove Back lands on the root rather than on the Connected page.
+home
+wait 150
+assert ui.page main
+action nav level_main
+wait 200
+assert ui.page level
+assert ui.overflow no
+back
+wait 150
+assert ui.page main
 action page ir
 wait 100
 assert ui.page ir

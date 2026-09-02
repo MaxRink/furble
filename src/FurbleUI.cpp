@@ -254,6 +254,8 @@ uint32_t UI::m_BulbEnd;
 
 UI::menu_t UI::m_MainMenu;
 
+lv_obj_t *UI::m_LevelMainButton = nullptr;
+
 std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
@@ -1506,18 +1508,34 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // The home menu carries seven rows once the Level entry joins it and the IR
+  // setting is on (Connect, Scan, Delete, IR, Settings, Level, Power off). A
+  // row is the 24 px icon plus the top and bottom padding, and the text size
+  // setting does not change it, so the fit is fixed arithmetic against the
+  // 215 px page: at the default padding of 6 six rows already overflow by one
+  // pixel, at 5 seven rows overflow by 23 px, and at 3 seven rows take 210 px
+  // and fit with 5 px to spare. home-seven-rows.txt guards this in the sim.
+  // Every other page keeps the roomier padding.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
-  lv_obj_set_style_pad_top(cont, connectedPage ? 0 : 6, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, connectedPage ? 0 : 6, LV_STATE_DEFAULT);
+  const bool mainPage = menu.page == m_MainMenu.page;
+  const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
+  lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
-  // (Connect, Scan, Delete, Settings, Power off) fits without scrolling. The
-  // Connected page carries the most rows now that it also holds the Cameras
-  // entry, so it drops to zero padding to keep the extra row on-panel, matching
-  // the large narrow panels above.
+  // (Connect, Scan, Delete, IR, Settings, Level, Power off) fits without
+  // scrolling. It has no icons, so a row is one text line plus the padding
+  // and the text size grows it. This board defaults to Small and clamps Large
+  // to Normal; at padding 1 seven Normal rows overflow by 5 px, at zero
+  // padding they fit. The home page therefore joins the Connected page,
+  // which carries the most rows now that it also holds the Cameras entry, at
+  // zero padding. Other pages keep 1, matching the large narrow panels
+  // above. home-seven-rows-large.txt guards this.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
-  lv_obj_set_style_pad_top(cont, connectedPage ? 0 : 1, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, connectedPage ? 0 : 1, LV_STATE_DEFAULT);
+  const bool mainPage = menu.page == m_MainMenu.page;
+  const int32_t pad = (connectedPage || mainPage) ? 0 : 1;
+  lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
 #endif
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -1917,6 +1935,18 @@ void UI::addMainMenu(void) {
   addSettingsMenu();
   addConnectedMenu();
 
+  // The spirit level is a standalone tool, so it also gets a home menu entry
+  // and stays usable with no camera connected. The button loads the same Level
+  // page the Connected entry uses, so this must run after addConnectedMenu()
+  // has built that page. Boards without a usable IMU hide the entry through
+  // the shared showIMUWidgets() gate below.
+  menu_t &menuLevel = m_Menu.at(m_LevelStr);
+  m_LevelMainButton = addMenuItem(m_MainMenu, &icon_adjust, m_LevelStr, false, 1, 1);
+  lv_menu_set_load_page_event(menuLevel.main, m_LevelMainButton, menuLevel.page);
+  if (!imuEnabledForUI()) {
+    lv_obj_add_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+  }
+
   menu_t &off = addMenu(m_PowerOffStr, &icon_power_settings_new);
 
   lv_obj_add_event_cb(
@@ -2026,6 +2056,9 @@ void UI::addMainMenu(void) {
         if (page == m_MainMenu.page) {
           size_t saveCount = CameraList::getSaveCount();
           ui->m_MainCount++;
+
+          // keep the home Level entry in step with the IMU runtime gate
+          showIMUWidgets(imuEnabledForUI());
 
           // Hide connect & delete if there are zero saved
           if (saveCount == 0) {
@@ -2672,6 +2705,18 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   // key walks cannot easily target.
   if (action.kind == Sim::scenario_action_kind_t::NAV) {
     const std::string name = action.name;
+    // The main menu Level entry is a second button onto the shared Level page,
+    // so it has no menu_t of its own. Click it directly, honouring the same
+    // hidden gate the generic path applies.
+    if (name == "level_main") {
+      if (m_LevelMainButton != nullptr && !lv_obj_has_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_send_event(m_LevelMainButton, LV_EVENT_CLICKED, this);
+        m_SimActionResult = sim_action_result_t::APPLIED;
+      } else {
+        m_SimActionResult = sim_action_result_t::UNAVAILABLE;
+      }
+      return;
+    }
     static const std::unordered_map<std::string, const char *> buttons = {
         {"connect",           m_ConnectStr         },
         {"scan",              m_ScanStr            },
@@ -3938,6 +3983,15 @@ std::string UI::simQueryState(const char *key) {
       return "no";
     }
     return lv_obj_has_flag(entry->second.button, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
+  }
+
+  // The main menu Level entry sits outside m_Menu, so it gets its own probe.
+  // Scenarios use it to prove the standalone tool entry follows the IMU gate.
+  if (query == "level_main_button_visible") {
+    if (m_LevelMainButton == nullptr) {
+      return "no";
+    }
+    return lv_obj_has_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
   }
 
   // Number of LVGL invalidation events since the last invalidate.reset action.
@@ -5635,6 +5689,13 @@ void UI::showIMUWidgets(bool show) {
       lv_obj_clear_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (m_LevelMainButton != nullptr) {
+    if (show) {
+      lv_obj_clear_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
     }
   }
 }

@@ -166,7 +166,8 @@
       ],
       "capabilities": [
         "fauxny",
-        "gps"
+        "gps",
+        "imu"
       ],
       "expected_exit": 0,
       "certified": true
@@ -667,6 +668,40 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/home-seven-rows-large.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/home-seven-rows.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/imu-back-nav.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -772,6 +807,20 @@
       ],
       "capabilities": [
         "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/level-main-menu.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
       ],
       "expected_exit": 0,
       "certified": true

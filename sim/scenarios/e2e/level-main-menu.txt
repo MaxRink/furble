@@ -1,0 +1,52 @@
+# The spirit level is a tool, not a camera control, so it must be reachable
+# from the home menu with no camera connected. This drives the main menu Level
+# entry end to end: the button is visible on the home page, it opens the same
+# shared Level page the Connected entry uses, the live level timer runs on the
+# injected IMU state, and the header back button returns to the main menu.
+#
+# A FauxNY camera is saved but never connected, so this locks in the structural
+# change: the page gate is the IMU capability, not the connection state.
+seed fauxny true
+seed imu true
+wait 300
+assert ui.page main
+assert ui.connected no
+assert ui.level_main_button_visible yes
+
+action nav level_main
+wait 200
+assert ui.page level
+assert ui.overflow no
+assert ui.connected no
+
+# 'Back' must be offered even though the page was not entered from the
+# Connected page.
+assert ui.back visible
+
+# The real level pipeline runs: a flat sample centres the bubble, a small roll
+# moves it through the live filter and sensitivity curve.
+action imu.accel 0 0 1
+wait 150
+assert ui.level_bubble_x 0
+assert ui.level_bubble_y 0
+action imu.roll 6
+wait 150
+assert ui.level_bubble_x 18
+assert ui.level_bubble_y 0
+
+# Leaving through the shared header back button lands on the main menu, not on
+# the Connected page the Level page previously belonged to.
+back
+wait 150
+assert ui.page main
+
+# A runtime IMU loss must hide the home entry on the next return home: the
+# main menu open branch refreshes the IMU gate, not only the Connected page.
+action imu.disable
+action nav settings
+wait 150
+home
+wait 150
+assert ui.page main
+assert ui.level_main_button_visible no
+exit
