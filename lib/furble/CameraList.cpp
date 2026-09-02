@@ -214,6 +214,27 @@ size_t CameraList::getSaveCount(void) {
   return index.size();
 }
 
+bool CameraList::isSaved(const Furble::Camera *camera) {
+  if (camera == nullptr) {
+    return false;
+  }
+
+  index_entry_t entry;
+  fillSaveEntry(entry, camera);
+
+  m_Prefs.begin(FURBLE_STR, false);
+  auto index = load_index();
+  m_Prefs.end();
+
+  for (const auto &i : index) {
+    if (strcmp(i.name, entry.name) == 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 size_t CameraList::size(void) {
   return m_ConnectList.size();
 }
