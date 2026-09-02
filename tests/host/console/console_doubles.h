@@ -46,6 +46,8 @@ struct GPSState {
   bool enabled = true;
   Furble::GPS::status_t status = {};
   Furble::GPS::cycle_status_t cycle = {};
+  Furble::GPS::receiver_status_t receiver = {};
+  Furble::GPS::source_t source = Furble::GPS::SOURCE_NONE;
   std::vector<Furble::GPS::config_status_t> config;
   bool binaryResult = true;
   bool aidResult = true;

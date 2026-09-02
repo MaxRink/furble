@@ -164,8 +164,13 @@ is alive but not fixing reads differently from one that has gone quiet:
 
 | Row | Reads |
 | :--- | :--- |
-| `uart nmea 3s` | Where the fix came from (`uart`, `comp` for a companion phone, or `none`), and how long ago the receiver last sent a sentence. `nmea n/a` means nothing has arrived yet. |
+| `uart nmea 3s` | Where the fix came from (`uart`, `comp` for a companion phone, or `none`), and how long ago the receiver last sent a sentence. `nmea n/a` means nothing has arrived yet. The age switches to whole minutes past 99 s and stops at `99m+`, so the row keeps its width however long a receiver stays quiet. |
 | `waiting` | The receiver power cycle state: `disabled`, `acquiring`, `measuring`, `burst`, `waiting`, `standby`, `rail_off`, `resync` or `degraded`. A degraded cycle appends its retry count, as `degraded x1`. |
+
+The console prints the whole receiver state, not this two row summary. `gps
+status` adds the fix source, power cycle state, power policy, standby interval,
+configured fix interval, sentence age in milliseconds, and the assisted start
+mode and cache state.
 
 The rows are short on purpose. On the Stick boards the right hand navigation
 indicator floats over the bottom of the page, and a wider row would run

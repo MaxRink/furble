@@ -905,6 +905,18 @@ const char *GPS::sourceName(source_t source) {
   return "unknown";
 }
 
+const char *GPS::sourceShortName(source_t source) {
+  switch (source) {
+    case SOURCE_NONE:
+      return "none";
+    case SOURCE_UART:
+      return "uart";
+    case SOURCE_COMPANION:
+      return "comp";
+  }
+  return "unkn";
+}
+
 const char *GPS::cycleStateName(cycle_state_t state) {
   switch (state) {
     case cycle_state_t::DISABLED:
@@ -932,10 +944,11 @@ const char *GPS::cycleStateName(cycle_state_t state) {
 /**
  * Report the receiver power, rate and assist state.
  *
- * The cycle fields come from the same mutex getCycleStatusSnapshot() takes, so
- * they are a coherent set. The assist fields are read afterwards, under the AID
- * mutex, with the cycle mutex already released. The two locks are never nested,
- * so this adds no lock order edge to the GPS task.
+ * The cycle fields come from the same mutex getCycleStatusSnapshot() takes, and
+ * from one acquisition of it, so they are a coherent set. The assist fields are
+ * read afterwards, under the AID mutex, with the cycle mutex already released.
+ * The two locks are never nested, so this adds no lock order edge to the GPS
+ * task.
  */
 GPS::receiver_status_t GPS::getReceiverStatus(void) const {
   receiver_status_t status = {};
@@ -950,6 +963,10 @@ GPS::receiver_status_t GPS::getReceiverStatus(void) const {
     // unsigned subtraction, so this stays correct across a tick wrap
     status.last_sentence_age_ms =
         status.have_sentence ? (Platform::getInstance().tick() - m_LastSentence) : 0;
+    // read under the same acquisition as the state, a second one could pair a
+    // fresh state with a stale retry count
+    status.degraded = m_CycleState == cycle_state_t::DEGRADED;
+    status.retries = m_Degraded.failures();
   }
 
   status.aid_mode = m_AidMode.load();

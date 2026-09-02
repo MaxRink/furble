@@ -36,6 +36,7 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleGPSFormat.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -148,6 +149,7 @@ lv_obj_t *addGPSDetailLabel(lv_obj_t *page) {
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   return label;
 }
+
 #endif
 
 uint32_t gpsDutyIndex(uint8_t seconds) {
@@ -3745,7 +3747,8 @@ std::string UI::simQueryState(const char *key) {
   // Read the rendered GPS Data page receiver detail rows. Each query returns one
   // whitespace free field taken from the real label text, so a missing row or a
   // format regression fails the assertion rather than passing silently. The rows
-  // are "<source> nmea <age>" and "<cycle state>[ x<retries>]".
+  // are "<source> nmea <age>" and "<cycle state>[ x<retries>]". The source is
+  // the four character GPS::sourceShortName() form, not GPS::sourceName().
   if (query == "gps_source" || query == "gps_link_age" || query == "gps_cycle"
       || query == "gps_retries") {
     // Split one label into its space separated fields. An absent label reports
@@ -3777,21 +3780,20 @@ std::string UI::simQueryState(const char *key) {
       return field(m_GPSData.source, 0);
     }
     if (query == "gps_link_age") {
-      // seconds without the "s" suffix, so a scenario can bound it numerically.
-      // "n/a" passes through, no sentence yet is not a zero age.
-      const std::string rendered = field(m_GPSData.source, 2);
-      if (rendered.size() > 1 && rendered.back() == 's') {
-        return rendered.substr(0, rendered.size() - 1);
-      }
-      return rendered;
+      // the age token exactly as rendered, unit and all: "3s", "17m", the
+      // saturating "99m+", or "n/a" before the first sentence. A scenario
+      // asserts the rendered string, so a unit or clamp regression fails here.
+      // It still parses as a leading integer, so assert_min and assert_max work
+      // within one unit.
+      return field(m_GPSData.source, 2);
     }
     if (query == "gps_cycle") {
       return field(m_GPSData.cycle, 0);
     }
     // the retry count is only rendered while degraded, so a present row without
-    // one reports 0. An absent row still reports "none", so a scenario cannot
-    // read a missing page row as a healthy zero.
-    if (m_GPSData.cycle == nullptr) {
+    // one reports 0. An absent or dead row still reports "none", so a scenario
+    // cannot read a missing page row as a healthy zero.
+    if (m_GPSData.cycle == nullptr || !lv_obj_is_valid(m_GPSData.cycle)) {
       return "none";
     }
     const std::string retries = field(m_GPSData.cycle, 1);
@@ -6043,8 +6045,9 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         // count are on the raw NMEA page, so the space here goes to what is
         // only available here.
         auto &gps = GPS::getInstance();
+        // one snapshot, so the state and its retry count cannot be torn across
+        // two acquisitions of the cycle mutex
         const auto receiver = gps.getReceiverStatus();
-        const auto cycle = gps.getCycleStatusSnapshot();
 
         // Where the fix comes from, and how long ago the receiver last said
         // anything. A quiet receiver shows here even while the last fix still
@@ -6052,20 +6055,11 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         if (m_GPSData.source == nullptr) {
           m_GPSData.source = addGPSDetailLabel(gpsData->page);
         }
-        const char *source = "none";
-        switch (gps.getSource()) {
-          case GPS::SOURCE_UART:
-            source = "uart";
-            break;
-          case GPS::SOURCE_COMPANION:
-            source = "comp";
-            break;
-          case GPS::SOURCE_NONE:
-            break;
-        }
+        const char *const source = GPS::sourceShortName(gps.getSource());
         if (receiver.have_sentence) {
-          setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea %lus", source,
-                                   (unsigned long)(receiver.last_sentence_age_ms / 1000));
+          char age[8];
+          Furble::gpsSentenceAge(age, sizeof(age), receiver.last_sentence_age_ms);
+          setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea %s", source, age);
         } else {
           setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea n/a", source);
         }
@@ -6076,9 +6070,9 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         if (m_GPSData.cycle == nullptr) {
           m_GPSData.cycle = addGPSDetailLabel(gpsData->page);
         }
-        if (cycle.degraded) {
+        if (receiver.degraded) {
           setLabelTextFmtIfChanged(m_GPSData.cycle, "%s x%lu", receiver.cycle_state,
-                                   (unsigned long)cycle.retries);
+                                   (unsigned long)receiver.retries);
         } else {
           setLabelTextIfChanged(m_GPSData.cycle, receiver.cycle_state);
         }

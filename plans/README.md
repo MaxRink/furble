@@ -178,7 +178,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [160-sim-scenario-ownership.md](160-sim-scenario-ownership.md) | Complete simulator scenario ownership manifest and exact CI trigger coverage |
 | [162-console-host-coverage.md](162-console-host-coverage.md) | Developer console command suite in the host harness, plus a CI gate that no firmware source escapes both build lists |
 | [163-coverage-floor.md](163-coverage-floor.md) | Measured host and simulator coverage on all three panels, unioned, published in CI and held by a ratcheting floor |
-| [164-gps-status-detail.md](164-gps-status-detail.md) | Receiver fix source, validity, HDOP, sentence age, power cycle state and rate on the GPS Data page, on a new GPS receiver status accessor |
+| [164-gps-status-detail.md](164-gps-status-detail.md) | Receiver fix source, sentence age and power cycle state on the GPS Data page, the whole receiver status struct in the console, on a new GPS receiver status accessor |
 
 ## Design documents
 

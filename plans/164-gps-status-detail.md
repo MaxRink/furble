@@ -37,6 +37,17 @@ secondary:
 `uart`, `comp` for a companion phone, or `none`. A degraded cycle appends its
 retry count, so the row reads `degraded x1`.
 
+The age is the only unbounded field on the page, and nothing resets the last
+sentence tick while a receiver is quiet. A plain seconds count would cross the
+row budget after about seventeen minutes, which is precisely when an unplugged
+receiver is worth reading, so the field switches to whole minutes past 99 s and
+saturates at `99m+`. Four characters, at any age.
+
+`comp` is the one abbreviation of a source name in furble. It lives in
+`GPS::sourceShortName()` so there is a single place that shortens it, and
+`docs/sim.md` records why `ui.gps_source` and `gps.source` report different
+vocabularies.
+
 ## The row budget, which is the whole design
 
 The interesting constraint on this page is not the one that looks obvious.
@@ -115,17 +126,31 @@ The page needed state that had no accessor. `GPS::getReceiverStatus()` returns a
 `sim/driver.cpp` now calls it instead of keeping its own copy of the same
 switch.
 
-The page shows `cycle_state` and `last_sentence_age_ms`. The rest of the struct
-is receiver state a caller may want, and omitting it would only mean another
-accessor later; the row budget above is why none of it is rendered.
+The page shows `cycle_state`, `last_sentence_age_ms` and the degraded pair. The
+row budget above is why the rest is not on the page, so the console prints all
+of it instead: `gps status` gained `source`, `cycle`, `policy`, `duty`, `rate`,
+`sentence_age`, `assist` and `assist_cache`. Every field of the struct now has a
+reader, and the bench check for this page is scriptable over USB rather than a
+squint at a 135x240 panel.
+
+`degraded` and `retries` duplicate `cycle_status_t` inside `receiver_status_t`
+on purpose. A caller that wants the state and the retry count together would
+otherwise take `m_CycleMutex` twice and could render a torn composite: `burst
+x3`, or a degraded row with no count. Both the page and the console take one
+snapshot.
 
 ### Locking
 
-`getReceiverStatus()` takes `m_CycleMutex` for the cycle fields, exactly as
-`getCycleStatusSnapshot()` does, releases it, and only then takes `m_AidMutex`
-for the assist fields. The two locks are never nested, so this adds no lock
-order edge for the GPS task to trip over. `m_AidMode` is atomic and needs
-neither.
+`getReceiverStatus()` takes `m_CycleMutex` once for every cycle field, exactly
+as `getCycleStatusSnapshot()` does, releases it, and only then takes
+`m_AidMutex` for the assist fields. The two locks are never nested, so this adds
+no lock order edge for the GPS task to trip over. `m_AidMode` is atomic and
+needs neither.
+
+One acquisition matters here. The first draft called `getReceiverStatus()` and
+`getCycleStatusSnapshot()` per tick, which is two acquisitions with the GPS task
+free to run between them, so the rendered row could pair a fresh state with a
+stale retry count.
 
 ### No NVS on the periodic path
 
@@ -158,7 +183,8 @@ The scenarios read the labels through four new simulator queries, which parse
 the rendered label text rather than recomputing the value. An absent row reads
 back as `none`, so a dropped label fails the assertion instead of passing
 silently. Mutation check: removing the source row update fails
-`gps-receiver-detail` with `expected 'uart' got 'none'`.
+`gps-receiver-detail` with `expected 'none' got 'Text'`, LVGL's default label
+text, because the row is created but never written.
 
 ### The gap these tests do not close
 
@@ -172,14 +198,26 @@ A non-touch leg for the overflow sweep would close this for every page, not just
 this one. It belongs in its own change: it will find pre-existing overflow, the
 80x160 GPS Data page among it.
 
-No host unit test was added. The GPS layer has no host harness for the real
-`FurbleGPS.cpp`: `tests/host/gps_power_cycle_test.cpp` tests the pure
-`GpsDegradedRetry` policy header, and the console suite links a stub
-`tests/host/console/FurbleGPS.h`. Standing up a host build of the real GPS layer
-means shimming the UART driver, LVGL, `Camera.h` and TinyGPSPlus, which is its
-own piece of work. The simulator compiles and runs the real `FurbleGPS.cpp`, so
-`getReceiverStatus()` and `cycleStateName()` are exercised as production code
-there, across the `waiting`, `standby` and `degraded` states.
+The console suite (`tests/host/console_commands_test.cpp`) asserts every new
+`gps status` line, including that a receiver which has never spoken reports
+`sentence_age: none` rather than a zero age.
+
+`tests/host/gps_format_test.cpp` unit tests the sentence age formatter, which
+moved to `include/FurbleGPSFormat.h` as a pure header for exactly that reason,
+following `FurbleGPSPowerCycle.h`. It pins both cutoffs, truncation rather than
+rounding, saturation, short buffer truncation, and the property the page depends
+on: the field is never wider than four characters at any age, swept second by
+second over the first three hours and coarsely to `UINT32_MAX`. Mutations
+checked: dropping the saturating branch fails three assertions, raising the
+seconds cutoff fails seven.
+
+`getReceiverStatus()` and `cycleStateName()` themselves have no host test. The
+GPS layer has no host harness for the real `FurbleGPS.cpp`: the console suite
+links a stub `tests/host/console/FurbleGPS.h`, and standing up a host build of
+the real layer means shimming the UART driver, LVGL, `Camera.h` and TinyGPSPlus,
+which is its own piece of work. The simulator compiles and runs the real
+`FurbleGPS.cpp`, so both are exercised as production code there across the
+`acquiring`, `waiting`, `standby` and `degraded` states.
 
 ## Implementation state
 
@@ -191,6 +229,10 @@ Implemented and merged as one pull request.
 - `include/FurbleUI.h`, `src/FurbleUI.cpp`: `gps_data_t` label handles, the
   `addGPSDetailLabel()` row helper, the two rows on the page timer, the merged
   date and time row on 135x240, and the four simulator queries.
+- `include/FurbleGPSFormat.h`, `tests/host/gps_format_test.cpp`: the sentence
+  age formatter and its unit test.
+- `src/FurbleConsole.cpp`, `tests/host/console*`: the receiver state lines in
+  `gps status`, and their assertions.
 - `sim/driver.cpp`: `gps.source` reuses `GPS::sourceName()`.
 - `sim/scenarios/`: two scenarios and their manifest entries.
 - `docs/sim.md`, `docs/ui-walkthrough.md`, `docs/settings-and-controls.md`.
@@ -205,7 +247,8 @@ Implemented and merged as one pull request.
 - The power policy, duty seconds and assisted start fields are in the API only,
   for the same reason.
 - The scoping note asked for a host unit test if the GPS layer has host tests.
-  It does not, for the reason given above.
+  It does not, so the one pure piece of this change, the age formatter, was made
+  a header and unit tested there.
 - The date and time merge on 135x240 is not in the scoping note. It is what
   makes the vertical room for the two rows.
 

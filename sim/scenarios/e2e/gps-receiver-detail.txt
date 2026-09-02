@@ -1,29 +1,44 @@
 # The GPS Data page must report the receiver, not only the fix it produced.
-# The fake receiver streams a healthy 1 Hz UART fix (see sim/fake_uart.cpp), so
-# the two detail rows render as "uart nmea <age>" and "<cycle state>". A missing
+# Two detail rows render "<source> nmea <age>" and "<cycle state>". A missing
 # row reads back as "none", so a dropped label fails here rather than passing
 # silently.
+#
+# The receiver starts paused, so the page is first asserted in the state a user
+# meets on a cold start or with the unit unplugged: no source, and no sentence
+# age at all. "n/a" is not a zero age, and the query passes it through
+# unchanged, so a regression that rendered "0s" for a receiver that has never
+# spoken fails here. Then the fake receiver is switched on and streams its
+# healthy 1 Hz UART fix (see sim/fake_uart.cpp).
 #
 # The page carries no focusable control, so LVGL group navigation cannot scroll
 # it. The no-overflow assertion is therefore a reachability test: every detail
 # row has to be on screen, not below the fold.
 seed gps true
 seed gps_rate 1
-seed gps_uart_mode ack
+seed gps_uart_mode pause
 wait 300
 assert ui.page main
 action nav gps_data
 wait 300
 assert ui.page gps_data
+wait 2000
+# Nothing has arrived yet.
+assert ui.gps_source none
+assert ui.gps_link_age n/a
+assert ui.gps_retries 0
+assert ui.overflow no
+
+# Now let the receiver talk.
+uart-mode ack
 # Let the GPS task consume the NMEA burst and the 1 Hz page timer refresh the
 # labels from it.
-wait 2000
+wait 3000
 assert ui.gps_source uart
 assert ui.gps_retries 0
 # The GPS task runs independently from the UI task, so give the healthy cycle
 # and the sentence age a bounded handoff rather than sampling once.
 assert-eventually 5000 ui.gps_cycle waiting
-assert-eventually 5000 ui.gps_link_age 0
+assert-eventually 5000 ui.gps_link_age 0s
 # The fix rows the detail rows were appended below must still render.
 assert ui.gps_speed 42.0
 assert ui.gps_satellites 8

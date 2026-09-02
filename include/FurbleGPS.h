@@ -149,11 +149,17 @@ class GPS {
    * Receiver state the fix snapshot does not carry.
    *
    * status_t reports the navigation solution. This reports the receiver around
-   * it: which power cycle state it is in, how it is being duty cycled, the fix
+   * it: which power cycle state it is in, whether that state is the degraded
+   * retry and how many retries deep, how it is being duty cycled, the fix
    * interval it was configured for, how long ago it last spoke, and whether
-   * assisted start data is loaded. The GPS Data page and the console read this,
-   * so a receiver that is alive but not fixing can be told apart from one that
-   * has gone quiet.
+   * assisted start data is loaded. The GPS Data page and the console `gps
+   * status` command read this, so a receiver that is alive but not fixing can
+   * be told apart from one that has gone quiet.
+   *
+   * The degraded fields duplicate cycle_status_t on purpose. A caller that
+   * needs the cycle state and the retry count together must not take
+   * m_CycleMutex twice, or it can render a torn composite: a fresh state beside
+   * a stale retry count.
    */
   struct receiver_status_t {
     /** Power cycle state name, from cycleStateName(). Never null. */
@@ -172,6 +178,10 @@ class GPS {
     uint8_t aid_mode;
     /** Is a usable position and time cache loaded for assisted start? */
     bool aid_cache_valid;
+    /** Is the cycle in the degraded retry state? */
+    bool degraded;
+    /** Consecutive degraded retry attempts since the last healthy recovery. */
+    uint32_t retries;
   };
 
   cycle_status_t getCycleStatusSnapshot(void) const {
@@ -235,6 +245,15 @@ class GPS {
 
   /** Get the printable name of a fix source. */
   static const char *sourceName(source_t source);
+
+  /**
+   * Get the four character name of a fix source.
+   *
+   * The GPS Data page rows are budgeted to fourteen characters, so "companion"
+   * does not fit. This is the only abbreviation of a source name in furble;
+   * everything else prints sourceName().
+   */
+  static const char *sourceShortName(source_t source);
 
   /** Get a coherent copy of the receiver power, rate and assist state. */
   receiver_status_t getReceiverStatus(void) const;

@@ -461,6 +461,11 @@ void testGPS(void) {
   auto &gps = ConsoleHost::gps();
   gps.status = {true, 9, 51.5074, -0.1278, 35.5, 250, 2026, 9, 2, 13, 45, 7, 4096, 128};
   gps.cycle = {true, 3};
+  // Receiver state, the half of the picture the fix snapshot does not carry.
+  // The degraded flag and retry count live here too, in one snapshot, so the
+  // console cannot report a fresh cycle state beside a stale retry count.
+  gps.source = Furble::GPS::SOURCE_UART;
+  gps.receiver = {"degraded", Furble::GPS::POWER_STANDBY, 10, 1000, 42000, true, 1, true, true, 3};
 
   const Result status = runDirect("gps");
   check(status.rc == 0, "bare gps prints the status");
@@ -473,7 +478,26 @@ void testGPS(void) {
   checkContains(status.out, "time: 13:45:07", "gps status reports the time");
   checkContains(status.out, "degraded: true", "gps status reports the power cycle health");
   checkContains(status.out, "retries: 3", "gps status reports the retry count");
+  checkContains(status.out, "source: uart", "gps status reports the fix source");
+  checkContains(status.out, "cycle: degraded", "gps status reports the power cycle state");
+  checkContains(status.out, "policy: standby", "gps status reports the receiver power policy");
+  checkContains(status.out, "duty: 10", "gps status reports the standby interval");
+  checkContains(status.out, "rate: 1000", "gps status reports the configured fix interval");
+  checkContains(status.out, "sentence_age: 42000", "gps status reports the sentence age");
+  checkContains(status.out, "assist: 1", "gps status reports the assisted start mode");
+  checkContains(status.out, "assist_cache: true", "gps status reports the assist cache state");
   checkContains(status.out, "raw: false", "gps status reports the NMEA mirror");
+
+  // A receiver that has said nothing has no age, and "none" must not read as a
+  // zero second age.
+  gps.receiver.have_sentence = false;
+  gps.source = Furble::GPS::SOURCE_NONE;
+  const Result quiet = runDirect("gps");
+  check(quiet.rc == 0, "gps status runs with a silent receiver");
+  checkContains(quiet.out, "sentence_age: none", "a silent receiver reports no sentence age");
+  checkContains(quiet.out, "source: none", "a silent receiver reports no fix source");
+  gps.receiver.have_sentence = true;
+  gps.source = Furble::GPS::SOURCE_UART;
 
   // The raw mirror, and the Console::gpsRaw() entry point the receiver calls.
   checkContains(runDirect("gps raw on").out, "raw: true", "gps raw on reports its state");

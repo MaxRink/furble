@@ -5,6 +5,11 @@
 #
 # The page must still fit the panel in this state: the degraded row is the
 # longest one the page renders, and the page cannot be scrolled.
+#
+# The sentence age cannot be driven past 99 s here, because the degraded retry
+# re-sends its configuration and any received byte refreshes the tick. The
+# minute and saturation clamps that keep the row inside its character budget are
+# unit tested instead, in tests/host/gps_format_test.cpp.
 seed gps true
 seed gps_rate 1
 seed gps_power 1
@@ -29,7 +34,10 @@ assert-eventually 5000 ui.gps_cycle degraded
 assert-eventually 5000 ui.gps_retries 1
 # The receiver has gone quiet, so the rendered sentence age must have advanced
 # past zero. The exact value depends on how far the virtual clock ran, so bound
-# it instead of pinning it.
+# it instead of pinning it. The age token parses as a leading integer, so this
+# reads the seconds count.
 assert_min ui.gps_link_age 1
+# The source row is still the abbreviated form, not GPS::sourceName().
+assert ui.gps_source uart
 assert ui.overflow no
 exit
