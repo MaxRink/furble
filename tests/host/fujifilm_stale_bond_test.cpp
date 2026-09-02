@@ -26,6 +26,7 @@
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
 #include "SecureTimeoutPeer.h"
+#include "advertisement_scan_stub.h"
 
 const char *LOG_TAG = "furble-stale-bond-test";
 
@@ -43,6 +44,21 @@ void check(bool condition, const char *message) {
 void init() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
+}
+
+// Wait until the connect thread has the link up, which is the moment before it
+// enters the blocking security wait. A fixed sleep would race a loaded runner:
+// cancel too early and the wait has not been entered, so the test then sits out
+// the whole block and fails for the wrong reason.
+bool waitForLink(const Furble::Host::FujifilmVirtualCamera &peer, uint32_t timeout_ms) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (peer.connected()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return peer.connected();
 }
 
 Furble::Host::FujifilmVirtualCamera::Config secureConfig() {
@@ -197,8 +213,9 @@ void testCancelDuringSecurityUnblocksPromptly() {
   });
 
   // Let the attempt reach the security wait, then cancel the way an
-  // interactive disconnect does.
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  // interactive disconnect does. The link coming up is the sync point; a fixed
+  // sleep can land before the wait is entered on a loaded runner.
+  check(waitForLink(inner, 5000), "the attempt reaches the security wait");
   const auto cancelled = std::chrono::steady_clock::now();
   camera.cancelConnect();
   // Control::disconnect() sets the token under its mutex and wakes the blocked
@@ -217,6 +234,144 @@ void testCancelDuringSecurityUnblocksPromptly() {
   check(!camera.isConnected(), "the cancelled attempt leaves the camera disconnected");
 }
 
+// Reset semantics 1 of 3: a completed handshake ends the run.
+//
+// SECURE_FAILURE_LIMIT is two because one failed handshake is indistinguishable
+// from a lost pairing PDU. That argument only holds if the two failures are
+// consecutive. Without the reset on success, a failure, a healthy session and a
+// later unrelated failure add up to the limit, and a good bond is deleted on
+// what is really a single failure.
+void testSuccessBetweenFailuresIsNotARun() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer(secureConfig());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  NimBLEDevice::setBonded(true);
+  peer.setSecureTimeouts(1);
+  // Once the camera has paired, every further attempt scans for it first, so
+  // the stub has to answer the way the advertising camera does on the bench.
+  Furble::Host::setScanAdvertisement(&advertisement);
+
+  Furble::FujifilmSecure camera(&advertisement);
+
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first transient timeout fails its attempt");
+  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the camera then connects normally");
+  camera.disconnect();
+
+  // Much later, an unrelated transient. It is the first failure of a new run,
+  // not the second of the old one.
+  peer.setSecureTimeouts(1);
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "a later transient timeout fails its attempt");
+  check(NimBLEDevice::deleteBondCount() == 0,
+        "a success between two failures is not a run, so the bond survives");
+  check(NimBLEDevice::isBonded(camera.getAddress()), "the healthy bond is still there");
+  check(!camera.needsRepair(), "and no re-pair prompt is raised");
+  Furble::Host::setScanAdvertisement(nullptr);
+}
+
+// Reset semantics 2 of 3: a user cancel is not a failed handshake.
+//
+// Bench steps 4 and 5 are exactly this: the user cancels during a security wait
+// and then cancels again. The handshake did fail, but because the user stopped
+// it, not because the keys are dead. Counting those would delete a healthy bond
+// on the second cancel and raise "Pairing lost" about a camera that never lost
+// anything.
+void testCancelledSecurityWaitIsNotAFailure() {
+  init();
+  Furble::Host::FujifilmVirtualCamera inner(secureConfig());
+  Furble::Host::SecureTimeoutPeer peer(inner, 520, 10000);
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = inner.advertisement();
+
+  // Bonded, so the recovery is armed: this is the state in which a miscounted
+  // cancel costs the user a re-pair.
+  NimBLEDevice::setBonded(true);
+
+  Furble::FujifilmSecure camera(&advertisement);
+
+  for (int attempt = 0; attempt < 2; attempt++) {
+    camera.clearConnectCancel();
+    std::thread connector([&]() { (void)camera.connect(ESP_PWR_LVL_P3, 1000); });
+    check(waitForLink(inner, 5000), "the attempt reaches the security wait");
+    camera.cancelConnect();
+    camera.abortBlockingConnect();
+    connector.join();
+  }
+
+  check(NimBLEDevice::deleteBondCount() == 0, "two user cancels never delete a healthy bond");
+  check(NimBLEDevice::isBonded(camera.getAddress()), "the bond survives both cancels");
+  check(!camera.needsRepair(), "a cancelled wait raises no re-pair prompt");
+}
+
+// Reset semantics 3 of 3: an unbonded attempt clears the run.
+//
+// A fresh pairing replaces the keys the run was measured against, so anything
+// counted before it is meaningless. Without the reset a leftover count of one
+// survives the re-pair and the very next single failure deletes the brand new
+// bond.
+void testUnbondedAttemptClearsTheRun() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer(secureConfig());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  NimBLEDevice::setBonded(true);
+  peer.setSecureTimeouts(Furble::Host::FujifilmVirtualCamera::kSecureTimeoutAlways);
+
+  Furble::FujifilmSecure camera(&advertisement);
+
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the bonded attempt fails and opens a run");
+  check(NimBLEDevice::deleteBondCount() == 0, "one failure keeps the bond");
+
+  // The user forgot the camera and started over, so the next attempt has no
+  // bond at all.
+  NimBLEDevice::setBonded(false);
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the unbonded attempt fails too");
+
+  // The re-pair took, and the first failure against the new keys arrives.
+  NimBLEDevice::setBonded(true);
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first failure after the re-pair fails");
+  check(NimBLEDevice::deleteBondCount() == 0,
+        "the unbonded attempt cleared the run, so the fresh bond survives one failure");
+  check(NimBLEDevice::isBonded(camera.getAddress()), "the fresh bond is still there");
+  check(!camera.needsRepair(), "and no re-pair prompt is raised");
+}
+
+// Reset semantics 4 of 4: the run does not span connect cycles.
+//
+// resetConnectionState() runs on every fresh user connect request, from
+// Control::addActive(), and already clears the re-pair flag. The failure run
+// has to go with it. Otherwise "two consecutive failures" spans days: one
+// transient timeout today, the user gives up, one transient timeout next week,
+// and a healthy bond is deleted behind a "Pairing lost" box that is wrong until
+// the moment it deletes the bond. Every piece of hardware evidence for the
+// recovery is back to back failures inside one reconnect cycle.
+void testResetConnectionStateClearsTheRun() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer(secureConfig());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  NimBLEDevice::setBonded(true);
+  peer.setSecureTimeouts(Furble::Host::FujifilmVirtualCamera::kSecureTimeoutAlways);
+
+  Furble::FujifilmSecure camera(&advertisement);
+
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first attempt fails and opens a run");
+  check(NimBLEDevice::deleteBondCount() == 0, "one failure keeps the bond");
+
+  // The user gave up and came back later. This is what a fresh connect request
+  // does to the camera before the attempt starts.
+  camera.resetConnectionState();
+
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first failure of the new cycle fails too");
+  check(NimBLEDevice::deleteBondCount() == 0,
+        "the run does not span connect cycles, so the bond survives");
+  check(NimBLEDevice::isBonded(camera.getAddress()), "the healthy bond is still there");
+  check(!camera.needsRepair(), "and no re-pair prompt is raised");
+}
+
 }  // namespace
 
 int main() {
@@ -226,6 +381,10 @@ int main() {
   testInLinkFreshPairProceedsToRegistration();
   testUnbondedRefusalDeletesNothing();
   testCancelDuringSecurityUnblocksPromptly();
+  testSuccessBetweenFailuresIsNotARun();
+  testCancelledSecurityWaitIsNotAFailure();
+  testUnbondedAttemptClearsTheRun();
+  testResetConnectionStateClearsTheRun();
   NimBLEDevice::resetMock();
   if (failures != 0) {
     std::cerr << failures << " stale-bond checks failed\n";

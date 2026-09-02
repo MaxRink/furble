@@ -287,6 +287,7 @@ seed a bounded value.
 | `fuji-secure` | one healthy Fujifilm Secure camera, which advertises a serial |
 | `fuji-pair` | two healthy Fujifilm Basic cameras |
 | `fuji-ricoh-flappy` | one healthy Fujifilm plus a Ricoh GR IV in BLE standby that fails one security handshake the way a supervision timeout does (rc=520) before letting a connect through |
+| `fuji-secure-stale` | one Fujifilm Secure body that the central is still bonded to and that no longer holds the pairing, so every security handshake times out and takes the link with it (the 2026-09-02 X100VI bench signature) |
 
 `ble_saved true` persists the topology's cameras through the production
 `CameraList::match` and `CameraList::save`, so the scenario boots with saved

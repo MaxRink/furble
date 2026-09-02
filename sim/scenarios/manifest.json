@@ -151,7 +151,9 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [
         "fauxny"
@@ -1610,17 +1612,42 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/stale-bond-pairing-lost.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/connect-error-notouch-dismiss.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/scan-already-saved.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3"
       ],
-      "capabilities": [
-        "fauxny"
-      ],
+      "capabilities": [],
       "expected_exit": 0,
-      "certified": true
+      "certified": false,
+      "reason": "The refusal is reached only by activating a scan result row, and no DSL verb moves the focus onto a radio-materialized row deterministically: key down drives GPIO 38 for 80 virtual ms and a page busy draining scan results misses the press about half the time, while btn a and btn b do not navigate there at all. The identity rule is covered by the camera-list-protocol host test and the error dialog by stale-bond-pairing-lost.txt and connect-fail-progress.txt. Re-certify once the DSL can dispatch a scan row directly; see the header of the scenario."
     },
     {
       "path": "sim/scenarios/e2e/scan-distinct-rows-heartbeat.txt",

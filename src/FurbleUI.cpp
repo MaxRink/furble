@@ -4909,6 +4909,16 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       // other failure gets the generic text. Either way the box has to be
       // dismissed: dropping silently back to the menu left the user unable to
       // tell an out-of-range camera from one that had lost its pairing.
+      //
+      // doDisconnect() ends the whole session, including any camera that
+      // connected earlier in the same multi-connect cycle. That is deliberate.
+      // Control stops the cycle on the first camera that cannot be recovered
+      // and leaves the healthy link up, but this state is terminal, so the
+      // alternative is a half connected session sitting behind a modal with no
+      // way to resume the cycle. Ending it in one place and telling the user
+      // which camera lost its pairing is the simpler contract. The reason names
+      // only the camera that actually failed; see the multi-connect scenario in
+      // tests/host/fujifilm_repair_needed_test.cpp.
       const std::string reason = control.getConnectFailReason();
       const std::string name = control.getDisconnectedName();
       ESP_LOGE("ui", "Connection failed. %s", reason.c_str());

@@ -65,8 +65,15 @@ bool sameSavedIdentity(uint32_t type_a,
   if (address_a == address_b) {
     return true;
   }
-  // The address moved, so fall back to the advertised name. An empty name
-  // carries no identity and must never match.
+  if (type_a != ROTATING_ADDRESS_TYPE) {
+    // Every other vendor keeps a stable address, so a different address is a
+    // different body. Falling back to the name here would read a second camera
+    // of the same model as already saved and leave the user no way to add it.
+    return false;
+  }
+  // A Fujifilm Secure body re-pairs under a new resolvable private address, so
+  // nothing but the advertised name survives. An empty name carries no identity
+  // and must never match.
   return !name_a.empty() && (name_a == name_b);
 }
 

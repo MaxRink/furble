@@ -68,10 +68,22 @@ failure the recovery runs:
 3. otherwise call `Camera::setNeedsRepair()`, which tells Control to stop the
    reconnect cycle and prompt the user.
 
-The counter resets on a completed handshake and on any attempt that starts
-unbonded, so it always measures a run against the same keys. Attempts that
-never got the link up never reach the securing step at all, so a camera that is
-simply out of range or asleep contributes nothing to the run.
+The counter resets on a completed handshake, on any attempt that starts
+unbonded, and in `Camera::resetConnectionState()`, so it always measures a run
+against the same keys inside one connect cycle. Attempts that never got the
+link up never reach the securing step at all, so a camera that is simply out of
+range or asleep contributes nothing to the run.
+
+The counter lives on `Camera` rather than on `FujifilmSecure` for that last
+reset. `resetConnectionState()` already clears `m_NeedsRepair` on a fresh user
+connect request, and the run has to go with it. Otherwise "two consecutive
+failures" spans days: one transient timeout on Monday, the user gives up, one
+transient timeout on Friday, and a healthy bond is deleted behind a "Pairing
+lost" box that is factually wrong. All the hardware evidence for the recovery
+is back to back failures inside a single reconnect cycle (bench attempts 5, 6
+and 7), which is exactly the window the counter now measures. `Camera` exposes
+it as `noteSecureFailure()` and `clearSecureFailures()`; the limit stays vendor
+policy in `FujifilmSecure`.
 
 `m_Connected` no longer gates the recovery; it only guards the `m_Client`
 dereference for the in-link retry (the #62 lifecycle rule: a security failure
@@ -112,6 +124,19 @@ Other vendors are unaffected. The recovery lives entirely in
 `FujifilmSecure::_connect()`, and Ricoh keeps its own, separate bond clear,
 which is scoped to `PairType::NEW` (a live-scan pairing) and never fires on a
 saved reconnect.
+
+Multi-connect: one stale camera ends the whole session, deliberately.
+`connectAll()` breaks out of the camera loop on the first failure and returns
+`STATE_CONNECT_FAILED`, and the UI handler for that state calls
+`doDisconnect()` before it raises the box, so a camera that connected earlier
+in the same cycle loses its live session too. Control itself never touches the
+healthy link: it leaves the session up and reports the outcome, and the reason
+names only the camera that actually lost its pairing. Ending the session is the
+UI decision, taken once on a state that is terminal anyway. The alternative is a
+half connected session sitting behind a modal with no way to resume the cycle,
+which is a worse contract than one clear stop with the offending camera named.
+Pinned by the multi-connect scenario in `fujifilm_repair_needed_test.cpp` and by
+the comment on the `STATE_CONNECT_FAILED` arm.
 
 ### 1c. Cancel during the security handshake (lib/furble/Camera.cpp)
 
@@ -169,19 +194,33 @@ The result was two entries for one camera, with the saved reconnect picking
 whichever the index happened to hold.
 
 `CameraListProtocol::sameSavedIdentity()` is the identity rule: same vendor
-type, plus either the same address or the same advertised name. An empty name
-never matches, so an unnamed advertisement can still be paired.
-`CameraList::isSaved()` applies it over the saved records, rebuilt into a local
-vector rather than through `load()` so the live scan list survives the check.
-`UI::beginPairing()` is the single entry point for "the user asked to pair this
-scan result", used by the Scan page row and, once PR #265 lands, by the console
-`pair <scan-index>` verb, so the refusal is written once and both paths get it.
-The Connect page keeps the old direct path: everything on it is saved by
-definition.
+type, plus the same address, and for `Camera::Type::FUJIFILM_SECURE` only, the
+same advertised name as a fallback. An empty name never matches, so an unnamed
+advertisement can still be paired. `CameraList::isSaved()` applies it over the
+saved records, rebuilt into a local vector rather than through `load()` so the
+live scan list survives the check. `UI::beginPairing()` is the single entry
+point for "the user asked to pair this scan result", used by the Scan page row
+and, once PR #265 lands, by the console `pair <scan-index>` verb, so the refusal
+is written once and both paths get it. The Connect page keeps the old direct
+path: everything on it is saved by definition.
 
-Two identical bodies advertising the same name do collide. Refusing is the safe
-side of that trade, since the user can delete the saved entry and pair again,
-whereas a silent duplicate quietly corrupts the list.
+The name fallback is scoped to that one vendor on purpose. The rotating
+resolvable private address is a Fujifilm Secure property; every other supported
+camera keeps a stable address, so for them the address alone is a complete
+identity and the name buys nothing. Applying it to them refuses a user who owns
+two bodies of one model: on master the advertised name is the bare model, so a
+second X-T5, a second GR IV or a second Sony body reads as already saved, with
+no override and no way to add it. Multi-connect with two identical bodies, which
+the saved list supports, would become unreachable. The protocol module carries
+no `Camera` dependency, so the type code lives there as
+`ROTATING_ADDRESS_TYPE` and `CameraList.cpp` carries the `static_assert` that
+pins it to `Camera::Type::FUJIFILM_SECURE`.
+
+Two Fujifilm Secure bodies advertising the same name still collide. Refusing is
+the safe side of that trade, since the user can delete the saved entry and pair
+again, whereas a silent duplicate quietly corrupts the list. PR #266 puts the
+body serial in the advertised name, which makes the fallback discriminate
+between bodies and closes the collision. #266 merges before this PR.
 
 ### 2. Public registration timeout define (lib/furble/Fujifilm.h)
 
@@ -230,6 +269,19 @@ overrides unchanged.
   new saved-bond scenario where a PairType::SAVED GR IV fails two consecutive
   handshakes (the run length that trips the Fujifilm recovery) and keeps its
   bond, is not flagged, and keeps retrying rather than stopping.
+- tests/host/fujifilm_stale_bond_test.cpp also pins the three reset semantics
+  the SECURE_FAILURE_LIMIT argument depends on, each verified by mutation:
+  a completed handshake ends the run (fail, connect normally, fail again, and
+  the bond survives); a user cancel during the security wait is not a failed
+  handshake (cancel twice on a bonded camera and the bond survives with no
+  prompt); and an unbonded attempt clears the run (so a leftover count cannot
+  delete a freshly made bond on its first failure). The first of these needs a
+  real reconnect after a real session, so `advertisement_scan_stub.cpp` gained
+  `Furble::Host::setScanAdvertisement()`, which answers the saved-reconnect
+  scan; the default nullptr keeps every other user of the stub silent. A fourth
+  scenario pins the cycle bound: one failure, then `resetConnectionState()` as a
+  fresh user connect request does, then another failure must still keep the
+  bond.
 - tests/host/fujifilm_registration_cancel_test.cpp
   (fujifilm-registration-cancel): unchanged. Camera::cancelConnect() (the PR
   #242 token) lands mid registration wait for Basic and Secure; the wait aborts
@@ -242,11 +294,53 @@ overrides unchanged.
   already-saved identity rule. Same address and type matches; a moved address
   still matches on the advertised name (the Fujifilm Secure re-pair case); a
   different name at a different address does not; a different vendor mode does
-  not; an empty name never matches in either direction.
-- sim/scenarios/e2e/scan-already-saved.txt (certified, m5stick-s3): seeds a
-  saved camera, opens the Scan page, taps the row for the same camera, and
-  asserts `ui.connect_error already_saved`, one live modal, `control.state
-  idle` and no targets. New `ui.connect_error` query, documented in docs/sim.md.
+  not; an empty name never matches in either direction. Plus the vendor gate: a
+  second GR IV, a second Fujifilm Basic X-T5 and a second Sony body of the same
+  model at their own addresses are all still pairable, while two Fujifilm Secure
+  records with one name at two addresses stay one camera.
+- tests/host/fujifilm_repair_needed_test.cpp also covers the multi-connect
+  session: a healthy Fujifilm Basic body connects first, the stale Secure body
+  then fails, and the cycle stops with a reason that names the stale camera and
+  never the healthy one, exactly one bond is deleted, and Control leaves the
+  healthy link up so the whole-session teardown is visibly the UI decision.
+- sim/scenarios/e2e/scan-already-saved.txt is present but NOT certified, with
+  the reason in the manifest and in the scenario header. The refusal is reached
+  only by activating a scan result row. Before PR #261 that row came from the
+  FauxNY setting and was created inside `startScan()`, so it held the focus when
+  the page loaded and a bare `action select` activated it deterministically.
+  With the production `CameraList` the FauxNY row and the seeded saved camera
+  are two different cameras, so the refusal never fires and the row has to come
+  from the virtual radio instead, which materializes it after the page has
+  already focused its back button. Moving the focus onto it cannot be made
+  deterministic with today's DSL: `key down` drives GPIO 38 for 80 virtual ms
+  and the UI samples the button on its own cadence, so on a page busy draining
+  scan results the press is missed about half the time (measured 3 of 6, 4 of 8
+  and 5 of 8 across variants; repeating the press makes it worse because a press
+  that does land walks the focus back off the row), and `btn a` and `btn b` do
+  not navigate on that page in either layout. The identity rule itself keeps its
+  host test, and the error dialog keeps two certified scenarios; what is lost is
+  the UI-level proof that the Scan row refuses. Re-certify once the DSL can
+  dispatch a scan row directly, the way `action nav` dispatches a menu button.
+  The new `ui.connect_error` query is documented in docs/sim.md.
+- sim/scenarios/e2e/stale-bond-pairing-lost.txt (certified, all three panels):
+  the bench failure end to end through the production Control, Camera and UI.
+  The new `fuji-secure-stale` topology is a Fujifilm Secure body the central is
+  still bonded to and that no longer holds the pairing, so every handshake times
+  out and takes the link with it. With infinite reconnect on, the scenario
+  asserts the cycle ends in `ui.connect_error pairing_lost` with one live modal
+  and `control.state idle`, then dismisses the box.
+- sim/scenarios/bughunt/connect-fail-progress.txt (certified, all three panels)
+  now also asserts the third call site: a camera that never links raises
+  `ui.connect_error connect_failed`, and the box dismisses to `none`.
+- sim/scenarios/e2e/connect-error-notouch-dismiss.txt (new, certified, all
+  three panels): the same failed connect, with `seed no_touch true` so the sim
+  builds the physical-button layout and the SDL touch device is detached. The
+  box must appear and then clear through the button path alone. This is the
+  scenario-seed form PR #264 established, so CI gates it; a
+  `FURBLE_SIM_NO_TOUCH` environment override is a local convenience and no
+  workflow sets it.
+- All three certified scenarios also run green under the
+  `FURBLE_SIM_NO_TOUCH=1` environment override on every declared panel.
 
 The mock peer gained `setSecureTimeouts()` (a bounded run of handshake timeouts
 that take the link with them, the bench shape) and `setRefuseWhileBonded()` (a
@@ -265,27 +359,64 @@ Mutation evidence:
   fujifilm-repair-needed failure, the cycle never stops.
 - Widening Ricoh's bond clear from `PairType::NEW` to any bonded camera:
   ricoh-control-flap fails the saved-bond scenario, proving that guard is live.
-- Removing the link terminate from `Camera::cancelConnect()`: the cancel test
-  takes 9797 ms instead of well under 1 s and fails the bound. That number is
-  the frozen UI the bench hit, measured.
+- Removing the link terminate from `Camera::abortBlockingConnect()`: the cancel
+  test takes 9797 ms instead of well under 1 s and fails the bound. That number
+  is the frozen UI the bench hit, measured. `cancelConnect()` is token only by
+  design, which is the whole point of the split; the terminate has never been in
+  it.
 - Removing the name fallback from `sameSavedIdentity()`: camera-list-protocol
   fails "a moved address still matches on the advertised name", which is the
   only case that matters for Fujifilm Secure.
+- Removing the `ROTATING_ADDRESS_TYPE` gate from `sameSavedIdentity()`, so the
+  name fallback applies to every vendor again: camera-list-protocol fails all
+  three second-body cases (GR IV, Fujifilm Basic X-T5, Sony), which is the
+  regression that made a second body of any model unpairable.
+- Deleting `clearSecureFailures()` after a successful handshake:
+  fujifilm-stale-bond fails "a success between two failures is not a run, so the
+  bond survives", plus the bond and prompt assertions beside it. This is the
+  mutation that survived the first review.
+- Deleting the `connectCancelled()` guard from the failure branch:
+  fujifilm-stale-bond fails "two user cancels never delete a healthy bond", the
+  bond assertion and the prompt assertion. That is bench steps 4 and 5.
+- Deleting the unbonded reset: fujifilm-stale-bond fails "the unbonded attempt
+  cleared the run, so the fresh bond survives one failure" and the two
+  assertions beside it.
+- Deleting `m_SecureFailures = 0` from `resetConnectionState()`, so the run
+  spans connect cycles again: fujifilm-stale-bond fails "the run does not span
+  connect cycles, so the bond survives" and the two assertions beside it.
+- Disabling the `needsRepair()` read in `Control::connectAll()`:
+  fujifilm-repair-needed fails 8 checks across two scenarios, including the
+  cycle never stopping and the reason never being recorded.
+
+Every mutation above was run from a verified green baseline and reverted with a
+verified green revert check, so no result is an artifact of a stale object.
 - Disabling the `CameraList::isSaved()` check in `UI::beginPairing()`: the
   scan-already-saved scenario exits 1, the connect starts and no box appears.
 
-Verification:
+Verification, on the head rebased onto master ab638874:
 
-- Host suite 95/95 ctests green (94 before, plus fujifilm-repair-needed).
-- Simulator scenario manifest complete, scan-already-saved.txt certified.
+- Host suite 95/95 ctests green.
 - Python suite 133 passed.
-- clang-format 21.1.2 clean, no em-dashes.
-- Simulator builds and end-to-end scenarios green on all three modeled panels
-  (135x240 M5StickS3, 80x160 M5StickC, 320x240 M5Stack Core).
-- m5stick-s3-debug firmware compile succeeds, no sdkconfig drift.
+- Simulator scenario manifest complete (`check_sim_scenarios.py`), portability
+  contract clean.
+- Simulator builds green on all three modeled panels (135x240 M5StickS3, 80x160
+  M5StickC, 320x240 M5Stack Core). Certified end-to-end suites: 84/84 on
+  M5StickS3, 9/9 on M5StickC, 8/8 on M5Stack Core, plus the bughunt suite on
+  each. Under `FURBLE_SIM_NO_TOUCH=1` three e2e scenarios (home-seven-rows,
+  home-seven-rows-large, level-spirit) and four bughunt layout audits
+  (overflow-sweep, page-matrix, text-size-overflow-large and -small) fail. All
+  of them fail identically on master ab638874 with the same assertions, so they
+  are pre-existing layout gaps in the non-touch layout, not a regression here.
+  Every scenario this plan touches passes in both layouts on every panel it is
+  certified for.
 - Coverage floor green: `tools/coverage.py --check` reports "Coverage is at or
-  above every floor". src/FurbleUI.cpp 80.27% against a 79.40 floor,
-  src/FurbleControl.cpp 77.38% against 73.90.
+  above every floor". Grand union 70.77% against a 69.26 floor, src/FurbleUI.cpp
+  80.81% against 79.53, src/FurbleControl.cpp 78.88% against 77.13,
+  lib/furble/Camera.cpp 75.48% against 73.75. Measured locally on clang 14,
+  where CI pins clang 18, so the CI numbers are the comparable ones.
+- clang-format 21.1.5 clean on every changed source, no em-dashes in the diff,
+  no sdkconfig drift, plans/README.md row unchanged.
+- m5stick-s3-debug firmware compile succeeds.
 
 ## Implementation state
 
@@ -318,13 +449,15 @@ The refusal case is not lost. It is now one member of the failure run rather
 than a separate fast path, and the in-link fresh pair still recovers it inside
 a single attempt when the camera is in pairing mode.
 
-Sim follow-up: the simulator still runs the real UI against `FurbleControlSim`,
-a fake Control, so there is no seam to inject a stale-bond fault and assert the
-"Pairing lost" message box end to end. The dismissable error box itself is
-covered by scan-already-saved.txt through the real `UI::showConnectError()`
-path, so only the stale-bond trigger is missing. Once #261 lands the real
-Control in the sim, add an e2e scenario driving the seeded Fuji peer with the
-secure-timeout fault and asserting `ui.connect_error pairing_lost`.
+Sim coverage: closed. The earlier revision of this plan noted that the
+simulator ran the real UI against `FurbleControlSim`, a fake Control, so there
+was no seam to inject a stale-bond fault. PR #261 removed those substitutes, so
+this PR rebases onto the real Control, Camera, CameraList and Scan in the
+simulator and adds the `fuji-secure-stale` topology and
+`stale-bond-pairing-lost.txt`. Two of the three connect-error call sites are
+now asserted end to end, each with its dismissal, on all three panels and in
+both input layouts. The third, the already-saved refusal, is blocked on a DSL
+gap rather than on a product gap; see the scan-already-saved entry above.
 
 Coordination: PR #265 adds the console `pair <scan-index>` verb. It routes
 through the same UI request path, so pointing its handler at
@@ -336,20 +469,40 @@ Hardware verification owed before merge, on the X100VI:
 1. Pair the camera through the furble UI and confirm a normal shutter session.
 2. Delete furble's pairing on the camera only. Leave furble's saved entry and
    local bond alone.
-3. Reconnect from the console. Expect two link-up attempts whose handshake
-   times out, then the "deleting the stale local bond" log line, then the cycle
-   stopping in `connect_failed` with `control.connect_fail_reason` naming the
-   camera and asking for pairing mode, and the "Pairing lost" box on screen.
-   `control.reconnect_attempt` must stop climbing.
-4. Repeat step 3 from the UI rather than the console, and confirm the same
-   "Pairing lost" box appears. Same Control code, but the bench failure was
-   UI-driven.
+3. Reconnect from the console with `connect 0`, then poll `status`. Expect two
+   link-up attempts whose handshake times out ("Connected", "Securing",
+   "secureConnection: failed rc=13" or "rc=520"), then the
+   "Security handshake failed 2 times on a bonded camera; deleting the stale
+   local bond" log line, then "Fresh pair failed; put the camera in pairing mode
+   and reconnect". `status` must then report `control.state: connect_failed`,
+   `control.connect_fail_reason:` naming the camera and asking for pairing mode,
+   and a `control.reconnect_attempt` that has stopped climbing. The
+   "Pairing lost" box must be on screen.
+4. Dismiss the box, then repeat step 3 from the UI rather than the console, and
+   confirm the same "Pairing lost" box appears. Same Control code, but the bench
+   failure was UI-driven.
 5. During one of those security waits, press Cancel. The device must respond
-   immediately instead of freezing for the ~30 s handshake timeout.
-6. Put the camera into pairing mode and connect again. Expect a fresh pairing
-   and a normal registration through to an active shutter target.
+   immediately instead of freezing for the ~30 s handshake timeout. Do it a
+   second time on the next attempt and then check `cameras list` on the console:
+   the camera must still be there and the bond must not have been deleted, and
+   no "Pairing lost" box may appear. A user cancel is not a failed handshake,
+   and two of them in a row are the case that would otherwise trip the recovery.
+   Expected console lines: `Fujifilm Secure registration aborted by user cancel`
+   or the vendor unwind, and no `deleting the stale local bond`.
+6. Put the camera into pairing mode and connect again with `connect 0`. Expect
+   a fresh pairing and a normal registration through to an active shutter
+   target: "Secured!", then `status` reporting `control.state: active` and an
+   empty `control.connect_fail_reason`. Steps 5 and 6 must not be swapped: the
+   re-pair here destroys the stale-bond precondition that steps 4 and 5 need.
 7. On the Scan page, select a camera that is already saved. Expect the
-   "Already saved" box and no connect.
+   "Already saved" box and no connect. Dismiss it with the physical buttons
+   only, not the touchscreen: the OK button joins the input group precisely so
+   the non-touch bodies can clear it, and a box that cannot be dismissed is the
+   lockup this PR is about. `status` must still report `control.state: idle`
+   with no targets.
 8. Regression: a normal saved reconnect on a healthy pairing still connects,
-   the bond is never deleted, and a connect to a powered-off camera raises the
-   dismissable "Connect failed" box.
+   the bond is never deleted, and `connect 0` to a powered-off camera raises the
+   dismissable "Connect failed" box with `status` reporting an empty
+   `control.connect_fail_reason`.
+9. Regression on the identity rule, if a second body of any model is available:
+   pair it and confirm it is accepted rather than refused as "Already saved".

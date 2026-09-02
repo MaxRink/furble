@@ -210,6 +210,13 @@ void CameraList::load(void) {
   loadSaved(m_ConnectList);
 }
 
+// The protocol module has no Camera dependency, so pin its rotating-address
+// vendor code to the enum here. A renumbered Camera::Type would otherwise move
+// the advertised-name fallback silently onto another vendor.
+static_assert(static_cast<uint32_t>(Furble::Camera::Type::FUJIFILM_SECURE)
+                  == CameraListProtocol::ROTATING_ADDRESS_TYPE,
+              "CameraListProtocol::ROTATING_ADDRESS_TYPE must track FUJIFILM_SECURE");
+
 bool CameraList::isSaved(const Furble::Camera *camera) {
   if (camera == nullptr) {
     return false;

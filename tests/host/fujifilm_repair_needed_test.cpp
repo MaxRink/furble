@@ -25,6 +25,7 @@
 
 #include "Camera.h"
 #include "Device.h"
+#include "FujifilmBasic.h"
 #include "FujifilmSecure.h"
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
@@ -257,6 +258,75 @@ bool scenarioInLinkFreshPairRecovers() {
   return g_Failures == 0;
 }
 
+// (e) A multi-connect session where one saved body lost its pairing and another
+// is perfectly healthy.
+//
+// connectAll() breaks out of the camera loop on the first failure and returns
+// STATE_CONNECT_FAILED, and the UI handler for that state calls doDisconnect()
+// before it raises the box. The healthy camera therefore loses its live session
+// because a different camera lost its pairing.
+//
+// That is deliberate, and this pins it. Control never tears the healthy link
+// down: it leaves the session up, and the reason names only the camera that
+// actually lost its pairing. Ending the whole session is the UI decision, taken
+// once on a state that is terminal anyway, rather than leaving a half connected
+// session behind a modal the user has to clear first.
+bool scenarioOneStaleCameraDoesNotBlameTheHealthyOne() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  // The healthy body: a Fujifilm Basic camera at its own address, paired live,
+  // so it needs neither a bond nor a saved-reconnect scan.
+  FujifilmVirtualCamera::Config healthyConfig;
+  healthyConfig.name = "FUJIFILM X-T5";
+  healthyConfig.address = NimBLEAddress(0x223344556677ULL, 0);
+  FujifilmVirtualCamera healthyPeer(healthyConfig);
+  const NimBLEAdvertisedDevice healthyAdvertisement = healthyPeer.advertisement();
+  NimBLEDevice::setMockPeerForAddress(healthyConfig.address, &healthyPeer);
+
+  // The stale body: the bench X100VI, saved and bonded, whose handshake now
+  // times out on every attempt.
+  FujifilmVirtualCamera::Config staleConfig;
+  staleConfig.secure = true;
+  staleConfig.name = "FUJIFILM X100VI";
+  FujifilmVirtualCamera stalePeer(staleConfig);
+  const NimBLEAdvertisedDevice staleAdvertisement = stalePeer.advertisement();
+  NimBLEDevice::setMockPeerForAddress(staleConfig.address, &stalePeer);
+  Advertiser advertiser(staleAdvertisement);
+
+  NimBLEDevice::setBonded(true);
+  stalePeer.setSecureTimeouts(FujifilmVirtualCamera::kSecureTimeoutAlways);
+
+  auto healthy = std::make_shared<Furble::FujifilmBasic>(&healthyAdvertisement);
+  auto stale = makeSavedCamera(staleAdvertisement);
+  if (!check(stale != nullptr, "saved camera rebuilt from its NVS record")) {
+    return false;
+  }
+
+  // The healthy camera is first, so it is connected and live by the time the
+  // stale one fails.
+  control.addActive(healthy);
+  control.addActive(stale);
+  control.connectAll(true);
+
+  check(waitForState(Control::STATE_CONNECT_FAILED, 30000),
+        "one stale camera ends the cycle for the whole session");
+  const std::string reason = control.getConnectFailReason();
+  check(reason.find(staleConfig.name) != std::string::npos, "the reason names the stale camera");
+  check(reason.find(healthyConfig.name) == std::string::npos,
+        "and never blames the healthy camera");
+  check(!healthy->needsRepair(), "the healthy camera is not flagged for a re-pair");
+  check(NimBLEDevice::deleteBondCount() == 1, "only the stale camera loses a bond");
+
+  // Control leaves the healthy link alone. Ending that session is the UI
+  // doDisconnect() on STATE_CONNECT_FAILED, not a side effect of this branch.
+  check(healthy->isConnected(), "Control leaves the healthy session up");
+
+  resetControl();
+  check(!healthy->isConnected(), "the interactive teardown ends the healthy session too");
+  return g_Failures == 0;
+}
+
 }  // namespace
 
 int main() {
@@ -279,6 +349,8 @@ int main() {
   scenarioSingleTimeoutKeepsBond();
   std::cout << "in-link fresh pair recovers\n";
   scenarioInLinkFreshPairRecovers();
+  std::cout << "one stale camera does not blame the healthy one\n";
+  scenarioOneStaleCameraDoesNotBlameTheHealthyOne();
 
   if (g_Failures != 0) {
     std::cerr << g_Failures << " repair-needed checks failed\n";
