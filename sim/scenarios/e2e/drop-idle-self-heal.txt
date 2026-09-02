@@ -18,23 +18,7 @@ wait 3200
 assert-eventually-virtual 3000 control.state active
 assert-eventually-virtual 2000 ui.connected yes
 assert ui.connect_box hidden
-# Setup precondition, recorded rather than enforced. doConnect() resumes and
-# readies the connect timer while Control::connectAll() has only queued
-# CMD_CONNECT, so whether the timer's first tick lands before or after the
-# control task leaves STATE_IDLE is a race. On device the control task runs at
-# priority 4 and preempts the LVGL task the moment the queue send releases it,
-# so it always wins. In the simulator the UI is the pseudo-task that drives
-# virtual time and is not priority gated, so it can run ahead of a
-# higher-priority task and the timer pauses itself on the STATE_IDLE branch.
-# That gap belongs to plan 158 Phase 3; see plans/161-sim-real-control.md. The
-# contract this scenario actually guards is the self-heal below, which stays a
-# hard assert.
-#
-# This xassert is environment dependent, not a pending product fix: an idle
-# host wins the race and prints XPASS, a loaded CI runner loses it and prints
-# XFAIL. Do NOT promote it to assert on an XPASS. It becomes a hard assert only
-# once the simulator's UI task is priority gated.
-xassert ui.connect_timer running
+assert ui.connect_timer running
 # Drop with reconnect off and no radio to reconnect through.
 action ble-connect-fail
 action drop

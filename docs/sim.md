@@ -174,7 +174,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
 | `assert-eventually-virtual` | `assert-eventually-virtual TIMEOUT_MS KEY VALUE` polls once per normal UI tick while virtual time, platform updates, and background tasks continue. TIMEOUT_MS must be 1 through 60000 virtual milliseconds; a timeout reports the last value and exits 1. |
-| `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on mismatch, continues the scenario, and records `XPASS` on a match. It never aborts. |
+| `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |
 | `exit` | Ends the simulator with status 0. |
 
 `assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
@@ -599,7 +599,9 @@ handshake writes, link drops during a handshake, and deferred client deletion.
    `sim/scripts/run-async-stress.sh`; keep cross-task regressions in that set.
 3. Prefer `assert` for a fixed contract. Use `xassert` only for a known gap
    that is expected to fail today. It records XFAIL and continues; an XPASS
-   is the signal to promote the line to `assert` after the product fix.
+   fails the run, which is the signal to promote the line to `assert` after the
+   product fix. For a gap already closed on some panels and open on others, use
+   `xassert board-varies KEY VALUE`, which prints on a match instead of failing.
 4. Run the smallest panel first, then run the same file with the other board
    builds if the behavior is panel-independent. A physical button name must
    exist on every board used by the scenario.
@@ -620,9 +622,11 @@ after an XFAIL:
 
 ```text
 xassert ui.page connected
-xassert ui.page main
+xassert board-varies ui.page main
 print ui.page
 exit
 ```
 
-The first line prints XFAIL, the second prints XPASS, and the process exits 0.
+The first line prints XFAIL and continues, the second prints XPASS
+(board-varies), and the process exits 0. A plain `xassert ui.page main` would
+print XPASS and exit 1 instead, because a closed gap must be promoted.

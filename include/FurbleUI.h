@@ -484,6 +484,17 @@ class UI {
     // reconnect: the connected view stays up and only the status indicator
     // reflects it, instead of taking over the screen with the progress box.
     bool sessionEstablished;
+    // A connect has been requested and the control task has not acted on it
+    // yet. doConnect() only queues CMD_CONNECT, so the control state is still
+    // idle for up to one control tick afterwards. Without this the connect
+    // timer's first tick can take the idle branch and pause itself, and nothing
+    // resumes it again: the progress box is then never dismissed on a failed
+    // connect, and no later link drop is ever surfaced. Cleared as soon as the
+    // timer observes any non-idle state, and abandoned after
+    // CONNECT_REQUEST_GRACE_MS so a request the control task never picks up
+    // cannot spin the timer forever.
+    bool connectRequested;
+    uint32_t connectRequestedAt;
   } ConnectContext_t;
 
   static std::mutex m_Mutex;

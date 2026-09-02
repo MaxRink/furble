@@ -25,6 +25,11 @@ wait 400
 action connect
 wait 3200
 assert-eventually-virtual 3000 control.state active
+# A drop indicator is raised by the connected page's liveness poll, which runs
+# every LIVENESS_POLL_PERIOD_MS (500 ms), so it legitimately appears up to that
+# plus one 50 ms control tick after the link dies. The bound below is that
+# budget with headroom, not a relaxation: a parked or dead timer never satisfies
+# it. See plans/161-sim-real-control.md.
 assert-eventually-virtual 2000 ui.connected yes
 
 # --- connected menu (root) -------------------------------------------------
@@ -35,17 +40,7 @@ action drop
 wait 700
 assert control.state connecting
 assert ui.page connected
-# Drop-surfacing indicators are recorded, not enforced, until the connect timer
-# race is fixed in production. doConnect() readies and resumes the connect timer
-# while Control::connectAll() has only queued CMD_CONNECT, so if the timer's
-# first tick beats the control task out of STATE_IDLE the handler pauses the
-# timer and no later drop is ever surfaced. On device the priority 4 control
-# task preempts the LVGL task on the queue send and the window never opens; the
-# simulator's UI task is not priority gated, so a loaded host loses the race.
-# See residual gap 4 in plans/161-sim-real-control.md. The timer-independent
-# state (control.state, control.connected, ui.connected, ui.reconnect_count)
-# stays hard asserted below.
-xassert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert control.state active
 assert ui.link_alert no
@@ -61,8 +56,8 @@ assert ui.page_banner no
 action drop
 wait 700
 assert ui.page shutter
-xassert ui.link_alert yes
-xassert ui.page_banner yes
+assert-eventually-virtual 2000 ui.link_alert yes
+assert-eventually-virtual 2000 ui.page_banner yes
 wait 2500
 assert ui.link_alert no
 assert ui.page_banner no
@@ -78,7 +73,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page bulb
-xassert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 xassert ui.page_banner yes
 wait 2500
 assert ui.link_alert no
@@ -93,7 +88,7 @@ assert ui.page_banner none
 action drop
 wait 700
 assert ui.page cameras
-xassert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert ui.link_alert no
 
@@ -105,7 +100,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page remote_timer
-xassert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert ui.link_alert no
 
@@ -117,7 +112,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page remote_gps
-xassert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert ui.link_alert no
 exit

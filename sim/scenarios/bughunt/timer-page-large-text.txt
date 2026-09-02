@@ -1,0 +1,24 @@
+# Deterministic reproduction of the intervalometer settings page overflowing on
+# the 320x240 M5Stack Core at the Large text size. The UI fuzzer found it on
+# that board (seed 3, step 447) but only on some hosts, because the fuzzer's
+# event stream is not host independent. This reaches the same state in four
+# steps and reproduces on every host, which is what a bug record needs.
+#
+# The page carries the Start button plus the Count, Delay, Shutter and Wait
+# spinner rows. At Large text on this panel the column is 3 px taller than the
+# viewport, so ui.overflow reports yes on a page the fuzzer's mustFit() list
+# requires to fit. It fits on 135x240 and on the other text sizes, and the
+# large-text overflow sweep does not run on this board, which is why nothing
+# else catches it.
+#
+# Non-certified on purpose: it documents an open layout bug, so it FAILS today.
+# Promote it to certified in the PR that fixes the page.
+seed text_size 2
+wait 400
+home
+wait 200
+action page timer
+wait 300
+assert ui.page timer
+assert ui.overflow no
+exit

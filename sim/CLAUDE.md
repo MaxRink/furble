@@ -145,6 +145,13 @@ a regression.
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
   byte-identical PNGs.
+- Fuzzer reproducibility is not total. Two runs of the same seed on the same
+  binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
+  event stream and the pages it reaches are deterministic. The `FUZZ SUMMARY`
+  line is not: `observed_delta` and `no_observed_delta` count how many events
+  produced a visible change by the time the settle cycles finished, which
+  depends on how many `lv_task_handler` cycles the host got through, so they
+  vary run to run. Compare events and coverage, not the delta counters.
 - Exception: `gps.txt` renders the TinyGPSPlus fix age from the real host
   clock, so `gps.png` is not byte-reproducible and must not be a golden
   baseline as-is.
@@ -203,9 +210,13 @@ a regression.
 - `assert <key> <value>` fails the run on a mismatch. `xassert <key> <value>` is
   an expected-fail assert: it documents a value the app SHOULD produce once a
   pending product fix lands, prints `XFAIL (WILL_FAIL)` on a mismatch and keeps
-  running, so CI stays green while the gap is on record. When the fix lands the
-  value matches and it prints `XPASS`; promote that line back to `assert` in the
-  fix PR so the guard starts enforcing.
+  running, so CI stays green while the gap is on record. It is asymmetric, like
+  `FURBLE_FUZZ_XFAIL_SEEDS`: when the fix lands the value matches and the run
+  FAILS with `XPASS`, so the line has to be promoted back to `assert`
+  deliberately instead of sitting as a silently passing xassert nobody revisits.
+  `xassert board-varies <key> <value>` is the one exception, for a gap already
+  closed on some panels and open on others: one scenario file runs on every
+  board, so a match there prints and continues.
 - The StickS3 PMIC model retains the watchdog and download-lock registers across
   `M5PM1::begin()`, just as the PMIC is independent of an ESP32 reset.
   `platform.download_lock` exposes the long-press recovery state so a scenario
@@ -312,11 +323,14 @@ a regression.
   board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail. It
-  is currently used for seed 3 on the 320x240 board only, which reproduces a
-  deterministic layout overflow on the intervalometer settings page that the
-  large-text sweep does not cover on that board (plan 161). Each seed also runs
-  under `timeout -k`, so a scheduler deadlock fails the job instead of hanging
-  it.
+  is currently used for seed 3 on the 320x240 board only, which reports a layout
+  overflow on the intervalometer settings page that the large-text sweep does
+  not cover on that board (plan 161). That pin lives in the CI workflow, not in
+  the wrapper defaults, because the finding is host dependent: on some
+  toolchains the seed passes and the pin would XPASS. The bug itself is recorded
+  host independently by `sim/scenarios/bughunt/timer-page-large-text.txt`. Each
+  seed also runs under `timeout -k`, so a scheduler deadlock fails the job
+  instead of hanging it.
   The wrapper passes explicit `--seed` and `--fuzz-steps` values on every run;
   those CLI values take precedence over matching `FURBLE_FUZZ_SEED` and
   `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` also enables fuzzing when it

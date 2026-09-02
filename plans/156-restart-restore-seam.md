@@ -104,6 +104,11 @@ Seam limits, stated honestly:
   still re-create it at boot; that is idempotent because
   `CameraList::add_index()` overwrites an existing entry by name rather than
   appending a second one.
+- Restart during a live BLE session is untested. Plan 161 made the path
+  reachable (`sim/main.cpp` tears the control session down before exit), but no
+  scenario drives it: `restart-persist.txt` restarts from idle. A restart
+  mid-session touches teardown, the NimBLE client pool and the saved-camera
+  reload at once and needs its own scenario.
 - The virtual clock restarts at zero (unless `clock_ms` is seeded), like a
   reboot resetting uptime. Wall-clock state, liveness counters, capture and
   report accounting restart too.

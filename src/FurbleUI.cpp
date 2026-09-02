@@ -668,7 +668,7 @@ UI::UI(const interval_t &interval)
   configureControl(ControlMode::MENU);
 
   // create connection timer
-  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false, {}, 0, false};
+  m_ConnectContext = {this, NULL, NULL, NULL, NULL, NULL, false, {}, 0, false, false, 0};
   m_ConnectTimer = lv_timer_create(connectTimerHandler, 50, &m_ConnectContext);
   lv_timer_pause(m_ConnectTimer);
 
@@ -4235,6 +4235,11 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   // observe a mid-session drop, but polls gently instead of busy spinning.
   static constexpr uint32_t CONNECT_POLL_PERIOD_MS = 50;
   static constexpr uint32_t LIVENESS_POLL_PERIOD_MS = 500;
+  // How long the timer keeps polling an idle control state after a connect was
+  // requested. The control task publishes STATE_CONNECT within one 50 ms queue
+  // tick, so this is two orders of magnitude of headroom; it exists only so a
+  // request that never reaches the control task cannot spin the timer forever.
+  static constexpr uint32_t CONNECT_REQUEST_GRACE_MS = 5000;
   auto *ctx = static_cast<ConnectContext_t *>(lv_timer_get_user_data(timer));
   auto &control = Control::getInstance();
   std::shared_ptr<Camera> camera;
@@ -4248,6 +4253,12 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   if ((state != Control::STATE_ACTIVE) && ctx->feedbackConnected) {
     Feedback::getInstance().signal(Feedback::DISCONNECTED);
     ctx->feedbackConnected = false;
+  }
+
+  // The control task has acted on the queued connect, so the idle branch below
+  // is free to park the timer again.
+  if (state != Control::STATE_IDLE) {
+    ctx->connectRequested = false;
   }
 
   switch (state) {
@@ -4366,6 +4377,23 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       ctx->ui->updateReconnectTitle(false);
       // Session fully down: clear the Remote shutter page banner too.
       ctx->ui->updateRemoteReconnect(false);
+      // Do not park a timer that was just resumed for a connect the control
+      // task has not picked up yet. doConnect() only queues CMD_CONNECT, so the
+      // state is legitimately still idle for up to one control tick. Parking
+      // here left the timer stopped for the rest of the session: the progress
+      // box was never dismissed on a failed connect, and no later link drop was
+      // ever surfaced. The grace bound keeps a request the control task never
+      // receives from spinning the timer forever.
+      if (ctx->connectRequested) {
+        const uint32_t waited = lv_tick_elaps(ctx->connectRequestedAt);
+        if (waited < CONNECT_REQUEST_GRACE_MS) {
+          lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
+          break;
+        }
+        ESP_LOGW("ui", "Connect request not picked up after %lu ms.",
+                 static_cast<unsigned long>(waited));
+        ctx->connectRequested = false;
+      }
       // Defensive: doDisconnect() already pauses on the interactive path, and a
       // legitimate reconnect passes through STATE_CONNECT/CONNECTING, not idle.
       // If Control ever drops straight from active to idle, pause here too so
@@ -4693,6 +4721,10 @@ void UI::doConnect(lv_event_t *e) {
   }
 
   control.connectAll(Settings::load<Settings::RECONNECT>());
+  // Mark the request before the timer can run: the control task publishes
+  // STATE_CONNECT asynchronously, so the first tick may still see idle.
+  m_ConnectContext.connectRequested = true;
+  m_ConnectContext.connectRequestedAt = lv_tick_get();
   lv_timer_ready(m_ConnectTimer);
   lv_timer_resume(m_ConnectTimer);
 
@@ -4704,6 +4736,9 @@ void UI::doDisconnect(void) {
 #if defined(FURBLE_SIM)
   g_simDisconnectCalls++;
 #endif
+  // The user is tearing the session down, so any queued connect request is moot
+  // and must not hold the timer open.
+  m_ConnectContext.connectRequested = false;
   lv_timer_pause(m_ConnectTimer);
   if (m_CamerasTimer != nullptr) {
     lv_timer_pause(m_CamerasTimer);

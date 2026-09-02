@@ -297,9 +297,10 @@ layout PR that can verify on the board.
    no reason; that is replaced. Determinism is now conditional on no task
    blocking outside the scheduler, and plan 158 says so. The principled fix is a
    scheduler-visible mutex, which plan 158 Phase 3 owns.
-4. The reconnect indicator can never appear for a whole session. This is the
-   root cause behind both the `ui.connect_timer` and the `ui.reconnecting`
-   flakes, and it is one bug, not two.
+4. FIXED IN THIS PR. The connect timer could park itself and stay parked for a
+   whole session. This was the root cause behind the `ui.connect_timer`, the
+   `ui.reconnecting` and the `control.state` flakes, and it was one bug, not
+   three.
 
    `doConnect()` calls `Control::connectAll()`, which only queues
    `CMD_CONNECT`, and then immediately does `lv_timer_ready()` plus
@@ -318,13 +319,38 @@ layout PR that can verify on the board.
    priority gated, so it can run ahead of the higher-priority control task and
    the window opens. An idle host wins the race, a loaded CI runner loses it.
 
-   So it is production code whose correctness depends on preemption ordering,
-   exposed by a simulator scheduler gap. It needs a production fix of its own
-   (the timer must not park itself while a connect it just requested is still
-   in flight) with hardware verification, and the simulator enabler is the UI
-   task priority gate. Neither belongs in this change. Until then, the
-   indicator assertions cannot be made deterministic here: they are recorded,
-   not enforced, and the affected scenarios say so.
+   There is a second, worse user-visible consequence the simulator found. The
+   `STATE_CONNECT_FAILED` branch of the same handler is what calls
+   `doDisconnect()`. With the timer parked that branch never runs, so a failed
+   connect leaves the user stuck on the connect-failed progress box with no
+   automatic dismissal and the control state pinned at `connect_failed`. That
+   is not a cosmetic indicator problem; it is a dead-end screen.
+
+   Fixed here, in production. `ConnectContext_t` gains `connectRequested` and
+   `connectRequestedAt`. `doConnect()` sets them before resuming the timer, the
+   handler clears the flag the moment it observes any non-idle state, and the
+   idle branch keeps polling at the connect cadence instead of parking while the
+   flag is set. `CONNECT_REQUEST_GRACE_MS` (5 s, two orders of magnitude above
+   the control task's 50 ms tick) abandons a request the control task never
+   picks up, so the timer can never spin forever. `doDisconnect()` clears the
+   flag, because a user teardown makes any queued connect moot.
+
+   With the fix the reviewer's probe reports the timer running 20/20 and the
+   reconnect indicator raised 20/20, and `false-connected-guard` and
+   `drop-idle-self-heal` are 0/20 flaky each. The indicator assertions are hard
+   asserts again, bounded by the liveness poll period rather than pinned to a
+   fixed instant.
+
+   Hardware verification is owed and only partly satisfiable without a camera:
+   the camera-less half (connect to an absent saved camera, let it reach
+   `CONNECT_FAILED`, confirm the progress box dismisses) is being run on the
+   bench. The with-camera half (connect, drop the link, confirm the reconnect
+   indicator appears) is owed when a camera is available. The simulator
+   reproduces the race deterministically in the meantime.
+
+   The underlying simulator gap remains: the UI task is not priority gated, so
+   it can still run ahead of a higher-priority task. That is plan 158 Phase 3
+   and is listed separately below.
 
    Even with the timer alive the indicator lags a drop by up to
    `LIVENESS_POLL_PERIOD_MS` (500 ms) plus one 50 ms control tick, because the
@@ -346,7 +372,13 @@ layout PR that can verify on the board.
    a millisecond, so the sim cannot yet exercise the seconds-long connect
    windows that hardware has. Real timing must come from the calibrated peer
    work in plan 159.
-7. The simulator tears the control session down before process exit
+7. Restart during a live BLE session is untested. `sim/main.cpp` tears the
+   control session down before the process exits, which makes the plan 156
+   `restart` verb reachable while cameras are connected, but no scenario drives
+   it: `restart-persist.txt` restarts from idle. A restart mid-session touches
+   the teardown, the NimBLE client pool and the saved-camera reload at once, so
+   it needs its own scenario before anyone claims it works.
+8. The simulator tears the control session down before process exit
    (`Control::disconnect(..., forRestart=true)` in `sim/main.cpp`). The
    firmware never leaves `UI::task`, so this path only runs on the restart
    route on device. Without it the NimBLE client pool and the control targets

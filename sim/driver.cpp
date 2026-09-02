@@ -74,6 +74,9 @@ struct Step {
   std::string name;
   std::string expected;
   uint32_t timeoutMilliseconds = 0;
+  // xassert only: the documented gap is board dependent, so a match is
+  // informational rather than a promotion signal. See the xassert parser.
+  bool boardVaries = false;
   scenario_action_t action;
 };
 
@@ -605,15 +608,29 @@ void readScript(const std::string &path) {
     } else if (command == "xassert") {
       // Expected-fail assert. Documents a value the app SHOULD produce once a
       // pending product fix lands, without failing the run today. A mismatch
-      // prints XFAIL and continues; a match prints XPASS so the follow-up fix PR
-      // knows to promote the line back to a plain "assert". See sim/CLAUDE.md.
-      if (!exactArgs(3)) {
-        rejectArity("xassert", "exactly a key and an expected value");
-      }
+      // prints XFAIL and continues; a match fails the run so the follow-up fix
+      // PR knows to promote the line back to a plain "assert". See sim/CLAUDE.md.
+      //
+      // "xassert board-varies KEY VALUE" is the one exception: a gap that is
+      // already closed on some panels and open on others. One scenario file
+      // runs on every board, so a match there is expected on the good panels
+      // and must not fail the run. It still prints, so the line is visible.
       Step step;
       step.type = StepType::XASSERT;
-      step.name = args[1];
-      step.expected = args[2];
+      if (args.size() > 1 && args[1] == "board-varies") {
+        if (!exactArgs(4)) {
+          rejectArity("xassert board-varies", "exactly a key and an expected value");
+        }
+        step.boardVaries = true;
+        step.name = args[2];
+        step.expected = args[3];
+      } else {
+        if (!exactArgs(3)) {
+          rejectArity("xassert", "exactly a key and an expected value");
+        }
+        step.name = args[1];
+        step.expected = args[2];
+      }
       steps.push_back(step);
     } else if (command == "assert_max") {
       // Numeric upper bound: the query value parsed as an integer must be at
@@ -1810,14 +1827,24 @@ void driverTick(void) {
     case StepType::XASSERT:
     {
       // Expected-fail assertion: a known gap awaiting a separate product fix.
-      // Never aborts the run, so CI stays green while the gap is documented.
+      // Asymmetric, like FURBLE_FUZZ_XFAIL_SEEDS. A mismatch is the documented
+      // gap, so it prints and the run continues and CI stays green. A match
+      // means the gap closed, and that has to be promoted back to a hard assert
+      // deliberately rather than sitting as a silently passing xassert nobody
+      // revisits, so it fails the run and says so.
       const std::string actual = queryValue(step.name);
       if (actual != step.expected) {
         std::cout << "XFAIL (WILL_FAIL): " << step.name << " expected '" << step.expected
                   << "' got '" << actual << "'\n";
+      } else if (step.boardVaries) {
+        std::cout << "XPASS (board-varies): " << step.name << " = " << actual
+                  << ". This panel is already correct; the gap remains on another.\n";
       } else {
-        std::cout << "XPASS (gap fixed, promote to assert): " << step.name << " = " << actual
-                  << '\n';
+        std::cerr << "XPASS: " << step.name << " = " << actual
+                  << ". The documented gap is closed; promote this xassert back to assert.\n";
+        std::cout.flush();
+        requestExit(1);
+        return;
       }
       ++stepIndex;
       break;
