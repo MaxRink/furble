@@ -166,8 +166,10 @@ a regression.
   all RAM state (threads, singletons, virtual clock, driver counters) is wiped
   like an esp_restart() while the NVS preferences file persists like flash.
   Seeds are reapplied on the resumed boot, so a persistence assertion must not
-  seed the setting it toggles, and the process-local fake CameraList does not
-  persist (see plans/156-restart-restore-seam.md for the seam limits).
+  seed the setting it toggles. The production CameraList does persist across a
+  restart through the preferences file, and a reapplied `saved_camera` seed is
+  idempotent because `CameraList::add_index()` overwrites by name (see
+  plans/156-restart-restore-seam.md for the seam limits).
   See `docs/sim.md` for every action value and query key.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected

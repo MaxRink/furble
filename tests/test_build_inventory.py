@@ -40,6 +40,8 @@ EXEMPTIONS = "tests/build_inventory_exemptions.json"
 HOST_CMAKE = "tests/host/CMakeLists.txt"
 SIM_CMAKE = "sim/CMakeLists.txt"
 SIM_SHELL = "sim/build.sh"
+# Canary source for the drop fixtures below. Any vendor source works.
+CANARY = "lib/furble/CanonEOS.cpp"
 
 # Directories that hold firmware sources. Each is scanned non-recursively.
 FIRMWARE_DIRS = (
@@ -274,31 +276,46 @@ class BuildInventoryTest(unittest.TestCase):
       self.assertIn("uncovered firmware source: src/Foo.cpp is in neither build list nor %s"
                     % EXEMPTIONS, check_inventory(root))
 
+  def drop_canary_from_sim_lists(self, root):
+    # The simulator builds the whole vendor set since plan 161, so a canary the
+    # host build drops is still covered there. Take it out of both simulator
+    # lists too, so these fixtures test the host-side drop they are about.
+    cmake = root / SIM_CMAKE
+    text = cmake.read_text(encoding="utf-8")
+    cmake.write_text(text.replace('    "${FURBLE_ROOT}/%s"\n' % CANARY, ""), encoding="utf-8")
+    shell = root / SIM_SHELL
+    text = shell.read_text(encoding="utf-8")
+    shell.write_text(text.replace('  "$ROOT/%s" \\\n' % CANARY, ""), encoding="utf-8")
+    self.assertNotIn(CANARY, sim_cmake_sources(root))
+    self.assertNotIn(CANARY, sim_shell_sources(root))
+
   def test_source_dropped_from_host_cmake_is_rejected(self):
     with tempfile.TemporaryDirectory() as directory:
       root = self.copy_fixture(Path(directory))
+      self.drop_canary_from_sim_lists(root)
       cmake = root / HOST_CMAKE
       text = cmake.read_text(encoding="utf-8")
-      dropped = "${FURBLE_ROOT}/lib/furble/CanonEOS.cpp"
+      dropped = "${FURBLE_ROOT}/%s" % CANARY
       self.assertIn(dropped, text)
       cmake.write_text(text.replace(dropped, ""), encoding="utf-8")
-      self.assertIn("uncovered firmware source: lib/furble/CanonEOS.cpp is in neither build "
-                    "list nor %s" % EXEMPTIONS, check_inventory(root))
+      self.assertIn("uncovered firmware source: %s is in neither build "
+                    "list nor %s" % (CANARY, EXEMPTIONS), check_inventory(root))
 
   def test_commented_out_source_is_reported_uncovered(self):
     # A source commented out of the host build is not compiled, so the gate has
     # to see it as uncovered rather than reading the path out of the comment.
     with tempfile.TemporaryDirectory() as directory:
       root = self.copy_fixture(Path(directory))
+      self.drop_canary_from_sim_lists(root)
       cmake = root / HOST_CMAKE
       text = cmake.read_text(encoding="utf-8")
-      live = "               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp\n"
+      live = "               ${FURBLE_ROOT}/%s\n" % CANARY
       self.assertIn(live, text)
-      commented = "               # ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp\n"
+      commented = "               # ${FURBLE_ROOT}/%s\n" % CANARY
       cmake.write_text(text.replace(live, commented), encoding="utf-8")
-      self.assertNotIn("lib/furble/CanonEOS.cpp", host_sources(root))
-      self.assertIn("uncovered firmware source: lib/furble/CanonEOS.cpp is in neither build "
-                    "list nor %s" % EXEMPTIONS, check_inventory(root))
+      self.assertNotIn(CANARY, host_sources(root))
+      self.assertIn("uncovered firmware source: %s is in neither build "
+                    "list nor %s" % (CANARY, EXEMPTIONS), check_inventory(root))
 
   def test_comment_mentioning_an_exempted_path_is_not_a_build(self):
     # A comment that names an exempted file must not make it look built, which

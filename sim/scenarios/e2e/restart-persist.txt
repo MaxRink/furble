@@ -8,8 +8,11 @@
 # `reconnect` is deliberately not seeded: a seed is reapplied on every boot,
 # including the resumed one, so the persisted NVS value must be the only source
 # of the post-restart state. The saved camera comes from the `saved_camera`
-# seed, which the sim reapplies at boot because the sim CameraList is a
-# process-local fake with no NVS backing (see plan 156 for the seam limits).
+# seed, which the sim reapplies at boot. Since plan 161 the simulator runs the
+# production CameraList over the preferences file, so the camera would survive
+# the restart on its own; the reapplied seed is idempotent because
+# CameraList::add_index() overwrites an existing entry by name rather than
+# appending a second one, which is why camera.count stays 1.
 seed saved_camera true
 wait 300
 assert ui.page main
