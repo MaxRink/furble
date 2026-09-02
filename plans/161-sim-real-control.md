@@ -178,15 +178,34 @@ default.
 
 ## Mutation evidence
 
-- Removing the `target->getCamera()->cancelConnect()` arm from
-  `Control::disconnect()` (the #159 wedge class) leaves
-  `control.connect_in_progress` at `yes` past the bound and fails
-  `multi-target-flappy-disconnect`.
-- Disabling the liveness invariant does not change
-  `false-connected-both-links-dead`, because that scenario asserts the
-  presentation directly; the invariant is a second, continuous net.
+Caught. Making the interactive `Control::disconnect()` return without its final
+`setState(STATE_IDLE)`, so the machine is left in `STATE_DISCONNECTING`, is
+exactly the 2026-08-28 symptom. `multi-target-flappy-disconnect` fails on it:
 
-Both mutations were run and reverted; no mutation is left in the tree.
+```
+ASSERT-EVENTUALLY-VIRTUAL FAILED: control.state expected 'idle' got
+'disconnecting' after 3000 virtual ms
+```
+
+Not caught, reported rather than hidden. Removing the
+`target->getCamera()->cancelConnect()` arm from `Control::disconnect()` does
+**not** fail the certified scenario. That arm only matters while a connect is
+parked in a wait that polls the cancel token, and the certified scenario's
+connects are short: FauxNY's 2500 ms wait does not poll the token at all, and a
+virtual Fujifilm completes its handshake in under a millisecond. The only
+construction that does park a connect there is
+`action ble-withhold-registration`, whose 25 s registration wait runs into the
+scheduler fairness gap below, so it is not certified. Closing this needs either
+a peer with modelled radio latency (plan 159) or the scheduler work in plan 158
+Phase 3.
+
+Disabling the driver-level liveness invariant was prepared but not run: the
+host was too loaded to rebuild for it inside this change. The expected result
+is no change to `false-connected-both-links-dead`, which asserts the
+presentation directly; the invariant is a second, continuous net rather than
+that scenario's only check.
+
+Every mutation was reverted; no mutation is left in the tree.
 
 ## Residual parity gaps
 
@@ -211,6 +230,17 @@ Both mutations were run and reverted; no mutation is left in the tree.
    certified scenario uses the standby drop rather than the registration wait.
    The action is retained and documented for interactive use. This belongs to
    plan 158 Phase 3.
+
+   A harder instance of the same boundary was found and fixed here. Production
+   code blocks on plain host mutexes the scheduler cannot see:
+   `Camera::m_Mutex` is held for a whole connect, so a per-target task running
+   `Camera::disconnect()` during one leaves the scheduler while holding the
+   turn, and the connect task can never get a turn to release the mutex. The UI
+   fuzzer deadlocked on seed 2. `waitForTurnLocked()` now parks a turn holder
+   that has not reached a scheduler boundary within a host bound, which is a
+   deadlock breaker rather than a time slice: a healthy handoff is
+   microseconds, so it never fires on a deadlock-free trace. The principled fix
+   is to model FreeRTOS mutex blocking, which plan 158 Phase 3 owns.
 4. No modelled radio latency. A virtual peer's connect completes in well under
    a millisecond, so the sim cannot yet exercise the seconds-long connect
    windows that hardware has. Real timing must come from the calibrated peer
@@ -221,6 +251,40 @@ Both mutations were run and reverted; no mutation is left in the tree.
    route on device. Without it the NimBLE client pool and the control targets
    are destroyed in an unspecified static order at process exit and the target
    destructor dereferences a freed client.
+
+## Coverage
+
+Re-measured with the audit's method (clang `-fprofile-instr-generate
+-fcoverage-mapping`, `llvm-profdata` merge, `llvm-cov export -format=lcov`,
+then the audit's `merge.py`), over the full host suite (85 tests) and the full
+certified simulator corpus (127 scenarios across power-gate, bughunt, e2e and
+invalid).
+
+| Metric | fork/master 792815cd | This PR |
+| --- | --- | --- |
+| Union firmware lines | 18388 | 18485 |
+| Union firmware covered | 12127 | 12476 |
+| Union firmware line coverage | 65.95 percent | 67.49 percent |
+| Simulator firmware lines compiled | 11712 | 16629 |
+| Simulator firmware lines covered | 6804 | 8495 |
+| Simulator firmware line coverage | 58.09 percent | 51.09 percent |
+| Host-only firmware line coverage | 57.44 percent | 57.44 percent |
+
+The simulator percentage falls while its absolute coverage rises by 1691 lines
+(+24.9 percent), because the denominator grew by the whole connection stack the
+simulator previously did not compile at all. The union is the number that
+matters and it moved 65.95 to 67.49.
+
+Per-file union movement on the newly shared sources:
+
+| File | Union before | Union after |
+| --- | --- | --- |
+| `lib/furble/CameraList.cpp` | 13.95 | 68.84 |
+| `src/FurbleControl.cpp` | 69.55 | 77.20 |
+| `lib/furble/FujifilmBasic.cpp` | 70.54 | 86.05 |
+| `lib/furble/Scan.cpp` | 89.86 | 90.62 |
+| `lib/furble/Camera.cpp` | 68.09 | 68.65 |
+| `lib/furble/Ricoh.cpp` | 59.19 | 59.67 |
 
 ## Implementation state
 
