@@ -28,6 +28,7 @@ class UI {
     PAIR,
     MULTI_SELECT,
     MULTI_DESELECT,
+    MULTI_CLEAR,
     GPS_RELOAD,
     GPS_POWER,
     IR_RELOAD,
