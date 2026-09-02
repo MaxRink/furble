@@ -311,7 +311,12 @@ a regression.
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
   board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
-  `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail.
+  `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail. It
+  is currently used for seed 3 on the 320x240 board only, which reproduces a
+  deterministic layout overflow on the intervalometer settings page that the
+  large-text sweep does not cover on that board (plan 161). Each seed also runs
+  under `timeout -k`, so a scheduler deadlock fails the job instead of hanging
+  it.
   The wrapper passes explicit `--seed` and `--fuzz-steps` values on every run;
   those CLI values take precedence over matching `FURBLE_FUZZ_SEED` and
   `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` also enables fuzzing when it

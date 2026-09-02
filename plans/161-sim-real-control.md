@@ -236,6 +236,24 @@ that scenario's only check.
 
 Every mutation was reverted; no mutation is left in the tree.
 
+## New fuzz finding, pinned not hidden
+
+Running the production connection stack changes the fuzzer's event stream,
+because a connect now takes real time instead of 750 ms. Seed 3 on the 320x240
+M5Stack Core board now reaches a state the previous stream never did and
+reports a deterministic `layout-overflow` on the intervalometer settings page
+(step 447, `page=timer`), reproducibly, on every run. The same seed passes on
+80x160 and 135x240, and it passes on this board on master, so it is a latent
+layout bug newly reached rather than one introduced here. The large-text
+overflow sweep cannot see it: `EXACT_BOARDS` in `tools/check_sim_scenarios.py`
+restricts `text-size-overflow-large.txt` to `m5stick-s3` and `m5stick-c`, so
+this board and that text size are genuinely untested.
+
+It is pinned as `FURBLE_FUZZ_XFAIL_SEEDS=3` for the 320x240 invocation only, so
+the seed is required to fail there and `run-fuzz.sh` reports loudly if it ever
+starts passing. Fixing the page and promoting the seed back out belongs to a
+layout PR that can verify on the board.
+
 ## Residual parity gaps
 
 1. `action ble-kill` severs a link without delivering the GAP disconnect. The
