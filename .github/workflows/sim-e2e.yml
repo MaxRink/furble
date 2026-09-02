@@ -101,10 +101,12 @@ jobs:
         run: sh sim/build.sh
 
       # The manifest selects the certified scenarios per board, so a scenario
-      # scoped to one board class needs no step of its own. stick-notouch-layout
-      # is certified for m5stick-s3 and m5stick-c only: it seeds no_touch so it
-      # measures the physical-button layout those boards actually ship, which is
-      # 26 px shorter than the touch layout every other scenario measures.
+      # scoped to one board needs no step of its own. stick-notouch-layout-135,
+      # stick-notouch-layout-80 and core-notouch-layout are each certified for
+      # one board: they seed no_touch so they measure the physical-button layout
+      # those boards actually ship, which is 26 px shorter than the touch layout
+      # every other scenario measures. This step runs the 135x240 one; the
+      # alternate-board step below runs the other two.
       - name: Run certified bug-hunt scenarios (M5StickS3)
         env:
           SDL_VIDEODRIVER: dummy

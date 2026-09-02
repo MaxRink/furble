@@ -31,13 +31,17 @@ EXACT_BOARDS = {
   "statusbar-stability.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "text-size-overflow-large.txt": {"m5stick-s3", "m5stick-c"},
   "text-size-overflow-small.txt": {"m5stick-s3", "m5stick-c"},
-  "stick-notouch-layout.txt": {"m5stick-s3", "m5stick-c"},
+  "core-notouch-layout.txt": {"m5stack-core"},
+  "stick-notouch-layout-135.txt": {"m5stick-s3"},
+  "stick-notouch-layout-80.txt": {"m5stick-c"},
   "text-size-gate-stickc.txt": {"m5stick-c"},
   "text-size-clamp-stickc.txt": {"m5stick-c"},
 }
 WORKFLOW_CAPABILITIES = {
   "capability-submenus.txt": {"ir", "feedback", "sd"},
-  "stick-notouch-layout.txt": {"ir"},
+  "core-notouch-layout.txt": {"ir"},
+  "stick-notouch-layout-135.txt": {"ir"},
+  "stick-notouch-layout-80.txt": {"ir"},
 }
 SUITES = set(OWNERS)
 REQUIRED = {"path", "suite", "owner", "boards", "capabilities", "expected_exit", "certified"}

@@ -24,12 +24,18 @@ button layout when `FURBLE_SIM_NO_TOUCH` is set or a scenario seeds
 `no_touch true`.
 
 The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-renders the touch layout on every modeled board. The Stick boards have no touch
-panel, so their shipped layout is the non-touch one: it reserves a 26 px
-navigation bar band at the bottom of the window content and floats three button
-indicators over the screen. `bughunt/stick-notouch-layout.txt` seeds `no_touch`
-and is the scenario that measures that layout. Every other overflow scenario
-measures the touch layout. See [`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md).
+renders the touch layout on every modeled board. None of the three modeled
+boards has a touch panel. The Sticks and the M5Stack Core Basic all ship the
+non-touch layout, which reserves a 26 px navigation bar band at the bottom of
+the window content; on the Sticks the band stays empty and the three indicators
+float over the screen, and on the Core they live inside the band. Only the
+Core2, which `sim/build.sh` does not model, ships the touch layout.
+
+`bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
+and `bughunt/core-notouch-layout.txt` seed `no_touch` and are each certified for
+exactly one board, so they measure the layout that board really has. Every other
+overflow scenario measures the touch layout. See
+[`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md).
 
 ## Production-path parity
 
@@ -482,6 +488,23 @@ The other namespaces are:
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
+`ui.nav_layout` reports which navigation layout the running build rendered:
+`touch` for the touch grid, `buttons` for the physical-button layout. A scenario
+that means to measure a board's shipped layout asserts this first, so a lost
+`no_touch` seed fails loudly instead of passing against the wrong layout.
+
+`ui.indicator_clearance` reports whether any visible content widget on the
+current page sits under a navigation indicator: `clear`, `overlap`, or `n/a` on
+a build with no indicators. `ui.indicator_overlaps` reports the count for
+diagnosis. Labels, images, rollers, switches, sliders, checkboxes and bars are
+measured; containers are not, because a flex row spans the page by construction.
+A label box is stretched by its row while the glyphs occupy only part of it, so
+only the drawn text extent counts, with the text alignment honoured. Areas are
+clamped to the page viewport, so rows scrolled out of sight are not counted. The
+viewport ends above the reserved navbar band, so the query cannot reach the
+bottom-edge indicators: it measures the indicators that float over content, and
+reports nothing about the bottom two rather than proving them clear.
+
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,
   `setting.gps`, `setting.gps_nmea`, `setting.ir`, `setting.conn_saver`,
@@ -490,18 +513,6 @@ The other namespaces are:
   M5StickS3 build.
 
 ## Fault injection and fuzzing
-
-`ui.nav_layout` reports which navigation layout the running build rendered:
-`touch` for the touch grid, `buttons` for the physical-button layout. A scenario
-that means to measure the shipped Stick layout asserts this first, so a lost
-`no_touch` seed fails loudly instead of passing against the wrong layout.
-
-`ui.indicator_clearance` reports whether any visible label or icon on the
-current page sits under a floating navigation indicator: `clear`, `overlap`, or
-`n/a` on a build with no indicators. `ui.indicator_overlaps` reports the count
-for diagnosis. Label boxes are stretched by their flex row, so only the drawn
-text extent is measured, and areas are clamped to the page viewport so rows
-scrolled out of sight are not counted.
 
 ### SDL simulator faults
 

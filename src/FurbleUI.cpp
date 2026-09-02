@@ -5,14 +5,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
 #include <thread>
 #include <tuple>
-#include <vector>
 
 #include <M5Unified.h>
 #include <esp_chip_info.h>
@@ -58,6 +56,10 @@
 #endif
 
 #if defined(FURBLE_SIM)
+// Only the simulator-only page-geometry helpers below need these.
+#include <functional>
+#include <vector>
+
 #include "driver.h"
 #include "power_profiler.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
@@ -1538,9 +1540,17 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // setting is on (Connect, Scan, Delete, IR, Settings, Level, Power off). A
   // row is the 24 px icon plus the top and bottom padding, and the text size
   // setting does not change it, so the fit is fixed arithmetic against the
-  // 215 px page: at the default padding of 6 six rows already overflow by one
-  // pixel, at 5 seven rows overflow by 23 px, and at 3 seven rows take 210 px
-  // and fit with 5 px to spare. home-seven-rows.txt guards this in the sim.
+  // page height: at the default padding of 6 six rows already overflow by one
+  // pixel, at 5 seven rows overflow by 23 px, and at 3 seven rows take 210 px.
+  //
+  // That arithmetic was done against the 215 px page of the touch layout, which
+  // is the only one the simulator rendered when this padding was chosen. These
+  // boards have no touch panel, so they ship the physical-button layout, whose
+  // navigation bar band leaves a 189 px page. Seven rows overflow it by 21 px
+  // at padding 3. home-seven-rows.txt asserts the fit, but on the touch layout,
+  // so it does not guard the shipped one. stick-notouch-layout-135.txt records
+  // the real 21 px as a WILL_FAIL. Fixing it is a hardware-verified change and
+  // is deliberately not made here; see plans/165-sim-no-touch-layout.md.
   // Every other page keeps the roomier padding.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
   const bool mainPage = menu.page == m_MainMenu.page;
@@ -1556,7 +1566,9 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // padding they fit. The home page therefore joins the Connected page,
   // which carries the most rows now that it also holds the Cameras entry, at
   // zero padding. Other pages keep 1, matching the large narrow panels
-  // above. home-seven-rows-large.txt guards this.
+  // above. home-seven-rows-large.txt guards this on the touch layout; this
+  // board ships the physical-button layout, where the home menu still fits at
+  // Normal. stick-notouch-layout-80.txt measures that layout.
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
   const bool mainPage = menu.page == m_MainMenu.page;
   const int32_t pad = (connectedPage || mainPage) ? 0 : 1;
@@ -2989,21 +3001,27 @@ uint32_t UI::countIndicatorOverlaps(void) {
     return 0;
   }
 
-  // Coordinates are inclusive pixel bounds, so touching edges are not an
-  // overlap.
+  // LVGL areas are inclusive pixel bounds, so two areas that share an edge pixel
+  // do overlap; only adjacent areas one pixel apart do not.
   const auto intersects = [](const lv_area_t &a, const lv_area_t &b) {
     return (a.x1 <= b.x2) && (a.x2 >= b.x1) && (a.y1 <= b.y2) && (a.y2 >= b.y1);
   };
 
   // A scrolled page keeps coordinates for rows that are clipped away, so every
-  // area is clamped to the page viewport before it is tested.
+  // area is clamped to the page viewport before it is tested. The viewport ends
+  // above the reserved navbar band, so a clamped area can never reach the
+  // bottom-edge Left and OK indicators: in practice this query measures the
+  // indicators that float over the content, which is the Right one on the Stick
+  // boards. It reports no result about the bottom two rather than proving them
+  // clear.
   lv_area_t viewport;
   lv_obj_get_coords(page, &viewport);
 
   // A label object is often stretched by its flex row while the glyphs occupy
   // only part of it. Only the drawn text can visually collide with an
   // indicator, so shrink the box to the text extent and honour the text
-  // alignment. Icons fill their box, so they are measured as they are.
+  // alignment. Every other measured widget draws across its whole box, so it is
+  // measured as it is.
   const auto drawnArea = [](lv_obj_t *obj, const lv_area_t &coords) {
     if (!lv_obj_check_type(obj, &lv_label_class)) {
       return coords;
@@ -3037,14 +3055,28 @@ uint32_t UI::countIndicatorOverlaps(void) {
     return box;
   };
 
+  const auto isMeasuredLeaf = [](lv_obj_t *obj) {
+    for (const lv_obj_class_t *type :
+         {&lv_label_class, &lv_image_class, &lv_roller_class, &lv_switch_class, &lv_slider_class,
+          &lv_checkbox_class, &lv_bar_class}) {
+      if (lv_obj_check_type(obj, type)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   uint32_t overlaps = 0;
   std::function<void(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
     if ((obj == nullptr) || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
       return;
     }
     // Only leaf content counts. A row container spans the full page width by
-    // construction, so counting it would report an overlap on every page.
-    if (lv_obj_check_type(obj, &lv_label_class) || lv_obj_check_type(obj, &lv_image_class)) {
+    // construction, so counting it would report an overlap on every page. The
+    // value-bearing widgets matter as much as the labels: the timer rows are
+    // rollers, so a query that saw only labels missed the seconds values the
+    // indicator covers.
+    if (isMeasuredLeaf(obj)) {
       lv_area_t coords;
       lv_obj_get_coords(obj, &coords);
       lv_area_t area = drawnArea(obj, coords);
