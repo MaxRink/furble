@@ -240,9 +240,11 @@ Control::state_t Control::connectAll(void) {
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
       if (camera->needsRepair()) {
-        repairReason = camera->getName()
-                       + " no longer holds this pairing. Put the camera in pairing mode, then "
-                         "connect again.";
+        // Kept short on purpose. This string is the body of a message box that
+        // has to fit an 80x160 panel, and the camera name in front of it grows
+        // to model plus serial. The console prints the same string, so it has
+        // to stand on its own there too.
+        repairReason = camera->getName() + ": put it in pairing mode, then connect.";
       }
       break;
     } else {

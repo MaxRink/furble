@@ -18,11 +18,15 @@ action connect
 
 # The camera never links, so the cycle ends and the generic box goes up.
 assert-eventually-virtual 10000 control.state idle
-assert-eventually 2000 ui.connect_error connect_failed
+assert-eventually-virtual 5000 ui.connect_error connect_failed
 assert ui.modal_count 1
 assert ui.connect_box hidden
+# Reachable and readable are separate properties, and this scenario owns both:
+# an unsized box clips its own text and pushes the OK button off the panel.
+assert ui.modal_overflow no
 
 # The OK button holds the focus, so a plain activation clears it.
+capture connect-failed-notouch
 action select
 wait 300
 assert ui.connect_error none
