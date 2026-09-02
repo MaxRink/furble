@@ -202,7 +202,7 @@ jobs:
       - name: Check clang-format
         shell: bash
         run: |
-          find src include lib/furble sim tests/host -type f \( \
+          find src include lib/furble lib/testing sim tests/host -type f \( \
             -name '*.c' -o \
             -name '*.cc' -o \
             -name '*.cpp' -o \

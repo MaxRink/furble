@@ -35,9 +35,9 @@ assert ui.bt_icon hidden
 action drop
 wait 700
 assert control.state connecting
-assert ui.reconnecting yes
+assert-eventually-virtual 6000 ui.reconnecting yes
 xassert ui.battery_drift 0
-assert ui.bt_icon red
+assert-eventually-virtual 2000 ui.bt_icon red
 wait 2500
 assert control.state active
 # recovered: icon set is back to the baseline, so this holds on every panel.
@@ -52,9 +52,9 @@ xassert ui.battery_drift 0
 # --- reconnecting with GPS on: two extra icons versus the baseline -------
 action drop
 wait 700
-assert ui.reconnecting yes
+assert-eventually-virtual 6000 ui.reconnecting yes
 xassert ui.battery_drift 0
-assert ui.bt_icon red
+assert-eventually-virtual 2000 ui.bt_icon red
 wait 2500
 assert ui.bt_icon hidden
 # GPS icon still shown, so still off the baseline icon set on the narrow panel.

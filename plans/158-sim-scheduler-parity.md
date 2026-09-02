@@ -14,7 +14,7 @@ ownership, or teardown defects.
 
 ## Implementation state
 
-Phase 2 is implemented by plan 163: production `Control`, `Camera`,
+Phase 2 is implemented by plan 161: production `Control`, `Camera`,
 `CameraList`, `Scan`, `Device` and every vendor class now build in the SDL
 simulator over the shared MockNimBLE boundary and the virtual camera peers,
 the four simulator substitutes are deleted, and `link_lies` is gone in favour
@@ -27,7 +27,7 @@ Phase 2 also surfaced one Phase 3 item that must not be described as closed: a
 task that only wakes on a virtual-clock deadline can be starved while the UI
 thread drives virtual time forward in large steps. It shows up as a control
 task that stops re-polling `Camera::connectCancelled()` inside a long vendor
-wait, so an interactive disconnect falls back to its 30 s cap. Plan 163 records
+wait, so an interactive disconnect falls back to its 30 s cap. Plan 161 records
 the reproducer.
 
 The first PR under this plan implements the first scheduler foundation: a shared 64-bit

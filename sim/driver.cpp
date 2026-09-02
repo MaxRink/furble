@@ -287,23 +287,12 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",
-      "gps_nmea",
-      "fauxny",
-      "autoconnect",
-      "reconnect",
-      "sleep_conn",
-      "boot_splash",
-      "connect_fail",
-      "no_touch",
-      "saved_camera",
-      "scan_start_probe",
-      "ble_saved",
-      "recon_backoff",
-      "auto_off_charging",
-      "imu",
-      "imu_sensor",
-      "liveness_check",
+      "gps",           "gps_nmea",          "fauxny",
+      "autoconnect",   "reconnect",         "sleep_conn",
+      "boot_splash",   "connect_fail",      "no_touch",
+      "saved_camera",  "scan_start_probe",  "ble_saved",
+      "recon_backoff", "auto_off_charging", "imu",
+      "imu_sensor",    "liveness_check",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -667,8 +656,7 @@ void readScript(const std::string &path) {
   }
 
   for (const Step &step : steps) {
-    if (step.type != StepType::ACTION
-        || step.action.kind != scenario_action_kind_t::SIMPLE) {
+    if (step.type != StepType::ACTION || step.action.kind != scenario_action_kind_t::SIMPLE) {
       continue;
     }
     // The transport faults act on virtual BLE peers, so a scenario that uses
@@ -1732,8 +1720,8 @@ void driverTick(void) {
                             step.action.batteryCurrent, step.action.batteryCharging};
         result = UI::sim_action_result_t::APPLIED;
       } else if (bool applied = false; applyTransportFaultAction(step.action, &applied)) {
-        result = applied ? UI::sim_action_result_t::APPLIED
-                         : UI::sim_action_result_t::VALID_NO_EFFECT;
+        result =
+            applied ? UI::sim_action_result_t::APPLIED : UI::sim_action_result_t::VALID_NO_EFFECT;
       } else {
         result = scenarioUi->simScenarioAction(step.action);
       }

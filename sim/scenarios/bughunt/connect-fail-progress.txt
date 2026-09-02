@@ -1,14 +1,14 @@
 # #39 class: after a camera that never links, the connecting/progress box must
 # not linger. Drive the failing connect then assert the box is gone.
-seed fauxny true
+#
+# The connect_fail seed registers one virtual Fujifilm peer and fails
+# NimBLEClient::connect() at the transport, which is the real failure path.
+# The mock has no radio latency, so the attempts fail immediately and the box
+# is never observable mid-flight; what matters is that it is gone afterwards.
 seed connect_fail true
 wait 300
 action connect
-wait 200
-assert ui.connect_box visible
-wait 3000
-print control.state
-print ui.connect_box
-assert control.state idle
+assert-eventually-virtual 10000 control.state idle
 assert ui.connect_box hidden
+assert ui.connected no
 exit

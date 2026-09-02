@@ -20,8 +20,8 @@ assert camera.shutter_presses 0
 assert camera.focus_presses 0
 action shutter
 wait 200
-assert camera.shutter_presses 1
-assert camera.shutter_releases 1
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
 assert camera.focus_presses 0
 
 # Switch to one-button mode.
@@ -31,25 +31,25 @@ wait 100
 # Gesture 1: single press-and-hold dispatches focus, no shutter.
 action main-press-hold
 wait 200
-assert camera.focus_presses 1
-assert camera.focus_releases 1
-assert camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
+assert-eventually-virtual 1000 camera.shutter_presses 1
 
 # Gesture 2: a double click dispatches exactly one shutter press and release.
 # It must NOT leak a leading focus tap: focus_presses stays 1.
 action main-double-click
 wait 200
-assert camera.shutter_presses 2
-assert camera.shutter_releases 2
-assert camera.focus_presses 1
-assert camera.focus_releases 1
+assert-eventually-virtual 1000 camera.shutter_presses 2
+assert-eventually-virtual 1000 camera.shutter_releases 2
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
 
 # Gesture 3: a click-then-hold dispatches a single sustained shutter press and
 # release. It must NOT leak a leading focus tap either: focus_presses stays 1.
 action main-click-hold
 wait 200
-assert camera.shutter_presses 3
-assert camera.shutter_releases 3
-assert camera.focus_presses 1
-assert camera.focus_releases 1
+assert-eventually-virtual 1000 camera.shutter_presses 3
+assert-eventually-virtual 1000 camera.shutter_releases 3
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
 exit

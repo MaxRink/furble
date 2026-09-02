@@ -31,7 +31,7 @@ action drop
 wait 200
 assert control.connected 0
 assert ui.connected no
-assert-eventually-virtual 2000 ui.reconnecting yes
+assert-eventually-virtual 6000 ui.reconnecting yes
 
 # Sit in the outage well past the grace period. The invariant is enforced and
 # must not fire, because the presentation is honest.

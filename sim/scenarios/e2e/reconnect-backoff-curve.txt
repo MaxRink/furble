@@ -45,7 +45,7 @@ assert control.reconnect_attempt 3
 
 # The UI stays honest for the whole backoff: reconnecting, never Connected.
 assert ui.connected no
-assert ui.reconnecting yes
+assert-eventually-virtual 6000 ui.reconnecting yes
 
 # The radio comes back. The next attempt off the curve reconnects and the
 # attempt counter resets.

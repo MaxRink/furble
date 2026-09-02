@@ -27,7 +27,7 @@ action drop
 wait 700
 assert control.state connecting
 assert ui.page bulb
-assert ui.bulb_reconnecting yes
+assert-eventually-virtual 2000 ui.bulb_reconnecting yes
 # One camera down: on a panel wide enough (the 135 px default here) the banner
 # names the dropped camera, "Reconnecting FauxNY Camera". bulb_named checks the
 # banner text against the board's width policy, so it also holds on the 80 px

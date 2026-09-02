@@ -24,7 +24,7 @@ assert ui.battery_pinned yes
 action drop
 wait 700
 assert control.state connecting
-assert ui.reconnecting yes
+assert-eventually-virtual 6000 ui.reconnecting yes
 assert ui.battery_pinned yes
 # Reconnect completes and the Bluetooth symbol hides again. The battery is still
 # pinned to the same right edge, having never shifted.

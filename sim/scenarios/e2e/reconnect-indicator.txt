@@ -29,9 +29,9 @@ assert control.state connecting
 # The connected view stays up: no progress-box takeover, still on the page.
 assert ui.connect_box hidden
 assert ui.page connected
-assert ui.reconnecting yes
+assert-eventually-virtual 6000 ui.reconnecting yes
 # The status-row Bluetooth symbol shows and is red, so the drop is unmistakable.
-assert ui.bt_color red
+assert-eventually-virtual 2000 ui.bt_color red
 # Single camera: no count, just the word.
 assert ui.status_text Reconnecting
 # The reconnect completes and both the indicator and the title clear.

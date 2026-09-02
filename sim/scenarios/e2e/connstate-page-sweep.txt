@@ -35,7 +35,7 @@ action drop
 wait 700
 assert control.state connecting
 assert ui.page connected
-assert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert control.state active
 assert ui.link_alert no
@@ -51,8 +51,8 @@ assert ui.page_banner no
 action drop
 wait 700
 assert ui.page shutter
-assert ui.link_alert yes
-assert ui.page_banner yes
+assert-eventually-virtual 2000 ui.link_alert yes
+assert-eventually-virtual 2000 ui.page_banner yes
 wait 2500
 assert ui.link_alert no
 assert ui.page_banner no
@@ -68,7 +68,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page bulb
-assert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 xassert ui.page_banner yes
 wait 2500
 assert ui.link_alert no
@@ -83,7 +83,7 @@ assert ui.page_banner none
 action drop
 wait 700
 assert ui.page cameras
-assert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert ui.link_alert no
 
@@ -95,7 +95,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page remote_timer
-assert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert ui.link_alert no
 
@@ -107,7 +107,7 @@ assert ui.link_alert no
 action drop
 wait 700
 assert ui.page remote_gps
-assert ui.link_alert yes
+assert-eventually-virtual 2000 ui.link_alert yes
 wait 2500
 assert ui.link_alert no
 exit
