@@ -215,10 +215,15 @@ timeout resolving after the pre-reboot Camera is dropped is a no-op rather
 than a use-after-free, and that a connect after the reboot still reaches
 ACTIVE. The use-after-free step carries no `check()`: the assertion is the
 sanitizer. `control_e2e_asan_test` in `tests/host/CMakeLists.txt` builds this
-harness with `-fsanitize=address`, compiling `lib/furble/Camera.cpp` and the
-mock directly because that is where the late `onDisconnect` writes, and both
-restart scenarios are registered against it as `control-e2e-asan-*` tests. So
-CI reports the class as an ASan abort rather than a segfault or a pass.
+harness with `-fsanitize=address`, and both restart scenarios are registered
+against it as `control-e2e-asan-*` tests. It compiles `MockNimBLE.cpp` and
+`lib/furble/Camera.cpp` directly rather than linking `furble_host_camera`,
+because the access is the mock loading the freed callbacks object's vptr to
+dispatch the late `onDisconnect`, and both the read and the freed object live
+in that unsanitized library. On a mutated build the report is a `READ of size
+8` in `NimBLEClient::mockCompleteStalledTerminate`, freed by the
+`FujifilmBasic` shared_ptr destroy. So CI reports the class as an ASan abort
+rather than a segfault or a pass.
 
 ## Mutation verification
 
@@ -269,10 +274,12 @@ promptly, with no late-callback use-after-free.
 Re-verified after the rebase onto the scheduler-parity foundation and again
 after the review fixes.
 
-- Full host suite green (`ctest`, 87 of 87, the 85 on master plus
-  `control-e2e-restart-restore-commandable` and
-  `control-e2e-restart-stalled-peer-reclaim`).
-- Both restart scenarios green under `-fsanitize=address`.
+- Full host suite green (`ctest`, 90 of 90 as measured in CI, the 88 on master
+  plus the two `control-e2e-asan-*` tests).
+- The sanitizer coverage is a committed configuration, not a local run: the
+  `control_e2e_asan_test` target builds this harness with
+  `-fsanitize=address`, and both restart scenarios are registered against it,
+  so `ctest` runs each of them twice, plain and instrumented.
 - Full sim e2e suite green (`sim/scripts/run-e2e.sh`, 74 of 74, the 73 on
   master plus the new `restart-persist` scenario), whose log shows the
   orderly shutdown, the fresh boot after the re-exec, and the persisted

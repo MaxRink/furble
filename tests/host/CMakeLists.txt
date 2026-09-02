@@ -720,13 +720,16 @@ target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-u
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
 
 # AddressSanitizer variant of the same harness, for the restart scenarios
-# (plan 156). Their use-after-free class lives in the late onDisconnect a gone
-# peer's reclaimed client fires, which writes through lib/furble/Camera.cpp, so
-# that translation unit has to be instrumented for the access to be caught as an
-# ASan report rather than a segfault or, worse, a pass. The furble_host_camera
-# library is not built with the sanitizer, so this target compiles the same
-# sources directly, exactly as control_reclaim_uaf_test does, and repeats the
-# library's short registration timeout so the scenarios keep their timing.
+# (plan 156). Their use-after-free class is the late onDisconnect a gone peer's
+# client fires after the Camera it calls back into is gone: the mock loads the
+# freed callbacks object's vptr to dispatch, a read inside MockNimBLE.cpp, and
+# the object it reads belongs to lib/furble/Camera.cpp. Both of those live in
+# the furble_host_camera library, which is not built with the sanitizer, so
+# neither the read nor the free would be instrumented through it. This target
+# therefore compiles the same sources directly, exactly as
+# control_reclaim_uaf_test does, so the class is caught as an ASan report
+# rather than a segfault or, worse, a pass. It repeats the library's short
+# registration timeout so the scenarios keep their timing.
 add_executable(control_e2e_asan_test
                ${CONTROL_E2E_DIR}/control_e2e.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
@@ -855,11 +858,11 @@ target_compile_options(control_disconnect_test PRIVATE
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
 # AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
-# It cannot link the shared furble_host_camera library, because the late
-# onDisconnect writes through the freed Camera inside lib/furble/Camera.cpp, so
-# that translation unit must be compiled with ASan for the access to be
-# instrumented. This target therefore compiles the furble sources directly with
-# -fsanitize=address. The mock models NimBLE's deferred deleteClient on a still
+# It cannot link the shared furble_host_camera library: the late onDisconnect
+# reads the freed Camera's callbacks vptr to dispatch, and both the mock making
+# that read and the Camera being read live in that unsanitized library, so
+# neither the access nor the free would be instrumented. This target therefore
+# compiles the furble sources directly with -fsanitize=address. The mock models NimBLE's deferred deleteClient on a still
 # connected client, so removing the reclaimClient() callback detach makes the
 # late onDisconnect land on the freed Camera and ASan aborts.
 add_executable(control_reclaim_uaf_test
@@ -1281,7 +1284,8 @@ if(BUILD_TESTING)
 
   # The restart scenarios also run instrumented, because the gone-peer reboot
   # asserts the absence of a use-after-free and only the sanitizer can see it.
-  foreach(scenario restart-restore-commandable
+  foreach(scenario
+          restart-restore-commandable
           restart-stalled-peer-reclaim)
     add_test(NAME control-e2e-asan-${scenario} COMMAND control_e2e_asan_test ${scenario})
   endforeach()

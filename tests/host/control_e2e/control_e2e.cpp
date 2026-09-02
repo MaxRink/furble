@@ -1026,11 +1026,11 @@ bool scenarioRestartStalledPeerReclaim() {
   camera.reset();
 
   // The supervision timeout finally resolves. With the reclaim it lands on the
-  // detached no-op callbacks. Without it, it writes through the freed Camera:
-  // there is no check() for that, because the assertion is the sanitizer. Under
-  // the control_e2e_asan_test build this line aborts the process; under a plain
-  // build it is an unchecked read that may or may not survive, which is why CI
-  // runs the ASan target.
+  // detached no-op callbacks. Without it, the mock dispatches through the freed
+  // Camera's callbacks object, reading its vptr. There is no check() for that,
+  // because the assertion is the sanitizer: under the control_e2e_asan_test
+  // build the read aborts the process, while a plain build may well read the
+  // stale memory and carry on. That is why CI runs the ASan target.
   client->mockCompleteStalledTerminate(0x08);
 
   // And the rebooted machine still connects.
