@@ -384,6 +384,15 @@ The complete `ui.*` query set is:
 | `ui.gps_link_age` | Rendered sentence age exactly as drawn, such as `3s`, `17m`, `99m+`, or `n/a`. |
 | `ui.gps_cycle` | Rendered power cycle state, such as `waiting` or `degraded`. |
 | `ui.gps_retries` | Rendered degraded retry count, `0` when the row shows none, `none` when the row is absent. |
+| `ui.focus_outline_count` | Numeric outline count, or `none`. |
+| `ui.lock_outline` | Numeric outline width, or `none`. |
+| `ui.link_alert` | `yes` or `no`. |
+| `ui.page_banner` | `none`, `yes`, or `no`. |
+| `ui.bt_icon` | `hidden`, `red`, or `plain`. |
+| `ui.battery_x` | Numeric header x position, or `none`. |
+| `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
+| `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
+| `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
 `gps.source` is `GPS::sourceName()`, the receiver's own state: `uart`,
@@ -398,15 +407,6 @@ clamp regression fails the assertion. It still parses as a leading integer, so
 clamps are not reachable from a scenario, because the degraded retry re-sends
 its configuration and any received byte refreshes the tick; they are unit tested
 in `tests/host/gps_format_test.cpp`.
-| `ui.focus_outline_count` | Numeric outline count, or `none`. |
-| `ui.lock_outline` | Numeric outline width, or `none`. |
-| `ui.link_alert` | `yes` or `no`. |
-| `ui.page_banner` | `none`, `yes`, or `no`. |
-| `ui.bt_icon` | `hidden`, `red`, or `plain`. |
-| `ui.battery_x` | Numeric header x position, or `none`. |
-| `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
-| `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
-| `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
 
 The other namespaces are:
 
