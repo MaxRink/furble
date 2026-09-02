@@ -426,7 +426,7 @@ deterministic interleaving control (sub-50 ms races unforceable).
 
 `serdrive.py` lives in the session scratchpad at
 `/private/tmp/claude-503/-Users-A92615428-git-GitHub-gkoh-furble/c391dccf-d875-4fae-b4fc-925218e9e8ba/scratchpad/serdrive.py`.
-**Copy it somewhere durable immediately** — session scratch directories get
+**Copy it somewhere durable immediately**: session scratch directories get
 wiped, and that already happened once mid-session and destroyed the shared
 libdeps donor.
 
@@ -734,14 +734,14 @@ Durable context lives in
 `~/.claude/projects/-Users-A92615428-git-GitHub-gkoh-furble/memory/`, indexed by
 `MEMORY.md`. The ones that matter most here:
 
-- `furble-project-state.md` — the running project log, including the full
+- `furble-project-state.md`: the running project log, including the full
   2026-08-28 incident entry.
-- `furble-sim-fuzzing-e2e-goal.md` — the sim/fuzzing standing goal plus the full
+- `furble-sim-fuzzing-e2e-goal.md`: the sim/fuzzing standing goal plus the full
   2026-08-28 gap analysis summary.
-- `furble-build-environment.md` — host build quirks.
-- `furble-build-infra-prefs.md` — the OrbStack VM and opus-subagent directives.
-- `furble-hardware-findings.md` — DFS clock family, M5PM1 traps.
-- `furble-upstream-process.md` — gkoh's contribution rules if anything ever goes
+- `furble-build-environment.md`: host build quirks.
+- `furble-build-infra-prefs.md`: the OrbStack VM and opus-subagent directives.
+- `furble-hardware-findings.md`: DFS clock family, M5PM1 traps.
+- `furble-upstream-process.md`: gkoh's contribution rules if anything ever goes
   upstream.
 - `furble-review-and-stacking.md`, `furble-camera-pr-sourcing.md`,
   `furble-liveness-and-tests.md`, `furble-remaining-work.md`,
