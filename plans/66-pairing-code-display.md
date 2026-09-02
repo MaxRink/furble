@@ -285,6 +285,25 @@ Residual hardware-only check: a Ricoh camera producing a real numeric-comparison
 
 The camera state machine also rejects malformed or out-of-range callback codes, rejects a second request while one is visible so the code being confirmed cannot differ from the code displayed, and rejects an answer whose connection handle is stale. These guards remain hardware-pending for the real NimBLE callback exchange.
 
+## Fuzz seed 3 on the 320x240 Core
+
+Master already promoted this seed out of the expected-fail pin in #270 (plan
+166), for the same reason this branch would have: the walk no longer reaches the
+intervalometer layout overflow at step 447. This branch measured the same thing
+independently before that landed, on its own 320x240 build of both trees:
+
+- master f425fd3: `FUZZ FINDING [layout-overflow] step=447 page=timer`,
+  `observed_delta=245`, exit 1.
+- this branch on that base: `findings=0`, `observed_delta=248`, exit 0.
+
+Two independent causes shift the same walk. The pairing work moves the fuzzer's
+`companion-request` and `companion-answer` events onto the unified
+`closePairingDialog` and the shared pairing timer; plan 166 changes how far the
+control task gets per UI slice. Either alone diverges the sequence before step
+447. The page itself is untouched by both, and seeds 4, 5, 6, 8, 11, 13, 17 and
+23 were checked on the Core build of this branch without reaching it, so no
+replacement pin is offered here either. The gap stays where #270 left it.
+
 ## Known flake, not caused by this branch
 
 `sim-scheduler` failed one of three serial runs on the unmutated tree during
