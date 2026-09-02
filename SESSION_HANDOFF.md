@@ -46,6 +46,18 @@ sync points at 996a8ab5, plan 157, firmware byte-identical proof, 86/86,
 independent review in flight. #245 Fujifilm follow-ups at aec2c7d2, 84/84,
 waits on the X100VI (unreachable on 09-02). R1 not yet pushed.
 
+Later on 2026-09-02: MERGED #252 (sync points, plan 157), #260 (coverage floor,
+plan 163; tools/coverage.py, monotonic ratchet, clang-18 pinned; every PR gets
+a measured coverage table and a floor check; grand union 69.0 percent), #262
+(plan 156 follow-ups, ASan control_e2e target). master 153c38b7. Open: #261 R1
+(request-changes: nondeterministic reconnect indicator under the real stack,
+fuzz deadlock on Camera::m_Mutex held across connect delays, wall-clock
+scheduler stall bound, deleted assertions, host thread in Scan.cpp; fix round
+running; when it lands ratchet the sim floors with --lower --reason), #245
+(parked on the X100VI bench gate). Load incident: reviewers' orphaned CPU
+spinners (ppid 1 shell-snapshot shells plus yes) drove load to 135 for hours;
+kill them and check uptime whenever agents look slow.
+
 Environment 2026-09-02: OrbStack VM `furble-build` recreated (it had
 vanished) with clang, clang-format 21.1.5, SDL2, sim deps at
 ~/furble/sim/.pio/libdeps/sim; NEVER share ~/furble between concurrent jobs,
