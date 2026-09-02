@@ -35,7 +35,7 @@ class CheckCIWorkflowsTest(unittest.TestCase):
       ):
         checked += 1
         self.assertEqual(CHECKER.lint_workflow(path), [], path.name)
-    self.assertEqual(checked, 8)
+    self.assertEqual(checked, 9)
 
   def test_branches_ignore_is_a_base_branch_filter(self):
     errors = self.lint(

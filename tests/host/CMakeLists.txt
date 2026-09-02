@@ -9,6 +9,21 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Opt-in source-based coverage instrumentation, used by tools/coverage.py.
+# Off by default so the plain configure and the existing CI job are unchanged.
+# Configure with -DFURBLE_COVERAGE=ON, or export FURBLE_COVERAGE=1, and every
+# test binary writes a raw profile to the path in LLVM_PROFILE_FILE.
+option(FURBLE_COVERAGE "Build the host harness with clang coverage" OFF)
+if(NOT FURBLE_COVERAGE AND DEFINED ENV{FURBLE_COVERAGE})
+  if("$ENV{FURBLE_COVERAGE}" STREQUAL "1")
+    set(FURBLE_COVERAGE ON)
+  endif()
+endif()
+if(FURBLE_COVERAGE)
+  add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+  add_link_options(-fprofile-instr-generate)
+endif()
+
 set(FURBLE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(HOST_NIMBLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nimble)
 set(HOST_PEER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/peer)

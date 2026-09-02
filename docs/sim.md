@@ -135,6 +135,17 @@ For an instrumented UI-fuzzer build, set `FURBLE_SIM_SANITIZE` to a clang
 sanitizer list and use a separate `FURBLE_SIM_BUILD_DIR`, for example
 `FURBLE_SIM_SANITIZE=address,undefined`.
 
+`FURBLE_SIM_COVERAGE=1` builds with clang source-based coverage instead. Only
+firmware translation units are instrumented, so LVGL and M5GFX stay at full
+speed. Each run writes a raw profile to the path in `LLVM_PROFILE_FILE`. Use a
+separate `FURBLE_SIM_BUILD_DIR` here too. `tools/coverage.py` drives all of
+this; see [coverage.md](coverage.md).
+
+Both flags shape the objects, so `build.sh` stamps them in
+`$FURBLE_SIM_BUILD_DIR/build-flags` and drops the object cache when they change.
+Reusing one build directory with different flags therefore rebuilds rather than
+mixing objects.
+
 ## Scenario files
 
 Scenario files are line oriented. A `#` starts a comment. Blank lines and the
