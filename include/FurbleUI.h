@@ -38,6 +38,7 @@ class UI {
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
     CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
+    DELETE,          /**< arg: saved camera index, negative deletes every saved camera */
     GPS_RELOAD,      /**< arg: unused */
     GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
     IR_RELOAD,       /**< arg: unused */
@@ -48,8 +49,22 @@ class UI {
   /** Create the request queue used by the headless main loop. */
   static void init(void);
 
-  /** Queue an operation for the headless main loop. */
+  /**
+   * Queue an operation for the headless main loop.
+   *
+   * Clears the outcome token first, so a caller which waits for the answer
+   * cannot read the previous request's token as this one's.
+   */
   static bool sendRequest(Request request, int32_t arg);
+
+  /**
+   * Outcome token of the workflow request last serviced, null if none.
+   *
+   * The console contract is the same one the display build answers: the
+   * handler prints its own lines and ends with 'result: <token>', and the
+   * console takes the token as its exit status.
+   */
+  static const char *consoleResult(void);
 
   /** Drain queued console operations in the headless main loop. */
   static void serviceRequests(void);
@@ -103,19 +118,30 @@ class UI {
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the UI task to carry out on its behalf. */
   enum class Request {
-    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
-    DISCONNECT,      /**< arg: unused */
-    SCAN,            /**< arg: non-zero to start, zero to stop */
-    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
-    GPS_RELOAD,      /**< arg: unused */
-    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
-    IR_RELOAD,       /**< arg: unused */
-    FEEDBACK_RELOAD, /**< arg: unused */
-    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
-    PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
-    AUDIT,           /**< arg: unused */
-    POWER_RELOAD,    /**< arg: unused */
-    SD_RELOAD,       /**< arg: unused */
+    CONNECT,            /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT,         /**< arg: unused */
+    SCAN,               /**< arg: non-zero to start, zero to stop */
+    CAMERAS,            /**< arg: non-zero to reload the saved cameras before printing */
+    DELETE,             /**< arg: saved camera index, negative deletes every saved camera */
+    PAIR,               /**< arg: scan result index, the Scan page row the console cannot click */
+    MULTI_SELECT,       /**< arg: saved camera index to add to the multi-connect selection */
+    MULTI_DESELECT,     /**< arg: saved camera index to drop from the multi-connect selection */
+    GPS_RELOAD,         /**< arg: unused */
+    GPS_POWER,          /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,          /**< arg: unused */
+    FEEDBACK_RELOAD,    /**< arg: unused */
+    FEEDBACK_TEST,      /**< arg: Feedback::event_t value, bypasses the event mask */
+    PERF,               /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
+    AUDIT,              /**< arg: unused */
+    PAGE,               /**< arg: unused, prints the current page name */
+    BACK,               /**< arg: unused, the header back button */
+    INTERVAL,           /**< arg: -1 prints status, non-zero starts, zero stops */
+    BULB,               /**< arg: -1 prints status, non-zero starts, zero stops */
+    MULTI_CLEAR,        /**< arg: unused, empties the multi-connect selection */
+    DISPLAY_BRIGHTNESS, /**< arg: -1 prints display status, else the brightness to apply */
+    POWER_OFF,          /**< arg: unused */
+    POWER_RELOAD,       /**< arg: unused */
+    SD_RELOAD,          /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
@@ -127,9 +153,20 @@ class UI {
    * LVGL is not thread safe, so anything touching it has to run on the UI task.
    * Safe to call from any task.
    *
+   * Clears the outcome token first, so a caller which waits for the answer
+   * cannot read the previous request's token as this one's.
+   *
    * @return true if the request was queued.
    */
   static bool sendRequest(Request request, int32_t arg);
+
+  /**
+   * Outcome token of the workflow request last serviced, null if none.
+   *
+   * The console reads it after waiting for the answer, so a refused verb exits
+   * non-zero instead of acknowledging a workflow that never ran.
+   */
+  static const char *consoleResult(void);
 #endif
 
   UI(const interval_t &interval);
@@ -196,6 +233,17 @@ class UI {
 
   /** Report an assertable UI state value for scripted end-to-end scenarios. */
   std::string simQueryState(const char *key);
+
+#if defined(FURBLE_SIM) && defined(FURBLE_CONSOLE)
+  /**
+   * Report one answer line of the last serviced console request.
+   *
+   * The simulator has no console transport, so this is how a scenario reads
+   * what a UI::Request actually answered. Empty when the last request printed
+   * no line with that key.
+   */
+  static std::string simConsoleField(const char *name);
+#endif
 
   /**
    * Drive a physical button through the board's real input-device wiring.
@@ -526,6 +574,35 @@ class UI {
   void serviceRequests(void);
 #endif
 
+#if defined(FURBLE_CONSOLE)
+  /**
+   * The connectable list currently holds scan results, not saved cameras.
+   *
+   * Both live in CameraList, and only the task which last rebuilt it knows
+   * which. 'pair' names a row of a scan, so it has to refuse when the list is
+   * the saved one and 'connect' is the verb instead.
+   */
+  static bool m_ScanListLive;
+
+  /**
+   * Outcome token for the workflow request just serviced.
+   *
+   * The verbs which report one set this, and serviceRequests() prints it as
+   * the last line of the answer. Null for the requests which predate it.
+   *
+   * Written on the UI task and read on the console task, hence the atomic.
+   */
+  static std::atomic<const char *> m_ConsoleResult;
+
+  /**
+   * Print one 'key: value' answer line for a console request.
+   *
+   * The single output path for the request handlers, so the simulator can
+   * observe what a scenario's request answered without a console transport.
+   */
+  static void consolePrint(const char *format, ...) __attribute__((format(printf, 1, 2)));
+#endif
+
   static ConnectContext_t m_ConnectContext;
 
   const uint32_t m_KeyLeft = LV_KEY_LEFT;
@@ -768,11 +845,23 @@ class UI {
 
   enum class DisplayState { ACTIVE, DIM, OFF };
 
+#if defined(FURBLE_SIM) || defined(FURBLE_CONSOLE)
+  /** Intervalometer run state as a stable, script parseable word. */
+  static const char *intervalStateName(Intervalometer::state_t state);
+
+  /** Bulb exposure state as a stable, script parseable word. */
+  static const char *bulbStateName(Bulb::state_t state);
+#endif
+
   lv_obj_t *m_IntervalStart = nullptr;
   lv_obj_t *m_IntervalStop = nullptr;
   Intervalometer m_Intervalometer;
 
   lv_obj_t *m_BulbStart = nullptr;
+  // The Bulb run page Stop button. Held because the console sends its real
+  // event: the callback restarts a finished exposure, releases the shutter and
+  // leaves the run page, none of which bulbStop() alone does.
+  lv_obj_t *m_BulbStop = nullptr;
   Bulb m_Bulb;
 
   status_t m_Status;
@@ -1136,6 +1225,26 @@ class UI {
 
   /** Update the Multi-Connect button label and state. */
   static void updateMultiConnectButton(lv_obj_t *button);
+
+  /**
+   * Reload the saved camera list.
+   *
+   * The single load site in the UI, so the console's view of whether the list
+   * holds scan results or saved cameras cannot drift out of step with it.
+   */
+  static void reloadCameraList(void);
+
+  /**
+   * Saved camera at the given index is in the given remembered multi-connect set.
+   *
+   * The set is remembered by camera name, so it can only be resolved against a
+   * loaded CameraList, on the task which owns it. The caller supplies the set
+   * so a whole-list seed costs one store read rather than one per row.
+   */
+  static bool multiConnectSelectionHas(const Settings::multiselect_t &selection, size_t index);
+
+  /** Apply the remembered multi-connect set to the loaded camera list. */
+  static void seedMultiConnectSelection(void);
 
   /** Save the current active camera selection. */
   static void saveMultiConnectSelection(void);

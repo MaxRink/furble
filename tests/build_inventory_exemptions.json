@@ -7,6 +7,5 @@
   "src/FurbleOTAPartitionSinkESP.cpp": "hardware-bound: ESP-IDF OTA partition backend",
   "src/FurblePlatform.cpp": "planned: plans/16x simulator coverage",
   "src/FurbleSD.cpp": "hardware-bound: SD SPI host and FAT VFS mount",
-  "src/FurbleUIAudit.cpp": "hardware-bound: walks the live LVGL widget tree",
   "src/main.cpp": "hardware-bound: boot glue, app_main and device task wiring"
 }

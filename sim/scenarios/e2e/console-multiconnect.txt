@@ -1,0 +1,86 @@
+# The console multi-connect verbs. The remembered set is keyed by camera name
+# and only the UI task may resolve an index onto one, so every step here is the
+# production request handler.
+#
+# Nine saved cameras is one more than MULTISELECT_MAX, which is the boundary
+# saveMultiConnectSelection() silently drops past.
+seed saved_cameras 9
+seed multiconnect true
+wait 400
+
+action console cameras 1
+wait 200
+assert console.saved 9
+assert console.camera0.selected false
+
+# Selecting resolves the index against the loaded list and persists the whole
+# set. The answer reports what the store took, not the flag that was set.
+action console multi-select 0
+wait 200
+assert console.result ok
+assert console.selected true
+
+action console multi-select 1
+wait 200
+assert console.result ok
+assert console.selected true
+
+# Seeding the remembered set back before each write is what stops a second
+# select from dropping the first.
+action console cameras 1
+wait 200
+assert console.camera0.selected true
+assert console.camera1.selected true
+
+# Deselect drops one and leaves the other.
+action console multi-deselect 0
+wait 200
+assert console.result ok
+assert console.selected false
+
+action console cameras 1
+wait 200
+assert console.camera0.selected false
+assert console.camera1.selected true
+
+# An index past the end of the saved list is refused.
+action console multi-deselect 20
+wait 200
+assert console.result no_saved_camera
+
+# Fill the remembered set to its maximum, then one past it. The ninth select
+# cannot persist, and the answer says so rather than reporting the flag.
+action console multi-select 0
+wait 100
+action console multi-select 2
+wait 100
+action console multi-select 3
+wait 100
+action console multi-select 4
+wait 100
+action console multi-select 5
+wait 100
+action console multi-select 6
+wait 100
+action console multi-select 7
+wait 200
+assert console.result ok
+assert console.selected true
+
+action console multi-select 8
+wait 200
+assert console.result selection_full
+assert console.selected false
+
+# Clearing empties the store and the loaded active flags together, so the next
+# Connect press cannot write the whole set straight back.
+action console multi-clear
+wait 200
+assert console.result ok
+assert console.count 0
+
+action console cameras 1
+wait 200
+assert console.camera1.selected false
+assert console.camera7.selected false
+exit

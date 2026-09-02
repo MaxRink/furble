@@ -1,0 +1,101 @@
+# The console intervalometer and bulb verbs. Both send the real button event,
+# so this asserts the run state and the shutter the button drives, not a copy
+# of it.
+seed fauxny true
+seed bulb_duration 4
+seed interval_count 3
+seed interval_delay 1
+seed interval_shutter 1
+seed interval_wait 1
+wait 400
+action connect
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+
+# Neither run is in progress, so stop has nothing to stop. Without the gate the
+# synthetic click would release a shutter a script may be holding and navigate
+# off the page.
+action console interval 0
+wait 200
+assert console.result not_running
+assert ui.interval_state idle
+
+action console bulb 0
+wait 200
+assert console.result not_running
+assert ui.bulb_state idle
+
+# Status reports the run state and the live spinner values, which are what a
+# start would actually run.
+action console interval -1
+wait 200
+assert console.result ok
+assert console.state idle
+assert console.count 3
+assert console.next_ms 0
+
+action console bulb -1
+wait 200
+assert console.result ok
+assert console.state idle
+assert console.duration_ms 4000
+assert console.remaining_ms 0
+
+# Bulb start sends the Start button event, which holds the shutter and then
+# navigates to the run page. That ordering matters: leaving the run page stops
+# the exposure, so a start that skipped the navigation would be cancelled by
+# the next page change.
+action console bulb 1
+wait 200
+assert console.result ok
+assert ui.page bulb_run
+assert ui.bulb_state running
+assert ui.shutter_held yes
+assert camera.shutter_presses 1
+assert camera.shutter_releases 0
+
+action console bulb -1
+wait 200
+assert console.state running
+
+# The run page name carries a trailing space in the menu, which 'ui page' trims
+# so a script can compare it as one token. This is the page whose identity the
+# bulb verbs depend on, since leaving it stops the exposure.
+action console page
+wait 200
+assert console.result ok
+assert console.page Bulb
+
+# Stop sends the Stop button event, which releases the shutter and leaves the
+# run page. bulbStop() alone does neither.
+action console bulb 0
+wait 200
+assert console.result ok
+assert ui.bulb_state idle
+assert ui.shutter_held no
+assert camera.shutter_releases 1
+# The Stop button clicks the header back button, which returns to wherever the
+# UI was when the console started the exposure rather than to the Bulb page.
+assert ui.page connected
+
+# The intervalometer takes the same shape.
+home
+wait 200
+action nav timer
+wait 200
+action console interval 1
+wait 300
+assert console.result ok
+assert ui.page timer_run
+assert ui.interval_state shutter
+
+action console interval -1
+wait 200
+assert console.state shutter
+
+action console interval 0
+wait 300
+assert console.result ok
+assert ui.interval_state idle
+exit

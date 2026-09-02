@@ -1,0 +1,48 @@
+# The console pairing verb, driven through the same UI::Request the console
+# posts. This is the UI half of that seam: the console's own argument parsing
+# is covered by the host command suite, and everything below is the production
+# request handler in src/FurbleUI.cpp.
+seed fauxny true
+wait 400
+assert ui.page main
+
+# Pairing an index while the connectable list holds saved cameras rather than
+# scan results has to be refused. Nothing has scanned yet.
+action console pair 0
+wait 200
+assert console.result no_scan_result
+assert control.state idle
+
+# Start the scan the console starts.
+action console scan 1
+wait 600
+
+# The list is now a scan list: one unsaved result.
+action console cameras 0
+wait 200
+assert console.count 1
+assert console.camera0.saved false
+
+# An index past the end of the scan results is refused the same way.
+action console pair 9
+wait 200
+assert console.result no_scan_result
+assert control.state idle
+
+# A valid index takes the Scan page row click path: it activates the scan
+# result and connects.
+action console pair 0
+wait 300
+assert console.result ok
+assert control.state connecting
+wait 2800
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+
+# Reaching STATE_ACTIVE from the Scan page saves the camera, which is the whole
+# point of routing through the same path the row click takes.
+action console cameras 1
+wait 200
+assert console.saved 1
+assert console.camera0.saved true
+exit

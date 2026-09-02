@@ -224,18 +224,24 @@ unchanged.
 ```
 version                             firmware and IDF version
 status                              state, targets, uptime, heap, battery, reset reason
-power                               power stats, or a CSV power log
+power                               power stats, a CSV power log, or power off
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
 imu status                         read-only IMU type/read diagnostic
 time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write every setting
-ui audit                            dump the current page layout
+ui audit | page | back              page layout, current page, header back button
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection
+pair <scan index>                   onboard a camera from scan list
+delete <index> | delete all         forget a saved camera and its bond
+multiconnect list | select | deselect | clear
 disconnect
 shutter press | release | hold <ms>
 focus press | release
+interval start | stop | status      the Timer page
+bulb start | stop | status          the Bulb page
+display status | mode | brightness  brightness applies live
 ir fire [protocol]                  fire the IR emitter
 scan start | stop | list
 bt scan | explore | pair | journal   Bluetooth diagnostics
@@ -245,8 +251,10 @@ debug <subsystem>                   dump internal state
 reboot
 ```
 
-The full command reference, with every subcommand, is in
-[docs/console-commands.md](docs/console-commands.md).
+Every workflow the menus offer has a console verb, and each one routes through
+the same production code path the menu click takes rather than a second copy of
+it. The full command reference, with every subcommand and the workflow to verb
+table, is in [docs/console-commands.md](docs/console-commands.md).
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown and current as unavailable. It does not infer USB or

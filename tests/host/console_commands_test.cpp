@@ -100,9 +100,10 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",     "version",   "status", "imu",      "power",   "perf",       "gps",     "time",
-    "settings", "provision", "ui",     "cameras",  "connect", "disconnect", "shutter", "ir",
-    "focus",    "scan",      "bt",     "feedback", "log",     "debug",      "flash",   "reboot",
+    "help",       "version",   "status",   "imu",     "power",   "perf",   "gps",    "time",
+    "settings",   "provision", "ui",       "cameras", "connect", "pair",   "delete", "multiconnect",
+    "disconnect", "shutter",   "interval", "bulb",    "display", "ir",     "focus",  "scan",
+    "bt",         "feedback",  "log",      "debug",   "flash",   "reboot",
 };
 
 }  // namespace
@@ -120,23 +121,29 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",    "expected stats or log",                                       "",         {"stats", "log"}                      },
-    {"perf",     "expected tasks, heap or lvgl",                                "",         {"tasks", "heap", "lvgl"}             },
+    {"power",        "expected stats, log or off",                              "",         {"stats", "log", "off"}               },
+    {"perf",         "expected tasks, heap or lvgl",                            "",         {"tasks", "heap", "lvgl"}             },
     {"gps",
      "expected on, off, raw, send, binary, config, aid or power",               "",
      {"on", "off", "raw", "send", "binary", "config", "aid", "power"}                                                             },
-    {"time",     "usage: time status | flush",                                  "",         {"status", "flush"}                   },
-    {"settings", "expected list, get or set",                                   " theme",   {"list", "get", "set"}                },
-    {"ui",       "usage: ui audit",                                             "",         {"audit"}                             },
-    {"cameras",  "expected list or status",                                     "",         {"list", "status"}                    },
-    {"imu",      "usage: imu status",                                           "",         {"status"}                            },
-    {"shutter",  "expected press, release or hold",                             "",         {"press", "release", "hold"}          },
-    {"ir",       "usage: ir fire [protocol]",                                   "",         {"fire"}                              },
-    {"focus",    "expected press or release",                                   "",         {"press", "release"}                  },
-    {"scan",     "expected start, stop or list",                                "",         {"start", "stop", "list"}             },
-    {"bt",       "expected scan, explore, pair or journal",                     "",         {"scan", "explore", "pair", "journal"}},
-    {"feedback", "usage: feedback test",                                        " shutter", {"test"}                              },
-    {"flash",    "usage: flash prepare | cancel",                               "",         {"prepare", "cancel"}                 },
+    {"time",         "usage: time status | flush",                              "",         {"status", "flush"}                   },
+    {"settings",     "expected list, get or set",                               " theme",   {"list", "get", "set"}                },
+    {"ui",           "expected audit, page or back",                            "",         {"audit", "page", "back"}             },
+    {"cameras",      "expected list or status",                                 "",         {"list", "status"}                    },
+    {"multiconnect",
+     "expected list, select, deselect or clear",                                " 0",
+     {"list", "select", "deselect", "clear"}                                                                                      },
+    {"interval",     "expected start, stop or status",                          "",         {"start", "stop", "status"}           },
+    {"bulb",         "expected start, stop or status",                          "",         {"start", "stop", "status"}           },
+    {"display",      "expected status, mode or brightness",                     " gui",     {"status", "mode", "brightness"}      },
+    {"imu",          "usage: imu status",                                       "",         {"status"}                            },
+    {"shutter",      "expected press, release or hold",                         "",         {"press", "release", "hold"}          },
+    {"ir",           "usage: ir fire [protocol]",                               "",         {"fire"}                              },
+    {"focus",        "expected press or release",                               "",         {"press", "release"}                  },
+    {"scan",         "expected start, stop or list",                            "",         {"start", "stop", "list"}             },
+    {"bt",           "expected scan, explore, pair or journal",                 "",         {"scan", "explore", "pair", "journal"}},
+    {"feedback",     "usage: feedback test",                                    " shutter", {"test"}                              },
+    {"flash",        "usage: flash prepare | cancel",                           "",         {"prepare", "cancel"}                 },
     {"debug",
      "expected control, camera, ble, heap, tasks, power, gps, settings or all", "",
      {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                             },
@@ -1293,6 +1300,248 @@ void testDebugWithLiveCamera(void) {
 }
 }  // namespace
 
+/**
+ * The camera onboarding and shooting workflows a bench script drives.
+ *
+ * Every verb here stands in for a page the UI offers and nothing else: the
+ * console side parses, gates, and hands one UI request to the task which owns
+ * the list or the widget. So the assertions are on the request and its
+ * argument reaching the UI queue double, which is the seam, plus the usage and
+ * refusal text a script has to read.
+ */
+/**
+ * The wait is part of the contract, so drive a UI task which takes its time.
+ *
+ * docs/console-commands.md promises that a workflow verb holds the prompt
+ * until the UI task has answered, because the gate a script needs to see is
+ * decided there. Everywhere else in this suite the double answers inside
+ * sendRequest(), which cannot tell a verb that waits from one that returns
+ * straight away. Here it answers 20ms later from another thread, as the real
+ * UI task does, so a verb which does not wait returns before its answer is
+ * printed and before its token exists.
+ */
+void testWorkflowVerbsWaitForTheirAnswer(void) {
+  std::cerr << "test: a workflow verb holds the prompt until the UI task answers\n";
+
+  struct WaitCase {
+    const char *line;
+    const char *answerLine;
+    const char *token;
+    bool refused;
+  };
+
+  const std::vector<WaitCase> cases = {
+      {"delete 99",               "error: no saved camera at index 99", "no_saved_camera", true },
+      {"delete 0",                "deleted: X100VI",                    "ok",              false},
+      {"delete all",              "count: 2",                           "ok",              false},
+      {"multiconnect select 9",   "error: no saved camera at index 9",  "no_saved_camera", true },
+      {"multiconnect select 0",   "selected: true",                     "ok",              false},
+      {"multiconnect deselect 9", "error: no saved camera at index 9",  "no_saved_camera", true },
+      {"ui back",                 "page: back",                         "ok",              false},
+  };
+
+  for (const auto &entry : cases) {
+    ConsoleHost::ui().requests.clear();
+    ConsoleHost::ui().answerLine = entry.answerLine;
+    ConsoleHost::ui().answer = entry.token;
+    ConsoleHost::ui().answerDelayMs = 20;
+
+    const Result result = runDirect(entry.line);
+    const std::string what = std::string("'") + entry.line + "'";
+    const std::string tokenLine = std::string("result: ") + entry.token;
+    const size_t answerAt = result.out.find(entry.answerLine);
+    const size_t tokenAt = result.out.find(tokenLine);
+
+    checkContains(result.out, entry.answerLine, what + " waits for the answer the UI task prints");
+    checkContains(result.out, tokenLine, what + " waits for the token, not just the queue send");
+    check((answerAt != std::string::npos) && (tokenAt != std::string::npos) && (answerAt < tokenAt),
+          what + " prints the token after the answer it belongs to");
+    check(entry.refused ? (result.rc != 0) : (result.rc == 0),
+          what + " exits with the outcome the token reports");
+    check(!ConsoleHost::ui().requests.empty(), what + " reached the UI task");
+  }
+
+  // A UI task which never answers is a failure, not a success: the verb has no
+  // outcome to report, so it must not acknowledge one.
+  ConsoleHost::ui().answerLine = nullptr;
+  ConsoleHost::ui().answer = nullptr;
+  ConsoleHost::ui().answerDelayMs = 0;
+  const Result silent = runDirect("delete 0");
+  checkContains(silent.out, "no answer from the ui task",
+                "an unanswered workflow verb says so rather than claiming success");
+  check(silent.rc != 0, "an unanswered workflow verb exits non-zero");
+
+  ConsoleHost::joinUIAnswer();
+  ConsoleHost::ui().answer = "ok";
+}
+
+void testWorkflowCommands(void) {
+  std::cerr << "test: the pairing, delete, multi-connect and shooting workflows dispatch\n";
+
+  // Pairing. The index names a row of 'scan list'. Whether the connectable
+  // list currently holds scan results is only knowable on the UI task, which
+  // owns it, so the refusal for an index that names nothing is asserted by the
+  // simulator scenario. What belongs here is the argument shape and the
+  // dispatch.
+  ConsoleHost::ui().requests.clear();
+
+  const Result pairUsage = runDirect("pair");
+  checkContains(pairUsage.out, "usage: pair <scan index>", "pair with no index prints its usage");
+  check(pairUsage.rc != 0, "pair with no index returns non-zero");
+  check(ConsoleHost::ui().requests.empty(), "a pair with no index queues nothing");
+
+  const Result pairBad = runDirect("pair abc");
+  checkContains(pairBad.out, "expected a scan result index", "pair rejects a non-numeric index");
+  check(pairBad.rc != 0, "a non-numeric pair index returns non-zero");
+  checkContains(runDirect("pair -1").out, "expected a scan result index",
+                "pair rejects a negative index");
+  check(ConsoleHost::ui().requests.empty(), "a refused pair queues nothing for the UI task");
+
+  const Result paired = runDirect("pair 1");
+  check(paired.rc == 0, "pair returns the outcome the UI task answered with");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAIR
+            && ConsoleHost::ui().requests.back().arg == 1,
+        "pair queues the scan result index for the UI task");
+
+  // Delete, the Delete page. 'all' is the sweep the page has no button for.
+  ConsoleHost::ui().requests.clear();
+  const Result deleteUsage = runDirect("delete");
+  checkContains(deleteUsage.out, "usage: delete <saved index> | delete all",
+                "delete with no argument prints its usage");
+  check(deleteUsage.rc != 0, "delete with no argument returns non-zero");
+  checkContains(runDirect("delete nope").out, "expected a camera index",
+                "delete rejects a non-numeric index");
+  check(ConsoleHost::ui().requests.empty(), "a refused delete queues nothing");
+
+  check(runDirect("delete 3").rc == 0, "delete returns the outcome the UI task answered with");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DELETE
+            && ConsoleHost::ui().requests.back().arg == 3,
+        "delete queues the saved camera index");
+  check(runDirect("delete all").rc == 0, "delete all returns its outcome");
+  check(ConsoleHost::ui().requests.back().arg == -1,
+        "delete all queues the negative index the handler reads as a sweep");
+
+  // The multi-connect selection. Listing and clearing are pure Settings, so
+  // they run here; resolving an index onto a camera name is the UI task's.
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("multiconnect clear").rc == 0, "multiconnect clear returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_CLEAR,
+        "multiconnect clear runs on the UI task, which owns the active flags");
+
+  const Result multiEmpty = runDirect("multiconnect list");
+  checkContains(multiEmpty.out, "count: ", "multiconnect list reports the selection size");
+  checkContains(multiEmpty.out, "enabled: ", "multiconnect list reports the feature setting");
+
+  ConsoleHost::ui().requests.clear();
+  checkContains(runDirect("multiconnect select").out, "usage: multiconnect select | deselect",
+                "multiconnect select with no index prints its usage");
+  checkContains(runDirect("multiconnect select abc").out, "expected a camera index",
+                "multiconnect select rejects a non-numeric index");
+  check(ConsoleHost::ui().requests.empty(), "a refused multiconnect select queues nothing");
+
+  check(runDirect("multiconnect select 2").rc == 0, "multiconnect select returns its outcome");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_SELECT
+            && ConsoleHost::ui().requests.back().arg == 2,
+        "multiconnect select queues the saved camera index");
+  check(runDirect("multiconnect deselect 2").rc == 0, "multiconnect deselect returns its outcome");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_DESELECT,
+        "multiconnect deselect queues the matching request");
+
+  // The intervalometer and bulb pages. Both fire the shutter, so both refuse
+  // to start without a live link, exactly as the shutter command does.
+  ConsoleHost::ui().requests.clear();
+  const Result intervalUsage = runDirect("interval");
+  checkContains(intervalUsage.out, "usage: interval start | stop | status",
+                "interval with no subcommand prints its usage");
+  check(intervalUsage.rc != 0, "interval with no subcommand returns non-zero");
+
+  const Result intervalStart = runDirect("interval start");
+  checkContains(intervalStart.out, "no active connection",
+                "interval start refuses without a connection");
+  check(ConsoleHost::ui().requests.empty(), "a refused interval start queues nothing");
+
+  check(runDirect("interval stop").rc == 0, "interval stop returns its outcome");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::INTERVAL
+            && ConsoleHost::ui().requests.back().arg == 0,
+        "interval stop queues the stop argument");
+
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("interval status").rc == 0, "interval status returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::INTERVAL
+            && ConsoleHost::ui().requests.back().arg == -1,
+        "interval status asks the UI task to print, like perf lvgl does");
+
+  ConsoleHost::ui().requests.clear();
+  checkContains(runDirect("bulb start").out, "no active connection",
+                "bulb start refuses without a connection");
+  check(ConsoleHost::ui().requests.empty(), "a refused bulb start queues nothing");
+  check(runDirect("bulb stop").rc == 0, "bulb stop returns its outcome");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BULB
+            && ConsoleHost::ui().requests.back().arg == 0,
+        "bulb stop queues the stop argument");
+
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("bulb status").rc == 0, "bulb status returns success");
+  check(!ConsoleHost::ui().requests.empty() && ConsoleHost::ui().requests.back().arg == -1,
+        "bulb status asks the UI task to print");
+
+  // The Display page. Brightness is the one control the slider applies live,
+  // so it is a request rather than a plain settings write.
+  ConsoleHost::ui().requests.clear();
+  const Result brightnessBad = runDirect("display brightness 999");
+  checkContains(brightnessBad.out, "expected 0-255", "display brightness range checks its value");
+  check(ConsoleHost::ui().requests.empty(), "a refused brightness queues nothing");
+
+  runDirect("settings set brightness 32");
+  check(runDirect("display brightness 96").rc == 0, "display brightness returns its outcome");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_BRIGHTNESS
+            && ConsoleHost::ui().requests.back().arg == 96,
+        "display brightness carries the value to the UI task");
+  check(Furble::Settings::load<Furble::Settings::BRIGHTNESS>() == 32,
+        "display brightness applies and persists on the UI task, not the console task");
+
+  // The usable brightness range is a board fact the UI task holds, so status
+  // prints from there. The simulator scenario asserts the printed range and
+  // the refusal below the board minimum.
+  ConsoleHost::ui().requests.clear();
+  const Result displayStatus = runDirect("display status");
+  check(displayStatus.rc == 0, "display status returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_BRIGHTNESS
+            && ConsoleHost::ui().requests.back().arg == -1,
+        "display status asks the UI task to print, so it can report the board range");
+
+  ConsoleHost::ui().requests.clear();
+  runDirect("display mode console");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_MODE,
+        "display mode takes the same path as 'settings set display_mode'");
+  runDirect("display mode gui");
+
+  // Page identity and the header back button.
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("ui page").rc == 0, "ui page returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAGE,
+        "ui page asks the UI task for the current page name");
+  check(runDirect("ui back").rc == 0, "ui back returns the outcome the UI task answered with");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BACK,
+        "ui back queues the header back button");
+
+  // Power off. The handler prints its token before it pulls the rail, so the
+  // verb waits for that answer like every other workflow verb.
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("power off").rc == 0, "power off returns the outcome it was answered with");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::POWER_OFF,
+        "power off queues the UI task shutdown sequence");
+
+  testWorkflowVerbsWaitForTheirAnswer();
+}
+
 int main(void) {
   // Every command prints to stdout, so the suite reads its assertions back out
   // of a captured stdout. The file lives in the build tree, and carries the
@@ -1322,6 +1571,7 @@ int main(void) {
   testProvision();
   testErrorPaths();
   testConsoleTaskTransport();
+  testWorkflowCommands();
   testDebugWithLiveCamera();
 
   // The console task is detached and loops forever, exactly as it does on

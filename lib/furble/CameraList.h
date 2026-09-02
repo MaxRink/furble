@@ -33,6 +33,19 @@ class CameraList {
   static size_t getSaveCount(void);
 
   /**
+   * Camera's address key is present in the saved connection list.
+   *
+   * The connectable list holds saved cameras after load() and scan results
+   * during a scan, and a scan can rediscover a camera which is already saved.
+   * This reads the store, so it is the only way to tell the two apart.
+   *
+   * Deliberately not called isSaved(): that name is taken by a wider identity
+   * rule which matches on vendor type as well as address, and this is only the
+   * narrow address-key test the console's saved flag needs.
+   */
+  static bool isSavedAddress(const Furble::Camera *camera);
+
+  /**
    * Add matching devices to the list.
    *
    * @return true if device matches

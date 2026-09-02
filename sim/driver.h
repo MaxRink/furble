@@ -26,6 +26,9 @@ void applyScenarioSettings(void);
 bool scenarioSettingIsTrue(const char *name);
 /** Read a scenario seed value, or the fallback when it was not seeded. */
 std::string scenarioSetting(const char *name, const char *fallback);
+
+/** Numeric scenario seed, or the fallback when the scenario did not set one. */
+uint32_t scenarioSettingUnsigned(const char *name, uint32_t fallback);
 void registerUI(Furble::UI *ui);
 void setBackTarget(Furble::UI *ui);
 void driverTick(void);

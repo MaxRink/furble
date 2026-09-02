@@ -76,6 +76,15 @@ int runSimulator() {
     CameraList::addFauxNY();
     auto camera = CameraList::last();
     CameraList::save(camera.get());
+  } else if (const uint32_t savedCameras = Sim::scenarioSettingUnsigned("saved_cameras", 0);
+             savedCameras > 0) {
+    // The same seeding for more than one camera, so the console list verbs can
+    // be driven against a list rather than a single entry. Each gets a distinct
+    // name, which the multi-connect selection needs to tell them apart.
+    for (uint32_t n = 0; n < savedCameras; n++) {
+      CameraList::addFauxNY();
+      CameraList::save(CameraList::last().get());
+    }
   }
 
   // Let capture scripts pick a theme without navigating the roller. The theme

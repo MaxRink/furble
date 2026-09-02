@@ -1,0 +1,62 @@
+# The console display and navigation verbs. Brightness is the one Display page
+# control the slider applies live, and its usable range is a board fact only
+# the UI task holds, so both the range and the refusal are asserted here.
+seed brightness 96
+wait 400
+assert ui.page main
+
+# Status reports the board's usable range alongside the current values, so a
+# script can pick a value this board accepts. The minimum is per board (32 on
+# most panels, 48 on the StickC and StickC-Plus) so only the shared maximum is
+# asserted by value here.
+action console display -1
+wait 200
+assert console.result ok
+assert console.mode gui
+assert console.brightness 96
+assert console.brightness_max 240
+# The slider only ever produces multiples of the step, so a script which also
+# asserts what the Display page draws needs to know it.
+assert console.brightness_step 16
+
+# Below the board minimum the panel is black, and a persisted black panel needs
+# a reflash to undo. Refuse rather than clamp silently, and leave the stored
+# value alone. Eight is below every board's minimum.
+action console display 8
+wait 200
+assert console.result range
+
+action console display -1
+wait 200
+assert console.brightness 96
+
+# Above the slider maximum is refused the same way. 255 is the value a plain
+# 0-255 parse would have accepted.
+action console display 255
+wait 200
+assert console.result range
+
+# A value inside the range applies live and persists, which is the pair of
+# calls the slider makes. 'settings set brightness' only persists.
+action console display 128
+wait 200
+assert console.result ok
+assert console.brightness 128
+
+# The page name is read only. Navigating to a page by name exists only in the
+# simulator build, so the console reads and steps out, and never jumps.
+action nav settings
+wait 200
+assert ui.page settings
+action console page
+wait 200
+assert console.result ok
+assert console.page Settings
+
+# Back is the header back button plus the two things pressing it implies: it
+# force-enables the button and returns the input to MENU mode.
+action console back
+wait 300
+assert console.result ok
+assert ui.page main
+exit

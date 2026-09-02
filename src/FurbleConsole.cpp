@@ -2,6 +2,7 @@
 
 #if defined(FURBLE_CONSOLE)
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -152,6 +153,9 @@ int sendRequest(UI::Request request, int32_t arg, const char *what) {
   return 0;
 }
 
+/** How long a console verb waits for the UI task to answer it. */
+constexpr uint32_t UI_ANSWER_MS = 100;
+
 /**
  * Queue a request that prints from the UI task and wait for the output.
  *
@@ -163,8 +167,34 @@ int sendPrintingRequest(UI::Request request, int32_t arg) {
     return fail("ui request queue unavailable");
   }
 
-  vTaskDelay(pdMS_TO_TICKS(100));
+  vTaskDelay(pdMS_TO_TICKS(UI_ANSWER_MS));
   return 0;
+}
+
+/**
+ * Queue a workflow request, wait for its answer, and exit with its outcome.
+ *
+ * The gate a workflow verb needs is decided on the task which owns the list or
+ * the widget, so the answer is printed from there and ends with one machine
+ * readable 'result: <token>' line. Waiting keeps that answer ahead of the next
+ * prompt, and the token becomes the exit status, so a refused verb never
+ * acknowledges a workflow which did not run.
+ */
+int sendWorkflowRequest(UI::Request request, int32_t arg) {
+  if (!UI::sendRequest(request, arg)) {
+    return fail("ui request queue unavailable");
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(UI_ANSWER_MS));
+
+  const char *result = UI::consoleResult();
+  if (result == nullptr) {
+    // The UI task had not drained the queue when the wait expired. Say so
+    // rather than reporting an outcome it never gave.
+    return fail("no answer from the ui task");
+  }
+
+  return (strcmp(result, "ok") == 0) ? 0 : 1;
 }
 
 /*
@@ -750,15 +780,32 @@ int cmdProvision(int argc, char **argv) {
 }
 
 int cmdUI(int argc, char **argv) {
-  if ((argc != 2) || strcmp(argv[1], "audit")) {
-    return fail("usage: ui audit");
+  if (argc != 2) {
+    return fail("usage: ui audit | page | back");
+  }
+
+  const bool audit = !strcmp(argv[1], "audit");
+  const bool page = !strcmp(argv[1], "page");
+  const bool back = !strcmp(argv[1], "back");
+  if (!audit && !page && !back) {
+    return fail("expected audit, page or back");
   }
 
 #if defined(FURBLE_NO_DISPLAY)
-  // The UI audit inspects the LVGL widget tree, which the headless build has no.
+  // All three read or drive the LVGL widget tree, which the headless build
+  // does not have.
   return fail("not supported in this build");
 #else
-  return sendPrintingRequest(UI::Request::AUDIT, 0);
+  if (back) {
+    return sendWorkflowRequest(UI::Request::BACK, 0);
+  }
+
+  if (audit) {
+    // The audit dumps the widget tree and reports no outcome token.
+    return sendPrintingRequest(UI::Request::AUDIT, 0);
+  }
+
+  return sendWorkflowRequest(UI::Request::PAGE, 0);
 #endif
 }
 
@@ -1102,7 +1149,25 @@ void powerLogTick(void) {
 
 int cmdPower(int argc, char **argv) {
   if (argc < 2) {
-    return fail("usage: power stats | log <seconds> | log off");
+    return fail("usage: power stats | log <seconds> | log off | off");
+  }
+
+  if (!strcmp(argv[1], "off")) {
+    if (argc != 2) {
+      return fail("usage: power off");
+    }
+#if defined(FURBLE_NO_DISPLAY)
+    // doPowerOff() releases the shutter, stops the intervalometer and tears
+    // the link down before the PMIC call, and all of that lives on the UI task.
+    return fail("not supported in this build");
+#else
+    // The handler prints its own token before it pulls the rail, so this
+    // waits for that answer like every other workflow verb. On a device the
+    // wait simply ends with the power.
+    const int rc = sendWorkflowRequest(UI::Request::POWER_OFF, 0);
+    fflush(stdout);
+    return rc;
+#endif
   }
 
   if (!strcmp(argv[1], "stats")) {
@@ -1159,7 +1224,7 @@ int cmdPower(int argc, char **argv) {
     return 0;
   }
 
-  return fail("expected stats or log");
+  return fail("expected stats, log or off");
 }
 
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
@@ -1430,20 +1495,124 @@ int cmdCameras(int argc, char **argv) {
   return sendPrintingRequest(UI::Request::CAMERAS, 1);
 }
 
+/**
+ * Parse a list index argument.
+ *
+ * Every index the console takes names a row of a list the UI task owns, so
+ * only the shape is checked here. The resolution, and its error, belong on
+ * the task which owns the list.
+ */
+bool parseIndex(const char *text, int32_t &index) {
+  char *end = nullptr;
+  long value = strtol(text, &end, 0);
+  if ((end == text) || (*end != '\0') || (value < 0) || (value > INT16_MAX)) {
+    return false;
+  }
+  index = static_cast<int32_t>(value);
+  return true;
+}
+
 int cmdConnect(int argc, char **argv) {
   // No index connects the multi-connect selection.
   int32_t index = -1;
 
-  if (argc >= 2) {
-    char *end = nullptr;
-    long value = strtol(argv[1], &end, 0);
-    if ((end == argv[1]) || (value < 0)) {
-      return fail("expected a camera index from 'cameras list'");
-    }
-    index = static_cast<int32_t>(value);
+  if ((argc >= 2) && !parseIndex(argv[1], index)) {
+    return fail("expected a camera index from 'cameras list'");
   }
 
   return sendRequest(UI::Request::CONNECT, index, "connect");
+}
+
+int cmdPair(int argc, char **argv) {
+  if (argc != 2) {
+    return fail("usage: pair <scan index>");
+  }
+
+  int32_t index = 0;
+  if (!parseIndex(argv[1], index)) {
+    return fail("expected a scan result index from 'scan list'");
+  }
+
+#if defined(FURBLE_NO_DISPLAY)
+  // Pairing saves the camera when its registration succeeds, and that gate
+  // lives on the UI task. The headless build has no equivalent, so it would
+  // connect and then forget the camera.
+  return fail("not supported in this build");
+#else
+  // Only the UI task knows whether the connectable list currently holds scan
+  // results, so the refusal for an index that names nothing is printed from
+  // there. Wait for it, so a script reads the answer before the next prompt.
+  return sendWorkflowRequest(UI::Request::PAIR, index);
+#endif
+}
+
+int cmdDelete(int argc, char **argv) {
+  if (argc != 2) {
+    return fail("usage: delete <saved index> | delete all");
+  }
+
+  if (!strcmp(argv[1], "all")) {
+    return sendWorkflowRequest(UI::Request::DELETE, -1);
+  }
+
+  int32_t index = 0;
+  if (!parseIndex(argv[1], index)) {
+    return fail("expected a camera index from 'cameras list', or all");
+  }
+
+  return sendWorkflowRequest(UI::Request::DELETE, index);
+}
+
+int cmdMultiConnect(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: multiconnect list | select <index> | deselect <index> | clear");
+  }
+
+  if (!strcmp(argv[1], "list")) {
+    const auto selection = Settings::load<Settings::MULTISELECT>();
+    const size_t count = std::min<size_t>(selection.count, Settings::MULTISELECT_MAX);
+
+    printf("enabled: %s\n", boolStr(Settings::load<Settings::MULTICONNECT>()));
+    printf("count: %u\n", static_cast<unsigned>(count));
+    for (size_t n = 0; n < count; n++) {
+      printf("selected%u.name: %s\n", static_cast<unsigned>(n), selection.name[n]);
+    }
+    return 0;
+  }
+
+  if (!strcmp(argv[1], "clear")) {
+#if defined(FURBLE_NO_DISPLAY)
+    return fail("not supported in this build");
+#else
+    // Writing the empty set from here would leave the loaded active flags and
+    // the drawn checkboxes set, and the next Connect press would serialise the
+    // whole set straight back.
+    return sendWorkflowRequest(UI::Request::MULTI_CLEAR, 0);
+#endif
+  }
+
+  const bool select = !strcmp(argv[1], "select");
+  if (!select && strcmp(argv[1], "deselect")) {
+    return fail("expected list, select, deselect or clear");
+  }
+
+  if (argc != 3) {
+    return fail("usage: multiconnect select | deselect <index>");
+  }
+
+  int32_t index = 0;
+  if (!parseIndex(argv[2], index)) {
+    return fail("expected a camera index from 'cameras list'");
+  }
+
+#if defined(FURBLE_NO_DISPLAY)
+  // The remembered set is keyed by camera name and only the UI task may walk
+  // the camera list to resolve an index onto one.
+  return fail("not supported in this build");
+#else
+  return sendWorkflowRequest(select ? UI::Request::MULTI_SELECT : UI::Request::MULTI_DESELECT,
+                             index);
+#endif
 }
 
 int cmdDisconnect(int argc, char **argv) {
@@ -1530,6 +1699,113 @@ int cmdFocus(int argc, char **argv) {
   }
 
   return fail("expected press or release");
+}
+
+int cmdInterval(int argc, char **argv) {
+  if (argc != 2) {
+    return fail("usage: interval start | stop | status");
+  }
+
+#if defined(FURBLE_NO_DISPLAY)
+  // The intervalometer is an LVGL page with its own timers, which the headless
+  // build does not have.
+  (void)argv;
+  return fail("not supported in this build");
+#else
+  if (!strcmp(argv[1], "status")) {
+    return sendWorkflowRequest(UI::Request::INTERVAL, -1);
+  }
+
+  const bool start = !strcmp(argv[1], "start");
+  if (start || !strcmp(argv[1], "stop")) {
+    // Same precondition as any shutter command: a frame goes nowhere without a
+    // live link. The run-state refusals are printed by the UI task, which owns
+    // the state, so wait for them rather than reporting a queue depth.
+    if (start && (Control::getInstance().getState() != Control::STATE_ACTIVE)) {
+      return fail("no active connection");
+    }
+    return sendWorkflowRequest(UI::Request::INTERVAL, start ? 1 : 0);
+  }
+
+  return fail("expected start, stop or status");
+#endif
+}
+
+int cmdBulb(int argc, char **argv) {
+  if (argc != 2) {
+    return fail("usage: bulb start | stop | status");
+  }
+
+#if defined(FURBLE_NO_DISPLAY)
+  // The bulb exposure is an LVGL page with its own timers.
+  (void)argv;
+  return fail("not supported in this build");
+#else
+  if (!strcmp(argv[1], "status")) {
+    return sendWorkflowRequest(UI::Request::BULB, -1);
+  }
+
+  const bool start = !strcmp(argv[1], "start");
+  if (start || !strcmp(argv[1], "stop")) {
+    // Same precondition as any shutter command: an exposure goes nowhere without a
+    // live link. The run-state refusals are printed by the UI task, which owns
+    // the state, so wait for them rather than reporting a queue depth.
+    if (start && (Control::getInstance().getState() != Control::STATE_ACTIVE)) {
+      return fail("no active connection");
+    }
+    return sendWorkflowRequest(UI::Request::BULB, start ? 1 : 0);
+  }
+
+  return fail("expected start, stop or status");
+#endif
+}
+
+int cmdDisplay(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: display status | mode gui | console | brightness <value>");
+  }
+
+#if defined(FURBLE_NO_DISPLAY)
+  (void)argv;
+  return fail("not supported in this build");
+#else
+  if (!strcmp(argv[1], "status")) {
+    // Printed from the UI task, because the usable brightness range is a board
+    // fact held there and a script needs it to pick a value this board accepts.
+    return sendWorkflowRequest(UI::Request::DISPLAY_BRIGHTNESS, -1);
+  }
+
+  if (!strcmp(argv[1], "mode")) {
+    if (argc != 3) {
+      return fail("usage: display mode gui | console");
+    }
+    // One implementation only: this is the same path 'settings set
+    // display_mode' takes, including the live UI request.
+    const auto *setting = findSetting("display_mode");
+    if (setting == nullptr) {
+      return fail("no display_mode setting");
+    }
+    return setValue(*setting, argv[2]);
+  }
+
+  if (!strcmp(argv[1], "brightness")) {
+    if (argc != 3) {
+      return fail("usage: display brightness <value>");
+    }
+    char *end = nullptr;
+    unsigned long value = strtoul(argv[2], &end, 0);
+    if ((end == argv[2]) || (*end != '\0') || (value > UINT8_MAX)) {
+      return fail("expected 0-255");
+    }
+    // The Display page slider applies the brightness and then persists it.
+    // 'settings set brightness' only persists, so it needs a reboot. The
+    // board's usable range is narrower than 0-255 and only the UI task knows
+    // it, so wait for the answer rather than reporting a queue depth.
+    return sendWorkflowRequest(UI::Request::DISPLAY_BRIGHTNESS, static_cast<int32_t>(value));
+  }
+
+  return fail("expected status, mode or brightness");
+#endif
 }
 
 int cmdScan(int argc, char **argv) {
@@ -2086,17 +2362,27 @@ const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
     command("imu", "imu status (diagnostic sensor probe)", cmdIMU),
-    command("power", "power stats | log <seconds> | log off", cmdPower),
+    command("power", "power stats | log <seconds> | log off | off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
     command("provision", "provision <hex|base64 TLV blob>", cmdProvision),
-    command("ui", "ui audit", cmdUI),
+    command("ui", "ui audit | page | back", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
+    command("pair", "pair <scan index>, onboard a camera from 'scan list'", cmdPair),
+    command("delete",
+            "delete <saved index> | delete all, forgets the camera and its bond",
+            cmdDelete),
+    command("multiconnect",
+            "multiconnect list | select <index> | deselect <index> | clear",
+            cmdMultiConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
+    command("interval", "interval start | stop | status, the Timer page", cmdInterval),
+    command("bulb", "bulb start | stop | status, the Bulb page", cmdBulb),
+    command("display", "display status | mode gui | console | brightness <value>", cmdDisplay),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),
     command("scan", "scan start | stop | list", cmdScan),

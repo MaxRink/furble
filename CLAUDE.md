@@ -68,8 +68,11 @@ CLAUDE.md whose directory it touches.
 
 ## Testing
 
-- The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
-  settings get/set, gps subcommands, shutter, status.
+- The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface.
+  Every UI workflow has a console verb which routes through the same
+  `UI::Request` the menu click uses, never a second copy of the behaviour. See
+  the workflow table in `docs/console-commands.md`, and add a row plus a host
+  test in `tests/host/console_commands_test.cpp` whenever a UI workflow lands.
 - Hardware verification on the attached M5StickS3 happens before PRs.
 - Only Fujifilm cameras are available. Other vendors get code review plus the
   FauxNY test camera and are declared untested in the PR.

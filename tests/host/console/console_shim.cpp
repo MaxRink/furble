@@ -565,6 +565,28 @@ IRState g_IR;
 MiscState g_Misc;
 TimeState g_Time;
 
+// The UI task double's answer to the request it is servicing, and the thread
+// it answers from when a test asks it to take its time.
+std::atomic<const char *> g_UIResult {nullptr};
+std::thread g_UIAnswer;
+
+/**
+ * Answer one request the way the UI task does: its own lines, then the token.
+ *
+ * The token is published last, so a console verb which reads it has by
+ * construction already seen the answer printed.
+ */
+void answerUIRequest(const char *line, const char *token) {
+  if (line != nullptr) {
+    printf("%s\n", line);
+    if (token != nullptr) {
+      printf("result: %s\n", token);
+    }
+    fflush(stdout);
+  }
+  g_UIResult = token;
+}
+
 }  // namespace
 
 const std::vector<RegisteredCommand> &commands(void) {
@@ -607,10 +629,18 @@ TimeState &time(void) {
   return g_Time;
 }
 
+void joinUIAnswer(void) {
+  if (g_UIAnswer.joinable()) {
+    g_UIAnswer.join();
+  }
+}
+
 void resetDoubles(void) {
   const size_t installs = g_Misc.usbDriverInstalls;
   const size_t vfsCalls = g_Misc.vfsUseDriverCalls;
 
+  joinUIAnswer();
+  g_UIResult = nullptr;
   g_UI = UIState();
   g_GPS = GPSState();
   g_Uart = UartState();
@@ -636,7 +666,29 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
   state.requests.push_back({request, arg});
+
+  // Production clears the previous answer here for the same reason: a caller
+  // which waits must not read a stale token as this request's outcome.
+  ConsoleHost::joinUIAnswer();
+  ConsoleHost::g_UIResult = nullptr;
+
+  const char *line = state.answerLine;
+  const char *token = state.answer;
+  if (state.answerDelayMs <= 0) {
+    ConsoleHost::answerUIRequest(line, token);
+    return true;
+  }
+
+  const int delay = state.answerDelayMs;
+  ConsoleHost::g_UIAnswer = std::thread([line, token, delay]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    ConsoleHost::answerUIRequest(line, token);
+  });
   return true;
+}
+
+const char *UI::consoleResult(void) {
+  return ConsoleHost::g_UIResult;
 }
 
 Scan &Scan::getInstance(void) {

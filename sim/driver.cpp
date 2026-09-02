@@ -276,6 +276,17 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   }
 
+  if (name == "saved_cameras") {
+    // Number of saved cameras to seed at boot, so a scenario can exercise the
+    // list verbs against more than one entry. Capped at the multi-connect
+    // maximum plus one, which is the interesting boundary.
+    if (parseUnsigned(value) > (Settings::MULTISELECT_MAX + 1)) {
+      std::cerr << "Invalid saved_cameras: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  }
+
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
@@ -295,7 +306,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "boot_splash",   "connect_fail",      "no_touch",
       "saved_camera",  "scan_start_probe",  "ble_saved",
       "recon_backoff", "auto_off_charging", "imu",
-      "imu_sensor",    "liveness_check",
+      "imu_sensor",    "liveness_check",    "multiconnect",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -989,6 +1000,17 @@ std::string queryValue(const std::string &key) {
     }
     return scenarioUi->simQueryState(key.substr(3).c_str());
   }
+  if (prefixed("console.")) {
+    // One answer line of the last serviced console request, keyed by the name
+    // before its colon. 'console.result' is the outcome token every workflow
+    // request ends with. Empty when the last request printed no such line,
+    // which is itself assertable.
+    if (scenarioUi == nullptr) {
+      return "";
+    }
+    return Furble::UI::simConsoleField(
+        key.substr(std::char_traits<char>::length("console.")).c_str());
+  }
   if (prefixed("control.")) {
     auto &control = Control::getInstance();
     const std::string sub = key.substr(std::char_traits<char>::length("control."));
@@ -1235,6 +1257,7 @@ void applyScenarioSettings(void) {
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
+  saveBoolean("multiconnect", Settings::MULTICONNECT);
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("recon_backoff", Settings::RECON_BACKOFF);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
@@ -1315,6 +1338,15 @@ void applyScenarioSettings(void) {
     Settings::save<Settings::BULB>(SpinValue::nvs_t {
         static_cast<uint16_t>(parseUnsigned(bulb_duration->second)), SpinValue::UNIT_SEC});
   }
+}
+
+uint32_t scenarioSettingUnsigned(const char *name, uint32_t fallback) {
+  if (name == nullptr) {
+    return fallback;
+  }
+  const auto found = scenarioSettings.find(name);
+  return found == scenarioSettings.end() ? fallback
+                                         : static_cast<uint32_t>(parseUnsigned(found->second));
 }
 
 bool scenarioSettingIsTrue(const char *name) {

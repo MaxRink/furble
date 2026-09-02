@@ -90,6 +90,7 @@ DEFINES="\
 -D$FURBLE_BOARD \
 $RIG_DEFINE \
 -DFURBLE_SIM \
+-DFURBLE_CONSOLE \
 -DFURBLE_VERSION=\"sim\" \
 -DFURBLE_TEST_VERSION=1 \
 -DFURBLE_BATTERY_DEBUG=0 \
@@ -263,6 +264,7 @@ for source in \
   "$ROOT/src/FurbleTimeKeeper.cpp" \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
+  "$ROOT/src/FurbleUIAudit.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
   "$ROOT/lib/blowfish/Blowfish.cpp" \

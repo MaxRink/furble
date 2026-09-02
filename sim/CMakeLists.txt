@@ -86,6 +86,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp"
     "${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
+    "${FURBLE_ROOT}/src/FurbleUIAudit.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
     "${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp"
@@ -159,6 +160,7 @@ target_compile_definitions(
     FURBLE_M5STICKS3
     FURBLE_RIG
     FURBLE_SIM
+    FURBLE_CONSOLE
     FURBLE_VERSION=\"sim\"
     FURBLE_TEST_VERSION=1
     FURBLE_BATTERY_DEBUG=0
