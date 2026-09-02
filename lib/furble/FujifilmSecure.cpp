@@ -198,7 +198,7 @@ bool FujifilmSecure::_connect(void) {
   if (!bondedBefore) {
     // Nothing stale to measure: this is a first pairing, or the recovery below
     // already deleted the bond. Either way the failure run starts over.
-    m_SecureFailures = 0;
+    clearSecureFailures();
   }
 
   ESP_LOGI(LOG_TAG, "Connecting to %s", m_Address.toString().c_str());
@@ -238,19 +238,18 @@ bool FujifilmSecure::_connect(void) {
     if (!bondedBefore || connectCancelled()) {
       return false;
     }
-    m_SecureFailures++;
-    if (m_SecureFailures < SECURE_FAILURE_LIMIT) {
+    const uint8_t failures = noteSecureFailure();
+    if (failures < SECURE_FAILURE_LIMIT) {
       ESP_LOGW(LOG_TAG, "Security handshake failed (%u of %u); retrying before any bond change",
-               static_cast<unsigned>(m_SecureFailures),
-               static_cast<unsigned>(SECURE_FAILURE_LIMIT));
+               static_cast<unsigned>(failures), static_cast<unsigned>(SECURE_FAILURE_LIMIT));
       return false;
     }
 
     ESP_LOGW(LOG_TAG,
              "Security handshake failed %u times on a bonded camera; deleting the stale local bond",
-             static_cast<unsigned>(m_SecureFailures));
+             static_cast<unsigned>(failures));
     NimBLEDevice::deleteBond(m_Address);
-    m_SecureFailures = 0;
+    clearSecureFailures();
 
     // A camera already in pairing mode accepts a fresh pairing on this very
     // link, so spend one attempt on it before giving up. m_Connected guards the
@@ -267,8 +266,10 @@ bool FujifilmSecure::_connect(void) {
     // The registration gate below (#232/#239) still decides acceptance: a
     // secure link alone never promotes to an active shutter target.
   }
-  // A completed handshake ends any run of failures against these keys.
-  m_SecureFailures = 0;
+  // A completed handshake ends any run of failures against these keys. Without
+  // this a failure, a success and a second failure would read as two in a row
+  // and delete a healthy bond on what is really a single failure.
+  clearSecureFailures();
   if (!registrationAlive())
     return false;
   ESP_LOGI(LOG_TAG, "Secured!");

@@ -308,12 +308,21 @@ a regression.
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
   boundary.
 - `seed ble_peers <topology>` selects the virtual radio topology (`none`,
-  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`) and `seed ble_saved
-  true` persists
-  its cameras through the production `CameraList::match` and `save`. The
-  `scan-distinct-rows-heartbeat.txt` scenario asserts both matched rows and the
-  live watchdog after the UI task drains them. `seed scan_timeout N` bounds the
-  discovery scan so the production scan-end callback runs.
+  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`, `fuji-secure-stale`)
+  and `seed ble_saved true` persists its cameras through the production
+  `CameraList::match` and `save`. The `scan-distinct-rows-heartbeat.txt`
+  scenario asserts both matched rows and the live watchdog after the UI task
+  drains them. `fuji-secure-stale` is the 2026-09-02 X100VI bench signature: the
+  central keeps a bond the camera has deleted, so every security handshake times
+  out and takes the link with it, and `stale-bond-pairing-lost.txt` drives the
+  recovery through to the dismissable "Pairing lost" box. `seed scan_timeout N`
+  bounds the discovery scan so the production scan-end callback runs.
+- `ui.connect_error` reports the connect error box as one token: `none`,
+  `already_saved`, `pairing_lost`, or `connect_failed`. It reads the rendered
+  title, so it proves the text reached the screen rather than that a flag was
+  set. Dismissal is asserted in the same scenarios, on touch and under
+  `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
+  physical buttons.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA

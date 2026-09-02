@@ -70,8 +70,10 @@ The check is identity, not the saved index key. The index is keyed on the BLE
 address, and a Fujifilm Secure body advertises a resolvable private address
 that changes with every pairing, so a second pairing would add a second record
 for one camera instead of replacing the first. `sameSavedIdentity()` matches on
-the vendor type plus either the address or the advertised name. To pair a saved
-camera again, delete it first with the Delete page.
+the vendor type plus the address, and for Fujifilm Secure only, falls back to
+the advertised name. Every other vendor keeps a stable address, so a second
+body of the same model is still pairable. To pair a saved camera again, delete
+it first with the Delete page.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB

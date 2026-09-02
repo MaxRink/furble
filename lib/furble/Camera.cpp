@@ -954,6 +954,14 @@ bool Camera::needsRepair(void) const {
   return m_NeedsRepair.load();
 }
 
+uint8_t Camera::noteSecureFailure(void) {
+  return static_cast<uint8_t>(m_SecureFailures.fetch_add(1) + 1);
+}
+
+void Camera::clearSecureFailures(void) {
+  m_SecureFailures = 0;
+}
+
 void Camera::setNeedsRepair(void) {
   m_NeedsRepair = true;
 }
@@ -991,8 +999,11 @@ void Camera::resetConnectionState(void) {
   m_Connected = false;
   m_Progress = 0;
   // A fresh user connect request re-arms the camera: the user may have put it
-  // back into pairing mode since the re-pair prompt.
+  // back into pairing mode since the re-pair prompt. The failure run goes with
+  // it, so "consecutive security failures" always means "within one connect
+  // cycle" and can never accumulate across days of idle transients.
   m_NeedsRepair = false;
+  m_SecureFailures = 0;
 
   const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
   m_StatsValid = false;

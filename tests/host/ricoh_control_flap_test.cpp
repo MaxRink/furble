@@ -265,7 +265,12 @@ int main() {
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
 
-  const bool ok = runScenario() && runSavedBondScenario();
+  // Run both, then report. A short-circuit here would silently skip the second
+  // scenario whenever the first failed, which is exactly when the extra signal
+  // is worth most.
+  const bool flapOk = runScenario();
+  const bool savedBondOk = runSavedBondScenario();
+  const bool ok = flapOk && savedBondOk;
   if (!ok || g_Failures != 0) {
     std::cout << "ricoh control flap: FAIL (" << g_Failures << " checks)\n";
     return EXIT_FAILURE;

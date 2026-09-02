@@ -164,6 +164,34 @@ void testSameSavedIdentity() {
         "an empty name does not match a real one");
 }
 
+// The name fallback exists only because a Fujifilm Secure body re-pairs under a
+// new resolvable private address. Every other vendor keeps a stable address, so
+// applying the fallback to them refuses a user who owns two bodies of the same
+// model: the advertised name is the bare model, the second body reads as
+// already saved, and there is no override. Multi-connect with two identical
+// bodies, which the saved list supports, would become unreachable.
+void testSecondBodyOfTheSameModelStaysPairable() {
+  constexpr uint32_t kSecure = 8;  // Camera::Type::FUJIFILM_SECURE
+  constexpr uint32_t kBasic = 1;   // Camera::Type::FUJIFILM_BASIC
+  constexpr uint32_t kSony = 7;    // Camera::Type::SONY
+  constexpr uint32_t kRicoh = 9;   // Camera::Type::RICOH
+
+  const uint64_t first = 0x112233445566ULL;
+  const uint64_t second = 0xAABBCCDDEEFFULL;
+
+  check(!sameSavedIdentity(kRicoh, second, "GR IV", kRicoh, first, "GR IV"),
+        "a second GR IV at its own address is a second camera, not the saved one");
+  check(!sameSavedIdentity(kBasic, second, "FUJIFILM X-T5", kBasic, first, "FUJIFILM X-T5"),
+        "a second X-T5 on the Basic protocol stays pairable");
+  check(!sameSavedIdentity(kSony, second, "ILCE-7M4", kSony, first, "ILCE-7M4"),
+        "a second Sony body of the same model stays pairable");
+
+  // The one vendor that does rotate its address keeps the fallback, so the
+  // re-pairing body is still recognised as the camera already saved.
+  check(sameSavedIdentity(kSecure, second, "FUJIFILM X100VI", kSecure, first, "FUJIFILM X100VI"),
+        "two Fujifilm Secure records with one name at two addresses are one camera");
+}
+
 }  // namespace
 
 int main() {
@@ -174,6 +202,7 @@ int main() {
   testRejects();
   testUpsert();
   testSameSavedIdentity();
+  testSecondBodyOfTheSameModelStaysPairable();
 
   if (g_failures > 0) {
     std::cerr << "camera list protocol tests: " << g_failures << " FAILED\n";

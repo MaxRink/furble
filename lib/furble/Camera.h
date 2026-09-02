@@ -330,6 +330,18 @@ class Camera: public NimBLEClientCallbacks {
   void setNeedsRepair(void);
 
   /**
+   * Count one security-handshake failure and return the length of the run.
+   *
+   * Vendor connect paths call this when an attempt got the link up and then
+   * failed to encrypt, and compare the returned run length against their own
+   * limit. See m_SecureFailures for what resets the run.
+   */
+  uint8_t noteSecureFailure(void);
+
+  /** End the current run of security-handshake failures. */
+  void clearSecureFailures(void);
+
+  /**
    * Disconnect from the target.
    */
   virtual void _disconnect(void) = 0;
@@ -482,6 +494,25 @@ class Camera: public NimBLEClientCallbacks {
   // Read by Control after a failed attempt to end the reconnect cycle with a
   // re-pair prompt instead of retrying forever. See needsRepair().
   std::atomic<bool> m_NeedsRepair = false;
+
+  // Consecutive security-handshake failures on a camera that was bonded when
+  // the attempt started.
+  //
+  // Counted only by attempts that got the link up and then failed to encrypt,
+  // so a camera that is merely out of range or asleep contributes nothing. The
+  // run is cleared on a completed handshake, on any attempt that starts
+  // unbonded, and by resetConnectionState().
+  //
+  // That last clear bounds the run to one connect cycle. Without it the run
+  // spans days: a transient timeout on Monday plus a transient timeout on
+  // Friday would read as systematic and delete a healthy bond. The hardware
+  // evidence for the recovery (2026-09-02 X100VI bench) is back-to-back
+  // failures inside a single reconnect cycle, so that is exactly the window
+  // the counter measures.
+  //
+  // Lock-free: written on the connect task, cleared on the UI task from
+  // resetConnectionState(), which must not take m_Mutex.
+  std::atomic<uint8_t> m_SecureFailures = 0;
 
   // Guards m_CancelClient only. Held around a pointer store on the connect task
   // and a link terminate on the cancelling task, both short and neither
