@@ -260,16 +260,25 @@ Every mutation was reverted; no mutation is left in the tree.
    The action is retained and documented for interactive use. This belongs to
    plan 158 Phase 3.
 
-   A harder instance of the same boundary was found and fixed here. Production
-   code blocks on plain host mutexes the scheduler cannot see:
-   `Camera::m_Mutex` is held for a whole connect, so a per-target task running
-   `Camera::disconnect()` during one leaves the scheduler while holding the
-   turn, and the connect task can never get a turn to release the mutex. The UI
-   fuzzer deadlocked on seed 2. `waitForTurnLocked()` now parks a turn holder
-   that has not reached a scheduler boundary within a host bound, which is a
-   deadlock breaker rather than a time slice: a healthy handoff is
-   microseconds, so it never fires on a deadlock-free trace. The principled fix
-   is to model FreeRTOS mutex blocking, which plan 158 Phase 3 owns.
+   A harder instance of the same boundary was found here. Production code
+   blocks on plain host mutexes the scheduler cannot see: `Camera::m_Mutex` is
+   held for a whole connect, so a per-target task running `Camera::disconnect()`
+   during one leaves the scheduler while holding the turn, and the connect task
+   can never get a turn to release the mutex. The UI fuzzer deadlocked on
+   seed 2.
+
+   Two changes address it. `FauxNY::_connect()` now polls `connectCancelled()`
+   like every vendor connect does, so a disconnect during a FauxNY connect
+   unwinds in one 25 ms slice instead of the whole attempt, which removes the
+   common trigger at its source and matches the plan 148 contract.
+   `waitForTurnLocked()` keeps a deadlock breaker for the rest, but a sound one:
+   it parks the turn holder only when a global scheduler progress counter has
+   not moved for a two second host bound, so nothing in the scheduler moved at
+   all rather than this waiter merely being unlucky. The first attempt used a
+   bare 50 ms timeout, which misfires on a loaded host and reorders dispatch for
+   no reason; that is replaced. Determinism is now conditional on no task
+   blocking outside the scheduler, and plan 158 says so. The principled fix is a
+   scheduler-visible mutex, which plan 158 Phase 3 owns.
 4. The reconnect indicator can never appear for a whole session. This is the
    root cause behind both the `ui.connect_timer` and the `ui.reconnecting`
    flakes, and it is one bug, not two.

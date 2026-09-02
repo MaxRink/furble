@@ -23,6 +23,20 @@ Phase 2 are done. Step 3 (generation and cancellation tests for every handshake
 phase) is partly covered by the existing host suite and step 5 (a differential
 trace against hardware) is not started.
 
+Determinism is now conditional, and that must be stated plainly rather than
+claimed away. The scheduler models a turn a task holds until its next
+scheduler boundary. Production code blocks on plain host mutexes the scheduler
+cannot see (`Camera::m_Mutex` is held for a whole connect), so a task can leave
+the scheduler still holding the turn, and only another task can free it.
+`waitForTurnLocked()` therefore carries a deadlock breaker: when a global
+progress counter has not moved for a two second host bound, the turn is taken
+away from the holder and it is parked until its next boundary. Both conditions
+must hold, so a merely slow host cannot trigger it. While no task blocks
+outside the scheduler the breaker never fires and two runs of the same
+scenario produce the same trace; once one does, the run stays deterministic in
+outcome but its dispatch order past that point is not guaranteed. The
+principled fix is a scheduler-visible mutex, which this phase does not have.
+
 Phase 2 also surfaced one Phase 3 item that must not be described as closed: a
 task that only wakes on a virtual-clock deadline can be starved while the UI
 thread drives virtual time forward in large steps. It shows up as a control

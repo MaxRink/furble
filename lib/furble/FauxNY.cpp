@@ -30,6 +30,15 @@ bool FauxNY::_connect(void) {
   m_Progress = 0;
 
   for (int i = 0; i < 100; i += 1) {
+    // Poll the cancel token like every vendor connect does. Camera::connect()
+    // holds m_Mutex for the whole attempt, so a disconnect arriving during one
+    // blocks the target task's Camera::disconnect() behind this loop until it
+    // unwinds. Without the poll that is the full attempt (the plan 148 wedge);
+    // with it, one 25 ms slice.
+    if (connectCancelled()) {
+      ESP_LOGW(m_FauxNYStr, "Connect cancelled");
+      return false;
+    }
     vTaskDelay(pdMS_TO_TICKS(25));
     m_Progress = i;
   }

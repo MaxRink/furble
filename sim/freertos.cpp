@@ -109,9 +109,22 @@ uint64_t nextReadyOrder = 0;
 SimTask *runningTask = nullptr;
 SimTask timerServiceTask;
 bool timerServiceExecuting = false;
-// Host-time bound on one scheduler handoff. Only a task blocked outside the
-// scheduler can exceed it, so it is a deadlock breaker, not a time slice.
-constexpr std::chrono::milliseconds SCHEDULER_STALL_BOUND {50};
+// Deadlock breaker, not a time slice. Production code blocks on plain host
+// mutexes the scheduler cannot see (Camera::m_Mutex is held for a whole
+// connect), so a task can leave the scheduler holding the turn and only
+// another task can free it. FreeRTOS would have yielded there.
+//
+// Two conditions must both hold before the turn is taken away, so a merely
+// slow host can never trigger it:
+//
+//   1. schedulerProgress has not moved for the whole bound. Every dispatch,
+//      block, release and boundary entry bumps it, so an unchanged counter
+//      means nothing in the scheduler moved at all, not just that this waiter
+//      was unlucky.
+//   2. the bound itself has elapsed. It is deliberately far above any
+//      legitimate handoff, which is microseconds even on a loaded runner.
+constexpr std::chrono::milliseconds SCHEDULER_STALL_BOUND {2000};
+uint64_t schedulerProgress = 0;
 thread_local SimTask *currentTask = nullptr;
 thread_local const char *simTaskName = "ui";
 
@@ -181,15 +194,20 @@ void dispatchNextLocked(void) {
   if (runningTask != nullptr) {
     return;
   }
-  runningTask = nextRunnableTaskLocked();
+  SimTask *next = nextRunnableTaskLocked();
+  if (next != nullptr) {
+    schedulerProgress++;
+  }
+  runningTask = next;
 }
 
 void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
   if (currentTask == nullptr) {
     return;
   }
-  // Reaching a scheduler boundary un-parks this task.
+  // Reaching a scheduler boundary un-parks this task and is progress.
   currentTask->parked = false;
+  schedulerProgress++;
   dispatchNextLocked();
 
   const auto ready = []() {
@@ -201,17 +219,23 @@ void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
   };
 
   while (!ready()) {
+    const uint64_t progress = schedulerProgress;
     if (Furble::Sim::schedulerCondition().wait_for(lock, SCHEDULER_STALL_BOUND, ready)) {
       return;
     }
-    // The turn holder has not reached a scheduler boundary within the stall
-    // bound. It is blocked on something the scheduler cannot see, and only
-    // another task can free it, so hand the turn on. A healthy handoff takes
-    // microseconds, so this never fires on a deadlock-free trace and leaves the
-    // deterministic order untouched.
+    if (schedulerProgress != progress) {
+      // The scheduler moved while we waited, so this is a slow host, not a
+      // deadlock. Keep waiting for our turn and leave the order alone.
+      continue;
+    }
+    // Nothing in the scheduler moved for the whole bound and the turn holder
+    // still has not reached a boundary. It is blocked on something the
+    // scheduler cannot see and only another task can free it, so hand the turn
+    // on rather than hanging the process.
     if (runningTask != nullptr && runningTask != currentTask) {
       runningTask->parked = true;
       runningTask = nullptr;
+      schedulerProgress++;
       dispatchNextLocked();
       Furble::Sim::schedulerCondition().notify_all();
     }
@@ -236,6 +260,7 @@ void preemptForHigherPriorityLocked(std::unique_lock<std::mutex> &lock) {
 void setTaskBlockedLocked(bool blocked) {
   if (currentTask != nullptr) {
     currentTask->parked = false;
+    schedulerProgress++;
     if (blocked) {
       currentTask->blocked = true;
       currentTask->runnable = false;
@@ -273,6 +298,7 @@ void setTaskWaitLocked(SimWaitKind kind,
 }
 
 void releaseTaskLocked(SimTask &task, SimWaitResult result) {
+  schedulerProgress++;
   task.blocked = false;
   task.runnable = true;
   task.ready_order = task.wait_order;
