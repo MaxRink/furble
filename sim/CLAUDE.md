@@ -319,8 +319,11 @@ a regression.
   deadlock instead of spinning on it. Do not reintroduce a busy-wait in
   `sim/main.cpp`: spinning made the load that provokes the stall worse.
 - `run-e2e.sh` and `run-watchdog.sh` bound every scenario with `timeout -k 10`
-  (`FURBLE_SIM_SCENARIO_TIMEOUT`, default 300 s), matching `run-fuzz.sh`. A
-  wedged run must fail its leg, never hang the job.
+  (`FURBLE_SIM_SCENARIO_TIMEOUT`, default 300 s). `run-fuzz.sh` keeps its own
+  larger per-seed bound (`FURBLE_FUZZ_SEED_TIMEOUT`, default 600 s), because a
+  seed is 600 events rather than one scenario. A wedged run must fail its leg,
+  never hang the job. All three require GNU `timeout`, or `gtimeout` from
+  coreutils on macOS, and say so if neither is installed.
 - A teardown that force-completes fails the run. `sim/main.cpp` checks the
   boolean `Control::disconnect()` already returned and calls
   `requestFailureExit()`; do not discard it again.

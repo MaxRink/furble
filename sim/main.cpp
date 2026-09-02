@@ -24,6 +24,8 @@
 #include "driver.h"
 #include "watchdog.h"
 
+extern "C" void furble_sim_check_step_detect_suppressed(void);
+
 namespace {
 
 std::atomic<bool> panelReady {false};
@@ -198,6 +200,10 @@ int main(int argc, char **argv) {
   if (lgfx::Panel_sdl::setup() != 0) {
     return 1;
   }
+  // Panel_sdl::setup() is where M5GFX starts its debugger detector, so this is
+  // the point at which the suppression either happened or the thread name
+  // changed underneath us.
+  furble_sim_check_step_detect_suppressed();
 
   int simulatorResult = 0;
   std::thread simulator([&simulatorResult]() { simulatorResult = runSimulator(); });

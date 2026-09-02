@@ -203,11 +203,26 @@ void dispatchNextLocked(void) {
   runningTask = next;
 }
 
-// Host ceiling on one UI-thread handoff. The handoff normally ends in
-// microseconds, when every task released by the clock advance has taken its
-// turn and blocked again. The ceiling exists only so a scheduler defect cannot
-// wedge the UI thread silently: a run that keeps hitting it blows the per
-// scenario and per seed wall-clock bounds and fails, which is the point.
+// Host ceiling on one UI-thread handoff. This is load bearing, not a safety
+// net, so do not lower it casually.
+//
+// Most handoffs end in microseconds: the tasks released by the clock advance
+// take their turns and block again, which clears `runnable` and satisfies the
+// wait. The case that matters is the other one. A task blocked on a plain host
+// mutex the scheduler cannot see is still `runnable`, because `runnable` is
+// only cleared by an explicit scheduler boundary, so the wait cannot observe it
+// finishing and runs the full ceiling. That elapsed host time is exactly what
+// lets the mutex holder run and release, and it is why the fix for issue 267
+// works: on core fuzz seed 2 the ceiling is reached on 87 of 3620 handoffs and
+// accounts for 21.8 s of the 23.9 s run.
+//
+// So the ceiling trades runtime for the progress of a host-mutex holder.
+// Lowering it re-starves that holder, which is the issue 267 failure. Raising
+// it only costs runtime. The right fix is to stop guessing with a timeout at
+// all: make the scheduler aware of host-mutex waiters so they clear `runnable`
+// like every other blocking boundary, and the wait ends on a real event. That
+// is the scheduler-visible mutex plan 158 Phase 3 owns, tracked with this
+// ceiling as the interim.
 constexpr std::chrono::milliseconds UI_HANDOFF_BOUND {250};
 
 void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
@@ -686,15 +701,16 @@ void vTaskDelay(TickType_t ticks) {
     // task released by the clock advance has had a turn and blocked on its
     // next deadline or queue.
     //
-    // A fixed host sleep here instead of this handoff starves any task that
-    // needs several turns to unwind. It made a camera teardown miss the
-    // connect cancellation it was polling for and fall back to its 30 s cap on
-    // every fuzz seed, and it leaked host timing into the fuzzer's counters.
+    // A fixed 50 microsecond host sleep here instead of this handoff starves
+    // any task that needs several turns, or one host mutex release, to unwind.
+    // It made a camera teardown miss the connect cancellation it was polling
+    // for and fall back to its 30 s cap on every fuzz seed.
     //
-    // A task blocked outside the scheduler on a plain host mutex holds the
-    // turn without being runnable, so the turn holder is deliberately not part
-    // of the condition: advancing virtual time is exactly what releases the
-    // task holding that mutex, so returning here is what makes progress.
+    // The wait ends early only when every task has reached a scheduler
+    // boundary. A task blocked on a plain host mutex has not, and stays
+    // `runnable`, so that case runs the full UI_HANDOFF_BOUND and it is the
+    // elapsed host time, not the condition, that lets the mutex holder finish.
+    // See the comment on UI_HANDOFF_BOUND.
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
     Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
       return Furble::Sim::schedulerStopping() || nextRunnableTaskLocked() == nullptr;

@@ -91,11 +91,30 @@ unsigned boundSeconds(void) {
   if (override == nullptr || override[0] == '\0') {
     return DEFAULT_BOUND_SECONDS;
   }
-  return static_cast<unsigned>(std::strtoul(override, nullptr, 10));
+  // A typo must not disable the only host-clock bound in the simulator in
+  // silence. strtoul would report 0 for "12O" or "sixty", which reads as a
+  // deliberate opt out. Reject anything that is not a complete number, say so,
+  // and keep the default.
+  char *end = nullptr;
+  const unsigned long parsed = std::strtoul(override, &end, 10);
+  if (end == override || *end != '\0') {
+    std::fprintf(stderr,
+                 "SIM WATCHDOG: FURBLE_SIM_WATCHDOG_SECONDS=\"%s\" is not a number, "
+                 "using the %u second default.\n",
+                 override, DEFAULT_BOUND_SECONDS);
+    return DEFAULT_BOUND_SECONDS;
+  }
+  return static_cast<unsigned>(parsed);
 }
 
 std::string currentPhase(void) {
-  const std::lock_guard<std::mutex> lock(phaseMutex);
+  // The stall reporter must never block on a lock a wedged thread holds, so
+  // this takes the phase lock the same way the task table does, or reports
+  // that it could not.
+  std::unique_lock<std::mutex> lock(phaseMutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    return "unavailable, phase lock is held";
+  }
   return phaseName;
 }
 

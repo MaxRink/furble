@@ -134,12 +134,21 @@ is free and says so plainly when it is not.
 The `ui` thread's `vTaskDelay` now models the FreeRTOS contract: after
 advancing the clock it hands the scheduler over until no task is runnable,
 meaning every task released by that advance has taken its turn and blocked
-again. The turn holder is deliberately not part of the condition: a task
-blocked outside the scheduler on a plain host mutex holds the turn without
-being runnable, and advancing virtual time is exactly what releases the task
-holding that mutex, so returning is what makes progress. A 250 ms host ceiling
-keeps a scheduler defect from wedging the UI thread silently; a run that keeps
-hitting it blows the per-scenario and per-seed wall-clock bounds and fails.
+again, with a 250 ms host ceiling.
+
+That ceiling is load bearing, and saying otherwise would misdescribe the fix.
+`runnable` is cleared only at an explicit scheduler boundary, so a task blocked
+on a plain host mutex the scheduler cannot see stays runnable and the wait
+cannot observe it finishing. Those handoffs run the full ceiling, and the
+elapsed host time is what lets the mutex holder run and release. On core fuzz
+seed 2 the ceiling is reached on 87 of 3620 handoffs and accounts for 21.8 s of
+the 23.9 s run. Lowering it re-starves the holder, which is the issue 267
+failure; raising it only costs runtime.
+
+The right fix is to stop guessing with a timeout: make the scheduler aware of
+host-mutex waiters so they clear `runnable` like every other blocking boundary,
+and the wait ends on a real event rather than on elapsed time. That is the
+scheduler-visible mutex plan 158 Phase 3 owns, and this ceiling is the interim.
 
 ### Making both failures fail
 
@@ -206,9 +215,22 @@ tracked separately, with their own plan, host tests and a hardware gate:
    only `m_Targets`. This is the reconnect-cancel deadlock family recorded in
    `CLAUDE.md`.
 
+Both are tracked by issue 271 and land on `fix/control-zombie-connect-cancel`
+with their own plan, host tests and a hardware gate.
+
 Neither is the cause of issue 267, which is host starvation, and neither can be
 verified without hardware. Mixing them into a simulator-only change would put a
 firmware teardown edit behind a gate that cannot exercise it.
+
+One consequence has to be recorded, because it is a coverage loss this PR
+causes. Before this change the fuzzer walked into the zombie-cancel gap by
+accident on every seed: the starved teardown left targets draining with a
+connect in flight, which is exactly the state gap 2 mishandles. With the
+starvation fixed the teardown settles, so the simulator no longer reaches that
+state at all, and nothing in this repository exercises it any more. The issue
+271 work must therefore build the state deliberately, with a sync-point
+scenario and host tests, rather than relying on the fuzzer to stumble into it
+again.
 
 ## Verification
 

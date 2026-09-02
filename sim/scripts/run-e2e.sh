@@ -34,6 +34,20 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
+# GNU timeout, or the coreutils build Homebrew installs as gtimeout on macOS.
+# This bound is the only thing standing between a wedged run and a hung CI job,
+# so a missing tool is a hard failure rather than a silent run without it.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT=gtimeout
+else
+  echo "GNU timeout is required to bound a simulator run." >&2
+  echo "On macOS: brew install coreutils, which provides gtimeout." >&2
+  exit 1
+fi
+
+
 status=0
 count=0
 scenarios=$(python3 "$ROOT/tools/check_sim_scenarios.py" --list-certified --suite e2e --board "$BOARD")
@@ -42,7 +56,7 @@ for scenario in $scenarios; do
   name=$(basename "$scenario" .txt)
   count=$((count + 1))
   echo "=== $name ==="
-  if timeout -k 10 "$SCENARIO_TIMEOUT" "$BIN" --script "$scenario"; then
+  if "$TIMEOUT" -k 10 "$SCENARIO_TIMEOUT" "$BIN" --script "$scenario"; then
     echo "PASS $name"
   else
     rc=$?

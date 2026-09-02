@@ -1,3 +1,5 @@
+#include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -11,6 +13,7 @@ namespace {
 
 std::mutex debuggerThreadMutex;
 SDL_Thread *debuggerThread = nullptr;
+std::atomic<bool> suppressedDebugDetector {false};
 
 }  // namespace
 
@@ -34,8 +37,16 @@ static bool stepDetectEnabled(void) {
 extern "C" SDL_Thread *furble_sim_SDL_CreateThread(SDL_ThreadFunction function,
                                                    const char *name,
                                                    void *data) {
+  // The thread name is the only handle M5GFX gives us on that detector: it is a
+  // file-static in Panel_sdl.cpp with no accessor. If a future M5GFX renames the
+  // thread this match stops firing, the detector starts again, and the boot
+  // deadlock comes back. That would no longer hang forever, because the stall
+  // watchdog bounds it, but it would be a confusing regression, so the name is
+  // pinned by furble_sim_check_step_detect_suppressed() below rather than left
+  // to be discovered.
   const bool isDebugDetector = name != nullptr && std::strcmp(name, "dbg") == 0;
   if (isDebugDetector && !stepDetectEnabled()) {
+    suppressedDebugDetector.store(true);
     return nullptr;
   }
   SDL_Thread *thread = SDL_CreateThread(function, name, data);
@@ -57,4 +68,14 @@ extern "C" void furble_sim_SDL_Quit(void) {
     SDL_WaitThread(thread, nullptr);
   }
   SDL_Quit();
+}
+
+extern "C" void furble_sim_check_step_detect_suppressed(void) {
+  if (stepDetectEnabled() || suppressedDebugDetector.load()) {
+    return;
+  }
+  std::fprintf(stderr,
+               "sim: no SDL thread named \"dbg\" was suppressed during panel setup. "
+               "M5GFX may have renamed its debugger detector, which would let the "
+               "Panel_sdl step-exec boot deadlock return. See sim/sdl_lifecycle.cpp.\n");
 }

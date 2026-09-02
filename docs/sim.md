@@ -180,9 +180,12 @@ routinely, and the step-exec mode it then latches deadlocks simulator boot
 against the SDL render pump. Turn it on only under an actual debugger.
 
 `sim/scripts/run-e2e.sh` and `sim/scripts/run-watchdog.sh` bound every scenario
-with `timeout -k 10` at `FURBLE_SIM_SCENARIO_TIMEOUT` seconds, default 300,
-matching the per-seed bound in `run-fuzz.sh`. A wedged run fails its leg
-instead of hanging the job.
+with `timeout -k 10` at `FURBLE_SIM_SCENARIO_TIMEOUT` seconds, default 300. The
+per-seed bound in `run-fuzz.sh` is separate and larger, `FURBLE_FUZZ_SEED_TIMEOUT`
+seconds, default 600, because one seed is 600 events rather than one scenario. A
+wedged run fails its leg instead of hanging the job. All three scripts require
+GNU `timeout`, or the coreutils `gtimeout` Homebrew installs on macOS, and fail
+with that instruction if neither is present.
 
 For an instrumented UI-fuzzer build, set `FURBLE_SIM_SANITIZE` to a clang
 sanitizer list and use a separate `FURBLE_SIM_BUILD_DIR`, for example
