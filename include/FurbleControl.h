@@ -148,6 +148,10 @@ class Control {
    * teardown, so the force-complete race cannot happen there.
    *
    * @param[in] timeout_ms Maximum time to wait for target tasks and cameras.
+   * @param[in] timeout_ms Cap on the wait, honoured by both paths. The
+   *                        interactive path used to ignore this and always wait
+   *                        DISCONNECT_WAIT_MAX_MS, which is the default, so
+   *                        every existing caller is unchanged.
    * @param[in] forRestart Caller will esp_restart() immediately, so a timeout
    *                       may force-complete the teardown.
    * @return true if all disconnect work completed before the timeout.
@@ -267,6 +271,9 @@ class Control {
   state_t connectAll(void);
 
   /** Check whether all disconnect work has completed. */
+  /** Publish the camera whose connect attempt is in flight, under m_Mutex. */
+  void setConnectCamera(std::shared_ptr<Camera> camera);
+
   bool disconnectComplete(void);
 
   /**
@@ -379,6 +386,10 @@ class Control {
   // Camera connects are serialised, the following tracks the last attempt.
   // Holds a strong reference so an in-flight connect keeps its Camera alive even
   // if CameraList::load() drops the list's reference.
+  //
+  // Guarded by m_Mutex. It is written by the control task and read by the UI
+  // task, so every access takes the mutex and publication goes through
+  // setConnectCamera().
   std::shared_ptr<Camera> m_ConnectCamera;
 
   // User transmit power cap, loaded from TX_POWER at first getInstance()

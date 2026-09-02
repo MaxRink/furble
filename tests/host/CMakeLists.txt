@@ -832,6 +832,33 @@ target_compile_options(control_teardown_wedge_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_teardown_wedge_test PRIVATE Threads::Threads)
 
+# Regression for issue 271: a drained target whose connect attempt is still in
+# flight. Models the CanonEOSSmart pairing wait as a blind window inside
+# _connect() that ignores the cancel token, so the pre-fix behaviour fails in
+# milliseconds instead of waiting out a real vendor timeout.
+add_executable(control_zombie_cancel_test
+               control_zombie_cancel_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
+target_include_directories(control_zombie_cancel_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(control_zombie_cancel_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_zombie_cancel_test PRIVATE Threads::Threads)
+
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
 # the named sync points in lib/furble/FurbleTestSync.h are live, and links the
@@ -1363,6 +1390,9 @@ if(BUILD_TESTING)
   # reintroduced uncancellable wait fails the suite instead of hanging it.
   add_test(NAME control-teardown-wedge COMMAND control_teardown_wedge_test)
   set_tests_properties(control-teardown-wedge PROPERTIES TIMEOUT 60)
+
+  add_test(NAME control-zombie-cancel COMMAND control_zombie_cancel_test)
+  set_tests_properties(control-zombie-cancel PROPERTIES TIMEOUT 60)
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The
   # sync-point barriers carry their own timeouts, the ctest timeout is the

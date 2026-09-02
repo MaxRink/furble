@@ -232,12 +232,12 @@ Control::state_t Control::connectAll(void) {
       break;
     }
 
-    m_ConnectCamera = camera;
+    setConnectCamera(camera);
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
       break;
     } else {
-      m_ConnectCamera = nullptr;
+      setConnectCamera(nullptr);
     }
   }
 
@@ -535,6 +535,24 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     // State only, no radio calls under m_Mutex.
     resetAdaptiveState();
 
+    // Cancel the in-flight connect on every camera this session still owns,
+    // then send the teardown to the live targets.
+    //
+    // Walking m_Targets alone is not enough. A camera can be mid-connect while
+    // its target is no longer in m_Targets: a previous teardown that hit its
+    // cap moved it to m_ZombieTargets, and connectAll() runs from a snapshot
+    // taken before that move, so the attempt outlives the target. Its cancel
+    // token then depends entirely on that earlier call, and connectAll(bool)
+    // clears the token for any camera that has since been given a fresh target.
+    // Cancelling the drain set and the attempt in flight makes the teardown
+    // self-sufficient instead of relying on a token set by an earlier call.
+    for (const auto &target : m_ZombieTargets) {
+      target->getCamera()->cancelConnect();
+    }
+    if (m_ConnectCamera != nullptr) {
+      m_ConnectCamera->cancelConnect();
+    }
+
     // send disconnect
     for (const auto &target : m_Targets) {
       // Abort any in-flight connect attempt on this camera first. The long
@@ -565,14 +583,30 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     // a caller that tears down BLE state right after (on device the peer just
     // persists; in host tests the virtual peer is freed) never races the
     // teardown. The watchdog is fed each slice and no mutex is held across it.
+    // Honour the caller's bound. This path used to ignore timeout_ms and always
+    // wait DISCONNECT_WAIT_MAX_MS, which is also the parameter's default, so
+    // every existing caller is unchanged; a caller that asks for a shorter cap
+    // now gets one.
     const TickType_t start = xTaskGetTickCount();
-    const TickType_t timeout = pdMS_TO_TICKS(DISCONNECT_WAIT_MAX_MS);
+    const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+    bool settled = true;
     while (!targetTasksStopped()) {
       if (xTaskGetTickCount() - start >= timeout) {
+        settled = false;
         break;
       }
       Platform::getInstance().watchdogFeed();
       vTaskDelay(pdMS_TO_TICKS(DISCONNECT_WAIT_SLICE_MS));
+    }
+
+    // Breaking out here used to be silent, which is how a vendor wait that
+    // ignores the cancel token stayed invisible: the teardown burned its whole
+    // cap on every attempt and nothing said so. Say it.
+    if (!settled) {
+      ESP_LOGW(LOG_TAG,
+               "Camera teardown did not settle within %lu ms; draining %u target(s) with the "
+               "attempt still in flight.",
+               static_cast<unsigned long>(timeout_ms), static_cast<unsigned>(m_Targets.size()));
     }
 
     // Hand the stopped targets to the drain set and return at once: getState() is
@@ -730,6 +764,44 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
     }
   }
 
+  // A camera that is draining with its connect attempt still in flight must not
+  // be given a fresh target, which the loop above cannot see because the target
+  // has already moved to m_ZombieTargets.
+  //
+  // The narrow condition matters, and m_Stopped is what expresses it. A drained
+  // target whose task has stopped is the ordinary teardown state, and a
+  // reconnect through it is a supported path: refusing there would break every
+  // disconnect-then-reconnect that lands inside the drain window. A target
+  // drained with m_Stopped still false is the harmful one: its task is blocked
+  // on Camera::m_Mutex behind an attempt that is still running, which is the
+  // only way the teardown could have reached its cap. m_ConnectCamera cannot be
+  // used for this test because the drain clears it while the attempt continues.
+  // Giving that camera a fresh target is not a harmless duplicate:
+  // connectAll(bool) would clear the cancel token the teardown set, leaving the
+  // attempt uncancellable for the rest of its vendor timeout, and
+  // resetConnectionState() below would clear the connected guard underneath a
+  // running attempt. The drained target's task is blocked on the same
+  // Camera::m_Mutex, so it never publishes m_Stopped, the zombie is never
+  // reaped, and teardownDraining() keeps the connect gate shut the whole time.
+  //
+  // Refusing is what unblocks the user fastest, because the refusal also
+  // re-arms the cancel. Silently deduplicating would leave the attempt running
+  // to its own timeout, up to 60 s on a Canon pairing wait; cancelling it here
+  // makes it unwind within one vendor poll, the zombie reaps, and the next
+  // connect goes through in about a second. Surfacing "still disconnecting" on
+  // the UI is additive and not done here: the duplicate-connect case above is
+  // equally silent today, so this stays consistent with it rather than adding a
+  // one-off.
+  for (const auto &target : m_ZombieTargets) {
+    if (target->m_Stopped || target->getCamera()->getAddress() != camera->getAddress()) {
+      continue;
+    }
+    ESP_LOGW(LOG_TAG, "Camera '%s' is still disconnecting, cancelling its attempt.",
+             camera->getName().c_str());
+    target->getCamera()->cancelConnect();
+    return;
+  }
+
   // Clear any stale connected flag before this camera joins a fresh connect.
   // The camera comes from the persistent CameraList and may carry a stale-true
   // flag from a prior session whose onDisconnect never fired (camera powered
@@ -756,7 +828,18 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   }
 }
 
+void Control::setConnectCamera(std::shared_ptr<Camera> camera) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  m_ConnectCamera = std::move(camera);
+}
+
 std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
+  // m_ConnectCamera is written by the control task and read by the UI task, so
+  // every access takes m_Mutex. It used to be published unlocked from
+  // connectAll() and read unlocked here while disconnect() read it under the
+  // mutex, which is a data race on a shared_ptr: a torn read hands out a
+  // control block that is being replaced.
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_ConnectCamera;
 }
 
