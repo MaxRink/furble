@@ -458,6 +458,7 @@ The complete `ui.*` query set is:
 | --- | --- |
 | `ui.connect_box` | `hidden` or `visible`. |
 | `ui.connect_error` | `none`, or the dismissable connect error box's title as one lowercased token: `already_saved`, `pairing_lost`, or `connect_failed`. |
+| `ui.modal_overflow` | `yes` when anything on the top layer is drawn outside the display, or when a label there is wider or taller than the content box that clips it. `no` otherwise, `unknown` with no top layer. Pair it with `ui.connect_error`: that one proves the box exists with the right text, this one proves the text was drawn where the user can read it. |
 | `ui.indicators_focused` | `yes` or `no`. |
 | `ui.bulb_ms` | Persisted bulb duration in milliseconds. |
 | `ui.disconnect_calls` | Numeric disconnect count. |

@@ -21,9 +21,10 @@
 # the focus on this page in either layout.
 #
 # What covers this today: camera-list-protocol pins the identity rule itself
-# with teeth, and stale-bond-pairing-lost.txt plus connect-fail-progress.txt
-# cover UI::showConnectError() and closeConnectErrorDialog() end to end on all
-# three panels in both input layouts. What is missing is only the UI-level proof
+# with teeth, and three certified scenarios cover UI::showConnectError() and
+# closeConnectErrorDialog() end to end on all three panels in both input
+# layouts: stale-bond-pairing-lost.txt, connect-fail-progress.txt and
+# connect-error-notouch-dismiss.txt. What is missing is only the UI-level proof
 # that the Scan row refuses.
 #
 # To re-enable: give the scenario DSL a deterministic way to activate a scan

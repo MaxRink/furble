@@ -1182,12 +1182,6 @@ target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
 target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
 
-# Ricoh standby flap through the real Control (plan 154). The first
-# Ricoh-through-Control coverage: a GR IV style standby camera (autonomous
-# RicohVirtualCamera flappy mode: rc=520 secureConnection failures, then a
-# CameraPower 0x00 notify and a timed link drop) churns the reconnect cycle
-# next to a healthy Fujifilm while a mid-cycle disconnect must land in a clean
-# IDLE and a follow-up connect must work.
 # Stale-bond recovery through the REAL Control reconnect loop (plan 151). Uses
 # the production Scan so the SAVED reconnect path (scan, then connect, then
 # secure) is exercised exactly as the bench drives it.
@@ -1220,10 +1214,16 @@ target_include_directories(fujifilm_repair_needed_test
 target_compile_definitions(fujifilm_repair_needed_test PRIVATE
                            FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
 target_compile_options(fujifilm_repair_needed_test PRIVATE
-                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(fujifilm_repair_needed_test PRIVATE Threads::Threads)
 
+# Ricoh standby flap through the real Control (plan 154). The first
+# Ricoh-through-Control coverage: a GR IV style standby camera (autonomous
+# RicohVirtualCamera flappy mode: rc=520 secureConnection failures, then a
+# CameraPower 0x00 notify and a timed link drop) churns the reconnect cycle
+# next to a healthy Fujifilm while a mid-cycle disconnect must land in a clean
+# IDLE and a follow-up connect must work.
 add_executable(ricoh_control_flap_test
                ricoh_control_flap_test.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp

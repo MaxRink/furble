@@ -20,10 +20,18 @@ action connect
 # than one attempt. It must still arrive: the whole point is that the cycle ends.
 assert-eventually-virtual 60000 ui.connect_error pairing_lost
 assert ui.modal_count 1
+# The box has to be readable, not merely present. ui.connect_error reads the
+# title out of the widget tree, which says nothing about where it was drawn: the
+# first version of this box was LV_SIZE_CONTENT and rendered wider and taller
+# than the panel, with the instruction cut off at both edges and the OK button
+# off the bottom, and every assertion above still passed.
+assert ui.modal_overflow no
 assert-eventually-virtual 5000 control.state idle
+assert ui.modal_overflow no
 
 # The box stays until the user clears it, and clearing it really works. This is
 # the half the bench reported as being unable to cancel.
+capture pairing-lost
 action select
 wait 300
 assert ui.connect_error none

@@ -319,10 +319,17 @@ a regression.
   bounds the discovery scan so the production scan-end callback runs.
 - `ui.connect_error` reports the connect error box as one token: `none`,
   `already_saved`, `pairing_lost`, or `connect_failed`. It reads the rendered
-  title, so it proves the text reached the screen rather than that a flag was
-  set. Dismissal is asserted in the same scenarios, on touch and under
+  title, so it proves the text reached the widget tree rather than that a flag
+  was set. Dismissal is asserted in the same scenarios, on touch and under
   `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
   physical buttons.
+- `ui.modal_overflow` is the other half, and it exists because the first version
+  of that box passed every assertion above while rendering wider and taller than
+  the panel with its instruction clipped at both edges. `ui.overflow` measures
+  the current menu page, and a message box lives on the top layer outside any
+  page, so nothing could see it. The query walks the top layer and reports `yes`
+  when a descendant leaves the display or when a label overruns the content box
+  that clips it. Assert it `no` in any scenario that raises a modal.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA

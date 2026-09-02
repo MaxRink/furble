@@ -222,7 +222,7 @@ bool scenarioSingleTimeoutKeepsBond() {
   return g_Failures == 0;
 }
 
-// (d) The camera dropped its pairing but is sitting in pairing mode: it refuses
+// (c) The camera dropped its pairing but is sitting in pairing mode: it refuses
 // the dead keys while staying on the link. After the bond is deleted the fresh
 // in-link pairing goes through and the connect proceeds to registration, so the
 // user never sees a prompt at all.
@@ -258,7 +258,7 @@ bool scenarioInLinkFreshPairRecovers() {
   return g_Failures == 0;
 }
 
-// (e) A multi-connect session where one saved body lost its pairing and another
+// (d) A multi-connect session where one saved body lost its pairing and another
 // is perfectly healthy.
 //
 // connectAll() breaks out of the camera loop on the first failure and returns
