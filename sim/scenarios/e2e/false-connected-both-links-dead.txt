@@ -30,6 +30,9 @@ assert ui.status_text Connected
 action ble-connect-fail
 action drop
 wait 200
+# The control task has left the active state and is retrying against a radio
+# that refuses every connect.
+assert control.state connecting
 assert control.connected 0
 assert ui.connected no
 assert ui.page connected
