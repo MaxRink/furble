@@ -38,6 +38,7 @@ class UI {
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
     CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
+    DELETE,          /**< arg: saved camera index, negative deletes every saved camera */
     GPS_RELOAD,      /**< arg: unused */
     GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
     IR_RELOAD,       /**< arg: unused */
@@ -103,19 +104,29 @@ class UI {
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the UI task to carry out on its behalf. */
   enum class Request {
-    CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
-    DISCONNECT,      /**< arg: unused */
-    SCAN,            /**< arg: non-zero to start, zero to stop */
-    CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
-    GPS_RELOAD,      /**< arg: unused */
-    GPS_POWER,       /**< arg: non-zero to power the external 5V rail */
-    IR_RELOAD,       /**< arg: unused */
-    FEEDBACK_RELOAD, /**< arg: unused */
-    FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
-    PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
-    AUDIT,           /**< arg: unused */
-    POWER_RELOAD,    /**< arg: unused */
-    SD_RELOAD,       /**< arg: unused */
+    CONNECT,            /**< arg: saved camera index, negative for the multi-connect selection */
+    DISCONNECT,         /**< arg: unused */
+    SCAN,               /**< arg: non-zero to start, zero to stop */
+    CAMERAS,            /**< arg: non-zero to reload the saved cameras before printing */
+    DELETE,             /**< arg: saved camera index, negative deletes every saved camera */
+    PAIR,               /**< arg: scan result index, the Scan page row the console cannot click */
+    MULTI_SELECT,       /**< arg: saved camera index to add to the multi-connect selection */
+    MULTI_DESELECT,     /**< arg: saved camera index to drop from the multi-connect selection */
+    GPS_RELOAD,         /**< arg: unused */
+    GPS_POWER,          /**< arg: non-zero to power the external 5V rail */
+    IR_RELOAD,          /**< arg: unused */
+    FEEDBACK_RELOAD,    /**< arg: unused */
+    FEEDBACK_TEST,      /**< arg: Feedback::event_t value, bypasses the event mask */
+    PERF,               /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
+    AUDIT,              /**< arg: unused */
+    PAGE,               /**< arg: unused, prints the current page name */
+    BACK,               /**< arg: unused, the header back button */
+    INTERVAL,           /**< arg: -1 prints status, non-zero starts, zero stops */
+    BULB,               /**< arg: -1 prints status, non-zero starts, zero stops */
+    DISPLAY_BRIGHTNESS, /**< arg: panel brightness, applied live and persisted */
+    POWER_OFF,          /**< arg: unused */
+    POWER_RELOAD,       /**< arg: unused */
+    SD_RELOAD,          /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
@@ -768,6 +779,14 @@ class UI {
 
   enum class DisplayState { ACTIVE, DIM, OFF };
 
+#if defined(FURBLE_SIM) || defined(FURBLE_CONSOLE)
+  /** Intervalometer run state as a stable, script parseable word. */
+  static const char *intervalStateName(Intervalometer::state_t state);
+
+  /** Bulb exposure state as a stable, script parseable word. */
+  static const char *bulbStateName(Bulb::state_t state);
+#endif
+
   lv_obj_t *m_IntervalStart = nullptr;
   lv_obj_t *m_IntervalStop = nullptr;
   Intervalometer m_Intervalometer;
@@ -1136,6 +1155,17 @@ class UI {
 
   /** Update the Multi-Connect button label and state. */
   static void updateMultiConnectButton(lv_obj_t *button);
+
+  /**
+   * Saved camera at the given index is in the remembered multi-connect set.
+   *
+   * The set is remembered by camera name, so it can only be resolved against a
+   * loaded CameraList, on the task which owns it.
+   */
+  static bool loadMultiConnectSelection(size_t index);
+
+  /** Apply the remembered multi-connect set to the loaded camera list. */
+  static void seedMultiConnectSelection(void);
 
   /** Save the current active camera selection. */
   static void saveMultiConnectSelection(void);

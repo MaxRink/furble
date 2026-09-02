@@ -101,7 +101,33 @@ void printCameras(bool reload) {
     printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
     printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
            static_cast<unsigned long>(camera->getType()));
+    // The same list carries saved cameras and scan results, and a scan can
+    // rediscover a saved camera. Say which each row is.
+    printf("camera%u.saved: %s\n", static_cast<unsigned>(n),
+           CameraList::isSaved(camera.get()) ? "true" : "false");
+    printf("camera%u.selected: %s\n", static_cast<unsigned>(n),
+           camera->isActive() ? "true" : "false");
   }
+}
+
+void deleteCameras(int32_t index) {
+  CameraList::load();
+  if ((index >= 0) && (static_cast<size_t>(index) >= CameraList::size())) {
+    ESP_LOGE(LOG_TAG, "console: no saved camera at index %ld", index);
+    return;
+  }
+
+  unsigned deleted = 0;
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    if ((index >= 0) && (n != static_cast<size_t>(index))) {
+      continue;
+    }
+    printf("deleted: %s\n", CameraList::get(n)->getName().c_str());
+    CameraList::remove(CameraList::get(n).get());
+    deleted++;
+  }
+  printf("count: %u\n", deleted);
+  CameraList::load();
 }
 
 void connectCamera(int32_t index) {
@@ -187,6 +213,10 @@ void UI::serviceRequests(void) {
 
       case Request::CAMERAS:
         printCameras(item.arg != 0);
+        break;
+
+      case Request::DELETE:
+        deleteCameras(item.arg);
         break;
 
       case Request::GPS_RELOAD:
