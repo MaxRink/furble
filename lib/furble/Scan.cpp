@@ -463,6 +463,9 @@ size_t Scan::endCallbackCount(void) const {
 }
 
 void Scan::runStartProbe(void) {
+  // Only runs when a scenario installed a probe with setStartProbe(), which
+  // the UI does only under "seed scan_start_probe true". Without a probe this
+  // returns before touching a thread or the wall clock.
   std::function<void()> probe;
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);

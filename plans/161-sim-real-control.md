@@ -130,9 +130,30 @@ connect plus one control tick plus margin. The scenarios touched, and why:
 | `scan-distinct-rows-heartbeat` | rewritten onto `ble_peers fuji-pair` plus `seed scan_timeout 2` | two real advertisements, matched and drained on the UI task |
 | `link-lies-invariant` | renamed to `link-death-liveness` and repointed at the real transport fault | see below |
 
-No assertion was weakened. Where a value converges across tasks rather than at
-a fixed instant, the fixed `assert` became `assert-eventually-virtual` with an
-explicit bound (2000 to 12000 ms), which is a bound, not a relaxation.
+No assertion was weakened by re-bounding. Where a value converges across tasks
+rather than at a fixed instant, the fixed `assert` became
+`assert-eventually-virtual` with an explicit bound (2000 to 12000 ms), which is
+a bound, not a relaxation.
+
+Two assertion blocks were removed rather than re-bounded, and both are listed
+here rather than left to a reader to find:
+
+- `multi-connect-false-connected.txt` lost its mid-outage block
+  (`control.state connecting`, `control.connected 0`, `ui.connected no`,
+  `ui.page connected`, `ui.connect_box hidden`, `ui.reconnecting yes`,
+  `ui.reconnect_count 2/2`). With the fake, a drop parked the session in
+  `connecting` until the scenario advanced it. With the production stack and a
+  healthy radio the reconnect completes in well under a millisecond, so the
+  outage has no observable window at all. `false-connected-both-links-dead.txt`
+  is the scenario that holds the outage open with `ble-connect-fail`, and it
+  carries those assertions instead, except `ui.reconnecting`, which residual
+  gap 4 explains. `multi-connect-false-connected.txt` now covers what only it
+  can: the control task recovering the session on its own.
+- `bughunt/connect-fail-progress.txt` lost `assert ui.connect_box visible`.
+  FauxNY has no radio to fail a connect at, so the scenario now uses a virtual
+  peer whose transport connect fails immediately; the progress box is never
+  observable mid-flight. Its real contract, that the box is gone afterwards and
+  the UI never presents as connected, is unchanged and still a hard assert.
 
 ## Faults
 
@@ -172,10 +193,14 @@ default.
   drop, then a UI disconnect mid reconnect cycle. It asserts the state returns
   to idle and `connect_in_progress` clears inside 3 s, that no target stays
   quarantined, and that a fresh connect reaches active.
-- `false-connected-both-links-dead` reproduces hardware failure 3: two
-  connected cameras, both links killed at the transport with the radio refusing
-  reconnects, and the UI must leave the Connected screen inside the grace and
-  show the reconnect indication with the correct count.
+- `false-connected-both-links-dead` drives the closest reachable approximation
+  of hardware failure 3, not the failure itself. `action drop` delivers the GAP
+  disconnect, so `isConnected()` goes false and the UI correctly leaves the
+  Connected screen; what the scenario proves is that the production stack does
+  the right thing when the stack is told the link died. The hardware symptom
+  needs `action ble-kill`, where the disconnect event never arrives and
+  `isConnected()` stays stale-true, and residual gap 1 records that the
+  liveness invariant cannot see that case.
 - `reconnect-backoff-curve` walks the real curve on virtual time: attempt 1
   holds `FIRST_RETRY_MS` 2500, attempt 2 holds `BASE_MS << 1` = 10000, and the
   counter resets to 0 on recovery.
@@ -245,7 +270,42 @@ Every mutation was reverted; no mutation is left in the tree.
    deadlock breaker rather than a time slice: a healthy handoff is
    microseconds, so it never fires on a deadlock-free trace. The principled fix
    is to model FreeRTOS mutex blocking, which plan 158 Phase 3 owns.
-4. The simulator's UI task is not priority gated. It is the pseudo-task that
+4. The reconnect indicator can never appear for a whole session. This is the
+   root cause behind both the `ui.connect_timer` and the `ui.reconnecting`
+   flakes, and it is one bug, not two.
+
+   `doConnect()` calls `Control::connectAll()`, which only queues
+   `CMD_CONNECT`, and then immediately does `lv_timer_ready()` plus
+   `lv_timer_resume()` on the connect timer. If that timer's first tick lands
+   before the control task has left `STATE_IDLE`, the timer handler takes the
+   `STATE_IDLE` branch and pauses itself. Nothing resumes it again for the rest
+   of the session, so the connected page runs with a dead liveness poll: a
+   later link drop raises neither the status-row reconnect icon
+   (`ui.reconnecting`, `ui.link_alert`) nor the page banners, and the session
+   keeps presenting as connected. That is the 2026-08-28 failure class.
+
+   On device the control task runs at priority 4 and the LVGL task lower, so
+   the queue send preempts and `STATE_CONNECT` is published before `doConnect()`
+   returns; the window is closed by scheduling order, not by the code. The
+   simulator's UI task is the pseudo-task that drives virtual time and is not
+   priority gated, so it can run ahead of the higher-priority control task and
+   the window opens. An idle host wins the race, a loaded CI runner loses it.
+
+   So it is production code whose correctness depends on preemption ordering,
+   exposed by a simulator scheduler gap. It needs a production fix of its own
+   (the timer must not park itself while a connect it just requested is still
+   in flight) with hardware verification, and the simulator enabler is the UI
+   task priority gate. Neither belongs in this change. Until then, the
+   indicator assertions cannot be made deterministic here: they are recorded,
+   not enforced, and the affected scenarios say so.
+
+   Even with the timer alive the indicator lags a drop by up to
+   `LIVENESS_POLL_PERIOD_MS` (500 ms) plus one 50 ms control tick, because the
+   connected page deliberately polls liveness at a gentle cadence. That part is
+   unchanged production behaviour and is a budget, not a bug; a measured probe
+   shows the indicator flipping between +300 ms and +1300 ms after a drop.
+
+5. The simulator's UI task is not priority gated. It is the pseudo-task that
    drives virtual time, so it can run ahead of a higher-priority real task that
    a queue send has just released. `doConnect()` resumes and readies the
    connect timer while `Control::connectAll()` has only queued `CMD_CONNECT`,
@@ -255,11 +315,11 @@ Every mutation was reverted; no mutation is left in the tree.
    `drop-idle-self-heal` records the precondition with `xassert` rather than
    enforcing it; its real contract, the self-heal after the outage, stays a
    hard assert. This is plan 158 Phase 3 work.
-5. No modelled radio latency. A virtual peer's connect completes in well under
+6. No modelled radio latency. A virtual peer's connect completes in well under
    a millisecond, so the sim cannot yet exercise the seconds-long connect
    windows that hardware has. Real timing must come from the calibrated peer
    work in plan 159.
-6. The simulator tears the control session down before process exit
+7. The simulator tears the control session down before process exit
    (`Control::disconnect(..., forRestart=true)` in `sim/main.cpp`). The
    firmware never leaves `UI::task`, so this path only runs on the restart
    route on device. Without it the NimBLE client pool and the control targets

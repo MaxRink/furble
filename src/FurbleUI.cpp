@@ -4553,10 +4553,16 @@ void UI::serviceRequests(void) {
 
           scan.clear();
 #if defined(FURBLE_SIM)
-          scan.setStartProbe([]() {
-            m_Mutex.lock();
-            m_Mutex.unlock();
-          });
+          // Strictly seed gated. The probe is the one simulator hook that is
+          // not purely observational: it runs a callback-shaped thread and
+          // waits up to 100 ms of wall clock inside Scan::start(). Only a
+          // scenario that asks for it pays that cost.
+          if (Sim::scenarioSettingIsTrue("scan_start_probe")) {
+            scan.setStartProbe([]() {
+              m_Mutex.lock();
+              m_Mutex.unlock();
+            });
+          }
 #endif
 
           // NimBLEScan::start() is asynchronous on the usual NimBLE build,
@@ -5616,10 +5622,15 @@ void UI::startScan(void) {
 #if defined(FURBLE_SIM)
   // Keep the same unlock/relock hand-off as firmware. The simulator's scan
   // start probe acquires this mutex, proving the start path cannot deadlock.
-  scan.setStartProbe([]() {
-    m_Mutex.lock();
-    m_Mutex.unlock();
-  });
+  // Strictly seed gated: it is the one simulator hook that is not purely
+  // observational, because it runs a callback-shaped thread and waits up to
+  // 100 ms of wall clock inside Scan::start().
+  if (Sim::scenarioSettingIsTrue("scan_start_probe")) {
+    scan.setStartProbe([]() {
+      m_Mutex.lock();
+      m_Mutex.unlock();
+    });
+  }
 #endif
 
   // Keep the UI mutex out of the scan-start call. NimBLE normally returns
