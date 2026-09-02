@@ -15,15 +15,17 @@
 # other scenario measures the touch layout, which is 26 px taller. This one
 # seeds "no_touch true" to detach that device. One file per board on purpose:
 # the expectations below are geometry, and a shared file would have to soften
-# every line to the weakest board. See plans/165-sim-no-touch-layout.md.
+# every line to the weakest board.
 #
 # The first assertion is a hard guard. Without it a run that lost the seed would
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
 # Every xassert below is a WILL_FAIL that fails on this board today, with the
-# measured pixel count or widget count in its comment. An XPASS means the gap
-# was fixed and the line should become a hard assert.
+# measured pixel count or widget count in its comment. None of them is
+# board-varies: each file covers one board, so a closed gap turns into an XPASS
+# and fails the run, which is the signal to promote the line to a hard assert.
+# See plans/165-sim-no-touch-layout.md.
 seed no_touch true
 seed fauxny true
 seed saved_camera true
@@ -80,7 +82,7 @@ assert ui.indicator_clearance clear
 
 # Connected session.
 action connect
-wait 1800
+wait 3200
 assert ui.page connected
 assert ui.connected yes
 # WILL_FAIL: overflows by 25 px on this panel.
@@ -106,8 +108,9 @@ assert ui.page bulb
 assert ui.overflow no
 assert ui.indicator_clearance clear
 
-# Bulb duration roller. It scrolls by design on every panel, so only its
-# indicator clearance is asserted.
+# Bulb duration spin value. It scrolls by design on every panel, 3 px at
+# 135x240 and 320x240 and 55 px at 80x160, so page-matrix asserts its scroll
+# extents rather than a fit. Only its indicator clearance is asserted here.
 action nav bulb_duration
 wait 150
 assert ui.page bulb_duration
