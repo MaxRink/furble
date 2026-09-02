@@ -151,5 +151,18 @@ int main(int argc, char **argv) {
   }
   simulator.join();
   const int closeResult = lgfx::Panel_sdl::close();
+
+  // A scenario `restart` step reboots the simulated device by re-executing this
+  // binary. The re-exec waits until here so the reboot follows the same orderly
+  // shutdown a clean exit takes: every task stopped and joined, the panel
+  // closed. Any failure raised between the step and this point wins over the
+  // reboot, so a broken scenario reports its result instead of booting again.
+  // The enforced liveness invariant is one of those failures (it calls
+  // requestExit(1)); a scenario that seeds `liveness_check false` has opted out
+  // of failing, so its recorded violations deliberately do not cancel a reboot.
+  if (Furble::Sim::restartRequested() && simulatorResult == 0 && closeResult == 0) {
+    Furble::Sim::restartProcess();
+  }
+
   return simulatorResult == 0 ? closeResult : simulatorResult;
 }

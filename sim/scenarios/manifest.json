@@ -1013,6 +1013,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/restart-persist.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/scan-distinct-rows-heartbeat.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1490,6 +1503,28 @@
     },
     {
       "path": "sim/scenarios/invalid/key-trailing.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/restart-final-step.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/restart-trailing.txt",
       "suite": "invalid",
       "owner": "sim-parser",
       "boards": [

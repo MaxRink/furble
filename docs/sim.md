@@ -154,6 +154,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
+| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the NVS preferences file persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
 | `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
@@ -376,7 +377,7 @@ The complete `ui.*` query set is:
 | `ui.battery_x` | Numeric header x position, or `none`. |
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
-| `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. |
+| `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
 
 The other namespaces are:
 
@@ -442,6 +443,11 @@ The other namespaces are:
   launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
   simulator.
+- `FURBLE_SIM_RESTART_STEP` is set by the `restart` step for the process it
+  re-executes, and nothing else should set it. The resumed boot consumes it,
+  unsets it, and skips the fresh-scenario preferences wipe, so it lives exactly
+  one boot; a value outside the script's step range fails the run with status
+  2.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the

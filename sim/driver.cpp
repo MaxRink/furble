@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,6 +16,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <unistd.h>
 
 #include <SDL2/SDL.h>
 #include <lgfx/v1/platforms/sdl/common.hpp>
@@ -49,6 +53,7 @@ enum class StepType {
   HOME,
   BACK,
   REPORT,
+  RESTART,
   ACTION,
   ASSERT,
   ASSERT_EVENTUALLY,
@@ -89,6 +94,26 @@ bool waiting = false;
 std::atomic<int> requestedExit {-1};
 battery_reading_t simulatedBattery = {80, 4000, 0, false};
 bool simulatedPowerOff = false;
+
+// Restart seam (plan 156). The `restart` verb models a device reboot by
+// re-executing the simulator binary with the same arguments: every thread,
+// singleton, and RAM state is wiped exactly as an esp_restart() wipes them,
+// while the NVS-backed preferences file persists exactly as flash does. The
+// resumed process skips the steps already executed via FURBLE_SIM_RESTART_STEP
+// and skips the fresh-scenario preferences wipe, so scripted state written
+// before the restart is what the rebooted app boots from. The step itself only
+// requests the orderly shutdown that plan 158 built for `exit`; main() runs the
+// re-exec after every task has joined and the panel has closed.
+//
+// restartPending is its own shutdown request rather than a requestExit(0) call:
+// requestExit() is first-wins, so pinning zero here would swallow every failure
+// raised between this step and the re-exec (a liveness violation, an action
+// error) and reboot anyway. Leaving requestedExit unset lets any of them win,
+// and main() only re-execs when exitResult() is still zero.
+std::vector<std::string> savedArguments;
+bool resumedBoot = false;
+std::atomic<bool> restartPending {false};
+const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
 // presents the Connected screen (the same three-way check the ui.connected
@@ -519,6 +544,17 @@ void readScript(const std::string &path) {
       step.type = StepType::REPORT;
       step.name = args[1];
       steps.push_back(step);
+    } else if (command == "restart") {
+      // Simulated reboot. Takes no arguments and must be followed by at least
+      // one step: a resumed run that starts past the last step would idle
+      // forever, which is a scenario authoring error worth catching at parse
+      // time.
+      if (!exactArgs(1)) {
+        rejectArity("restart", "no arguments");
+      }
+      Step step;
+      step.type = StepType::RESTART;
+      steps.push_back(step);
     } else if (command == "action") {
       Step step;
       step.type = StepType::ACTION;
@@ -628,6 +664,11 @@ void readScript(const std::string &path) {
       std::cerr << "Invalid simulator action '" << step.name << "': requires seed link_lies true\n";
       std::exit(2);
     }
+  }
+
+  if (!steps.empty() && steps.back().type == StepType::RESTART) {
+    std::cerr << "restart must not be the final step\n";
+    std::exit(2);
   }
 }
 
@@ -1082,7 +1123,12 @@ void preparePreferences(void) {
   const std::filesystem::path path =
       std::filesystem::path(".pio") / ("furble-sim-preferences-" + scenarioName + ".bin");
   setenv("FURBLE_SIM_PREFS", path.string().c_str(), 1);
-  std::remove(path.c_str());
+  // A resumed boot after a `restart` step keeps the preferences file: it is
+  // the flash NVS the reboot must carry over. Only a fresh scenario run starts
+  // from an empty store.
+  if (!resumedBoot) {
+    std::remove(path.c_str());
+  }
 }
 
 void applyScenarioSettings(void) {
@@ -1212,6 +1258,9 @@ void configure(int argc, char **argv) {
     return;
   }
   configured = true;
+
+  // Keep the exact invocation so a `restart` step can re-execute it.
+  savedArguments.assign(argv, argv + argc);
 
   std::string script;
   bool rig = false;
@@ -1376,6 +1425,25 @@ void configure(int argc, char **argv) {
     if (clock != scenarioSettings.end()) {
       setClockMillis(parseUnsigned(clock->second));
     }
+
+    // A resumed boot continues the scenario after its `restart` step. Seeds
+    // were reparsed above and are reapplied at this boot, exactly as boot-time
+    // configuration is; everything else restarts from scratch.
+    if (const char *resume = std::getenv(RESTART_STEP_ENV);
+        resume != nullptr && resume[0] != '\0') {
+      const uint32_t index = parseUnsigned(resume);
+      // A value at or past the end would park the driver on no step at all.
+      if (index == 0 || index >= steps.size()) {
+        std::cerr << "Invalid " << RESTART_STEP_ENV << ": " << resume << '\n';
+        std::exit(2);
+      }
+      stepIndex = index;
+      resumedBoot = true;
+      // Consume it. A leftover export in the caller's environment would make
+      // every later scenario resume mid-script against a preserved store, so
+      // the variable lives exactly one boot and a `restart` step sets it again.
+      unsetenv(RESTART_STEP_ENV);
+    }
   }
 }
 
@@ -1527,6 +1595,30 @@ void driverTick(void) {
       std::cout << "Reported " << path.string() << '\n';
       ++stepIndex;
       break;
+    }
+
+    case StepType::RESTART:
+    {
+      // Simulated reboot. In-process teardown cannot model it honestly: the UI,
+      // LVGL, and every singleton would survive, so the scenario would prove
+      // nothing about what really crosses flash. Re-executing the binary wipes
+      // all RAM state exactly as esp_restart() does while the preferences file
+      // persists exactly as flash does, and the resumed process parses the same
+      // script and continues at the step after this one.
+      //
+      // The re-exec itself happens in main(), after the plan 158 shutdown has
+      // stopped and joined every simulator task and closed the panel. Execing
+      // from here would tear the process image out from under running tasks,
+      // which is a crash, not a reboot.
+      const std::string next = std::to_string(stepIndex + 1);
+      setenv(RESTART_STEP_ENV, next.c_str(), 1);
+      std::cout << "restart: rebooting simulator, resuming at step " << next << '\n';
+      std::cout.flush();
+      // Advance past this step so a tick racing the shutdown cannot run it
+      // twice. The resumed process takes its index from the environment.
+      ++stepIndex;
+      restartPending.store(true);
+      return;
     }
 
     case StepType::ACTION:
@@ -1727,12 +1819,30 @@ void requestFailureExit(void) {
 }
 
 bool exitRequested(void) {
-  return requestedExit.load() >= 0;
+  return requestedExit.load() >= 0 || restartPending.load();
 }
 
 int exitResult(void) {
   const int result = requestedExit.load();
   return result < 0 ? 0 : result;
+}
+
+bool restartRequested(void) {
+  return restartPending.load();
+}
+
+void restartProcess(void) {
+  std::cout.flush();
+  std::cerr.flush();
+  std::vector<char *> arguments;
+  arguments.reserve(savedArguments.size() + 1);
+  for (auto &argument : savedArguments) {
+    arguments.push_back(argument.data());
+  }
+  arguments.push_back(nullptr);
+  execvp(arguments[0], arguments.data());
+  std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
+  std::_Exit(1);
 }
 
 bool connectShouldFail(void) {

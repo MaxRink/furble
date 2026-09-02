@@ -826,6 +826,226 @@ bool scenarioFlappyPeerAutonomous() {
   return g_Failures == 0;
 }
 
+// Restart/session-restore seam (plan 156, the reland gate for the PR #159
+// boot restore reverted by PR #248). The 2026-08-28 hardware incident:
+// boot-time session restore
+// re-armed two saved targets, one healthy and one flappy standby camera, into
+// an endless connect cycle that left the device uncommandable even across
+// restarts. This scenario encodes the exact lockout as an invariant WITHOUT
+// the restore code: arm both targets, start the cycle, simulate the reboot
+// with Control::resetForTest(), re-create the targets the way a boot restore
+// would, start the cycle again, and then require the machine to stay
+// COMMANDABLE. A disconnect during the restored cycle must land in IDLE
+// bounded, and a manual connect to the healthy camera must still reach ACTIVE.
+bool scenarioRestartRestoreCommandable() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera::Config goodConfig;
+  goodConfig.name = "FUJIFILM X100VI";
+  goodConfig.address = NimBLEAddress(0x112233445501ULL, 0);
+  goodConfig.token = {0x11, 0x22, 0x33, 0x44};
+  FujifilmVirtualCamera::Config flappyConfig;
+  flappyConfig.name = "RICOH GR IV STANDIN";
+  flappyConfig.address = NimBLEAddress(0x112233445502ULL, 0);
+  flappyConfig.token = {0x55, 0x66, 0x77, 0x88};
+
+  FujifilmVirtualCamera good(goodConfig);
+  FujifilmVirtualCamera flappy(flappyConfig);
+  // Autonomous standby churn: one failed handshake per cycle, then a completed
+  // one, then the peer severs its own link. The camera does not reboot with
+  // the remote, so the flap keeps running across the simulated restart.
+  flappy.setFlappy(/*fail_attempts=*/1, /*drop_after_ms=*/800);
+  auto goodCamera = makeCamera(good);
+  auto flappyCamera = makeCamera(flappy);
+  NimBLEDevice::setMockPeerForAddress(good.config().address, &good);
+  NimBLEDevice::setMockPeerForAddress(flappy.config().address, &flappy);
+
+  // Pre-reboot session: both targets armed, cycle running, flap under way.
+  control.addActive(goodCamera);
+  control.addActive(flappyCamera);
+  check(control.getTargetCount() == 2, "two targets armed before the restart");
+  control.connectAll(true);
+  check(waitForState(Control::STATE_ACTIVE, 8000), "pre-restart cycle reaches active");
+  check(waitForNotState(Control::STATE_ACTIVE, 3000), "the flappy peer drops pre-restart");
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+  // A connect the user pressed just before the reboot. The control task is busy
+  // in the churn, so the command is still on the queue when the reset starts.
+  // A reboot loses the queue. If the reset instead lets the command through
+  // after its own disconnect() publishes IDLE, it starts a connect on a machine
+  // whose targets are already gone, where allConnected() is vacuously true, and
+  // publishes ACTIVE over the fresh IDLE the reset is about to set.
+  check(control.sendCommand(Control::CMD_CONNECT) == pdTRUE,
+        "a connect command is queued just before the restart");
+
+  // Watch the whole reset. Before its disconnect lands IDLE the machine is
+  // legitimately mid-cycle, so only what happens after that first IDLE counts:
+  // from there the only states a reboot may show are IDLE and the terminal
+  // DISCONNECTING the reset holds.
+  std::atomic<bool> watching {true};
+  std::atomic<bool> leaked {false};
+  std::atomic<int> leakedState {Control::STATE_IDLE};
+  std::thread watcher([&control, &watching, &leaked, &leakedState]() {
+    bool sawIdle = false;
+    while (watching.load()) {
+      const Control::state_t state = control.getState();
+      if (state == Control::STATE_IDLE) {
+        sawIdle = true;
+      } else if (sawIdle && state != Control::STATE_DISCONNECTING) {
+        leakedState.store(state);
+        leaked.store(true);
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  });
+
+  // The restart, mid-churn. It must complete bounded and land in a fresh IDLE.
+  const uint32_t resetStart = nowMs();
+  control.resetForTest();
+  const uint32_t resetElapsed = nowMs() - resetStart;
+  watching.store(false);
+  watcher.join();
+  if (!check(!leaked.load(), "a command queued before the restart never starts a connect")) {
+    std::cerr << "  leaked state " << stateName(static_cast<Control::state_t>(leakedState.load()))
+              << '\n';
+  }
+  // The reset runs a full interactive disconnect and then drains what it hands
+  // over, so its honest bound is the sum of both budgets, not one of them.
+  check(resetElapsed < 8000, "resetForTest completes bounded mid-churn");
+  check(control.getState() == Control::STATE_IDLE, "resetForTest lands in idle");
+  check(control.getTargetCount() == 0, "no targets survive the restart");
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  check(control.getState() == Control::STATE_IDLE, "no late republish after the restart");
+
+  // Boot restore: fresh Camera objects for the same two peers, exactly as a
+  // boot-time restore rebuilds them from the saved list, then the cycle again.
+  auto restoredGood = makeCamera(good);
+  auto restoredFlappy = makeCamera(flappy);
+  NimBLEDevice::setMockPeerForAddress(good.config().address, &good);
+  NimBLEDevice::setMockPeerForAddress(flappy.config().address, &flappy);
+  control.addActive(restoredGood);
+  control.addActive(restoredFlappy);
+  check(control.getTargetCount() == 2, "the restored session re-arms both targets");
+  control.connectAll(true);
+  // The reset leaves the control task parked in its queue receive, so the
+  // restored cycle must start at once, not after a leftover backoff wait.
+  check(waitForNotState(Control::STATE_IDLE, 500), "the restored cycle starts");
+  std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+  // The hardware lockout invariant: the user must be able to command the
+  // machine out of the restored churn. The disconnect has to land in IDLE
+  // bounded, never wedge in DISCONNECTING or churn forever.
+  const uint32_t start = nowMs();
+  const bool completed = control.disconnect();
+  const uint32_t elapsed = nowMs() - start;
+  check(completed, "disconnect during the restored cycle completes");
+  check(elapsed < 3000, "disconnect during the restored cycle returns within 3 s");
+  check(waitForState(Control::STATE_IDLE, 3000), "restored cycle disconnect lands in idle");
+  check(control.getTargetCount() == 0, "targets cleared after the restored-cycle disconnect");
+  // Continuous quiet watch, sized past a full leftover reconnect cycle (the
+  // 2.5 s first-retry backoff plus a connect attempt). A disconnect whose
+  // abort does not actually fire lets the parked cycle finish its retry wait
+  // and republish CONNECT (or ACTIVE via allConnected() on zero targets)
+  // seconds after IDLE was observed. A one-second spot check misses exactly
+  // that, so the whole window is watched.
+  {
+    bool quiet = true;
+    Control::state_t lateState = Control::STATE_IDLE;
+    const uint32_t quietStart = nowMs();
+    while (Furble::Host::timeoutPending(quietStart, nowMs(), 3500)) {
+      const Control::state_t state = control.getState();
+      if (state != Control::STATE_IDLE) {
+        quiet = false;
+        lateState = state;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (!check(quiet, "no late republish across a full leftover cycle after the disconnect")) {
+      std::cerr << "  late state " << stateName(lateState) << '\n';
+    }
+  }
+
+  // And a manual connect to the healthy camera must still work.
+  flappy.setFlappy(0, 0);
+  NimBLEDevice::resetMock();
+  FujifilmVirtualCamera fresh(goodConfig);
+  auto freshCamera = makeCamera(fresh);
+  control.addActive(freshCamera);
+  control.connectAll(false);
+  check(waitForState(Control::STATE_ACTIVE, 5000),
+        "a manual connect to the healthy camera reaches active after the restart");
+
+  control.disconnect();
+  check(waitForState(Control::STATE_IDLE, 2000), "the harness returns to idle");
+  return g_Failures == 0;
+}
+
+// The reboot half of the gone-peer teardown (plan 156, plan 147/148 territory).
+// A peer whose ble_gap_terminate stalls keeps its link reading up and never
+// fires onDisconnect, so its drained target is exactly the one the control task
+// defers instead of reaping. A reset that frees such a target directly would
+// leave the orphaned NimBLE client pointing at a destroyed owner, and the late
+// supervision-timeout callback would write through it. The reset must reap
+// through the production predicate, which reclaims the client first, and it
+// must not stall waiting for a peer that will never answer.
+bool scenarioRestartStalledPeerReclaim() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera peer;
+  auto camera = makeCamera(peer);
+  control.addActive(camera);
+  control.connectAll(false);
+  check(waitForState(Control::STATE_ACTIVE, 8000), "the camera connects before the restart");
+
+  NimBLEClient *client = NimBLEDevice::lastClient();
+  if (!check(client != nullptr, "the camera created a client")) {
+    NimBLEDevice::resetMock();
+    return g_Failures == 0;
+  }
+
+  // Gone peer: the terminate is issued but never completes, so the link keeps
+  // reading up and no onDisconnect fires.
+  client->mockStallTerminate();
+  check(camera->isConnected(), "the stalled terminate keeps the link reported up");
+
+  const uint32_t start = nowMs();
+  control.resetForTest();
+  const uint32_t elapsed = nowMs() - start;
+  // Reaping on the resetting thread is what makes this prompt: waiting for the
+  // control task to reach the drain deadline instead costs the full
+  // DISCONNECT_DRAIN_RECLAIM_MS on every gone-peer reboot.
+  check(elapsed < 1000, "the gone-peer restart does not wait out the drain deadline");
+  check(control.getState() == Control::STATE_IDLE, "the gone-peer restart lands in idle");
+  check(control.getTargetCount() == 0, "no targets survive the gone-peer restart");
+
+  // Drop the pre-reboot camera the way a boot restore replaces its objects.
+  // The client the stalled terminate orphaned must no longer point at it.
+  camera.reset();
+
+  // The supervision timeout finally resolves. With the reclaim it lands on the
+  // detached no-op callbacks; without it, it writes through freed memory and
+  // ASan aborts here.
+  client->mockCompleteStalledTerminate(0x08);
+  check(true, "the late disconnect after the gone-peer restart is not a use-after-free");
+
+  // And the rebooted machine still connects.
+  NimBLEDevice::resetMock();
+  FujifilmVirtualCamera fresh;
+  auto freshCamera = makeCamera(fresh);
+  control.addActive(freshCamera);
+  control.connectAll(false);
+  check(waitForState(Control::STATE_ACTIVE, 8000),
+        "a connect after the gone-peer restart reaches active");
+
+  control.disconnect();
+  check(waitForState(Control::STATE_IDLE, 3000), "the harness returns to idle");
+  NimBLEDevice::resetMock();
+  return g_Failures == 0;
+}
+
 const std::map<std::string, std::function<bool()>> &scenarios() {
   static const std::map<std::string, std::function<bool()>> table = {
       {"fresh-connect",                    scenarioFreshConnect                },
@@ -840,6 +1060,8 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"multi-flappy-disconnect",          scenarioMultiFlappyDisconnect       },
       {"flappy-cancel-stress",             scenarioFlappyCancelStress          },
       {"flappy-peer-autonomous",           scenarioFlappyPeerAutonomous        },
+      {"restart-restore-commandable",      scenarioRestartRestoreCommandable   },
+      {"restart-stalled-peer-reclaim",     scenarioRestartStalledPeerReclaim   },
   };
   return table;
 }
