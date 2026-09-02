@@ -73,6 +73,8 @@ CLAUDE.md whose directory it touches.
 - Hardware verification on the attached M5StickS3 happens before PRs.
 - Only Fujifilm cameras are available. Other vendors get code review plus the
   FauxNY test camera and are declared untested in the PR.
+- `tools/coverage.py` measures host and simulator line coverage and enforces
+  `tests/coverage_floor.json` in CI. See `docs/coverage.md`.
 
 ## Documentation (keep docs in sync, every PR)
 

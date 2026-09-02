@@ -108,6 +108,33 @@ if [ -n "$SANITIZE" ]; then
   SANITIZE_FLAGS="-fsanitize=$SANITIZE -fno-omit-frame-pointer"
 fi
 
+# Optional source-based coverage instrumentation, used by tools/coverage.py.
+# Off by default so the plain build and every existing CI job are unchanged.
+# Set FURBLE_SIM_COVERAGE=1 together with a separate FURBLE_SIM_BUILD_DIR so the
+# instrumented objects never overwrite the release-config build. Each run of the
+# instrumented binary writes a raw profile to the path in LLVM_PROFILE_FILE.
+#
+# Only firmware sources are instrumented. They are the only ones the coverage
+# report counts, and instrumenting LVGL and M5GFX as well slows the render path
+# enough to turn a scenario run into minutes. The link still needs the profile
+# runtime, so the generate flag stays on the link line.
+COVERAGE_LINK_FLAGS=
+COVERAGE=${FURBLE_SIM_COVERAGE:-0}
+if [ "$COVERAGE" = "1" ]; then
+  COVERAGE_LINK_FLAGS="-fprofile-instr-generate"
+fi
+
+# Echo the per-source coverage flags for a firmware translation unit, and
+# nothing for a dependency.
+coverage_flags_for() {
+  [ "$COVERAGE" = "1" ] || return 0
+  case "$1" in
+    "$ROOT"/src/*|"$ROOT"/lib/*)
+      printf '%s' "-fprofile-instr-generate -fcoverage-mapping"
+      ;;
+  esac
+}
+
 CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"
@@ -166,7 +193,8 @@ compile_cpp() {
     return
   fi
   echo "[CXX] ${source#$ROOT/}"
-  "$CXX" $CXXFLAGS -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
+  "$CXX" $CXXFLAGS $(coverage_flags_for "$source") \
+    -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
 }
@@ -186,7 +214,8 @@ compile_c() {
     return
   fi
   echo "[C]   ${source#$ROOT/}"
-  "$CC" $CFLAGS -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
+  "$CC" $CFLAGS $(coverage_flags_for "$source") \
+    -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
 }
@@ -253,6 +282,6 @@ if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
 fi
 
-"$CXX" $CXXFLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" $LINK_FLAGS
+"$CXX" $CXXFLAGS $COVERAGE_LINK_FLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" $LINK_FLAGS
 
 echo "Built $BUILD_DIR/furble-sim"

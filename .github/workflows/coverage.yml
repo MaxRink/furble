@@ -1,0 +1,138 @@
+name: Coverage floor
+
+# Measure how much of the firmware the tests actually reach, and stop the
+# number from sliding. The host harness and the simulator compile the same
+# firmware sources but exercise different halves of it, so neither percentage
+# alone is the answer. tools/coverage.py builds both stacks with clang
+# source-based coverage, runs the same suites sim-e2e.yml and power-gate.yml
+# run on all three modeled panels, unions the per-line hit data, and compares
+# the result against tests/coverage_floor.json. Below any floor fails the job.
+#
+# The report is written to the job summary rather than a pull request comment
+# on purpose. tools/check_ci_workflows.py forbids `pull-requests: write` in any
+# workflow with a `pull_request` trigger, which is the same reason the firmware
+# size report in main.yml uses the job summary.
+'on':
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/furble/**'
+      - 'lib/preferences/**'
+      - 'lib/blowfish/**'
+      - 'components/icons/**'
+      - 'sim/**'
+      - 'tests/**'
+      - 'sdkconfig.*'
+      - 'tools/coverage.py'
+      - 'tools/gen_lv_conf.py'
+      - 'tools/check_sim_scenarios.py'
+      - '.github/workflows/coverage.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/furble/**'
+      - 'lib/preferences/**'
+      - 'lib/blowfish/**'
+      - 'components/icons/**'
+      - 'sim/**'
+      - 'tests/**'
+      - 'sdkconfig.*'
+      - 'tools/coverage.py'
+      - 'tools/gen_lv_conf.py'
+      - 'tools/check_sim_scenarios.py'
+      - '.github/workflows/coverage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Measure firmware coverage and enforce the floor
+    runs-on: ubuntu-latest
+    # Three instrumented simulator builds run one file at a time, so the wall
+    # clock is dominated by compilation, not by the scenarios.
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No restore-keys on purpose: the fetch step below skips a dependency
+      # when its directory exists, so a stale prefix match could pin an old
+      # version. An exact key miss just re-clones, which takes seconds.
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: sim/.pio
+          key: ${{ runner.os }}-coverage-${{ hashFiles('sim/platformio.ini', '.github/workflows/coverage.yml') }}
+
+      # llvm carries llvm-profdata and llvm-cov. Their profile format must match
+      # the clang that instrumented the binaries, so both come from the same
+      # distribution packages and tools/coverage.py verifies the major versions
+      # agree before it starts.
+      - name: Install SDL2, Clang and the LLVM coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang llvm libsdl2-dev
+
+      # build.sh never invokes PlatformIO; it only needs the four source trees.
+      # Keep these pins in sync with sim/platformio.ini, src/idf_component.yml
+      # and the sim-e2e workflow.
+      - name: Fetch simulator dependencies
+        env:
+          DEPS: ${{ github.workspace }}/sim/.pio/libdeps/sim
+        run: |
+          clone_tag() {
+            test -d "$DEPS/$3" || \
+              git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
+          }
+          mkdir -p "$DEPS"
+          clone_tag m5stack/M5GFX 0.2.27 M5GFX
+          clone_tag m5stack/M5Unified 0.2.20 M5Unified
+          clone_tag lvgl/lvgl v9.4.0 lvgl
+          if [ ! -d "$DEPS/TinyGPSPlus" ]; then
+            git init "$DEPS/TinyGPSPlus"
+            git -C "$DEPS/TinyGPSPlus" fetch --depth 1 \
+              https://github.com/gkoh/TinyGPSPlus \
+              92ac8c21b8179201c2c8c534e46af3320b76d3e7
+            git -C "$DEPS/TinyGPSPlus" checkout --detach FETCH_HEAD
+          fi
+
+      - name: Generate LVGL configuration
+        run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+
+      # The build directory stays short on purpose. The gpx-writer host test
+      # truncates paths into a 64 byte buffer, so a deep runner temp path makes
+      # it fail for reasons that have nothing to do with coverage.
+      - name: Measure coverage and check the floor
+        id: measure
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+        run: |
+          python3 tools/coverage.py \
+            --check \
+            --build-dir /tmp/fcov \
+            --json coverage-report/coverage.json \
+            --markdown coverage-report/coverage.md \
+            --html coverage-report/html
+
+      - name: Add the coverage report to the job summary
+        if: always()
+        run: |
+          if [ -f coverage-report/coverage.md ]; then
+            cat coverage-report/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The coverage run produced no report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: firmware-coverage
+          path: coverage-report
+          if-no-files-found: warn
+          retention-days: 30

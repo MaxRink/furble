@@ -1,0 +1,17 @@
+{
+  "files": {
+    "lib/furble/Camera.cpp": 73.46,
+    "lib/furble/Scan.cpp": 88.86,
+    "src/FurbleConsole.cpp": 89.08,
+    "src/FurbleControl.cpp": 73.9,
+    "src/FurbleUI.cpp": 79.4
+  },
+  "stacks": {
+    "host": 62.45,
+    "sim m5stack-core (320x240)": 42.2,
+    "sim m5stick-c (80x160)": 43.29,
+    "sim m5stick-s3 (135x240)": 57.16,
+    "sim union": 57.86
+  },
+  "union": 68.03
+}

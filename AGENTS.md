@@ -20,6 +20,11 @@ requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 `python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
+Firmware line coverage is measured by `tools/coverage.py` and gated against
+`tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
+entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
+`FURBLE_SIM_COVERAGE=1` for `sim/build.sh`); never make it a default. Lowering a
+floor needs a stated reason in the PR.
 Manual PlatformIO dispatches must run the complete firmware matrix. Do not
 derive a comparison range from repository root commits.
 Gate board-specific ESP-IDF component dependencies with a CMake profile

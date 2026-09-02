@@ -114,6 +114,11 @@ attempt to infer changed paths without a pull request or push comparison base.
 - Hardware verification happens before a PR. Only Fujifilm cameras are available
   for hardware tests. Other vendors are covered by code review and the FauxNY
   test camera, and are declared untested in the PR.
+- Coverage of the firmware sources is measured across both stacks with
+  `python3 tools/coverage.py`, and CI holds it to the per-stack, union and
+  per-file minimums in `tests/coverage_floor.json`. A change that raises
+  coverage should raise the floor in the same commit with
+  `python3 tools/coverage.py --ratchet`. See `docs/coverage.md`.
 
 ## Style
 

@@ -6,6 +6,7 @@ sim/build-*
 dependencies.lock
 managed_components
 sdkconfig.*.old
+coverage-report/
 __pycache__/
 
 # local agent workspaces
