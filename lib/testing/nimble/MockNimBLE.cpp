@@ -106,6 +106,16 @@ bool g_Bonded = false;
 size_t g_DeleteBondCount = 0;
 // Absent-peer model: addresses whose advertisements the scan never delivers.
 std::vector<NimBLEAddress> g_AbsentAddresses;
+// MITM pairing seam. The peer that a pending passkey answer belongs to, plus
+// the injection tallies a test asserts the production answer reached NimBLE.
+NimBLEMockPeer *g_PasskeyPeer = nullptr;
+size_t g_PasskeyConfirmCount = 0;
+bool g_LastPasskeyAccept = false;
+size_t g_PasskeyEntryCount = 0;
+uint32_t g_LastPasskeyEntered = 0;
+std::atomic<NimBLEDevice::host_hook_t> g_GetConnHandleHook {nullptr};
+std::atomic<NimBLEDevice::host_hook_t> g_DisconnectCallbackHook {nullptr};
+std::atomic<bool> g_ClientUseAfterFree = false;
 
 // Erase a client from the live pool, freeing it. Caller must not touch the
 // pointer afterwards. Safe to call on a pointer no longer in the pool. Also
@@ -123,6 +133,12 @@ bool eraseClient(NimBLEClient *client) {
     }
   }
   return false;
+}
+
+bool isClientLive(const NimBLEClient *client) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return std::any_of(g_Clients.begin(), g_Clients.end(),
+                     [client](const auto &entry) { return entry.get() == client; });
 }
 
 }  // namespace
@@ -448,6 +464,23 @@ void NimBLEClientCallbacks::onAuthenticationComplete(NimBLEConnInfo &) {}
 
 NimBLEClient::NimBLEClient() = default;
 
+uint16_t NimBLEClient::getConnHandle() const {
+  const NimBLEDevice::host_hook_t hook = g_GetConnHandleHook.load();
+  if (hook != nullptr) {
+    hook();
+  }
+
+  // Record a raw client use after a concurrent self-delete deterministically.
+  // Returning the sentinel keeps the normal host regression runnable without
+  // depending on allocator reuse. ASan builds still instrument any later
+  // client access in the production path.
+  if (!isClientLive(this)) {
+    g_ClientUseAfterFree.store(true);
+    return BLE_HS_CONN_HANDLE_NONE;
+  }
+  return BLE_HS_CONN_HANDLE_NONE;
+}
+
 void NimBLEClient::setClientCallbacks(NimBLEClientCallbacks *callbacks, bool delete_callbacks) {
   (void)delete_callbacks;
   m_Callbacks = callbacks;
@@ -598,6 +631,7 @@ void NimBLEClient::disconnect() {
   }
 
   m_Connected = false;
+  const bool selfDelete = g_DeferredDelete && m_DeleteOnDisconnect;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
   }
@@ -608,7 +642,7 @@ void NimBLEClient::disconnect() {
   // (m_Connected guards every other reader), so the inline free is safe and arms
   // ASan to catch any later dereference of the freed client. Nothing below may
   // touch a member: the object is gone.
-  if (g_DeferredDelete && m_DeleteOnDisconnect) {
+  if (selfDelete) {
     eraseClient(this);
   }
 }
@@ -671,6 +705,10 @@ void NimBLEClient::mockDropLinkSelfDelete(int reason) {
   // turned self-delete off for the connect window the client is kept alive, so a
   // still-running _connect() can unwind against a valid (disconnected) client.
   const bool selfDelete = m_DeleteOnDisconnect;
+  const NimBLEDevice::host_hook_t hook = g_DisconnectCallbackHook.load();
+  if (hook != nullptr) {
+    hook();
+  }
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, reason);
   }
@@ -1045,8 +1083,56 @@ bool NimBLEDevice::setMTU(uint16_t) {
   return true;
 }
 
-void NimBLEDevice::injectPassKey(NimBLEConnInfo &, uint32_t) {}
-void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool) {}
+void NimBLEDevice::injectPassKey(NimBLEConnInfo &, uint32_t passKey) {
+  NimBLEMockPeer *peer = nullptr;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_PasskeyEntryCount++;
+    g_LastPasskeyEntered = passKey;
+    peer = g_PasskeyPeer;
+  }
+  if (peer != nullptr) {
+    peer->onPasskeyEntered(passKey);
+  }
+}
+
+void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool accept) {
+  NimBLEMockPeer *peer = nullptr;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_PasskeyConfirmCount++;
+    g_LastPasskeyAccept = accept;
+    peer = g_PasskeyPeer;
+  }
+  if (peer != nullptr) {
+    peer->onPasskeyConfirmed(accept);
+  }
+}
+
+void NimBLEDevice::setPasskeyPeer(NimBLEMockPeer *peer) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_PasskeyPeer = peer;
+}
+
+size_t NimBLEDevice::mockPasskeyConfirmCount() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_PasskeyConfirmCount;
+}
+
+bool NimBLEDevice::mockLastPasskeyAccept() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_LastPasskeyAccept;
+}
+
+size_t NimBLEDevice::mockPasskeyEntryCount() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_PasskeyEntryCount;
+}
+
+uint32_t NimBLEDevice::mockLastPasskeyEntered() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_LastPasskeyEntered;
+}
 
 size_t NimBLEDevice::liveClientCount() {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
@@ -1091,6 +1177,18 @@ bool NimBLEDevice::completeAsyncDisconnect(void) {
 
 bool NimBLEDevice::asyncDisconnectEventFound(void) {
   return g_AsyncDisconnectEventFound;
+}
+
+void NimBLEDevice::setGetConnHandleHook(host_hook_t hook) {
+  g_GetConnHandleHook.store(hook);
+}
+
+void NimBLEDevice::setDisconnectCallbackHook(host_hook_t hook) {
+  g_DisconnectCallbackHook.store(hook);
+}
+
+bool NimBLEDevice::clientUseAfterFreeDetected() {
+  return g_ClientUseAfterFree.load();
 }
 
 size_t NimBLEDevice::reapDeferredClients() {
@@ -1150,6 +1248,14 @@ void NimBLEDevice::resetMock() {
   g_Bonded = false;
   g_DeleteBondCount = 0;
   g_AbsentAddresses.clear();
+  g_PasskeyPeer = nullptr;
+  g_PasskeyConfirmCount = 0;
+  g_LastPasskeyAccept = false;
+  g_PasskeyEntryCount = 0;
+  g_LastPasskeyEntered = 0;
+  g_GetConnHandleHook.store(nullptr);
+  g_DisconnectCallbackHook.store(nullptr);
+  g_ClientUseAfterFree.store(false);
   g_Initialised = false;
   g_Power = 0;
 }

@@ -133,6 +133,16 @@ class Control {
   std::vector<Control::Target *> getTargets(void);
 
   /**
+   * Get strong references to the active target cameras.
+   *
+   * UI callbacks can run while the control task drains a disconnect and
+   * destroys Target objects. Returning the cameras themselves keeps the
+   * pairing prompt owner alive without exposing raw Target pointers across
+   * that task boundary.
+   */
+  std::vector<std::shared_ptr<Camera>> getTargetCameras(void) const;
+
+  /**
    * Connect to all active cameras.
    */
   void connectAll(bool infiniteReconnect);

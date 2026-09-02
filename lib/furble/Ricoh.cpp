@@ -518,28 +518,4 @@ bool Ricoh::serialise(void *buffer, size_t bytes) const {
   return true;
 }
 
-void Ricoh::onPassKeyEntry(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Ricoh passkey entry for %s; injecting fallback 123456",
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectPassKey(connInfo, 123456);
-}
-
-uint32_t Ricoh::onPassKeyDisplay(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Ricoh passkey display for %s; returning fallback 123456",
-           connInfo.getAddress().toString().c_str());
-  return 123456;
-}
-
-void Ricoh::onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {
-  ESP_LOGI(LOG_TAG, "Ricoh confirm passkey %06lu for %s", pin,
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectConfirmPasskey(connInfo, true);
-}
-
-void Ricoh::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
-  ESP_LOGI(LOG_TAG, "Ricoh auth complete: bonded=%d encrypted=%d authenticated=%d keySize=%u",
-           connInfo.isBonded(), connInfo.isEncrypted(), connInfo.isAuthenticated(),
-           connInfo.getSecKeySize());
-}
-
 }  // namespace Furble

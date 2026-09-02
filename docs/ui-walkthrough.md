@@ -103,6 +103,20 @@ When you connect, furble shows a progress overlay naming the camera with a
 Cancel button. Selecting Cancel aborts the attempt and returns to the menu. When
 the link comes up the device moves to the Connected page.
 
+### Camera pairing code
+
+![Camera pairing code](img/camera-pairing.png)
+
+Some cameras request numeric-comparison pairing. furble shows the six-digit code
+from the camera in a modal before authorizing the link. Compare both displays,
+then select **Confirm** only when they match. **Cancel** rejects the request. On
+the 80x160 M5StickC the two actions read **Yes** and **No**, because the wider
+labels do not fit that panel.
+Passkey-display requests show the code with a Cancel action. A request expires
+after two minutes and is rejected. The screenshot is a deterministic FauxNY
+simulator render of the production modal; the real BLE exchange still requires a
+camera that supports numeric comparison.
+
 ## Connected
 
 ![Connected menu](img/connected.png)

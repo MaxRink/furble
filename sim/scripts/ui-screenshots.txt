@@ -220,4 +220,17 @@ wait 200
 key left
 wait 1100
 capture m5stick-s3-connected
+
+# Camera numeric-comparison modal. Keep this in the CI screenshot matrix so a
+# layout change cannot silently remove or clip the security prompt.
+action connect
+wait 300
+action camera-pair-request confirm 428913
+wait 500
+capture m5stick-s3-camera-pairing
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+action camera-pair-reject
+wait 250
 exit

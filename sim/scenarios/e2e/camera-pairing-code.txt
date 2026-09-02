@@ -1,0 +1,30 @@
+# Camera pairing-code modal (plan 66 / #63). During pairing the camera shows a
+# Bluetooth code the user must compare; furble must render that code on its own
+# screen so the user can confirm numeric comparison with confidence.
+#
+# The real BLE pairing handshake never runs in the sim, so the camera-pair-request
+# seam injects a pending pairing on the connecting camera and the real pairing
+# timer raises the same modal showCameraPairing builds on device. Only the real
+# Fujifilm/Ricoh passkey exchange needs hardware now: the render and layout are
+# proven here. The code is fixed so the run stays deterministic.
+seed fauxny true
+wait 300
+
+# Bring up the FauxNY camera through the real connect flow so Control owns a
+# camera the pairing timer can resolve.
+action connect
+wait 200
+
+# Numeric comparison: the modal shows the code with Confirm and Cancel so the
+# user can approve the match.
+action camera-pair-request confirm 428913
+wait 400
+
+# The modal is up, it is the camera prompt, the six-digit code drew, and the box
+# fits the panel with no overflow.
+assert ui.modal open
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+capture camera-pairing-code
+exit

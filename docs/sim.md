@@ -338,11 +338,15 @@ action imu.gyro.recover
 action invalidate.reset
 action select
 action bulb-stop
+action camera-pair-accept
+action camera-pair-reject
+action camera-pair-expire
 ```
 
 The parameterized action forms are:
 
 ```text
+action camera-pair-request confirm|display CODE
 action toggle NAME
 action nav PAGE
 action scroll top|bottom|next|PIXELS
@@ -391,6 +395,12 @@ selects two cameras for multi-connect coverage: the seeded virtual peers when a
 topology is seeded, otherwise the FauxNY test cameras. `action companion-pair-request` injects a
 pending companion PIN without a rig TCP peer; `action companion-accept` and
 `action companion-reject` click the real pairing dialog buttons.
+`action camera-pair-request confirm <code>` or `display <code>` injects a
+camera numeric-comparison or passkey-display request on the active fake camera.
+The six-digit code is rendered by the production camera pairing dialog.
+`action camera-pair-accept` and `action camera-pair-reject` click its real
+footer buttons, while `action camera-pair-expire` advances the pending request
+to its timeout path without waiting two minutes of wall-clock time.
 
 `watchdog` is present in the M5StickS3 build. The lists above are the canonical
 toggle, navigation, and page vocabularies.
@@ -477,6 +487,10 @@ The complete `ui.*` query set is:
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
 | `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
+| `ui.pairing_code` | The six-digit code as rendered in the camera pairing modal, or `none`. |
+| `ui.pairing_kind` | `confirm` for numeric comparison, `display` for passkey display, or `none`. |
+| `ui.pairing_overflow` | `yes` when the pairing modal extends past the panel, its content scrolls, or a footer label is wider than its button, otherwise `no`. |
+| `ui.pairing_pending` | `yes` while a camera holds a pending pairing request, otherwise `no`. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
 `gps.source` is `GPS::sourceName()`, the receiver's own state: `uart`,

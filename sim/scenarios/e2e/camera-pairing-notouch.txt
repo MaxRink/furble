@@ -1,0 +1,28 @@
+# The pairing-code modal on the physical-button layout (plan 66 / #63). The
+# no-touch boards render navigation indicators over the page, and the shipped
+# 135x240 page is 189 px tall, so the modal must still fit the panel and leave
+# the page underneath free of overflow. This runs on the two narrow non-touch
+# panels, 135x240 and 80x160.
+seed fauxny true
+seed no_touch true
+wait 300
+action connect
+wait 200
+
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+assert ui.overflow no
+
+# Cancel through the real footer button and confirm the page below is left
+# focusable, which is the encoder focus restore contract.
+action camera-pair-reject
+wait 500
+assert ui.modal closed
+assert ui.pairing_pending no
+assert ui.focus ok
+assert ui.overflow no
+exit

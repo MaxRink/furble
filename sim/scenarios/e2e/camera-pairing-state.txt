@@ -1,0 +1,60 @@
+# Camera pairing state machine coverage (plan 66 / #63). The UI must keep the
+# displayed code tied to one pending request and close the modal on cancel,
+# accept, and timeout. Malformed request syntax is rejected at the scenario
+# boundary, so those cases live in sim/scenarios/invalid and in
+# tests/host/sim_action_parser_test.cpp instead.
+seed fauxny true
+wait 300
+action connect
+wait 200
+
+# Passkey display has only Cancel. A duplicate request must not replace the
+# code shown by the already-open modal.
+action camera-pair-request display 654321
+wait 400
+assert ui.modal open
+assert ui.pairing_kind display
+assert ui.pairing_code 654321
+action expect no-effect camera-pair-request confirm 111111
+wait 400
+assert ui.modal open
+assert ui.pairing_kind display
+assert ui.pairing_code 654321
+
+# Passkey display offers no Confirm button, so an accept has nothing to click.
+action expect no-effect camera-pair-accept
+wait 200
+assert ui.modal open
+assert ui.pairing_kind display
+
+action camera-pair-reject
+wait 500
+assert ui.modal closed
+assert ui.pairing_pending no
+
+# Numeric comparison can be accepted and clears the request.
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.pairing_kind confirm
+action camera-pair-accept
+wait 500
+assert ui.modal closed
+assert ui.pairing_pending no
+
+# Expiry follows the same cancellation path without waiting two real minutes.
+action camera-pair-request confirm 314159
+wait 400
+assert ui.modal open
+action camera-pair-expire
+wait 500
+assert ui.modal closed
+assert ui.pairing_pending no
+
+# Nothing pending: both answers stay valid no-ops instead of reopening a modal.
+action expect no-effect camera-pair-reject
+action expect no-effect camera-pair-expire
+wait 200
+assert ui.modal closed
+assert ui.pairing_pending no
+exit

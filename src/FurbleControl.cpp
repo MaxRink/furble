@@ -228,17 +228,21 @@ Control::state_t Control::connectAll(void) {
   }
 
   for (const auto &camera : cameras) {
-    if (m_ConnectAbort) {
-      break;
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      if (m_ConnectAbort || (m_State == STATE_DISCONNECTING)) {
+        break;
+      }
+      m_ConnectCamera = camera;
     }
-
-    m_ConnectCamera = camera;
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
-      break;
-    } else {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
       m_ConnectCamera = nullptr;
+      break;
     }
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ConnectCamera = nullptr;
   }
 
   {
@@ -443,6 +447,17 @@ std::vector<Control::Target *> Control::getTargets(void) {
     targets.push_back(target.get());
   }
   return targets;
+}
+
+std::vector<std::shared_ptr<Camera>> Control::getTargetCameras(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  std::vector<std::shared_ptr<Camera>> cameras;
+  cameras.reserve(m_Targets.size());
+  for (const auto &target : m_Targets) {
+    cameras.push_back(target->getCamera());
+  }
+  return cameras;
 }
 
 void Control::connectAll(bool infiniteReconnect) {
@@ -747,6 +762,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
 }
 
 std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_ConnectCamera;
 }
 

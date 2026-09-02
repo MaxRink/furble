@@ -50,6 +50,16 @@ class Camera: public NimBLEClientCallbacks {
     SAVED = 2,
   };
 
+  enum class PairingType : uint8_t {
+    NONE,
+    PASSKEY_DISPLAY,
+    NUMERIC_COMPARISON,
+  };
+
+  typedef void (*pairing_request_callback_t)(Camera *camera);
+
+  static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
+
   enum class SecurityMode : uint8_t {
     SECURE_DISPLAY_YESNO = BLE_HS_IO_DISPLAY_YESNO,
     SECURE_KEYBOARD_DISPLAY = BLE_HS_IO_KEYBOARD_DISPLAY,
@@ -261,6 +271,35 @@ class Camera: public NimBLEClientCallbacks {
   static void gattJournalClear(void);
 #endif
 
+  /** Register the app-layer handler for a pairing prompt. */
+  static void setPairingRequestCallback(pairing_request_callback_t callback);
+
+  /** Check whether the camera is waiting for a pairing response. */
+  bool hasPendingPairing(void) const;
+
+  /** Return the pending pairing prompt type. */
+  PairingType getPairingType(void) const;
+
+  /** Return the pending pairing code. */
+  uint32_t getPairingCode(void) const;
+
+  /** Check whether the pairing prompt exceeded its response window. */
+  bool pairingTimedOut(void) const;
+
+  /** Accept or reject the pending pairing prompt. */
+  bool answerPairing(bool accept);
+
+  /** Reject the pending pairing prompt and disconnect the camera. */
+  void cancelPairing(void);
+
+#if defined(FURBLE_HOST_TEST)
+  /** Deterministic host seam for the security callback state machine. */
+  void hostSetPairingRequest(PairingType type, uint32_t code);
+
+  /** Expire a pending request without a wall-clock two-minute wait. */
+  void hostExpirePairing(void);
+#endif
+
  protected:
   Camera(Type type, PairType pairType);
   std::atomic<uint8_t> m_Progress;
@@ -369,6 +408,14 @@ class Camera: public NimBLEClientCallbacks {
  private:
   friend class NikonBase;
 
+  void publishPairingRequest(PairingType type, uint32_t code, NimBLEConnInfo &connInfo);
+  void clearPairingRequest(void);
+
+  void onPassKeyEntry(NimBLEConnInfo &connInfo) override final;
+  uint32_t onPassKeyDisplay(NimBLEConnInfo &connInfo) override final;
+  void onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) override final;
+  void onAuthenticationComplete(NimBLEConnInfo &connInfo) override final;
+
   /** Called on connection success. */
   void onConnect(NimBLEClient *pDevice) override final;
 
@@ -424,8 +471,22 @@ class Camera: public NimBLEClientCallbacks {
   const Type m_Type;
 
   static constexpr SecurityMode m_SecurityModeDefault = SecurityMode::SECURE_DISPLAY_YESNO;
+  static constexpr uint32_t m_DefaultPasskey = 123456;
 
   mutable std::mutex m_Mutex;
+  // answerPairing may synchronously cause onDisconnect, and that callback
+  // clears the pairing request through this mutex before NimBLE self-deletes
+  // the client. A recursive mutex lets that same-thread callback re-enter
+  // safely while a host-task callback on another thread waits for the answer
+  // to finish before it can free the client.
+  mutable std::recursive_mutex m_PairingMutex;
+
+  PairingType m_PairingType = PairingType::NONE;
+  uint32_t m_PairingCode = 0;
+  uint64_t m_PairingDeadlineMs = 0;
+  uint16_t m_PairingHandle = BLE_HS_CONN_HANDLE_NONE;
+
+  static std::atomic<pairing_request_callback_t> m_PairingRequestCallback;
 
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
   bool m_FromScan = false;

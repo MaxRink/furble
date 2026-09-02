@@ -169,6 +169,20 @@ print ui.modal
 action companion-reject
 wait 250
 
+# Camera numeric-comparison prompt. The FauxNY seam injects a deterministic
+# request on the active camera, so this captures the production modal without
+# requiring a Ricoh body or a live BLE security callback.
+home
+wait 250
+action connect
+wait 300
+action camera-pair-request confirm 428913
+wait 500
+capture camera-pairing
+print ui.pairing_kind
+action camera-pair-reject
+wait 250
+
 # Connect flow. action connect drives the real connect the camera button
 # triggers. Capture the connecting overlay first, then the connected page.
 home

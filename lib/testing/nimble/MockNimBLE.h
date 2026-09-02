@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -42,6 +43,7 @@ constexpr uint8_t BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT = 0;
 constexpr uint16_t BLE_GAP_INITIAL_CONN_ITVL_MIN = 6;
 constexpr uint16_t BLE_GAP_INITIAL_CONN_ITVL_MAX = 12;
 constexpr uint16_t BLE_GAP_INITIAL_SUPERVISION_TIMEOUT = 100;
+constexpr uint16_t BLE_HS_CONN_HANDLE_NONE = 0xffff;
 
 struct ble_gap_upd_params {
   uint16_t itvl_min = 0;
@@ -159,6 +161,14 @@ class NimBLEMockPeer {
                          const NimBLENotifyCallback &callback,
                          bool response) = 0;
   virtual bool secureConnection(NimBLEClient &client) = 0;
+
+  // MITM pairing seam. A peer that models LE Secure Connections numeric
+  // comparison or passkey display registers itself through
+  // NimBLEDevice::setPasskeyPeer while its secureConnection() waits, and the
+  // production NimBLEDevice::injectConfirmPasskey and injectPassKey calls are
+  // delivered here. Peers with a just-works handshake never see these.
+  virtual void onPasskeyConfirmed(bool accept) { (void)accept; }
+  virtual void onPasskeyEntered(uint32_t passkey) { (void)passkey; }
   virtual bool updateConnectionParams(NimBLEClient &client,
                                       uint16_t min_interval,
                                       uint16_t max_interval,
@@ -222,10 +232,13 @@ class NimBLEConnInfo {
   const NimBLEAddress &getAddress() const;
   const NimBLEAddress &getIdAddress() const;
 
+  uint16_t getConnHandle() const { return m_Handle; }
+
  private:
   uint16_t m_Interval;
   uint16_t m_Latency;
   uint16_t m_Timeout;
+  uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
 };
 
 class NimBLEClientCallbacks {
@@ -268,6 +281,7 @@ class NimBLEClient {
                         uint16_t timeout);
   NimBLEConnInfo getConnInfo() const;
   int getRssi() const;
+  uint16_t getConnHandle() const;
 
   NimBLEMockPeer *getPeer() const;
 
@@ -370,6 +384,11 @@ class NimBLEClient {
   // flight, it models the free landing between the GATT operation and any
   // later dereference of the remote pointers the caller still holds.
   void dropServiceCache();
+
+  // The callbacks the production Camera registered. A peer modelling a MITM
+  // handshake calls onConfirmPasskey or onPassKeyDisplay through this, which
+  // is what the real NimBLE host task does.
+  NimBLEClientCallbacks *mockCallbacks() const { return m_Callbacks; }
 
  private:
   friend class NimBLEDevice;
@@ -476,6 +495,16 @@ class NimBLEDevice {
   static bool setMTU(uint16_t mtu);
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
   static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
+  // Register the peer that a pending injectConfirmPasskey or injectPassKey
+  // answer belongs to. A null peer means no handshake is waiting, so an
+  // injected answer is dropped exactly as the real host drops one for a
+  // connection that is no longer pairing.
+  static void setPasskeyPeer(NimBLEMockPeer *peer);
+  static size_t mockPasskeyConfirmCount();
+  static bool mockLastPasskeyAccept();
+  static size_t mockPasskeyEntryCount();
+  static uint32_t mockLastPasskeyEntered();
+
   static void setMockPeer(NimBLEMockPeer *peer);
   // Route a client to a peer by the advertised BLE address. The single-peer
   // setter remains the fallback used by existing tests; address routing lets
@@ -558,6 +587,15 @@ class NimBLEDevice {
   static void setAsyncDisconnect(bool enabled);
   static bool completeAsyncDisconnect(void);
   static bool asyncDisconnectEventFound(void);
+
+  // Deterministic lifetime-race hooks used by the pairing regression. The
+  // connection-handle hook pauses answerPairing after it has selected the
+  // client. The disconnect hook signals that a concurrent self-delete has
+  // entered onDisconnect before the answer resumes.
+  using host_hook_t = void (*)();
+  static void setGetConnHandleHook(host_hook_t hook);
+  static void setDisconnectCallbackHook(host_hook_t hook);
+  static bool clientUseAfterFreeDetected();
 
   // Free every client queued for asynchronous reap by a link-loss drop under the
   // deferred-delete model. The fuzz harness calls this at a quiescent point where

@@ -91,11 +91,6 @@ class DJIOsmo: public Camera {
   bool _connect(void) override final;
   void _disconnect(void) override final;
 
-  void onPassKeyEntry(NimBLEConnInfo &connInfo) override;
-  uint32_t onPassKeyDisplay(NimBLEConnInfo &connInfo) override;
-  void onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) override;
-  void onAuthenticationComplete(NimBLEConnInfo &connInfo) override;
-
   static uint16_t readLE16(const uint8_t *data);
   static uint32_t readLE32(const uint8_t *data);
   static void writeLE16(uint8_t *data, uint16_t value);

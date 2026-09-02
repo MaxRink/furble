@@ -40,7 +40,7 @@ and the feature matrix.
 | Canon EOS (Remote) | `CanonEOSRemote` | Remote controller (BR-E1 style) pairing. Focus, no GPS. |
 | Nikon | `Nikon` | Remote controller mode works (ML-L7 style, shutter only). Smart mode appears but does not pair. |
 | Sony | `Sony` | Sony ZV and most modern Sony bodies. |
-| Ricoh | `Ricoh` | Ricoh GR IV series. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. Does not work with GR III or GR II. |
+| Ricoh | `Ricoh` | Ricoh GR IV series. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. Does not work with GR III or GR II. Numeric-comparison pairing shows the six-digit code on the furble display. |
 | FauxNY | `FauxNY` | Software test camera. Enabled by the FauxNY setting for development. |
 
 ## GPS units

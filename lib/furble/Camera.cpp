@@ -6,15 +6,23 @@
 #include <NimBLEUtils.h>
 #include <esp_timer.h>
 
+#include <cstdio>
+
 #include "BtDebugJournal.h"
 #include "Camera.h"
 #include "Device.h"
 
 namespace Furble {
 
+std::atomic<Camera::pairing_request_callback_t> Camera::m_PairingRequestCallback {nullptr};
+
 namespace {
 uint32_t connectionTimeMs(void) {
   return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+}
+
+uint64_t nowMs(void) {
+  return static_cast<uint64_t>(esp_timer_get_time()) / 1000;
 }
 
 #if defined(FURBLE_CONSOLE)
@@ -118,6 +126,7 @@ void journalRecord(const char *operation,
 Camera::Camera(Type type, PairType pairType) : m_PairType(pairType), m_Type(type) {}
 
 Camera::~Camera() {
+  clearPairingRequest();
   m_Connected = false;
   m_Client = nullptr;
 }
@@ -181,7 +190,9 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
   copyText(event.reason_text, sizeof(event.reason_text), btGapReasonName(reason));
   BtDebugJournal::instance().record(event);
 #endif
+  const std::lock_guard<std::recursive_mutex> pairing(m_PairingMutex);
   ESP_LOGI(LOG_TAG, "Disconnected");
+  clearPairingRequest();
   m_Connected = false;
   m_Progress = 0;
 
@@ -190,6 +201,178 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
   m_LastRequestSucceeded = false;
   m_PeerOverride = false;
   m_StatsValid = false;
+}
+
+void Camera::setPairingRequestCallback(pairing_request_callback_t callback) {
+  m_PairingRequestCallback.store(callback);
+}
+
+bool Camera::hasPendingPairing(void) const {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  return m_PairingType != PairingType::NONE;
+}
+
+Camera::PairingType Camera::getPairingType(void) const {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  return m_PairingType;
+}
+
+uint32_t Camera::getPairingCode(void) const {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  return m_PairingCode;
+}
+
+bool Camera::pairingTimedOut(void) const {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  return (m_PairingType != PairingType::NONE) && (nowMs() >= m_PairingDeadlineMs);
+}
+
+bool Camera::answerPairing(bool accept) {
+  PairingType type = PairingType::NONE;
+  uint16_t handle = BLE_HS_CONN_HANDLE_NONE;
+  NimBLEClient *client = nullptr;
+  bool accepted = accept;
+  bool staleHandle = false;
+
+  // Hold the pairing mutex through the client operation. NimBLE may invoke
+  // onDisconnect synchronously from injectConfirmPasskey or disconnect, then
+  // self-delete the client after that callback returns. onDisconnect re-enters
+  // this recursive mutex on the same thread, while a host-task callback waits
+  // here until the answer has stopped using the raw client pointer.
+  const std::unique_lock<std::recursive_mutex> lock(m_PairingMutex);
+  if (m_PairingType == PairingType::NONE) {
+    return false;
+  }
+
+  type = m_PairingType;
+  handle = m_PairingHandle;
+  client = m_Client;
+  accepted = accepted && (nowMs() < m_PairingDeadlineMs);
+  m_PairingType = PairingType::NONE;
+  m_PairingCode = 0;
+  m_PairingDeadlineMs = 0;
+  m_PairingHandle = BLE_HS_CONN_HANDLE_NONE;
+
+  if (type == PairingType::NUMERIC_COMPARISON) {
+    if ((client != nullptr) && (client->getConnHandle() == handle)) {
+      NimBLEConnInfo connInfo = client->getConnInfo();
+      NimBLEDevice::injectConfirmPasskey(connInfo, accepted);
+    } else if (client != nullptr) {
+      // The request belongs to a connection that has already gone away or
+      // been replaced. Never let an answer for that stale request authorize a
+      // different link.
+      staleHandle = true;
+      client->disconnect();
+    }
+  }
+
+  if (!accepted && (client != nullptr) && !staleHandle) {
+    client->disconnect();
+  }
+
+  return true;
+}
+
+void Camera::cancelPairing(void) {
+  answerPairing(false);
+}
+
+#if defined(FURBLE_HOST_TEST)
+void Camera::hostSetPairingRequest(PairingType type, uint32_t code) {
+  NimBLEConnInfo connInfo;
+  publishPairingRequest(type, code, connInfo);
+}
+
+void Camera::hostExpirePairing(void) {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  if (m_PairingType != PairingType::NONE) {
+    m_PairingDeadlineMs = nowMs();
+  }
+}
+#endif
+
+void Camera::publishPairingRequest(PairingType type, uint32_t code, NimBLEConnInfo &connInfo) {
+  const bool validType =
+      (type == PairingType::PASSKEY_DISPLAY) || (type == PairingType::NUMERIC_COMPARISON);
+  if (!validType || (code > 999999)) {
+    ESP_LOGW(LOG_TAG, "Ignoring malformed camera pairing request (type %u, code %lu)",
+             static_cast<unsigned>(type), static_cast<unsigned long>(code));
+    if (type == PairingType::NUMERIC_COMPARISON) {
+      NimBLEDevice::injectConfirmPasskey(connInfo, false);
+    }
+    return;
+  }
+
+  const uint64_t deadline = nowMs() + PAIRING_WINDOW_MS;
+  bool duplicate = false;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+    duplicate = m_PairingType != PairingType::NONE;
+    if (!duplicate) {
+      m_PairingType = type;
+      m_PairingCode = code;
+      m_PairingDeadlineMs = deadline;
+      m_PairingHandle = connInfo.getConnHandle();
+    }
+  }
+
+  if (duplicate) {
+    // The UI modal deliberately stays tied to the first request. Replacing
+    // the state here would leave the user looking at one code while Confirm
+    // answers another request.
+    ESP_LOGW(LOG_TAG, "Ignoring duplicate camera pairing request for %s", m_Name.c_str());
+    if (type == PairingType::NUMERIC_COMPARISON) {
+      NimBLEDevice::injectConfirmPasskey(connInfo, false);
+    }
+    return;
+  }
+
+  const char *label = (type == PairingType::NUMERIC_COMPARISON) ? "confirm" : "display";
+  ESP_LOGI(LOG_TAG, "Camera %s pairing %s code %06lu", m_Name.c_str(), label,
+           static_cast<unsigned long>(code));
+#if defined(FURBLE_CONSOLE)
+  printf("pair.%s: %06lu\n", label, static_cast<unsigned long>(code));
+#endif
+
+  const pairing_request_callback_t callback = m_PairingRequestCallback.load();
+  if (callback != nullptr) {
+    callback(this);
+  }
+}
+
+void Camera::clearPairingRequest(void) {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  m_PairingType = PairingType::NONE;
+  m_PairingCode = 0;
+  m_PairingDeadlineMs = 0;
+  m_PairingHandle = BLE_HS_CONN_HANDLE_NONE;
+}
+
+void Camera::onPassKeyEntry(NimBLEConnInfo &connInfo) {
+  ESP_LOGW(LOG_TAG, "Camera passkey entry for %s; injecting fallback %06lu",
+           connInfo.getAddress().toString().c_str(), static_cast<unsigned long>(m_DefaultPasskey));
+#if defined(FURBLE_CONSOLE)
+  printf("pair.entry: required\n");
+#endif
+  NimBLEDevice::injectPassKey(connInfo, m_DefaultPasskey);
+}
+
+uint32_t Camera::onPassKeyDisplay(NimBLEConnInfo &connInfo) {
+  publishPairingRequest(PairingType::PASSKEY_DISPLAY, m_DefaultPasskey, connInfo);
+  return m_DefaultPasskey;
+}
+
+void Camera::onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {
+  publishPairingRequest(PairingType::NUMERIC_COMPARISON, pin, connInfo);
+}
+
+void Camera::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
+  clearPairingRequest();
+  ESP_LOGI(LOG_TAG,
+           "Camera authentication complete: bonded=%d encrypted=%d authenticated=%d "
+           "keySize=%u",
+           connInfo.isBonded(), connInfo.isEncrypted(), connInfo.isAuthenticated(),
+           connInfo.getSecKeySize());
 }
 
 bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
@@ -208,6 +391,7 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     m_FujifilmSecureRegistration = false;
   }
 
+  clearPairingRequest();
   m_Power = power;
   m_ClientDeleteOnDisconnect = false;
 
@@ -309,6 +493,7 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
       this->_disconnect();
     }
     m_Connected = false;
+    const std::lock_guard<std::recursive_mutex> pairing(m_PairingMutex);
     if (m_ClientDeleteOnDisconnect.exchange(false)) {
       // The client owns its callback-side deletion. Do not touch it after the
       // terminate, as NimBLE may free it immediately after onDisconnect.
@@ -947,6 +1132,7 @@ void Camera::resetConnectionState(void) {
 
 void Camera::reclaimClient(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
+  const std::lock_guard<std::recursive_mutex> pairing(m_PairingMutex);
 
   // A gone peer whose ble_gap_terminate stalled: the link is still locally
   // connected, so onDisconnect has not fired and will not until the supervision
@@ -968,6 +1154,7 @@ void Camera::reclaimClient(void) {
   // every live-link m_Client dereference and we clear it here, so freeing cannot
   // race a reader.
   if (m_Client != nullptr) {
+    clearPairingRequest();
     m_Client->setClientCallbacks(nullptr, false);
     NimBLEDevice::deleteClient(m_Client);
     m_Client = nullptr;

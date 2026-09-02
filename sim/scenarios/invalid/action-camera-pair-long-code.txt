@@ -1,0 +1,2 @@
+action camera-pair-request confirm 1234567
+exit

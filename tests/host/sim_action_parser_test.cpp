@@ -53,6 +53,12 @@ int main() {
       "expect applied page main",
       "expect no-effect select",
       "expect valid-no-effect companion-reject",
+      "camera-pair-request confirm 428913",
+      "camera-pair-request display 000000",
+      "camera-pair-accept",
+      "camera-pair-reject",
+      "camera-pair-expire",
+      "expect no-effect camera-pair-request confirm 111111",
   };
   for (const std::string &text : accepted) {
     if (!parses(text, &action)) {
@@ -81,6 +87,16 @@ int main() {
       "toggle unknown",
       "expect maybe page main",
       "expect unavailable",
+      "camera-pair-request",
+      "camera-pair-request confirm",
+      "camera-pair-request confirm 12345",
+      "camera-pair-request confirm 1234567",
+      "camera-pair-request confirm 12345a",
+      "camera-pair-request confirm -12345",
+      "camera-pair-request unknown 123456",
+      "camera-pair-request confirm 123456 trailing",
+      "camera-pair-accept yes",
+      "camera-pair-expire now",
   };
   for (const std::string &text : rejected) {
     if (!rejects(text)) {
@@ -118,6 +134,37 @@ int main() {
   forged.name = "connect";
   forged.index = 1;
   if (validateScenarioAction(forged, nullptr)) {
+    return 1;
+  }
+  // A forged pairing request cannot carry a code outside the six-digit passkey
+  // range, an unknown prompt kind, or a stray name.
+  forged = scenario_action_t {};
+  forged.kind = scenario_action_kind_t::PAIRING_REQUEST;
+  forged.mode = "confirm";
+  forged.index = 1000000;
+  if (validateScenarioAction(forged, nullptr)) {
+    return 1;
+  }
+  forged = scenario_action_t {};
+  forged.kind = scenario_action_kind_t::PAIRING_REQUEST;
+  forged.mode = "maybe";
+  forged.index = 123456;
+  if (validateScenarioAction(forged, nullptr)) {
+    return 1;
+  }
+  forged = scenario_action_t {};
+  forged.kind = scenario_action_kind_t::PAIRING_REQUEST;
+  forged.mode = "display";
+  forged.name = "camera-pair-request";
+  forged.index = 123456;
+  if (validateScenarioAction(forged, nullptr)) {
+    return 1;
+  }
+  forged = scenario_action_t {};
+  forged.kind = scenario_action_kind_t::PAIRING_REQUEST;
+  forged.mode = "display";
+  forged.index = 123456;
+  if (!validateScenarioAction(forged, nullptr)) {
     return 1;
   }
   return 0;
