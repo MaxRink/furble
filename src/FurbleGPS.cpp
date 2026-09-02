@@ -259,6 +259,7 @@ void GPS::enable(void) {
   const uint32_t baud = Settings::load<Settings::GPS_BAUD>();
   const uint8_t policy = powerPolicy();
   const uint8_t duty = dutySeconds();
+  const uint32_t rate = gpsRateInterval();
 
   // park the GPS task first, m_Enabled gates every cycle entry point
   m_Enabled = false;
@@ -289,6 +290,8 @@ void GPS::enable(void) {
 
     m_PowerPolicy = policy;
     m_DutySeconds = duty;
+    // cached so the status readers never reach NVS on a periodic path
+    m_RateMs = static_cast<uint16_t>(rate);
     m_CycleState = cycle_state_t::ACQUIRING;
     m_BurstActive = false;
     m_DutyWake = false;
@@ -297,7 +300,7 @@ void GPS::enable(void) {
     m_LastSentence = 0;
     m_NextBurst = 0;
     m_WakeDeadline = 0;
-    m_ExpectedInterval = gpsRateInterval();
+    m_ExpectedInterval = rate;
     m_Window = WINDOW_DEFAULT_MS;
     m_BurstFailed = 0;
     m_MeasureDeadline = 0;
@@ -888,6 +891,91 @@ const char *GPS::configStateName(config_state_t state) {
       return "FALLBACK";
   }
   return "UNKNOWN";
+}
+
+const char *GPS::sourceName(source_t source) {
+  switch (source) {
+    case SOURCE_NONE:
+      return "none";
+    case SOURCE_UART:
+      return "uart";
+    case SOURCE_COMPANION:
+      return "companion";
+  }
+  return "unknown";
+}
+
+const char *GPS::sourceShortName(source_t source) {
+  switch (source) {
+    case SOURCE_NONE:
+      return "none";
+    case SOURCE_UART:
+      return "uart";
+    case SOURCE_COMPANION:
+      return "comp";
+  }
+  return "unkn";
+}
+
+const char *GPS::cycleStateName(cycle_state_t state) {
+  switch (state) {
+    case cycle_state_t::DISABLED:
+      return "disabled";
+    case cycle_state_t::ACQUIRING:
+      return "acquiring";
+    case cycle_state_t::MEASURING:
+      return "measuring";
+    case cycle_state_t::BURST:
+      return "burst";
+    case cycle_state_t::WAITING:
+      return "waiting";
+    case cycle_state_t::STANDBY:
+      return "standby";
+    case cycle_state_t::RAIL_OFF:
+      return "rail_off";
+    case cycle_state_t::RESYNC:
+      return "resync";
+    case cycle_state_t::DEGRADED:
+      return "degraded";
+  }
+  return "unknown";
+}
+
+/**
+ * Report the receiver power, rate and assist state.
+ *
+ * The cycle fields come from the same mutex getCycleStatusSnapshot() takes, and
+ * from one acquisition of it, so they are a coherent set. The assist fields are
+ * read afterwards, under the AID mutex, with the cycle mutex already released.
+ * The two locks are never nested, so this adds no lock order edge to the GPS
+ * task.
+ */
+GPS::receiver_status_t GPS::getReceiverStatus(void) const {
+  receiver_status_t status = {};
+
+  {
+    const std::lock_guard<std::mutex> lock(m_CycleMutex);
+    status.cycle_state = cycleStateName(m_CycleState);
+    status.power_policy = m_PowerPolicy;
+    status.duty_seconds = m_DutySeconds;
+    status.rate_ms = m_RateMs;
+    status.have_sentence = m_LastSentence != 0;
+    // unsigned subtraction, so this stays correct across a tick wrap
+    status.last_sentence_age_ms =
+        status.have_sentence ? (Platform::getInstance().tick() - m_LastSentence) : 0;
+    // read under the same acquisition as the state, a second one could pair a
+    // fresh state with a stale retry count
+    status.degraded = m_CycleState == cycle_state_t::DEGRADED;
+    status.retries = m_Degraded.failures();
+  }
+
+  status.aid_mode = m_AidMode.load();
+  {
+    const std::lock_guard<std::mutex> lock(m_AidMutex);
+    status.aid_cache_valid = m_AidCacheValid;
+  }
+
+  return status;
 }
 
 std::vector<GPS::config_status_t> GPS::getConfigStatus(void) const {

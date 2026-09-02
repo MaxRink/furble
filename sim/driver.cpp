@@ -978,14 +978,7 @@ std::string queryValue(const std::string &key) {
       return gps.isEnabled() ? "1" : "0";
     }
     if (sub == "source") {
-      switch (gps.getSource()) {
-        case Furble::GPS::SOURCE_UART:
-          return "uart";
-        case Furble::GPS::SOURCE_COMPANION:
-          return "companion";
-        case Furble::GPS::SOURCE_NONE:
-          return "none";
-      }
+      return Furble::GPS::sourceName(gps.getSource());
     }
     if (sub == "satellites") {
       return std::to_string(gps.getSatellites());

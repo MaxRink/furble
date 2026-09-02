@@ -677,6 +677,26 @@ GPS::cycle_status_t GPS::getCycleStatusSnapshot(void) const {
   return ConsoleHost::gps().cycle;
 }
 
+GPS::receiver_status_t GPS::getReceiverStatus(void) const {
+  return ConsoleHost::gps().receiver;
+}
+
+GPS::source_t GPS::getSource(void) const {
+  return ConsoleHost::gps().source;
+}
+
+const char *GPS::sourceName(source_t source) {
+  switch (source) {
+    case SOURCE_NONE:
+      return "none";
+    case SOURCE_UART:
+      return "uart";
+    case SOURCE_COMPANION:
+      return "companion";
+  }
+  return "unknown";
+}
+
 bool GPS::sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload) {
   auto &state = ConsoleHost::gps();
   std::vector<uint8_t> frame = {class_id, message_id};

@@ -116,7 +116,7 @@ is enabled.
 | Power saving > Receiver | Always on | Always on, Standby (PCAS12), Rail cycling | Now | Receiver low-power policy. Rail cycling is experimental. |
 | Power saving > Sleep between fixes | No standby | No standby, 5 s, 10 s, 15 s | Now | Standby interval for the PCAS12 policy. |
 | Assisted start | Off | Off, Position and time | Now | Feeds the receiver a position and time hint for a faster fix. |
-| GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time. |
+| GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time, plus the receiver fix source, the time since its last sentence, and its power cycle state. The receiver rows are not shown on the 80x160 M5StickC. |
 | Raw NMEA | n/a | page | n/a | Live receiver sentences, fix state, and error counts. Includes a Hot restart button. |
 
 The receiver is set from these when GPS is enabled, and it returns to its own

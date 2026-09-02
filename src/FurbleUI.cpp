@@ -36,6 +36,7 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleGPSFormat.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -129,6 +130,27 @@ void setLabelTextFmtIfChanged(lv_obj_t *label, const char *format, Args... args)
   std::snprintf(text, sizeof(text), format, args...);
   setLabelTextIfChanged(label, text);
 }
+
+#if !defined(FURBLE_M5STICKC)
+/**
+ * Create one receiver detail row on the GPS Data page.
+ *
+ * The detail rows pack several fields each, so they use the smallest font and
+ * wrap inside the page width instead of running off the narrow panels. The
+ * smaller type also reads as secondary next to the fix rows above. Creation is
+ * once only, the page timer writes the text.
+ */
+lv_obj_t *addGPSDetailLabel(lv_obj_t *page) {
+  lv_obj_t *label = lv_label_create(page);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
+  lv_obj_set_width(label, LV_PCT(100));
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  // the fix rows above are centred, keep the detail rows in the same column
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  return label;
+}
+
+#endif
 
 uint32_t gpsDutyIndex(uint8_t seconds) {
   for (size_t i = 0; i < GPS::DUTY_SECONDS.size(); i++) {
@@ -237,6 +259,8 @@ lv_obj_t *UI::m_ScanFinished;
 lv_timer_t *UI::m_ConnectTimer;
 
 lv_timer_t *UI::m_GPSDataTimer;
+
+UI::gps_data_t UI::m_GPSData = {};
 
 lv_timer_t *UI::m_CamerasTimer;
 lv_timer_t *UI::m_LevelTimer;
@@ -3720,6 +3744,62 @@ std::string UI::simQueryState(const char *key) {
     return query == "gps_lat" ? lat : lon;
   }
 
+  // Read the rendered GPS Data page receiver detail rows. Each query returns one
+  // whitespace free field taken from the real label text, so a missing row or a
+  // format regression fails the assertion rather than passing silently. The rows
+  // are "<source> nmea <age>" and "<cycle state>[ x<retries>]". The source is
+  // the four character GPS::sourceShortName() form, not GPS::sourceName().
+  if (query == "gps_source" || query == "gps_link_age" || query == "gps_cycle"
+      || query == "gps_retries") {
+    // Split one label into its space separated fields. An absent label reports
+    // "none" so a scenario cannot mistake a missing row for a matching value.
+    auto field = [](lv_obj_t *label, size_t index) -> std::string {
+      if (label == nullptr || !lv_obj_is_valid(label)) {
+        return "none";
+      }
+      const char *text = lv_label_get_text(label);
+      if (text == nullptr) {
+        return "none";
+      }
+      const std::string line = text;
+      size_t start = 0;
+      for (size_t i = 0;; i++) {
+        start = line.find_first_not_of(' ', start);
+        if (start == std::string::npos) {
+          return "none";
+        }
+        const size_t end = line.find(' ', start);
+        if (i == index) {
+          return line.substr(start, end == std::string::npos ? end : end - start);
+        }
+        start = end;
+      }
+    };
+
+    if (query == "gps_source") {
+      return field(m_GPSData.source, 0);
+    }
+    if (query == "gps_link_age") {
+      // the age token exactly as rendered, unit and all: "3s", "17m", the
+      // saturating "99m+", or "n/a" before the first sentence. A scenario
+      // asserts the rendered string, so a unit or clamp regression fails here.
+      // It still parses as a leading integer, so assert_min and assert_max work
+      // within one unit.
+      return field(m_GPSData.source, 2);
+    }
+    if (query == "gps_cycle") {
+      return field(m_GPSData.cycle, 0);
+    }
+    // the retry count is only rendered while degraded, so a present row without
+    // one reports 0. An absent or dead row still reports "none", so a scenario
+    // cannot read a missing page row as a healthy zero.
+    if (m_GPSData.cycle == nullptr || !lv_obj_is_valid(m_GPSData.cycle)) {
+      return "none";
+    }
+    const std::string retries = field(m_GPSData.cycle, 1);
+    return retries.rfind('x', 0) == 0 ? retries.substr(1) : "0";
+  }
+
   // Report the receiver's current fix status for the GPS Data page. The page
   // renders the individual fix fields, while this sim-only query exposes the
   // same source decision used by GPS::update() without changing the page.
@@ -5926,8 +6006,16 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         static lv_obj_t *alt = lv_label_create(gpsData->page);
         setLabelTextFmtIfChanged(alt, "%.2f m", status.altitude);
 
-#if defined(FURBLE_M5COREX)
-        static lv_obj_t *datetime = lv_label_create(gpsData->page);
+#if !defined(FURBLE_M5STICKC)
+        static lv_obj_t *datetime = nullptr;
+        if (datetime == nullptr) {
+          datetime = lv_label_create(gpsData->page);
+#if !defined(FURBLE_M5COREX)
+          // 135x240 fits the combined stamp only in the small font, and merging
+          // the two rows is what buys the receiver detail rows below their space
+          lv_obj_set_style_text_font(datetime, &lv_font_montserrat_12, 0);
+#endif
+        }
         setLabelTextFmtIfChanged(datetime, "%4u-%02u-%02u %02u:%02u:%02u", status.year,
                                  status.month, status.day, status.hour, status.minute,
                                  status.second);
@@ -5936,6 +6024,58 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         setLabelTextFmtIfChanged(date, "%4u-%02u-%02u", status.year, status.month, status.day);
         static lv_obj_t *time = lv_label_create(gpsData->page);
         setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", status.hour, status.minute, status.second);
+#endif
+
+#if defined(FURBLE_M5STICKC)
+    // The 80x160 panel has no vertical headroom left on this page, and the
+    // page carries no focusable control, so LVGL group navigation cannot
+    // scroll it. Detail rows would render below the fold with no way to
+    // reach them. The raw NMEA page has a focusable button, so it scrolls,
+    // and it keeps carrying hdop and the receiver counters on this board.
+#else
+        // Receiver detail. The rows above report the navigation solution, these
+        // report the receiver producing it, so a receiver that is alive but not
+        // fixing reads differently from one that has gone quiet.
+        //
+        // Two rows of at most fourteen characters. That is the whole budget on
+        // 135x240: the right hand floating navigation indicator is 24 px wide
+        // and sits over the bottom of the page on the non-touch Stick layout,
+        // so a wider centred row runs underneath it. The configured rate is in
+        // Settings, and HDOP, the sentence counters and the degraded retry
+        // count are on the raw NMEA page, so the space here goes to what is
+        // only available here.
+        auto &gps = GPS::getInstance();
+        // one snapshot, so the state and its retry count cannot be torn across
+        // two acquisitions of the cycle mutex
+        const auto receiver = gps.getReceiverStatus();
+
+        // Where the fix comes from, and how long ago the receiver last said
+        // anything. A quiet receiver shows here even while the last fix still
+        // reads plausibly. The source is abbreviated to fit the row.
+        if (m_GPSData.source == nullptr) {
+          m_GPSData.source = addGPSDetailLabel(gpsData->page);
+        }
+        const char *const source = GPS::sourceShortName(gps.getSource());
+        if (receiver.have_sentence) {
+          char age[8];
+          Furble::gpsSentenceAge(age, sizeof(age), receiver.last_sentence_age_ms);
+          setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea %s", source, age);
+        } else {
+          setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea n/a", source);
+        }
+
+        // Power cycle state, with the retry count while it is degraded. The
+        // degraded retry state was otherwise only on the raw NMEA page and the
+        // console.
+        if (m_GPSData.cycle == nullptr) {
+          m_GPSData.cycle = addGPSDetailLabel(gpsData->page);
+        }
+        if (receiver.degraded) {
+          setLabelTextFmtIfChanged(m_GPSData.cycle, "%s x%lu", receiver.cycle_state,
+                                   (unsigned long)receiver.retries);
+        } else {
+          setLabelTextIfChanged(m_GPSData.cycle, receiver.cycle_state);
+        }
 #endif
       },
       1000, &gpsData);

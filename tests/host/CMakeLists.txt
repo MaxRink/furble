@@ -690,6 +690,16 @@ target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
 
+# The GPS Data page sentence age formatter. Pure, header only, and the only
+# unbounded field on a row with a hard character budget, so its clamp is a unit
+# test rather than a scenario assertion. The simulator cannot reach the ages
+# that matter: any received byte, including a configuration acknowledgement,
+# refreshes the tick.
+add_executable(gps_format_test gps_format_test.cpp)
+target_include_directories(gps_format_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(gps_format_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                               -Wno-unused-parameter)
+
 # Exercise the simulator's production power profiler accounting for the GPS
 # degraded state. This stays host-only because it drives the same profiler API
 # that the SDL simulator uses, including lock and virtual-clock transitions.
@@ -1289,6 +1299,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
+  add_test(NAME gps-format COMMAND gps_format_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)

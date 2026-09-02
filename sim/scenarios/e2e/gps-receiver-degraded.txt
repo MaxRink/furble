@@ -1,0 +1,43 @@
+# Degraded reception has to be visible on the GPS Data page, not only on the raw
+# NMEA page and the console. Drive the production duty-cycle wake timeout into
+# the degraded retry state by pausing the fake UART event source, then assert
+# the cycle row reports the state and its retry count as "degraded x1".
+#
+# The page must still fit the panel in this state: the degraded row is the
+# longest one the page renders, and the page cannot be scrolled.
+#
+# The sentence age cannot be driven past 99 s here, because the degraded retry
+# re-sends its configuration and any received byte refreshes the tick. The
+# minute and saturation clamps that keep the row inside its character budget are
+# unit tested instead, in tests/host/gps_format_test.cpp.
+seed gps true
+seed gps_rate 1
+seed gps_power 1
+seed gps_duty 5
+seed gps_uart_mode ack
+wait 300
+action nav gps_data
+wait 300
+assert ui.page gps_data
+wait 4000
+# The GPS worker publishes standby asynchronously after the virtual interval.
+assert-eventually 5000 gps.state standby
+assert-eventually 5000 ui.gps_cycle standby
+uart-mode pause
+wait 12000
+# The GPS task runs independently from the UI task. Give it a bounded virtual
+# time handoff before asserting the transition, since busy CI hosts can
+# otherwise leave the receiver in standby at the first observation point.
+wait 3000
+assert-eventually 5000 gps.degraded 1
+assert-eventually 5000 ui.gps_cycle degraded
+assert-eventually 5000 ui.gps_retries 1
+# The receiver has gone quiet, so the rendered sentence age must have advanced
+# past zero. The exact value depends on how far the virtual clock ran, so bound
+# it instead of pinning it. The age token parses as a leading integer, so this
+# reads the seconds count.
+assert_min ui.gps_link_age 1
+# The source row is still the abbreviated form, not GPS::sourceName().
+assert ui.gps_source uart
+assert ui.overflow no
+exit

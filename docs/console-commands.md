@@ -80,7 +80,14 @@ every setting, its default, and when it applies.
 ## gps
 
 - `gps` with no argument prints enabled, fix, satellites, lat, lon, alt, age,
-  date, time, and error counts.
+  date, time, and error counts, then the receiver state behind them:
+  `degraded` and `retries` for the power cycle health, `source` (`uart`,
+  `companion` or `none`), `cycle` (the power cycle state), `policy`
+  (`always_on`, `standby` or `rail_cycle`), `duty` (standby seconds), `rate`
+  (configured fix interval in ms, 0 for the receiver default), `sentence_age`
+  (ms since the receiver last spoke, or `none` if it never has), `assist` (the
+  assisted start mode) and `assist_cache`. The GPS Data page shows a two row
+  summary of the same state; this is where all of it is readable.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
 - `gps send <body>` sends a raw sentence, for example `gps send PCAS12,10`.

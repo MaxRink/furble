@@ -54,6 +54,30 @@ class GPS {
     uint32_t retries;
   };
 
+  enum source_t {
+    SOURCE_NONE,
+    SOURCE_UART,
+    SOURCE_COMPANION,
+  };
+
+  struct receiver_status_t {
+    const char *cycle_state;
+    uint8_t power_policy;
+    uint8_t duty_seconds;
+    uint16_t rate_ms;
+    uint32_t last_sentence_age_ms;
+    bool have_sentence;
+    uint8_t aid_mode;
+    bool aid_cache_valid;
+    bool degraded;
+    uint32_t retries;
+  };
+
+  /** Receiver power policies. */
+  static constexpr const uint8_t POWER_ALWAYS_ON = 0;
+  static constexpr const uint8_t POWER_STANDBY = 1;
+  static constexpr const uint8_t POWER_RAIL_CYCLE = 2;
+
   /** Supported standby intervals, in seconds. */
   static constexpr const std::array<uint8_t, 4> DUTY_SECONDS = {0, 5, 10, 15};
 
@@ -65,12 +89,15 @@ class GPS {
 
   status_t getStatusSnapshot(void) const;
   cycle_status_t getCycleStatusSnapshot(void) const;
+  receiver_status_t getReceiverStatus(void) const;
+  source_t getSource(void) const;
 
   bool sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
   bool sendAidIni(void);
   std::vector<config_status_t> getConfigStatus(void) const;
 
   static const char *configStateName(config_state_t state);
+  static const char *sourceName(source_t source);
 
  private:
   GPS() = default;

@@ -380,6 +380,10 @@ The complete `ui.*` query set is:
 | `ui.gps_lon` | Rendered longitude value. |
 | `ui.gps_satellites` | Rendered satellite count. |
 | `ui.gps_fix` | `yes` when the GPS source is active, otherwise `no`. |
+| `ui.gps_source` | Rendered fix source, `uart`, `comp`, `none`, or `none` when the row is absent. |
+| `ui.gps_link_age` | Rendered sentence age exactly as drawn, such as `3s`, `17m`, `99m+`, or `n/a`. |
+| `ui.gps_cycle` | Rendered power cycle state, such as `waiting` or `degraded`. |
+| `ui.gps_retries` | Rendered degraded retry count, `0` when the row shows none, `none` when the row is absent. |
 | `ui.focus_outline_count` | Numeric outline count, or `none`. |
 | `ui.lock_outline` | Numeric outline width, or `none`. |
 | `ui.link_alert` | `yes` or `no`. |
@@ -389,6 +393,20 @@ The complete `ui.*` query set is:
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
 | `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
+
+`ui.gps_source` and `gps.source` deliberately report different vocabularies.
+`gps.source` is `GPS::sourceName()`, the receiver's own state: `uart`,
+`companion` or `none`. `ui.gps_source` is what the GPS Data page drew, which is
+`GPS::sourceShortName()`: `uart`, `comp` or `none`. The page row is budgeted to
+fourteen characters and "companion" does not fit. Assert `gps.source` for what
+the receiver is doing and `ui.gps_source` for what the user sees.
+
+`ui.gps_link_age` returns the age token verbatim, unit and all, so a unit or
+clamp regression fails the assertion. It still parses as a leading integer, so
+`assert_min` and `assert_max` work within one unit. The minute and saturation
+clamps are not reachable from a scenario, because the degraded retry re-sends
+its configuration and any received byte refreshes the tick; they are unit tested
+in `tests/host/gps_format_test.cpp`.
 
 The other namespaces are:
 

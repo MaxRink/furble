@@ -864,10 +864,25 @@ int gpsConfig(void) {
   return 0;
 }
 
+/** Printable name of a receiver power policy. */
+const char *gpsPowerPolicyName(uint8_t policy) {
+  switch (policy) {
+    case GPS::POWER_ALWAYS_ON:
+      return "always_on";
+    case GPS::POWER_STANDBY:
+      return "standby";
+    case GPS::POWER_RAIL_CYCLE:
+      return "rail_cycle";
+  }
+  return "unknown";
+}
+
 int gpsStatus(void) {
   auto &gps = GPS::getInstance();
   const auto status = gps.getStatusSnapshot();
-  const auto cycle = gps.getCycleStatusSnapshot();
+  // one snapshot carries the cycle state and its retry count together, so the
+  // two can never be reported torn across separate mutex acquisitions
+  const auto receiver = gps.getReceiverStatus();
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
   printf("fix: %s\n", boolStr(status.fix));
@@ -880,8 +895,25 @@ int gpsStatus(void) {
   printf("time: %02u:%02u:%02u\n", status.hour, status.minute, status.second);
   printf("chars: %lu\n", status.chars_processed);
   printf("sentences: %lu\n", status.sentences_passed);
-  printf("degraded: %s\n", boolStr(cycle.degraded));
-  printf("retries: %lu\n", static_cast<unsigned long>(cycle.retries));
+  printf("degraded: %s\n", boolStr(receiver.degraded));
+  printf("retries: %lu\n", static_cast<unsigned long>(receiver.retries));
+
+  // Receiver state, the half of the picture the fix snapshot does not carry.
+  // The GPS Data page shows a two row summary of this; the console is where the
+  // whole struct is readable, and where a bench check can script it.
+  printf("source: %s\n", GPS::sourceName(gps.getSource()));
+  printf("cycle: %s\n", receiver.cycle_state);
+  printf("policy: %s\n", gpsPowerPolicyName(receiver.power_policy));
+  printf("duty: %u\n", static_cast<unsigned>(receiver.duty_seconds));
+  printf("rate: %u\n", static_cast<unsigned>(receiver.rate_ms));
+  if (receiver.have_sentence) {
+    printf("sentence_age: %lu\n", static_cast<unsigned long>(receiver.last_sentence_age_ms));
+  } else {
+    printf("sentence_age: none\n");
+  }
+  printf("assist: %u\n", static_cast<unsigned>(receiver.aid_mode));
+  printf("assist_cache: %s\n", boolStr(receiver.aid_cache_valid));
+
   printf("raw: %s\n", boolStr(g_GPSRaw));
   return 0;
 }
