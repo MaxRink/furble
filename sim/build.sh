@@ -135,6 +135,22 @@ coverage_flags_for() {
   esac
 }
 
+# The object cache keys on source timestamps only, so it cannot see a flag
+# change. Toggling coverage, a sanitizer or the board in an existing build dir
+# would otherwise silently reuse objects compiled with the previous flags. Stamp
+# the shaping flags and drop the cache when they change. A build dir holding
+# objects but no stamp predates this check, so it is treated as a mismatch once.
+FLAG_STAMP="$BUILD_DIR/build-flags"
+FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} sanitize=$SANITIZE coverage=$COVERAGE"
+if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
+  if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
+    echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"
+    rm -rf "$BUILD_DIR/obj"
+    mkdir -p "$BUILD_DIR/obj"
+  fi
+  printf '%s' "$FLAG_VALUE" >"$FLAG_STAMP"
+fi
+
 CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"

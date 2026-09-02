@@ -13,11 +13,13 @@ harnesses and the simulator shims) is excluded from the numbers.
 The measurement is compared against tests/coverage_floor.json, a committed set
 of per-stack, union and per-file minimum percentages. Dropping below any floor
 fails the run. A change that raises coverage can raise the floor in the same
-commit with --ratchet.
+commit with --ratchet, which only ever moves a floor up. Lowering one is
+deliberate and needs --lower with a --reason that is recorded in the document.
 
 Usage:
   python3 tools/coverage.py --check
   python3 tools/coverage.py --ratchet
+  python3 tools/coverage.py --ratchet --lower --reason "..."
   python3 tools/coverage.py --stack host --skip-build
 
 Requires clang, cmake and the matching llvm-profdata and llvm-cov. Override
@@ -64,6 +66,10 @@ SIM_ENV = {
     "FURBLE_SIM_FEEDBACK": "1",
     "FURBLE_SIM_SD": "1",
 }
+
+# Every suite tools/check_sim_scenarios.py owns. Which boards each one runs on
+# comes from the manifest, so this list never needs a per-board exception.
+SIM_SUITES = ("bughunt", "e2e", "invalid", "power-gate")
 
 DEFAULT_FLOOR = "tests/coverage_floor.json"
 
@@ -270,8 +276,8 @@ def floor_failures(summary: dict, floor: dict) -> list[str]:
   return failures
 
 
-def floor_from_summary(summary: dict, margin: float = 0.0) -> dict:
-  """Build a floor document from a measurement, lowered by margin points."""
+def measured_floor(summary: dict, margin: float = 0.0) -> dict:
+  """Build a floor document from a measurement alone, lowered by margin."""
 
   def value(number: float) -> float:
     return round(max(0.0, number - margin), 2)
@@ -291,6 +297,65 @@ def floor_from_summary(summary: dict, margin: float = 0.0) -> dict:
       "union": value(summary.get("union", {}).get("percent", 0.0)),
       "files": files,
   }
+
+
+def ratchet_floor(
+    existing: dict | None,
+    summary: dict,
+    margin: float = 0.0,
+    lower: bool = False,
+    reason: str | None = None,
+) -> tuple[dict, list[str]]:
+  """Raise the floor to the measurement. Return (floor, lowered keys).
+
+  A ratchet that only moves one way is the whole point. Without ``lower``,
+  every value is ``max(existing, measured - margin)``, so running --ratchet on
+  a branch that dropped coverage cannot quietly write the drop into the floor
+  and turn a red build green. A key present in the floor but missing from the
+  measurement is kept, so floor_failures still reports the vanished target.
+
+  ``lower`` is the deliberate escape hatch, and it demands a reason that is
+  written into the floor document so the diff carries its own justification.
+  """
+
+  if lower and not (reason or "").strip():
+    raise CoverageError("lowering a floor requires a reason")
+
+  existing = existing or {}
+  candidate = measured_floor(summary, margin)
+  lowered: list[str] = []
+
+  def combine(label: str, old, new: float) -> float:
+    if old is None:
+      return new
+    if new >= old:
+      return new
+    if lower:
+      lowered.append(f"{label}: {old:.2f} to {new:.2f}")
+      return new
+    return old
+
+  stacks = dict(existing.get("stacks", {}))
+  for name, value in candidate["stacks"].items():
+    stacks[name] = combine(f"stack {name}", stacks.get(name), value)
+
+  files = dict(existing.get("files", {}))
+  for name, value in candidate["files"].items():
+    files[name] = combine(name, files.get(name), value)
+
+  union = combine("union", existing.get("union"), candidate["union"])
+
+  updated = {
+      "stacks": dict(sorted(stacks.items())),
+      "union": union,
+      "files": dict(sorted(files.items())),
+  }
+  if lowered:
+    updated["lowered"] = {
+        "reason": reason.strip(),
+        "keys": sorted(lowered),
+    }
+  return updated, lowered
 
 
 def low_coverage_files(summary: dict, limit: float = LOW_COVERAGE_PERCENT):
@@ -519,12 +584,13 @@ def export_lcov(llvm_cov: str, profdata: Path, binaries, root: Path) -> dict:
         stderr=subprocess.PIPE,
     )
     if result.returncode != 0:
-      print(
-          f"warning: llvm-cov export failed for {binary.name}: "
-          f"{result.stderr.strip()[:400]}",
-          file=sys.stderr,
+      # Never return an empty report here. A swallowed export turns a whole
+      # stack into zero measured lines, and the floor check would then report
+      # a vanished target instead of the real cause.
+      raise CoverageError(
+          f"llvm-cov export failed for {binary}: "
+          f"{result.stderr.strip()[:400]}"
       )
-      return {}
     return parse_lcov(result.stdout)
 
   workers = min(8, max(1, len(binaries)))
@@ -640,10 +706,10 @@ def certified_scenarios(root: Path, suite: str, board: str) -> list[str]:
       ],
       capture=True,
   )
-  scenarios = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-  if not scenarios:
-    raise CoverageError(f"no certified {suite} scenarios for {board}")
-  return scenarios
+  # An empty selection is a fact about the manifest, not an error. The
+  # power-gate and invalid suites are modeled on the 135x240 panel only, so
+  # the other two boards legitimately select nothing.
+  return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def measure_sim_board(
@@ -660,26 +726,19 @@ def measure_sim_board(
   report_dir = args.build_dir / "power-reports" / board_id
   report_dir.mkdir(parents=True, exist_ok=True)
 
-  # The same suites the simulator workflows run, on the panels they run them
-  # on. power-gate and invalid are modeled on the 135x240 panel only.
+  # Every suite the manifest owns, asked per board. Which boards a suite runs
+  # on is the manifest's answer, not a constant here: power-gate and invalid
+  # are modeled on the 135x240 panel only, so the other two boards select
+  # nothing and the loop simply produces no jobs for them.
   jobs: list[tuple[str, list[str]]] = []
-  for suite in ("bughunt", "e2e"):
+  for suite in SIM_SUITES:
     for scenario in certified_scenarios(root, suite, board_id):
-      jobs.append((scenario, [str(binary), "--script", str(root / scenario)]))
-  if board_id == "m5stick-s3":
-    for scenario in certified_scenarios(root, "invalid", board_id):
-      jobs.append((scenario, [str(binary), "--script", str(root / scenario)]))
-    for scenario in certified_scenarios(root, "power-gate", board_id):
-      jobs.append((
-          scenario,
-          [
-              str(binary),
-              "--script",
-              str(root / scenario),
-              "--report-dir",
-              str(report_dir),
-          ],
-      ))
+      command = [str(binary), "--script", str(root / scenario)]
+      if suite == "power-gate":
+        command.extend(["--report-dir", str(report_dir)])
+      jobs.append((scenario, command))
+  if not jobs:
+    raise CoverageError(f"the manifest selected no scenarios for {board_id}")
 
   def run_scenario(indexed) -> tuple[str, int]:
     index, (label, command) = indexed
@@ -691,10 +750,17 @@ def measure_sim_board(
         profile_dir / f"{board_id}-{index:04d}-%p.profraw"
     )
     env["FURBLE_SIM_PREFS"] = str(state_dir / f"prefs-{index:04d}.bin")
-    result = subprocess.run(
-        command, cwd=str(root), env=env, check=False, text=True,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    )
+    try:
+      result = subprocess.run(
+          command, cwd=str(root), env=env, check=False, text=True,
+          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+          timeout=args.scenario_timeout,
+      )
+    except subprocess.TimeoutExpired:
+      # A wedged scenario must not hold the whole job until the runner's own
+      # timeout kills it with no report at all. The killed process writes no
+      # profile, so its lines are simply missing and the floor notices.
+      return label, None
     return label, result.returncode
 
   print(
@@ -712,6 +778,13 @@ def measure_sim_board(
       max_workers=args.scenario_jobs
   ) as pool:
     for label, code in pool.map(run_scenario, enumerate(jobs)):
+      if code is None:
+        print(
+            f"note: {board_id} scenario {label} timed out after "
+            f"{args.scenario_timeout} s and contributed no profile",
+            file=sys.stderr,
+        )
+        continue
       expected = 2 if "/invalid/" in label else 0
       if code != expected:
         print(
@@ -739,20 +812,37 @@ def measure_sim_board(
 
 
 def firmware_sources(root: Path) -> list[str]:
-  """Return every firmware translation unit tracked by git."""
+  """Return every firmware translation unit in the tree.
+
+  git is the fast path. An export, a tarball or a broken git is not a reason
+  to silently drop the "in neither build" section from the report, so the
+  fallback walks the firmware directories directly.
+  """
 
   result = run(
-      ["git", "-C", str(root), "ls-files", *FIRMWARE_DIRS], capture=True,
-      check=False,
+      ["git", "-C", str(root), "ls-files", "-z", "--", *FIRMWARE_DIRS],
+      capture=True, check=False,
   )
-  if result.returncode != 0:
-    return []
-  names = []
-  for line in result.stdout.splitlines():
-    name = line.strip()
-    if name.endswith((".c", ".cpp")) and is_firmware_path(name):
-      names.append(name)
-  return sorted(names)
+  if result.returncode == 0:
+    candidates = [name for name in result.stdout.split("\0") if name]
+  else:
+    print(
+        f"warning: git ls-files failed in {root}, walking the firmware "
+        "directories instead.",
+        file=sys.stderr,
+    )
+    candidates = []
+    for directory in FIRMWARE_DIRS:
+      base = root / directory
+      if not base.is_dir():
+        continue
+      for path in base.rglob("*"):
+        if path.is_file():
+          candidates.append(path.relative_to(root).as_posix())
+  return sorted(
+      name for name in candidates
+      if name.endswith((".c", ".cpp")) and is_firmware_path(name)
+  )
 
 
 def build_summary(root: Path, reports: dict[str, dict]) -> dict:
@@ -777,6 +867,13 @@ def build_summary(root: Path, reports: dict[str, dict]) -> dict:
 def write_html(llvm_cov: str, profdata: Path, binaries, root: Path, out: Path):
   """Best-effort HTML report. Never fails the run."""
 
+  if not binaries:
+    print(
+        f"warning: HTML report for {out.name} was skipped, no binaries were "
+        "found.",
+        file=sys.stderr,
+    )
+    return
   out.mkdir(parents=True, exist_ok=True)
   command = [
       llvm_cov,
@@ -826,6 +923,9 @@ def parse_args(argv=None):
   parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2,
                       help="parallel compile and ctest jobs")
   parser.add_argument(
+      "--scenario-timeout", type=float, default=600.0,
+      help="seconds before a single simulator scenario is killed")
+  parser.add_argument(
       "--scenario-jobs", type=int, default=4,
       help="parallel simulator scenarios. Most scenario time is spent waiting "
            "on the simulated clock, not on the CPU, so this is the single "
@@ -848,7 +948,14 @@ def parse_args(argv=None):
   parser.add_argument("--check", action="store_true",
                       help="fail when a measurement is below its floor")
   parser.add_argument("--ratchet", action="store_true",
-                      help="rewrite the floor to the current measurement")
+                      help="raise the floor to the current measurement")
+  parser.add_argument(
+      "--lower", action="store_true",
+      help="allow --ratchet to lower a floor. Needs --reason, which is "
+           "written into the floor document.")
+  parser.add_argument(
+      "--reason", default="",
+      help="why a floor is being lowered. Required with --lower.")
   parser.add_argument(
       "--ratchet-margin", type=float, default=RATCHET_MARGIN,
       help="points to subtract from each measurement when writing the floor. "
@@ -862,6 +969,12 @@ def parse_args(argv=None):
 
 def main(argv=None) -> int:
   args = parse_args(argv)
+  if args.lower and not args.ratchet:
+    raise CoverageError("--lower only applies to --ratchet")
+  if args.lower and not args.reason.strip():
+    # Fail before measuring rather than after. A full run is minutes long and
+    # a missing reason is knowable from the command line alone.
+    raise CoverageError("--lower requires --reason")
   root = args.root.resolve()
   args.build_dir = args.build_dir.resolve()
   floor_path = args.floor or (root / DEFAULT_FLOOR)
@@ -926,7 +1039,23 @@ def main(argv=None) -> int:
     args.markdown.write_text(report, encoding="utf-8")
 
   if args.ratchet:
-    updated = floor_from_summary(summary, args.ratchet_margin)
+    updated, lowered = ratchet_floor(
+        floor, summary, args.ratchet_margin, args.lower, args.reason
+    )
+    if not args.lower:
+      # Report what a ratchet refused to write, so a real regression is
+      # visible here rather than only in the next --check run.
+      blocked = floor_failures(summary, updated)
+      for failure in blocked:
+        print(f"note: floor held above the measurement, {failure}")
+      if blocked:
+        print(
+            "The floor was not lowered. Raise coverage, or rerun with --lower "
+            "and --reason if the drop is intended.",
+            file=sys.stderr,
+        )
+    for entry in lowered:
+      print(f"lowered {entry}")
     floor_path.parent.mkdir(parents=True, exist_ok=True)
     floor_path.write_text(
         json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8"

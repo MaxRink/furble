@@ -78,16 +78,31 @@ union, and for five critical files: `src/FurbleControl.cpp`,
 floor, and also when a floor names a stack or a file the measurement no longer
 contains, so a build change cannot quietly drop a tracked target and pass.
 
-`--ratchet` rewrites the floor from the current measurement, so a pull request
-that raises coverage raises the floor in the same commit. It subtracts one point
-by default. Plan 162 measured the console suite at 90.07 to 90.42 percent across
-repeat runs, the spread coming from a timing dependent power log tick, so a
-floor pinned to the exact measurement would fail its own next run. The committed
-floor is literally `--ratchet` output on this branch, which is why every value
-sits one point below the measurement below.
+`--ratchet` raises the floor toward the current measurement, so a pull request
+that improves coverage raises the floor in the same commit. It is monotonic on
+purpose: every value becomes `max(existing, measured - margin)`. A ratchet that
+rebuilt the document from the measurement alone would let a branch that dropped
+coverage write the drop into the floor and turn its own red build green, which
+would make the gate decorative. It prints what it refused to lower, and a key
+the measurement no longer contains is kept so `--check` still reports it.
 
-Lowering a floor stays possible, and stays visible: it is a diff, and the pull
-request has to justify it.
+The margin is one point. Plan 162 measured the console suite at 90.07 to 90.42
+percent across repeat runs, the spread coming from a timing dependent power log
+tick, so a floor pinned to the exact measurement would fail its own next run.
+The committed floor is `--ratchet` output on this branch, which is why every
+value sits one point below the measurement below. Repeated ratchets at an
+unchanged measurement are a fixed point.
+
+Lowering is the deliberate escape hatch: `--ratchet --lower --reason "..."`. The
+reason is required and is written into `tests/coverage_floor.json` under
+`lowered`, so the diff carries its own justification into review rather than
+relying on someone reading the pull request body.
+
+Line counts are a property of the compiler, so a floor is only comparable within
+one clang major. clang 14 instruments 12194 host lines where clang 18
+instruments 12198, and `lib/furble/NikonBase.cpp` moves from 91 to 95. CI pins
+`clang-18` and `llvm-18` instead of taking the runner image default. Bumping the
+pin is a deliberate change that reratchets the floor.
 
 ## CI shape
 
@@ -201,11 +216,40 @@ file stays untouched.
 
 ## Follow-ups
 
+Coverage work:
+
 - Cover `lib/blowfish/Blowfish.cpp` with a host test. It is the cheapest zero in
   the list.
 - Add a Core2 simulator panel so `UI::touchRead` is reachable.
 - Raise the floor as plan 159's camera peers land, which is what the ratchet is
   for.
 - Plan 161 (`feat/sim-real-control-2`) puts the real Control into the simulator.
-  It will move the simulator numbers, most likely upward. Ratchet the floor in
-  that pull request rather than here.
+  It will move the simulator numbers, and the two narrow panels may well move
+  down before they move up because roughly twenty new translation units join the
+  instrumented set at once. Ratchet in that pull request, with `--lower` and a
+  reason if a panel genuinely drops, rather than pre-lowering here.
+
+Known rough edges, recorded rather than fixed:
+
+- `render_markdown` emits stack rows in the order the measurement produced them
+  for a live run, and in JSON key order for a `--summary-from` re-render. The
+  numbers are identical; only the row order differs. Sorting both would change
+  the live report away from the build order, which reads worse. Left alone
+  deliberately.
+- Scenarios run in parallel with a per-run simulated NVS file. The simulator's
+  clock is virtual, so this should be equivalent to the sequential run the
+  workflows do, and two full runs agreed to 0.01 points. It is still a
+  difference from how CI exercises those scenarios elsewhere, so treat an
+  unexplained coverage wobble as a reason to re-measure with
+  `--scenario-jobs 1` before believing it.
+- `master` has no branch protection, so the floor blocks a merge by convention
+  and reviewer attention, not by rule. Enabling a required check on the coverage
+  job is the fix and belongs with whatever else turns protection on.
+- The definition of firmware is spelled twice: `coverage_flags_for` in
+  `sim/build.sh` instruments `$ROOT/lib/*`, while `FIRMWARE_DIRS` in
+  `tools/coverage.py` counts only `lib/furble`, `lib/preferences` and
+  `lib/blowfish`. Today those agree on everything the simulator compiles. Once
+  plan 161 pulls more of `lib/` into the simulator, the shell glob will
+  instrument sources the report then discards, which costs build time and
+  measures nothing. Narrow the glob to the same three directories when that
+  lands, or export the list from one place.

@@ -54,8 +54,20 @@ jobs:
     name: Measure firmware coverage and enforce the floor
     runs-on: ubuntu-latest
     # Three instrumented simulator builds run one file at a time, so the wall
-    # clock is dominated by compilation, not by the scenarios.
-    timeout-minutes: 120
+    # clock is dominated by compilation, not by the scenarios. A full run is
+    # about ten minutes, so this is a wedge detector, not a budget.
+    timeout-minutes: 45
+
+    env:
+      # Pin the toolchain. Line counts are a property of the compiler: clang 14
+      # instruments 12194 host lines where clang 18 instruments 12198, and
+      # NikonBase.cpp moves from 91 to 95. A floor is therefore only comparable
+      # within one clang major, so the version must not drift with the runner
+      # image. Bumping it is a deliberate change that reratchets the floor.
+      CC: clang-18
+      CXX: clang++-18
+      LLVM_COV: /usr/lib/llvm-18/bin/llvm-cov
+      LLVM_PROFDATA: /usr/lib/llvm-18/bin/llvm-profdata
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,14 +80,17 @@ jobs:
           path: sim/.pio
           key: ${{ runner.os }}-coverage-${{ hashFiles('sim/platformio.ini', '.github/workflows/coverage.yml') }}
 
-      # llvm carries llvm-profdata and llvm-cov. Their profile format must match
-      # the clang that instrumented the binaries, so both come from the same
-      # distribution packages and tools/coverage.py verifies the major versions
-      # agree before it starts.
-      - name: Install SDL2, Clang and the LLVM coverage tools
+      # llvm-18 carries llvm-profdata and llvm-cov. Their profile format must
+      # match the clang that instrumented the binaries, which is why both come
+      # from the same pinned major. The version print is the record of what
+      # produced the numbers in the artifact.
+      - name: Install SDL2 and the pinned Clang and LLVM
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang llvm libsdl2-dev
+          sudo apt-get install --no-install-recommends -y \
+            clang-18 llvm-18 libsdl2-dev
+          "$CXX" --version
+          "$LLVM_COV" --version
 
       # build.sh never invokes PlatformIO; it only needs the four source trees.
       # Keep these pins in sync with sim/platformio.ini, src/idf_component.yml
@@ -115,6 +130,8 @@ jobs:
           python3 tools/coverage.py \
             --check \
             --build-dir /tmp/fcov \
+            --cc "$CC" \
+            --cxx "$CXX" \
             --json coverage-report/coverage.json \
             --markdown coverage-report/coverage.md \
             --html coverage-report/html

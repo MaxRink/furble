@@ -28,6 +28,15 @@ On Debian and Ubuntu that is `clang llvm libsdl2-dev`. The tool picks the LLVM
 tools whose major version matches the clang in use, because the raw profile
 format is tied to it. Override with `LLVM_COV` and `LLVM_PROFDATA`.
 
+**Floors are only comparable within one clang major.** Instrumented line counts
+are a property of the compiler, not of the source: clang 14 instruments 12194
+host lines where clang 18 instruments 12198, and `lib/furble/NikonBase.cpp`
+moves from 91 lines to 95. CI therefore pins `clang-18` and `llvm-18` rather
+than taking whatever the runner image ships. A local run on a different clang
+will produce slightly different numbers, which is fine for finding gaps and
+wrong for judging the floor. Bumping the pinned major is a deliberate change,
+and the floor should be reratcheted in the same commit.
+
 ```sh
 python3 tools/coverage.py \
   --build-dir /tmp/fcov \
@@ -69,13 +78,27 @@ A change that raises coverage can raise the floor in the same commit:
 python3 tools/coverage.py --ratchet --build-dir /tmp/fcov ...
 ```
 
-`--ratchet` writes each measurement minus one point. A few tests are timing
-dependent, so two runs of the same tree differ by a fraction of a point, and a
-floor pinned to the exact measurement would fail its own next run. Use
-`--ratchet-margin 0` to pin the exact number anyway.
+`--ratchet` is a ratchet: every value becomes `max(existing, measured -
+margin)`, so running it on a branch that dropped coverage cannot quietly write
+the drop into the floor and turn a red build green. It prints what it refused to
+lower. A key in the floor that the measurement no longer contains is kept, so
+the vanished target still fails `--check`.
 
-Lowering a floor is allowed but must be deliberate: the diff shows it, and the
-pull request has to say why the coverage dropped.
+The margin is one point. A few tests are timing dependent, so two runs of the
+same tree differ by a fraction of a point, and a floor pinned to the exact
+measurement would fail its own next run. Use `--ratchet-margin 0` to pin the
+exact number anyway; repeated ratchets at the same measurement are a fixed
+point either way.
+
+Lowering a floor is deliberate and has to say so:
+
+```sh
+python3 tools/coverage.py --ratchet --lower \
+  --reason "plan 161 replaced the stub Control, 20 new translation units" ...
+```
+
+`--lower` needs `--reason`, and writes it into `tests/coverage_floor.json` under
+`lowered`, so the diff carries its own justification into review.
 
 ## What CI reports
 

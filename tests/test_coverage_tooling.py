@@ -162,7 +162,7 @@ class SummaryShapeTest(unittest.TestCase):
 class FloorComparisonTest(unittest.TestCase):
   def setUp(self):
     self.summary = summary_from_lcov(Path("/repo"), ("host", LCOV_HOST), ("sim", LCOV_SIM))
-    self.floor = COVERAGE.floor_from_summary(self.summary)
+    self.floor = COVERAGE.measured_floor(self.summary)
 
   def test_a_floor_at_the_measurement_passes(self):
     self.assertEqual(COVERAGE.floor_failures(self.summary, self.floor), [])
@@ -200,18 +200,142 @@ class FloorComparisonTest(unittest.TestCase):
     self.assertTrue(any("no measurement" in failure for failure in failures))
     self.assertTrue(any("not measured" in failure for failure in failures))
 
-  def test_ratchet_margin_lowers_every_value_and_clamps_at_zero(self):
-    lowered = COVERAGE.floor_from_summary(self.summary, margin=1.0)
+  def test_measured_floor_margin_lowers_every_value_and_clamps_at_zero(self):
+    lowered = COVERAGE.measured_floor(self.summary, margin=1.0)
     self.assertAlmostEqual(lowered["union"], round(self.summary["union"]["percent"] - 1.0, 2))
     for name, value in lowered["stacks"].items():
       self.assertAlmostEqual(value, round(self.summary["stacks"][name]["percent"] - 1.0, 2))
-    huge = COVERAGE.floor_from_summary(self.summary, margin=500.0)
+    huge = COVERAGE.measured_floor(self.summary, margin=500.0)
     self.assertEqual(huge["union"], 0.0)
 
-  def test_ratchet_tracks_only_the_critical_files(self):
+  def test_measured_floor_tracks_only_the_critical_files(self):
     self.assertEqual(sorted(self.floor["files"]),
                      sorted(name for name in COVERAGE.CRITICAL_FILES
                             if name in self.summary["union"]["files"]))
+
+
+
+class RatchetTest(unittest.TestCase):
+  """--ratchet must be a ratchet. It may only move a floor upward."""
+
+  def setUp(self):
+    self.summary = summary_from_lcov(Path("/repo"), ("host", LCOV_HOST), ("sim", LCOV_SIM))
+    self.existing = COVERAGE.measured_floor(self.summary)
+
+  def regressed(self, union=None, host=None):
+    """A copy of the measurement with lower percentages."""
+    summary = json.loads(json.dumps(self.summary))
+    if union is not None:
+      summary["union"]["percent"] = union
+    if host is not None:
+      summary["stacks"]["host"]["percent"] = host
+    return summary
+
+  def test_a_regression_never_lowers_the_floor(self):
+    regressed = self.regressed(union=10.0, host=5.0)
+    updated, lowered = COVERAGE.ratchet_floor(self.existing, regressed)
+    self.assertEqual(lowered, [])
+    self.assertEqual(updated["union"], self.existing["union"])
+    self.assertEqual(updated["stacks"]["host"], self.existing["stacks"]["host"])
+    self.assertNotIn("lowered", updated)
+    # The held floor still fails the check, so the regression is not hidden.
+    self.assertTrue(COVERAGE.floor_failures(regressed, updated))
+
+  def test_a_per_file_regression_never_lowers_its_floor(self):
+    regressed = json.loads(json.dumps(self.summary))
+    regressed["union"]["files"]["src/FurbleControl.cpp"]["percent"] = 1.0
+    updated, lowered = COVERAGE.ratchet_floor(self.existing, regressed)
+    self.assertEqual(lowered, [])
+    self.assertEqual(updated["files"]["src/FurbleControl.cpp"],
+                     self.existing["files"]["src/FurbleControl.cpp"])
+
+  def test_an_improvement_raises_the_floor(self):
+    improved = json.loads(json.dumps(self.summary))
+    improved["union"]["percent"] = 99.0
+    improved["stacks"]["host"]["percent"] = 90.0
+    updated, lowered = COVERAGE.ratchet_floor(self.existing, improved, margin=1.0)
+    self.assertEqual(lowered, [])
+    self.assertEqual(updated["union"], 98.0)
+    self.assertEqual(updated["stacks"]["host"], 89.0)
+
+  def test_the_margin_cannot_walk_a_floor_downward(self):
+    """Repeated ratchets at the same measurement must be a fixed point."""
+    first, _ = COVERAGE.ratchet_floor(None, self.summary, margin=1.0)
+    second, _ = COVERAGE.ratchet_floor(first, self.summary, margin=1.0)
+    third, _ = COVERAGE.ratchet_floor(second, self.summary, margin=1.0)
+    self.assertEqual(first, second)
+    self.assertEqual(second, third)
+
+  def test_lower_lowers_and_records_the_reason(self):
+    regressed = self.regressed(union=10.0)
+    updated, lowered = COVERAGE.ratchet_floor(
+        self.existing, regressed, lower=True, reason="plan 161 removed a page")
+    self.assertEqual(updated["union"], 10.0)
+    self.assertEqual(len(lowered), 1)
+    self.assertIn("union", lowered[0])
+    self.assertEqual(updated["lowered"]["reason"], "plan 161 removed a page")
+    self.assertEqual(updated["lowered"]["keys"], sorted(lowered))
+    self.assertEqual(COVERAGE.floor_failures(regressed, updated), [])
+
+  def test_lower_without_a_reason_is_refused(self):
+    for reason in (None, "", "   "):
+      with self.assertRaises(COVERAGE.CoverageError):
+        COVERAGE.ratchet_floor(
+            self.existing, self.regressed(union=10.0), lower=True, reason=reason)
+
+  def test_lower_records_nothing_when_nothing_dropped(self):
+    updated, lowered = COVERAGE.ratchet_floor(
+        self.existing, self.summary, lower=True, reason="no drop expected")
+    self.assertEqual(lowered, [])
+    self.assertNotIn("lowered", updated)
+
+  def test_a_new_stack_or_file_is_added(self):
+    grown = json.loads(json.dumps(self.summary))
+    grown["stacks"]["sim m5stack-core (320x240)"] = {
+        "covered": 1, "total": 2, "percent": 50.0, "files": {}}
+    grown["union"]["files"]["lib/furble/Scan.cpp"] = {
+        "covered": 9, "total": 10, "percent": 90.0}
+    updated, lowered = COVERAGE.ratchet_floor(self.existing, grown, margin=1.0)
+    self.assertEqual(lowered, [])
+    self.assertEqual(updated["stacks"]["sim m5stack-core (320x240)"], 49.0)
+    self.assertEqual(updated["files"]["lib/furble/Scan.cpp"], 89.0)
+
+  def test_a_vanished_key_is_kept_so_the_check_still_reports_it(self):
+    existing = json.loads(json.dumps(self.existing))
+    existing["stacks"]["sim m5stick-c (80x160)"] = 40.0
+    existing["files"]["src/FurbleConsole.cpp"] = 80.0
+    updated, _ = COVERAGE.ratchet_floor(existing, self.summary)
+    self.assertEqual(updated["stacks"]["sim m5stick-c (80x160)"], 40.0)
+    self.assertEqual(updated["files"]["src/FurbleConsole.cpp"], 80.0)
+    failures = COVERAGE.floor_failures(self.summary, updated)
+    self.assertTrue(any("no measurement" in failure for failure in failures))
+    self.assertTrue(any("not measured" in failure for failure in failures))
+
+  def test_ratcheting_the_committed_floor_with_a_regression_is_a_no_op(self):
+    """The real regression the reviewer found, against the shipped floor."""
+    committed = json.loads(
+        (ROOT / COVERAGE.DEFAULT_FLOOR).read_text(encoding="utf-8"))
+    # Every value is below every committed floor, so a correct ratchet must
+    # change nothing at all.
+    floor_values = [committed["union"], *committed["stacks"].values(),
+                    *committed["files"].values()]
+    dropped = min(floor_values) - 1.0
+    self.assertGreater(dropped, 0.0)
+    regressed = {
+        "stacks": {name: {"covered": 1, "total": 2, "percent": dropped,
+                          "files": {}}
+                   for name in committed["stacks"]},
+        "union": {"covered": 1, "total": 2, "percent": dropped,
+                  "files": {name: {"covered": 1, "total": 2,
+                                   "percent": dropped}
+                            for name in committed["files"]}},
+    }
+    updated, lowered = COVERAGE.ratchet_floor(committed, regressed)
+    self.assertEqual(lowered, [])
+    self.assertEqual(updated["stacks"], committed["stacks"])
+    self.assertEqual(updated["union"], committed["union"])
+    self.assertEqual(updated["files"], committed["files"])
+    self.assertTrue(COVERAGE.floor_failures(regressed, updated))
 
 
 class CommittedFloorTest(unittest.TestCase):
@@ -222,7 +346,8 @@ class CommittedFloorTest(unittest.TestCase):
     self.floor = json.loads(self.path.read_text(encoding="utf-8"))
 
   def test_shape(self):
-    self.assertEqual(sorted(self.floor), ["files", "stacks", "union"])
+    self.assertLessEqual(set(self.floor), {"files", "stacks", "union", "lowered"})
+    self.assertLessEqual({"files", "stacks", "union"}, set(self.floor))
     expected_stacks = ["host"] + [
         f"sim {board[0]} ({board[3]})" for board in COVERAGE.SIM_BOARDS
     ] + ["sim union"]
@@ -277,7 +402,7 @@ class CommittedFloorTest(unittest.TestCase):
 class RenderingTest(unittest.TestCase):
   def test_markdown_carries_the_sticky_marker_and_every_stack(self):
     summary = summary_from_lcov(Path("/repo"), ("host", LCOV_HOST), ("sim", LCOV_SIM))
-    floor = COVERAGE.floor_from_summary(summary)
+    floor = COVERAGE.measured_floor(summary)
     text = COVERAGE.render_markdown(summary, floor)
     self.assertIn("<!-- furble-coverage-report -->", text)
     self.assertIn("| host |", text)
