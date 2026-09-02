@@ -328,7 +328,10 @@ $(find "$DEP_ROOT/M5Unified/src" -type f -name '*.cpp' -print)
 EOF
 
 echo "[LD]  sim/build/furble-sim"
-LINK_FLAGS="-L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread"
+# -rdynamic exports the executable's symbols into the dynamic table so the
+# stall watchdog's backtraces name functions instead of raw addresses. A dump
+# of a wedged run is the whole point of that watchdog.
+LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread"
 if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
 fi

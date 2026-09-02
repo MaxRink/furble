@@ -593,7 +593,8 @@ target_compile_options(sim_action_parser_test PRIVATE -Wall -Wextra -Werror)
 add_executable(sim_scheduler_test
                sim_scheduler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
-               ${FURBLE_ROOT}/sim/freertos.cpp)
+               ${FURBLE_ROOT}/sim/freertos.cpp
+               ${FURBLE_ROOT}/sim/watchdog.cpp)
 target_include_directories(sim_scheduler_test PRIVATE ${FURBLE_ROOT}/include
                                                        ${FURBLE_ROOT}/sim
                                                        ${FURBLE_ROOT}/sim/shim)

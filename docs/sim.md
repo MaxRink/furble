@@ -146,8 +146,43 @@ The UI fuzzer also accepts `FURBLE_FUZZ_SEED` and `FURBLE_FUZZ_STEPS` as
 fallbacks. Explicit `--seed` and `--fuzz-steps` values take precedence over
 their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
-`FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`, and
-`FURBLE_SIM_BIN`.
+`FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`,
+`FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
+
+After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
+(default: the first guarded seed, empty to skip) and requires the two runs to
+produce identical `FUZZ EVENTS`, `FUZZ COVERAGE` and `FUZZ SUMMARY` lines, with
+`observed_delta` and `no_observed_delta` masked. The same seed must drive the
+same event stream and reach the same pages.
+
+The comparison stops there on purpose. Firmware behaviour under the fuzzer is
+not yet reproducible line for line: two runs of the same seed can differ by one
+connect attempt, because production code blocks on plain host mutexes the
+simulator scheduler cannot see. Asserting the whole log would be a flaky gate
+until the scheduler-visible mutex in plan 158 Phase 3 lands.
+
+## Wall-clock bounds and the stall watchdog
+
+Every bound inside the simulator except one is denominated in virtual time, so
+none of them can see a stall that stops virtual time advancing at all.
+
+`sim/watchdog.cpp` is that one exception. It samples the virtual clock, the
+scheduler progress counter and the recorded phase, and if none of them moves
+for `FURBLE_SIM_WATCHDOG_SECONDS` host seconds (default 120, `0` disables it
+for an interactive debugging session) it prints the phase, the virtual clock,
+the scheduler task table and a native backtrace of every registered thread,
+then exits non-zero.
+
+`FURBLE_SIM_SDL_STEP_DETECT=1` restores the M5GFX debugger-detector thread,
+which is off by default. The detector infers that a debugger has stopped the
+process when a 1 ms `SDL_Delay` overshoots 64 ms, which a loaded host does
+routinely, and the step-exec mode it then latches deadlocks simulator boot
+against the SDL render pump. Turn it on only under an actual debugger.
+
+`sim/scripts/run-e2e.sh` and `sim/scripts/run-watchdog.sh` bound every scenario
+with `timeout -k 10` at `FURBLE_SIM_SCENARIO_TIMEOUT` seconds, default 300,
+matching the per-seed bound in `run-fuzz.sh`. A wedged run fails its leg
+instead of hanging the job.
 
 For an instrumented UI-fuzzer build, set `FURBLE_SIM_SANITIZE` to a clang
 sanitizer list and use a separate `FURBLE_SIM_BUILD_DIR`, for example

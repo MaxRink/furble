@@ -19,6 +19,8 @@
 #   FURBLE_FUZZ_XFAIL_SEEDS seeds required to fail (default empty)
 #   FURBLE_FUZZ_STEPS      events per seed (default 600)
 #   FURBLE_FUZZ_SEED_TIMEOUT  wall-clock seconds per seed (default 600)
+#   FURBLE_FUZZ_REPEAT_SEED   seed replayed for the determinism check
+#                             (default: the first guarded seed, empty to skip)
 
 set -u
 
@@ -30,6 +32,26 @@ STEPS=${FURBLE_FUZZ_STEPS:-600}
 # Wall-clock ceiling for one seed. Generous against a loaded runner, tight
 # enough that a hung seed fails the job instead of burning its whole budget.
 SEED_TIMEOUT=${FURBLE_FUZZ_SEED_TIMEOUT:-600}
+# One guarded seed is replayed and its two FUZZ report lines are required to
+# match: the same seed must drive the same event stream and reach the same
+# pages, on the same binary, every time. A change that lets host timing pick
+# the fuzzer's path fails here instead of surfacing later as a finding nobody
+# can reproduce.
+#
+# The comparison is deliberately scoped to those lines rather than to the whole
+# output, and the reason is a measured limit, not convenience. Firmware
+# behaviour under the fuzzer is not yet reproducible line for line: two runs of
+# the same seed can still differ by one connect attempt, because production
+# code blocks on plain host mutexes the simulator scheduler cannot see, so how
+# far a connect gets before a disconnect lands is still host timed. That is the
+# scheduler-visible mutex gap plan 158 Phase 3 owns. Asserting byte equality of
+# the whole log today would be a flaky gate, which is worse than none.
+#
+# Within the summary line the two observation counters are masked for the same
+# reason: they record whether a visible change had landed by the end of a
+# settle window, and that boundary moves by one step for the same cause.
+REPEAT_SEED_DEFAULT=$(printf '%s\n' $SEEDS | head -n 1)
+REPEAT_SEED=${FURBLE_FUZZ_REPEAT_SEED-$REPEAT_SEED_DEFAULT}
 
 : "${SDL_VIDEODRIVER:=dummy}"
 : "${SDL_AUDIODRIVER:=dummy}"
@@ -143,6 +165,34 @@ done
 if [ "$count" -eq 0 ]; then
   echo "no fuzz seeds configured" >&2
   exit 1
+fi
+
+# Determinism replay. Runs after the guarded seeds so a plain finding is
+# reported first and this never masks one.
+if [ -n "$REPEAT_SEED" ]; then
+  echo "=== determinism replay seed $REPEAT_SEED ($STEPS steps) ==="
+  first=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-a.XXXXXX") || exit 1
+  second=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-b.XXXXXX") || exit 1
+  for output in "$first" "$second"; do
+    timeout -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$REPEAT_SEED" \
+      --fuzz-steps "$STEPS" >"$output" 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "determinism replay seed $REPEAT_SEED exited $rc" >&2
+      status=1
+    fi
+    grep '^FUZZ ' "$output" \
+      | sed -e 's/observed_delta=[0-9]*/observed_delta=X/g' \
+        -e 's/no_observed_delta=[0-9]*/no_observed_delta=X/g' >"$output.fuzz"
+  done
+  if diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
+    echo "PASS determinism replay seed $REPEAT_SEED"
+  else
+    echo "FAIL determinism replay seed $REPEAT_SEED (fuzz report lines diverged)"
+    diff -u "$first.fuzz" "$second.fuzz" | head -40
+    status=1
+  fi
+  rm -f "$first" "$second" "$first.fuzz" "$second.fuzz"
 fi
 
 if [ "$status" -eq 0 ]; then

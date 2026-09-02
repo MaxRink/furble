@@ -2,6 +2,8 @@
 
 #include <atomic>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <thread>
@@ -20,6 +22,7 @@
 #include "ble_sim.h"
 #include "capture.h"
 #include "driver.h"
+#include "watchdog.h"
 
 namespace {
 
@@ -28,15 +31,24 @@ std::atomic<bool> panelReady {false};
 int runSimulator() {
   using namespace Furble;
 
+  Sim::watchdogRegisterThread("simulator");
+  Sim::watchdogPhase("panel bring-up");
   Platform::init();
   // Panel_sdl::main starts its render loop concurrently with this callback.
   // M5GFX registers the panel from Platform::init without protecting its
   // global monitor list, so let our main thread observe that registration
   // before it asks Panel_sdl to traverse the list.
   panelReady.store(true, std::memory_order_release);
+  // Boot runs before any simulator task exists and does not advance virtual
+  // time, so the phase is the only progress the stall watchdog can see across
+  // it. Record each step: a slow but progressing boot on a loaded host keeps
+  // resetting the watchdog, and a wedged one names the step it stopped at.
+  Sim::watchdogPhase("preferences");
   Sim::startProfiler();
   Sim::preparePreferences();
+  Sim::watchdogPhase("settings");
   Settings::init();
+  Sim::watchdogPhase("scenario settings");
   Sim::applyScenarioSettings();
   Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
 #if defined(FURBLE_M5STICKS3)
@@ -115,6 +127,7 @@ int runSimulator() {
     // has none, so the connect-failure seed implies one real virtual peer.
     topology = "fuji";
   }
+  Sim::watchdogPhase("virtual radio");
   Sim::bleStartPeers(topology);
   if (topology != "none" && (connectFail || Sim::scenarioSettingIsTrue("ble_saved"))) {
     Sim::bleSaveRegisteredPeers();
@@ -126,6 +139,7 @@ int runSimulator() {
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
+  Sim::watchdogPhase("control task");
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
 
@@ -137,14 +151,27 @@ int runSimulator() {
   UI ui(interval);
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
+  Sim::watchdogPhase("running");
   ui.task();
+  Sim::watchdogPhase("teardown");
 
   // Tear the control session down before anything else unwinds. The firmware
   // never leaves UI::task, so on device this teardown only runs on the restart
   // path; on the host, process exit would otherwise destroy the NimBLE client
   // pool and the control targets in an unspecified static order, and the
   // target destructor's Camera::disconnect() would dereference a freed client.
-  control.disconnect(Control::DISCONNECT_WAIT_MAX_MS, /*forRestart=*/true);
+  //
+  // A false return means the teardown force-completed on its timeout instead of
+  // settling: a target task was still inside Camera::disconnect(), or a connect
+  // was still in flight. On device that is survivable because esp_restart()
+  // follows immediately, but in a simulator run it is a defect that used to be
+  // reported only as a log line nothing read, so every seed passed while every
+  // seed force-completed. Fail the run.
+  if (!control.disconnect(Control::DISCONNECT_WAIT_MAX_MS, /*forRestart=*/true)) {
+    std::fprintf(stderr, "Camera teardown force-completed on the %lu ms disconnect timeout.\n",
+                 static_cast<unsigned long>(Control::DISCONNECT_WAIT_MAX_MS));
+    Sim::requestFailureExit();
+  }
   Scan::getInstance().stop();
   Scan::getInstance().joinStartProbes();
   // No rig worker may arm or touch a service timer after this point. The
@@ -158,6 +185,7 @@ int runSimulator() {
   // use-after-free at shutdown.
   Sim::bleStopPeers();
   Sim::stopRig();
+  Sim::watchdogUnregisterThread();
   return Sim::exitResult();
 }
 
@@ -165,14 +193,21 @@ int runSimulator() {
 
 int main(int argc, char **argv) {
   Furble::Sim::configure(argc, argv);
+  Furble::Sim::watchdogRegisterThread("main");
+  Furble::Sim::watchdogStart();
   if (lgfx::Panel_sdl::setup() != 0) {
     return 1;
   }
 
   int simulatorResult = 0;
   std::thread simulator([&simulatorResult]() { simulatorResult = runSimulator(); });
+  // Sleep rather than spin. This wait is unbounded on purpose: a panel that
+  // never comes up is a defect, not a slow host, and the stall watchdog turns
+  // it into a thread dump and a non zero exit within its host bound. A yield
+  // loop instead burned a whole core while it waited, which made the very load
+  // that provokes such a stall worse.
   while (!panelReady.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
   while (!Furble::Sim::exitRequested() && lgfx::Panel_sdl::loop() == 0) {
   }
@@ -195,5 +230,6 @@ int main(int argc, char **argv) {
     Furble::Sim::restartProcess();
   }
 
+  Furble::Sim::watchdogStop();
   return simulatorResult == 0 ? closeResult : simulatorResult;
 }
