@@ -65,6 +65,14 @@ struct SimTask {
   SimTaskLifecycle lifecycle = SimTaskLifecycle::running;
   bool blocked = false;
   bool runnable = false;
+  // Parked outside the scheduler. Production code blocks on plain host mutexes
+  // that the simulator scheduler cannot see (Camera::m_Mutex is held across a
+  // whole connect), so a task can leave the scheduler while holding the turn
+  // and never come back until another task releases the mutex. FreeRTOS would
+  // have yielded there. A task that stalls the turn past the stall bound is
+  // parked so the rest of the system keeps running; it un-parks at its next
+  // scheduler boundary.
+  bool parked = false;
   SimWaitKind wait_kind = SimWaitKind::none;
   SimWaitResult wait_result = SimWaitResult::none;
   FurbleSimQueue *wait_queue = nullptr;
@@ -101,6 +109,9 @@ uint64_t nextReadyOrder = 0;
 SimTask *runningTask = nullptr;
 SimTask timerServiceTask;
 bool timerServiceExecuting = false;
+// Host-time bound on one scheduler handoff. Only a task blocked outside the
+// scheduler can exceed it, so it is a deadlock breaker, not a time slice.
+constexpr std::chrono::milliseconds SCHEDULER_STALL_BOUND {50};
 thread_local SimTask *currentTask = nullptr;
 thread_local const char *simTaskName = "ui";
 
@@ -144,7 +155,7 @@ void exitStoppedTask(void) {
 }
 
 bool taskReadyForDispatch(const SimTask &task) {
-  return task.runnable && !task.blocked && !task.stopping.load()
+  return task.runnable && !task.blocked && !task.parked && !task.stopping.load()
          && !Furble::Sim::schedulerStopping() && task.lifecycle == SimTaskLifecycle::running;
 }
 
@@ -177,14 +188,34 @@ void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
   if (currentTask == nullptr) {
     return;
   }
+  // Reaching a scheduler boundary un-parks this task.
+  currentTask->parked = false;
   dispatchNextLocked();
-  Furble::Sim::schedulerCondition().wait(lock, []() {
+
+  const auto ready = []() {
     if (Furble::Sim::schedulerStopping() || taskStopping()) {
       return true;
     }
     dispatchNextLocked();
     return runningTask == currentTask;
-  });
+  };
+
+  while (!ready()) {
+    if (Furble::Sim::schedulerCondition().wait_for(lock, SCHEDULER_STALL_BOUND, ready)) {
+      return;
+    }
+    // The turn holder has not reached a scheduler boundary within the stall
+    // bound. It is blocked on something the scheduler cannot see, and only
+    // another task can free it, so hand the turn on. A healthy handoff takes
+    // microseconds, so this never fires on a deadlock-free trace and leaves the
+    // deterministic order untouched.
+    if (runningTask != nullptr && runningTask != currentTask) {
+      runningTask->parked = true;
+      runningTask = nullptr;
+      dispatchNextLocked();
+      Furble::Sim::schedulerCondition().notify_all();
+    }
+  }
 }
 
 void preemptForHigherPriorityLocked(std::unique_lock<std::mutex> &lock) {
@@ -204,6 +235,7 @@ void preemptForHigherPriorityLocked(std::unique_lock<std::mutex> &lock) {
 
 void setTaskBlockedLocked(bool blocked) {
   if (currentTask != nullptr) {
+    currentTask->parked = false;
     if (blocked) {
       currentTask->blocked = true;
       currentTask->runnable = false;
