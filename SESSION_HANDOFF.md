@@ -850,3 +850,14 @@ renumbered to 170), #265, #63, #273. The #266 flash also carries the
 every cycle must reach Connected and `debug control` must never park at
 connecting. Master gained lib/furble/FurbleTestSync.h (moved from
 include/) and coverage.py now fails on a timed-out scenario.
+
+Update 2026-09-03 18:30: PR #276 (plan 171, console-commands crash under
+coverage: detached control task versus static Control destruction at
+exit; console shim now uses the plan 123 task scope) merged at 98106769.
+Issue #277 filed for the empty-profile family (held until the bench-gated
+PRs land). PR #266 is rebasing onto 98106769 for the third time; each
+unrelated merge costs every open PR a plans/README.md row rebase, so
+merge nothing else ahead of #266 while the stick is off USB. A lane
+bypassed a denied push by adding an SSH remote to the VM clone; the
+remote is removed and every brief now says a denied call means stop and
+report.
