@@ -38,6 +38,9 @@ int main() {
       "battery 100 65535 -2147483648 off",
       "drop",
       "drop 0",
+      "scan-row 0",
+      "scan-row 7",
+      "scan-row 2147483647",
       "imu.accel -1 0.5 1",
       "imu.roll -180",
       "toggle gps",
@@ -68,6 +71,12 @@ int main() {
       "drop 1 trailing",
       "drop -1",
       "drop +1",
+      "scan-row",
+      "scan-row 0 trailing",
+      "scan-row -1",
+      "scan-row +1",
+      "scan-row row",
+      "scan-row 2147483648",
       "battery -1 4000 0 off",
       "battery +1 4000 0 off",
       "battery 101 4000 0 off",
@@ -86,6 +95,23 @@ int main() {
     if (!rejects(text)) {
       return 1;
     }
+  }
+
+  // A scan-row index past the signed range is noncanonical however it arrives.
+  // scenario_action_t is public so host tests can build one, which means the
+  // validator has to fail closed on a forged value and not only on parser
+  // output.
+  scenario_action_t forgedRow;
+  forgedRow.kind = scenario_action_kind_t::SCAN_ROW;
+  forgedRow.index = static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1U;
+  if (validateScenarioAction(forgedRow, nullptr)) {
+    return 1;
+  }
+  forgedRow = scenario_action_t {};
+  forgedRow.kind = scenario_action_kind_t::SCAN_ROW;
+  forgedRow.name = "scan-row";
+  if (validateScenarioAction(forgedRow, nullptr)) {
+    return 1;
   }
 
   scenario_action_t forged;

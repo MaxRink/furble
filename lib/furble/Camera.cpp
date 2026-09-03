@@ -950,6 +950,10 @@ bool Camera::connectCancelled(void) const {
   return m_ConnectCancelled.load();
 }
 
+std::string Camera::getDisplayName(void) const {
+  return m_Name.empty() ? std::string(DISPLAY_NAME_FALLBACK) : m_Name;
+}
+
 bool Camera::needsRepair(void) const {
   return m_NeedsRepair.load();
 }

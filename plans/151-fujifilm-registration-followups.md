@@ -221,7 +221,8 @@ hidden means not fitted. `showConnectError()` now does this, in order:
 5. If it still does not fit, pin the camera name to one ellipsized line. This is
    last because it is the only step that loses information: a panel with room
    shows the whole name over as many lines as it takes, a panel without room
-   trades the tail of the name for the whole instruction.
+   trades the tail of the name for the whole instruction. No message reaches
+   this step today, on any panel, at any name length the code can produce.
 6. Backstop: give the surplus back to the content area so the box ends inside
    the display and the OK button stays reachable. That leaves a scroll extent
    behind, which `ui.modal_overflow` reports as a failure. A box nobody can
@@ -234,7 +235,13 @@ is 13 characters and does not fit one 80x160 line, so it would have been
 silently truncated on the smallest panel with nothing to catch it.
 
 The messages themselves were shortened to match and all three share the
-`<camera>: <instruction>` shape that step 2 splits on. `Control`'s re-pair
+`<camera>: <instruction>` shape that step 2 splits on. All three also name the
+camera through `Camera::getDisplayName()`, which substitutes
+`Camera::DISPLAY_NAME_FALLBACK` ("The camera") when the body advertised no name:
+the split gives the name a line of its own, so a raw empty name opens the box
+with a blank line above the instruction. A saved record carries whatever the
+body advertised, including nothing, so that is reachable rather than theoretical;
+`tests/host/camera_regression_test.cpp` pins both halves. `Control`'s re-pair
 reason is `<name>: put it in pairing mode, then connect.`, which is also what
 the console prints as `control.connect_fail_reason`, so it still stands on its
 own there. That exact string is pinned by
@@ -249,7 +256,13 @@ Rendered evidence, captured from the scenarios on each panel build:
 | --- | --- | --- | --- | --- |
 | 320x240 M5Stack Core | full text | full text | full text | full name, full instruction |
 | 135x240 M5StickS3 | full text | full text | full text | full name over three lines |
-| 80x160 M5StickC | full text, small font | full text, small font | full text, small font | name ellipsized, full instruction |
+| 80x160 M5StickC | full text, small font | full text, small font | full text, small font | full name over three lines, full instruction |
+
+Nothing is ellipsized on any panel today, including 80x160 with
+`FUJIFILM X-H2S 3143344639`. Step 5 is a guard that no message currently
+reaches: once the chrome shrink freed the header and footer rows, the name had
+room to wrap. It stays because a longer name or a larger text size can still get
+there, and the alternative to ellipsizing the name is losing the instruction.
 
 All three scenarios carry a `capture`, so the render is evidence rather than an
 assumption, and every run asserts `ui.modal_overflow no`.
@@ -424,7 +437,12 @@ overrides unchanged.
 
   The fix is the `action scan-row N` verb the previous revision named as the
   follow-up: it dispatches the row's own click handler, `UI::beginPairing()`, so
-  the scenario runs the production entry point without touching the focus. That
+  the scenario runs the production entry point without touching the focus. It is
+  parsed and validated like every other parameterized verb: `sim-action-parser`
+  covers the accepted and rejected spellings and the forged typed value, the
+  four `sim/scenarios/invalid/action-scan-row-*.txt` fixtures pin the malformed
+  forms to DSL exit 2, and the scenario itself asserts that an index past the
+  end of the scan list reports `unavailable` rather than `applied`. That
   also matters beyond this scenario: "Already saved" is the longest of the three
   messages, and while it had no scenario it was the only box with no rendered
   evidence on any panel. It was hiding about two and a half lines on 80x160.
@@ -518,39 +536,32 @@ Mutation evidence:
 Every mutation above was run from a verified green baseline and reverted with a
 verified green revert check, so no result is an artifact of a stale object.
 
-Verification, on the head rebased onto master 77aa113f (PRs #261, #264 and
-#270):
+Verification, on the head rebased onto master 2e986fe6 (PRs #261, #264, #270
+and #274):
 
-- Host suite 94/95 ctests green. The one failure is `sim-scheduler`, a virtual
-  scheduler timing test that fails the same way on master 77aa113f: measured 3
-  of 6 runs failing on master against 6 of 6 passing on this head, on a build VM
-  running at load average 130 to 240 from other jobs. CI runs it green.
-- Python suite 133 passed.
+- Host suite 96/96 ctests green, zero failures. Earlier revisions of this plan
+  carried a caveat about `sim-scheduler` failing under load; PR #274 fixed that,
+  and the caveat no longer applies.
+- Python suite 138 passed.
 - Simulator scenario manifest complete (`check_sim_scenarios.py`), portability
-  contract clean, CI workflow trigger check passed.
+  contract clean, CI workflow trigger check passed, `run-invalid.sh` green
+  including the four `action-scan-row-*` fixtures.
 - Simulator builds green on all three modeled panels (135x240 M5StickS3, 80x160
   M5StickC, 320x240 M5Stack Core). Certified suites, every panel, no failures:
-  e2e 84/84, 9/9 and 9/9; bughunt 8/8, 8/8 and 4/4. The three connect-error
+  e2e 85/85, 10/10 and 10/10; bughunt 8/8, 8/8 and 4/4. The four connect-error
   scenarios also pass on every panel under the `FURBLE_SIM_NO_TOUCH=1`
-  environment override, 18 runs in all.
-- Coverage floor green, and worth a note: the CI coverage job failed once on
-  this head with `lib/furble/Camera.cpp: 73.28% below floor 73.75%`, then passed
-  on a re-run of the identical commit with no change. Measured locally on the
-  same tree the host stack gives Camera.cpp 548 of 726 lines, 75.48%, the same
-  value as the previous head. Camera.cpp holds the timing-sensitive cancel and
-  abort paths (`cancelConnect`, `abortBlockingConnect`, the terminate branch and
-  the mid-connect unwind), so a loaded runner can take a different path through
-  them while every test still passes; 532 against 548 covered lines is that
-  wobble. The floor for this file sits inside that noise band, which is worth
-  knowing before someone ratchets it.
-
- Grand union 70.77% against a 69.26 floor, src/FurbleUI.cpp
-  80.81% against 79.53, src/FurbleControl.cpp 78.88% against 77.13,
-  lib/furble/Camera.cpp 75.48% against 73.75. Measured locally on clang 14,
-  where CI pins clang 18, so the CI numbers are the comparable ones.
+  environment override, 24 runs in all.
+- Coverage floor green, and worth a note: the CI coverage job failed once on an
+  earlier head with `lib/furble/Camera.cpp: 73.28% below floor 73.75%`, then
+  passed on a re-run of the identical commit with no change. Measured locally on
+  that tree the host stack gave Camera.cpp 548 of 726 lines, 75.48%. Camera.cpp
+  holds the timing-sensitive cancel and abort paths, so a loaded runner can take
+  a different path through them while every test still passes; 532 against 548
+  covered lines is that wobble. The floor for this file sits inside that noise
+  band, which is worth knowing before someone ratchets it.
 - clang-format 21.1.5 clean on every changed source, no em-dashes in the diff,
   no sdkconfig drift, plans/README.md row unchanged.
-- m5stick-s3-debug firmware compile succeeds.
+- Firmware compile is built and run by the bench owner rather than here.
 
 ## Implementation state
 

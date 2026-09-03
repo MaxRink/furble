@@ -247,11 +247,9 @@ Control::state_t Control::connectAll(void) {
         // too. UI::showConnectError() splits it on that first ": " to give the
         // name a line of its own, so the separator is a contract rather than
         // formatting; tests/host/fujifilm_repair_needed_test.cpp pins the whole
-        // string. An empty name would leave a blank first line in the box, so it
-        // gets the same substitute the connect-failed text uses.
-        const std::string name = camera->getName();
-        repairReason = (name.empty() ? std::string("The camera") : name)
-                       + ": put it in pairing mode, then connect.";
+        // string. getDisplayName() supplies the stand-in for a camera that
+        // advertised no name, so the box can never open with a blank first line.
+        repairReason = camera->getDisplayName() + ": put it in pairing mode, then connect.";
       }
       break;
     } else {
