@@ -98,7 +98,7 @@ bool Nikon::_connect(void) {
     BaseType_t timeout = pdFALSE;
     do {
       timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(1000));
-    } while (scan.isActive() && !success);
+    } while (scan.isActive() && !success && !connectCancelled());
     scan.stop();
 
     if ((timeout == pdFALSE) || !success) {

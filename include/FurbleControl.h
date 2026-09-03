@@ -121,6 +121,11 @@ class Control {
 
   /**
    * Are all active cameras still connected?
+   *
+   * False when there are no active cameras. An empty session is not vacuously
+   * connected: returning true for one published STATE_ACTIVE for a session
+   * containing nothing, so the UI signalled CONNECTED while sendCommand()
+   * iterated an empty target list and the shutter did nothing.
    */
   bool allConnected(void);
 
@@ -134,6 +139,12 @@ class Control {
 
   /**
    * Connect to all active cameras.
+   *
+   * Requests, rather than performs, the re-arm of every target camera's connect
+   * cancel token. The request is consumed at the top of the next connect cycle
+   * on the control task, which is the only place no attempt can be in flight.
+   * Clearing the token here would clear it out from under an attempt that a
+   * capped teardown drained but did not stop.
    */
   void connectAll(bool infiniteReconnect);
 
@@ -147,7 +158,10 @@ class Control {
    * timeout: esp_restart() runs immediately after and kills the in-flight
    * teardown, so the force-complete race cannot happen there.
    *
-   * @param[in] timeout_ms Maximum time to wait for target tasks and cameras.
+   * @param[in] timeout_ms Cap on the wait, honoured by both paths. The
+   *                        interactive path used to ignore this and always
+   *                        waited DISCONNECT_WAIT_MAX_MS, which is this
+   *                        parameter's default, so every caller is unchanged.
    * @param[in] forRestart Caller will esp_restart() immediately, so a timeout
    *                       may force-complete the teardown.
    * @return true if all disconnect work completed before the timeout.
@@ -269,6 +283,9 @@ class Control {
   /** Check whether all disconnect work has completed. */
   bool disconnectComplete(void);
 
+  /** Publish the camera whose connect attempt is in flight, under m_Mutex. */
+  void setConnectCamera(std::shared_ptr<Camera> camera);
+
   /**
    * Have all per-target teardown tasks stopped and any in-flight connect
    * unwound?
@@ -370,6 +387,14 @@ class Control {
   uint32_t m_ConnectFailCount = 0;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
+  // A user connect cycle has asked for the cancel tokens to be re-armed. Set by
+  // connectAll(bool) off the control task, consumed and cleared by connectAll()
+  // on the control task at the top of the cycle, which is the only point where
+  // no attempt can be in flight, and cleared by disconnect() so a request whose
+  // CMD_CONNECT was dropped cannot go stale across a teardown. The automatic
+  // reconnect never sets it, so a cancel landing mid-reconnect survives.
+  // Guarded by m_Mutex at every access, unlike the volatile session flags above.
+  bool m_ClearConnectCancel = false;
   state_t m_State = STATE_IDLE;
 
   // setState() runs from the control task and from the UI task
@@ -379,6 +404,10 @@ class Control {
   // Camera connects are serialised, the following tracks the last attempt.
   // Holds a strong reference so an in-flight connect keeps its Camera alive even
   // if CameraList::load() drops the list's reference.
+  //
+  // Guarded by m_Mutex. It is written by the control task and read by the UI
+  // task, so every access takes the mutex and publication goes through
+  // setConnectCamera().
   std::shared_ptr<Camera> m_ConnectCamera;
 
   // User transmit power cap, loaded from TX_POWER at first getInstance()
