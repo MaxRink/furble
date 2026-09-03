@@ -267,7 +267,7 @@ Control::state_t Control::connectAll(void) {
     m_ConnectInProgress = false;
 
     if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
-      m_ConnectCamera = nullptr;
+      m_ConnectCamera = nullptr;  // caller holds m_Mutex
       // Report the abort, never the state that happened to be published when it
       // was read. disconnect() arms m_ConnectAbort one statement before it
       // publishes STATE_DISCONNECTING, so a read landing in that window still
@@ -464,6 +464,13 @@ bool Control::allConnected(void) {
   // per camera and then connectAll() unconditionally, so any path that fails to
   // add a target reaches this, including a failed xTaskCreate.
   if (m_Targets.empty()) {
+    // Deliberately uncovered defence in depth, and recorded as such in plan 167.
+    // connectAll() returns STATE_CONNECT_FAILED on an empty cycle before this is
+    // ever consulted, so the only caller that can reach it with no targets is
+    // the STATE_ACTIVE liveness branch below, which needs m_Targets emptied
+    // while the machine is already active. Only disconnect() empties it and it
+    // publishes STATE_DISCONNECTING first, leaving a window a few instructions
+    // wide that no test can hit without a sync point.
     return false;
   }
 
@@ -488,23 +495,34 @@ std::vector<Control::Target *> Control::getTargets(void) {
 }
 
 void Control::connectAll(bool infiniteReconnect) {
-  // A new user connect cycle re-arms every target camera, but not here.
-  //
-  // This runs on the UI task, and a camera can have an attempt still in flight:
-  // a teardown that reached its cap drained the target while its attempt held
-  // Camera::m_Mutex, and connectAll() works from a snapshot taken before that
-  // move. Clearing the token here cleared it out from under that attempt, which
-  // is what made it uncancellable for the rest of its vendor timeout, with its
-  // target task blocked on the same mutex so the drained target never published
-  // m_Stopped and teardownDraining() held the connect gate shut.
-  //
-  // Request the re-arm instead and let the control task do it at the top of the
-  // cycle. That is safe by construction rather than by timing: the in-flight
-  // attempt runs inside connectAll() on the control task itself, so by the time
-  // the control task reaches the next cycle the previous attempt has returned.
-  // Only a user cycle re-arms; the automatic reconnect must not, or a cancel
-  // landing mid-reconnect would be discarded.
-  m_ClearConnectCancel = true;
+  {
+    // A new user connect cycle re-arms every target camera, but not here.
+    //
+    // This runs on the UI task and on the console task, and a camera can have an
+    // attempt still in flight: a teardown that reached its cap drained the
+    // target while its attempt held Camera::m_Mutex, and connectAll() works from
+    // a snapshot taken before that move. Clearing the token here cleared it out
+    // from under that attempt, which is what made it uncancellable for the rest
+    // of its vendor timeout, with its target task blocked on the same mutex so
+    // the drained target never published m_Stopped and teardownDraining() held
+    // the connect gate shut.
+    //
+    // Request the re-arm instead and let connectAll() do it at the top of the
+    // cycle. What makes that safe is where it is consumed, not who requested it:
+    // Camera::connect() has exactly one caller, connectAll() on the control
+    // task, and the consume sits at the top of that same function, so a clear
+    // cannot land inside a live attempt whatever set the request. Restricting
+    // the request to user cycles is a refinement on top, so an automatic
+    // reconnect does not discard a cancel that landed mid-reconnect; it is not
+    // what carries the safety argument, which matters because a request can go
+    // stale when its CMD_CONNECT is dropped.
+    //
+    // Set under m_Mutex, with the same lifetime rule as every other field the
+    // control task reads: the flag is written off the control task and read and
+    // cleared on it.
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ClearConnectCancel = true;
+  }
 
   m_InfiniteReconnect = infiniteReconnect;
   m_ReconnectBackoff = Settings::reconBackoffEffective();
@@ -585,6 +603,13 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     // clears the token for any camera that has since been given a fresh target.
     // Cancelling the drain set and the attempt in flight makes the teardown
     // self-sufficient instead of relying on a token set by an earlier call.
+    // A teardown supersedes any connect cycle that has been requested but not
+    // yet started, so the re-arm request does not outlive it. Without this a
+    // request whose CMD_CONNECT was dropped, dequeued while disconnecting or in
+    // STATE_ACTIVE where it hits the invalid-command default, would still be
+    // pending for whatever cycle consumes next.
+    m_ClearConnectCancel = false;
+
     for (const auto &target : m_ZombieTargets) {
       target->getCamera()->cancelConnect();
     }
@@ -688,7 +713,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
         m_ZombieTargets.push_back(std::move(target));
       }
       m_Targets.clear();
-      m_ConnectCamera = nullptr;
+      m_ConnectCamera = nullptr;  // caller holds m_Mutex
     }
     setState(STATE_IDLE);
     return true;
@@ -732,7 +757,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     }
 
     m_Targets.clear();
-    m_ConnectCamera = nullptr;
+    m_ConnectCamera = nullptr;  // caller holds m_Mutex
   }
   setState(STATE_IDLE);
   return completed;
@@ -1249,7 +1274,7 @@ void Control::resetForTest(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_Targets.clear();
-    m_ConnectCamera = nullptr;
+    m_ConnectCamera = nullptr;  // caller holds m_Mutex
     m_Power = bootPower;
     resetAdaptiveState();
   }

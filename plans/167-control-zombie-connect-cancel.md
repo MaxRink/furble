@@ -57,7 +57,13 @@ no protocol knowledge. Both vendors are declared untested on hardware: only
 Fujifilm is available here.
 
 `Nikon`, `NikonBase` and `NikonSmart` were found by the gate below once it was
-widened, and carry the same one-line change. `Nikon::_connect()` polls a queue in
+widened, and carry the same one-line change. Their protocol sources are the ones
+already recorded in [61-camera-compatibility.md](61-camera-compatibility.md):
+skyblond.info, hurui200320/nsg, the ML-L7 manual, and furble's own classes as
+the working reference. The 60 s scan loop, the 10 s per-stage wait and
+`FINAL_OK_WAIT_MS` are pre-existing constants preserved exactly by the slicing,
+which is exact division in both cases, so no protocol knowledge is added here
+either. `Nikon::_connect()` polls a queue in
 one-second slices for up to a minute and its comment already claimed
 cancellation stopped it; the condition never checked. `NikonBase` waits 10 s per
 handshake stage and `NikonSmart` waits for a final OK, both on a single blocking
@@ -65,9 +71,9 @@ handshake stage and `NikonSmart` waits for a final OK, both on a single blocking
 250 ms with the total timeout and the protocol unchanged. Nikon is untested on
 hardware for the same reason as Canon and DJI.
 
-`tests/test_connect_cancel_contract.py` holds the rule for every camera class,
-so the next vendor with a long wait cannot reintroduce it. Review found three
-holes in the first version and all three are closed:
+`tests/test_connect_cancel_contract.py` holds the rule, scoped to the function
+that waits: the poll must appear in the same braced body as the wait. Every
+wider scope was escapable, and review escaped each one in turn:
 
 - It matched the bare word anywhere in the file, so deleting a poll and leaving
   `// TODO: should poll connectCancelled()` kept it green. Comments and string
@@ -79,9 +85,24 @@ holes in the first version and all three are closed:
   `xQueueReceive`, `xSemaphoreTake`, task notification or event group wait
   blocks identically, and widening it is what found the three Nikon waits.
 
-A NimBLE call with its own internal timeout still cannot be spotted by name.
-That is the shape behind the Fujifilm Secure stale-bond window, and the hardware
-gate below is what covers it.
+- File scope let one poll immunise every wait in the file, so a second unpolled
+  wait was invisible. Worse, this PR's own accessor
+  `bool NikonBase::connectCancelled(void) const` satisfied a file-scope search
+  for both of the sliced waits in that file, so the gate was disarmed for a file
+  this PR fixes. Per-function scope closes that, the second-wait hole and the
+  header hole together.
+- Only sources were scanned, so an inline helper with a wait in a header was
+  invisible. Headers are scanned now.
+- `#if 0 ... #else <live code> #endif` dropped the live branch with the dead
+  one. The `#else` branch survives now.
+
+Each of those is a self-test in the gate file, so the gate's own teeth are
+checked rather than assumed.
+
+A NimBLE call with its own internal timeout still cannot be spotted by name, and
+that residual hole is written down rather than claimed closed. It is the shape
+behind the Fujifilm Secure stale-bond window, and the hardware gate below is
+what covers it.
 
 Code inside `#if 0` is not code, which is why `FujifilmBasic.cpp` is correctly
 exempt.
@@ -111,11 +132,29 @@ held `Camera::m_Mutex`, and `Control::connectAll()` works from a snapshot taken
 before the drain. So the clear landed on a running attempt.
 
 The re-arm is now requested by `connectAll(bool)` and performed by
-`connectAll()` on the control task, at the top of the cycle. That is safe by
-construction rather than by timing: an in-flight attempt runs *inside*
-`connectAll()` on the control task, so by the time the control task reaches the
-next cycle the previous attempt has returned. The automatic reconnect never
-requests it, so a cancel landing mid-reconnect still survives.
+`connectAll()` on the control task, at the top of the cycle.
+
+What makes that safe is **where it is consumed, not who requested it**.
+`Camera::connect()` has exactly one caller in the tree, `connectAll()` on the
+control task, and the consume sits at the top of that same function on that same
+task. So a clear cannot land inside a live attempt whatever set the request.
+That argument holds even for a stale request, which matters because a request
+can outlive its cycle: a `CMD_CONNECT` dropped in `STATE_DISCONNECTING`, or in
+`STATE_ACTIVE` where it hits the invalid-command default, leaves the flag set.
+`disconnect()` therefore clears the request too, so it cannot go stale across a
+teardown, and restricting the request to user cycles is a refinement on top: it
+keeps an automatic reconnect from discarding a cancel that landed mid-reconnect.
+It is not what carries the safety argument.
+
+Both halves are covered. Phase 5 of the regression proves the clear happens at
+all, which is the load-bearing half nothing else sees: every other phase asserts
+the token survives long enough. Deleting the consume block leaves the rest of
+the suite green while on hardware the device would never reconnect after its
+first disconnect, because `disconnect()` sets the token on every target,
+`Camera::connect()` deliberately never clears it, `resetConnectionState()` does
+not touch it, and the consume block is the only clearing writer in the tree.
+Phase 6 proves an automatic reconnect does not consume a re-arm it never
+requested.
 
 Nothing is refused and no target is dropped.
 
@@ -161,6 +200,21 @@ cameras logs and returns `STATE_CONNECT_FAILED` instead of going active. This is
 defence in depth rather than a consequence of the withdrawn refusal: both entry
 points call `connectAll()` unconditionally, so a failed `xTaskCreate` inside
 `addActive()` reaches the same vacuous truth.
+
+Only one of the two halves is covered, and that is deliberate. The regression
+reaches `STATE_CONNECT_FAILED` through the early return in `connectAll()`,
+before `allConnected()` is ever consulted, so reverting the `allConnected()`
+guard alone leaves the suite green. The guard protects the `STATE_ACTIVE`
+liveness branch, and reaching it with no targets needs `m_Targets` emptied while
+the machine is already active. Only `disconnect()` empties it and it publishes
+`STATE_DISCONNECTING` first, leaving a window a few instructions wide. Worse,
+the window is not observable from outside: on the guarded side the branch
+publishes `STATE_CONNECT` over the `STATE_IDLE` that `disconnect()` just set,
+and on the unguarded side the state is already `STATE_IDLE`, so neither outcome
+presents as a phantom active session to a probe. Covering it would need a new
+production sync point in that branch and a barrier test, which is not worth
+adding for a guard whose whole purpose is to be unreachable. It is recorded here
+and in a comment at the guard instead.
 
 ### The teardown no longer depends on an earlier call
 
@@ -212,6 +266,13 @@ mutation:
 | M9 re-arm moved back to the UI task | `the in-flight attempt still observes the cancel after a new connect cycle` |
 | M10 `allConnected()` vacuously true on an empty session | 3 checks including `control never published active with no targets, whole run` |
 | M11 Nikon 60 s loop cancel removed | contract gate names `lib/furble/Nikon.cpp` |
+| M12 re-arm consume block deleted entirely | `the camera connects again after a teardown set its cancel token` |
+| M13 re-arm consumed unconditionally, reconnect included | `a reconnect attempt observes a cancel the user cycle never re-armed` |
+| Ma poll removed from `NikonBase::handshake4Stage()` | gate names `lib/furble/NikonBase.cpp:120` |
+| Mb unpolled wait in `NikonBase.h` | gate names `lib/furble/NikonBase.h:110` |
+| Mc second unpolled wait in `CanonEOSSmart.cpp` | gate names `lib/furble/CanonEOSSmart.cpp:41` |
+| Me NikonSmart final-OK poll removed | gate names `lib/furble/NikonSmart.cpp` |
+| M10a only the `allConnected()` empty guard reverted | **survives, deliberately.** See the empty-session section: the branch it guards is not observable from outside |
 
 M2 and M6 from the review are retired with the design they tested: there is no
 refusal to remove the drain check from, and no re-arm inside a refusal to
@@ -278,11 +339,13 @@ stale-bond `secureConnection()` window is that block. Debug build,
 `FURBLE_CONSOLE`, M5StickS3:
 
 ```
-settings set fauxny 0
+settings set fauxNY 0
 settings set reconnect 0
-scan
 cameras list                  # note the X100VI index N
 ```
+
+`scan start`, `scan stop` and `scan list` exist if the camera is not saved yet;
+plain `scan` prints usage.
 
 1. Camera in pairing mode. `connect N`. Expect `debug control` to reach
    `control.state: active`, `control.targets: 1`, `control.connected: 1`.
@@ -293,32 +356,87 @@ cameras list                  # note the X100VI index N
 3. The case that reaches the change. On the camera only, delete the stick's
    pairing (Connection Setting, Bluetooth, Pairing registration) and leave the
    camera out of pairing mode. On the stick `connect N`. When the log enters the
-   security handshake, run `disconnect`. Expect exactly one new line, once:
-   `W (...) furble-control: Camera teardown did not settle within 30000 ms; draining 1 target(s), still running: <name>.`
+   security handshake, run `disconnect`. Expect exactly one new line, once. The
+   firmware tag is `LOG_TAG = FURBLE_STR`, so on the device it reads:
+   `W (...) furble: Camera teardown did not settle within 30000 ms; draining 1 target(s), still running: <name>.`
    Then `debug control` shows `control.state: idle` and `control.zombies: 1`.
-4. Immediately `connect N`. **Pass condition: within a couple of seconds
-   `debug control` shows `control.state: active` AND `control.targets: 1` AND
-   `control.connected: 1`, and `shutter press` trips the camera.** Asserting the
-   target count and firing the shutter is the point: the withdrawn design would
-   have shown `control.state: active` with `control.targets: 0` and a dead
-   shutter, and a gate that only timed the reconnect would have called that a
-   pass.
+4. Immediately `connect N`. **Pass condition: `debug control` shows
+   `control.state: active` AND `control.targets: 1` AND `control.connected: 1`,
+   and `shutter press` trips the camera, with no second `did not settle` line.**
+   Asserting the target count and firing the shutter is the point: the withdrawn
+   design would have shown `control.state: active` with `control.targets: 0` and
+   a dead shutter, and a gate that only timed the reconnect would have called
+   that a pass.
+
+   No timing bound here, deliberately. Nothing in this change can unwind the
+   stale-bond block, because it does not poll, so the drain gate stays shut
+   until `secureConnection()` returns on its own. Bounding this step by the
+   clock would be asserting PR 245's job. The vendor timeout is the only bound
+   that holds today.
+
+   This step is also the only place the re-arm is exercised end to end, because
+   Fujifilm polls the token in both its registration and Secure paths, so a
+   broken re-arm shows up here as an instant connect failure. That is the
+   hardware counterpart of the phase 5 regression.
 5. Repeat 3 and 4 five times. `control.zombies` must return to 0 each cycle and
    free heap in `status` must not trend down, since a target that is never
    reaped is the leak shape here.
 6. Re-run 1 and 2 afterwards to confirm the ordinary path is unchanged.
 
 Caveat: step 3 is the same window PR 245 closes with `abortBlockingConnect()`.
-If that lands first, step 3 stops reaching the cap and the gate needs a
-different long block.
+Once that lands, step 3 stops reaching the cap, so the cap log, the drain-set
+cancel and the empty-session guard all go unexercised on hardware.
 
-## Merge order
+**After PR 245 the gate becomes the re-arm regression**, which is on the hot
+path of every connect and is executable today as well: connect, `disconnect`
+during the Fujifilm registration wait, reconnect immediately, and require
+`control.targets: 1` plus a working shutter within a couple of seconds. Five
+cycles, with `control.zombies` back to 0 each time and free heap in `status`
+flat. That is the version that would have caught a broken re-arm.
 
-PR 245 conflicts in two hunks: the locked block in `Control::disconnect()` and
-the `m_ConnectCamera` write in `connectAll()`. It collects a `cancelling` vector
-from `m_Targets` only and calls `abortBlockingConnect()` on it after releasing
-`m_Mutex`. Whoever lands second must extend that vector to the drain set and the
-attempt in flight, which is the class of attempt this plan is about: blocked
-inside NimBLE, polling nothing. The cancel sites here are deliberately grouped
-in one block under `m_Mutex` so that extension is a single edit. PR 245 should
-land first: it carries hardware evidence and the harder radio-call constraint.
+## Coordination
+
+### PR 245 lands first, then this rebases
+
+It carries hardware evidence and the harder radio-call constraint. Five actions
+on the rebase:
+
+1. `connectAll()` connect loop. 245 keeps `m_ConnectCamera = camera;` and the
+   `else` clear while adding a `needsRepair()` branch; this replaces the shape
+   with `setConnectCamera()` on both outcomes. Keep this shape and put 245's
+   `repairReason` assignment inside the `if (!connected)` branch.
+2. `connectAll(bool)`. 245 adds `m_ConnectFailReason.clear();` inside the lock
+   block. That block is restored here and already holds the re-arm request, so
+   both live in it and the conflict and the unsynchronised-flag finding resolve
+   in the same edit.
+3. `disconnect()`. 245 collects `cancelling` from `m_Targets` and calls
+   `abortBlockingConnect()` on each after releasing `m_Mutex`. It must be
+   extended to the two sets added here. That is **three push sites, not one**:
+   the `m_ZombieTargets` loop, the `m_ConnectCamera` case and the existing
+   `m_Targets` loop are separate statements in one block, so the clean form is a
+   single `cancelling` vector filled by all three and drained once after the
+   unlock. Getting this right is the point of landing 245 first: the attempt
+   class this plan cannot reach, blocked inside NimBLE and polling nothing, is
+   exactly the one `abortBlockingConnect()` wakes.
+4. Adjacent-line only: `getConnectFailReason()` and `getTargetCount()` sit where
+   `setConnectCamera()` and the locked getter now go.
+5. After 245, give the empty-cycle `STATE_CONNECT_FAILED` a reason string. An
+   empty cycle is the natural first user of `m_ConnectFailReason`.
+
+### PR 63 is a deadlock hazard against this change
+
+Record before merging either. 63 adds `Control::setConnectCameraLocked()`, whose
+contract is "caller already holds `m_Mutex`", and routes every write through it,
+including the four raw assignments here. This PR adds `setConnectCamera()`,
+whose contract is the opposite: it takes `m_Mutex` itself. The names differ by
+one suffix, and after this PR `connectAll()` contains both conventions six lines
+apart, a self-locking `setConnectCamera(nullptr)` and a raw
+`m_ConnectCamera = nullptr;`. Anyone merging 63 on top who swaps one for the
+other self-deadlocks on a non-recursive `std::mutex`, on the control task, while
+holding the lock the UI task needs. That is the `CLAUDE.md` reconnect-cancel
+brick, one rename away. The four raw sites carry a `// caller holds m_Mutex`
+comment so the distinction is visible at the point of edit.
+
+63 also removes the getter's lock from the 20 Hz connect timer path using a
+generation counter, which is the natural resolution of the contention this
+change introduces there.

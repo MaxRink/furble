@@ -14,10 +14,13 @@
 // Control::getConnectingCamera; with the guard reverted it reports a race on
 // the shared_ptr control block under _M_add_ref_copy.
 //
-// The suppression file lists the pre-existing races this PR does not claim to
-// fix, so a new one fails the run instead of hiding in the noise. TSAN's exit
-// code is what fails the test: halt_on_error keeps the first report as the
-// failure rather than letting the run continue past it.
+// run_tsan_race.sh asserts that specific claim rather than "zero races". The
+// races this PR does not fix have template top frames, so any suppression broad
+// enough to silence them would also hide the one being proved, and there is no
+// suppression file. The wrapper runs with halt_on_error=0 so every report is
+// collected, tolerates the sanitizer exit code 66 for "races were found", and
+// fails only when a report names the guarded accessor. The remaining count is
+// printed for visibility, not asserted.
 
 #include <atomic>
 #include <chrono>

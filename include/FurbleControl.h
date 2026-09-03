@@ -121,6 +121,11 @@ class Control {
 
   /**
    * Are all active cameras still connected?
+   *
+   * False when there are no active cameras. An empty session is not vacuously
+   * connected: returning true for one published STATE_ACTIVE for a session
+   * containing nothing, so the UI signalled CONNECTED while sendCommand()
+   * iterated an empty target list and the shutter did nothing.
    */
   bool allConnected(void);
 
@@ -134,6 +139,12 @@ class Control {
 
   /**
    * Connect to all active cameras.
+   *
+   * Requests, rather than performs, the re-arm of every target camera's connect
+   * cancel token. The request is consumed at the top of the next connect cycle
+   * on the control task, which is the only place no attempt can be in flight.
+   * Clearing the token here would clear it out from under an attempt that a
+   * capped teardown drained but did not stop.
    */
   void connectAll(bool infiniteReconnect);
 
@@ -377,11 +388,13 @@ class Control {
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   // A user connect cycle has asked for the cancel tokens to be re-armed. Set by
-  // connectAll(bool) on the UI task, consumed by connectAll() on the control
-  // task at the top of the cycle, where no attempt can be in flight. The
-  // automatic reconnect never sets it, so a cancel landing mid-reconnect
-  // survives. Guarded by m_Mutex on the consuming side.
-  volatile bool m_ClearConnectCancel = false;
+  // connectAll(bool) off the control task, consumed and cleared by connectAll()
+  // on the control task at the top of the cycle, which is the only point where
+  // no attempt can be in flight, and cleared by disconnect() so a request whose
+  // CMD_CONNECT was dropped cannot go stale across a teardown. The automatic
+  // reconnect never sets it, so a cancel landing mid-reconnect survives.
+  // Guarded by m_Mutex at every access, unlike the volatile session flags above.
+  bool m_ClearConnectCancel = false;
   state_t m_State = STATE_IDLE;
 
   // setState() runs from the control task and from the UI task

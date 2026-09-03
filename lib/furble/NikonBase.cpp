@@ -1,5 +1,4 @@
 #include <cstring>
-#include <utility>
 
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>

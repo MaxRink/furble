@@ -139,6 +139,37 @@ void phantomProbe(void) {
   }
 }
 
+// Re-arms its own cancel token at the end of every attempt, so the token is
+// always set when the next automatic reconnect cycle begins. On the shipped
+// design nothing clears it, so every following attempt aborts on its first poll
+// and the observation count climbs. A cycle that consumed a re-arm it never
+// requested would clear it, and the count would stop at one.
+class SelfArmingCamera: public Furble::FauxNY {
+ public:
+  uint32_t cancelObservations(void) const { return m_Observations.load(); }
+  uint32_t attempts(void) const { return m_Attempts.load(); }
+
+ protected:
+  bool _connect(void) override {
+    m_Attempts.fetch_add(1);
+    for (uint32_t elapsed = 0; elapsed < WINDOW_MS; elapsed += SLICE_MS) {
+      if (connectCancelled()) {
+        m_Observations.fetch_add(1);
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(SLICE_MS));
+    }
+    cancelConnect();
+    return false;
+  }
+
+ private:
+  static constexpr uint32_t WINDOW_MS = 200;
+  static constexpr uint32_t SLICE_MS = 10;
+  std::atomic<uint32_t> m_Observations {0};
+  std::atomic<uint32_t> m_Attempts {0};
+};
+
 bool waitFor(const std::function<bool()> &predicate, uint32_t timeout_ms) {
   const uint32_t start = nowMs();
   while (Furble::Host::timeoutPending(start, nowMs(), timeout_ms)) {
@@ -252,6 +283,55 @@ int main(void) {
   check(waitFor([&]() { return control.getState() == Control::STATE_CONNECT_FAILED; }, 3000),
         "a connect with no cameras fails instead of going active");
   check(control.getState() != Control::STATE_ACTIVE, "an empty session is never active");
+
+  control.disconnect();
+  check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 4000),
+        "control returns to idle after the empty connect");
+
+  // Phase 5. The re-arm must actually happen. This is the half of the root fix
+  // the rest of the file cannot see: every other phase asserts the token
+  // survives long enough, and none asserts it is ever cleared. Deleting the
+  // consume block leaves them all green while on hardware the device would never
+  // reconnect after its first disconnect, because disconnect() sets the token on
+  // every target, Camera::connect() deliberately never clears it, and the
+  // consume block is the only clearing writer in the tree.
+  auto plain = std::make_shared<Furble::FauxNY>();
+  control.addActive(plain);
+  control.connectAll(false);
+  check(waitFor([&]() { return control.getState() == Control::STATE_ACTIVE; }, 12000),
+        "a plain camera connects");
+  control.disconnect();
+  check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 4000),
+        "back to idle with the cancel token set on that camera");
+  control.addActive(plain);
+  control.connectAll(false);
+  check(waitFor([&]() { return control.getState() == Control::STATE_ACTIVE; }, 12000),
+        "the camera connects again after a teardown set its cancel token");
+
+  control.disconnect();
+  check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 4000),
+        "control returns to idle after the re-arm phase");
+
+  // Phase 6. The automatic reconnect must not consume a re-arm. Only a user
+  // cycle requests one, so a cancel that lands during a reconnect has to
+  // survive into the attempts that follow. The camera re-arms itself at the end
+  // of every attempt, so if a reconnect cycle cleared the token the second
+  // attempt onwards would never see it.
+  auto retry = std::make_shared<SelfArmingCamera>();
+  control.addActive(retry);
+  check(control.getTargetCount() == 1, "the retrying camera is added");
+  control.connectAll(true);
+  // The first retry is 2.5 s, so one observation is the whole differential and
+  // asking for more only makes the phase slower: the token is re-armed at the
+  // end of every attempt and nothing clears it, so a cycle that wrongly
+  // consumed a re-arm would leave this at zero for every attempt, not just one.
+  check(waitFor([&]() { return retry->cancelObservations() >= 1; }, 12000),
+        "a reconnect attempt observes a cancel the user cycle never re-armed");
+  check(retry->attempts() >= 2, "the reconnect actually retried");
+
+  control.disconnect();
+  check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 4000),
+        "control returns to idle after the reconnect phase");
 
   g_ProbeRun = false;
   probe.join();
