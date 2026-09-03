@@ -268,9 +268,11 @@ int main() {
     camera.disconnect();
   }
 
-  // Same shape when a handler exists but cannot take the request, which is a
-  // full UI request queue. The prompt will never be shown and the pairing timer
-  // is never started, so leaving it pending would strand the handshake.
+  // A handler that exists but cannot take the request is the opposite case, and
+  // it must NOT inherit the headless accept. On a display board a declined
+  // request means the UI request queue is full: the prompt is never drawn, so
+  // nobody compares the code. Accepting there would authorize a comparison no
+  // human saw. It has to reject and fail the connect.
   {
     NimBLEDevice::resetMock();
     Furble::Device::init(ESP_PWR_LVL_P3);
@@ -286,15 +288,47 @@ int main() {
 
     const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
     g_Accept = true;
-    if (!check(connected, "a declined request still completes the handshake")
+    if (!check(!connected, "a declined request fails the connect")
         || !check(g_Count == 1, "the handler was offered the request")
         || !check(NimBLEDevice::mockPasskeyConfirmCount() == 1,
                   "the declined request is answered exactly once")
-        || !check(NimBLEDevice::mockLastPasskeyAccept(), "the declined request keeps the default")
+        || !check(!NimBLEDevice::mockLastPasskeyAccept(),
+                  "a prompt that cannot be shown is rejected, not accepted")
+        || !check(!camera.isConnected(), "the declined request drops the link")
         || !check(!camera.hasPendingPairing(), "a declined request is not left pending")) {
       return 1;
     }
-    camera.disconnect();
+  }
+
+  // Two declines in a row: the second must reject as hard as the first. A
+  // handler that stays wedged, which is what a UI request queue that never
+  // drains looks like, may never drift into accepting.
+  {
+    NimBLEDevice::resetMock();
+    Furble::Device::init(ESP_PWR_LVL_P3);
+    resetRequest();
+    g_Accept = false;
+
+    Furble::Host::RicohVirtualCamera::Config config;
+    config.pairing_code = 173205;
+    Furble::Host::RicohVirtualCamera peer(config);
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Ricoh camera(&advertisement);
+
+    const bool first = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool firstAccept = NimBLEDevice::mockLastPasskeyAccept();
+    const bool second = camera.connect(ESP_PWR_LVL_P3, 5000);
+    g_Accept = true;
+    if (!check(!first && !second, "neither declined connect completes")
+        || !check(g_Count == 2, "both requests were offered to the handler")
+        || !check(NimBLEDevice::mockPasskeyConfirmCount() == 2,
+                  "each declined request is answered exactly once")
+        || !check(!firstAccept && !NimBLEDevice::mockLastPasskeyAccept(),
+                  "a repeated decline stays a reject")
+        || !check(!camera.hasPendingPairing(), "neither declined request is left pending")) {
+      return 1;
+    }
   }
 
   // An answer recorded against a connection that has since been replaced must

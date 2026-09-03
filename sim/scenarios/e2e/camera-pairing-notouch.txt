@@ -14,6 +14,7 @@ assert-eventually-virtual 8000 control.state active
 action camera-pair-request confirm 428913
 wait 400
 assert ui.modal open
+assert ui.modal_count 1
 assert ui.pairing_kind confirm
 assert ui.pairing_code 428913
 assert ui.pairing_overflow no
@@ -25,6 +26,7 @@ assert ui.overflow no
 action camera-pair-reject
 wait 500
 assert ui.modal closed
+assert ui.modal_count 0
 assert ui.pairing_pending no
 assert ble.pairing_answers 1
 assert ble.pairing_answer reject

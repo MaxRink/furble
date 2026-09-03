@@ -24,6 +24,7 @@ wait 400
 # The modal is up, it is the camera prompt, the six-digit code drew, and the box
 # fits the panel with no overflow.
 assert ui.modal open
+assert ui.modal_count 1
 assert ui.pairing_kind confirm
 assert ui.pairing_code 428913
 assert ui.pairing_overflow no
@@ -33,6 +34,7 @@ capture camera-pairing-code
 action camera-pair-accept
 wait 500
 assert ui.modal closed
+assert ui.modal_count 0
 assert ui.pairing_pending no
 assert ble.pairing_answers 1
 assert ble.pairing_answer accept

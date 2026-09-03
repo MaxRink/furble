@@ -41,7 +41,11 @@ branch. The seam was replayed onto the production `Furble::Camera`:
 `hostSetPairingRequest()` and `hostExpirePairing()` are now compiled for
 `FURBLE_HOST_TEST` or `FURBLE_SIM` and publish through the same
 `publishPairingRequest()` the real `onConfirmPasskey` calls, against the live
-client's `NimBLEConnInfo`. Everything downstream of that point is production
+client's `NimBLEConnInfo`. That `m_Client` read is taken under `m_PairingMutex`,
+the same lock `answerPairing()` reads it under. It deliberately does not take
+`m_Mutex`: `Camera::connect()` holds `m_Mutex` for the whole attempt, so a seam
+that took it could never raise a prompt during an in-flight connect, which is
+the case the security callback actually fires in. Everything downstream of that point is production
 code running against MockNimBLE, so the simulator now proves what the answer
 does on the wire and not only what the modal does on screen.
 
@@ -62,19 +66,33 @@ link torn down by a pairing rejection (`control.connected` reaches zero and the
 and waits for a UI would strand the peer's SMP procedure and turn a connect that
 worked on master into one that fails.
 
-`Camera::publishPairingRequest` therefore falls through: when no handler is
-registered, or the registered handler declines the request, the request is
-answered where it was raised with `answerPairing(true)`. That is exactly what
-NimBLE's own `NimBLEClientCallbacks::onConfirmPasskey` does
-(`components/esp-nimble-cpp/src/NimBLEClient.cpp`), so a headless image keeps
-the behaviour it had before this feature existed. The callback signature returns
-`bool` for the same reason: `UI::sendRequest` returns false when the request
-queue is full, and a queued-but-never-shown prompt has no timer to expire it
-either, so that case takes the same fall-through.
+`Camera::publishPairingRequest` therefore falls through, but the two ways of
+having no answer are deliberately not the same:
 
-`tests/host/camera_pairing_peer_test.cpp` covers both shapes against a real MITM
-peer: with no handler registered, and with a handler that declines. Both must
-complete the connection with exactly one injected accept.
+- **No handler registered at all.** A `FURBLE_NO_DISPLAY` image never calls
+  `setPairingRequestCallback`, so there is no screen this code could ever appear
+  on. The request is answered with `answerPairing(true)`, which is exactly what
+  NimBLE's own `NimBLEClientCallbacks::onConfirmPasskey` does
+  (`components/esp-nimble-cpp/src/NimBLEClient.cpp`), so a headless image keeps
+  the behaviour it had before this feature existed.
+- **A handler is registered but declines.** On a display board that means the
+  8-slot UI request queue is full: `UI::sendRequest` calls `xQueueSend` with a
+  zero wait, so a busy UI task drops the request. The prompt is never drawn, so
+  nobody compares the code. Accepting there would authorize a numeric comparison
+  no human ever saw, which is precisely the attack this modal exists to stop.
+  That case calls `answerPairing(false)`: the reject goes to the stack, the link
+  is dropped, and the connect fails visibly instead of silently pairing. The
+  console prints `pair.dropped: prompt queue full` and the log records it at
+  error level.
+
+The callback signature returns `bool` so the two are distinguishable at the
+chokepoint; a null pointer is not the same as a false return.
+
+`tests/host/camera_pairing_peer_test.cpp` covers both against a real MITM peer:
+no handler registered must complete the connection with exactly one injected
+accept, a declining handler must fail the connect with exactly one injected
+reject and a dropped link, and two declines in a row must both stay rejects so a
+wedged handler can never drift into accepting.
 
 Consequence for the console: on a headless console build the request is answered
 before `pair yes` could ever reach it, so the `pair` command is only useful on a
@@ -127,12 +145,20 @@ explicit, one virtual `Camera::autoAcceptPairing()` defaulting to false:
 ## Passkey display
 
 `onPassKeyDisplay` publishes and returns `NimBLEDevice::getSecurityPasskey()`
-rather than a constant compiled into furble. NimBLE injects that value for a
-`BLE_SM_IOACT_DISP` action and only falls back to the callback's return value
-while it is still the 123456 default, so sourcing it from the stack is what
-keeps the screen and the wire in step: a build that configures its own passkey
-displays that passkey. No randomisation is introduced here, so an unconfigured
-build still displays 123456 and the display path carries no MITM protection.
+rather than a constant compiled into furble.
+
+Read the NimBLE guard carefully, because it runs the other way round from the
+obvious reading. `NimBLEClient.cpp` (`BLE_GAP_EVENT_PASSKEY_ACTION`,
+`BLE_SM_IOACT_DISP`) injects `NimBLEDevice::getSecurityPasskey()` and calls this
+callback **only while that value is still the 123456 default**. A build that
+configures its own passkey therefore never reaches `onPassKeyDisplay` at all:
+NimBLE injects the configured value directly and the callback is skipped. Taking
+the code from `getSecurityPasskey()` is what makes the two paths agree anyway,
+so whichever one runs, the screen shows the passkey the stack used. Sourcing a
+constant here would go wrong the moment a build sets its own.
+
+No randomisation is introduced here, so an unconfigured build still displays
+123456 and the display path carries no MITM protection.
 `docs/ui-walkthrough.md` says so rather than implying a per-session value. The
 peer test sets a non-default passkey and asserts both the published code and the
 value handed to the stack, so the constant is no longer pinned by the test.
@@ -150,6 +176,31 @@ progress from. The reference is dropped as soon as the state leaves
 `STATE_CONNECT`/`STATE_CONNECTING`, so the UI never holds the last reference to
 a camera Control has released. `tests/host/control_connecting_snapshot_test.cpp`
 remains the regression for the race itself.
+
+## Coordination for the rebase after #245 and #272
+
+This PR lands after both, and neither merge is mechanical.
+
+**#272 versus this PR's connecting-camera publication.** #272 adds
+`Control::setConnectCamera()`, which takes `m_Mutex` itself. This PR adds
+`Control::setConnectCameraLocked()`, which requires the caller to already hold
+`m_Mutex` and publishes the lock-free generation counter after the store.
+`m_Mutex` is a plain `std::mutex`, so a naive merge that leaves a
+`setConnectCamera()` call inside one of this PR's existing critical sections
+self-deadlocks on the very first connect. At rebase, keep one setter: the
+locked-caller form, with the generation bump inside it, and convert #272's call
+sites to hold `m_Mutex` around it. Every write site must go through whichever
+form survives, or the generation drifts from the pointer and the connect timer
+renders a stale camera name.
+
+**#245's stale-bond counter needs a third exclusion.** #245 deletes the local
+bond after a run of failures, excluding the cases that are not the camera's
+fault: an unbonded peer, and a connect the user cancelled. A pairing rejection
+is neither. A user who presses Cancel twice on the modal, which is the correct
+response to a code that does not match, would have their local bond deleted for
+doing exactly the right thing. At rebase, add a pairing-reject exclusion
+alongside the other two, with a test that two deliberate Cancels leave the bond
+intact.
 
 ## Hardware gate
 
@@ -176,8 +227,10 @@ With `FURBLE_CONSOLE` both runs can be scripted over the USB console on a
 2. Clear the bond on both sides. The console has no delete, so use the Delete
    menu on the device to drop the saved camera, then `reboot`; on the camera
    clear its pairing entry in its Bluetooth menu. Without this the peers reuse
-   their keys and no security callback fires. Re-add the camera with `scan`
-   followed by `connect <index>`.
+   their keys and no security callback fires. Re-add the camera from the
+   device's own Scan menu: `connect <index>` reloads the saved list from NVS, so
+   a camera that has been scanned but not saved is not reachable from the
+   console at all. (#265's console pair verb closes that gap once it merges.)
 3. Watch the console during that connect. A numeric comparison prints
    `pair.confirm: NNNNNN`; a passkey display prints `pair.display: NNNNNN`.
    Nothing printed means the peer negotiated just works and the run proves
@@ -230,6 +283,9 @@ Every scenario below seeds `ble_peers fuji` (or `fuji-pair`) plus `ble_saved`, s
 - State scenario: `sim/scenarios/e2e/camera-pairing-state.txt` covers the passkey-display prompt, proves a duplicate request cannot replace the code already shown and is itself refused at the wire, proves an accept on a display prompt has no button to click, and proves cancelling a display prompt injects no comparison answer while still dropping the link. All three boards.
 - Multi-camera scenario: `sim/scenarios/e2e/camera-pairing-multi.txt` connects two peers and raises a request on each. The visible modal keeps its own code, and answering it must hand the modal to the waiting request rather than orphan it. All three boards.
 - Physical-button scenario: `sim/scenarios/e2e/camera-pairing-notouch.txt` seeds `no_touch` so the shipped physical-button layout is live, then asserts the modal fits, the code renders, the page underneath reports `ui.overflow no`, the rejection reaches the stack, and the focus is restorable after the modal closes. The two narrow non-touch panels, 135x240 and 80x160.
+- In-flight connect scenario: `sim/scenarios/e2e/camera-pairing-connecting.txt` raises the prompt while the camera is still Control's connecting camera, which is where the security callback actually fires on device. Every other pairing scenario waits for `control.state active` first, which is the easy half. The peer withholds its registration confirmation (`action ble-withhold-registration`) so the production connect blocks in its registration wait; the modal then has to appear over the live connect progress box without taking it over, the Confirm has to reach the stack from inside that window, and the session has to land on the connect-failed path when the camera never confirms, then connect cleanly on a fresh attempt. All three boards.
+
+Every pairing scenario also asserts `ui.modal_count`: exactly one live dialog while a prompt is up, and zero after it closes. A refused duplicate and a second camera's queued prompt both have to stay invisible rather than stacking a dialog on the top layer. The cancel, expiry and state scenarios additionally assert the session ends on the connect-failed path (`control.connected` zero, `ui.connect_box hidden`, `ui.connected no`), not on a half-dismissed screen.
 - Malformed requests are now rejected at the scenario boundary rather than at runtime, so they live as `invalid` fixtures: `action-camera-pair-short-code`, `action-camera-pair-long-code`, `action-camera-pair-kind` and `action-camera-pair-trailing`, each expecting exit 2, plus accept and reject cases in `tests/host/sim_action_parser_test.cpp` including forged `scenario_action_t` values that bypass the parser.
 - Layout fix the sim caught: the default LVGL msgbox width is fixed and rendered the modal 259 px wide, overflowing both the 135 px and 80 px panels, and the full content overflowed the 160 px height of the 80x160 M5StickC. `showCameraPairing` now caps the modal width to the panel (`max_width = m_Width - 4`) and drops the wrapped instruction line on the short 80x160 panel (`m_Height < 170`). With these the modal fits every panel; the sim overflow assertion is the guard.
 - Second layout fix, caught by reading the committed screenshot: the box fit the panel but the footer did not fit the box, so LVGL shrank the buttons and clipped "Cancel" to "Cance". `ui.pairing_overflow` now also reports `yes` when the footer scrolls or any footer label is wider than the button content it has to fit in, which is the assertion that catches a clipped action name. `showCameraPairing` trims the footer padding and drops the button font one step on panels narrower than 200 px, so both labels render whole on 135x240 while the 320x240 Core keeps the default look. Two action labels do not fit the 80 px M5StickC at any padding or font, so that panel answers the comparison with "Yes" and "No"; a passkey-display prompt has one button and keeps the full "Cancel" everywhere.
