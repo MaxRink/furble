@@ -1,6 +1,8 @@
-# 167 - deterministic host tests and a coverage run that cannot lose a profile
+# 169 - deterministic host tests and a coverage run that cannot lose a profile
 
-166 is the last number taken on master. This plan takes 167.
+166 is the last number taken on master. 167 is taken by PR #266
+(fujifilm device name, approved, merging before this one) and 168 by PR #273
+(merging last). Both already own their numbers, so this plan takes 169.
 
 ## Motivation
 
@@ -273,6 +275,37 @@ Linux VM, GCC 12 for the host suite, clang 18 for coverage, 2026-09-03.
 - clang-format 21.1.5 `--dry-run --Werror --style=file`: clean on every file
   this branch touches.
 - No sdkconfig changed.
+
+## Coordination with the open branches
+
+Merge order is #266, then this PR, then #245, #272, #265, #63, #273.
+
+PR #245 and PR #272 both edit `Control::connectAll()` and `Control::disconnect()`
+and rebase over this one. The lines below are the whole production change here,
+and they must survive those merges.
+
+- `Control::connectAll()`, the early abort path under `m_Mutex`: keep
+  `return STATE_DISCONNECTING;`. A rebase that reinstates `return m_State;`
+  reinstates the wedge.
+- `Control::connectAll()`, the tail after the interruptible retry wait: keep
+  `return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING : STATE_CONNECT;`.
+  A rebase that reinstates
+  `return m_ConnectAbort ? m_State : (m_State == STATE_DISCONNECTING ? STATE_DISCONNECTING : STATE_CONNECT);`
+  reinstates the same wedge through the other path.
+- `Control::task()`, the `if (next != STATE_DISCONNECTING)` guard: unchanged by
+  this PR, but it is what both returns above depend on. Widening or removing it
+  undoes them.
+
+`control-abort-republish` is the check. If a rebase reinstates either `m_State`
+return it fails on every run, and the failure names the wedge directly:
+`follow-up connect reaches active`. Run it after resolving any conflict in
+`src/FurbleControl.cpp`.
+
+`FurbleTestSync.h` moves from `include/` to `lib/furble/` in this PR. The
+`#include "FurbleTestSync.h"` line is unchanged in every consumer, so a branch
+that only includes the header rebases cleanly. A branch that adds a sync point,
+adds a host target listing the header's directory, or names
+`include/FurbleTestSync.h` in a document must follow the move.
 
 ## Implementation state
 

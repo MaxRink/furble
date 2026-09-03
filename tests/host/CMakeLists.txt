@@ -874,7 +874,7 @@ target_compile_options(control_interleave_test PRIVATE
 target_link_libraries(control_interleave_test PRIVATE Threads::Threads)
 
 # Deterministic interleaving proof for the other half of the same window (plan
-# 167). Same build shape as control_interleave_test, plus FURBLE_CONSOLE for the
+# 169). Same build shape as control_interleave_test, plus FURBLE_CONSOLE for the
 # debug snapshot: the test waits for Control::getDebugState().reconnectAttempt
 # rather than sleeping, which is what makes the interleaving forced. The
 # registration timeout is the host default here because this test parks in the
@@ -1372,7 +1372,7 @@ if(BUILD_TESTING)
   add_test(NAME control-interleave COMMAND control_interleave_test)
   set_tests_properties(control-interleave PROPERTIES TIMEOUT 120)
 
-  # Interleaving proof for the aborted-connect republish (plan 167). Waits out
+  # Interleaving proof for the aborted-connect republish (plan 169). Waits out
   # two reconnect retries before it forces the window, so it is slower than the
   # other interleave test. Same timeout reasoning: above DISCONNECT_WAIT_MAX_MS
   # so a stalled teardown reports its own cause.

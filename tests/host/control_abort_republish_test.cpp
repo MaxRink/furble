@@ -1,5 +1,5 @@
 // Deterministic interleaving proof for the aborted-connect republish guard in
-// Control::task() (plan 167).
+// Control::task() (plan 169).
 //
 // control-interleave (plan 157) proves the guard drops a stale
 // STATE_DISCONNECTING. It cannot reach the other half of the same window.
