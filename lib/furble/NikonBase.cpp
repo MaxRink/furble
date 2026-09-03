@@ -1,4 +1,5 @@
 #include <cstring>
+#include <utility>
 
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
@@ -36,6 +37,10 @@ NikonBase::NikonBase(NimBLEClient *client,
       m_Queue(queue),
       m_PairChr(pairChr),
       m_Progress(progress) {}
+
+bool NikonBase::connectCancelled(void) const {
+  return (m_Camera != nullptr) && m_Camera->connectCancelled();
+}
 
 bool NikonBase::gattWrite(NimBLERemoteCharacteristic *characteristic,
                           const uint8_t *data,
@@ -104,8 +109,24 @@ bool NikonBase::handshake4Stage(void) {
              NimBLEUtils::dataToHexString((const uint8_t *)msg, sizeof(*msg)).c_str());
 #endif
 
-    // wait 10s for a notification
-    BaseType_t timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(10000));
+    // Wait 10 s for a notification, in slices so the plan 148 cancel token can
+    // stop it. A single blocking receive cannot be interrupted, and this stage
+    // runs twice, so an uncancellable attempt holds Camera::m_Mutex for up to
+    // 20 s, most of Control::DISCONNECT_WAIT_MAX_MS. The total wait and the
+    // protocol are unchanged; only the receive is sliced.
+    constexpr uint32_t STAGE_WAIT_MS = 10000;
+    constexpr uint32_t STAGE_POLL_MS = 250;
+    BaseType_t timeout = pdFALSE;
+    for (uint32_t waited = 0; waited < STAGE_WAIT_MS; waited += STAGE_POLL_MS) {
+      if (connectCancelled()) {
+        ESP_LOGW(LOG_TAG, "Stage %u response wait cancelled", stage);
+        return false;
+      }
+      timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(STAGE_POLL_MS));
+      if (timeout == pdTRUE) {
+        break;
+      }
+    }
     if (timeout == pdFALSE) {
       success = false;
       ESP_LOGI(LOG_TAG, "Timeout waiting for stage %u response.", stage);

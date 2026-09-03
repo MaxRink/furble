@@ -859,6 +859,34 @@ target_compile_options(control_zombie_cancel_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_zombie_cancel_test PRIVATE Threads::Threads)
 
+# Thread-sanitizer proof for the Control::m_ConnectCamera guard. Separate target
+# because -fsanitize=thread has to apply to the production sources it links, and
+# the rest of the suite is not built under it.
+add_executable(control_connect_camera_race_test
+               control_connect_camera_race_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
+target_include_directories(control_connect_camera_race_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(control_connect_camera_race_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -fsanitize=thread -fno-omit-frame-pointer -g
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_options(control_connect_camera_race_test PRIVATE -fsanitize=thread)
+target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
+
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
 # the named sync points in lib/furble/FurbleTestSync.h are live, and links the
@@ -1393,6 +1421,11 @@ if(BUILD_TESTING)
 
   add_test(NAME control-zombie-cancel COMMAND control_zombie_cancel_test)
   set_tests_properties(control-zombie-cancel PROPERTIES TIMEOUT 60)
+
+  add_test(NAME control-connect-camera-race
+           COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
+                   $<TARGET_FILE:control_connect_camera_race_test>)
+  set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The
   # sync-point barriers carry their own timeouts, the ctest timeout is the

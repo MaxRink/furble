@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <string>
 #include <utility>
 
 #include "Device.h"
@@ -203,6 +204,16 @@ Control::state_t Control::connectAll(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
 
+    // Re-arm the cancel tokens the user's connect cycle asked for. See
+    // connectAll(bool): doing it here means no attempt can be in flight, because
+    // an in-flight attempt runs inside this function on this task.
+    if (m_ClearConnectCancel) {
+      m_ClearConnectCancel = false;
+      for (const auto &target : m_Targets) {
+        target->getCamera()->clearConnectCancel();
+      }
+    }
+
     // Snapshot cameras so the mutex is not held during connection attempts. The
     // snapshot holds strong references, so a camera stays alive through the
     // unlocked connect even if disconnect() clears its target meanwhile.
@@ -214,6 +225,13 @@ Control::state_t Control::connectAll(void) {
       }
     }
     m_ConnectInProgress = true;
+  }
+
+  if (all.empty()) {
+    ESP_LOGW(LOG_TAG, "Connect requested with no cameras in the session.");
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ConnectInProgress = false;
+    return STATE_CONNECT_FAILED;
   }
 
   ESP_LOGD(LOG_TAG,
@@ -233,11 +251,14 @@ Control::state_t Control::connectAll(void) {
     }
 
     setConnectCamera(camera);
-    if (!camera->connect(m_Power, timeout)) {
+    const bool connected = camera->connect(m_Power, timeout);
+    // Clear on both outcomes. The failure branch used to leave the field set,
+    // so it no longer named an attempt in flight, and disconnect() and
+    // getConnectingCamera() were handed a stale pointer.
+    setConnectCamera(nullptr);
+    if (!connected) {
       m_ConnectFailCount++;
       break;
-    } else {
-      setConnectCamera(nullptr);
     }
   }
 
@@ -435,6 +456,17 @@ BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t
 }
 
 bool Control::allConnected(void) {
+  // No targets is not "all connected". The vacuous truth published STATE_ACTIVE
+  // for a session containing nothing: the UI signalled CONNECTED, revealed the
+  // main menu and set sessionEstablished, while sendCommand() iterated an empty
+  // m_Targets so shutter and focus did nothing and reported nothing. Recovery
+  // was disconnect and connect again. Both connect entry points call addActive()
+  // per camera and then connectAll() unconditionally, so any path that fails to
+  // add a target reaches this, including a failed xTaskCreate.
+  if (m_Targets.empty()) {
+    return false;
+  }
+
   for (const auto &target : m_Targets) {
     if (!target->getCamera()->isConnected()) {
       return false;
@@ -456,16 +488,23 @@ std::vector<Control::Target *> Control::getTargets(void) {
 }
 
 void Control::connectAll(bool infiniteReconnect) {
-  {
-    // A new user connect cycle re-arms every target camera. The cancel token
-    // set by a previous disconnect() must not leak into this cycle, and it is
-    // deliberately not cleared inside Camera::connect(): a cancel that lands
-    // just as an attempt starts has to survive into that attempt.
-    const std::lock_guard<std::mutex> lock(m_Mutex);
-    for (const auto &target : m_Targets) {
-      target->getCamera()->clearConnectCancel();
-    }
-  }
+  // A new user connect cycle re-arms every target camera, but not here.
+  //
+  // This runs on the UI task, and a camera can have an attempt still in flight:
+  // a teardown that reached its cap drained the target while its attempt held
+  // Camera::m_Mutex, and connectAll() works from a snapshot taken before that
+  // move. Clearing the token here cleared it out from under that attempt, which
+  // is what made it uncancellable for the rest of its vendor timeout, with its
+  // target task blocked on the same mutex so the drained target never published
+  // m_Stopped and teardownDraining() held the connect gate shut.
+  //
+  // Request the re-arm instead and let the control task do it at the top of the
+  // cycle. That is safe by construction rather than by timing: the in-flight
+  // attempt runs inside connectAll() on the control task itself, so by the time
+  // the control task reaches the next cycle the previous attempt has returned.
+  // Only a user cycle re-arms; the automatic reconnect must not, or a cancel
+  // landing mid-reconnect would be discarded.
+  m_ClearConnectCancel = true;
 
   m_InfiniteReconnect = infiniteReconnect;
   m_ReconnectBackoff = Settings::reconBackoffEffective();
@@ -601,12 +640,31 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
 
     // Breaking out here used to be silent, which is how a vendor wait that
     // ignores the cancel token stayed invisible: the teardown burned its whole
-    // cap on every attempt and nothing said so. Say it.
+    // cap on every attempt and nothing said so. Say it, and say which targets,
+    // because a count alone does not tell you whether an attempt is still in
+    // flight or a teardown task is merely stalled. targetTasksStopped() is
+    // "every target stopped and no connect in progress", so the break-out also
+    // fires with every target stopped, which is why the line does not claim an
+    // attempt is running.
     if (!settled) {
-      ESP_LOGW(LOG_TAG,
-               "Camera teardown did not settle within %lu ms; draining %u target(s) with the "
-               "attempt still in flight.",
-               static_cast<unsigned long>(timeout_ms), static_cast<unsigned>(m_Targets.size()));
+      std::string unstopped;
+      size_t draining = 0;
+      {
+        const std::lock_guard<std::mutex> lock(m_Mutex);
+        draining = m_Targets.size();
+        for (const auto &target : m_Targets) {
+          if (target->m_Stopped) {
+            continue;
+          }
+          if (!unstopped.empty()) {
+            unstopped += ", ";
+          }
+          unstopped += target->getCamera()->getName();
+        }
+      }
+      ESP_LOGW(LOG_TAG, "Camera teardown did not settle within %lu ms; draining %u target(s)%s%s.",
+               static_cast<unsigned long>(timeout_ms), static_cast<unsigned>(draining),
+               unstopped.empty() ? "" : ", still running: ", unstopped.c_str());
     }
 
     // Hand the stopped targets to the drain set and return at once: getState() is
@@ -762,44 +820,6 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
                camera->getName().c_str(), connected ? "active" : "connecting");
       return;
     }
-  }
-
-  // A camera that is draining with its connect attempt still in flight must not
-  // be given a fresh target, which the loop above cannot see because the target
-  // has already moved to m_ZombieTargets.
-  //
-  // The narrow condition matters, and m_Stopped is what expresses it. A drained
-  // target whose task has stopped is the ordinary teardown state, and a
-  // reconnect through it is a supported path: refusing there would break every
-  // disconnect-then-reconnect that lands inside the drain window. A target
-  // drained with m_Stopped still false is the harmful one: its task is blocked
-  // on Camera::m_Mutex behind an attempt that is still running, which is the
-  // only way the teardown could have reached its cap. m_ConnectCamera cannot be
-  // used for this test because the drain clears it while the attempt continues.
-  // Giving that camera a fresh target is not a harmless duplicate:
-  // connectAll(bool) would clear the cancel token the teardown set, leaving the
-  // attempt uncancellable for the rest of its vendor timeout, and
-  // resetConnectionState() below would clear the connected guard underneath a
-  // running attempt. The drained target's task is blocked on the same
-  // Camera::m_Mutex, so it never publishes m_Stopped, the zombie is never
-  // reaped, and teardownDraining() keeps the connect gate shut the whole time.
-  //
-  // Refusing is what unblocks the user fastest, because the refusal also
-  // re-arms the cancel. Silently deduplicating would leave the attempt running
-  // to its own timeout, up to 60 s on a Canon pairing wait; cancelling it here
-  // makes it unwind within one vendor poll, the zombie reaps, and the next
-  // connect goes through in about a second. Surfacing "still disconnecting" on
-  // the UI is additive and not done here: the duplicate-connect case above is
-  // equally silent today, so this stays consistent with it rather than adding a
-  // one-off.
-  for (const auto &target : m_ZombieTargets) {
-    if (target->m_Stopped || target->getCamera()->getAddress() != camera->getAddress()) {
-      continue;
-    }
-    ESP_LOGW(LOG_TAG, "Camera '%s' is still disconnecting, cancelling its attempt.",
-             camera->getName().c_str());
-    target->getCamera()->cancelConnect();
-    return;
   }
 
   // Clear any stale connected flag before this camera joins a fresh connect.

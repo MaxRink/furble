@@ -147,11 +147,10 @@ class Control {
    * timeout: esp_restart() runs immediately after and kills the in-flight
    * teardown, so the force-complete race cannot happen there.
    *
-   * @param[in] timeout_ms Maximum time to wait for target tasks and cameras.
    * @param[in] timeout_ms Cap on the wait, honoured by both paths. The
-   *                        interactive path used to ignore this and always wait
-   *                        DISCONNECT_WAIT_MAX_MS, which is the default, so
-   *                        every existing caller is unchanged.
+   *                        interactive path used to ignore this and always
+   *                        waited DISCONNECT_WAIT_MAX_MS, which is this
+   *                        parameter's default, so every caller is unchanged.
    * @param[in] forRestart Caller will esp_restart() immediately, so a timeout
    *                       may force-complete the teardown.
    * @return true if all disconnect work completed before the timeout.
@@ -271,10 +270,10 @@ class Control {
   state_t connectAll(void);
 
   /** Check whether all disconnect work has completed. */
+  bool disconnectComplete(void);
+
   /** Publish the camera whose connect attempt is in flight, under m_Mutex. */
   void setConnectCamera(std::shared_ptr<Camera> camera);
-
-  bool disconnectComplete(void);
 
   /**
    * Have all per-target teardown tasks stopped and any in-flight connect
@@ -377,6 +376,12 @@ class Control {
   uint32_t m_ConnectFailCount = 0;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
+  // A user connect cycle has asked for the cancel tokens to be re-armed. Set by
+  // connectAll(bool) on the UI task, consumed by connectAll() on the control
+  // task at the top of the cycle, where no attempt can be in flight. The
+  // automatic reconnect never sets it, so a cancel landing mid-reconnect
+  // survives. Guarded by m_Mutex on the consuming side.
+  volatile bool m_ClearConnectCancel = false;
   state_t m_State = STATE_IDLE;
 
   // setState() runs from the control task and from the UI task
