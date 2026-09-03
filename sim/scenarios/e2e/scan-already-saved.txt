@@ -33,6 +33,13 @@ wait 500
 assert ui.page scan
 assert-eventually 2000 camera.count 1
 
+# A row index past the end of the scan list is unavailable, not applied. The
+# malformed spellings are rejected before any thread starts; see the
+# action-scan-row-* fixtures in sim/scenarios/invalid.
+action expect unavailable scan-row 5
+assert ui.connect_error none
+assert control.state idle
+
 # Tapping its row must refuse instead of connecting.
 action scan-row 0
 wait 300

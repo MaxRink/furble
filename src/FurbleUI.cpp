@@ -5051,8 +5051,10 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         char text[160];
         // "<camera>: <instruction>", the shape showConnectError() splits on so
         // the name never costs the instruction its room on a narrow panel.
+        // This path has a name string rather than a Camera, so it repeats the
+        // substitution against the same constant.
         std::snprintf(text, sizeof(text), "%s: not responding. Check it is on and in range.",
-                      name.empty() ? "The camera" : name.c_str());
+                      name.empty() ? Camera::DISPLAY_NAME_FALLBACK : name.c_str());
         ctx->ui->showConnectError("Connect failed", text);
       }
       break;
@@ -5455,9 +5457,11 @@ bool UI::beginPairing(size_t index, lv_event_t *e) {
     ESP_LOGW(LOG_TAG, "'%s' is already saved, refusing to pair it again",
              camera->getName().c_str());
     char text[160];
-    // Same "<camera>: <instruction>" shape as the other two boxes.
+    // Same "<camera>: <instruction>" shape as the other two boxes, and the same
+    // stand-in for a camera that advertised no name: the split gives the name a
+    // line of its own, so a raw empty name opens the box with a blank line.
     std::snprintf(text, sizeof(text), "%s: already saved. Connect it, or delete it to pair again.",
-                  camera->getName().c_str());
+                  camera->getDisplayName().c_str());
     m_ConnectContext.ui->showConnectError("Already saved", text);
     return false;
   }

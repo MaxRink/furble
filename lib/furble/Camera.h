@@ -227,6 +227,19 @@ class Camera: public NimBLEClientCallbacks {
 
   const std::string &getName(void) const;
 
+  /**
+   * How to refer to this camera in a user-facing message.
+   *
+   * The advertised name, or DISPLAY_NAME_FALLBACK when the camera advertised
+   * none. Every message that names a camera goes through here: the connect
+   * error boxes put the name on a line of its own, so an empty one leaves a
+   * blank line above the instruction and a message box that begins with a hole.
+   */
+  std::string getDisplayName(void) const;
+
+  /** Stand-in for a camera that advertised no name. */
+  static constexpr const char *DISPLAY_NAME_FALLBACK = "The camera";
+
   const NimBLEAddress &getAddress(void) const;
 
   /** Get connection progress percentage (0-100). */
