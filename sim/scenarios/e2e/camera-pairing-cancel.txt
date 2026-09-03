@@ -14,6 +14,7 @@ assert control.connected 1
 action camera-pair-request confirm 428913
 wait 400
 assert ui.modal open
+assert ui.modal_count 1
 assert ui.pairing_kind confirm
 assert ui.pairing_code 428913
 
@@ -23,8 +24,15 @@ action ble-connect-fail
 action camera-pair-reject
 wait 500
 assert ui.modal closed
+assert ui.modal_count 0
 assert ui.pairing_pending no
 assert ble.pairing_answers 1
 assert ble.pairing_answer reject
+
+# The link the rejection tore down must end on the connect-failed path, not on
+# a half-dismissed screen: no connected target, the progress box gone and the
+# connected page not presented.
 assert-eventually-virtual 12000 control.connected 0
+assert-eventually-virtual 5000 ui.connect_box hidden
+assert ui.connected no
 exit

@@ -16,11 +16,14 @@ assert control.connected 1
 action camera-pair-request display 654321
 wait 400
 assert ui.modal open
+assert ui.modal_count 1
 assert ui.pairing_kind display
 assert ui.pairing_code 654321
 action expect no-effect camera-pair-request confirm 111111
 wait 400
 assert ui.modal open
+# A refused duplicate must not stack a second dialog on the top layer.
+assert ui.modal_count 1
 assert ui.pairing_kind display
 assert ui.pairing_code 654321
 # The duplicate is not just dropped, it is refused at the wire. Leaving the
@@ -46,6 +49,8 @@ assert ui.pairing_pending no
 assert ble.pairing_answers 1
 assert ble.pairing_answer reject
 assert-eventually-virtual 12000 control.connected 0
+assert-eventually-virtual 5000 ui.connect_box hidden
+assert ui.connected no
 
 # Nothing pending: both answers stay valid no-ops instead of reopening a modal.
 action expect no-effect camera-pair-reject

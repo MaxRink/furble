@@ -13,6 +13,7 @@ assert control.connected 1
 action camera-pair-request confirm 314159
 wait 400
 assert ui.modal open
+assert ui.modal_count 1
 assert ui.pairing_kind confirm
 assert ui.pairing_code 314159
 
@@ -21,8 +22,13 @@ action ble-connect-fail
 action camera-pair-expire
 wait 500
 assert ui.modal closed
+assert ui.modal_count 0
 assert ui.pairing_pending no
 assert ble.pairing_answers 1
 assert ble.pairing_answer reject
+
+# An expiry ends the session the same way a Cancel does.
 assert-eventually-virtual 12000 control.connected 0
+assert-eventually-virtual 5000 ui.connect_box hidden
+assert ui.connected no
 exit

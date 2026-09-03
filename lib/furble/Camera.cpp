@@ -280,10 +280,16 @@ void Camera::cancelPairing(void) {
 #if defined(FURBLE_HOST_TEST) || defined(FURBLE_SIM)
 bool Camera::hostSetPairingRequest(PairingType type, uint32_t code, uint16_t handle) {
   NimBLEConnInfo connInfo;
-  if (m_Client != nullptr) {
-    // Publish against the live link so the answer injects for real, exactly as
-    // the security callback's own connection info does.
-    connInfo = m_Client->getConnInfo();
+  {
+    // Read m_Client under the same lock answerPairing() reads it under. Taking
+    // m_Mutex here instead would block for the whole of an in-flight connect,
+    // which is exactly the window a scenario needs to raise a prompt in.
+    const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+    if (m_Client != nullptr) {
+      // Publish against the live link so the answer injects for real, exactly
+      // as the security callback's own connection info does.
+      connInfo = m_Client->getConnInfo();
+    }
   }
   if (handle != BLE_HS_CONN_HANDLE_NONE) {
     connInfo.mockSetConnHandle(handle);
@@ -362,19 +368,31 @@ void Camera::publishPairingRequest(PairingType type, uint32_t code, NimBLEConnIn
 #endif
 
   const pairing_request_callback_t callback = m_PairingRequestCallback.load();
-  if ((callback != nullptr) && callback(this)) {
+  if (callback == nullptr) {
+    // No handler at all. A FURBLE_NO_DISPLAY image never registers one, so
+    // there is no screen this code could ever appear on and no timer to expire
+    // the request. Answer with NimBLE's own default, which is exactly what this
+    // path did before the prompt existed, so a headless board keeps working.
+    ESP_LOGW(LOG_TAG, "No pairing answerer for %s, accepting as NimBLE does", m_Name.c_str());
+    answerPairing(true);
     return;
   }
 
-  // Nothing will answer this prompt. A headless image has no UI task to show
-  // it, the UI queue can be full, and the request queue is also the only thing
-  // that starts the timer that would otherwise expire it. Leaving it pending
-  // would strand the peer's SMP procedure until it times out, turning a
-  // connect that used to work into a connect that fails. Answer it here with
-  // NimBLE's own default instead, which is what this code path did before the
-  // prompt existed.
-  ESP_LOGW(LOG_TAG, "No pairing answerer for %s, accepting as NimBLE does", m_Name.c_str());
-  answerPairing(true);
+  if (callback(this)) {
+    return;
+  }
+
+  // A handler exists but could not take the request: on a display board that is
+  // a full UI request queue. The prompt will never be drawn and no timer will
+  // expire it, so nobody compares the code. Accepting here would authorize a
+  // numeric comparison no human ever saw, which is the whole attack this modal
+  // exists to stop. Reject instead. The rejection also drops the link, so the
+  // connect fails and the failure is visible rather than a silent pairing.
+  ESP_LOGE(LOG_TAG, "Camera %s pairing prompt could not be queued, rejecting", m_Name.c_str());
+#if defined(FURBLE_CONSOLE)
+  printf("pair.dropped: prompt queue full\n");
+#endif
+  answerPairing(false);
 }
 
 void Camera::clearPairingRequest(void) {

@@ -111,15 +111,25 @@ int main() {
   }
 
   // A handler that cannot take the request, which is what a full UI request
-  // queue reports, must not leave it pending with nothing to expire it.
+  // queue reports, must not leave it pending with nothing to expire it, and it
+  // must be answered with a reject rather than the headless accept: the prompt
+  // was never drawn, so nobody compared the code.
   acceptRequests = false;
   const uint32_t before = requestCount;
+  const size_t answersBefore = NimBLEDevice::mockPasskeyConfirmCount();
   camera.hostSetPairingRequest(Furble::Camera::PairingType::NUMERIC_COMPARISON, 246810);
   if (!check(requestCount == before + 1, "a declined request still reaches the handler")
       || !check(!camera.hasPendingPairing(), "a declined request is answered, not stranded")) {
     return 1;
   }
   acceptRequests = true;
+  // No client here, so nothing reaches NimBLE. camera_pairing_peer_test.cpp
+  // covers the injected reject over a live link; this only pins that the
+  // decline path does not quietly inject an accept from the state machine.
+  if (!check(NimBLEDevice::mockPasskeyConfirmCount() == answersBefore,
+             "a declined request with no link injects nothing")) {
+    return 1;
+  }
 
   Furble::Camera::setPairingRequestCallback(nullptr);
   NimBLEDevice::resetMock();
