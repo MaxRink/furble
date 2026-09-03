@@ -23,6 +23,7 @@ enum class scenario_action_kind_t {
   SCROLL,
   PAGE,
   SECURE_STALL,
+  SCAN_ROW,
   INVALID,
 };
 

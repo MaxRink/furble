@@ -1,36 +1,22 @@
-# Pairing a camera that is already saved must be refused, not started, and the
-# refusal must be dismissable.
+# Pairing a camera that is already saved must be refused, not started, the
+# refusal must be dismissable, and its text must be readable on every panel.
 #
-# NOT CERTIFIED. Read this before trying to re-enable it.
+# The saved index is keyed on the BLE address, and a Fujifilm Secure body
+# advertises a resolvable private address that changes with every pairing. A
+# second pairing therefore adds a second record for one camera instead of
+# replacing the first, and the saved reconnect picks whichever the index holds.
 #
-# The refusal lives in UI::beginPairing(), which is reached only by activating a
-# scan result row. Before PR #261 the row came from the FauxNY setting and was
-# created inside startScan(), so it held the focus when the page loaded and a
-# bare "action select" activated it deterministically. With the production
-# CameraList the FauxNY row and the seeded saved camera are two different
-# cameras, so the refusal never fires; the row has to come from the virtual
-# radio instead, and a radio row is materialized after the page has already
-# focused its back button.
+# The virtual radio advertises one Fujifilm peer and persists it through the
+# production CameraList::match and CameraList::save, so the scan row and the
+# saved record really are the same camera, matched by the production
+# CameraListProtocol::sameSavedIdentity rule.
 #
-# Moving the focus onto it is what cannot be made deterministic today. "key
-# down" drives GPIO 38 for 80 virtual ms and the UI samples the button on its
-# own cadence, so on a page that is busy draining scan results the press is
-# missed roughly half the time; measured 3 of 6, 4 of 8 and 5 of 8 across
-# variants. Repeating the press makes it worse, not better, because a press that
-# does land walks the focus off the row again. "btn a" and "btn b" do not move
-# the focus on this page in either layout.
-#
-# What covers this today: camera-list-protocol pins the identity rule itself
-# with teeth, and three certified scenarios cover UI::showConnectError() and
-# closeConnectErrorDialog() end to end on all three panels in both input
-# layouts: stale-bond-pairing-lost.txt, connect-fail-progress.txt and
-# connect-error-notouch-dismiss.txt. What is missing is only the UI-level proof
-# that the Scan row refuses.
-#
-# To re-enable: give the scenario DSL a deterministic way to activate a scan
-# result (an "action scan-row N" that dispatches the row's click handler the way
-# "action nav" dispatches a menu button), then drop the key presses below and
-# set certified true in the manifest.
+# The row is activated with "action scan-row", which dispatches the row's own
+# click handler. Driving it through the focus is not reproducible: the row is
+# materialized on the UI task after the page has already focused its back
+# button, and a key press lands about half the time on a page busy draining
+# advertisements. That flake is why this scenario was de-certified for one
+# round; the action replaces it with the same production entry point.
 seed fauxny false
 seed ble_peers fuji
 seed ble_saved true
@@ -46,20 +32,24 @@ action nav scan
 wait 500
 assert ui.page scan
 assert-eventually 2000 camera.count 1
-wait 300
 
 # Tapping its row must refuse instead of connecting.
-key down
-wait 200
-action select
+action scan-row 0
 wait 300
 assert ui.connect_error already_saved
 assert ui.modal_count 1
 assert control.state idle
 assert control.targets 0
 
+# This is the longest of the three messages, so it is the one most likely to be
+# clipped. On 80x160 it used to hide about two and a half lines while every
+# assertion above still passed.
+assert ui.modal_overflow no
+capture already-saved
+
 # And the box has to go away again. Its OK button joins the input group and
-# takes the focus, so this activation needs no navigation and is reliable.
+# takes the focus, so the same activation works on touch and on the
+# physical-button layout.
 action select
 wait 300
 assert ui.connect_error none

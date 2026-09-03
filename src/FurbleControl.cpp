@@ -240,11 +240,18 @@ Control::state_t Control::connectAll(void) {
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
       if (camera->needsRepair()) {
-        // Kept short on purpose. This string is the body of a message box that
-        // has to fit an 80x160 panel, and the camera name in front of it grows
-        // to model plus serial. The console prints the same string, so it has
-        // to stand on its own there too.
-        repairReason = camera->getName() + ": put it in pairing mode, then connect.";
+        // "<camera>: <instruction>" exactly, and kept short on purpose. This
+        // string is the body of a message box that has to fit an 80x160 panel,
+        // and the camera name in front of it grows to model plus serial. The
+        // console prints the same string, so it has to stand on its own there
+        // too. UI::showConnectError() splits it on that first ": " to give the
+        // name a line of its own, so the separator is a contract rather than
+        // formatting; tests/host/fujifilm_repair_needed_test.cpp pins the whole
+        // string. An empty name would leave a blank first line in the box, so it
+        // gets the same substitute the connect-failed text uses.
+        const std::string name = camera->getName();
+        repairReason = (name.empty() ? std::string("The camera") : name)
+                       + ": put it in pairing mode, then connect.";
       }
       break;
     } else {
