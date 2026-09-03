@@ -169,9 +169,15 @@ bool scenarioRepairNeededStopsTheCycle() {
 
   const std::string reason = control.getConnectFailReason();
   check(!reason.empty(), "the failure carries a user-facing reason");
-  check(reason.find("pairing mode") != std::string::npos,
-        "the reason tells the user to put the camera in pairing mode");
-  check(reason.find(config.name) != std::string::npos, "the reason names the camera");
+  // Pinned exactly, not by substring. UI::showConnectError() splits this string
+  // on its first ": " to give the camera a line of its own that can ellipsize
+  // while the instruction always renders whole, so the separator and the shape
+  // are a contract between Control and the UI. A substring check would let the
+  // separator disappear with no failing test, and the box would then wrap a
+  // 25 character name over three lines of an 80x160 panel and push the
+  // instruction off it.
+  check(reason == config.name + ": put it in pairing mode, then connect.",
+        "the reason is exactly the agreed <camera>: <instruction> string");
 
   check(NimBLEDevice::deleteBondCount() == 1, "the stale local bond is deleted exactly once");
   check(!NimBLEDevice::isBonded(camera->getAddress()), "the dead keys are gone");

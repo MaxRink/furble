@@ -345,7 +345,15 @@ a regression.
   the current menu page, and a message box lives on the top layer outside any
   page, so nothing could see it. The query walks the top layer and reports `yes`
   when a descendant leaves the display or when a label overruns the content box
-  that clips it. Assert it `no` in any scenario that raises a modal.
+  that clips it, or when a top-layer scrollable has a non-zero scroll extent.
+  That last shape is the one a size-only comparison missed: the 80x160
+  "Connect failed" box ended at the last row of the display with six pixels of
+  its instruction below the clip box. It answers `none` when the top layer has
+  no visible children, so a scenario that forgets to raise its modal cannot read
+  a pass. Assert it `no` in any scenario that raises a modal.
+- `action scan-row N` activates scan result row N through its production click
+  handler, `UI::beginPairing()`. Focus-driven activation of that row is not
+  reproducible, so this is how a scenario reaches the already-saved refusal.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA

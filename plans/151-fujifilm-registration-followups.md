@@ -194,12 +194,14 @@ the 135x240 StickS3, the bench device, the title rendered as "lost" and the body
 as "M X100VI no long / his pairing. Put th", cut on both edges; on the 80x160
 StickC the OK button was drawn off the bottom entirely. The box existed, carried
 the right text and was operable, and the instruction the user has to act on was
-unreadable. Every sibling box in the file that carries prose sets a width
-(`src/FurbleUI.cpp:5981` for the connect progress box, `:8785` for the low
-battery box); this one did not.
+unreadable.
 
-The message is prose on panels between 80x160 and 320x240, so sizing alone is
-not enough. `showConnectError()` now does this, in order:
+Sizing alone was not enough, and neither was "the box ends inside the display".
+A message box clips its content area, so the box can end on the last row of the
+panel while the body label runs six pixels past that clip box and the last line
+is drawn at half height and cut. That is what 80x160 did while every assertion
+passed. The acceptance test is therefore the content's scroll extent: anything
+hidden means not fitted. `showConnectError()` now does this, in order:
 
 1. Bind the box to the display width and wrap the body, the shape the low
    battery box already uses.
@@ -207,53 +209,80 @@ not enough. `showConnectError()` now does this, in order:
    `<camera>: <instruction>`, so the camera gets a line of its own. This matters
    because PR #266 grows a name to model plus serial, up to 25 characters, which
    is three wrapped lines on 80x160 and pushes the instruction out of the box.
-3. Measure the assembled box. If it is taller than the display, drop the title
-   and body to the board's small font, the same font the Small text size setting
-   selects there, and trim the theme padding to two pixels. A line of the
-   instruction is worth more than a few pixels of air on a panel that size.
-4. Measure again. If it still does not fit, pin the camera name to one
-   ellipsized line. This is last because it is the only step that loses
-   information: a panel with room shows the whole name over as many lines as it
-   takes, a panel without room trades the tail of the name for the whole
-   instruction.
-5. Backstop: if even that overruns, give the surplus back to the content area,
-   which scrolls, so the box always ends inside the display and the OK button is
-   always reachable.
+3. If it does not fit, drop the title, name and body to the board's small font,
+   the same font the Small text size setting selects there, and trim the theme
+   padding to two pixels.
+4. If it still does not fit, shrink the chrome. The header and footer rows are
+   sized by the theme, and the flex-grown title stretches to whatever the row
+   decided: measured on 80x160 they were 43 px each, 86 px of a 160 px panel,
+   while the whole instruction had 62 px to live in. The footer row and its
+   button get the small font and an explicit height; the header is trimmed and
+   made content sized so a wrapped title can still take its second line.
+5. If it still does not fit, pin the camera name to one ellipsized line. This is
+   last because it is the only step that loses information: a panel with room
+   shows the whole name over as many lines as it takes, a panel without room
+   trades the tail of the name for the whole instruction.
+6. Backstop: give the surplus back to the content area so the box ends inside
+   the display and the OK button stays reachable. That leaves a scroll extent
+   behind, which `ui.modal_overflow` reports as a failure. A box nobody can
+   fully read is a bug and the scenarios should say so rather than hide it.
 
-The messages themselves were shortened to match, and all three now share the
+The title is wrapped rather than dotted on purpose. LVGL rewrites a
+`LV_LABEL_LONG_DOT` label's own text to insert the ellipsis, so a dotted title
+is invisible to `ui.connect_error`, which reads that text back. "Already saved"
+is 13 characters and does not fit one 80x160 line, so it would have been
+silently truncated on the smallest panel with nothing to catch it.
+
+The messages themselves were shortened to match and all three share the
 `<camera>: <instruction>` shape that step 2 splits on. `Control`'s re-pair
-reason became `<name>: put it in pairing mode, then connect.`, which is also
-what the console prints as `control.connect_fail_reason`, so it still stands on
-its own there.
+reason is `<name>: put it in pairing mode, then connect.`, which is also what
+the console prints as `control.connect_fail_reason`, so it still stands on its
+own there. That exact string is pinned by
+`tests/host/fujifilm_repair_needed_test.cpp`, not by substring, because the
+separator is a contract between Control and the UI rather than formatting.
+Control substitutes "The camera" for an empty name, matching the connect-failed
+text, so the box can never open with a blank first line.
 
 Rendered evidence, captured from the scenarios on each panel build:
 
-| Panel | Name that fits | Longest #266 name (`FUJIFILM X-H2S 3143344639`) |
-| --- | --- | --- |
-| 320x240 M5Stack Core | full text, one body line | full name, full instruction |
-| 135x240 M5StickS3 | full text, four body lines | full name over three lines, full instruction |
-| 80x160 M5StickC | full text, small font | name ellipsized, full instruction |
+| Panel | Pairing lost | Connect failed | Already saved | Longest #266 name |
+| --- | --- | --- | --- | --- |
+| 320x240 M5Stack Core | full text | full text | full text | full name, full instruction |
+| 135x240 M5StickS3 | full text | full text | full text | full name over three lines |
+| 80x160 M5StickC | full text, small font | full text, small font | full text, small font | name ellipsized, full instruction |
 
-`stale-bond-pairing-lost.txt` and `connect-error-notouch-dismiss.txt` each carry
-a `capture`, so the render is evidence rather than an assumption, and every one
-of those runs asserts `ui.modal_overflow no`.
+All three scenarios carry a `capture`, so the render is evidence rather than an
+assumption, and every run asserts `ui.modal_overflow no`.
 
 ### 1f. Catching a clipped modal at all
 
-Nothing could see the bug above, which is the more interesting half. `ui.overflow`
-measures the current menu page's scroll extent, and a message box lives on the
-top layer outside any page. `ui.connect_error` reads the title label out of the
-widget tree, which proves the widget exists with the right text and says nothing
-about where it was drawn. So three certified scenarios passed on three panels
-while the instruction was cut off at both edges.
+Nothing could see the bug above, which is the more interesting half.
+`ui.overflow` measures the current menu page's scroll extent, and a message box
+lives on the top layer outside any page. `ui.connect_error` reads the title
+label out of the widget tree, which proves the widget exists with the right text
+and says nothing about where it was drawn. So three certified scenarios passed
+on three panels while the instruction was cut off at both edges.
 
 `ui.modal_overflow` is the missing measurement. It walks the top layer and
-reports `yes` when any descendant is drawn outside the display, or when a label
-is wider or taller than the content box that clips it, which is the same failure
-one level down: the box fits, the text inside it does not. It is asserted `no`
-in all three connect-error scenarios, on every panel, in both input layouts.
-Reverting the width fix makes it fail on 135x240 and on 80x160 and pass on
-320x240, which is exactly the panel split the review found by eye.
+reports `yes` in three shapes: a descendant drawn outside the display, a
+descendant drawn outside its own parent's content box, and a scrollable with a
+non-zero scroll extent. The third is the one a size-only comparison missed. The
+first version of this query compared each label's size against its parent's
+content size and never compared position, so two stacked labels that overflowed
+in aggregate were invisible: on 80x160 the "Connect failed" box ended on the
+last row of the display with `lv_obj_get_scroll_bottom(content) = 6`, the last
+line of the instruction cut, and the query answered `no`. It now answers `none`
+rather than `no` when the top layer has no visible children, so a scenario that
+forgets to raise its modal cannot read a pass.
+
+It is asserted `no` in all four connect-error scenarios, on every panel, in both
+input layouts.
+
+Known limit, by construction: a `LV_LABEL_LONG_DOT` label always fits its own
+box, so an ellipsized label is reported clean. The camera name is deliberately
+dotted, which is the trade step 5 makes, and the instruction beside it is a
+separate wrapped label that is measured. Any label whose truncation must be
+caught has to be wrapped rather than dotted, which is why the title was changed.
 
 The last one is new behaviour, not just a message. Pairing a camera the saved
 list already holds used to start a connect and then save a second record,
@@ -372,25 +401,33 @@ overrides unchanged.
   then fails, and the cycle stops with a reason that names the stale camera and
   never the healthy one, exactly one bond is deleted, and Control leaves the
   healthy link up so the whole-session teardown is visibly the UI decision.
-- sim/scenarios/e2e/scan-already-saved.txt is present but NOT certified, with
-  the reason in the manifest and in the scenario header. The refusal is reached
-  only by activating a scan result row. Before PR #261 that row came from the
-  FauxNY setting and was created inside `startScan()`, so it held the focus when
-  the page loaded and a bare `action select` activated it deterministically.
-  With the production `CameraList` the FauxNY row and the seeded saved camera
-  are two different cameras, so the refusal never fires and the row has to come
+- sim/scenarios/e2e/scan-already-saved.txt (certified, all three panels): the
+  already-saved refusal, end to end. It seeds `ble_peers fuji` plus `ble_saved
+  true`, so the scan row and the saved record are one camera matched through the
+  production `CameraList::match` and `save`, then activates the row and asserts
+  `ui.connect_error already_saved`, one live modal, `control.state idle`, no
+  targets, `ui.modal_overflow no`, and the dismissal.
+
+  It was de-certified for one round because the row could not be activated
+  reliably. Before PR #261 the row came from the FauxNY setting and was created
+  inside `startScan()`, so it held the focus when the page loaded and a bare
+  `action select` activated it. With the production `CameraList` the FauxNY row
+  and the seeded saved camera are two different cameras, so the row has to come
   from the virtual radio instead, which materializes it after the page has
-  already focused its back button. Moving the focus onto it cannot be made
-  deterministic with today's DSL: `key down` drives GPIO 38 for 80 virtual ms
-  and the UI samples the button on its own cadence, so on a page busy draining
-  scan results the press is missed about half the time (measured 3 of 6, 4 of 8
-  and 5 of 8 across variants; repeating the press makes it worse because a press
-  that does land walks the focus back off the row), and `btn a` and `btn b` do
-  not navigate on that page in either layout. The identity rule itself keeps its
-  host test, and the error dialog keeps three certified scenarios; what is lost is
-  the UI-level proof that the Scan row refuses. Re-certify once the DSL can
-  dispatch a scan row directly, the way `action nav` dispatches a menu button.
-  The new `ui.connect_error` query is documented in docs/sim.md.
+  already focused its back button. Moving the focus onto it is not reproducible:
+  `key down` drives GPIO 38 for 80 virtual ms and the UI samples the button on
+  its own cadence, so on a page busy draining scan results the press is missed
+  about half the time (measured 3 of 6, 4 of 8 and 5 of 8 across variants, and
+  0 of 6 under load; repeating the press makes it worse, because a press that
+  does land walks the focus back off the row), and `btn a` and `btn b` do not
+  navigate on that page in either layout.
+
+  The fix is the `action scan-row N` verb the previous revision named as the
+  follow-up: it dispatches the row's own click handler, `UI::beginPairing()`, so
+  the scenario runs the production entry point without touching the focus. That
+  also matters beyond this scenario: "Already saved" is the longest of the three
+  messages, and while it had no scenario it was the only box with no rendered
+  evidence on any panel. It was hiding about two and a half lines on 80x160.
 - sim/scenarios/e2e/stale-bond-pairing-lost.txt (certified, all three panels):
   the bench failure end to end through the production Control, Camera and UI.
   The new `fuji-secure-stale` topology is a Fujifilm Secure body the central is
@@ -408,7 +445,7 @@ overrides unchanged.
   scenario-seed form PR #264 established, so CI gates it; a
   `FURBLE_SIM_NO_TOUCH` environment override is a local convenience and no
   workflow sets it.
-- All three certified scenarios also run green under the
+- All four certified scenarios also run green under the
   `FURBLE_SIM_NO_TOUCH=1` environment override on every declared panel.
 
 The mock peer gained `setSecureTimeouts()` (a bounded run of handshake timeouts
@@ -463,10 +500,20 @@ Mutation evidence:
   135x240 and on 80x160, and passes on 320x240, which is exactly the panel split
   the review measured by eye.
 
-Not covered: disabling the `CameraList::isSaved()` check in
-`UI::beginPairing()`. That mutation used to be killed by scan-already-saved,
-which is de-certified now, so nothing kills it any more. The identity rule
-itself keeps the camera-list-protocol test.
+- Dropping the chrome-shrink step from the fit pass, so the header and footer
+  keep the theme font and padding: on 80x160 all three of
+  connect-fail-progress, scan-already-saved and stale-bond-pairing-lost fail
+  `ui.modal_overflow expected 'no' got 'yes'`.
+- With that mutation in place, additionally reverting the scroll-extent
+  handling in both the fit pass and the query: stale-bond-pairing-lost **stops
+  failing** on 80x160 while its box is still clipped. That is the blind spot
+  exactly: a box that ends on the last row of the display with its last line
+  below the content clip box is invisible to a bounds-only check, and the scroll
+  extent is what turns it into a failing assertion. The other two keep failing
+  because they also break the display bounds, which the position checks catch.
+- Disabling the `CameraList::isSaved()` check in `UI::beginPairing()`:
+  scan-already-saved exits 1, the connect starts and no box appears. Covered
+  again now that the scenario is certified.
 
 Every mutation above was run from a verified green baseline and reverted with a
 verified green revert check, so no result is an artifact of a stale object.
@@ -486,8 +533,18 @@ Verification, on the head rebased onto master 77aa113f (PRs #261, #264 and
   e2e 84/84, 9/9 and 9/9; bughunt 8/8, 8/8 and 4/4. The three connect-error
   scenarios also pass on every panel under the `FURBLE_SIM_NO_TOUCH=1`
   environment override, 18 runs in all.
-- Coverage floor green: `tools/coverage.py --check` reports "Coverage is at or
-  above every floor". Grand union 70.77% against a 69.26 floor, src/FurbleUI.cpp
+- Coverage floor green, and worth a note: the CI coverage job failed once on
+  this head with `lib/furble/Camera.cpp: 73.28% below floor 73.75%`, then passed
+  on a re-run of the identical commit with no change. Measured locally on the
+  same tree the host stack gives Camera.cpp 548 of 726 lines, 75.48%, the same
+  value as the previous head. Camera.cpp holds the timing-sensitive cancel and
+  abort paths (`cancelConnect`, `abortBlockingConnect`, the terminate branch and
+  the mid-connect unwind), so a loaded runner can take a different path through
+  them while every test still passes; 532 against 548 covered lines is that
+  wobble. The floor for this file sits inside that noise band, which is worth
+  knowing before someone ratchets it.
+
+ Grand union 70.77% against a 69.26 floor, src/FurbleUI.cpp
   80.81% against 79.53, src/FurbleControl.cpp 78.88% against 77.13,
   lib/furble/Camera.cpp 75.48% against 73.75. Measured locally on clang 14,
   where CI pins clang 18, so the CI numbers are the comparable ones.
@@ -531,10 +588,10 @@ simulator ran the real UI against `FurbleControlSim`, a fake Control, so there
 was no seam to inject a stale-bond fault. PR #261 removed those substitutes, so
 this PR rebases onto the real Control, Camera, CameraList and Scan in the
 simulator and adds the `fuji-secure-stale` topology and
-`stale-bond-pairing-lost.txt`. Two of the three connect-error call sites are
-now asserted end to end, each with its dismissal, on all three panels and in
-both input layouts. The third, the already-saved refusal, is blocked on a DSL
-gap rather than on a product gap; see the scan-already-saved entry above.
+`stale-bond-pairing-lost.txt`. All three connect-error call sites are now
+asserted end to end, each with its dismissal and each with `ui.modal_overflow
+no`, on all three panels and in both input layouts. The last of them,
+already-saved, needed the `action scan-row` verb to be reachable at all.
 
 Coordination: PR #266 merges first, and it conflicts with this PR textually in
 `lib/furble/FujifilmSecure.h`. Both insert at the same anchor, immediately after

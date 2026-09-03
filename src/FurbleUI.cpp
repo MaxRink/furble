@@ -787,17 +787,22 @@ void UI::showConnectError(const char *title, const char *text) {
   // shape the low battery box and the connect progress box use.
   lv_obj_set_width(m_ConnectErrorDialog, LV_PCT(100));
   // Height has the same failure one axis over: the wrapped body plus a footer
-  // button is taller than 240 px, and the OK button itself was drawn off the
-  // bottom of the StickS3 panel. It is fixed below, once the children exist and
-  // the natural height can be measured. A max_height style is deliberately not
-  // used: it clamps the box while the content keeps its natural height, so the
-  // footer still ends up outside, which is what the 80x160 render showed.
+  // button is taller than the panel, and the OK button itself was drawn off the
+  // bottom of the StickS3. It is fixed by the fit pass below, once the children
+  // exist and the assembled height can be measured. A max_height style is
+  // deliberately not used: it clamps the box while the content keeps its
+  // natural height, so the footer still ends up outside.
 
   lv_obj_t *heading = lv_msgbox_add_title(m_ConnectErrorDialog, title);
-  // The header is a flex row shared with the close button, so let the title
-  // take the room that is left and ellipsize rather than push past the edge.
+  // The header is a flex row, so bind the title to the room it has and wrap it.
+  // Deliberately not LV_LABEL_LONG_DOT: LVGL rewrites the label's own text to
+  // insert the ellipsis, so an ellipsized title is invisible to
+  // `ui.connect_error`, which reads that text back. "Already saved" is 13
+  // characters and does not fit one 80x160 line, so a dotted title would have
+  // been silently truncated on the smallest panel with nothing to catch it.
+  // Wrapping costs a line there and keeps the words.
   lv_obj_set_flex_grow(heading, 1);
-  lv_label_set_long_mode(heading, LV_LABEL_LONG_DOT);
+  lv_label_set_long_mode(heading, LV_LABEL_LONG_WRAP);
 
   // Every caller composes the message as "<camera>: <instruction>". Split on
   // that first separator and give the camera a line of its own that ellipsizes.
@@ -833,19 +838,35 @@ void UI::showConnectError(const char *title, const char *text) {
       },
       LV_EVENT_CLICKED, this);
 
-  // Fit pass. The box is LV_SIZE_CONTENT in height, so a body that needs more
-  // wrapped lines than the panel has room for grows past the bottom edge and
-  // takes the OK button, the only way to dismiss it, with it.
+  // Fit pass.
   //
+  // "Fits" is not "the outer box ends inside the display". A message box clips
+  // its content area, so the box can end at the last row of the panel while the
+  // body label runs six pixels past the clip box and the last line of the
+  // instruction is drawn at half height and cut. That is exactly what 80x160
+  // did while every assertion passed. The acceptance test is therefore the
+  // content's scroll extent: anything hidden means not fitted.
+  const int32_t limit = lv_display_get_vertical_resolution(m_Display);
+  lv_obj_t *content = lv_msgbox_get_content(m_ConnectErrorDialog);
+
+  auto fitted = [&]() {
+    lv_obj_update_layout(m_ConnectErrorDialog);
+    if (lv_obj_get_height(m_ConnectErrorDialog) > limit) {
+      return false;
+    }
+    if (content == nullptr) {
+      return true;
+    }
+    return (lv_obj_get_scroll_bottom(content) <= 0) && (lv_obj_get_scroll_top(content) <= 0);
+  };
+
   // Step one is the font. An 80x160 panel fits about eight characters of the
   // theme font per line, which is not enough for a whole instruction, so drop
-  // the text to the board's small font when the assembled box does not fit.
-  // That is the same font the Small text size setting selects on that board,
-  // not a new size, and it only happens where the alternative is unreadable.
-  const int32_t limit = lv_display_get_vertical_resolution(m_Display);
-  lv_obj_update_layout(m_ConnectErrorDialog);
-  if (lv_obj_get_height(m_ConnectErrorDialog) > limit) {
-    const lv_font_t *small = fontForTextSize(Settings::TEXT_SIZE_SMALL);
+  // the text to the board's small font. That is the same font the Small text
+  // size setting selects on that board, not a new size, and it only happens
+  // where the alternative is unreadable.
+  const lv_font_t *small = fontForTextSize(Settings::TEXT_SIZE_SMALL);
+  if (!fitted()) {
     lv_obj_set_style_text_font(body, small, 0);
     if (who != nullptr) {
       lv_obj_set_style_text_font(who, small, 0);
@@ -858,43 +879,70 @@ void UI::showConnectError(const char *title, const char *text) {
     // whole lines of the instruction, and a line of text is worth more here
     // than a few pixels of air. Wider content also means fewer wrapped lines.
     lv_obj_set_style_pad_all(m_ConnectErrorDialog, 2, 0);
-    lv_obj_t *box = lv_msgbox_get_content(m_ConnectErrorDialog);
-    if (box != nullptr) {
-      lv_obj_set_style_pad_all(box, 2, 0);
+    if (content != nullptr) {
+      lv_obj_set_style_pad_all(content, 2, 0);
     }
-    lv_obj_update_layout(m_ConnectErrorDialog);
   }
 
-  // Step two, and only if the small font was not enough: pin the camera name to
-  // a single ellipsized line. LV_LABEL_LONG_DOT clips to the label's height and
-  // a content sized label grows to hold every wrapped line, so the height has
-  // to be set for the ellipsis to happen at all, and it has to be set after the
+  // Step two is the footer, which the first version of this pass never touched.
+  // On an 80x160 panel the OK row is about a quarter of the display and it was
+  // still carrying the theme font and the theme padding while the title, the
+  // name and the body had all been shrunk. Those are the six pixels the last
+  // line of the instruction was missing.
+  if (!fitted()) {
+    // Sizing the rows explicitly, not just trimming their padding. The theme
+    // gives the header and the footer a row height of their own, and the title
+    // is flex-grown so it stretches to whatever the row decided: measured on
+    // 80x160 the header and the footer were 43 px each, 86 px of chrome on a
+    // 160 px panel, while the whole instruction had 62 px to live in.
+    const int32_t row = lv_font_get_line_height(small) + 8;
+
+    lv_obj_t *header = lv_msgbox_get_header(m_ConnectErrorDialog);
+    if (header != nullptr) {
+      lv_obj_set_style_pad_all(header, 2, 0);
+      // Content sized, not pinned to one row: the title wraps rather than
+      // ellipsizing, so the header has to be allowed the second line.
+      lv_obj_set_height(header, LV_SIZE_CONTENT);
+    }
+
+    lv_obj_t *footer = lv_msgbox_get_footer(m_ConnectErrorDialog);
+    if (footer != nullptr) {
+      lv_obj_set_style_pad_all(footer, 2, 0);
+      lv_obj_set_height(footer, row);
+    }
+    lv_obj_set_style_pad_all(ok, 2, 0);
+    lv_obj_set_style_text_font(ok, small, 0);
+    lv_obj_set_height(ok, row - 4);
+  }
+
+  // Step three, and only if none of that was enough: pin the camera name to a
+  // single ellipsized line. LV_LABEL_LONG_DOT clips to the label's height and a
+  // content sized label grows to hold every wrapped line, so the height has to
+  // be set for the ellipsis to happen at all, and it has to be set after the
   // font decision above because the line height depends on which font won.
   //
-  // This step is last of the two because it is the only one that loses
-  // information. A panel with room shows the whole name over as many lines as
-  // it takes; a panel without room trades the tail of the name for the whole
-  // instruction, which is the part the user has to act on.
-  if ((who != nullptr) && (lv_obj_get_height(m_ConnectErrorDialog) > limit)) {
+  // This step is last because it is the only one that loses information. A
+  // panel with room shows the whole name over as many lines as it takes; a
+  // panel without room trades the tail of the name for the whole instruction,
+  // which is the part the user has to act on.
+  if ((who != nullptr) && !fitted()) {
     const lv_font_t *font = lv_obj_get_style_text_font(who, LV_PART_MAIN);
     if (font != nullptr) {
       lv_obj_set_height(who, lv_font_get_line_height(font));
-      lv_obj_update_layout(m_ConnectErrorDialog);
     }
   }
 
-  // Step three is the backstop. If even that overruns, give the surplus
-  // back to the content area, which scrolls, so the box still ends inside the
-  // display and the button stays reachable. On a panel with room both steps are
-  // no-ops.
+  // Backstop. If even that overruns the display, give the surplus back to the
+  // content area so the box still ends inside the panel and the OK button stays
+  // reachable. This leaves a scroll extent behind on purpose, which
+  // `ui.modal_overflow` reports as a failure: a box nobody can fully read is a
+  // bug, and the scenarios should say so rather than hide it.
+  lv_obj_update_layout(m_ConnectErrorDialog);
   const int32_t overshoot = lv_obj_get_height(m_ConnectErrorDialog) - limit;
-  if (overshoot > 0) {
-    lv_obj_t *content = lv_msgbox_get_content(m_ConnectErrorDialog);
-    if (content != nullptr) {
-      const int32_t room = lv_obj_get_height(content) - overshoot;
-      lv_obj_set_height(content, (room > 0) ? room : 0);
-      lv_obj_update_layout(m_ConnectErrorDialog);
-    }
+  if ((overshoot > 0) && (content != nullptr)) {
+    const int32_t room = lv_obj_get_height(content) - overshoot;
+    lv_obj_set_height(content, (room > 0) ? room : 0);
+    lv_obj_update_layout(m_ConnectErrorDialog);
   }
 
   lv_group_focus_obj(ok);
@@ -2683,6 +2731,25 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   // reconnect (task #54 / F3). "drop" drops every active link; "drop <n>" drops
   // only target n, so a multi-connect session can lose one camera and keep the
   // rest live.
+  // Activate a scan result row through its production click handler, which is
+  // UI::beginPairing(). Focus-driven activation of that row is not reliable:
+  // the row is materialized on the UI task after the page has focused its back
+  // button, and a key press lands about half the time on a page that is busy
+  // draining advertisements. This is the seam that lets a scenario render the
+  // already-saved refusal at all.
+  if (action.kind == Sim::scenario_action_kind_t::SCAN_ROW) {
+    const size_t index = static_cast<size_t>(action.index);
+    if (index >= CameraList::size()) {
+      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
+      return;
+    }
+    // Both outcomes are a real dispatch of the production handler: it either
+    // starts the connect or refuses with the already-saved box.
+    (void)beginPairing(index, nullptr);
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    return;
+  }
+
   if (action.kind == Sim::scenario_action_kind_t::DROP) {
     m_SimActionResult = sim_action_result_t::APPLIED;
     const int index =
@@ -4068,21 +4135,27 @@ std::string UI::simQueryState(const char *key) {
     return (lv_anim_get(label, nullptr) != nullptr) ? "yes" : "no";
   }
 
-  // Does anything on the top layer render outside the display, or does any of
-  // its labels overrun the box that holds it?
+  // Is anything on the top layer unreadable: drawn outside the display, drawn
+  // outside the box that clips it, or scrolled out of view?
   //
   // This exists because nothing else could see a clipped modal. `overflow`
   // below measures the current menu page's scroll extent, and a message box
   // lives on the top layer, outside any page. `connect_error` reads the title
   // label out of the widget tree, which proves the widget exists with the right
-  // text and says nothing about where it was drawn. So a box that was wider
-  // than the panel, with the instruction the user has to act on cut off at both
-  // edges, passed every assertion the scenarios made.
+  // text and says nothing about where it was drawn. So three certified
+  // scenarios passed while the instruction was cut off at both edges.
   //
-  // Two shapes are reported. A top-layer descendant whose box leaves the
-  // display is the LV_SIZE_CONTENT modal that started this. A label wider or
-  // taller than the content area of its parent is the same failure one level
-  // down: the box fits, the text inside it does not.
+  // Three shapes are reported, and the third is the one the first version of
+  // this query missed. A descendant whose box leaves the display is the
+  // LV_SIZE_CONTENT modal that started this. A descendant drawn outside its
+  // parent's content box is the same failure one level down. And a scrollable
+  // with a non-zero scroll extent is text that exists, fits its own label, and
+  // is simply not on the panel: the 80x160 "Connect failed" box ended at the
+  // last row of the display with six pixels of its instruction below the clip
+  // box, and a size-only comparison called that fine.
+  //
+  // Position is compared, never size. Two stacked labels can each be smaller
+  // than the room their parent has and still not fit together.
   if (query == "modal_overflow") {
     lv_obj_t *top = lv_layer_top();
     if (top == nullptr) {
@@ -4096,7 +4169,17 @@ std::string UI::simQueryState(const char *key) {
     // Iterative walk, so a deep widget tree cannot recurse the UI task's stack.
     std::vector<lv_obj_t *> pending;
     for (uint32_t i = 0; i < lv_obj_get_child_count(top); i++) {
-      pending.push_back(lv_obj_get_child(top, i));
+      lv_obj_t *child = lv_obj_get_child(top, i);
+      if ((child != nullptr) && lv_obj_is_valid(child)
+          && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) {
+        pending.push_back(child);
+      }
+    }
+
+    // Nothing on the top layer is not the same answer as "measured and clean".
+    // A scenario that forgets to raise its modal must not read a pass here.
+    if (pending.empty()) {
+      return "none";
     }
 
     while (!pending.empty()) {
@@ -4115,17 +4198,22 @@ std::string UI::simQueryState(const char *key) {
         return "yes";
       }
 
-      if (lv_obj_check_type(obj, &lv_label_class)) {
-        lv_obj_t *parent = lv_obj_get_parent(obj);
-        if (parent != nullptr) {
-          // Compare against the parent's content box, which is what actually
-          // clips the glyphs, not its outer width.
-          const int32_t room_w = lv_obj_get_content_width(parent);
-          const int32_t room_h = lv_obj_get_content_height(parent);
-          if ((room_w > 0 && lv_obj_get_width(obj) > room_w)
-              || (room_h > 0 && lv_obj_get_height(obj) > room_h)) {
-            return "yes";
-          }
+      lv_obj_t *parent = lv_obj_get_parent(obj);
+      if ((parent != nullptr) && (parent != top)) {
+        // The parent's content box is what actually clips the glyphs.
+        lv_area_t clip;
+        lv_obj_get_content_coords(parent, &clip);
+        if (area.x1 < clip.x1 || area.y1 < clip.y1 || area.x2 > clip.x2 || area.y2 > clip.y2) {
+          return "yes";
+        }
+      }
+
+      // Scrolled out of view is hidden just the same, and it is the shape the
+      // fit pass produces when it runs out of room.
+      if (lv_obj_has_flag(obj, LV_OBJ_FLAG_SCROLLABLE)) {
+        if (lv_obj_get_scroll_bottom(obj) > 0 || lv_obj_get_scroll_top(obj) > 0
+            || lv_obj_get_scroll_left(obj) > 0 || lv_obj_get_scroll_right(obj) > 0) {
+          return "yes";
         }
       }
 
@@ -5516,8 +5604,7 @@ bool UI::beginPairing(size_t index, lv_event_t *e) {
              camera->getName().c_str());
     char text[160];
     // Same "<camera>: <instruction>" shape as the other two boxes.
-    std::snprintf(text, sizeof(text),
-                  "%s: already saved. Connect from the saved list, or delete it to pair again.",
+    std::snprintf(text, sizeof(text), "%s: already saved. Connect it, or delete it to pair again.",
                   camera->getName().c_str());
     m_ConnectContext.ui->showConnectError("Already saved", text);
     return false;
