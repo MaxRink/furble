@@ -10,9 +10,9 @@
 # ship the touch panel. sim/build.sh does not model the Core2 separately, so
 # this run on the Core binary is where that layout is measured.
 #
-# On master this page rendered Infrared, Cameras and Level all in cell (1,1),
-# which drew their labels on top of each other as "CaLevRas", and it overflowed
-# by 23 px at the maximum text size. Both are asserted away below.
+# On master this page assigned Infrared, Cameras and Level all to cell (1,1),
+# which drew their labels through each other, and it overflowed by 23 px at the
+# maximum text size. Both are asserted away below.
 #
 # core-connected-grid.txt is the same walk at the default text size. This one
 # seeds Large, which is where master overflowed this page by 23 px and where the
@@ -57,10 +57,12 @@ assert ui.scroll_top 0
 assert ui.indicator_clearance n/a
 # Eight entries, each a container with an icon and a label, plus the page.
 assert ui.visible_objects 25
-# The teeth for "eight cells". A fit query cannot see three entries sharing one
-# cell, because the page still fits; it is their labels drawn through each other
-# that a user sees. On master this read 3 here and the labels rendered as the
-# garble "CaLevRas".
+# The teeth for "eight cells". A fit query cannot see entries sharing a cell,
+# because the page still fits; it is their labels drawn through each other that a
+# user sees. On master this reads 3 in this state, the three pairs among
+# Infrared, Cameras and Level, and the page also overflows so its bottom row is
+# clipped. With the IR setting off it reads 1, the Cameras and Level pair, and
+# the page fits.
 assert ui.label_overlaps 0
 
 # Every entry is reachable and loads its own page, which is the behavioural half

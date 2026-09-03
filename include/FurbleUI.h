@@ -814,6 +814,24 @@ class UI {
    * indicators.
    */
   uint32_t countIndicatorOverlaps(void);
+
+  /**
+   * Count the pairs of visible labels on the current page whose drawn text
+   * overlaps. A grid or flex layout that puts two entries in one cell draws
+   * their labels through each other, which no fit or scroll query can see.
+   */
+  uint32_t countLabelOverlaps(void);
+
+  /**
+   * Walk the spin rows on the current page, a container whose only visible
+   * children are a name label and a value label.
+   *
+   * Reports how many value labels are too narrow for their own text, which must
+   * always be zero because a clipped value reads as a different setting, and the
+   * fewest characters any name label still shows in full, which the layout holds
+   * at four. Returns {0, UINT32_MAX} when the page has no spin row.
+   */
+  std::pair<uint32_t, uint32_t> measureSpinRows(void);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;

@@ -195,10 +195,9 @@ the icon menu font and lost its last glyphs to the cell edge.
 None of those three is layout-scoped. They are `FURBLE_M5COREX` changes, so they
 compile into every Core class build, and the M5Stack Core2 is a 320x240 board
 that does ship a touch panel and therefore renders the touch layout. That layout
-had the same page with the same six cells and the same three entries stacked in
-(1,1). On master it drew Infrared, Cameras and Level over each other as the
-garble "CaLevRas", and at the maximum text size the page overflowed by 23 px.
-Both read zero here.
+had the same page with the same six cells and the same three entries assigned to
+(1,1). On master it drew Infrared, Cameras and Level through each other, and at
+the maximum text size the page overflowed by 23 px. Both read zero here.
 
 `sim/build.sh` does not model the Core2 separately, but its layout is what an
 unseeded run on the Core binary renders, so that is where it is asserted:
@@ -208,19 +207,27 @@ default and the maximum text size. Each opens with `assert ui.nav_layout touch`,
 the mirror of the `buttons` guard the three no-touch files carry, so a stray
 seed cannot make either file measure the other's subject.
 
-Asserting the garble needed a new query. Three entries sharing a cell is
-invisible to every fit and scroll query, because the page still fits; what a
-user sees is the labels drawn through each other. `ui.label_overlaps` counts the
-pairs of visible labels on the current page whose drawn text intersects, using
-the same drawn-text-extent and viewport-clamp rules `ui.indicator_clearance`
-already used, now shared between the two. On master this page reads 3 and on
-this branch 0. Both new files assert it, and run against master's layout code
-they fail on exactly that line at the default size and on the 23 px overflow at
-the maximum size.
+Asserting the collision needed a new query. Entries sharing a cell is invisible
+to every fit and scroll query, because the page still fits; what a user sees is
+the labels drawn through each other. `ui.label_overlaps` counts the pairs of
+visible labels on the current page whose drawn text intersects, using the same
+drawn-text-extent and viewport-clamp rules `ui.indicator_clearance` already
+used, now shared between the two. The walk is page-scoped, so a widget on the
+top layer, a message box or any other modal, is not in the subtree and a page
+showing one still reads 0.
 
-The query reads 1 on the Core Settings and Display pages, which this change does
-not touch. That is left alone and unasserted here rather than folded into a
-layout PR for a different page.
+Master's reading depends on how many of the three entries are visible, which is
+worth stating exactly because both numbers are true:
+
+| IR setting | Entries in cell (1,1) | Master `label_overlaps` | Master `overflow` | This branch |
+| --- | --- | ---: | --- | ---: |
+| on | Infrared, Cameras, Level | 3 | 13 px, bottom row clipped | 0 |
+| off | Cameras, Level | 1 | fits | 0 |
+
+Both new files turn the IR setting on, so all eight entries are present and the
+reading they assert against is 3. Run against master's layout code they fail on
+exactly that line at the default size, and on the 23 px overflow at the maximum
+size.
 
 ### 7. The spirit level assertion
 
@@ -258,16 +265,60 @@ this change 338. That is the LVGL redraw trap CLAUDE.md warns about, reached by
 a layout change rather than by a setter. Both labels are `LV_LABEL_LONG_CLIP` on
 the narrow panels now and the same probe reads 3.
 
-Clipping is only acceptable if nothing important is clipped, so those rows also
-cap their face through `fontForSpinRow`: the board default on the 80x160 panel
-and Normal on the 135x240 one. Above that cap the name and the value stopped
-fitting side by side and the value, which is the data, was the half that lost
-its glyphs. `e2e/redraw-steady.txt` gained a timer page step, on all three
-boards, so the animation cannot come back.
+Clipping is only acceptable if nothing important is clipped, and the first
+version of this got that wrong: with the value still the grown label, clipping
+ate its digits. It drew "Shutter 250 m" at 135x240 and "Shutter 25" for 250 ms
+at 80x160, and "999 m" at the maxima. A value that loses a digit or its unit
+reads as a different setting, and no user can tell 25 from 250.
+
+So the row now has a rule, in this order:
+
+1. The value never clips. It takes its natural width, so every digit and its
+   unit are always drawn.
+2. The name gives up the room, because it is recoverable from its position in a
+   fixed ordered list, but only down to four characters. `spinRowNameFloor`
+   measures the first four characters of the name in the row's own face and sets
+   that as the label's minimum width, which keeps Coun, Dela, Shut and Wait
+   distinct. Moving `flex_grow` to the name without that floor collapses it to a
+   single letter.
+3. If those two still do not fit, the unit text shortens rather than the value.
+   The narrow panels use `SpinValue::getShortUnitString`, "ms", "s" and "min"
+   instead of "msec", "secs" and "mins", through the same board split the rest
+   of this row uses. The 320x240 grid has the width and keeps the spelled out
+   unit.
+
+The unit was chosen over the alternative of folding it into the row name
+("Shutter ms" with a bare "250") because that alternative lengthens the name on
+exactly the panels where the name is already the thing being squeezed, and it
+puts the unit somewhere the value roller page does not repeat it. Shortening the
+unit costs three characters and reads the same.
+
+Those rows also cap their face through `fontForSpinRow`: the board default on
+the 80x160 panel and Normal on the 135x240 one.
+
+Measured on both narrow panels at all three text sizes, at ordinary values
+(250 ms, 30 s, 60 min) and at the maxima (999 of each unit, 999 count):
+`ui.clipped_values` is 0 in all twelve combinations and `ui.min_name_chars` is 4
+in all twelve, which is "Wait" shown whole rather than any name cut to four. The
+longest name, Shutter, shows six characters at 135x240 and four at 80x160.
+
+`e2e/redraw-steady.txt` gained a timer page step, on all three boards, so the
+animation cannot come back. That step runs before the connect rather than after
+it. Reaching the timer page means leaving the Connected page, and leaving the
+Connected page ends the session, so appending the step at the end of that
+scenario cut its connected tail and cost `lib/furble/Camera.cpp` thirteen
+covered lines, which put that file under its own floor. A scenario that measures
+anything outside the session has to do it before the session starts.
+
+`bughunt/spin-row-widths-135.txt` and `bughunt/spin-row-widths-80.txt` drive the
+widest value of every unit at the maximum text size and assert both queries.
+Restoring the old layout, the value grown with `LV_LABEL_LONG_CLIP`, fails them
+at 1 clipped value on 135x240 and 3 on 80x160.
 
 ## Evidence
 
-Captured at native panel size with the scenario `capture` verb, before and after,
+Captured at native panel size with the scenario `capture` verb, before and
+after,
 in `docs/img/notouch/`. The before set is the one plan 165 committed, plus
 `135-shutter.png`, captured on f425fd38 before any of this landed.
 
@@ -329,9 +380,16 @@ The 320x240 intervalometer settings page overflow that plan 161 found through
 fuzz seed 3, and that PR #270 unpinned because the scheduler change moved the
 event stream past it, is still uncovered. This work does not touch that page on
 the Core: fix 8 scopes its row flow change and its font cap to the narrow
-panels, and the Core keeps `LV_FLEX_FLOW_ROW_WRAP` and the full text size. `EXACT_BOARDS` still restricts
+panels, and the Core keeps `LV_FLEX_FLOW_ROW_WRAP` and the full text size.
+`EXACT_BOARDS` still restricts
 `text-size-overflow-large.txt` to the two Stick boards. Closing it means
 certifying that scenario for `m5stack-core` and fixing what it then reports.
+
+The Display page reports `ui.label_overlaps` 1 on the 135x240 and 320x240
+panels, in both layouts. It is pre-existing: master's build reports the same 1
+on the same page, and nothing here touches that page. It is recorded rather than
+fixed, because a Display page layout change has no measurement in this work and
+belongs with whoever is changing that page.
 
 The `FURBLE_SIM_NO_TOUCH=1` fuzz leg, follow-up 3's other half, is also still
 open. The four `mustFit` pages the fuzzer checks are green in this layout now,
@@ -348,10 +406,10 @@ Owed on the M5StickS3 after review. Walkable in under five minutes.
 | Home menu | Settings, Infrared, turn IR on, then back to the home menu | Seven rows all visible without scrolling: Connect, Scan, Delete, IR, Settings, Level, Off. |
 | Connected, Normal | Connect to a camera | Eight text rows, no icons, all visible down to Disconnect without scrolling. |
 | Connected, Large | Settings, Text size, Large, then connect | Still eight rows and still no scrolling. The rows deliberately do not grow with the setting: this page is the session root with the back button hidden, so nothing on it may fall off. |
-| Remote shutter | Connected, Remote | The lock icon sits just above the select indicator. No grey line running off the bottom edge. Hold next and press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here. |
+| Remote shutter | Connected, Remote | The lock icon sits just above the select indicator. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
 | Display | Settings, Display | Every row clear of the indicator row along the bottom. |
 | Bulb duration | Connected, Bulb, Duration | The spin value is readable and nothing covers it. |
-| Timer, Normal and Large | Settings, Intervalometer, at both text sizes | Count, Delay, Shutter and Wait all visible, each on one line, name and value both readable. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
+| Timer, Normal and Large | Settings, Intervalometer, at both text sizes | Count, Delay, Shutter and Wait all visible, each on one line. Every value complete, digits and unit: the units read ms, s and min here, not msec, secs and mins. Names may be cut, never below four characters. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
 | Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and all three indicators land on the rotated bottom edge, not the old corners. |
 | Indicator legend, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible against the band in every theme. They moved into the band in this change, so their contrast against it is new on the Sticks. |
 
@@ -366,13 +424,17 @@ fourteen lines, `bughunt/core-connected-grid.txt` and its `-large` companion are
 new for the Core2 touch layout, `e2e/redraw-steady.txt` gains a timer page step,
 `e2e/level-spirit.txt` takes fix 7,
 `bughunt/stick-notouch-connected-large.txt` is the pin for the Connected page
-font cap, `sim/scripts/run-notouch.sh` is new and
+font cap, `bughunt/spin-row-widths-135.txt` and `-80.txt` are the pins for the
+spin row rule, `sim/scripts/run-notouch.sh` is new and
 `.github/workflows/sim-e2e.yml` calls it three times. That runner skips a
 scenario whose own guard is `assert ui.nav_layout touch`, derived from the guard
 rather than from a name list, so the two Core2 files are not forced into the
 layout they exist to contrast with. `src/CLAUDE.md`, `sim/CLAUDE.md` and
 `docs/sim.md` are updated for the indicator band, the font helpers,
-`ui.label_overlaps` and `assert_min`. No sdkconfig changed and no firmware behaviour outside
+`ui.label_overlaps`, `ui.clipped_values`, `ui.min_name_chars`, the interval seed
+unit suffix and `assert_min`. `include/CLAUDE.md` records the layout geometry
+contract `FurbleUI.h` now carries. No sdkconfig changed and no firmware
+behaviour outside
 the UI layout changed.
 
 ## Owed at the next rebase
@@ -382,7 +444,8 @@ PR #266 merges before this one. When this branch rebases onto it, its
 indicator that floats over the page, and after this change none does. Delete the
 function and both call sites, the `include/CLAUDE.md` bullet that documents it,
 and the paragraph in plan 167 that introduces it. Keep the rest of #266:
-`camera-name-rows.txt` and the `LV_LABEL_LONG_WRAP` change stand on their own and
+`camera-name-rows.txt` and the `LV_LABEL_LONG_WRAP` change stand on their own
+and
 are not affected by the indicator move.
 
 ## Deviations
@@ -409,8 +472,15 @@ cost as well as for fit.
 
 The first draft of fix 4 described the shutter lock as a long press of select.
 That is the touch layout's binding. In the physical-button layout nothing binds
-`handleShutterLock` at all; the real gesture is in fix 4 above. The comments, the
-plan and the device checklist all carried the wrong gesture and are corrected.
+`handleShutterLock` at all; the real gesture is in fix 4 above. The comments,
+the plan and the device checklist all carried the wrong gesture and are
+corrected.
+
+The first version of fix 8 clipped the value rather than the name, which cost
+digits at ordinary values and not only at the maxima. Fix 8 now states the rule
+it should have started from: the value never clips, the name clips to a floor of
+four characters, and if neither fits the unit text shortens. That took a query
+to hold, because nothing already in the simulator could see a lost digit.
 
 Fixes 5, 6, 6b and 8 are unverified on hardware: only the M5StickS3 is
 available. The 80x160 and 320x240 changes, including the Core2 touch-layout

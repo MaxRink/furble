@@ -342,6 +342,10 @@ false` opts a scenario out of the continuous liveness invariant enforcement
 (detection still counts violations), and `liveness_grace_ms` overrides the
 3000 ms divergence grace period. The interval settings are `interval_count`, `interval_delay`,
 `interval_shutter`, and `interval_wait`; `bulb_duration` seeds the bulb timer.
+Each takes a count and an optional unit written with no space, `250ms`, `30s` or
+`60min`; without one the field keeps its own unit. The unit is how a scenario
+reaches a spin value the field's default unit cannot express, which the timer
+row width assertions need. An unrecognised suffix is rejected at load.
 `gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`,
 `write-error`, or `pause` before the GPS task starts.
 
@@ -503,6 +507,9 @@ The complete `ui.*` query set is:
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
+| `ui.label_overlaps` | Numeric count of visible label pairs on the current page whose drawn text overlaps. |
+| `ui.clipped_values` | Numeric count of spin-row values on the current page too narrow for their own text. |
+| `ui.min_name_chars` | Fewest characters any spin-row name on the current page still shows in full, or `n/a`. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
@@ -604,7 +611,30 @@ only the drawn text extent counts, with the text alignment honoured. Areas are
 clamped to the page viewport, so rows scrolled out of sight are not counted. The
 viewport ends above the reserved navbar band, so the query cannot reach the
 bottom-edge indicators: it measures the indicators that float over content, and
-reports nothing about the bottom two rather than proving them clear.
+reports nothing about the bottom two rather than proving them clear. Since plan
+168 put all three indicators in that band, a fitted page is structurally clear,
+so the query is a regression pin: it fails the moment an indicator is anchored
+over the content area again.
+
+`ui.label_overlaps` reports how many pairs of visible labels on the current page
+draw their text through each other. It is the one layout defect no fit or scroll
+query can see: a grid cell holding two entries still fits, it is simply
+unreadable. It uses the same drawn-text extent and viewport clamp as
+`ui.indicator_clearance`, so a label scrolled out of sight is not counted.
+
+The walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree. A widget
+on the top layer, a message box or any other modal, is not in that subtree, so a
+page showing one still reports 0. Use a capture for those.
+
+`ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a container
+whose only visible children are a name label and a value label, as the
+intervalometer and bulb duration settings are built. On the narrow panels the
+two share one line, so one of them has to give up room. `ui.clipped_values`
+counts the values too narrow for their own text and must read 0, because a value
+that loses a digit or its unit reads as a different setting.
+`ui.min_name_chars` reports the fewest characters any name still shows in full,
+which the layout holds at four so the names stay distinct. A page with no spin
+row reports 0 and `n/a`.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,

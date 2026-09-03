@@ -184,7 +184,16 @@ void UI::Intervalometer::Spinner::updateLabels(void) {
       break;
 
     default:
+      // The narrow panels share one row between the name and the value, so the
+      // value uses the short unit and never gives up a digit for it. The
+      // 320x240 grid has the width for the spelled out unit.
+      // See plans/168-notouch-layout-overflows.md.
+#if defined(FURBLE_M5COREX)
       lv_label_set_text_fmt(m_Value, "%u %s", m_SpinValue.m_Value, m_SpinValue.getUnitString());
+#else
+      lv_label_set_text_fmt(m_Value, "%u %s", m_SpinValue.m_Value,
+                            m_SpinValue.getShortUnitString());
+#endif
       break;
   }
 

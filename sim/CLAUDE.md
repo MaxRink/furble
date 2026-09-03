@@ -502,6 +502,18 @@ a regression.
   clamp makes a fitted page structurally clear, so these queries are regression
   pins: they fail the moment an indicator is anchored over the content area
   again.
+- `ui.label_overlaps` counts the pairs of visible labels on the current page
+  whose drawn text overlaps, which is the one layout defect no fit or scroll
+  query can see: a grid cell holding two entries still fits and is simply
+  unreadable. It shares the drawn-extent and viewport-clamp rules above. The
+  walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree, so a widget
+  on the top layer, a message box or any other modal, is not in it and a page
+  showing one still reports 0; use a capture for those.
+- `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a container
+  whose only visible children are a name label and a value label. On the narrow
+  panels the two share one line, so `ui.clipped_values` must read 0, a value
+  that loses a digit or its unit reads as a different setting, and
+  `ui.min_name_chars` must stay at or above four so the names stay distinct.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but
   inactive camera so the Connect and Delete lists render and their buttons
   enable; `ui.row_text` reports the focused row's text with whitespace as

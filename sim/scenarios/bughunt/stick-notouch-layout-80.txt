@@ -62,6 +62,11 @@ action nav timer
 wait 150
 assert ui.page timer
 assert ui.overflow no
+# The rows share one line between the name and its value. The value never gives
+# up a digit or its unit; the name clips first and only to a floor of four
+# characters. spin-row-widths-*.txt drives the widest value of every unit.
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
 assert ui.indicator_clearance clear
 
 # Seven home rows: the Infrared entry appears once the IR switch is on.

@@ -12,11 +12,11 @@
 #
 # Two kinds of scenario are skipped, and both say so as they go.
 #
-# A scenario whose own first assertion is "assert ui.nav_layout touch" is the
-# touch layout's, not this one's: it is written for the layout the unmodeled Core2
-# ships, and forcing it into this layout would make it measure the wrong subject.
-# The guard is what detects that, so the skip is derived from the guard rather
-# than from a name list.
+# A scenario that asserts "ui.nav_layout touch" anywhere in it belongs to the
+# touch layout, not this one: it is written for the layout the unmodeled Core2
+# ships, and forcing it into this layout would make it measure the wrong
+# subject. The skip is derived from that guard rather than from a name list, so
+# a new touch-layout scenario is handled without editing this script.
 #
 # Two more are skipped by name on the 80x160 board. Both seed the maximum text
 # size, and that board cannot render its own pages at that size in the layout it
@@ -63,7 +63,7 @@ fi
 
 # A scenario that guards on the touch layout is measuring the other layout.
 touch_layout_scenario() {
-  grep -q '^assert ui.nav_layout touch$' "$1"
+  grep -Eq '^[[:space:]]*assert[[:space:]]+ui\.nav_layout[[:space:]]+touch[[:space:]]*$' "$1"
 }
 
 # The two 80x160 maximum text size scenarios, see the header.

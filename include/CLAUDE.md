@@ -35,6 +35,13 @@ Public headers for the app layer in src/, one header per module
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.
+- `FurbleUI.h` holds the physical-button layout's geometry contract. All three
+  button indicators live in the reserved navbar band, so the header carries no
+  per-board offset for any of them; `m_RightYOffset` and
+  `level_t::navRightYOffset` are gone with the Right indicator's old mid-edge
+  anchor. The level page re-anchors all three on rotation, so a new anchor has
+  to change `UI::begin` and `applyLevelRotation` together, and `level_t` is
+  where their handles are kept.
 - Under `FURBLE_SIM`, `FurbleUI.h` exposes the typed `simScenarioAction` API
   using `Sim::scenario_action_t` from `sim/scenario_action.h`. Calls return
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct

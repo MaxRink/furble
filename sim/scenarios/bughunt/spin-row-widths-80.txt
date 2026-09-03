@@ -1,0 +1,43 @@
+# Spin row widths on the 80x160 panel, at the widest value every field can
+# hold, in the physical-button layout that board ships.
+#
+# The Count, Delay, Shutter and Wait rows put a name and its value on one line,
+# so one of the two has to give up room. That choice is not free. The value is
+# the data: a value that loses a digit or its unit reads as a different setting,
+# and a user cannot tell 250 ms from 25. The name is recoverable from its
+# position in a fixed ordered list, so the name is the one that clips, and only
+# down to a floor of four characters, which keeps Coun, Dela, Shut and Wait
+# distinct.
+#
+# This file drives the widest string each unit produces. 999 is the largest
+# value the digit rollers hold, and the seeds carry a unit suffix so all three
+# units are covered: 999 ms, 999 s and 999 min, the last being the widest of
+# the three. The text size is the maximum this board offers, where
+# fontForSpinRow caps the face at the board default.
+#
+# stick-notouch-layout-80.txt covers the same page at the default values and
+# size. See plans/168-notouch-layout-overflows.md.
+seed no_touch true
+seed text_size 2
+seed fauxny true
+seed gps true
+seed interval_count 999
+seed interval_shutter 999ms
+seed interval_delay 999s
+seed interval_wait 999min
+seed bulb_duration 999min
+wait 300
+assert ui.nav_layout buttons
+
+# Timer settings list: four rows, all four units, widest values.
+action page settings
+action nav timer
+wait 250
+assert ui.page timer
+assert ui.overflow no
+assert ui.indicator_clearance clear
+# No value gives up a digit or its unit, and no name falls below four
+# characters.
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
+exit

@@ -342,6 +342,20 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/spin-row-widths-135.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/stick-notouch-connected-large.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -369,6 +383,20 @@
         "gps",
         "imu",
         "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/spin-row-widths-80.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps"
       ],
       "expected_exit": 0,
       "certified": true

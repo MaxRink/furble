@@ -36,6 +36,8 @@ EXACT_BOARDS = {
   "core-connected-grid-large.txt": {"m5stack-core"},
   "stick-notouch-layout-135.txt": {"m5stick-s3"},
   "stick-notouch-connected-large.txt": {"m5stick-s3"},
+  "spin-row-widths-135.txt": {"m5stick-s3"},
+  "spin-row-widths-80.txt": {"m5stick-c"},
   "stick-notouch-layout-80.txt": {"m5stick-c"},
   "text-size-gate-stickc.txt": {"m5stick-c"},
   "text-size-clamp-stickc.txt": {"m5stick-c"},

@@ -248,6 +248,7 @@ const lv_font_t *fontForIconMenu(uint8_t textSize) {
 // carries eight rows in a 167 px page, which the Large face does not fit. The
 // step lives here with the rest of the font policy rather than as a literal in a
 // widget. See plans/168-notouch-layout-overflows.md.
+#if defined(FURBLE_M5COREX) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 const lv_font_t *fontForConnectedMenu(uint8_t textSize) {
 #if defined(FURBLE_M5COREX)
   (void)textSize;
@@ -257,6 +258,7 @@ const lv_font_t *fontForConnectedMenu(uint8_t textSize) {
   return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_NORMAL));
 #endif
 }
+#endif
 
 // The Count, Delay, Shutter and Wait rows carry a name and a value on one line,
 // so the row width is shared and there is nowhere for a larger face to go. On
@@ -272,6 +274,22 @@ const lv_font_t *fontForSpinRow(uint8_t textSize) {
 #else
   return fontForTextSize(textSize);
 #endif
+}
+
+// Width of the first four characters of a spin row name in the given face, so
+// the name can be given up to the value without collapsing to a letter. Four is
+// the shortest prefix that still separates Coun, Dela, Shut and Wait.
+int32_t spinRowNameFloor(const char *name, const lv_font_t *font) {
+  if ((name == nullptr) || (font == nullptr)) {
+    return 0;
+  }
+  char prefix[5] = {0};
+  for (size_t i = 0; (i < 4) && (name[i] != '\0'); i++) {
+    prefix[i] = name[i];
+  }
+  lv_point_t size = {0, 0};
+  lv_text_get_size(&size, prefix, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+  return size.x;
 }
 
 // LVGL 9.4 has no public long press time getter. This is its default.
@@ -3185,6 +3203,76 @@ uint32_t UI::countLabelOverlaps(void) {
   return overlaps;
 }
 
+std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
+  uint32_t clippedValues = 0;
+  uint32_t minNameChars = UINT32_MAX;
+
+  lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if (page == nullptr) {
+    return {clippedValues, minNameChars};
+  }
+  lv_obj_update_layout(page);
+
+  // How many leading characters of the label's own text fit inside its box. The
+  // prefix is grown one byte at a time and measured in the label's own face, so
+  // this is what a reader can actually make out, not what lv_label_set_text was
+  // handed.
+  const auto visibleChars = [](lv_obj_t *label) {
+    const char *text = lv_label_get_text(label);
+    if (text == nullptr) {
+      return static_cast<uint32_t>(0);
+    }
+    const int32_t width = lv_obj_get_content_width(label);
+    const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+    const int32_t spacing = lv_obj_get_style_text_letter_space(label, LV_PART_MAIN);
+    std::string prefix;
+    uint32_t fitted = 0;
+    for (const char *c = text; *c != '\0'; c++) {
+      prefix.push_back(*c);
+      lv_point_t size = {0, 0};
+      lv_text_get_size(&size, prefix.c_str(), font, spacing, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+      if (size.x > width) {
+        break;
+      }
+      fitted++;
+    }
+    return fitted;
+  };
+
+  std::function<void(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+    if ((obj == nullptr) || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
+      return;
+    }
+    // A spin row is a container whose only visible children are two labels: the
+    // setting name and its value. Nothing else on any page has that shape.
+    std::vector<lv_obj_t *> visible;
+    bool labelsOnly = true;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+      lv_obj_t *child = lv_obj_get_child(obj, i);
+      if ((child == nullptr) || !lv_obj_is_valid(child) || !lv_obj_is_visible(child)) {
+        continue;
+      }
+      visible.push_back(child);
+      labelsOnly = labelsOnly && lv_obj_check_type(child, &lv_label_class);
+    }
+    if (labelsOnly && (visible.size() == 2)) {
+      lv_obj_t *name = visible[0];
+      lv_obj_t *value = visible[1];
+      if (lv_obj_get_self_width(value) > lv_obj_get_content_width(value)) {
+        clippedValues++;
+      }
+      minNameChars = std::min(minNameChars, visibleChars(name));
+      return;
+    }
+    for (lv_obj_t *child : visible) {
+      visit(child);
+    }
+  };
+  visit(page);
+
+  return {clippedValues, minNameChars};
+}
+
 uint32_t UI::countIndicatorOverlaps(void) {
   if (M5.Touch.isEnabled()) {
     return 0;
@@ -4000,6 +4088,21 @@ std::string UI::simQueryState(const char *key) {
   // still fits, it is just unreadable. Zero on a well formed page.
   if (query == "label_overlaps") {
     return std::to_string(countLabelOverlaps());
+  }
+
+  // The spin rows put a setting name and its value on one line, so one of them
+  // has to give up room on a narrow panel. "clipped_values" is how many values
+  // are too narrow for their own text and must always read 0: a value that
+  // loses a digit or its unit reads as a different setting. "min_name_chars" is
+  // the fewest characters any name on the page still shows in full, which the
+  // layout holds at four so the four names stay distinct. A page with no spin
+  // row reports 0 and "n/a".
+  if (query == "clipped_values" || query == "min_name_chars") {
+    const auto measured = measureSpinRows();
+    if (query == "clipped_values") {
+      return std::to_string(measured.first);
+    }
+    return (measured.second == UINT32_MAX) ? "n/a" : std::to_string(measured.second);
   }
 
   if (query == "indicator_clearance" || query == "indicator_overlaps") {
@@ -5853,7 +5956,9 @@ UI::menu_t &UI::addConnectedMenu(void) {
     // only on the touch branch above; nothing binds it here. The lock is set in
     // handleShutter on LV_EVENT_PRESSED while m_FocusPressed is true, so the
     // gesture is hold next then press select, and it is cleared in handleFocus
-    // on the next press of next alone.
+    // on the next press of next alone. In one-button mode there is no gesture
+    // at all: handleButtonMode takes the select events before handleShutter
+    // sees them, so the lock cannot be set and this icon stays open.
     lv_obj_update_layout(menuShutter.page);
     lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -6758,14 +6863,23 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_grow(spinner.m_Label, 1);
 #else
-  // Neither label animates on the narrow panels. The value shares one row with
-  // the name here, so its grown box is often narrower than its text, and
+  // Neither label animates on the narrow panels. The two share one row, so
+  // whichever one is grown gets a box narrower than its text, and
   // LV_LABEL_LONG_SCROLL_CIRCULAR then repaints every frame: measured on the
   // 80x160 timer page, 170 invalidations over a one second probe where a static
   // page reads 3. That is exactly the per-tick repaint the LVGL redraw trap in
-  // CLAUDE.md warns about, so the value clips instead of scrolling.
+  // CLAUDE.md warns about, so both labels clip instead of scrolling.
+  //
+  // Which one gets to clip is not a free choice. The value is the data: a lost
+  // digit or a lost unit reads as a different setting, so it takes its natural
+  // width and never clips. The name is recoverable from its position in a
+  // fixed, ordered list, so it is the one that gives up room, but not to
+  // nothing: it holds a floor of four characters, which keeps Coun, Dela, Shut
+  // and Wait distinct from each other.
   lv_label_set_long_mode(spinner.m_Label, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(spinner.m_Label, fontForSpinRow(textSize), 0);
+  lv_obj_set_flex_grow(spinner.m_Label, 1);
+  lv_obj_set_style_min_width(spinner.m_Label, spinRowNameFloor(item, fontForSpinRow(textSize)), 0);
 #endif
 
   spinner.m_Value = lv_label_create(spinner.m_Button);
@@ -6774,7 +6888,6 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
 #else
   lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(spinner.m_Value, fontForSpinRow(textSize), 0);
-  lv_obj_set_flex_grow(spinner.m_Value, 1);
 #endif
 
   lv_obj_add_event_cb(
