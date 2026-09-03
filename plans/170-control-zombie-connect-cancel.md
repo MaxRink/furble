@@ -396,7 +396,7 @@ flat. That is the version that would have caught a broken re-arm.
 
 ## Coordination
 
-### PR 245 lands first, then this rebases
+### PR 245 lands first, then this rebases again
 
 It carries hardware evidence and the harder radio-call constraint. Five actions
 on the rebase:
@@ -423,25 +423,33 @@ on the rebase:
 5. After 245, give the empty-cycle `STATE_CONNECT_FAILED` a reason string. An
    empty cycle is the natural first user of `m_ConnectFailReason`.
 
-### PR 274 is in master, and the rebase touches the same abort block
+### PR 274, rebased over
 
-274 landed as plan 169 while this branch sat on 77aa113f. It rewrites the tail
-of `connectAll()` around the abort, which is the same block this change edits.
-Resolving it:
+Done. 274 landed as plan 169 while this branch sat on 77aa113f, rewriting the
+tail of `connectAll()` around the abort, which is the same block this change
+edits. Two files conflicted and both resolved as recorded:
 
-- Keep this change's body edits inside the abort block, but take 274's
-  `return STATE_DISCONNECTING;` and its tail expression. 274 owns the publish
-  decision there; this change only owns what happens to the cancel tokens and
-  `m_ConnectCamera` around it.
-- `tests/host/CMakeLists.txt` carries a comment naming
-  `include/FurbleTestSync.h`. 274 moved that header to `lib/furble/`, so the
-  comment needs updating with the resolution rather than after it.
-- Run `ctest -R control-abort-republish` once resolved. That is 274's regression
-  and it covers the block both changes touch, so a bad resolution shows up there
-  rather than in this plan's tests.
-- `plans/README.md` needs this row moved below the 167, 168 and 169 rows master
-  now carries. This branch was cut before them, so its row currently sits
-  directly after 166.
+- `src/FurbleControl.cpp`, the abort block. This change's
+  `m_ConnectCamera = nullptr;  // caller holds m_Mutex` is kept, and 274's
+  comment and `return STATE_DISCONNECTING;` are taken whole. 274 owns the
+  publish decision there; this change owns only what happens to the cancel
+  tokens and `m_ConnectCamera` around it. 274's rewritten tail expression and
+  its `task()` comment were untouched by this branch and merged cleanly.
+- `plans/README.md`, this row against 169's. Ordered 166, 169, 170.
+
+`tests/host/CMakeLists.txt` merged cleanly and already names
+`lib/furble/FurbleTestSync.h`, because 274 moved the header and this branch
+never touched that comment.
+
+`ctest -R control-abort-republish` passes on the resolution, which is the check
+that matters: it is 274's regression over the block both changes touch, so a bad
+resolution surfaces there rather than in this plan's own tests.
+
+### A second rebase follows PR 245
+
+This one is smaller and its actions are listed above. Nothing here anticipates
+245's content changing; the only reason to redo the work is that 245 edits the
+same three places and lands first.
 
 ### Follow-up this change does not close: publishing without re-checking the abort
 
