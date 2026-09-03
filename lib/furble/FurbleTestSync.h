@@ -46,6 +46,17 @@
  *   Control::resetForTest(), the host-only reset seam, itself calls
  *   disconnect(), so a counting callback on this point also sees every
  *   reset-driven disconnect, not just the ones the test issues.
+ *
+ * "fujifilm_registration_wait"
+ *   Connecting task inside Fujifilm::waitForRegistration(), after the GATT
+ *   subscription is live and before the confirmation poll starts. A test that
+ *   injects a registration notification, a geotag request or a link drop while
+ *   the gate is waiting has to know the gate is waiting. Sleeping a fixed
+ *   number of milliseconds first does not know that: on a loaded host the
+ *   connecting thread may not have reached the wait yet, and the injection then
+ *   either goes nowhere or lands after the deadline. Parking here makes the
+ *   window exact. The point fires before the registration deadline is taken, so
+ *   a parked thread does not spend the timeout it is about to observe.
  */
 
 #if defined(FURBLE_TEST_SYNC)

@@ -13,6 +13,7 @@
 #include "FujifilmSecure.h"
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
+#include "TestSyncController.h"
 #include "protocol/FujifilmProtocol.h"
 
 const char *LOG_TAG = "furble-registration-gate-test";
@@ -30,7 +31,25 @@ void check(bool condition, const char *message) {
 
 void init() {
   NimBLEDevice::resetMock();
+  Furble::TestSync::reset();
   Furble::Device::init(ESP_PWR_LVL_P3);
+}
+
+// The registration gate is open exactly between the subscription going live
+// and the confirmation poll giving up. Every injection below has to land inside
+// that window, and a fixed sleep cannot promise it does: on a loaded host the
+// connecting thread may not have entered the wait at all, so the injection goes
+// nowhere and the connect then fails or succeeds on host timing rather than on
+// the behaviour under test. Park the connecting thread on the
+// "fujifilm_registration_wait" sync point instead, inject while it is parked,
+// and release it.
+constexpr uint32_t kParkTimeoutMs = 30000;
+constexpr const char *kRegistrationPoint = "fujifilm_registration_wait";
+
+bool awaitRegistrationWait() {
+  const bool parked = Furble::TestSync::awaitArrival(kRegistrationPoint, kParkTimeoutMs);
+  check(parked, "the connect attempt parks in the registration wait");
+  return parked;
 }
 
 void testRegistrationPayloads() {
@@ -66,9 +85,12 @@ void testBasicConfirmationAndReset() {
   // retained from the prior NimBLE client while the new attempt is waiting.
   peer.setWithholdRegistration(true);
   bool connected = true;
+  Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
   std::thread reconnect([&]() { connected = camera.connect(ESP_PWR_LVL_P3, 1000); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  check(peer.emitStaleRegistration(), "virtual peer can replay a stale callback");
+  if (awaitRegistrationWait()) {
+    check(peer.emitStaleRegistration(), "virtual peer can replay a stale callback");
+    Furble::TestSync::release(kRegistrationPoint);
+  }
   reconnect.join();
   check(!connected, "stale registration callback cannot confirm a reconnect");
   check(!camera.isConnected() && !peer.connected(),
@@ -95,12 +117,15 @@ void testBasicConfirmationAndReset() {
   peer.setWithholdRegistration(true);
   Furble::FujifilmBasic dropped(&advertisement);
   bool dropConnected = true;
+  Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
   std::thread dropAttempt([&]() { dropConnected = dropped.connect(ESP_PWR_LVL_P3, 1000); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  auto *client = NimBLEDevice::lastClient();
-  check(client != nullptr, "link-drop test has a live mock client");
-  if (client != nullptr) {
-    client->mockDropLink(0x08, true);
+  if (awaitRegistrationWait()) {
+    auto *client = NimBLEDevice::lastClient();
+    check(client != nullptr, "link-drop test has a live mock client");
+    if (client != nullptr) {
+      client->mockDropLink(0x08, true);
+    }
+    Furble::TestSync::release(kRegistrationPoint);
   }
   dropAttempt.join();
   check(!dropConnected, "link loss aborts registration polling");
@@ -147,9 +172,12 @@ void testGeotagRequestConfirmsReconnect() {
   peer.setWithholdRegistration(true);
   Furble::FujifilmBasic camera(&advertisement);
   bool connected = false;
+  Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
   std::thread attempt([&]() { connected = camera.connect(ESP_PWR_LVL_P3, 1000); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(30));
-  check(peer.requestGeotag(), "virtual peer can send a geotag request mid-wait");
+  if (awaitRegistrationWait()) {
+    check(peer.requestGeotag(), "virtual peer can send a geotag request mid-wait");
+    Furble::TestSync::release(kRegistrationPoint);
+  }
   attempt.join();
   check(connected, "geotag request confirms registration on a reconnect");
   camera.disconnect();
@@ -164,10 +192,13 @@ void testGeotagRequestConfirmsReconnect() {
   securePeer.setWithholdRegistration(true);
   Furble::FujifilmSecure secureCamera(&secureAdvertisement);
   bool secureConnected = false;
+  Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
   std::thread secureAttempt(
       [&]() { secureConnected = secureCamera.connect(ESP_PWR_LVL_P3, 1000); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(30));
-  check(securePeer.requestGeotag(), "secure virtual peer can send a geotag request mid-wait");
+  if (awaitRegistrationWait()) {
+    check(securePeer.requestGeotag(), "secure virtual peer can send a geotag request mid-wait");
+    Furble::TestSync::release(kRegistrationPoint);
+  }
   secureAttempt.join();
   check(secureConnected, "geotag request confirms registration on a Secure reconnect");
   secureCamera.disconnect();
@@ -180,6 +211,7 @@ int main() {
   testBasicConfirmationAndReset();
   testSecureConfirmationAndTimeout();
   testGeotagRequestConfirmsReconnect();
+  check(!Furble::TestSync::anyTimedOut(), "no parked thread expired waiting for its release");
   NimBLEDevice::resetMock();
   if (failures != 0) {
     std::cerr << failures << " registration-gate checks failed\n";

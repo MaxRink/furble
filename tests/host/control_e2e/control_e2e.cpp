@@ -718,7 +718,9 @@ bool scenarioMultiFlappyDisconnect() {
 // Stress variant: many disconnect-during-churn cycles in one process, with the
 // disconnect landing at a swept offset inside the reconnect cycle. Each
 // iteration must land back in IDLE; a single iteration stuck in DISCONNECTING
-// (or refusing the next connect) is the wedge.
+// or CONNECTING (or refusing the next connect) is the wedge. Both wedge halves
+// now have their own deterministic interleave test, control-interleave and
+// control-abort-republish; this sweep is the broad net over the same class.
 bool scenarioFlappyCancelStress() {
   freshEnvironment();
   auto &control = Control::getInstance();
@@ -736,6 +738,18 @@ bool scenarioFlappyCancelStress() {
     auto camera = makeCamera(flappy);
     control.addActive(camera);
     control.connectAll(true);
+    // The disconnect must land inside a reconnect cycle that has actually
+    // started. connectAll() only enqueues CMD_CONNECT, and the control task
+    // dequeues it on a 50 ms tick, so on a loaded runner the command could
+    // still be queued when disconnect() published STATE_IDLE. The task then
+    // took it afterwards and moved out of idle on its own, which reads as a
+    // late republish and is not one. Waiting for the state to leave idle is
+    // what makes the sweep below sweep the cycle rather than the queue latency.
+    if (!check(waitForNotState(Control::STATE_IDLE, 3000),
+               "the connect command is dequeued before the disconnect")) {
+      std::cerr << "  iteration " << i << " never left idle\n";
+      break;
+    }
     // Sweep the disconnect landing point across the early reconnect cycle.
     // Most offsets land inside the first-retry wait (the fast-fail attempt
     // completes in milliseconds); the parked-connect window is owned by
@@ -753,7 +767,7 @@ bool scenarioFlappyCancelStress() {
     // The wedge republish can land after IDLE was observed. Catch it.
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
     if (!check(control.getState() == Control::STATE_IDLE,
-               "no late DISCONNECTING republish in stress iteration")) {
+               "no late state republish in stress iteration")) {
       std::cerr << "  iteration " << i << " late state " << stateName(control.getState()) << '\n';
       break;
     }

@@ -693,6 +693,40 @@ def build_simulator(args, root: Path, board: tuple[str, str, str, str]) -> Path:
   return binary
 
 
+def incomplete_scenarios(results, timeout_s: float) -> list[str]:
+  """Return the scenarios whose profile cannot be trusted to be complete.
+
+  A scenario that is killed on the timeout, or that dies on a signal, writes no
+  profile at all or a truncated one. Its lines are then simply missing from the
+  merge, which moves the measured percentage on an unchanged tree: the same
+  commit measured 503 of 697 lines in lib/furble/Camera.cpp on a loaded runner
+  and 521 of 697 on an idle one, purely because one scenario was killed. That
+  is a broken measurement, not a low one, and reporting it as a number would
+  either hide a real regression behind an accidental gain or fail the floor for
+  a reason no diff explains. Both outcomes fail the run instead.
+
+  `results` is an iterable of (label, code) pairs, where code is None for a
+  timeout kill and a negative number for a signal death, matching what
+  subprocess reports.
+
+  A scenario that exits with an ordinary non-zero status is deliberately not
+  listed. It ran to completion and wrote a complete profile, so its measurement
+  is sound; whether it should have passed is the sim-e2e workflow's gate.
+  """
+
+  failures: list[str] = []
+  for label, code in results:
+    if code is None:
+      failures.append(
+          f"{label}: timed out after {timeout_s:g} s, so it wrote no profile"
+      )
+    elif code < 0:
+      failures.append(
+          f"{label}: killed by signal {-code}, so its profile is incomplete"
+      )
+  return failures
+
+
 def certified_scenarios(root: Path, suite: str, board: str) -> list[str]:
   result = run(
       [
@@ -759,7 +793,7 @@ def measure_sim_board(
     except subprocess.TimeoutExpired:
       # A wedged scenario must not hold the whole job until the runner's own
       # timeout kills it with no report at all. The killed process writes no
-      # profile, so its lines are simply missing and the floor notices.
+      # profile, so incomplete_scenarios() below fails the run by name.
       return label, None
     return label, result.returncode
 
@@ -768,30 +802,37 @@ def measure_sim_board(
       f"{args.scenario_jobs} workers.",
       flush=True,
   )
-  # Coverage never gates on a scenario outcome. That is the sim-e2e and
-  # power-gate workflows' business. A scenario that fails here still
+  # Coverage never gates on a scenario's pass or fail outcome. That is the
+  # sim-e2e and power-gate workflows' business. A scenario that fails here still
   # contributes the lines it reached, and dropping it would understate
   # coverage for no benefit. Failures are still printed, because a scenario
   # that stops passing will show up as a coverage drop and the reason should
   # be in the same log.
+  #
+  # A scenario that never finished is a different thing entirely: it has no
+  # outcome and no complete profile, so the measurement it belongs to is not a
+  # measurement. Those fail the run.
   with concurrent.futures.ThreadPoolExecutor(
       max_workers=args.scenario_jobs
   ) as pool:
-    for label, code in pool.map(run_scenario, enumerate(jobs)):
-      if code is None:
-        print(
-            f"note: {board_id} scenario {label} timed out after "
-            f"{args.scenario_timeout} s and contributed no profile",
-            file=sys.stderr,
-        )
-        continue
-      expected = 2 if "/invalid/" in label else 0
-      if code != expected:
-        print(
-            f"note: {board_id} scenario {label} exited {code}, expected "
-            f"{expected}",
-            file=sys.stderr,
-        )
+    results = list(pool.map(run_scenario, enumerate(jobs)))
+  for label, code in results:
+    if code is None:
+      continue
+    expected = 2 if "/invalid/" in label else 0
+    if code != expected:
+      print(
+          f"note: {board_id} scenario {label} exited {code}, expected "
+          f"{expected}",
+          file=sys.stderr,
+      )
+  incomplete = incomplete_scenarios(results, args.scenario_timeout)
+  if incomplete:
+    raise CoverageError(
+        f"{board_id}: {len(incomplete)} scenario(s) produced no usable "
+        "profile, so the measurement would be wrong rather than low:\n- "
+        + "\n- ".join(incomplete)
+    )
 
   if board_id == "m5stick-s3":
     # run-invalid.sh also drives command-line and environment rejection paths

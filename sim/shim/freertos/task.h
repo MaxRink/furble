@@ -18,8 +18,27 @@ enum FurbleSimTaskLifecycle : uint8_t {
 /** Read a retained simulator task lifecycle while taking the scheduler lock. */
 FurbleSimTaskLifecycle furble_sim_task_lifecycle(TaskHandle_t task_handle);
 
+/**
+ * Block until a task reaches the expected lifecycle, or until timeout_ms of
+ * wall clock passes. Returns whether the lifecycle was reached. Waits on the
+ * scheduler condition variable for the reason
+ * furble_sim_wait_task_blocked() documents.
+ */
+bool furble_sim_wait_task_lifecycle(TaskHandle_t task_handle,
+                                    FurbleSimTaskLifecycle expected,
+                                    uint32_t timeout_ms);
+
 /** Return the number of callers waiting for this task's join claimant. */
 size_t furble_sim_task_join_waiters(TaskHandle_t task_handle);
+
+/**
+ * Block until at least `expected` callers wait for this task's join claimant,
+ * or until timeout_ms of wall clock passes. Returns whether the count was
+ * reached.
+ */
+bool furble_sim_wait_task_join_waiters(TaskHandle_t task_handle,
+                                       size_t expected,
+                                       uint32_t timeout_ms);
 
 /** Return whether a caller has claimed this task's join. */
 bool furble_sim_task_join_claimed(TaskHandle_t task_handle);

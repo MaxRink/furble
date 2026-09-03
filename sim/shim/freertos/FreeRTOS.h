@@ -53,6 +53,20 @@ bool furble_sim_shutdown_requested(void);
 /** Return whether a simulator task is currently blocked on a delay or queue. */
 bool furble_sim_task_blocked(TaskHandle_t task_handle);
 
+/**
+ * Block until a simulator task is blocked on a delay or queue, or until
+ * timeout_ms of wall clock passes. Returns the state it ends on.
+ *
+ * A caller that has to know a task has parked on a virtual deadline before it
+ * advances the clock must use this rather than polling the query above. A poll
+ * loop bounded by an iteration count is a spin budget, not a wait: on a loaded
+ * host the budget runs out while the task is simply not scheduled yet, and the
+ * clock then moves past a deadline the task has not registered. This waits on
+ * the scheduler condition variable, so it costs nothing while the task is
+ * descheduled and it returns the moment the task parks.
+ */
+bool furble_sim_wait_task_blocked(TaskHandle_t task_handle, uint32_t timeout_ms);
+
 QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size);
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticks_to_wait);
 BaseType_t xQueueSendToFront(QueueHandle_t queue, const void *item, TickType_t ticks_to_wait);

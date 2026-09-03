@@ -23,7 +23,7 @@ reboot), and it was not regression-testable.
 
 ## Change
 
-### Test-only named sync points (include/FurbleTestSync.h)
+### Test-only named sync points (lib/furble/FurbleTestSync.h)
 
 A minimal test-point mechanism: `FURBLE_TEST_SYNC_POINT("name")` marks a
 named preemption window in production code. Firmware builds never define
