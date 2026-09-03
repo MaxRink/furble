@@ -242,6 +242,38 @@ const lv_font_t *fontForIconMenu(uint8_t textSize) {
   return base;
 }
 
+// The Connected page is the densest layout on any board and is the one page that
+// steps below the icon menu font. On the Core its four columns make a cell 80 px
+// while "Disconnect" is 87 px at the icon menu font, and on the 135x240 panel it
+// carries eight rows in a 167 px page, which the Large face does not fit. The
+// step lives here with the rest of the font policy rather than as a literal in a
+// widget. See plans/168-notouch-layout-overflows.md.
+const lv_font_t *fontForConnectedMenu(uint8_t textSize) {
+#if defined(FURBLE_M5COREX)
+  (void)textSize;
+  return &lv_font_montserrat_14;
+#else
+  // Cap at Normal. Small still shrinks the page, Large would overflow it.
+  return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_NORMAL));
+#endif
+}
+
+// The Count, Delay, Shutter and Wait rows carry a name and a value on one line,
+// so the row width is shared and there is nowhere for a larger face to go. On
+// the narrow panels the pair stops fitting above the board's own default, and
+// the half that clips is the value, which is the data. Those rows cap at that
+// default rather than clipping it. The 320x240 grid has the width and follows
+// the setting.
+const lv_font_t *fontForSpinRow(uint8_t textSize) {
+#if defined(FURBLE_M5STICKC)
+  return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_SMALL));
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_NORMAL));
+#else
+  return fontForTextSize(textSize);
+#endif
+}
+
 // LVGL 9.4 has no public long press time getter. This is its default.
 constexpr uint32_t BUTTON_MODE_CLICK_WINDOW_MS = 400;
 
@@ -1650,17 +1682,14 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   } else {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
+    const uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
     if (iconRow) {
 #if defined(FURBLE_M5COREX)
       // The Connected page runs four columns to give its eight entries a cell
       // each, so a cell is 80 px. "Disconnect" is 87 px at the icon menu font
-      // and lost its last glyphs to the cell edge. This page, and only this
-      // page, steps its labels down one font so every entry reads in full.
-      lv_obj_set_style_text_font(label,
-                                 connectedPage
-                                     ? &lv_font_montserrat_14
-                                     : fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()),
-                                 0);
+      // and lost its last glyphs to the cell edge, so that page steps down.
+      lv_obj_set_style_text_font(
+          label, connectedPage ? fontForConnectedMenu(textSize) : fontForIconMenu(textSize), 0);
 #endif
       lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     } else {
@@ -1683,6 +1712,16 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       }
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+#if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+      // The Connected page carries eight text rows in a 167 px page. They fit at
+      // Normal and at Small; at Large the face is 28 px a line and the page
+      // overflows by 31, with the header back button hidden because this page is
+      // the session root. Cap this page's face at Normal so every entry stays on
+      // screen at every text size. Every other page still grows.
+      if (connectedPage) {
+        lv_obj_set_style_text_font(label, fontForConnectedMenu(textSize), 0);
+      }
+#endif
     }
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -3051,6 +3090,101 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   lv_menu_set_page(m_MainMenu.main, page);
 }
 
+namespace {
+
+// LVGL areas are inclusive pixel bounds, so two areas that share an edge pixel
+// do overlap; only adjacent areas one pixel apart do not.
+bool simAreasIntersect(const lv_area_t &a, const lv_area_t &b) {
+  return (a.x1 <= b.x2) && (a.x2 >= b.x1) && (a.y1 <= b.y2) && (a.y2 >= b.y1);
+}
+
+// A label object is often stretched by its flex row or grid cell while the
+// glyphs occupy only part of it. Only the drawn text can visually collide, so
+// shrink the box to the text extent and honour the text alignment. Every other
+// measured widget draws across its whole box, so it is measured as it is.
+lv_area_t simDrawnArea(lv_obj_t *obj, const lv_area_t &coords) {
+  if (!lv_obj_check_type(obj, &lv_label_class)) {
+    return coords;
+  }
+  lv_area_t box = coords;
+  box.x1 += lv_obj_get_style_pad_left(obj, LV_PART_MAIN);
+  box.y1 += lv_obj_get_style_pad_top(obj, LV_PART_MAIN);
+  box.x2 -= lv_obj_get_style_pad_right(obj, LV_PART_MAIN);
+  box.y2 -= lv_obj_get_style_pad_bottom(obj, LV_PART_MAIN);
+  const int32_t boxWidth = box.x2 - box.x1 + 1;
+  const int32_t boxHeight = box.y2 - box.y1 + 1;
+  const int32_t textWidth = lv_obj_get_self_width(obj);
+  const int32_t textHeight = lv_obj_get_self_height(obj);
+  if ((textWidth > 0) && (textWidth < boxWidth)) {
+    switch (lv_obj_get_style_text_align(obj, LV_PART_MAIN)) {
+      case LV_TEXT_ALIGN_CENTER:
+        box.x1 += (boxWidth - textWidth) / 2;
+        box.x2 = box.x1 + textWidth - 1;
+        break;
+      case LV_TEXT_ALIGN_RIGHT:
+        box.x1 = box.x2 - textWidth + 1;
+        break;
+      default:
+        box.x2 = box.x1 + textWidth - 1;
+        break;
+    }
+  }
+  if ((textHeight > 0) && (textHeight < boxHeight)) {
+    box.y2 = box.y1 + textHeight - 1;
+  }
+  return box;
+}
+
+}  // namespace
+
+uint32_t UI::countLabelOverlaps(void) {
+  lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if (page == nullptr) {
+    return 0;
+  }
+  lv_obj_update_layout(page);
+
+  // Only what is on screen counts, so every area is clamped to the page
+  // viewport first and anything entirely outside it is dropped. A scrolled page
+  // keeps coordinates for rows that are clipped away, and two of those drawn on
+  // top of each other are not something a user can see.
+  lv_area_t viewport;
+  lv_obj_get_coords(page, &viewport);
+
+  std::vector<lv_area_t> labels;
+  std::function<void(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+    if ((obj == nullptr) || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
+      return;
+    }
+    if (lv_obj_check_type(obj, &lv_label_class)) {
+      lv_area_t coords;
+      lv_obj_get_coords(obj, &coords);
+      lv_area_t area = simDrawnArea(obj, coords);
+      if (simAreasIntersect(area, viewport)) {
+        area.x1 = std::max(area.x1, viewport.x1);
+        area.y1 = std::max(area.y1, viewport.y1);
+        area.x2 = std::min(area.x2, viewport.x2);
+        area.y2 = std::min(area.y2, viewport.y2);
+        labels.push_back(area);
+      }
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+      visit(lv_obj_get_child(obj, i));
+    }
+  };
+  visit(page);
+
+  uint32_t overlaps = 0;
+  for (size_t i = 0; i < labels.size(); i++) {
+    for (size_t j = i + 1; j < labels.size(); j++) {
+      if (simAreasIntersect(labels[i], labels[j])) {
+        overlaps++;
+      }
+    }
+  }
+  return overlaps;
+}
+
 uint32_t UI::countIndicatorOverlaps(void) {
   if (M5.Touch.isEnabled()) {
     return 0;
@@ -3074,59 +3208,20 @@ uint32_t UI::countIndicatorOverlaps(void) {
     return 0;
   }
 
-  // LVGL areas are inclusive pixel bounds, so two areas that share an edge pixel
-  // do overlap; only adjacent areas one pixel apart do not.
-  const auto intersects = [](const lv_area_t &a, const lv_area_t &b) {
-    return (a.x1 <= b.x2) && (a.x2 >= b.x1) && (a.y1 <= b.y2) && (a.y2 >= b.y1);
-  };
+  const auto &intersects = simAreasIntersect;
 
   // A scrolled page keeps coordinates for rows that are clipped away, so every
   // area is clamped to the page viewport before it is tested. The viewport ends
-  // above the reserved navbar band, so a clamped area can never reach the
-  // bottom-edge Left and OK indicators: in practice this query measures the
-  // indicators that float over the content, which is the Right one on the Stick
-  // boards. It reports no result about the bottom two rather than proving them
-  // clear.
+  // above the reserved navbar band, so a clamped area can never reach an
+  // indicator that sits in that band. All three now do, so on a page that fits
+  // this query is structurally satisfied and is a regression pin: it fails the
+  // moment an indicator is moved back over the content area, or a widget is
+  // floated over the band. It reports nothing about widgets that are themselves
+  // floating outside the viewport.
   lv_area_t viewport;
   lv_obj_get_coords(page, &viewport);
 
-  // A label object is often stretched by its flex row while the glyphs occupy
-  // only part of it. Only the drawn text can visually collide with an
-  // indicator, so shrink the box to the text extent and honour the text
-  // alignment. Every other measured widget draws across its whole box, so it is
-  // measured as it is.
-  const auto drawnArea = [](lv_obj_t *obj, const lv_area_t &coords) {
-    if (!lv_obj_check_type(obj, &lv_label_class)) {
-      return coords;
-    }
-    lv_area_t box = coords;
-    box.x1 += lv_obj_get_style_pad_left(obj, LV_PART_MAIN);
-    box.y1 += lv_obj_get_style_pad_top(obj, LV_PART_MAIN);
-    box.x2 -= lv_obj_get_style_pad_right(obj, LV_PART_MAIN);
-    box.y2 -= lv_obj_get_style_pad_bottom(obj, LV_PART_MAIN);
-    const int32_t boxWidth = box.x2 - box.x1 + 1;
-    const int32_t boxHeight = box.y2 - box.y1 + 1;
-    const int32_t textWidth = lv_obj_get_self_width(obj);
-    const int32_t textHeight = lv_obj_get_self_height(obj);
-    if ((textWidth > 0) && (textWidth < boxWidth)) {
-      switch (lv_obj_get_style_text_align(obj, LV_PART_MAIN)) {
-        case LV_TEXT_ALIGN_CENTER:
-          box.x1 += (boxWidth - textWidth) / 2;
-          box.x2 = box.x1 + textWidth - 1;
-          break;
-        case LV_TEXT_ALIGN_RIGHT:
-          box.x1 = box.x2 - textWidth + 1;
-          break;
-        default:
-          box.x2 = box.x1 + textWidth - 1;
-          break;
-      }
-    }
-    if ((textHeight > 0) && (textHeight < boxHeight)) {
-      box.y2 = box.y1 + textHeight - 1;
-    }
-    return box;
-  };
+  const auto &drawnArea = simDrawnArea;
 
   const auto isMeasuredLeaf = [](lv_obj_t *obj) {
     for (const lv_obj_class_t *type :
@@ -3899,6 +3994,14 @@ std::string UI::simQueryState(const char *key) {
   // nothing intersects, "overlap" means at least one widget does, and "n/a"
   // means this build has no floating indicators. "indicator_overlaps" reports
   // the count for diagnosis.
+  // How many pairs of visible labels on the current page draw through each
+  // other. A grid cell holding two entries, or a flex row that lets one label
+  // run into the next, is invisible to every fit and scroll query: the page
+  // still fits, it is just unreadable. Zero on a well formed page.
+  if (query == "label_overlaps") {
+    return std::to_string(countLabelOverlaps());
+  }
+
   if (query == "indicator_clearance" || query == "indicator_overlaps") {
     const uint32_t overlaps = countIndicatorOverlaps();
     if (query == "indicator_overlaps") {
@@ -5745,8 +5848,12 @@ UI::menu_t &UI::addConnectedMenu(void) {
   } else {
     // The physical-button layout has no on-screen shutter or focus control: the
     // buttons drive them and the indicators in the navigation band are their
-    // legend. The page therefore carries one widget, the shutter lock, which
-    // long pressing the OK button toggles.
+    // legend. The page therefore carries one widget, and it is an indicator
+    // rather than a control. handleShutterLock, the long press toggle, is bound
+    // only on the touch branch above; nothing binds it here. The lock is set in
+    // handleShutter on LV_EVENT_PRESSED while m_FocusPressed is true, so the
+    // gesture is hold next then press select, and it is cleared in handleFocus
+    // on the next press of next alone.
     lv_obj_update_layout(menuShutter.page);
     lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -5756,15 +5863,18 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
     lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
 
-    // Sit the lock directly above the OK indicator, which is the button that
-    // toggles it.
+    // Sit the lock above the select indicator. Both physical buttons take part
+    // in the gesture, but select is the one whose press event sets the lock:
+    // next is held as a modifier and handleShutter latches on the select press.
+    // Clearing it is a press of next alone, and the next indicator is one
+    // position along the same legend row.
     //
     // A grey leader line used to run from here down towards that button, drawn
     // from a hardcoded point table per board. Its vertical run ended 103 px
     // below its own origin on the 135x240 panel, well past the bottom of a
     // 189 px page, and that run was the 64 px the page overflowed. The line is
-    // gone: the icon is already centred on the button it belongs to, so the
-    // line only added clutter, three tables of magic numbers and an overflow.
+    // gone: the icon is already over the button that sets the lock, so the line
+    // only added clutter, three tables of magic numbers and an overflow.
     // See plans/168-notouch-layout-overflows.md.
     lv_obj_align(m_ShutterLockIcon, LV_ALIGN_BOTTOM_MID, 0, -4);
 
@@ -6625,8 +6735,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // The narrow panels wrapped the value onto a second line at anything above
   // the smallest font, which doubled the row height: four rows then needed
   // 113 px of the 90 px the 80x160 physical-button layout leaves, and 170 px of
-  // 167 at 135x240. Keep the row on one line. The value label already scrolls
-  // its own text, so a value too wide for the space left is still readable.
+  // 167 at 135x240. Keep the row on one line.
   // See plans/168-notouch-layout-overflows.md.
   lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW);
 #endif
@@ -6643,15 +6752,28 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   lv_obj_set_style_pad_bottom(spinner.m_Button, 2, LV_STATE_DEFAULT);
 #endif
 
+  const uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
   spinner.m_Label = lv_label_create(spinner.m_Button);
   lv_label_set_text(spinner.m_Label, item);
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_grow(spinner.m_Label, 1);
+#else
+  // Neither label animates on the narrow panels. The value shares one row with
+  // the name here, so its grown box is often narrower than its text, and
+  // LV_LABEL_LONG_SCROLL_CIRCULAR then repaints every frame: measured on the
+  // 80x160 timer page, 170 invalidations over a one second probe where a static
+  // page reads 3. That is exactly the per-tick repaint the LVGL redraw trap in
+  // CLAUDE.md warns about, so the value clips instead of scrolling.
+  lv_label_set_long_mode(spinner.m_Label, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_font(spinner.m_Label, fontForSpinRow(textSize), 0);
 #endif
 
   spinner.m_Value = lv_label_create(spinner.m_Button);
+#if defined(FURBLE_M5COREX)
   lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_SCROLL_CIRCULAR);
-#if !defined(FURBLE_M5COREX)
+#else
+  lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_font(spinner.m_Value, fontForSpinRow(textSize), 0);
   lv_obj_set_flex_grow(spinner.m_Value, 1);
 #endif
 

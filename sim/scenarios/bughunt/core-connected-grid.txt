@@ -1,0 +1,74 @@
+# The Connected page grid on the 320x240 panel, in the touch layout.
+#
+# core-notouch-layout.txt covers the physical-button layout the M5Stack Core
+# Basic ships. This file covers the same page in the touch layout, because the
+# grid is not layout-scoped: the three FURBLE_M5COREX changes plan 168 made
+# (four columns instead of three, eight distinct cells instead of six with
+# three entries stacked in one, and the page-scoped label font) compile into
+# every Core class build, and the M5Stack Core2 is a 320x240 board that does
+# ship the touch panel. sim/build.sh does not model the Core2 separately, so
+# this unseeded run on the Core binary is where that layout is measured.
+#
+# On master this page rendered Infrared, Cameras and Level all in cell (1,1),
+# which drew their labels on top of each other as "CaLevRas", and it overflowed
+# by 23 px at the maximum text size. Both are asserted away below.
+#
+# core-connected-grid-large.txt is the same walk at the maximum text size, which
+# is where master overflowed and where the page-scoped label font step earns its
+# keep. Two files because the text size is a boot seed, following
+# home-seven-rows.txt and home-seven-rows-large.txt.
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed imu true
+wait 300
+
+# Guard: this file is the touch-layout half of the pair, so a run that picked up
+# a no_touch seed would be measuring core-notouch-layout.txt's subject instead.
+assert ui.nav_layout touch
+
+# Turn the IR setting on so the Infrared entry renders. All eight entries have
+# to be on the page at once for "eight entries, eight cells" to mean anything:
+# with IR off the page carries seven and the old three-in-one-cell bug is
+# invisible.
+action nav infrared
+wait 150
+action toggle ir
+wait 150
+home
+wait 250
+
+# Connected session at the default text size. Eight entries, eight cells, one
+# page: no scrolling and no label drawn outside its own cell.
+action connect
+wait 3200
+assert ui.page connected
+assert ui.connected yes
+assert ui.overflow no
+assert ui.scroll_bottom 0
+assert ui.scroll_top 0
+# The touch layout draws no button indicators at all, so this reads n/a rather
+# than clear. Asserted so a future indicator added to this layout is noticed.
+assert ui.indicator_clearance n/a
+# Eight entries, each a container with an icon and a label, plus the page.
+assert ui.visible_objects 25
+# The teeth for "eight cells". A fit query cannot see three entries sharing one
+# cell, because the page still fits; it is their labels drawn through each other
+# that a user sees. On master this read 3 here and the labels rendered as the
+# garble "CaLevRas".
+assert ui.label_overlaps 0
+
+# Every entry is reachable and loads its own page, which is the behavioural half
+# of "eight distinct cells": on master three of these shared a cell.
+action page cameras
+wait 150
+assert ui.page cameras
+action page connected
+wait 150
+action page bulb
+wait 150
+assert ui.page bulb
+action page connected
+wait 150
+assert ui.page connected
+exit

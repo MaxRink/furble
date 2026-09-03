@@ -35,6 +35,13 @@ Either way no indicator is drawn over page content. Only the Core2, which
 `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
 and `bughunt/core-notouch-layout.txt` seed `no_touch` and are each certified for
 exactly one board, so they measure the layout that board really has.
+`bughunt/core-connected-grid.txt` and `bughunt/core-connected-grid-large.txt`
+are the touch-layout half for the 320x240 panel, which is the layout the
+unmodeled Core2 ships, and they open with `assert ui.nav_layout touch` for the
+same reason the three above open with `buttons`.
+`ui.label_overlaps` reports how many pairs of visible labels on the current page
+draw through each other, which is the one defect a fit or scroll query cannot
+see.
 `sim/scripts/run-notouch.sh` runs the whole certified bug-hunt and end-to-end
 set for one board in that layout, and CI runs it on all three binaries. See
 [`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md) and
@@ -234,6 +241,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
+| `assert_min` / `assert_max` | `assert_min KEY VALUE` and `assert_max KEY VALUE` resolve the query as a signed integer and abort with exit status 1 when it is below, or above, VALUE. Use these where the assertion is a bound rather than an equality, for example a geometry that differs between the touch and physical-button layouts but must clear the header in both. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
 | `assert-eventually-virtual` | `assert-eventually-virtual TIMEOUT_MS KEY VALUE` polls once per normal UI tick while virtual time, platform updates, and background tasks continue. TIMEOUT_MS must be 1 through 60000 virtual milliseconds; a timeout reports the last value and exits 1. |
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |

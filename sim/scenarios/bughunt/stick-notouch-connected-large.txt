@@ -1,0 +1,56 @@
+# The Connected page at the maximum text size, on the 135x240 panel, in the
+# physical-button layout that board ships.
+#
+# stick-notouch-layout-135.txt walks the same layout at the default size. This
+# file exists for one measurement the default size cannot make.
+#
+# The Connected page carries eight rows in a 167 px sub page. Plan 168 dropped
+# its row icons so those rows fit, and that made the page height text-size
+# sensitive where the fixed 24 px icon had pinned it: at the Large face, 28 px a
+# line, eight rows are 224 px and the page overflows by 31. The page therefore
+# caps its own face at Normal through fontForConnectedMenu. This file is the pin
+# for that cap.
+#
+# It matters more here than on other pages because addMainMenu's page dispatch
+# hides and disables the header back button on the Connected page. It is the
+# root for the whole session, so a Disconnect below the fold is only reachable
+# by scrolling the encoder through seven rows.
+#
+# Every seed is deliberate. no_touch selects the shipped layout, text_size 2
+# selects the maximum face, and imu and ir bring the Level and Infrared entries
+# on so all eight rows are present: with either off the page carries fewer rows
+# and the overflow this file guards does not appear.
+# See plans/168-notouch-layout-overflows.md.
+seed no_touch true
+seed text_size 2
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed imu true
+wait 300
+assert ui.nav_layout buttons
+assert setting.text_size 2
+
+# The Infrared entry appears once the IR switch is on.
+action nav infrared
+wait 150
+action toggle ir
+wait 150
+home
+wait 250
+assert ui.page main
+
+# Eight rows, all on the page, at the largest face this board offers.
+action connect
+wait 3200
+assert ui.page connected
+assert ui.connected yes
+assert ui.overflow no
+assert ui.scroll_bottom 0
+assert ui.scroll_top 0
+assert ui.indicator_clearance clear
+# Eight entries, each a container and a label, plus the page. No icons: the row
+# icon is what the page gave up to fit, so a count of 25 here would mean they
+# came back.
+assert ui.visible_objects 17
+exit

@@ -39,4 +39,21 @@ wait 400
 action invalidate.reset
 wait 1000
 assert_max ui.invalidate_count 3
+
+# Timer settings list held at a fixed state. Its rows put a name and a value on
+# one line, so the value's box is often narrower than its text. On
+# LV_LABEL_LONG_SCROLL_CIRCULAR that repaints every frame: this page measured
+# 170 invalidations over this window on the 80x160 panel before plan 168 moved
+# these rows to a non-animating mode and capped their face on the narrow
+# panels. A scrolling label is the same steady-state repaint the rest of this
+# scenario guards against, so it is measured here rather than in a layout file.
+home
+wait 200
+action page settings
+action nav timer
+wait 300
+assert ui.page timer
+action invalidate.reset
+wait 1000
+assert_max ui.invalidate_count 3
 exit

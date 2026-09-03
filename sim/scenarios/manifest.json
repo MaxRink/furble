@@ -176,6 +176,38 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/core-connected-grid.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-connected-grid-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/feedback-hidden-route.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -295,6 +327,22 @@
     },
     {
       "path": "sim/scenarios/bughunt/stick-notouch-layout-135.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/stick-notouch-connected-large.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [

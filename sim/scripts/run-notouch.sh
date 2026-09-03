@@ -10,7 +10,15 @@
 # assertion rather than a repeat. plans/168-notouch-layout-overflows.md closed
 # the gaps that kept it red.
 #
-# Two scenarios are skipped on the 80x160 board. Both seed the maximum text
+# Two kinds of scenario are skipped, and both say so as they go.
+#
+# A scenario whose own first assertion is "assert ui.nav_layout touch" is the
+# touch layout's, not this one's: it is written for the layout the unmodeled Core2
+# ships, and forcing it into this layout would make it measure the wrong subject.
+# The guard is what detects that, so the skip is derived from the guard rather
+# than from a name list.
+#
+# Two more are skipped by name on the 80x160 board. Both seed the maximum text
 # size, and that board cannot render its own pages at that size in the layout it
 # ships: a sub page leaves 87 px and the Connected page needs 108 for its six
 # rows, and the home page leaves 112 px against 129 for seven rows. That is
@@ -53,7 +61,13 @@ else
   exit 1
 fi
 
-skipped() {
+# A scenario that guards on the touch layout is measuring the other layout.
+touch_layout_scenario() {
+  grep -q '^assert ui.nav_layout touch$' "$1"
+}
+
+# The two 80x160 maximum text size scenarios, see the header.
+skipped_by_name() {
   if [ "$BOARD" != "m5stick-c" ]; then
     return 1
   fi
@@ -78,7 +92,12 @@ for suite in bughunt e2e; do
   fi
   for scenario in $scenarios; do
     name=$(basename "$scenario" .txt)
-    if skipped "$name"; then
+    if touch_layout_scenario "$ROOT/$scenario"; then
+      echo "SKIP $name (asserts the touch layout)"
+      skips=$((skips + 1))
+      continue
+    fi
+    if skipped_by_name "$name"; then
       echo "SKIP $name (see the header of this script)"
       skips=$((skips + 1))
       continue
