@@ -20,11 +20,11 @@
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
-# Every xassert below is a WILL_FAIL that fails on this board today, with the
-# measured pixel count or widget count in its comment. None of them is
-# board-varies: each file covers one board, so a closed gap turns into an XPASS
-# and fails the run, which is the signal to promote the line to a hard assert.
-# See plans/165-sim-no-touch-layout.md.
+# Every line below is a hard assert. The gaps this file recorded as WILL_FAIL
+# when plan 165 wrote it are all fixed, so each one was promoted rather than
+# left to record an XPASS and fail the run, which is what splitting the file per
+# board was for. See plans/165-sim-no-touch-layout.md and
+# plans/168-notouch-layout-overflows.md.
 seed no_touch true
 seed fauxny true
 seed saved_camera true
@@ -80,9 +80,7 @@ action connect
 wait 3200
 assert ui.page connected
 assert ui.connected yes
-# WILL_FAIL: overflows by 13 px on this panel.
-print ui.scroll_bottom
-xassert ui.overflow no
+assert ui.overflow no
 assert ui.indicator_clearance clear
 
 # Remote shutter page.

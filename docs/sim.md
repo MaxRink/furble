@@ -27,15 +27,18 @@ The SDL panel always attaches a mouse-driven touch device, so an unseeded run
 renders the touch layout on every modeled board. None of the three modeled
 boards has a touch panel. The Sticks and the M5Stack Core Basic all ship the
 non-touch layout, which reserves a 26 px navigation bar band at the bottom of
-the window content; on the Sticks the band stays empty and the three indicators
-float over the screen, and on the Core they live inside the band. Only the
-Core2, which `sim/build.sh` does not model, ships the touch layout.
+the window content; on the Sticks the three indicators float against the screen
+edges and land in that band, and on the Core they are flex children of it.
+Either way no indicator is drawn over page content. Only the Core2, which
+`sim/build.sh` does not model, ships the touch layout.
 
 `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
 and `bughunt/core-notouch-layout.txt` seed `no_touch` and are each certified for
-exactly one board, so they measure the layout that board really has. Every other
-overflow scenario measures the touch layout. See
-[`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md).
+exactly one board, so they measure the layout that board really has.
+`sim/scripts/run-notouch.sh` runs the whole certified bug-hunt and end-to-end
+set for one board in that layout, and CI runs it on all three binaries. See
+[`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md) and
+[`plans/168-notouch-layout-overflows.md`](../plans/168-notouch-layout-overflows.md).
 
 ## Production-path parity
 
@@ -118,6 +121,11 @@ run. The capture helpers use `--out` to choose the capture directory.
 the documentation screenshot gallery. It uses `FURBLE_SIM_BOARDS` and
 `FURBLE_SIM_BUILD_ROOT` to limit the matrix or relocate its build trees.
 
+`sim/scripts/run-notouch.sh` runs the certified bug-hunt and end-to-end sets for
+one board with `FURBLE_SIM_NO_TOUCH=1`, so the pages are measured in the layout
+that board ships. It takes the same `FURBLE_SIM_BOARD_ID` and `FURBLE_SIM_BIN`
+as `run-e2e.sh`. Its header names the two 80x160 scenarios it skips and why.
+
 The retained M5PM1 watchdog contract has a dedicated gate:
 `sim/scripts/run-watchdog.sh` runs the feed, near-boundary, expiry, and
 uint32-wrap scenarios against the default, freshly built M5StickS3 binary.
@@ -179,11 +187,12 @@ process when a 1 ms `SDL_Delay` overshoots 64 ms, which a loaded host does
 routinely, and the step-exec mode it then latches deadlocks simulator boot
 against the SDL render pump. Turn it on only under an actual debugger.
 
-`sim/scripts/run-e2e.sh` and `sim/scripts/run-watchdog.sh` bound every scenario
+`sim/scripts/run-e2e.sh`, `sim/scripts/run-notouch.sh` and
+`sim/scripts/run-watchdog.sh` bound every scenario
 with `timeout -k 10` at `FURBLE_SIM_SCENARIO_TIMEOUT` seconds, default 300. The
 per-seed bound in `run-fuzz.sh` is separate and larger, `FURBLE_FUZZ_SEED_TIMEOUT`
 seconds, default 600, because one seed is 600 events rather than one scenario. A
-wedged run fails its leg instead of hanging the job. All three scripts require
+wedged run fails its leg instead of hanging the job. All four scripts require
 GNU `timeout`, or the coreutils `gtimeout` Homebrew installs on macOS, and fail
 with that instruction if neither is present.
 

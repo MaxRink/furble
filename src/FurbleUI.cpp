@@ -327,12 +327,12 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IMUDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BulbRunStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BulbDurationStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -646,8 +646,13 @@ UI::UI(const interval_t &interval)
         lv_obj_add_flag(m_OK, LV_OBJ_FLAG_FLOATING);
         lv_obj_align(m_OK, LV_ALIGN_BOTTOM_MID, 0, 0);
 
+        // The Right indicator used to float halfway down the right edge, so it
+        // drew over page content instead of over the band this layout already
+        // reserves for the indicators. It joins the other two in that band, so
+        // all three read as one legend row, the Stick layout matches the Core,
+        // and no indicator is ever drawn over content.
         lv_obj_add_flag(m_Right, LV_OBJ_FLAG_FLOATING);
-        lv_obj_align(m_Right, LV_ALIGN_RIGHT_MID, 0, m_RightYOffset);
+        lv_obj_align(m_Right, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 
         // These indicators float against the screen edges, so the level page
         // must re-anchor them whenever it rotates the panel. Hand their handles
@@ -655,7 +660,6 @@ UI::UI(const interval_t &interval)
         m_Level.navLeft = m_Left;
         m_Level.navOK = m_OK;
         m_Level.navRight = m_Right;
-        m_Level.navRightYOffset = m_RightYOffset;
         break;
 
       default:
@@ -1551,8 +1555,30 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
                           const int32_t col_pos,
                           const int32_t row_pos) {
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  // Whether this row is laid out as an icon row. The 80x160 panel has never
+  // drawn the icon but still lays the label out as though it did, so keep those
+  // two separate: iconRow drives the label sizing, drawIcon the image itself.
+  // The 135x240 Connected page clears both so its rows fit; see the per board
+  // blocks below.
+  bool iconRow = (icon != nullptr);
+#if defined(FURBLE_M5STICKC)
+  // screen is too small for icons
+  bool drawIcon = false;
+#else
+  bool drawIcon = iconRow;
+#endif
+  // The Connected page is the densest page on every board: it carries eight
+  // entries and, because it hides and disables the header back button, it is
+  // the root for the whole session, so none of them can be dropped.
+  const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  // A grid cell is 80 px on the four column Connected page, and the row's
+  // default horizontal padding clipped the last glyphs off the widest label
+  // there. The icon and the label are both centred in the row, so this padding
+  // only ever cost label width on any page.
+  lv_obj_set_style_pad_left(cont, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(cont, 0, LV_STATE_DEFAULT);
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
@@ -1560,23 +1586,31 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // setting is on (Connect, Scan, Delete, IR, Settings, Level, Power off). A
   // row is the 24 px icon plus the top and bottom padding, and the text size
   // setting does not change it, so the fit is fixed arithmetic against the
-  // page height: at the default padding of 6 six rows already overflow by one
-  // pixel, at 5 seven rows overflow by 23 px, and at 3 seven rows take 210 px.
+  // page height.
   //
-  // That arithmetic was done against the 215 px page of the touch layout, which
-  // is the only one the simulator rendered when this padding was chosen. These
-  // boards have no touch panel, so they ship the physical-button layout, whose
-  // navigation bar band leaves a 189 px page. Seven rows overflow it by 21 px
-  // at padding 3. home-seven-rows.txt asserts the fit, but on the touch layout,
-  // so it does not guard the shipped one. stick-notouch-layout-135.txt records
-  // the real 21 px as a WILL_FAIL. Fixing it is a hardware-verified change and
-  // is deliberately not made here; see plans/165-sim-no-touch-layout.md.
-  // Every other page keeps the roomier padding.
-  const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
+  // These boards have no touch panel, so they ship the physical-button layout,
+  // whose navigation bar band leaves a 189 px page. The earlier padding of 3
+  // was chosen against the 215 px page of the touch layout, the only one the
+  // simulator rendered at the time, and seven rows at 3 take 210 px and
+  // overflow the shipped page by 21. At zero padding seven rows take 168 px and
+  // fit with room to spare, so the home page joins the Connected page there.
+  // stick-notouch-layout-135.txt measures the shipped page. Every other page
+  // keeps the roomier padding.
   const bool mainPage = menu.page == m_MainMenu.page;
-  const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
+  const int32_t pad = (connectedPage || mainPage) ? 0 : 6;
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
+  // Every entry on the Connected page has to stay: that page hides and disables
+  // the header back button, so it is the root for the whole session and nothing
+  // it drops is reachable again until the camera is disconnected. It carries
+  // eight rows in a 167 px page, 214 px of the 24 px icon, so the icons go
+  // instead and the text stays, which is what the 80x160 board already does on
+  // every page. Eight text rows take 144 px.
+  // See plans/168-notouch-layout-overflows.md.
+  if (connectedPage) {
+    iconRow = false;
+    drawIcon = false;
+  }
 #elif defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
   // (Connect, Scan, Delete, IR, Settings, Level, Power off) fits without
@@ -1589,7 +1623,6 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // above. home-seven-rows-large.txt guards this on the touch layout; this
   // board ships the physical-button layout, where the home menu still fits at
   // Normal. stick-notouch-layout-80.txt measures that layout.
-  const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
   const bool mainPage = menu.page == m_MainMenu.page;
   const int32_t pad = (connectedPage || mainPage) ? 0 : 1;
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
@@ -1598,10 +1631,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-#if defined(FURBLE_M5STICKC)
-  // screen is too small for icons
-#else
-  if (icon) {
+  if (drawIcon) {
     lv_obj_t *img = lv_image_create(cont);
     lv_obj_set_size(img, ICON_MENU_SIZE, ICON_MENU_SIZE);
     lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
@@ -1609,7 +1639,6 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1, LV_GRID_ALIGN_STRETCH, row_pos,
                          1);
   }
-#endif
 
   if (checkbox) {
     lv_obj_t *check = lv_checkbox_create(cont);
@@ -1621,9 +1650,17 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   } else {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
-    if (icon) {
+    if (iconRow) {
 #if defined(FURBLE_M5COREX)
-      lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
+      // The Connected page runs four columns to give its eight entries a cell
+      // each, so a cell is 80 px. "Disconnect" is 87 px at the icon menu font
+      // and lost its last glyphs to the cell edge. This page, and only this
+      // page, steps its labels down one font so every entry reads in full.
+      lv_obj_set_style_text_font(label,
+                                 connectedPage
+                                     ? &lv_font_montserrat_14
+                                     : fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()),
+                                 0);
 #endif
       lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     } else {
@@ -3856,11 +3893,12 @@ std::string UI::simQueryState(const char *key) {
   }
 
   // Whether any visible label or icon on the current page sits under a floating
-  // navigation indicator. The Left and OK indicators occupy the reserved navbar
-  // band, but the Right indicator floats over the content area, so a wide
-  // centred row can render beneath it. "clear" means nothing intersects,
-  // "overlap" means at least one widget does, and "n/a" means this build has no
-  // floating indicators. "indicator_overlaps" reports the count for diagnosis.
+  // navigation indicator. All three indicators occupy the reserved navbar band
+  // now, so a fitted page reads "clear"; the Right one used to float over the
+  // content area, where a wide centred row rendered beneath it. "clear" means
+  // nothing intersects, "overlap" means at least one widget does, and "n/a"
+  // means this build has no floating indicators. "indicator_overlaps" reports
+  // the count for diagnosis.
   if (query == "indicator_clearance" || query == "indicator_overlaps") {
     const uint32_t overlaps = countIndicatorOverlaps();
     if (query == "indicator_overlaps") {
@@ -5505,7 +5543,7 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   if (level->navLeft != nullptr) {
     lv_obj_align(level->navLeft, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_obj_align(level->navOK, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_align(level->navRight, LV_ALIGN_RIGHT_MID, 0, level->navRightYOffset);
+    lv_obj_align(level->navRight, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
   }
 
   // Settle the level page container so the next sample reads real bubble
@@ -5624,18 +5662,24 @@ UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
 #if defined(FURBLE_M5COREX)
-  // three by two suits the landscape screens, Cameras fills the last open cell
-  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
-                                 LV_GRID_TEMPLATE_LAST};
-  static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
+  // Four by two, the same descriptor the Core home menu uses, so the eight
+  // entries below land in eight distinct cells.
+  //
+  // The page used to declare three columns and two LV_GRID_CONTENT rows, six
+  // cells for eight entries, with Infrared, Cameras and Level all assigned cell
+  // (1,1). Three widgets stacked in one cell is why Cameras rendered over its
+  // own icon, and the content rows growing around the stack is the 13 px the
+  // page overflowed. LV_GRID_FR(1) rows divide the page exactly, so it cannot
+  // overflow. See plans/168-notouch-layout-overflows.md.
+  lv_obj_set_grid_dsc_array(menuConnected.page, m_GridLayoutColDsc.data(),
+                            m_GridLayoutRowDsc.data());
   lv_obj_center(menuConnected.page);
   lv_obj_set_layout(menuConnected.page, LV_LAYOUT_GRID);
 #endif
 
   menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
   menu_t &menuIR = m_Menu.at(m_IRStr);
-  m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 1, 1);
+  m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 3, 0);
   lv_menu_set_load_page_event(menuIR.main, m_IRConnectedButton, menuIR.page);
   addCamerasMenu(menuConnected);
   addBulbMenu(menuConnected);
@@ -5699,10 +5743,11 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
     lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
   } else {
-    // add remote shutter text for buttons
-    lv_area_t a;
+    // The physical-button layout has no on-screen shutter or focus control: the
+    // buttons drive them and the indicators in the navigation band are their
+    // legend. The page therefore carries one widget, the shutter lock, which
+    // long pressing the OK button toggles.
     lv_obj_update_layout(menuShutter.page);
-    lv_obj_get_coords(menuShutter.page, &a);
     lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
 
     m_ShutterLockIcon = lv_button_create(menuShutter.page);
@@ -5711,48 +5756,17 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
     lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
 
-    // @todo Clean up the plethora of hardcoded values here
-#if defined(FURBLE_M5STICKC)
-    const size_t n = 3;
-    int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 10;
-    static lv_point_precise_t points[] = {
-        {x1 + 40, y1 + 12},
-        {x1 + 6,  y1 + 12},
-        {x1 + 6,  y1 + 64}
-    };
-#elif defined(FURBLE_M5STACK_CORE)
-    const size_t n = 4;
-    const int32_t x1 = 188;
-    const int32_t y1 = 80;
-    static lv_point_precise_t points[] = {
-        {164, 153},
-        {164, 92 },
-        {82,  92 },
-        {82,  153}
-    };
-#else
-    const size_t n = 3;
-    int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 7;
-    static lv_point_precise_t points[] = {
-        {x1 + 50, y1 + 12 },
-        {x1 - 1,  y1 + 12 },
-        {x1 - 1,  y1 + 103}
-    };
-#endif
-
-    lv_obj_set_pos(m_ShutterLockIcon, x1, y1);
-
-    static lv_style_t style;
-    lv_style_init(&style);
-    lv_style_set_line_width(&style, 2);
-    lv_style_set_line_color(&style, lv_palette_main(LV_PALETTE_GREY));
-    lv_style_set_line_opa(&style, LV_OPA_50);
-
-    lv_obj_t *line = lv_line_create(menuShutter.page);
-    lv_line_set_points(line, points, n);
-    lv_obj_add_style(line, &style, 0);
+    // Sit the lock directly above the OK indicator, which is the button that
+    // toggles it.
+    //
+    // A grey leader line used to run from here down towards that button, drawn
+    // from a hardcoded point table per board. Its vertical run ended 103 px
+    // below its own origin on the 135x240 panel, well past the bottom of a
+    // 189 px page, and that run was the 64 px the page overflowed. The line is
+    // gone: the icon is already centred on the button it belongs to, so the
+    // line only added clutter, three tables of magic numbers and an overflow.
+    // See plans/168-notouch-layout-overflows.md.
+    lv_obj_align(m_ShutterLockIcon, LV_ALIGN_BOTTOM_MID, 0, -4);
 
     lv_obj_move_foreground(m_ShutterLockIcon);
   }
@@ -6231,9 +6245,17 @@ void UI::addSensorsMenu(const menu_t &parent) {
 
   addSettingItem(menu.page, NULL, Settings::IMU);
 
+#if defined(FURBLE_M5STICKC)
+  // The 80x160 panel has no room for the notice row: the setting row, the
+  // notice and the button overflow the physical-button layout's page by 10 px,
+  // and the notice is the row that carries no control. The button below says
+  // Restart, which is the action the notice describes. Every wider panel keeps
+  // the wording. See plans/168-notouch-layout-overflows.md.
+#else
   lv_obj_t *notice = lv_menu_cont_create(menu.page);
   lv_obj_t *noticeLabel = lv_label_create(notice);
   lv_label_set_text(noticeLabel, "Restart to apply");
+#endif
 
   lv_obj_t *restart = lv_button_create(menu.page);
   lv_obj_t *label = lv_label_create(restart);
@@ -6597,12 +6619,28 @@ void UI::addIRMenu(void) {
 
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
   spinner.m_Button = lv_menu_cont_create(page);
+#if defined(FURBLE_M5COREX)
   lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
+#else
+  // The narrow panels wrapped the value onto a second line at anything above
+  // the smallest font, which doubled the row height: four rows then needed
+  // 113 px of the 90 px the 80x160 physical-button layout leaves, and 170 px of
+  // 167 at 135x240. Keep the row on one line. The value label already scrolls
+  // its own text, so a value too wide for the space left is still readable.
+  // See plans/168-notouch-layout-overflows.md.
+  lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW);
+#endif
 #if defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
   // Shutter and Wait rows fit without scrolling the timer page.
   lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // Same trim, smaller: at Large the four rows needed 170 px of the 167 px the
+  // physical-button layout leaves this sub page, and four pixels a row off the
+  // top and bottom padding is 32 px back.
+  lv_obj_set_style_pad_top(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(spinner.m_Button, 2, LV_STATE_DEFAULT);
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);

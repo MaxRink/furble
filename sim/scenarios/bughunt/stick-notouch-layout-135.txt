@@ -6,10 +6,11 @@
 # so this is the layout it always renders: a navigation bar band reserved at the
 # bottom of the window content, ICON_HEADER_SIZE + 2 = 26 px tall, plus the
 # three button indicators. On the Stick boards the bar stays empty and the
-# three indicators float over the screen instead, so the bar is purely the
-# reserved clearance for the Left and OK indicators at the bottom edge. The
-# Right indicator floats over the content area, at LV_ALIGN_RIGHT_MID with a
-# 65 px offset, so a 24 px square at y 173 to 196.
+# three indicators float over the screen instead, so the bar is the reserved
+# clearance for all three of them at the bottom edge. The
+# Right indicator used to float over the content area, at LV_ALIGN_RIGHT_MID
+# with a 65 px offset, a 24 px square at y 173 to 196. It is at
+# LV_ALIGN_BOTTOM_RIGHT now, so nothing is drawn over content.
 #
 # The M5GFX SDL panel always attaches a mouse-driven touch device, so every
 # other scenario measures the touch layout, which is 26 px taller. This one
@@ -21,11 +22,11 @@
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
-# Every xassert below is a WILL_FAIL that fails on this board today, with the
-# measured pixel count or widget count in its comment. None of them is
-# board-varies: each file covers one board, so a closed gap turns into an XPASS
-# and fails the run, which is the signal to promote the line to a hard assert.
-# See plans/165-sim-no-touch-layout.md.
+# Every line below is a hard assert. The gaps this file recorded as WILL_FAIL
+# when plan 165 wrote it are all fixed, so each one was promoted rather than
+# left to record an XPASS and fail the run, which is what splitting the file per
+# board was for. See plans/165-sim-no-touch-layout.md and
+# plans/168-notouch-layout-overflows.md.
 seed no_touch true
 seed fauxny true
 seed saved_camera true
@@ -44,9 +45,7 @@ action nav display
 wait 150
 assert ui.page display
 assert ui.overflow no
-# WILL_FAIL: 2 widgets render under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+assert ui.indicator_clearance clear
 
 # Sensors tile.
 action page settings
@@ -75,9 +74,7 @@ wait 150
 home
 wait 250
 assert ui.page main
-# WILL_FAIL: overflows by 21 px on this panel.
-print ui.scroll_bottom
-xassert ui.overflow no
+assert ui.overflow no
 assert ui.indicator_clearance clear
 
 # Connected session.
@@ -85,20 +82,14 @@ action connect
 wait 3200
 assert ui.page connected
 assert ui.connected yes
-# WILL_FAIL: overflows by 25 px on this panel.
-print ui.scroll_bottom
-xassert ui.overflow no
-# WILL_FAIL: 1 widget renders under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+assert ui.overflow no
+assert ui.indicator_clearance clear
 
 # Remote shutter page.
 action page shutter
 wait 150
 assert ui.page shutter
-# WILL_FAIL: overflows by 64 px on this panel.
-print ui.scroll_bottom
-xassert ui.overflow no
+assert ui.overflow no
 assert ui.indicator_clearance clear
 
 # Bulb page.
@@ -114,9 +105,7 @@ assert ui.indicator_clearance clear
 action nav bulb_duration
 wait 150
 assert ui.page bulb_duration
-# WILL_FAIL: 1 widget renders under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+assert ui.indicator_clearance clear
 action page bulb
 wait 150
 

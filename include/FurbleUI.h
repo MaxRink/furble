@@ -332,7 +332,6 @@ class UI {
     lv_obj_t *navLeft;
     lv_obj_t *navOK;
     lv_obj_t *navRight;
-    int32_t navRightYOffset;
     bool filterReady;
     bool displayReady;
   } level_t;
@@ -531,12 +530,6 @@ class UI {
   const uint32_t m_KeyLeft = LV_KEY_LEFT;
   const uint32_t m_KeyEnter = LV_KEY_ENTER;
   const uint32_t m_KeyRight = LV_KEY_RIGHT;
-
-#if defined(FURBLE_M5STICKS3)
-  const uint32_t m_RightYOffset = 65;
-#else
-  const uint32_t m_RightYOffset = 0;
-#endif
 
 #if defined(FURBLE_RIG)
   static constexpr const char *m_Title = "RIG BUILD, NO BLE, NO ENCRYPTION";
