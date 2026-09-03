@@ -62,14 +62,54 @@ struct FurbleHostQueue {
   size_t max_len = 0;
 };
 
+// --- Host task shutdown -----------------------------------------------------
+//
+// See furbleHostStopTasks() in freertos/FreeRTOS.h for what this is for.
+
+namespace {
+
+std::atomic<bool> g_StopTasks {false};
+
+// Thrown to unwind a task thread out of the blocking primitive it is parked in.
+// xTaskCreate() catches it at the top of the task function.
+struct StopTask {};
+
+// Set on the threads this shim creates, and only on those. The main thread also
+// calls into the blocking primitives (Control::disconnect() runs there and
+// sleeps in vTaskDelay), and it must never be unwound: it owns the shutdown.
+thread_local bool g_OnShimTask = false;
+
+std::mutex g_QueuesMutex;
+std::vector<QueueHandle_t> g_Queues;
+
+// Unwind the calling task if shutdown has begun. Every call site is a
+// suspension point in the production code, so the stack unwinds through
+// ordinary RAII: the shim's own unique_lock releases the queue on the way out,
+// and no production lock is held across a blocking primitive.
+void stopPoint(void) {
+  if (g_OnShimTask && g_StopTasks.load()) {
+    throw StopTask {};
+  }
+}
+
+}  // namespace
+
 QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t item_size) {
   auto *queue = new FurbleHostQueue();
   queue->item_size = static_cast<size_t>(item_size);
   queue->max_len = static_cast<size_t>(length);
+  {
+    std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    g_Queues.push_back(queue);
+  }
   return queue;
 }
 
 void vQueueDelete(QueueHandle_t queue) {
+  {
+    std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    g_Queues.erase(std::remove(g_Queues.begin(), g_Queues.end(), queue), g_Queues.end());
+  }
   delete queue;
 }
 
@@ -107,13 +147,16 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *buffer, TickType_t ticks_to_
   if (queue == nullptr) {
     return pdFALSE;
   }
+  stopPoint();
   std::unique_lock<std::mutex> lock(queue->mutex);
   if (queue->items.empty()) {
     if (ticks_to_wait == 0) {
       return pdFALSE;
     }
     const auto wait = std::chrono::milliseconds(static_cast<uint32_t>(ticks_to_wait));
-    queue->cond.wait_for(lock, wait, [queue] { return !queue->items.empty(); });
+    queue->cond.wait_for(lock, wait,
+                         [queue] { return !queue->items.empty() || g_StopTasks.load(); });
+    stopPoint();
     if (queue->items.empty()) {
       return pdFALSE;
     }
@@ -171,10 +214,15 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
     task->number = g_NextTaskNumber++;
     g_Tasks.push_back(task);
   }
-  task->thread = std::thread([task_code, parameters] { task_code(parameters); });
-  // The console and control tasks run for the whole process and a per-target
-  // task self-deletes, so none is ever joined.
-  task->thread.detach();
+  task->thread = std::thread([task_code, parameters] {
+    g_OnShimTask = true;
+    try {
+      task_code(parameters);
+    } catch (const StopTask &) {
+      // Host shutdown unwinding a task that is immortal on device.
+    }
+  });
+  // Left joinable: furbleHostStopTasks() joins every task before main() returns.
   if (created_task != nullptr) {
     *created_task = task;
   }
@@ -189,6 +237,7 @@ void vTaskDelete(TaskHandle_t task) {
 
 void vTaskDelay(TickType_t ticks_to_delay) {
   std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<uint32_t>(ticks_to_delay)));
+  stopPoint();
 }
 
 TickType_t xTaskGetTickCount(void) {
@@ -345,10 +394,6 @@ std::mutex g_InputMutex;
 std::condition_variable g_InputCond;
 std::deque<uint8_t> g_Input;
 
-// Set once, at the end of the run. See ConsoleHost::parkConsoleTask().
-bool g_Parked = false;
-bool g_ParkAcknowledged = false;
-
 std::string g_CapturePath;
 
 }  // namespace
@@ -363,21 +408,12 @@ int usb_serial_jtag_read_bytes(void *buffer, uint32_t length, uint32_t ticks_to_
   if (buffer == nullptr || length == 0) {
     return 0;
   }
+  stopPoint();
   std::unique_lock<std::mutex> lock(g_InputMutex);
   if (g_Input.empty()) {
     g_InputCond.wait_for(lock, std::chrono::milliseconds(ticks_to_wait),
-                         [] { return !g_Input.empty() || g_Parked; });
-    if (g_Parked) {
-      // The run is over. Acknowledge, drop the lock and stay here forever, so
-      // the console task never touches a global again while the process tears
-      // itself down around it.
-      g_ParkAcknowledged = true;
-      lock.unlock();
-      g_InputCond.notify_all();
-      while (true) {
-        std::this_thread::sleep_for(std::chrono::hours(1));
-      }
-    }
+                         [] { return !g_Input.empty() || g_StopTasks.load(); });
+    stopPoint();
     if (g_Input.empty()) {
       return 0;
     }
@@ -929,14 +965,6 @@ void feedBytes(const std::string &bytes) {
   g_InputCond.notify_all();
 }
 
-bool parkConsoleTask(int timeout_ms) {
-  std::unique_lock<std::mutex> lock(g_InputMutex);
-  g_Parked = true;
-  g_InputCond.notify_all();
-  return g_InputCond.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-                              [] { return g_ParkAcknowledged; });
-}
-
 bool waitForInputDrained(int timeout_ms) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
@@ -982,3 +1010,34 @@ std::string runLine(const std::string &line) {
 }
 
 }  // namespace ConsoleHost
+
+// --- Host task shutdown -----------------------------------------------------
+
+void furbleHostStopTasks(void) {
+  g_StopTasks.store(true);
+
+  // Wake every primitive a task can be parked in. Each wait predicate also
+  // reads the stop flag, so a task cannot miss shutdown between the store above
+  // and its own wakeup.
+  {
+    const std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    for (auto *queue : g_Queues) {
+      queue->cond.notify_all();
+    }
+  }
+  g_InputCond.notify_all();
+
+  // Copy the task list before joining. The console task reads it under
+  // g_TasksMutex to answer "perf tasks", so joining while holding that mutex
+  // would deadlock against the thread being joined.
+  std::vector<FurbleHostTask *> tasks;
+  {
+    const std::lock_guard<std::mutex> lock(g_TasksMutex);
+    tasks = g_Tasks;
+  }
+  for (auto *task : tasks) {
+    if (task->thread.joinable()) {
+      task->thread.join();
+    }
+  }
+}

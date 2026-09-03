@@ -480,6 +480,91 @@ class ScenarioOutcomeTest(unittest.TestCase):
     self.assertNotIn("contributed no profile", source)
 
 
+class CrashedHostTestTest(unittest.TestCase):
+  """A host test that crashed must be named, not folded into an exit code.
+
+  Issue #275: tests/host console-commands segfaulted about one coverage run in
+  two, on the control task, and only under instrumentation. The run failed with
+  `command failed with exit 8` and named nothing, so a crash in a suite of 93
+  read exactly like an assertion failure. A killed process also writes no
+  profile, which is the same broken measurement incomplete_scenarios() exists
+  to catch on the simulator side.
+  """
+
+  # Verbatim ctest 3.25 output, tabs included, so a format change fails here.
+  CTEST_MIXED = (
+      "2/2 Test #2: fail-test ........................***Failed    0.00 sec\n"
+      "\n"
+      "0% tests passed, 2 tests failed out of 2\n"
+      "\n"
+      "Total Test time (real) =   0.00 sec\n"
+      "\n"
+      "The following tests FAILED:\n"
+      "\t  1 - console-commands (SEGFAULT)\n"
+      "\t  2 - fail-test (Failed)\n"
+      "Errors while running CTest\n"
+  )
+
+  def test_a_segfaulting_test_is_named_with_its_reason(self):
+    crashed = COVERAGE.crashed_host_tests(self.CTEST_MIXED)
+    self.assertEqual(len(crashed), 1)
+    self.assertIn("console-commands", crashed[0])
+    self.assertIn("SEGFAULT", crashed[0])
+
+  def test_an_ordinary_failure_is_not_reported_as_a_crash(self):
+    crashed = COVERAGE.crashed_host_tests(self.CTEST_MIXED)
+    self.assertFalse([entry for entry in crashed if "fail-test" in entry])
+
+  def test_every_way_a_process_can_be_lost_counts(self):
+    output = (
+        "The following tests FAILED:\n"
+        "\t  1 - a (Timeout)\n"
+        "\t  2 - b (Subprocess aborted)\n"
+        "\t  3 - c (Not Run)\n"
+        "\t  4 - d (ILLEGAL)\n"
+        "\t  5 - e (Failed)\n"
+    )
+    crashed = COVERAGE.crashed_host_tests(output)
+    self.assertEqual(len(crashed), 4)
+    self.assertIn("a: Timeout", crashed[0])
+    self.assertIn("d: ILLEGAL", crashed[3])
+
+  def test_a_green_run_reports_nothing(self):
+    self.assertEqual(
+        COVERAGE.crashed_host_tests(
+            "100% tests passed, 0 tests failed out of 93\n"
+        ),
+        [],
+    )
+
+  def test_test_names_before_the_summary_block_are_not_parsed(self):
+    """Only the summary block names tests. The per-test progress lines above
+    it carry no reason, and a captured test's own stdout may contain anything.
+    """
+    output = (
+        "1/2 Test #1: console-commands .............***Exception: SegFault\n"
+        "  9 - not a real row (SEGFAULT)\n"
+        "The following tests FAILED:\n"
+        "\t  1 - console-commands (SEGFAULT)\n"
+    )
+    crashed = COVERAGE.crashed_host_tests(output)
+    self.assertEqual(len(crashed), 1)
+    self.assertIn("console-commands", crashed[0])
+
+  def test_the_host_measurement_raises_and_names_rather_than_exiting_blind(self):
+    """The classification only helps if measure_host() acts on it.
+
+    This is the wiring that was missing: the ctest call went through run(),
+    which raises on any non-zero exit with the command line and nothing else.
+    """
+    source = inspect.getsource(COVERAGE.measure_host)
+    self.assertIn("crashed_host_tests(output)", source)
+    self.assertIn("raise CoverageError", source)
+    # run() discards the output it would need, so the ctest call must not go
+    # back through it.
+    self.assertIn("run_streamed(", source)
+
+
 class ToolDiscoveryTest(unittest.TestCase):
   def test_a_missing_llvm_cov_fails_with_a_clear_message(self):
     original_path = os.environ.get("PATH", "")

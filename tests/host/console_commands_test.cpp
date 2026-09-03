@@ -1188,7 +1188,9 @@ void testDebugWithLiveCamera(void) {
   static bool controlStarted = false;
   if (!controlStarted) {
     controlStarted = true;
-    std::thread(control_task, &Furble::Control::getInstance()).detach();
+    // Through the shim, exactly as main() starts it on device: the shim owns
+    // the thread and furbleHostStopTasks() joins it before this process exits.
+    xTaskCreate(control_task, "control", 8192, &Furble::Control::getInstance(), 4, nullptr);
   }
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -1294,6 +1296,13 @@ void testDebugWithLiveCamera(void) {
 }  // namespace
 
 int main(void) {
+  // Stop and join every shim task before this scope ends, so no firmware task
+  // is still running when static destruction frees what it reads. The control
+  // task reaps the zombie drain on every 50 ms tick, and the drain still holds
+  // the target the last disconnect handed it, so a thread left running past
+  // ~Control walks a freed vector.
+  FurbleHostTaskScope taskScope;
+
   // Every command prints to stdout, so the suite reads its assertions back out
   // of a captured stdout. The file lives in the build tree, and carries the
   // process id so two concurrent runs never share one.
@@ -1323,11 +1332,6 @@ int main(void) {
   testErrorPaths();
   testConsoleTaskTransport();
   testDebugWithLiveCamera();
-
-  // The console task is detached and loops forever, exactly as it does on
-  // device. Park it before returning, otherwise the runtime destroys the
-  // globals it is still blocked on and the process segfaults on its way out.
-  check(ConsoleHost::parkConsoleTask(5000), "the console task parks for shutdown");
 
   std::cerr << (g_Failures == 0 ? "PASS" : "FAIL") << ": " << (g_Checks - g_Failures) << "/"
             << g_Checks << " checks\n";
