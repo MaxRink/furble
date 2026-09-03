@@ -862,6 +862,12 @@ target_link_libraries(control_zombie_cancel_test PRIVATE Threads::Threads)
 # Thread-sanitizer proof for the Control::m_ConnectCamera guard. Separate target
 # because -fsanitize=thread has to apply to the production sources it links, and
 # the rest of the suite is not built under it.
+#
+# Excluded from the coverage build. Thread sanitizer and source-based coverage
+# do not combine usefully, this target adds no coverage the instrumented suite
+# does not already have, and its ctest command is a shell wrapper rather than an
+# instrumented binary, which tools/coverage.py cannot run llvm-cov against.
+if(NOT FURBLE_COVERAGE)
 add_executable(control_connect_camera_race_test
                control_connect_camera_race_test.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
@@ -886,6 +892,7 @@ target_compile_options(control_connect_camera_race_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_options(control_connect_camera_race_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
+endif()
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
@@ -1422,10 +1429,12 @@ if(BUILD_TESTING)
   add_test(NAME control-zombie-cancel COMMAND control_zombie_cancel_test)
   set_tests_properties(control-zombie-cancel PROPERTIES TIMEOUT 60)
 
-  add_test(NAME control-connect-camera-race
-           COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
-                   $<TARGET_FILE:control_connect_camera_race_test>)
-  set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+  if(NOT FURBLE_COVERAGE)
+    add_test(NAME control-connect-camera-race
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
+                     $<TARGET_FILE:control_connect_camera_race_test>)
+    set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+  endif()
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The
   # sync-point barriers carry their own timeouts, the ctest timeout is the
