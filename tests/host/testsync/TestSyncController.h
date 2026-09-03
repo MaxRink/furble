@@ -5,7 +5,7 @@
 #include <functional>
 
 // Host-side controller for the FURBLE_TEST_SYNC named sync points declared in
-// include/FurbleTestSync.h. Link testsync/TestSyncController.cpp into a test
+// lib/furble/FurbleTestSync.h. Link testsync/TestSyncController.cpp into a test
 // target that compiles the production sources with FURBLE_TEST_SYNC defined.
 // It implements Furble::TestSync::point() and adds the control surface below.
 //

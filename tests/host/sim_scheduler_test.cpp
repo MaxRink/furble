@@ -100,44 +100,70 @@ constexpr UBaseType_t kControlPriority = 4;
 constexpr UBaseType_t kGpsPriority = 3;
 constexpr UBaseType_t kCompanionPriority = 2;
 
-void waitFor(const std::atomic<bool> &value) {
-  for (unsigned int attempt = 0; attempt < 10000 && !value.load(); ++attempt) {
-    std::this_thread::yield();
+// Every wait below is a real wait with a real deadline, and every caller must
+// check the result.
+//
+// The original helpers spun on std::this_thread::yield() for a fixed 10000
+// iterations and returned void. That is a spin budget, not a wait: on a loaded
+// host, yield() returns immediately when the runnable set is already full, so
+// the budget can be spent long before the thread being waited for is scheduled
+// at all. The caller then continued as if the wait had succeeded. Where the
+// next statement was advanceClock(), the virtual clock moved past a deadline
+// the task had not yet registered, the task parked on a deadline nothing would
+// ever reach, and the test hung until the ctest timeout killed it.
+//
+// kWaitTimeoutMs is a backstop for a genuinely wedged scheduler, not a race
+// margin: a condition variable wait returns as soon as the predicate holds, so
+// a healthy run never approaches it. It stays below the ctest TIMEOUT for this
+// test so a wedge reports the wait that failed rather than an anonymous kill.
+constexpr uint32_t kWaitTimeoutMs = 5000;
+
+// Wait for a plain test-owned value. There is no scheduler event to wait on
+// for these, so this polls, but against a wall-clock deadline rather than an
+// iteration count, and it sleeps rather than yielding so a loaded host does not
+// spend the whole deadline spinning against the thread it is waiting for.
+template <typename Predicate>
+bool waitUntil(const char *what, Predicate predicate) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(kWaitTimeoutMs);
+  while (!predicate()) {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      std::cerr << "sim scheduler wait timed out: " << what << '\n';
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
+  return true;
 }
 
-void waitForBlocked(TaskHandle_t task) {
-  for (unsigned int attempt = 0; attempt < 10000 && !furble_sim_task_blocked(task); ++attempt) {
-    std::this_thread::yield();
+bool waitFor(const std::atomic<bool> &value) {
+  return waitUntil("test flag", [&value]() { return value.load(); });
+}
+
+bool waitForBlocked(TaskHandle_t task) {
+  if (furble_sim_wait_task_blocked(task, kWaitTimeoutMs)) {
+    return true;
   }
+  std::cerr << "sim scheduler blocked wait timed out\n";
+  return false;
 }
 
 bool waitForLifecycle(TaskHandle_t task, FurbleSimTaskLifecycle expected) {
-  for (unsigned int attempt = 0; attempt < 10000 && furble_sim_task_lifecycle(task) != expected;
-       ++attempt) {
-    std::this_thread::yield();
+  if (furble_sim_wait_task_lifecycle(task, expected, kWaitTimeoutMs)) {
+    return true;
   }
-  const auto actual = furble_sim_task_lifecycle(task);
-  if (actual != expected) {
-    std::cerr << "sim scheduler lifecycle wait timed out: expected " << static_cast<int>(expected)
-              << " got " << static_cast<int>(actual) << '\n';
-    return false;
-  }
-  return true;
+  std::cerr << "sim scheduler lifecycle wait timed out: expected " << static_cast<int>(expected)
+            << " got " << static_cast<int>(furble_sim_task_lifecycle(task)) << '\n';
+  return false;
 }
 
 bool waitForJoinWaiters(TaskHandle_t task, size_t expected) {
-  for (unsigned int attempt = 0; attempt < 10000 && furble_sim_task_join_waiters(task) < expected;
-       ++attempt) {
-    std::this_thread::yield();
+  if (furble_sim_wait_task_join_waiters(task, expected, kWaitTimeoutMs)) {
+    return true;
   }
-  const size_t actual = furble_sim_task_join_waiters(task);
-  if (actual < expected) {
-    std::cerr << "sim scheduler join-waiter wait timed out: expected at least " << expected
-              << " got " << actual << '\n';
-    return false;
-  }
-  return true;
+  std::cerr << "sim scheduler join-waiter wait timed out: expected at least " << expected << " got "
+            << furble_sim_task_join_waiters(task) << '\n';
+  return false;
 }
 
 struct DelayState {
@@ -590,12 +616,10 @@ int main() {
   if (xTaskCreate(delayedTask, "worker", 0, &delay, 0, &delayTask) != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(delay.started);
-  if (!delay.started.load()) {
+  if (!waitFor(delay.started)) {
     return fail(__LINE__);
   }
-  waitForBlocked(delayTask);
-  if (!furble_sim_task_blocked(delayTask)) {
+  if (!waitForBlocked(delayTask)) {
     return fail(__LINE__);
   }
   advanceClock(4);
@@ -603,7 +627,9 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(1);
-  waitFor(delay.completed);
+  if (!waitFor(delay.completed)) {
+    return fail(__LINE__);
+  }
   if (!delay.completed.load() || delay.completedAt.load() != 5) {
     return fail(__LINE__);
   }
@@ -616,9 +642,10 @@ int main() {
   if (xTaskCreate(delayedTask, "wrapped", 0, &wrapped, 0, &wrappedTask) != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(wrapped.started);
-  waitForBlocked(wrappedTask);
-  if (!furble_sim_task_blocked(wrappedTask)) {
+  if (!waitFor(wrapped.started)) {
+    return fail(__LINE__);
+  }
+  if (!waitForBlocked(wrappedTask)) {
     return fail(__LINE__);
   }
   advanceClock(4);
@@ -626,7 +653,9 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(1);
-  waitFor(wrapped.completed);
+  if (!waitFor(wrapped.completed)) {
+    return fail(__LINE__);
+  }
   if (!wrapped.completed.load() || wrapped.completedAt.load() != 2) {
     return fail(__LINE__);
   }
@@ -648,13 +677,17 @@ int main() {
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(highPriorityTask);
+  if (!waitForBlocked(highPriorityTask)) {
+    return fail(__LINE__);
+  }
   if (xTaskCreate(priorityTask, "priority-low", 0, &lowPriority, kCompanionPriority,
                   &lowPriorityTask)
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(lowPriorityTask);
+  if (!waitForBlocked(lowPriorityTask)) {
+    return fail(__LINE__);
+  }
   if (furble_sim_task_priority(highPriorityTask) != kControlPriority
       || furble_sim_task_priority(lowPriorityTask) != kCompanionPriority
       || furble_sim_task_creation_order(highPriorityTask)
@@ -690,19 +723,25 @@ int main() {
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(orderedLowTask);
+  if (!waitForBlocked(orderedLowTask)) {
+    return fail(__LINE__);
+  }
   if (xTaskCreate(orderedQueueWaitTask, "ordered-high-first", 0, &orderedHighFirst,
                   kControlPriority, &orderedHighFirstTask)
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(orderedHighFirstTask);
+  if (!waitForBlocked(orderedHighFirstTask)) {
+    return fail(__LINE__);
+  }
   if (xTaskCreate(orderedQueueWaitTask, "ordered-high-second", 0, &orderedHighSecond,
                   kControlPriority, &orderedHighSecondTask)
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(orderedHighSecondTask);
+  if (!waitForBlocked(orderedHighSecondTask)) {
+    return fail(__LINE__);
+  }
   uint32_t queueValue = 1;
   if (xQueueSend(orderedQueue, &queueValue, 0) != pdTRUE) {
     return fail(__LINE__);
@@ -739,16 +778,24 @@ int main() {
   QueueSendPreemptState preemptSender {preemptQueue, &queueOrderMutex, &queueOrder};
   TaskHandle_t preemptReceiverTask = nullptr;
   TaskHandle_t preemptSenderTask = nullptr;
+  // The receiver must be parked on the empty queue before the sender exists.
+  // Creating both at once let the sender win the race and satisfy the receive
+  // without the receiver ever blocking, so there was no boundary to yield at
+  // and the ordering this checks was decided by the host scheduler.
   if (preemptQueue == nullptr
       || xTaskCreate(orderedQueueWaitTask, "preempt-receiver", 0, &preemptReceiver,
                      kControlPriority, &preemptReceiverTask)
-             != pdPASS
-      || xTaskCreate(queueSendPreemptTask, "preempt-sender", 0, &preemptSender, kCompanionPriority,
-                     &preemptSenderTask)
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(preemptReceiverTask);
+  if (!waitForBlocked(preemptReceiverTask)) {
+    return fail(__LINE__);
+  }
+  if (xTaskCreate(queueSendPreemptTask, "preempt-sender", 0, &preemptSender, kCompanionPriority,
+                  &preemptSenderTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
   preemptSender.finished.wait();
   preemptReceiver.finished.wait();
   if (queueOrder != std::vector<int> {1, 2}) {
@@ -794,7 +841,9 @@ int main() {
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(resetSenderTask);
+  if (!waitForBlocked(resetSenderTask)) {
+    return fail(__LINE__);
+  }
   if (xTaskCreate(queueResetPreemptOwnerTask, "reset-owner", 0, &resetOwner, kCompanionPriority,
                   &resetOwnerTask)
       != pdPASS) {
@@ -821,7 +870,9 @@ int main() {
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(deadlineTask);
+  if (!waitForBlocked(deadlineTask)) {
+    return fail(__LINE__);
+  }
   advanceClock(5);
   deadlineWait.finished.wait();
   if (deadlineWait.result.load() != pdFALSE) {
@@ -850,7 +901,9 @@ int main() {
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(ownedWaitTask);
+  if (!waitForBlocked(ownedWaitTask)) {
+    return fail(__LINE__);
+  }
   if (xTaskCreate(queueOwnerDeleteTask, "owned-queue-delete", 0, &ownerDelete, kControlPriority,
                   &ownerDeleteTaskHandle)
       != pdPASS) {
@@ -873,12 +926,16 @@ int main() {
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(firstEqualTask);
+  if (!waitForBlocked(firstEqualTask)) {
+    return fail(__LINE__);
+  }
   if (xTaskCreate(priorityTask, "equal-second", 0, &secondEqual, kGpsPriority, &secondEqualTask)
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(secondEqualTask);
+  if (!waitForBlocked(secondEqualTask)) {
+    return fail(__LINE__);
+  }
   advanceClock(5);
   firstEqual.finished.wait();
   secondEqual.finished.wait();
@@ -903,8 +960,7 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(1);
-  waitFor(timerFired);
-  if (!timerFired.load()) {
+  if (!waitFor(timerFired)) {
     return fail(__LINE__);
   }
   esp_timer_delete(timer);
@@ -925,7 +981,9 @@ int main() {
     return fail(__LINE__);
   }
   advanceClockMicros(1);
-  waitFor(subMillisecondTimerFired);
+  if (!waitFor(subMillisecondTimerFired)) {
+    return fail(__LINE__);
+  }
   if (!subMillisecondTimerFired.load() || clockMicros() != 1500) {
     return fail(__LINE__);
   }
@@ -947,7 +1005,9 @@ int main() {
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitForBlocked(timerOrderTaskHandle);
+  if (!waitForBlocked(timerOrderTaskHandle)) {
+    return fail(__LINE__);
+  }
   esp_timer_handle_t orderedTimer = nullptr;
   const esp_timer_create_args_t orderedTimerArgs = {subMillisecondTimerCallback, nullptr,
                                                     ESP_TIMER_TASK, "timer-order", false};
@@ -956,7 +1016,9 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(5);
-  waitFor(subMillisecondTimerFired);
+  if (!waitFor(subMillisecondTimerFired)) {
+    return fail(__LINE__);
+  }
   timerTaskState.finished.wait();
   if (timerOrder != std::vector<int> {1, 2}) {
     return fail(__LINE__);
@@ -988,9 +1050,9 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(5);
-  for (unsigned int attempt = 0; attempt < 10000 && timerCancellationResult.load() == 0;
-       ++attempt) {
-    std::this_thread::yield();
+  if (!waitUntil("timer cancellation result",
+                 []() { return timerCancellationResult.load() != 0; })) {
+    return fail(__LINE__);
   }
   if (timerCancellationResult.load() != 1 || cancelledTimerFired.load()) {
     return fail(__LINE__);
@@ -1012,8 +1074,7 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(1);
-  waitFor(blockingTimerStarted);
-  if (!blockingTimerStarted.load()) {
+  if (!waitFor(blockingTimerStarted)) {
     return fail(__LINE__);
   }
   std::thread timerStopper([]() {
@@ -1021,10 +1082,15 @@ int main() {
     furble_sim_stop_all_timers();
     timerStopReturned.store(true);
   });
-  waitFor(timerStopStarted);
-  for (unsigned int attempt = 0; attempt < 10000 && !timerStopReturned.load(); ++attempt) {
-    std::this_thread::yield();
+  if (!waitFor(timerStopStarted)) {
+    return fail(__LINE__);
   }
+  // A one-sided probe: give furble_sim_stop_all_timers() a fixed window to
+  // return early while the callback is still blocked. There is nothing to wait
+  // for here, because the correct behaviour is that nothing happens, so this
+  // cannot be turned into an event wait. It cannot flake either: a window that
+  // is too short on a loaded host misses a violation, it never invents one.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
   const bool returnedBeforeCallback = timerStopReturned.load();
   blockingTimerRelease.store(true);
   timerStopper.join();
@@ -1047,8 +1113,7 @@ int main() {
     return fail(__LINE__);
   }
   advanceClock(1);
-  waitFor(timerFired);
-  if (!timerFired.load()) {
+  if (!waitFor(timerFired)) {
     return fail(__LINE__);
   }
   esp_timer_delete(stoppedTimer);
@@ -1062,16 +1127,16 @@ int main() {
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(deleted.started);
-  if (!deleted.started.load()) {
+  if (!waitFor(deleted.started)) {
     return fail(__LINE__);
   }
-  waitForBlocked(deletedTask);
-  if (!furble_sim_task_blocked(deletedTask)) {
+  if (!waitForBlocked(deletedTask)) {
     return fail(__LINE__);
   }
   vQueueDelete(deletedQueue);
-  waitFor(deleted.returned);
+  if (!waitFor(deleted.returned)) {
+    return fail(__LINE__);
+  }
   if (!deleted.returned.load() || deleted.result.load() != pdFALSE) {
     return fail(__LINE__);
   }
@@ -1101,8 +1166,7 @@ int main() {
     return fail(__LINE__);
   }
   blockingDelay.entered.wait();
-  waitForBlocked(blockingDelayTaskHandle);
-  if (!furble_sim_task_blocked(blockingDelayTaskHandle)) {
+  if (!waitForBlocked(blockingDelayTaskHandle)) {
     return fail(__LINE__);
   }
   TestEvent delayDeleteEntered;
@@ -1130,9 +1194,10 @@ int main() {
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(finiteQueueWait.started);
-  waitForBlocked(finiteQueueTaskHandle);
-  if (!furble_sim_task_blocked(finiteQueueTaskHandle)) {
+  if (!waitFor(finiteQueueWait.started)) {
+    return fail(__LINE__);
+  }
+  if (!waitForBlocked(finiteQueueTaskHandle)) {
     return fail(__LINE__);
   }
   TestEvent finiteDeleteEntered;
@@ -1161,9 +1226,10 @@ int main() {
              != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(maxQueueWait.started);
-  waitForBlocked(maxQueueTaskHandle);
-  if (!furble_sim_task_blocked(maxQueueTaskHandle)) {
+  if (!waitFor(maxQueueWait.started)) {
+    return fail(__LINE__);
+  }
+  if (!waitForBlocked(maxQueueTaskHandle)) {
     return fail(__LINE__);
   }
   TestEvent maxDeleteEntered;
@@ -1317,8 +1383,7 @@ int main() {
       != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(selfDelete.started);
-  if (!selfDelete.started.load()) {
+  if (!waitFor(selfDelete.started)) {
     return fail(__LINE__);
   }
   vTaskDelete(selfDeleteTaskHandle);
@@ -1405,12 +1470,13 @@ int main() {
   if (xTaskCreate(queueWaitTask, "queue-wait", 0, &waitArgument, 0, &shutdownTask) != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(shutdown.started);
+  if (!waitFor(shutdown.started)) {
+    return fail(__LINE__);
+  }
   if (!shutdown.started.load()) {
     return 1;
   }
-  waitForBlocked(shutdownTask);
-  if (!furble_sim_task_blocked(shutdownTask)) {
+  if (!waitForBlocked(shutdownTask)) {
     return fail(__LINE__);
   }
   furble_sim_stop_all_tasks();
@@ -1428,8 +1494,12 @@ int main() {
       || xTaskCreate(loopingQueueWaitTask, "queue-loop", 0, &looping, 0, &loopingTask) != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(looping.started);
-  waitForBlocked(loopingTask);
+  if (!waitFor(looping.started)) {
+    return fail(__LINE__);
+  }
+  if (!waitForBlocked(loopingTask)) {
+    return fail(__LINE__);
+  }
   if (!looping.started.load() || !furble_sim_task_blocked(loopingTask)) {
     return fail(__LINE__);
   }
@@ -1444,8 +1514,7 @@ int main() {
   if (xTaskCreate(yieldingTask, "yield-loop", 0, &yielding, 0, nullptr) != pdPASS) {
     return fail(__LINE__);
   }
-  waitFor(yielding.started);
-  if (!yielding.started.load()) {
+  if (!waitFor(yielding.started)) {
     return fail(__LINE__);
   }
   furble_sim_stop_all_tasks();

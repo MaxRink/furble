@@ -247,7 +247,16 @@ Control::state_t Control::connectAll(void) {
 
     if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
       m_ConnectCamera = nullptr;
-      return m_State;
+      // Report the abort, never the state that happened to be published when it
+      // was read. disconnect() arms m_ConnectAbort one statement before it
+      // publishes STATE_DISCONNECTING, so a read landing in that window still
+      // sees STATE_CONNECTING. Returning it made the control task stamp
+      // STATE_CONNECTING back over the STATE_IDLE disconnect() ends with, and
+      // STATE_CONNECTING is as terminal for the control task as
+      // STATE_DISCONNECTING is: the machine ignored every later command until
+      // reboot. The task already drops STATE_DISCONNECTING for exactly this
+      // reason, so name the one state that means disconnect owns this.
+      return STATE_DISCONNECTING;
     }
 
     if (allConnected()) {
@@ -281,8 +290,9 @@ Control::state_t Control::connectAll(void) {
         remaining -= slice;
       }
     }
-    return m_ConnectAbort ? m_State
-                          : (m_State == STATE_DISCONNECTING ? STATE_DISCONNECTING : STATE_CONNECT);
+    // Same rule as the abort path above: an aborted pass reports the abort, not
+    // whatever m_State read at the moment the retry wait was interrupted.
+    return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING : STATE_CONNECT;
   }
 
   return STATE_CONNECT_FAILED;
@@ -324,11 +334,11 @@ void Control::task(void) {
         {
           const state_t next = connectAll();
           FURBLE_TEST_SYNC_POINT("connectall_returned");
-          // An aborted connect returns the state disconnect() owns. Never
-          // republish DISCONNECTING from here: disconnect() can move the
-          // machine to IDLE between connectAll() reading m_State and this
-          // store, and DISCONNECTING is terminal for the control task, so
-          // stamping it back would wedge the state machine until reboot.
+          // An aborted connect returns STATE_DISCONNECTING, meaning disconnect()
+          // owns the state. Never republish it from here: disconnect() can move
+          // the machine to IDLE between connectAll() deciding and this store,
+          // and a state the control task does not act on is terminal for it, so
+          // stamping one back would wedge the state machine until reboot.
           if (next != STATE_DISCONNECTING) {
             setState(next);
           }

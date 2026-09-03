@@ -29,7 +29,13 @@ set(HOST_NIMBLE_DIR ${FURBLE_ROOT}/lib/testing/nimble)
 set(HOST_PEER_DIR ${FURBLE_ROOT}/lib/testing/peer)
 set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
 
+# TestSyncController.cpp implements the FURBLE_TEST_SYNC named sync points for
+# every camera test that links this library, and FURBLE_TEST_SYNC below compiles
+# the points into these sources. A point with no barrier or callback armed on
+# its name returns immediately, so this changes nothing for the tests that do
+# not use one. The registration gate test arms the Fujifilm point.
 add_library(furble_host_camera STATIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/testsync/TestSyncController.cpp
             ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
             ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
             ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
@@ -48,10 +54,12 @@ target_include_directories(furble_host_camera
                            PUBLIC ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR}
                                   ${HOST_CORPUS_DIR}
+                                  ${CMAKE_CURRENT_SOURCE_DIR}/testsync
                                   ${FURBLE_ROOT}/lib/furble)
 target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-format
                                                  -Wno-unused-parameter)
-target_compile_definitions(furble_host_camera PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_definitions(furble_host_camera
+                           PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100 FURBLE_TEST_SYNC)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
@@ -826,7 +834,7 @@ target_link_libraries(control_teardown_wedge_test PRIVATE Threads::Threads)
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
-# the named sync points in include/FurbleTestSync.h are live, and links the
+# the named sync points in lib/furble/FurbleTestSync.h are live, and links the
 # host controller from testsync/. The barrier on "connectall_returned" parks
 # the control task holding a stale DISCONNECTING result while disconnect()
 # completes to IDLE, the exact sub-50 ms window the gap analysis could not
@@ -864,6 +872,45 @@ target_compile_options(control_interleave_test PRIVATE
                        -Wall -Wextra -Wno-format -Wno-unused-parameter
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_interleave_test PRIVATE Threads::Threads)
+
+# Deterministic interleaving proof for the other half of the same window (plan
+# 167). Same build shape as control_interleave_test, plus FURBLE_CONSOLE for the
+# debug snapshot: the test waits for Control::getDebugState().reconnectAttempt
+# rather than sleeping, which is what makes the interleaving forced. The
+# registration timeout is the host default here because this test parks in the
+# reconnect retry wait, not in the registration wait.
+add_executable(control_abort_republish_test
+               control_abort_republish_test.cpp
+               ${TESTSYNC_DIR}/TestSyncController.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(control_abort_republish_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${TESTSYNC_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(control_abort_republish_test PRIVATE
+                           FURBLE_TEST_SYNC
+                           FURBLE_CONSOLE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(control_abort_republish_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_abort_republish_test PRIVATE Threads::Threads)
 
 # Companion GATT transport-e2e harness. The test drives the production
 # transport-independent CompanionService through a UUID-addressed mock central,
@@ -1324,6 +1371,13 @@ if(BUILD_TESTING)
   # than a sync point timeout.
   add_test(NAME control-interleave COMMAND control_interleave_test)
   set_tests_properties(control-interleave PROPERTIES TIMEOUT 120)
+
+  # Interleaving proof for the aborted-connect republish (plan 167). Waits out
+  # two reconnect retries before it forces the window, so it is slower than the
+  # other interleave test. Same timeout reasoning: above DISCONNECT_WAIT_MAX_MS
+  # so a stalled teardown reports its own cause.
+  add_test(NAME control-abort-republish COMMAND control_abort_republish_test)
+  set_tests_properties(control-abort-republish PROPERTIES TIMEOUT 120)
   add_test(NAME control-reclaim-uaf COMMAND control_reclaim_uaf_test)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)

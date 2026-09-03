@@ -13,6 +13,7 @@
 
 #include "Device.h"
 #include "Fujifilm.h"
+#include "FurbleTestSync.h"
 #include "protocol/FujifilmProtocol.h"
 
 namespace Furble {
@@ -89,6 +90,10 @@ bool Fujifilm::subscribe(const NimBLEUUID &svc,
 
 bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
   m_Progress = progress;
+  // The gate is open here: the subscription is live and nothing is confirmed
+  // yet. Fires before the deadline below is taken, so a parked test thread does
+  // not burn the registration timeout it is about to observe.
+  FURBLE_TEST_SYNC_POINT("fujifilm_registration_wait");
 #if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
   const auto started = std::chrono::steady_clock::now();
 #else

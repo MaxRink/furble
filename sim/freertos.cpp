@@ -810,8 +810,21 @@ bool furble_sim_task_blocked(TaskHandle_t taskHandle) {
   return task != nullptr && task->blocked;
 }
 
-FurbleSimTaskLifecycle furble_sim_task_lifecycle(TaskHandle_t taskHandle) {
-  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+bool furble_sim_wait_task_blocked(TaskHandle_t taskHandle, uint32_t timeoutMs) {
+  if (taskHandle == nullptr) {
+    return false;
+  }
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  return Furble::Sim::schedulerCondition().wait_for(
+      lock, std::chrono::milliseconds(timeoutMs), [taskHandle]() {
+        const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+        return task != nullptr && task->blocked;
+      });
+}
+
+namespace {
+
+FurbleSimTaskLifecycle lifecycleLocked(TaskHandle_t taskHandle) {
   const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
   if (task == nullptr) {
     return FURBLE_SIM_TASK_JOINED;
@@ -831,10 +844,37 @@ FurbleSimTaskLifecycle furble_sim_task_lifecycle(TaskHandle_t taskHandle) {
   return FURBLE_SIM_TASK_JOINED;
 }
 
+}  // namespace
+
+FurbleSimTaskLifecycle furble_sim_task_lifecycle(TaskHandle_t taskHandle) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  return lifecycleLocked(taskHandle);
+}
+
+bool furble_sim_wait_task_lifecycle(TaskHandle_t taskHandle,
+                                    FurbleSimTaskLifecycle expected,
+                                    uint32_t timeoutMs) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  return Furble::Sim::schedulerCondition().wait_for(
+      lock, std::chrono::milliseconds(timeoutMs),
+      [taskHandle, expected]() { return lifecycleLocked(taskHandle) == expected; });
+}
+
 size_t furble_sim_task_join_waiters(TaskHandle_t taskHandle) {
   const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
   const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
   return task == nullptr ? 0 : task->join_waiters;
+}
+
+bool furble_sim_wait_task_join_waiters(TaskHandle_t taskHandle,
+                                       size_t expected,
+                                       uint32_t timeoutMs) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  return Furble::Sim::schedulerCondition().wait_for(
+      lock, std::chrono::milliseconds(timeoutMs), [taskHandle, expected]() {
+        const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+        return task != nullptr && task->join_waiters >= expected;
+      });
 }
 
 UBaseType_t furble_sim_task_priority(TaskHandle_t taskHandle) {

@@ -7,6 +7,7 @@ binaries are required.
 """
 from pathlib import Path
 import importlib.util
+import inspect
 import json
 import os
 import sys
@@ -419,6 +420,64 @@ class RenderingTest(unittest.TestCase):
     summary = summary_from_lcov(Path("/repo"), ("host", LCOV_HOST))
     summary["not_instrumented"] = ["src/main.cpp"]
     self.assertIn("`src/main.cpp`", COVERAGE.render_markdown(summary, None))
+
+
+class ScenarioOutcomeTest(unittest.TestCase):
+  """A scenario that never finished must fail the run, not vanish from it.
+
+  The measured symptom this guards: the same commit reported 503 of 697 lines
+  in lib/furble/Camera.cpp on one CI run and 521 of 697 on the next, because
+  one scenario was killed on its timeout and contributed no profile. The run
+  still exited zero and published the wrong number.
+  """
+
+  def test_a_timed_out_scenario_fails_the_run_and_is_named(self):
+    failures = COVERAGE.incomplete_scenarios(
+        [("sim/scenarios/e2e/scan-distinct-rows-heartbeat.txt", None)], 600.0
+    )
+    self.assertEqual(len(failures), 1)
+    self.assertIn("scan-distinct-rows-heartbeat.txt", failures[0])
+    self.assertIn("timed out after 600 s", failures[0])
+
+  def test_a_crashed_scenario_fails_the_run_and_names_the_signal(self):
+    failures = COVERAGE.incomplete_scenarios(
+        [("sim/scenarios/e2e/boot.txt", -11)], 600.0
+    )
+    self.assertEqual(len(failures), 1)
+    self.assertIn("boot.txt", failures[0])
+    self.assertIn("signal 11", failures[0])
+
+  def test_a_scenario_that_merely_failed_still_contributes_its_profile(self):
+    self.assertEqual(
+        COVERAGE.incomplete_scenarios(
+            [("sim/scenarios/e2e/boot.txt", 1),
+             ("sim/scenarios/invalid/bad-verb.txt", 2),
+             ("sim/scenarios/e2e/gps.txt", 0)],
+            600.0,
+        ),
+        [],
+    )
+
+  def test_every_incomplete_scenario_is_reported_not_just_the_first(self):
+    failures = COVERAGE.incomplete_scenarios(
+        [("one.txt", None), ("two.txt", 0), ("three.txt", -6)], 42.5
+    )
+    self.assertEqual(len(failures), 2)
+    self.assertIn("one.txt", failures[0])
+    self.assertIn("42.5 s", failures[0])
+    self.assertIn("three.txt", failures[1])
+
+  def test_the_board_measurement_raises_rather_than_noting_the_loss(self):
+    """The classification above only helps if the caller acts on it.
+
+    This is the line that regressed: measure_sim_board() used to print a note
+    for a timed out scenario and carry on with the profiles it did have. Assert
+    the wiring, so restoring the note without the raise fails here.
+    """
+    source = inspect.getsource(COVERAGE.measure_sim_board)
+    self.assertIn("incomplete_scenarios(results", source)
+    self.assertIn("raise CoverageError", source)
+    self.assertNotIn("contributed no profile", source)
 
 
 class ToolDiscoveryTest(unittest.TestCase):
