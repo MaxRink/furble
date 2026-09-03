@@ -557,6 +557,81 @@ def run(command, *, cwd=None, env=None, check=True, capture=False):
   return result
 
 
+def run_streamed(command, *, env=None) -> tuple[int, str]:
+  """Run a command, echo its output line by line, and return it as well.
+
+  ctest under --parallel takes minutes, so its progress has to stay live. The
+  output is also the only place ctest says why a test failed, and
+  crashed_host_tests() needs that, so keep a copy rather than swallowing it.
+  """
+
+  merged = dict(os.environ)
+  if env:
+    merged.update(env)
+  printable = " ".join(str(part) for part in command)
+  print(f"+ {printable}", flush=True)
+  process = subprocess.Popen(
+      [str(part) for part in command],
+      env=merged,
+      text=True,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+  )
+  lines: list[str] = []
+  assert process.stdout is not None
+  for line in process.stdout:
+    print(line, end="", flush=True)
+    lines.append(line)
+  return process.wait(), "".join(lines)
+
+
+# ctest ends a failing run with the block this matches:
+#
+#   The following tests FAILED:
+#            61 - console-commands (SEGFAULT)
+CTEST_FAILURE_HEADER = "The following tests FAILED:"
+CTEST_FAILURE_LINE = re.compile(r"^\s*\d+\s+-\s+(?P<name>\S+)\s+\((?P<reason>[^)]+)\)\s*$")
+
+# The one reason that means the test process ran to its own exit. Everything
+# else is a signal death, a timeout kill or a test that never started.
+CTEST_COMPLETED_REASON = "Failed"
+
+
+def crashed_host_tests(ctest_output: str) -> list[str]:
+  """Return the host tests that did not run to completion, named.
+
+  A test that exits non-zero flushed its profile on the way out, so the run is
+  a red suite with a sound measurement. A test killed by a signal or a timeout
+  did not: the profile runtime writes at exit, so a killed binary contributes
+  no profile or a truncated one, exactly the way a killed simulator scenario
+  does (see incomplete_scenarios()).
+
+  Either way the run fails, because ctest exiting non-zero already fails it.
+  What this adds is the name and the reason. Issue #275 was a segfault that
+  only appeared under instrumentation, roughly one coverage run in two, and the
+  run reported it as `command failed with exit 8` with no test named: the
+  crash was indistinguishable from an ordinary assertion failure in a suite of
+  93.
+  """
+
+  crashed: list[str] = []
+  seen_header = False
+  for line in ctest_output.splitlines():
+    if not seen_header:
+      seen_header = CTEST_FAILURE_HEADER in line
+      continue
+    match = CTEST_FAILURE_LINE.match(line)
+    if match is None:
+      continue
+    reason = match.group("reason").strip()
+    if reason == CTEST_COMPLETED_REASON:
+      continue
+    crashed.append(
+        f"{match.group('name')}: {reason}, so it wrote no usable profile"
+    )
+  return crashed
+
+
 def export_lcov(llvm_cov: str, profdata: Path, binaries, root: Path) -> dict:
   """Export one lcov report per binary and union them.
 
@@ -653,7 +728,7 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
         "cmake", "--build", str(build_dir), "--parallel", str(args.jobs)
     ])
   profile_dir.mkdir(parents=True, exist_ok=True)
-  run(
+  code, output = run_streamed(
       [
           "ctest",
           "--test-dir",
@@ -664,6 +739,15 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
       ],
       env={"LLVM_PROFILE_FILE": str(profile_dir / "host-%p-%m.profraw")},
   )
+  if code != 0:
+    crashed = crashed_host_tests(output)
+    detail = ""
+    if crashed:
+      detail = (
+          f"\n{len(crashed)} test(s) did not run to completion:\n- "
+          + "\n- ".join(crashed)
+      )
+    raise CoverageError(f"the host suite failed: ctest exited {code}{detail}")
   profdata = args.build_dir / "host.profdata"
   merge_profiles(llvm_profdata, profile_dir, profdata)
   return export_lcov(llvm_cov, profdata, ctest_binaries(build_dir), root)
