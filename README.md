@@ -18,6 +18,7 @@ What this fork adds over upstream right now:
   sentences, constellations), and a raw NMEA page
 - A bulb timer for long exposures
 - An intervalometer, IR shutter trigger, and audible, visual and haptic feedback
+- A camera pairing dialog that shows the six-digit numeric-comparison code
 - SD card GPX track logging and settings backup
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
@@ -82,6 +83,10 @@ The following devices have been tested and confirmed to work:
    - Canon PowerShot G9 X Mark II ([@Mich2e](https://github.com/Mich2e))
 - Ricoh
    - Ricoh GR IV HDF ([@sky18Dragon](https://github.com/sky18Dragon))
+   - Numeric-comparison pairing displays the camera's six-digit code on the
+     furble screen before confirmation. Untested on hardware: the modal, the
+     layout and the injected answer are covered by the host peer handshake and
+     the simulator, but no GR IV has run it on a bench yet.
 - Nikon
    - Nikon COOLPIX B600
    - Nikon Z6 III ([@herrfrei](https://github.com/herrfrei))

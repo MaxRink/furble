@@ -228,17 +228,21 @@ Control::state_t Control::connectAll(void) {
   }
 
   for (const auto &camera : cameras) {
-    if (m_ConnectAbort) {
-      break;
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      if (m_ConnectAbort || (m_State == STATE_DISCONNECTING)) {
+        break;
+      }
+      setConnectCameraLocked(camera);
     }
-
-    m_ConnectCamera = camera;
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      setConnectCameraLocked(nullptr);
       break;
-    } else {
-      m_ConnectCamera = nullptr;
     }
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    setConnectCameraLocked(nullptr);
   }
 
   {
@@ -246,7 +250,7 @@ Control::state_t Control::connectAll(void) {
     m_ConnectInProgress = false;
 
     if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
-      m_ConnectCamera = nullptr;
+      setConnectCameraLocked(nullptr);
       return m_State;
     }
 
@@ -445,6 +449,17 @@ std::vector<Control::Target *> Control::getTargets(void) {
   return targets;
 }
 
+std::vector<std::shared_ptr<Camera>> Control::getTargetCameras(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  std::vector<std::shared_ptr<Camera>> cameras;
+  cameras.reserve(m_Targets.size());
+  for (const auto &target : m_Targets) {
+    cameras.push_back(target->getCamera());
+  }
+  return cameras;
+}
+
 void Control::connectAll(bool infiniteReconnect) {
   {
     // A new user connect cycle re-arms every target camera. The cancel token
@@ -586,7 +601,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
         m_ZombieTargets.push_back(std::move(target));
       }
       m_Targets.clear();
-      m_ConnectCamera = nullptr;
+      setConnectCameraLocked(nullptr);
     }
     setState(STATE_IDLE);
     return true;
@@ -630,7 +645,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     }
 
     m_Targets.clear();
-    m_ConnectCamera = nullptr;
+    setConnectCameraLocked(nullptr);
   }
   setState(STATE_IDLE);
   return completed;
@@ -747,7 +762,25 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
 }
 
 std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_ConnectCamera;
+}
+
+uint32_t Control::getConnectingCameraGeneration(void) const {
+  return m_ConnectCameraGeneration.load(std::memory_order_acquire);
+}
+
+void Control::setConnectCameraLocked(std::shared_ptr<Camera> camera) {
+  m_ConnectCamera = std::move(camera);
+  // Zero is reserved as the "never assigned" value a reader uses to mark its
+  // own snapshot invalid, so the counter skips it on wrap. Released after the
+  // pointer is stored, so a reader that sees a new generation and then takes
+  // m_Mutex is guaranteed the matching camera.
+  uint32_t next = m_ConnectCameraGeneration.load(std::memory_order_relaxed) + 1;
+  if (next == 0) {
+    next = 1;
+  }
+  m_ConnectCameraGeneration.store(next, std::memory_order_release);
 }
 
 Control::state_t Control::getState(void) const {
@@ -1136,7 +1169,7 @@ void Control::resetForTest(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_Targets.clear();
-    m_ConnectCamera = nullptr;
+    setConnectCameraLocked(nullptr);
     m_Power = bootPower;
     resetAdaptiveState();
   }

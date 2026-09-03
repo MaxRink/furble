@@ -1,0 +1,35 @@
+# The pairing-code modal on the physical-button layout (plan 66 / #63). The
+# no-touch boards render navigation indicators over the page, and the shipped
+# 135x240 page is 189 px tall, so the modal must still fit the panel and leave
+# the page underneath free of overflow. This runs on the two narrow non-touch
+# panels, 135x240 and 80x160.
+seed ble_peers fuji
+seed ble_saved true
+seed no_touch true
+wait 300
+
+action connect
+assert-eventually-virtual 8000 control.state active
+
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+assert ui.overflow no
+
+# Cancel through the real footer button and confirm the page below is left
+# focusable, which is the encoder focus restore contract. The rejection also
+# has to reach the stack, not just close the modal.
+action camera-pair-reject
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer reject
+assert ui.focus ok
+assert ui.overflow no
+exit

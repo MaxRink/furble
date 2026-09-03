@@ -477,28 +477,4 @@ bool DJIOsmo::serialise(void *buffer, size_t bytes) const {
   return true;
 }
 
-void DJIOsmo::onPassKeyEntry(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "DJI Osmo passkey entry for %s; injecting fallback 123456",
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectPassKey(connInfo, 123456);
-}
-
-uint32_t DJIOsmo::onPassKeyDisplay(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "DJI Osmo passkey display for %s; returning fallback 123456",
-           connInfo.getAddress().toString().c_str());
-  return 123456;
-}
-
-void DJIOsmo::onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {
-  ESP_LOGI(LOG_TAG, "DJI Osmo confirm passkey %06lu for %s", pin,
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectConfirmPasskey(connInfo, true);
-}
-
-void DJIOsmo::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
-  ESP_LOGI(LOG_TAG, "DJI Osmo auth complete: bonded=%d encrypted=%d authenticated=%d keySize=%u",
-           connInfo.isBonded(), connInfo.isEncrypted(), connInfo.isAuthenticated(),
-           connInfo.getSecKeySize());
-}
-
 }  // namespace Furble

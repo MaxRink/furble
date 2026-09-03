@@ -338,11 +338,15 @@ action imu.gyro.recover
 action invalidate.reset
 action select
 action bulb-stop
+action camera-pair-accept
+action camera-pair-reject
+action camera-pair-expire
 ```
 
 The parameterized action forms are:
 
 ```text
+action camera-pair-request confirm|display CODE
 action toggle NAME
 action nav PAGE
 action scroll top|bottom|next|PIXELS
@@ -391,6 +395,17 @@ selects two cameras for multi-connect coverage: the seeded virtual peers when a
 topology is seeded, otherwise the FauxNY test cameras. `action companion-pair-request` injects a
 pending companion PIN without a rig TCP peer; `action companion-accept` and
 `action companion-reject` click the real pairing dialog buttons.
+`action camera-pair-request confirm <code>` or `display <code>` raises a camera
+numeric-comparison or passkey-display request. Only the controller event is
+substituted: the request goes through the same `publishPairingRequest()` the
+production `onConfirmPasskey` calls, against the live client's connection info,
+so a scenario with a connected virtual peer drives the real answer path. It
+targets the first camera that does not already hold a request, so two calls in
+a row model two cameras prompting at once; when every camera already holds one
+the request goes to the first, which is the duplicate the production guard has
+to refuse. `action camera-pair-accept` and `action camera-pair-reject` click the
+modal's real footer buttons, while `action camera-pair-expire` advances the
+pending request past its response deadline without a wall-clock wait.
 
 `watchdog` is present in the M5StickS3 build. The lists above are the canonical
 toggle, navigation, and page vocabularies.
@@ -477,6 +492,20 @@ The complete `ui.*` query set is:
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
 | `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
+| `ui.pairing_code` | The six-digit code as rendered in the camera pairing modal, or `none`. |
+| `ui.pairing_kind` | `confirm` for numeric comparison, `display` for passkey display, or `none`. |
+| `ui.pairing_overflow` | `yes` when the pairing modal extends past the panel, its content scrolls, or a footer label is wider than its button, otherwise `no`. |
+| `ui.pairing_pending` | `yes` while any camera Control owns holds a pending pairing request, otherwise `no`. |
+| `ui.pairing_timer` | `running`, `paused`, or `none`. A request held behind a visible modal needs it running. |
+
+The pairing answer the production `Camera` injected into NimBLE is readable
+separately from the modal, because the modal closing says nothing about which
+answer reached the stack:
+
+| Query | Meaning |
+| --- | --- |
+| `ble.pairing_answers` | Count of numeric-comparison answers injected into NimBLE. |
+| `ble.pairing_answer` | `accept`, `reject`, or `none` when nothing has been injected. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
 `gps.source` is `GPS::sourceName()`, the receiver's own state: `uart`,

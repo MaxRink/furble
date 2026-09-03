@@ -24,6 +24,8 @@
 
 #include <driver/uart.h>
 
+#include <MockNimBLE.h>
+
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -1054,6 +1056,18 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "ble.peers") {
     return std::to_string(blePeerCount());
+  }
+  // The pairing answer the production Camera injected into NimBLE. This is the
+  // wire-level truth behind Confirm and Cancel: the UI could close the modal
+  // either way, but only one of them may reach the stack as an accept.
+  if (key == "ble.pairing_answers") {
+    return std::to_string(NimBLEDevice::mockPasskeyConfirmCount());
+  }
+  if (key == "ble.pairing_answer") {
+    if (NimBLEDevice::mockPasskeyConfirmCount() == 0) {
+      return "none";
+    }
+    return NimBLEDevice::mockLastPasskeyAccept() ? "accept" : "reject";
   }
   if (key == "scan.start_probe_blocked") {
     return Scan::getInstance().startProbeBlocked() ? "1" : "0";

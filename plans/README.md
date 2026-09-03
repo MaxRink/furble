@@ -196,6 +196,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [65-bt-coexistence.md](65-bt-coexistence.md) | Classic BT feasibility, WiFi+BLE coexistence for hub mode |
 | [64-debug-tooling.md](64-debug-tooling.md) | Expanded debug tooling: power stats, performance monitoring, BT debug console |
 | [67-bulb-ux.md](67-bulb-ux.md) | Bulb completion state, restart action, and camera mode hint |
+| [66-pairing-code-display.md](66-pairing-code-display.md) | Camera pairing code on the furble display and console |
 | [70-text-scaling.md](70-text-scaling.md) | UI text size setting per board, layout audit walker |
 | [72-lumix.md](72-lumix.md) | Panasonic Lumix BLE support port, untested |
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |

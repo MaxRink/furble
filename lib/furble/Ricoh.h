@@ -147,11 +147,6 @@ class Ricoh: public Camera {
   bool _connect(void) override final;
   void _disconnect(void) override final;
 
-  void onPassKeyEntry(NimBLEConnInfo &connInfo) override;
-  uint32_t onPassKeyDisplay(NimBLEConnInfo &connInfo) override;
-  void onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) override;
-  void onAuthenticationComplete(NimBLEConnInfo &connInfo) override;
-
   static bool nameMatches(const std::string &name);
   void clearRemoteState(void);
   void logChr(NimBLERemoteCharacteristic *pChr,

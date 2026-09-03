@@ -136,7 +136,10 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "preset-step-down",
                                   "companion-pair-request",
                                   "companion-accept",
-                                  "companion-reject"})) {
+                                  "companion-reject",
+                                  "camera-pair-accept",
+                                  "camera-pair-reject",
+                                  "camera-pair-expire"})) {
         return fail(error, "noncanonical simple action");
       }
       return true;
@@ -306,6 +309,16 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical page action");
       }
       return true;
+    case scenario_action_kind_t::PAIRING_REQUEST:
+      // The code carries in index. Six digits is the BLE passkey range, so any
+      // value above 999999 could never come from a real pairing callback.
+      if (!action.name.empty() || action.integer != 0 || action.batteryLevel != 0
+          || action.batteryVoltage != 0 || action.batteryCurrent != 0 || action.batteryCharging
+          || action.values[0] != 0.0F || action.values[1] != 0.0F || action.values[2] != 0.0F
+          || action.index > 999999 || !known(action.mode, {"confirm", "display"})) {
+        return fail(error, "noncanonical camera pairing request action");
+      }
+      return true;
     case scenario_action_kind_t::INVALID:
       return fail(error, "invalid action kind");
   }
@@ -389,6 +402,9 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "companion-pair-request",
       "companion-accept",
       "companion-reject",
+      "camera-pair-accept",
+      "camera-pair-reject",
+      "camera-pair-expire",
   };
   for (const char *command : simple) {
     if (exact({command})) {
@@ -464,6 +480,20 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     }
     action->kind = scenario_action_kind_t::IMU_ANGLE;
     action->name = args[0];
+    return accept();
+  }
+
+  if (args[0] == "camera-pair-request") {
+    if (args.size() != 3 || !oneOf(args[1], {"confirm", "display"}) || args[2].size() != 6) {
+      return fail(error, "camera-pair-request requires confirm or display and six digits");
+    }
+    uint64_t code = 0;
+    if (!parseUnsigned(args[2], 999999, &code)) {
+      return fail(error, "camera pairing code must be six digits");
+    }
+    action->kind = scenario_action_kind_t::PAIRING_REQUEST;
+    action->mode = args[1];
+    action->index = static_cast<uint32_t>(code);
     return accept();
   }
 

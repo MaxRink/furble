@@ -1,0 +1,65 @@
+# A pairing prompt raised while the connect is still in flight (plan 66 / #63).
+# On device this is the normal case: the security callback fires from inside
+# Camera::connect(), so the camera is still Control's connecting camera and the
+# connect progress box owns the screen. Every other pairing scenario waits for
+# the link to go active first, which is the easy half.
+#
+# The peer withholds its registration confirmation, so the production connect
+# blocks in its registration wait and the prompt lands over the progress box.
+seed ble_peers fuji
+seed ble_saved true
+wait 300
+
+action ble-withhold-registration
+action connect
+assert-eventually-virtual 8000 control.state connecting
+assert ui.connect_box visible
+# The transport link is up but the connect is not finished: production waits on
+# the camera's registration confirmation, so the UI still owns the progress box
+# and has not presented the connected page.
+assert ui.connected no
+
+# The prompt is raised on the camera Control is connecting, not on a target.
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+# The connect is still running underneath: the modal did not take over or
+# cancel it, and no second modal stacked on top.
+assert ui.connect_box visible
+assert control.state connecting
+
+# Confirm reaches the stack while the connect is still blocked.
+action camera-pair-accept
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer accept
+
+# This camera never sends the registration confirmation it is withholding, so
+# the connect it was blocked in ends on the connect-failed path. The pairing
+# answer already reached the stack, so the failure is the camera's and not the
+# prompt's: the progress box goes away and the connected page is not presented.
+assert-eventually-virtual 60000 control.state idle
+assert ui.connect_box hidden
+assert ui.connected no
+assert ui.pairing_pending no
+
+# With the camera answering again a fresh connect completes, so the prompt
+# raised mid-connect left nothing wedged behind it.
+action ble-allow-registration
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+# The connect timer owns the page switch, so give it its own tick rather than
+# racing it: on the narrow boards the state is active a frame before the
+# connected page is current.
+assert-eventually-virtual 5000 ui.connected yes
+assert ui.connect_box hidden
+assert ui.modal_count 0
+exit

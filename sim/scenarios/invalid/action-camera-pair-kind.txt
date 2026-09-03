@@ -1,0 +1,2 @@
+action camera-pair-request unknown 123456
+exit
