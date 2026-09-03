@@ -1798,6 +1798,28 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/invalid/interval-unit-unknown.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/interval-unit-only.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/invalid/battery-level-trailing.txt",
       "suite": "invalid",
       "owner": "sim-parser",

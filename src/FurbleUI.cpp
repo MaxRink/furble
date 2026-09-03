@@ -266,16 +266,17 @@ const lv_font_t *fontForConnectedMenu(uint8_t textSize) {
 // the half that clips is the value, which is the data. Those rows cap at that
 // default rather than clipping it. The 320x240 grid has the width and follows
 // the setting.
+#if !defined(FURBLE_M5COREX)
 const lv_font_t *fontForSpinRow(uint8_t textSize) {
 #if defined(FURBLE_M5STICKC)
   return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_SMALL));
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_NORMAL));
 #else
-  return fontForTextSize(textSize);
+  return fontForTextSize(std::min<uint8_t>(textSize, Settings::TEXT_SIZE_NORMAL));
 #endif
 }
+#endif
 
+#if !defined(FURBLE_M5COREX)
 // Width of the first four characters of a spin row name in the given face, so
 // the name can be given up to the value without collapsing to a letter. Four is
 // the shortest prefix that still separates Coun, Dela, Shut and Wait.
@@ -291,6 +292,7 @@ int32_t spinRowNameFloor(const char *name, const lv_font_t *font) {
   lv_text_get_size(&size, prefix, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
   return size.x;
 }
+#endif
 
 // LVGL 9.4 has no public long press time getter. This is its default.
 constexpr uint32_t BUTTON_MODE_CLICK_WINDOW_MS = 400;
@@ -3213,16 +3215,15 @@ std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
   }
   lv_obj_update_layout(page);
 
-  // How many leading characters of the label's own text fit inside its box. The
-  // prefix is grown one byte at a time and measured in the label's own face, so
-  // this is what a reader can actually make out, not what lv_label_set_text was
-  // handed.
-  const auto visibleChars = [](lv_obj_t *label) {
+  // How many leading characters of the label's own text are drawn inside the
+  // given width. The prefix is grown one byte at a time and measured in the
+  // label's own face, so this is what a reader can make out, not what
+  // lv_label_set_text was handed.
+  const auto visibleChars = [](lv_obj_t *label, int32_t width) {
     const char *text = lv_label_get_text(label);
     if (text == nullptr) {
       return static_cast<uint32_t>(0);
     }
-    const int32_t width = lv_obj_get_content_width(label);
     const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
     const int32_t spacing = lv_obj_get_style_text_letter_space(label, LV_PART_MAIN);
     std::string prefix;
@@ -3243,8 +3244,11 @@ std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
     if ((obj == nullptr) || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
       return;
     }
-    // A spin row is a container whose only visible children are two labels: the
-    // setting name and its value. Nothing else on any page has that shape.
+    // A spin row is a menu container whose only visible children are two labels,
+    // the setting name and its value, which is what addSpinItem builds. The
+    // menu container class is part of the shape on purpose: the spirit level's
+    // readout row is a plain object holding two labels and is not a spin row,
+    // and without the class check it reported into these numbers.
     std::vector<lv_obj_t *> visible;
     bool labelsOnly = true;
     for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
@@ -3255,13 +3259,39 @@ std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
       visible.push_back(child);
       labelsOnly = labelsOnly && lv_obj_check_type(child, &lv_label_class);
     }
-    if (labelsOnly && (visible.size() == 2)) {
+    const bool spinRow =
+        labelsOnly && (visible.size() == 2) && lv_obj_check_type(obj, &lv_menu_cont_class);
+    if (spinRow) {
       lv_obj_t *name = visible[0];
       lv_obj_t *value = visible[1];
-      if (lv_obj_get_self_width(value) > lv_obj_get_content_width(value)) {
+
+      // The row is what clips, not the label. A content-sized label is exactly
+      // as wide as its own text, so comparing the two is a tautology that reads
+      // 0 however far the label hangs out of its row. Measure the label's box
+      // against the row's content box instead: every pixel of the value has to
+      // land inside the row that draws it.
+      lv_area_t row;
+      lv_obj_get_content_coords(obj, &row);
+      lv_area_t box;
+      lv_obj_get_coords(value, &box);
+      if ((box.x1 < row.x1) || (box.x2 > row.x2) || (box.y1 < row.y1) || (box.y2 > row.y2)) {
+        clippedValues++;
+      } else if (lv_label_get_long_mode(value) == LV_LABEL_LONG_DOT) {
+        // An ellipsis is a lost character even when the box fits, so a value on
+        // this mode counts whatever its geometry says.
         clippedValues++;
       }
-      minNameChars = std::min(minNameChars, visibleChars(name));
+
+      // The name is allowed to clip, so measure it against the room the row
+      // actually gives it, which is its own box intersected with the row.
+      lv_area_t nameBox;
+      lv_obj_get_coords(name, &nameBox);
+      const int32_t nameRight = std::min(nameBox.x2, row.x2);
+      const int32_t nameLeft = std::max(nameBox.x1, row.x1);
+      const int32_t drawn = (nameRight >= nameLeft) ? (nameRight - nameLeft + 1) : 0;
+      const int32_t padded = drawn - lv_obj_get_style_pad_left(name, LV_PART_MAIN)
+                             - lv_obj_get_style_pad_right(name, LV_PART_MAIN);
+      minNameChars = std::min(minNameChars, visibleChars(name, padded));
       return;
     }
     for (lv_obj_t *child : visible) {
@@ -6856,8 +6886,22 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   lv_obj_set_style_pad_top(spinner.m_Button, 2, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 2, LV_STATE_DEFAULT);
 #endif
+#if !defined(FURBLE_M5COREX)
+  // The horizontal budget, which is what decides whether the value keeps its
+  // digits. On the 80x160 panel the row's default padding took 20 px of the 80
+  // and the flex gap another 8, leaving 60 for a 24 px name floor and a 42 px
+  // "999 min": the value ran 14 px past the row and drew as "999 mi". None of
+  // that padding is doing any work on a panel this narrow, so the row keeps 2 px
+  // a side and a 2 px gap, which is 24 px back and 8 px of slack at the widest
+  // value. See plans/168-notouch-layout-overflows.md.
+  lv_obj_set_style_pad_left(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_column(spinner.m_Button, 2, LV_STATE_DEFAULT);
+#endif
 
+#if !defined(FURBLE_M5COREX)
   const uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
+#endif
   spinner.m_Label = lv_label_create(spinner.m_Button);
   lv_label_set_text(spinner.m_Label, item);
 #if defined(FURBLE_M5COREX)

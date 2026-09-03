@@ -219,10 +219,17 @@ showing one still reads 0.
 Master's reading depends on how many of the three entries are visible, which is
 worth stating exactly because both numbers are true:
 
-| IR setting | Entries in cell (1,1) | Master `label_overlaps` | Master `overflow` | This branch |
-| --- | --- | ---: | --- | ---: |
-| on | Infrared, Cameras, Level | 3 | 13 px, bottom row clipped | 0 |
-| off | Cameras, Level | 1 | fits | 0 |
+| IR setting | Entries in cell (1,1) | Master `label_overlaps` | This branch |
+| --- | --- | ---: | ---: |
+| on | Infrared, Cameras, Level | 3 | 0 |
+| off | Cameras, Level | 1 | 0 |
+
+The 13 px overflow this plan opened with is the physical-button layout's, in
+both IR states, and it is what `core-notouch-layout.txt` records. The touch
+layout fits at the default text size in both states and overflows by 23 px at
+the maximum, which is what `core-connected-grid-large.txt` records. The two
+numbers belong to two layouts and neither depends on the IR setting; only the
+overlap count does.
 
 Both new files turn the IR setting on, so all eight entries are present and the
 reading they assert against is 3. Run against master's layout code they fail on
@@ -285,7 +292,11 @@ So the row now has a rule, in this order:
    The narrow panels use `SpinValue::getShortUnitString`, "ms", "s" and "min"
    instead of "msec", "secs" and "mins", through the same board split the rest
    of this row uses. The 320x240 grid has the width and keeps the spelled out
-   unit.
+   unit. The unit roller on the spin page follows the same split rather than
+   staying on the long names, so a board reads the same in both places: picking
+   a unit from a roller that says "mins" and getting a row that says "min" is a
+   worse trade than the three characters the roller gives up, and the roller is
+   how the user sets the unit the row then shows.
 
 The unit was chosen over the alternative of folding it into the row name
 ("Shutter ms" with a bare "250") because that alternative lengthens the name on
@@ -296,11 +307,23 @@ unit costs three characters and reads the same.
 Those rows also cap their face through `fontForSpinRow`: the board default on
 the 80x160 panel and Normal on the 135x240 one.
 
+That was still not enough on the 80x160 panel, and the first version of the
+query could not see it. The row's own horizontal padding took 20 px of the 80
+and the flex gap another 8, leaving 60 px of row for a 24 px name floor and a
+42 px "999 min". The value ran 14 px past the right edge of the row that draws
+it and rendered as "999 mi", with Shutter's "999 ms" 9 px past and the bulb
+Duration row the same. None of that padding does any work on a panel this
+narrow, so the row keeps 2 px a side and a 2 px gap. That is 24 px back and 8 px
+of slack at the widest value, and it is the whole fix: the four character name
+floor stands and the face is already at the board's own minimum, so there was no
+lever left in either of those.
+
 Measured on both narrow panels at all three text sizes, at ordinary values
 (250 ms, 30 s, 60 min) and at the maxima (999 of each unit, 999 count):
 `ui.clipped_values` is 0 in all twelve combinations and `ui.min_name_chars` is 4
 in all twelve, which is "Wait" shown whole rather than any name cut to four. The
-longest name, Shutter, shows six characters at 135x240 and four at 80x160.
+longest name, Shutter, shows six characters at 135x240 and four at 80x160. The
+bulb Duration row, the same shape on another page, is walked as well.
 
 `e2e/redraw-steady.txt` gained a timer page step, on all three boards, so the
 animation cannot come back. That step runs before the connect rather than after
@@ -391,6 +414,23 @@ on the same page, and nothing here touches that page. It is recorded rather than
 fixed, because a Display page layout change has no measurement in this work and
 belongs with whoever is changing that page.
 
+`tests/host`'s `console-commands` segfaults intermittently, roughly one run in
+two, but only when built with coverage instrumentation. The uninstrumented
+suite passes 93 of 93. The fault is on a background thread in
+`Furble::Control::reapZombieTargets`, which this change does not touch, and
+neither `src/FurbleControl.cpp` nor `src/FurbleConsole.cpp` nor anything under
+`lib/furble` or `tests/host` differs from master on this branch. It is a
+control-teardown race that the slower instrumented build exposes, in the same
+family as the three plan 169 made deterministic, and it belongs with that work
+rather than with a layout change.
+
+`sim/scripts/check-doc-tokens.sh` is not run by any workflow. It caught a real
+gap here, the new `intervalSeedIsValid` predicate its `validateSeed` reader did
+not recognise, and it caught it only because it was run by hand. Wiring it into
+`.github/workflows/sim-e2e.yml`, or into the python tests beside
+`tests/test_build_inventory.py`, is a small follow-up and belongs to whoever
+owns that script rather than to a layout change.
+
 The `FURBLE_SIM_NO_TOUCH=1` fuzz leg, follow-up 3's other half, is also still
 open. The four `mustFit` pages the fuzzer checks are green in this layout now,
 so it should be addable, but a fuzz leg needs its own seed calibration and does
@@ -409,7 +449,7 @@ Owed on the M5StickS3 after review. Walkable in under five minutes.
 | Remote shutter | Connected, Remote | The lock icon sits just above the select indicator. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
 | Display | Settings, Display | Every row clear of the indicator row along the bottom. |
 | Bulb duration | Connected, Bulb, Duration | The spin value is readable and nothing covers it. |
-| Timer, Normal and Large | Settings, Intervalometer, at both text sizes | Count, Delay, Shutter and Wait all visible, each on one line. Every value complete, digits and unit: the units read ms, s and min here, not msec, secs and mins. Names may be cut, never below four characters. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
+| Timer, Normal and Large | Settings, Intervalometer, at both text sizes | Count, Delay, Shutter and Wait all visible, each on one line. Every value complete, digits and unit: the units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. Names may be cut, never below four characters. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
 | Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and all three indicators land on the rotated bottom edge, not the old corners. |
 | Indicator legend, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible against the band in every theme. They moved into the band in this change, so their contrast against it is new on the Sticks. |
 
@@ -425,7 +465,9 @@ new for the Core2 touch layout, `e2e/redraw-steady.txt` gains a timer page step,
 `e2e/level-spirit.txt` takes fix 7,
 `bughunt/stick-notouch-connected-large.txt` is the pin for the Connected page
 font cap, `bughunt/spin-row-widths-135.txt` and `-80.txt` are the pins for the
-spin row rule, `sim/scripts/run-notouch.sh` is new and
+spin row rule, `invalid/interval-unit-unknown.txt` and
+`invalid/interval-unit-only.txt` pin the seed suffix grammar,
+`sim/scripts/run-notouch.sh` is new and
 `.github/workflows/sim-e2e.yml` calls it three times. That runner skips a
 scenario whose own guard is `assert ui.nav_layout touch`, derived from the guard
 rather than from a name list, so the two Core2 files are not forced into the
@@ -475,6 +517,17 @@ That is the touch layout's binding. In the physical-button layout nothing binds
 `handleShutterLock` at all; the real gesture is in fix 4 above. The comments,
 the plan and the device checklist all carried the wrong gesture and are
 corrected.
+
+The first version of `ui.clipped_values` compared a label's own width against
+its own content width, which for a content-sized label is a tautology: it read 0
+however far the label hung out of the row that draws it, and it certified an
+80x160 layout that was losing digits. A query that measures a widget against
+itself measures nothing. It now measures the value's box against the row's
+content box, which is where the clipping actually happens, and flags
+`LV_LABEL_LONG_DOT` as a lost character whatever the geometry says. The same
+pass scoped the spin row shape to `lv_menu_cont_class`, because the spirit
+level's readout row is a plain object with two labels and was reporting into
+these numbers.
 
 The first version of fix 8 clipped the value rather than the name, which cost
 digits at ordinary values and not only at the maxima. Fix 8 now states the rule

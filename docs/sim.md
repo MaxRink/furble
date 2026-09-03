@@ -626,15 +626,24 @@ The walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree. A widget
 on the top layer, a message box or any other modal, is not in that subtree, so a
 page showing one still reports 0. Use a capture for those.
 
-`ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a container
-whose only visible children are a name label and a value label, as the
-intervalometer and bulb duration settings are built. On the narrow panels the
-two share one line, so one of them has to give up room. `ui.clipped_values`
-counts the values too narrow for their own text and must read 0, because a value
-that loses a digit or its unit reads as a different setting.
+`ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
+container whose only visible children are a name label and a value label, as
+`addSpinItem` builds the intervalometer and bulb duration settings. The menu
+container class is part of the shape on purpose: the spirit level's readout row
+is a plain object holding two labels and is not a spin row.
+
+On the narrow panels the name and the value share one line, so one of them has
+to give up room. `ui.clipped_values` counts the values that do not fit and must
+read 0, because a value that loses a digit or its unit reads as a different
+setting. It measures the value's box against the row's content box, not against
+the label's own width: a content-sized label is exactly as wide as its text, so
+comparing those two is a tautology that reads 0 however far the label hangs out
+of its row. A value on `LV_LABEL_LONG_DOT` counts as clipped whatever its
+geometry says, because an ellipsis is a lost character.
+
 `ui.min_name_chars` reports the fewest characters any name still shows in full,
-which the layout holds at four so the names stay distinct. A page with no spin
-row reports 0 and `n/a`.
+measured against the room the row gives it, which the layout holds at four so
+the names stay distinct. A page with no spin row reports 0 and `n/a`.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,

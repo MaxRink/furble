@@ -20,6 +20,7 @@
 seed no_touch true
 seed text_size 2
 seed fauxny true
+seed saved_camera true
 seed gps true
 seed interval_count 999
 seed interval_shutter 999ms
@@ -38,6 +39,18 @@ assert ui.overflow no
 assert ui.indicator_clearance clear
 # No value gives up a digit or its unit, and no name falls below four
 # characters.
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
+
+# The bulb Duration row is the same shape on a different page, and its seeded
+# unit is the widest one, so it is walked too rather than assumed.
+action connect
+wait 3200
+assert ui.page connected
+action page bulb
+wait 200
+assert ui.page bulb
+assert ui.overflow no
 assert ui.clipped_values 0
 assert_min ui.min_name_chars 4
 exit

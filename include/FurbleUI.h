@@ -385,7 +385,15 @@ class UI {
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
+      // The units the roller offers are the units the rows show, so a board
+      // reads the same in both places. The narrow panels shorten both because
+      // their rows share one line with the value; see fontForSpinRow and
+      // SpinValue::getShortUnitString.
+#if defined(FURBLE_M5COREX)
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
+#else
+      static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
+#endif
       static constexpr std::array<uint32_t, 31> m_ExposurePresetMilliseconds = {
           1000,   1300,   1600,   2000,   2500,   3200,   4000,   5000,   6000,    8000,   10000,
           13000,  15000,  20000,  25000,  30000,  40000,  50000,  60000,  80000,   100000, 125000,
