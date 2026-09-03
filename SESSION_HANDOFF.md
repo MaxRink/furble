@@ -784,3 +784,60 @@ function, or flag, verify it still exists before acting on it.
   runtime behaviour. Next flash is #245's rebased head for its bench.
 - Bench observations still open: user wants the pairing code on furble
   (#63) and a dismissable error on connect failure (#245).
+
+## Addendum 2026-09-03 morning
+
+Master is 77aa113f (#261, #264, #270 merged since the last addendum).
+Issues are now enabled on the fork: #267 and #268 (sim teardown timeout
+and boot livelock, fixed by #270), #269 (flaky host tests), #271 (Control
+zombie connect cancel, fixed by #272).
+
+Open PRs, merge order and gates:
+
+1. #266 Fujifilm name = model + serial (head 538d28a1, approved four
+   times, CI green). Gate: bench over the console with VM-built firmware
+   at ~/furble-build-wt/vm-out/266-538d28a1/ (flash: flash_prepare.py
+   --preflight-only, then esptool with bootloader 0x0, partitions 0x8000,
+   ota_data 0xf000, firmware 0x20000). Checks: `cameras list` shows
+   "X100VI 1C4F9", multi-connect selection survives the upgrade,
+   `bt explore` DIS 0x2A25 versus 1C4F9. Blocked on the stick being on USB.
+2. #245 stale-bond recovery (head a9e32942 plus an 80x160 modal fix round
+   in flight). 135x240 and 320x240 clean; user bench is the nine-step
+   sequence in the PR body (delete camera-side pairing only; two secure
+   timeouts delete the bond once; "Pairing lost" box readable; cancel
+   twice must not delete a healthy bond; already-saved refusal dismissed
+   with physical buttons). Rebases over #266 (FujifilmSecure.h
+   logFirstReject conflict).
+3. #272 cancellable in-flight connect (head 3d044636, CI green, all
+   blockers closed, M10a survives by decision). Rebase over #245 with the
+   reviewer's five actions, one delta review, then bench: connect,
+   disconnect during the registration wait, reconnect, control.targets 1
+   and a working shutter, five cycles, zombies 0.
+4. #265 console workflow verbs (head 37c03322, approved plus mediums
+   closed). Rebase over #245 (pair verb calls UI::beginPairing, keep the
+   menuName == m_ScanStr save gate), one delta review, on-device pairing
+   run (`scan start`, `pair 0`, `cameras list` saved true).
+5. #63 pairing codes (head 90b86739, approved in substance, 18/18
+   mutations). Rebase over #245 and #272 (setConnectCameraLocked vs
+   setConnectCamera locking deadlock hazard; add the user-reject exclusion
+   to #245's counter). Bench is the GR IV only (X100VI is just-works).
+6. #273 physical-button layout fixes (head 40e394c4, approved, closing
+   round in flight: shutter lock gesture is hold-next plus press-select;
+   Connected at Large still 31 px over; Core2 touch layout also changed;
+   80x160 timer invalidations). Rebase over #266 deletes
+   floatingIndicatorReserve(). Device walk with the checklist in plan 168.
+
+Build environment: PlatformIO now works in the VM (runbook
+~/furble-build-wt/VM-FIRMWARE-BUILD.md, 17 to 21 min per build; git
+http.version HTTP/1.1 was required). Host pio builds stall for 30 to 90
+minutes in "Reading CMake configuration" when more than one runs; use the
+VM. Load rules: -j2 per lane, panels sequential, kill only your own PIDs
+by build path, never `pkill -f furble-sim`. Broken host dirs needing a
+manual `rm -rf`: ~/furble-build-wt/wt-266-reb, ~/furble-build-wt/wt-266-bench.
+
+Still open after this wave: the 320x240 intervalometer overflow (no
+pinned scenario since #270 moved the fuzz stream), the two 80x160
+max-text-size pages (TextSizePolicy::MAX is a product decision for gkoh),
+issue #269 flaky tests, the `action scan-row N` verb to re-certify
+scan-already-saved, the multi-connect checkbox rows clipping long names,
+a sim peer advertising the real Fujifilm local name, and the alpha release.
