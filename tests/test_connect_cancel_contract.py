@@ -228,7 +228,7 @@ class ConnectCancelContractTest(unittest.TestCase):
             "these functions block inside a connect attempt without calling "
             "connectCancelled() in the same body, so Control::disconnect() cannot "
             f"abort them: {offenders}. See "
-            "plans/167-control-zombie-connect-cancel.md.",
+            "plans/170-control-zombie-connect-cancel.md.",
         )
 
     def test_a_comment_does_not_satisfy_the_gate(self):

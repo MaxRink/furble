@@ -1,4 +1,4 @@
-# 167 - uncancellable connect attempts and the draining camera
+# 170 - uncancellable connect attempts and the draining camera
 
 ## Motivation
 
@@ -422,6 +422,41 @@ on the rebase:
    `setConnectCamera()` and the locked getter now go.
 5. After 245, give the empty-cycle `STATE_CONNECT_FAILED` a reason string. An
    empty cycle is the natural first user of `m_ConnectFailReason`.
+
+### PR 274 is in master, and the rebase touches the same abort block
+
+274 landed as plan 169 while this branch sat on 77aa113f. It rewrites the tail
+of `connectAll()` around the abort, which is the same block this change edits.
+Resolving it:
+
+- Keep this change's body edits inside the abort block, but take 274's
+  `return STATE_DISCONNECTING;` and its tail expression. 274 owns the publish
+  decision there; this change only owns what happens to the cancel tokens and
+  `m_ConnectCamera` around it.
+- `tests/host/CMakeLists.txt` carries a comment naming
+  `include/FurbleTestSync.h`. 274 moved that header to `lib/furble/`, so the
+  comment needs updating with the resolution rather than after it.
+- Run `ctest -R control-abort-republish` once resolved. That is 274's regression
+  and it covers the block both changes touch, so a bad resolution shows up there
+  rather than in this plan's tests.
+- `plans/README.md` needs this row moved below the 167, 168 and 169 rows master
+  now carries. This branch was cut before them, so its row currently sits
+  directly after 166.
+
+### Follow-up this change does not close: publishing without re-checking the abort
+
+274's review left a class open that is adjacent to everything here, and it is
+recorded so it is not rediscovered from scratch. In `connectAll()`, the
+`STATE_ACTIVE` and `STATE_CONNECT_FAILED` publishes do not re-check the abort
+before they land, and the control task's `setState(STATE_CONNECTING)` can land
+after a disconnect has already completed. Each is the same shape as the
+`STATE_DISCONNECTING` republish 274 fixed: a decision taken from state read
+before an unlocked stretch, published after it.
+
+Patching them one at a time is what produced the current sequence of narrow
+fixes. The general close is a compare-and-set publish, so a state transition
+lands only if the state is still what the decision was based on, and every one
+of these windows shuts at once. That belongs to its own plan, on top of 274.
 
 ### PR 63 is a deadlock hazard against this change
 

@@ -183,7 +183,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [165-sim-no-touch-layout.md](165-sim-no-touch-layout.md) | Certified per-board simulator coverage of the physical-button layout all three modeled boards ship, plus an indicator-clearance query and the layout gaps it exposes |
 | [166-sim-teardown-livelock.md](166-sim-teardown-livelock.md) | Simulator boot livelock and teardown disconnect timeout: the M5GFX step-exec false positive, UI-thread scheduler fairness, a host wall-clock stall watchdog with thread dumps, and wall-clock bounds on every scenario |
 | [169-flaky-host-tests.md](169-flaky-host-tests.md) | Three flaky host tests made deterministic: real scheduler waits instead of spin budgets, a registration sync point instead of sleeps, the aborted-connect republish wedge, and a coverage run that fails on a scenario that never finished |
-| [167-control-zombie-connect-cancel.md](167-control-zombie-connect-cancel.md) | Vendor connect waits honour the plan 148 cancel contract, the interactive teardown cap is logged and honours its bound, and a draining camera is never handed a fresh target that clears its cancel token |
+| [170-control-zombie-connect-cancel.md](170-control-zombie-connect-cancel.md) | Vendor connect waits honour the plan 148 cancel contract, the interactive teardown cap is logged and honours its bound, and a draining camera is never handed a fresh target that clears its cancel token |
 
 ## Design documents
 

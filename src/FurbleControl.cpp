@@ -464,7 +464,7 @@ bool Control::allConnected(void) {
   // per camera and then connectAll() unconditionally, so any path that fails to
   // add a target reaches this, including a failed xTaskCreate.
   if (m_Targets.empty()) {
-    // Deliberately uncovered defence in depth, and recorded as such in plan 167.
+    // Deliberately uncovered defence in depth, and recorded as such in plan 170.
     // connectAll() returns STATE_CONNECT_FAILED on an empty cycle before this is
     // ever consulted, so the only caller that can reach it with no targets is
     // the STATE_ACTIVE liveness branch below, which needs m_Targets emptied
