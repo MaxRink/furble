@@ -841,3 +841,12 @@ max-text-size pages (TextSizePolicy::MAX is a product decision for gkoh),
 issue #269 flaky tests, the `action scan-row N` verb to re-certify
 scan-already-saved, the multi-connect checkbox rows clipping long names,
 a sim peer advertising the real Fujifilm local name, and the alpha release.
+
+Update 2026-09-03 13:00: PR #274 (plan 169, flaky host tests plus a real
+abort wedge in Control::connectAll) merged at 2e986fe6 ahead of #266
+since they do not conflict. Merge order now #266, #245, #272 (plan
+renumbered to 170), #265, #63, #273. The #266 flash also carries the
+#274 hardware check: 20 cycles Connect, Cancel at a random point, Connect;
+every cycle must reach Connected and `debug control` must never park at
+connecting. Master gained lib/furble/FurbleTestSync.h (moved from
+include/) and coverage.py now fails on a timed-out scenario.
