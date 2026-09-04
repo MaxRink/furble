@@ -396,6 +396,46 @@ flat. That is the version that would have caught a broken re-arm.
 
 ## Coordination
 
+### The bench wedge is PR 245's gate, not this plan's
+
+Hardware, 2026-09-04, master 8bdc52e4. Twenty console cycles of `connect 0` then
+`disconnect` at 2 s, 4 s and 6 s left Control at `state disconnecting`,
+`connect_in_progress true`, `connecting none`, zombies climbing, a fresh
+`connect 0` refused as a duplicate and `task.control` at 0.0 percent CPU, for
+more than two minutes until a reboot.
+
+This plan does not fix it, and the reason is worth stating precisely because the
+two look alike. `FujifilmSecure::_connect()` blocks in
+`m_Client->secureConnection()` at `lib/furble/FujifilmSecure.cpp:183`. That is a
+bare blocking NimBLE call with its own internal timeout, not a poll loop, and
+the `connectCancelled()` polls in that file sit in the scan phase before it, not
+inside it. **Only the link terminate wakes it**, which is what
+`abortBlockingConnect()` issues. This plan cancels the drain set and the attempt
+in flight, which closes every wait that polls the token; setting the token
+against this one is a no-op.
+
+Everything downstream follows from that block: `m_ConnectInProgress` stays true,
+so `targetTasksStopped()` and `disconnectComplete()` are both false and every
+interactive disconnect burns its cap and drains into `m_ZombieTargets`, and
+`reapZombieTargets()` cannot free a drained target because its task is blocked
+on the same `Camera::m_Mutex`.
+
+One correction to the first reading of the bench: the infinite-reconnect loop
+does not create targets. `addActive()` has exactly two callers,
+`src/FurbleUI.cpp` and `src/main.cpp`, both user connect entry points. What
+infinite reconnect does is keep `connectAll()` returning `STATE_CONNECT`, so
+another uncancellable attempt starts as soon as the last one ends. Suppressing
+the reconnect while a drain is pending would change nothing, because
+`Control::task()` already gates `STATE_CONNECT` on `teardownDraining()` and an
+abort already makes `connectAll()` return `STATE_DISCONNECTING`.
+
+The reproduction lives on branch `test/secure-stall-regression` off 8bdc52e4,
+not in this PR, because it cannot pass in this PR's CI. It fails identically on
+that master and on this branch, and its virtual peer gained a
+`setSecureConnectionStallMs()` knob that sleeps rather than returning false,
+since a returned failure unwinds and a block does not. Enable it as a ctest with
+245.
+
 ### PR 245 lands first, then this rebases again
 
 It carries hardware evidence and the harder radio-call constraint. Five actions
@@ -421,7 +461,11 @@ on the rebase:
 4. Adjacent-line only: `getConnectFailReason()` and `getTargetCount()` sit where
    `setConnectCamera()` and the locked getter now go.
 5. After 245, give the empty-cycle `STATE_CONNECT_FAILED` a reason string. An
-   empty cycle is the natural first user of `m_ConnectFailReason`.
+   empty cycle is the natural first user of `m_ConnectFailReason`. This is the
+   named follow-up to the bench wedge above: once `abortBlockingConnect()` ends
+   the stall, refusing a fresh connect while a drain is still pending becomes
+   worth doing, and it needs a reason the UI can show. Without one it would
+   repeat the phantom active session this plan withdrew.
 
 ### PR 274, rebased over
 
