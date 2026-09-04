@@ -173,6 +173,88 @@ after releasing the mutex. Ordering still holds: the token is what the vendor
 waits poll, and the terminate is only the wake-up for a call that is not
 polling at all.
 
+### 1c-bis. The 2026-09-04 bench wedge, and the regression that pins it
+
+Section 1c argued from one bench observation that a cancel could not reach a
+parked `secureConnection()`. The 2026-09-04 run measured the consequence at
+scale: twenty console cycles of `connect 0` then `disconnect` at 2, 4 and 6
+seconds left Control at `state disconnecting`, `connect_in_progress true`,
+`connecting none`, the zombie count climbing, a fresh `connect 0` refused with
+"already connecting, ignoring duplicate connect", and `task.control` at 0.0
+percent CPU for more than two minutes until a reboot.
+
+The chain is three links, and the first is the one this PR breaks:
+
+1. `FujifilmSecure::_connect()` calls `m_Client->secureConnection()`. That is a
+   blocking NimBLE call with its own internal timeout, not a poll loop, and
+   `Camera::connect()` holds `Camera::m_Mutex` for all of it. The plan-148
+   cancel token cannot reach it: the polls sit in the scan phase before the
+   call, never inside it.
+2. `m_ConnectInProgress` therefore stays true, so `targetTasksStopped()` and
+   `disconnectComplete()` are both false and every interactive disconnect burns
+   its whole cap and drains its targets into `m_ZombieTargets`.
+3. `reapZombieTargets()` frees a drained target only once its task publishes
+   `m_Stopped`. That task is blocked on the same `Camera::m_Mutex`, so it never
+   does. Zombies accumulate and `teardownDraining()` gates `STATE_CONNECT`.
+
+`tests/host/control_secure_stall_test.cpp` (ctest `control-secure-stall`) pins
+it through the real Control. It came from the bench owner on
+`test/secure-stall-regression` as an expected-to-fail harness and is
+cherry-picked here; two changes were needed to make it measure what it claims.
+
+**The peer has to be woken, not just blocked.** As handed over, the stall was
+`std::this_thread::sleep_for`, which models the block and not the escape: a
+terminate cannot shorten a sleep, so every disconnect in the harness would pass
+by outwaiting the stall and the run would prove nothing about
+`abortBlockingConnect()`. `setSecureConnectionStallMs()` now parks on a
+condition variable that the peer's own `disconnect()` releases, which is what
+`NimBLEClient::disconnect()` calls on a terminate. That models both halves:
+NimBLE parks the caller, and NimBLE returns to it when the link dies underneath.
+`secureStallWasAborted()` and `secureStallEntries()` make the difference
+assertable, so a pass cannot come from the deadline expiring.
+
+**The harness has to reach the handshake at all.** `Camera::connect()` sets
+`m_Paired` on the first success, and `FujifilmSecure::_connect()` scans for the
+advertisement before every attempt once that is set. With no radio answering,
+every cycle after the baseline connect died in the scan wait: measured, the
+stall was entered **0 times out of 9**, so the harness reported the wedge
+whatever the connect path did. It now runs the same background `Advertiser` the
+other Secure Control tests use, and the stall is entered 9 times out of 9.
+
+What it asserts, on top of the handed-over baseline and fresh-connect checks:
+every one of the nine disconnects ended the parked handshake by terminating the
+link rather than outwaiting it, and none of them had to run the stall down to
+get there.
+
+The zombie count is deliberately not asserted directly, and the handed-over
+harness was right to avoid it. `getDebugState()` is `FURBLE_CONSOLE` only, and
+defining that for this target compiles eleven otherwise unbuilt blocks of
+`lib/furble/Scan.cpp` into the coverage union as instrumented but uncovered
+lines, which drops that file from 90.20 to 88.01 percent and fails its floor.
+Measured, twice, on CI. The user-visible consequence stands in for it and is
+what the bench measured anyway: a drain that never reaps keeps
+`teardownDraining()` true, that gates `STATE_CONNECT`, and the fresh connect at
+the end can then never reach active. For the record the quarantine does drain,
+measured at 46 ms with the console surface temporarily enabled; a brief
+quarantine is correct because freeing a target earlier would race the NimBLE
+client its task is still releasing. The bench symptom was not that the count
+went up, it was that it never came back down.
+
+Measured on this branch: 9 entries, 9 aborts, slowest disconnect 23 ms against a
+3000 ms stall. Mutation: delete the terminate from
+`Camera::abortBlockingConnect()` and the run fails on
+"every disconnect ended the handshake by terminating the link", because every
+disconnect then has to outwait the stall. Reverted, green.
+
+No simulator scenario for this one, and the reason is structural rather than
+effort. The stall is a wall-clock wait inside the peer, and the simulator runs
+on a virtual clock that only advances when the driver ticks; a peer that parked
+the control task on the wall clock would stall the whole simulator in real time
+and would not interact with virtual time at all. Making it virtual-time aware
+means giving `lib/testing/peer` a clock seam, and that library is shared with
+the host harness where no virtual clock exists. The host regression drives the
+production Control end to end, so the coverage is not lost, only its location.
+
 ### 1d. Dismissable connect errors and the already-saved pairing refusal
 
 A failed connect used to drop straight back to the menu with only a log line,
@@ -673,3 +755,14 @@ Hardware verification owed before merge, on the X100VI:
    `control.connect_fail_reason`.
 9. Regression on the identity rule, if a second body of any model is available:
    pair it and confirm it is accepted rather than refused as "Already saved".
+10. The 2026-09-04 wedge, which is the step this PR now has a host regression
+    for. With the camera's own pairing deleted so every handshake stalls, run
+    twenty console cycles of `connect 0` then `disconnect`, varying the
+    disconnect between roughly 2, 4 and 6 seconds into the attempt so it lands
+    inside the handshake rather than between phases. After the loop `status`
+    must report `control.state: idle` with `control.connect_in_progress: false`
+    and a zombie count back at zero, and a fresh `connect 0` must reach an
+    active shutter target. The failure signature to watch for is the bench's
+    own: `state disconnecting`, `connect_in_progress true`, `connecting none`,
+    zombies climbing, `task.control` at 0.0 percent CPU, and every later connect
+    refused with "already connecting, ignoring duplicate connect".

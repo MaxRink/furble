@@ -945,8 +945,15 @@ target_include_directories(control_secure_stall_test
                                   ${FURBLE_ROOT}/lib/blowfish
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
+# Deliberately not FURBLE_CONSOLE. getDebugState() is console only, and
+# defining it here would compile eleven otherwise unbuilt blocks of Scan.cpp
+# into the coverage union as instrumented but uncovered lines, which drops that
+# file from 90.20 to 88.01 percent and fails its floor. The assertions below use
+# the user-visible consequence instead, which is what the bench measured anyway.
 target_compile_definitions(control_secure_stall_test PRIVATE
                            FURBLE_HOST_REGISTRATION_TIMEOUT_MS=10000)
+# No -Werror here: this target compiles the vendored lib/blowfish, whose
+# sign-compare warnings predate the project and are not this test to fix.
 target_compile_options(control_secure_stall_test PRIVATE
                        -Wall -Wextra -Wno-format -Wno-unused-parameter
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
@@ -1475,6 +1482,7 @@ if(BUILD_TESTING)
   add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
   add_test(NAME fujifilm-stale-bond COMMAND fujifilm_stale_bond_test)
   add_test(NAME fujifilm-repair-needed COMMAND fujifilm_repair_needed_test)
+  add_test(NAME control-secure-stall COMMAND control_secure_stall_test)
   add_test(NAME fujifilm-registration-cancel COMMAND fujifilm_registration_cancel_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
