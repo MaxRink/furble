@@ -61,10 +61,13 @@ About page and exposed through companion BLE Device Information.
 ### Pairing a camera that is already saved
 
 Pairing is refused when the selected scan result is a camera the saved list
-already holds, on the Scan page and through the console `pair <scan-index>`
-verb, which routes through the same UI request. Both call
-`UI::beginPairing()`, so the refusal is written once. The device shows an
-"Already saved" box that has to be dismissed, and no connect is started.
+already holds. The device shows an "Already saved" box that has to be
+dismissed, and no connect is started. The refusal lives in
+`UI::beginPairing()`, the single entry point for "the user asked to pair this
+scan result", so the Scan page row gets it without the check being written
+twice. There is no console pairing verb on this build: PR #265 adds
+`pair <scan-index>` and routes it through the same `UI::beginPairing()`, which
+is why it inherits the refusal with no duplicated logic.
 
 The check is identity, not the saved index key. The index is keyed on the BLE
 address, and a Fujifilm Secure body advertises a resolvable private address
