@@ -246,14 +246,16 @@ Measured on this branch: 9 entries, 9 aborts, slowest disconnect 23 ms against a
 "every disconnect ended the handshake by terminating the link", because every
 disconnect then has to outwait the stall. Reverted, green.
 
-No simulator scenario for this one, and the reason is structural rather than
-effort. The stall is a wall-clock wait inside the peer, and the simulator runs
-on a virtual clock that only advances when the driver ticks; a peer that parked
-the control task on the wall clock would stall the whole simulator in real time
-and would not interact with virtual time at all. Making it virtual-time aware
-means giving `lib/testing/peer` a clock seam, and that library is shared with
-the host harness where no virtual clock exists. The host regression drives the
-production Control end to end, so the coverage is not lost, only its location.
+No simulator scenario in this PR, and that is scheduling rather than a
+structural bar. The earlier claim here that it was structural was wrong. The
+seam already exists: `lib/testing/nimble/MockNimBLE.cpp` guards its
+`esp_timer_get_time()` use with `#if !defined(FURBLE_SIM)` and the simulator
+supplies its own in `sim/shim/esp_timer.h`, and wall-clock peers already run in
+the simulator today. Branch `feat/sim-cancel-sweep` carries
+`lib/testing/peer/PeerStall.h`, which is the shared stall this lane wants.
+Tracked as **plan 172**, the sim cancel-sweep lane, which owns driving this
+stall from a scenario; this PR's host regression drives the production Control
+end to end in the meantime.
 
 ### 1d. Dismissable connect errors and the already-saved pairing refusal
 
@@ -718,51 +720,71 @@ Hardware verification owed before merge, on the X100VI:
 1. Pair the camera through the furble UI and confirm a normal shutter session.
 2. Delete furble's pairing on the camera only. Leave furble's saved entry and
    local bond alone.
-3. Reconnect from the console with `connect 0`, then poll `status`. Expect two
-   link-up attempts whose handshake times out ("Connected", "Securing",
-   "secureConnection: failed rc=13" or "rc=520"), then the
-   "Security handshake failed 2 times on a bonded camera; deleting the stale
-   local bond" log line, then "Fresh pair failed; put the camera in pairing mode
-   and reconnect". `status` must then report `control.state: connect_failed`,
-   `control.connect_fail_reason:` naming the camera and asking for pairing mode,
-   and a `control.reconnect_attempt` that has stopped climbing. The
-   "Pairing lost" box must be on screen.
-4. Dismiss the box, then repeat step 3 from the UI rather than the console, and
-   confirm the same "Pairing lost" box appears. Same Control code, but the bench
-   failure was UI-driven.
+3. Open the camera's own Bluetooth pairing screen and leave it there. This is
+   not optional and it is not the same as step 6. Deleting the pairing on an
+   X100VI stops it advertising until that screen is open, so with the screen
+   closed furble's saved reconnect never finds the camera and the stale-bond
+   path is never entered: the scan simply times out. The camera has to be
+   advertising for any of steps 4 to 6 to mean anything.
+4. Reconnect from the console with `connect 0`, then poll `debug control`.
+   `status` prints unprefixed lines (`state:`, `targets:`); the `control.*`
+   fields below come from `debug control`. Expect two link-up attempts whose
+   handshake fails ("Connected", "Securing", "secureConnection: failed rc=13"
+   or "rc=520"), then "Security handshake failed 2 times on a bonded camera;
+   deleting the stale local bond", then the in-link fresh pair going through:
+   "Secured!" and a normal registration to an active shutter target.
+   `debug control` must then report `control.state: active`,
+   `control.connect_fail_reason: none` and `control.zombies: 0`, and the bond
+   must have been deleted exactly once. This is the expected outcome with the
+   camera in pairing mode, and it is the path
+   `fujifilm-repair-needed`'s in-link recovery scenario models.
 5. During one of those security waits, press Cancel. The device must respond
    immediately instead of freezing for the ~30 s handshake timeout. Do it a
-   second time on the next attempt and then check `cameras list` on the console:
-   the camera must still be there and the bond must not have been deleted, and
-   no "Pairing lost" box may appear. A user cancel is not a failed handshake,
-   and two of them in a row are the case that would otherwise trip the recovery.
-   Expected console lines: `Fujifilm Secure registration aborted by user cancel`
-   or the vendor unwind, and no `deleting the stale local bond`.
-6. Put the camera into pairing mode and connect again with `connect 0`. Expect
-   a fresh pairing and a normal registration through to an active shutter
-   target: "Secured!", then `status` reporting `control.state: active` and an
-   empty `control.connect_fail_reason`. Steps 5 and 6 must not be swapped: the
-   re-pair here destroys the stale-bond precondition that steps 4 and 5 need.
+   second time on the next attempt, then check `cameras list`: the camera must
+   still be listed. The bond evidence is negative, and it is the point of the
+   step: no `deleting the stale local bond` line in the log and no "Pairing
+   lost" box. `cameras list` enumerates saved records, not NimBLE bonds, so it
+   proves the saved entry survived and nothing more. Expect
+   `Fujifilm Secure registration aborted by user cancel` or the vendor unwind.
+   A user cancel is not a failed handshake, and two in a row are the case that
+   would otherwise trip the recovery.
+6. The refusal case, which is what actually produces "Pairing lost", and it
+   needs a camera that advertises but will not complete a pairing. Steps 3 and 4
+   cannot produce it: a camera sitting in its pairing screen accepts the fresh
+   in-link pair. If it can be produced at all, the way to try is to leave the
+   pairing screen mid-handshake so the camera is still advertising but no longer
+   accepting, and repeat `connect 0`. Expect
+   "Fresh pair failed; put the camera in pairing mode and reconnect",
+   `debug control` reporting `control.state: connect_failed`,
+   `control.connect_fail_reason:` naming the camera and asking for pairing mode,
+   a `control.reconnect_attempt` that has stopped climbing, and the
+   "Pairing lost" box on screen with its full text readable on the 135x240
+   panel. Repeat it once from the UI rather than the console: the same Control
+   code, but the original bench failure was UI-driven. **If the camera cannot be
+   held in that state, say so on the PR rather than reporting the step as
+   passed.** The host regression covers the refusal path either way; what the
+   bench adds here is confirmation that a real X100VI can reach it.
 7. On the Scan page, select a camera that is already saved. Expect the
    "Already saved" box and no connect. Dismiss it with the physical buttons
    only, not the touchscreen: the OK button joins the input group precisely so
    the non-touch bodies can clear it, and a box that cannot be dismissed is the
-   lockup this PR is about. `status` must still report `control.state: idle`
-   with no targets.
+   lockup this PR is about. `debug control` must still report
+   `control.state: idle` with `control.targets: 0`.
 8. Regression: a normal saved reconnect on a healthy pairing still connects,
    the bond is never deleted, and `connect 0` to a powered-off camera raises the
-   dismissable "Connect failed" box with `status` reporting an empty
-   `control.connect_fail_reason`.
+   dismissable "Connect failed" box with `debug control` reporting
+   `control.connect_fail_reason: none`.
 9. Regression on the identity rule, if a second body of any model is available:
    pair it and confirm it is accepted rather than refused as "Already saved".
 10. The 2026-09-04 wedge, which is the step this PR now has a host regression
     for. With the camera's own pairing deleted so every handshake stalls, run
     twenty console cycles of `connect 0` then `disconnect`, varying the
     disconnect between roughly 2, 4 and 6 seconds into the attempt so it lands
-    inside the handshake rather than between phases. After the loop `status`
-    must report `control.state: idle` with `control.connect_in_progress: false`
-    and a zombie count back at zero, and a fresh `connect 0` must reach an
-    active shutter target. The failure signature to watch for is the bench's
-    own: `state disconnecting`, `connect_in_progress true`, `connecting none`,
+    inside the handshake rather than between phases. After the loop
+    `debug control` must report `control.state: idle`,
+    `control.connect_in_progress: false` and `control.zombies: 0`, and a fresh
+    `connect 0` must reach an active shutter target. The failure signature to
+    watch for is the bench's own: `control.state: disconnecting`,
+    `control.connect_in_progress: true`, `control.connecting: none`,
     zombies climbing, `task.control` at 0.0 percent CPU, and every later connect
     refused with "already connecting, ignoring duplicate connect".

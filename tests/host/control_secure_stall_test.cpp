@@ -31,16 +31,27 @@
 // disconnect here would pass by outwaiting the stall and the harness would
 // prove nothing about the fix.
 //
-// PASSES on PR 245, which lands abortBlockingConnect(). It failed identically
-// on master 8bdc52e4 and on the plan 170 branch a769449 before that: `end
-// state=STATE_CONNECTING targets=1 connected=0`, with the fresh connect never
-// reaching active. The baseline check below connects the same camera with no
-// stall, so a failure here is the wedge and not a broken fixture.
+// PASSES on PR 245, which lands abortBlockingConnect().
+//
+// What master actually does, measured rather than assumed: the fresh connect at
+// the end DOES reach active there, and the only check master fails is the
+// abort-provenance one, `aborts == cycles`. Every disconnect on master gets
+// there by outwaiting the stall instead of ending it. An earlier version of
+// this header claimed master left the session wedged at
+// `state=STATE_CONNECTING targets=1 connected=0`; that was the harness dying in
+// the saved-reconnect scan wait before it ever reached the handshake, not the
+// wedge, and the Advertiser below is what fixed it.
+//
+// So `aborts == cycles` is the load-bearing assertion and the only one that
+// separates this branch from master. `check(slowest < STALL_MS)` below has no
+// teeth and is kept only as a diagnostic: `Control::disconnect(300)` returns on
+// its own cap well inside the 3000 ms stall, so it passes under the mutation
+// too. Read a failure there as a timing surprise worth investigating, not as
+// the regression.
 //
 // Mutation, re-run on this branch: delete the terminate from
-// Camera::abortBlockingConnect() and the run fails on the provenance and
-// timing checks below, because every disconnect then has to outwait the stall
-// instead of ending it. That is the whole difference the PR makes.
+// Camera::abortBlockingConnect() and the run fails on
+// "every disconnect ended the handshake by terminating the link".
 //
 // This is PR 245's gate, not plan 170's. Plan 170 cancels the drain set and the
 // attempt in flight, which fixes every wait that polls the cancel token. This
