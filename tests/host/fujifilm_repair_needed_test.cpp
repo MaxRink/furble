@@ -176,8 +176,15 @@ bool scenarioRepairNeededStopsTheCycle() {
   // separator disappear with no failing test, and the box would then wrap a
   // 25 character name over three lines of an 80x160 panel and push the
   // instruction off it.
-  check(reason == config.name + ": put it in pairing mode, then connect.",
+  //
+  // Compared against the camera's own display name rather than the advertised
+  // one: PR #266 composes a Secure body's name from the model plus its serial,
+  // so the advertised string and the string the user is shown are no longer the
+  // same. That composed name is exactly why the separator matters, since it is
+  // the longer of the two.
+  check(reason == camera->getDisplayName() + ": put it in pairing mode, then connect.",
         "the reason is exactly the agreed <camera>: <instruction> string");
+  check(reason.find(": ") != std::string::npos, "and it carries the separator the UI splits on");
 
   check(NimBLEDevice::deleteBondCount() == 1, "the stale local bond is deleted exactly once");
   check(!NimBLEDevice::isBonded(camera->getAddress()), "the dead keys are gone");
