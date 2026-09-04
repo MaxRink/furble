@@ -863,3 +863,18 @@ remote is removed and every brief now says a denied call means stop and
 report.
 
 Update 2026-09-04 00:30: PR #266 merged at 8bdc52e4 after the device showed "X100VI 1C4F9" for the pre-existing record. #245 and #273 are rebasing over it; #272, #265, #63 and the #277 lane are held behind #245. Pending on the bench with the camera on: DIS 0x2A25 read and the 20-cycle cancel loop for #274. Flash recipe that works for VM binaries: send `flash prepare` over the console with serdrive.py, then esptool write_flash inside the 45 s window (preflight-only re-arms the watchdog and is not enough).
+
+Update 2026-09-04 02:00: bench on master 8bdc52e4. DIS 0x2A25 on the
+X100VI is 2507072F939021C4F9 (advertised 1C4F9 is its suffix); GAP name
+is the bare model. #274 hardware check passed (20 connect/cancel cycles,
+no parked-at-connecting). New hardware wedge: after those cycles Control
+stayed at disconnecting with connect_in_progress true and zombies
+climbing 3 to 7 (infinite reconnect feeds the drain), fresh connect
+refused, control task at 0 percent CPU, reboot needed. It is the #271
+route on Fujifilm; #272 is the fix and must now prove it against a host
+regression of this exact sequence. User feedback: the sim should have
+found it. Lane feat/sim-cancel-sweep (plan 172) reproduces it in the sim
+against the real Control and the fuji-secure peer, explains the miss
+(#270 neutralised the fuzz teardown's forced completion, which was this
+state), and generalises into a certified cancel sweep. Rule from now on:
+a hardware-found defect gets a failing sim reproduction before its fix.
