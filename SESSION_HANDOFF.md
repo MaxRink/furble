@@ -878,3 +878,17 @@ against the real Control and the fuji-secure peer, explains the miss
 (#270 neutralised the fuzz teardown's forced completion, which was this
 state), and generalises into a certified cancel sweep. Rule from now on:
 a hardware-found defect gets a failing sim reproduction before its fix.
+
+Update 2026-09-05 02:00: #245 hardware bench FAILED at step 3 (firmware
+dev+g7987529d, X100VI in pairing mode after deleting furble's pairing on
+the camera): rc=13, rc=520, then a camera-side re-pair ("Secured!")
+followed by a second security initiate during "Requesting status", the
+camera terminating the link, and "registration aborted after link loss",
+looping; the stale-bond counter never fired. Also learned: after the
+camera deletes the pairing it stops advertising until its pairing screen
+is open, so the recovery is only reachable in pairing mode. The #245
+lane is fixing both defects with peer-replayed regressions. #273 is
+being reworked to the user's feedback (indicator placement toggle,
+icons back, no font caps, settings rotary collisions, pictures on the
+PR, user merges). The user's own UI disconnect/reconnect worked on the
+second try (intermittent, no log). The stick is idle on dev+g7987529d.
