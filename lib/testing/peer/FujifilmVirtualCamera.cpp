@@ -1,4 +1,5 @@
 #include <chrono>
+#include <thread>
 
 #include "FujifilmVirtualCamera.h"
 
@@ -384,6 +385,12 @@ void FujifilmVirtualCamera::clearFaults() {
   m_DropOnSubscribe.clear();
   m_OperationFault = nullptr;
   m_StaleSubscribeSession = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_StallMutex);
+    m_SecureConnectionStallMs = 0;
+    m_StallLinkDown = true;
+  }
+  m_StallSignal.notify_all();
   m_RequireLongConnParamsAfterIdentifier = false;
   m_DelayRegistrationConnParamsUntilFastRequest = false;
   m_RequestConnParamsOnSubscribe = false;
@@ -414,6 +421,16 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
 
 void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   (void)reason;
+  {
+    // Release a handshake parked in secureConnection(). This runs on whichever
+    // thread issued the terminate, so it is the only place the stall can be
+    // ended from. Unconditional: a terminate may arrive for a client the peer
+    // has already dropped, and a stall left parked would hang the harness.
+    const std::lock_guard<std::mutex> lock(m_StallMutex);
+    m_StallLinkDown = true;
+  }
+  m_StallSignal.notify_all();
+
   if (m_Client == &client) {
     // Cancel the pending flappy drop for this session only: a stale or
     // foreign client's teardown must not disarm the current session's timer.
@@ -693,11 +710,49 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
 }
 
 bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
+  // Block first, like the real call. Parking here rather than polling a cancel
+  // is the point: this is the one wait in the connect path that no token can
+  // shorten. Only a link terminate ends it early, which is what the peer's own
+  // disconnect() signals below.
+  {
+    std::unique_lock<std::mutex> lock(m_StallMutex);
+    if (m_SecureConnectionStallMs > 0) {
+      const uint32_t stall = m_SecureConnectionStallMs;
+      m_StallLinkDown = false;
+      m_StallAborted = false;
+      m_StallEntries++;
+      const bool terminated = m_StallSignal.wait_for(lock, std::chrono::milliseconds(stall),
+                                                     [this]() { return m_StallLinkDown; });
+      if (terminated) {
+        m_StallAborted = true;
+      }
+      // Either way the handshake failed: NimBLE reports the failure to the
+      // parked caller both when the link dies under it and when the pairing
+      // timeout expires.
+      return false;
+    }
+  }
+
   return m_SecureConnectionResult && m_Connected && (m_Client == &client);
 }
 
 void FujifilmVirtualCamera::setSecureConnectionResult(bool result) {
   m_SecureConnectionResult = result;
+}
+
+void FujifilmVirtualCamera::setSecureConnectionStallMs(uint32_t stallMs) {
+  const std::lock_guard<std::mutex> lock(m_StallMutex);
+  m_SecureConnectionStallMs = stallMs;
+}
+
+bool FujifilmVirtualCamera::secureStallWasAborted() const {
+  const std::lock_guard<std::mutex> lock(m_StallMutex);
+  return m_StallAborted;
+}
+
+uint32_t FujifilmVirtualCamera::secureStallEntries() const {
+  const std::lock_guard<std::mutex> lock(m_StallMutex);
+  return m_StallEntries;
 }
 
 void FujifilmVirtualCamera::setRequireLongConnParamsAfterIdentifier(bool require) {
