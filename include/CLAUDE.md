@@ -27,11 +27,6 @@ Public headers for the app layer in src/, one header per module
   importer both read the old layout through `multiselect_legacy_t` and widen it.
   Changing that constant again means adding another legacy layout, not dropping
   every saved selection.
-- `FurbleUI.h` declares `UI::floatingIndicatorReserve()`. Its board list is the
-  set of boards whose navigation indicators float over the page instead of
-  sitting in a navbar, and it must track the indicator construction in
-  `UI::UI()`. It returns zero elsewhere, and callers must not write that zero
-  over a theme padding.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.

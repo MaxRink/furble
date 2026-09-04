@@ -1581,31 +1581,13 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
   lv_image_set_src(icon, symbol);
 }
 
-int32_t UI::floatingIndicatorReserve(void) {
-  // The Stick boards float m_Left, m_OK and m_Right over the page instead of
-  // reserving a navbar row, so full width content draws under the right one.
-  // Everything else reserves a navbar and needs nothing kept clear. Keep this
-  // board list in step with the indicator construction in UI::UI().
-  if (M5.Touch.isEnabled()) {
-    return 0;
-  }
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickS3:
-      return ICON_HEADER_SIZE;
-    default:
-      return 0;
-  }
-}
-
 lv_obj_t *UI::addMenuItem(const menu_t &menu,
                           const lv_image_dsc_t *icon,
                           const char *text,
                           bool checkbox,
                           const int32_t col_pos,
-                          const int32_t row_pos) {
+                          const int32_t row_pos,
+                          bool wrapText) {
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   // Whether this row is laid out as an icon row. The 80x160 panel has never
   // drawn the icon but still lays the label out as though it did, so keep those
@@ -1712,24 +1694,26 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
           label, connectedPage ? fontForConnectedMenu(textSize) : fontForIconMenu(textSize), 0);
 #endif
       lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    } else {
-      // A camera row is the only icon-less menu item, and a camera name is now
-      // composed by the vendor client, so it can be wider than an 80x160 row.
-      // Wrap it instead of scrolling it. LV_LABEL_LONG_SCROLL_CIRCULAR runs a
-      // permanent animation that invalidates the row on every frame, which is
-      // the redraw trap the project guide names, and it hides most of the name
-      // at any instant. rebuildCamerasPage() already made the same choice for
-      // the same reason.
+    } else if (wrapText) {
+      // A camera name is composed by the vendor client, so it can be wider than
+      // an 80x160 row. Wrap it instead of scrolling it.
+      // LV_LABEL_LONG_SCROLL_CIRCULAR runs a permanent animation that
+      // invalidates the row on every frame, which is the redraw trap the
+      // project guide names, and it hides most of the name at any instant.
+      // rebuildCamerasPage() already made the same choice for the same reason.
       //
-      // A wrapped row is taller and fills its width, so it reaches the floating
-      // navigation indicators the Stick boards draw over the page. Keep the
-      // right indicator's width clear; a scrolled single line never got that
-      // far down the page. Only where there is something to keep clear: writing
-      // a zero here would replace the theme's menu_cont horizontal padding on
-      // every board that reserves a navbar instead.
-      if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-        lv_obj_set_style_pad_right(cont, reserve, LV_PART_MAIN);
-      }
+      // Only the rows whose text is a camera name ask for this. PR #266 wrapped
+      // every icon-less row, on the reasoning that a camera row is the only
+      // one, and that is not so: a menu entry built with no icon is icon-less
+      // too. Wrapping "Feedback Events" onto a second line pushed the 135x240
+      // Feedback page 13 px past the physical-button layout. A fixed menu label
+      // is not user data, is chosen to fit, and keeps the scroll it had.
+      //
+      // A wrapped row is taller and fills its width. It used to reserve the
+      // right indicator's width here, because that indicator floated over the
+      // content area and a wrapped row reached it. It no longer floats: all
+      // three indicators sit in the reserved navigation band, so there is
+      // nothing over the page to keep clear.
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
@@ -1738,6 +1722,14 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       // overflows by 31, with the header back button hidden because this page is
       // the session root. Cap this page's face at Normal so every entry stays on
       // screen at every text size. Every other page still grows.
+      if (connectedPage) {
+        lv_obj_set_style_text_font(label, fontForConnectedMenu(textSize), 0);
+      }
+#endif
+    } else {
+      lv_obj_set_width(label, LV_PCT(100));
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+#if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
       if (connectedPage) {
         lv_obj_set_style_text_font(label, fontForConnectedMenu(textSize), 0);
       }
@@ -1958,7 +1950,7 @@ lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMo
   }
 
   auto camera = CameraList::get(index);
-  lv_obj_t *item = addMenuItem(menu, NULL, camera->getName().c_str(), checkbox);
+  lv_obj_t *item = addMenuItem(menu, NULL, camera->getName().c_str(), checkbox, 0, 0, true);
 
   // Stash the CameraList index, not a raw Camera pointer. A raw pointer would
   // dangle once CameraList::load() frees and rebuilds the list, so a stale menu
@@ -5455,13 +5447,11 @@ void UI::rebuildCamerasPage(menu_t &menu) {
   for (const auto &target : targets) {
     lv_obj_t *label = lv_label_create(menu.page);
     lv_obj_set_width(label, LV_PCT(100));
-    // The composed camera name plus the status word wraps onto a second line,
-    // which reaches the navigation indicators the Stick boards float over the
-    // page. Keep the right indicator's width clear, as the camera list rows do,
-    // and leave the theme's padding alone where there is nothing to clear.
-    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-      lv_obj_set_style_pad_right(label, reserve, LV_PART_MAIN);
-    }
+    // The composed camera name plus the status word wraps onto a second line.
+    // That used to reach the navigation indicators the Stick boards floated over
+    // the page, so this row reserved the right indicator's width too. All three
+    // indicators are in the reserved navigation band now, so nothing is drawn
+    // over the page and the reservation is gone.
     // The text is near static, so clip with dots instead of a circular
     // scroll that would invalidate the row on every tick.
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);

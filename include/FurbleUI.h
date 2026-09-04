@@ -944,16 +944,14 @@ class UI {
   /** Set the icon symbol in the root window header. */
   void setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol);
 
-  /** Pixels to keep clear on the right of a full width menu row. */
-  static int32_t floatingIndicatorReserve(void);
-
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
                                const lv_image_dsc_t *icon,
                                const char *text,
                                bool checkbox = false,
                                const int32_t col_pos = 0,
-                               const int32_t row_pos = 0);
+                               const int32_t row_pos = 0,
+                               bool wrapText = false);
 
   /** Add a menu switch item. */
   void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);

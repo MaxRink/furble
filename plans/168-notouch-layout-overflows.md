@@ -479,16 +479,47 @@ contract `FurbleUI.h` now carries. No sdkconfig changed and no firmware
 behaviour outside
 the UI layout changed.
 
-## Owed at the next rebase
+## What PR #266 no longer needs
 
-PR #266 merges before this one. When this branch rebases onto it, its
-`floatingIndicatorReserve()` becomes dead: it reserves content-area room for an
-indicator that floats over the page, and after this change none does. Delete the
-function and both call sites, the `include/CLAUDE.md` bullet that documents it,
-and the paragraph in plan 167 that introduces it. Keep the rest of #266:
-`camera-name-rows.txt` and the `LV_LABEL_LONG_WRAP` change stand on their own
-and
-are not affected by the indicator move.
+#266 merged first and this branch is rebased onto it. Its
+`UI::floatingIndicatorReserve()` reserved the right indicator's width on any
+full width menu row, because a wrapped camera row is tall enough to reach an
+indicator that floats over the page. Fix 1 moved that indicator into the
+reserved navigation band, so nothing is drawn over page content on any board and
+there is nothing left to reserve. The function, its declaration, both call sites
+in `addMenuItem` and `rebuildCamerasPage`, its `include/CLAUDE.md` bullet and
+the paragraph in plan 167 that introduced it are deleted here, and the
+`src/CLAUDE.md` rule that told a full width row to keep it clear now says the
+opposite.
+
+The camera rows still wrap on `LV_LABEL_LONG_WRAP` rather than scrolling, for
+the redraw reason #266 gives, and `e2e/camera-name-rows.txt` still asserts
+`ui.indicator_clearance clear` on the saved list, the scan list and the Cameras
+page. That scenario is what makes the deletion provable rather than plausible.
+Restoring the float without the reservation, at the offset master used on each
+board, fails it on 80x160 with `overlap`; with the indicator in the band it
+passes with no reservation anywhere. Both runs are in the tally.
+
+### One thing #266 needed narrowing
+
+The no-touch leg went red on `bughunt/feedback-hidden-route.txt` after the
+rebase, on 135x240, `ui.overflow yes` by 13 px. #266 wrapped every icon-less
+menu row, reasoning in its own comment that "a camera row is the only icon-less
+menu item". That is not so: a menu entry built with a null icon is icon-less
+too. "Feedback Events" is one, it is wide enough to wrap at 135 px, and the
+second line it gained pushed the Feedback page past the shipped layout's 167 px.
+
+`addMenuItem` now takes `wrapText`, and `addCameraItem` is its only caller that
+sets it. A camera name is user data composed by the vendor client and can be
+wider than any row; a fixed menu label is chosen to fit and keeps the scroll it
+always had. That is the rule `src/CLAUDE.md` now states. The overflow is gone
+and `camera-name-rows` is unaffected, because every row it measures is a camera
+row.
+
+This is the leg doing its job: the defect reached master 40 minutes before this
+rebase, in the touch layout it is 26 px of slack away from mattering, and
+nothing but a no-touch run would have seen it.
+
 
 ## Deviations
 
