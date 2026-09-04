@@ -2,6 +2,7 @@
 #define FURBLE_HOST_FUJIFILM_VIRTUAL_CAMERA_H
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -168,6 +169,17 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const std::string &identifier() const;
   bool connected() const;
   void setSecureConnectionResult(bool result);
+
+  // Model the stale-bond secureConnection() block observed on hardware.
+  //
+  // NimBLE's secureConnection() is a blocking call with its own internal
+  // timeout, not a poll loop, so nothing inside Camera::connect() can shorten
+  // it and the plan 148 cancel token cannot reach it. On an X100VI whose bond
+  // the camera has deleted, it blocks for the full pairing timeout. Setting a
+  // stall here reproduces that: the peer sleeps before answering, so the
+  // control task is parked inside the attempt holding Camera::m_Mutex exactly
+  // as it is on the device.
+  void setSecureConnectionStallMs(uint32_t stallMs);
   void setRequireLongConnParamsAfterIdentifier(bool require);
   void setDelayRegistrationConnParamsUntilFastRequest(bool delay);
   void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
@@ -265,6 +277,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
   bool m_SecureConnectionResult = true;
+  std::atomic<uint32_t> m_SecureConnectionStallMs {0};
   bool m_RequireLongConnParamsAfterIdentifier = false;
   bool m_DelayRegistrationConnParamsUntilFastRequest = false;
   bool m_ConnParamsNegotiated = false;

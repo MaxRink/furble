@@ -1,4 +1,5 @@
 #include <chrono>
+#include <thread>
 
 #include "FujifilmVirtualCamera.h"
 
@@ -693,7 +694,18 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
 }
 
 bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
+  // Block first, like the real call. Sleeping here rather than polling a cancel
+  // is the point: this is the one wait in the connect path that no token can
+  // shorten.
+  const uint32_t stall = m_SecureConnectionStallMs.load();
+  if (stall != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(stall));
+  }
   return m_SecureConnectionResult && m_Connected && (m_Client == &client);
+}
+
+void FujifilmVirtualCamera::setSecureConnectionStallMs(uint32_t stallMs) {
+  m_SecureConnectionStallMs.store(stallMs);
 }
 
 void FujifilmVirtualCamera::setSecureConnectionResult(bool result) {
