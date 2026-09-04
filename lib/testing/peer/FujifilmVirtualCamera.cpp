@@ -394,6 +394,12 @@ void FujifilmVirtualCamera::clearFaults() {
   m_SecureConnectionDropsLink = false;
   m_SecureTimeoutsRemaining = 0;
   m_RefuseWhileBonded = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_StallMutex);
+    m_SecureConnectionStallMs = 0;
+    m_StallLinkDown = true;
+  }
+  m_StallSignal.notify_all();
   m_RequireLongConnParamsAfterIdentifier = false;
   m_DelayRegistrationConnParamsUntilFastRequest = false;
   m_RequestConnParamsOnSubscribe = false;
