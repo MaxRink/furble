@@ -6,6 +6,11 @@
 
 namespace Furble::Sim {
 
+// Upper bound for the modelled secure-handshake stall, in milliseconds. Ten
+// minutes is far above anything a BLE link supervision timeout can reach, so a
+// value past it is a scripting mistake rather than a long test.
+constexpr uint32_t SECURE_STALL_MAX_MS = 600000;
+
 enum class scenario_action_kind_t {
   SIMPLE,
   BUTTON_MODE,
@@ -17,6 +22,7 @@ enum class scenario_action_kind_t {
   NAV,
   SCROLL,
   PAGE,
+  SECURE_STALL,
   INVALID,
 };
 

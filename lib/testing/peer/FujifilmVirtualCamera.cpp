@@ -721,8 +721,7 @@ bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
       m_StallLinkDown = false;
       m_StallAborted = false;
       m_StallEntries++;
-      const bool terminated = m_StallSignal.wait_for(lock, std::chrono::milliseconds(stall),
-                                                     [this]() { return m_StallLinkDown; });
+      const bool terminated = waitForStallLocked(lock, stall);
       if (terminated) {
         m_StallAborted = true;
       }
@@ -738,6 +737,35 @@ bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
 
 void FujifilmVirtualCamera::setSecureConnectionResult(bool result) {
   m_SecureConnectionResult = result;
+}
+
+bool FujifilmVirtualCamera::waitForStallLocked(std::unique_lock<std::mutex> &lock,
+                                               uint32_t stallMs) {
+  if (Host::peerStallFunction() == nullptr) {
+    // Host harness: park on the condition variable, on the host clock, exactly
+    // as the terminate expects.
+    return m_StallSignal.wait_for(lock, std::chrono::milliseconds(stallMs),
+                                  [this]() { return m_StallLinkDown; });
+  }
+
+  // Simulator: the deadline belongs to the virtual clock, which no host
+  // condition variable can wait on. Spend it in slices on the installed clock
+  // and read the terminate flag between them, so a terminate still ends the
+  // wait early. The slice is the terminate's resolution, not the model's: it is
+  // one control tick, so an abort is observed in the same tick it lands.
+  constexpr uint32_t STALL_SLICE_MS = 50;
+  uint32_t remaining = stallMs;
+  while (remaining != 0) {
+    const uint32_t slice = remaining < STALL_SLICE_MS ? remaining : STALL_SLICE_MS;
+    lock.unlock();
+    Host::peerStall(slice);
+    lock.lock();
+    if (m_StallLinkDown) {
+      return true;
+    }
+    remaining -= slice;
+  }
+  return m_StallLinkDown;
 }
 
 void FujifilmVirtualCamera::setSecureConnectionStallMs(uint32_t stallMs) {

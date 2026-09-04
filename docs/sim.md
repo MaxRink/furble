@@ -281,6 +281,35 @@ seed a bounded value.
 `CameraList::match` and `CameraList::save`, so the scenario boots with saved
 cameras exactly as a device does after the user scanned and connected once.
 
+`ble_max_clients` caps the mock NimBLE client pool the way the board's
+`CONFIG_BT_NIMBLE_MAX_CONNECTIONS` caps it, which is 9 on every furble board.
+The pool is unlimited by default, so a client leaked once per connect cycle is
+invisible; on the device it ends the session for good, because
+`NimBLEDevice::createClient()` starts returning nullptr and every later connect
+fails until a reboot. `ble_client_selfdelete` models NimBLE freeing a
+self-deleting client when its disconnect fires, which is what
+`Camera::connect()` arms on a live session. Both are off by default so no
+existing scenario changes; a scenario that walks many connect cycles turns both
+on and bounds `ble.live_clients`. One limit: the mock frees a self-deleting
+client of a link-loss disconnect only when `reapDeferredClients()` is pumped
+from a quiescent point, and the simulator has no such point, so the pool guard
+is sound on Camera-driven teardowns and not on `action drop`.
+
+`secure_stall_ms` holds every Fujifilm peer inside its security handshake for
+N virtual milliseconds (`seed secure_stall_ms N`). `NimBLEClient::secureConnection()` is the one wait in a
+Fujifilm Secure connect that takes no cancel token, and `Camera::connect()`
+holds `Camera::m_Mutex` across it, so an attempt parked there is uncancellable
+and a target task's `Camera::disconnect()` blocks behind it. The virtual peers
+answered that call in under a millisecond, so before this seed no scenario could
+cancel into a live connect at all. The stall ends early once the link goes down,
+which is how a supervision timeout or a central-side terminate releases the real
+call. 3500 is the bench signature of a healthy X100VI Secure connect; 32000 is
+the link supervision timeout bound that releases a camera which never finishes
+the encryption procedure. The default 0 keeps the instant handshake every other
+scenario is timed against. The knob is the peer's
+`FujifilmVirtualCamera::setSecureConnectionStallMs()`, shared with the host
+suite, which spends real milliseconds where the simulator spends virtual ones.
+
 The scenario-only settings are `saved_camera`, `connect_fail`, `no_touch`,
 `scan_start_probe`, `ble_saved`, `liveness_check`, and
 `liveness_grace_ms`. `saved_camera` adds an
@@ -517,6 +546,10 @@ The other namespaces are:
 - `control.reconnect_attempt`: number of reconnect retries already performed,
   which walks the `ReconnectBackoff::delayMs()` curve.
 - `control.reconnect_backoff` and `control.infinite_reconnect`: `yes` or `no`.
+- `ble.live_clients`: number of NimBLE clients the mock currently holds. With
+  `ble_max_clients` and `ble_client_selfdelete` seeded this is the client-leak
+  guard: a session holds one, and anything left over after a settled teardown is
+  a client the firmware did not reclaim.
 - `control.connecting_camera`: name of the camera currently being connected.
 - `camera.count`: numeric camera-list row count, useful for scan de-duplication
   assertions.

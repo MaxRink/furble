@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "MockNimBLE.h"
+#include "PeerStall.h"
 
 namespace Furble {
 namespace Host {
@@ -186,6 +187,15 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // that the stall expired on its own. The peer's own disconnect() releases the
   // wait and the call then returns false, the verdict NimBLE gives when the
   // link dies under the handshake. 0 disables the stall.
+  //
+  // The wait runs on the clock PeerStall.h installs. The host harness keeps the
+  // wall clock, where a real millisecond is the point. The simulator runs a
+  // virtual clock the host clock knows nothing about, so a wall-clock park
+  // there would neither land at the modelled moment nor be deterministic; it
+  // installs a virtual-time delay instead and the wait polls the terminate
+  // between slices rather than sleeping on the condition variable. Same
+  // semantics either way: expire on the deadline, or wake early on the
+  // terminate and report the abort.
   void setSecureConnectionStallMs(uint32_t stallMs);
   // Did a stall end because the link was terminated rather than by its own
   // deadline? This is the difference between an abort that works and a test
@@ -272,6 +282,10 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     bool notification = false;
     bool response = false;
   };
+
+  // The stall wait, on whichever clock PeerStall.h has installed. Called with
+  // m_StallMutex held; may release and retake it.
+  bool waitForStallLocked(std::unique_lock<std::mutex> &lock, uint32_t stallMs);
 
   bool isServiceSuppressed(const NimBLEUUID &service) const;
   bool isPairHandshakeWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;

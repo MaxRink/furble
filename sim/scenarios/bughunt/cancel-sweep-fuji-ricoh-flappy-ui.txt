@@ -1,0 +1,139 @@
+# Cancel sweep: healthy Fujifilm plus a Ricoh GR IV in standby, UI connect
+#
+# Plan 172. One cancel per (offset, pass): each lands at a fixed virtual-time
+# offset across the connect window, and after every one of them the same settle
+# invariant runs. The drain must empty inside DISCONNECT_DRAIN_RECLAIM_MS, no
+# connect may be left in flight, and Control must be back at idle. The file ends
+# by proving the connect gate reopened, because a wedge presents as a session
+# that never comes back rather than as a bad state at the instant of the cancel.
+#
+# The 2026-08-28 pairing: one camera that connects and one that fails its
+# security handshake the way a supervision timeout does before it lets a
+# connect through. Each cancel therefore lands while a target is retrying,
+# which is the interleaving the original teardown wedge was found in.
+#
+# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
+seed ble_peers fuji-ricoh-flappy
+seed ble_saved true
+seed reconnect true
+wait 300
+assert control.state idle
+
+# offset 10 ms, pass 1
+action connect
+wait 10
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 150 ms, pass 1
+action connect
+wait 150
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 400 ms, pass 1
+action connect
+wait 400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 900 ms, pass 1
+action connect
+wait 900
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1800 ms, pass 1
+action connect
+wait 1800
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 2600 ms, pass 1
+action connect
+wait 2600
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3400 ms, pass 1
+action connect
+wait 3400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 10 ms, pass 2
+action connect
+wait 10
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 150 ms, pass 2
+action connect
+wait 150
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 400 ms, pass 2
+action connect
+wait 400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 900 ms, pass 2
+action connect
+wait 900
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1800 ms, pass 2
+action connect
+wait 1800
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 2600 ms, pass 2
+action connect
+wait 2600
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3400 ms, pass 2
+action connect
+wait 3400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# The gate has to be open for the user's next connect. Only the healthy
+# peer is expected back, so this asserts the session, not a target count.
+action connect
+assert-eventually-virtual 30000 control.state active
+assert ui.liveness_violations 0
+exit

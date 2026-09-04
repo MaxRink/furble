@@ -163,6 +163,14 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical drop action");
       }
       return true;
+    case scenario_action_kind_t::SECURE_STALL:
+      if (!action.name.empty() || !action.mode.empty() || action.integer != 0
+          || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
+          || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
+          || action.values[2] != 0.0F || action.index > SECURE_STALL_MAX_MS) {
+        return fail(error, "noncanonical secure stall action");
+      }
+      return true;
     case scenario_action_kind_t::IMU_VECTOR:
       if (!action.mode.empty() || !allZeroExceptValues(action)
           || !known(action.name, {"imu.accel", "imu.gyro"}) || !std::isfinite(action.values[0])
@@ -425,6 +433,19 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     action->batteryVoltage = static_cast<uint16_t>(voltage);
     action->batteryCurrent = static_cast<int32_t>(current);
     action->batteryCharging = oneOf(args[4], {"1", "true", "yes", "on"});
+    return accept();
+  }
+
+  if (args[0] == "ble-secure-stall") {
+    if (args.size() != 2) {
+      return fail(error, "ble-secure-stall requires a duration in milliseconds");
+    }
+    uint64_t stall = 0;
+    if (!parseUnsigned(args[1], SECURE_STALL_MAX_MS, &stall)) {
+      return fail(error, "ble-secure-stall duration is out of range");
+    }
+    action->kind = scenario_action_kind_t::SECURE_STALL;
+    action->index = static_cast<uint32_t>(stall);
     return accept();
   }
 

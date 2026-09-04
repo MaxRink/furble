@@ -1,0 +1,36 @@
+# Power off while a connect is in flight: the bench hang
+#
+# Bench, 2026-09-04, M5StickS3 on master with an X100VI: Off hung and the next
+# boot reported brownout, which is what holding the power button through a hung
+# shutdown produces.
+#
+# UI::doPowerOff() runs on the UI task and calls doDisconnect() before
+# Platform::powerOff(). doDisconnect() calls Control::disconnect(), whose
+# interactive path waits for targetTasksStopped(), and that cannot be true while
+# a connect is in flight, because m_ConnectInProgress is part of the predicate.
+# An attempt parked in NimBLEClient::secureConnection() cannot be cancelled, so
+# the wait runs to DISCONNECT_WAIT_MAX_MS and Off takes 30 seconds with a frozen
+# UI. There is no bound on the power-off path of its own: it inherits that one.
+#
+# CERTIFIED FALSE: this FAILS on master, at the first `assert_max clock.ms`,
+# with about 30010 against a 6000 ms bound. Promote it when the power-off path
+# is bounded.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+seed secure_stall_ms 32000
+wait 300
+
+# The connect parks in the security handshake, where nothing can cancel it.
+action connect
+wait 2000
+assert control.state connecting
+assert control.connect_in_progress yes
+
+# Off. The user gets no screen, no feedback and no shutdown for as long as this
+# takes. The bound is six virtual seconds from boot, which is generous for a
+# path whose own work is tens of milliseconds.
+action nav power_off
+assert_max clock.ms 6000
+assert platform.power_off yes
+exit

@@ -295,7 +295,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "boot_splash",   "connect_fail",      "no_touch",
       "saved_camera",  "scan_start_probe",  "ble_saved",
       "recon_backoff", "auto_off_charging", "imu",
-      "imu_sensor",    "liveness_check",
+      "imu_sensor",    "liveness_check",    "ble_client_selfdelete",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -355,6 +355,12 @@ void validateSeed(const std::string &name, const std::string &value) {
     }
     return;
   } else if (name == "scan_timeout") {
+    parseUnsigned(value);
+    return;
+  } else if (name == "secure_stall_ms") {
+    parseUnsigned(value);
+    return;
+  } else if (name == "ble_max_clients") {
     parseUnsigned(value);
     return;
   } else if (name == "gps_uart_mode") {
@@ -673,15 +679,18 @@ void readScript(const std::string &path) {
   }
 
   for (const Step &step : steps) {
-    if (step.type != StepType::ACTION || step.action.kind != scenario_action_kind_t::SIMPLE) {
+    if (step.type != StepType::ACTION) {
       continue;
     }
+    const bool simpleFault =
+        step.action.kind == scenario_action_kind_t::SIMPLE
+        && (step.action.name == "ble-kill" || step.action.name == "ble-standby"
+            || step.action.name == "ble-connect-fail" || step.action.name == "ble-connect-ok"
+            || step.action.name == "ble-withhold-registration"
+            || step.action.name == "ble-allow-registration");
     // The transport faults act on virtual BLE peers, so a scenario that uses
     // one without seeding a topology is a scripting error, not a silent no-op.
-    if ((step.action.name == "ble-kill" || step.action.name == "ble-standby"
-         || step.action.name == "ble-connect-fail" || step.action.name == "ble-connect-ok"
-         || step.action.name == "ble-withhold-registration"
-         || step.action.name == "ble-allow-registration")
+    if ((simpleFault || step.action.kind == scenario_action_kind_t::SECURE_STALL)
         && (scenarioSettings.find("ble_peers") == scenarioSettings.end()
             || scenarioSettings.at("ble_peers") == "none")) {
       std::cerr << "Invalid simulator action '" << step.name
@@ -904,10 +913,21 @@ void checkLivenessInvariant(void) {
 //                    make every Fujifilm peer answer the link but never
 //                    confirm registration, so the production connect blocks
 //                    in its registration wait
+//   ble-secure-stall <ms>
+//                    hold every Fujifilm peer inside secureConnection() for
+//                    <ms> virtual milliseconds. 0 restores the instant
+//                    handshake, which is how a scenario models the bond being
+//                    refreshed after a stale-bond cycle
 //
 // Returns true when the action was one of these, so the caller does not also
 // dispatch it into the UI.
 bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
+  if (action.kind == scenario_action_kind_t::SECURE_STALL) {
+    bleSetSecureStallMs(action.index);
+    *applied = true;
+    return true;
+  }
+
   if (action.kind != scenario_action_kind_t::SIMPLE) {
     return false;
   }
@@ -1180,6 +1200,9 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "platform.download_lock") {
     return downloadLockState();
+  }
+  if (key == "ble.live_clients") {
+    return std::to_string(bleLiveClientCount());
   }
   if (key == "clock.ms") {
     return std::to_string(clockMillis());

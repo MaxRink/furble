@@ -1,0 +1,115 @@
+# Cancel sweep: cancelling an automatic reconnect, Fujifilm Secure
+#
+# Plan 172. One cancel per (offset, pass): each lands at a fixed
+# virtual-time offset across the connect window, and after every one of
+# them the same settle invariant runs. The drain must empty inside
+# DISCONNECT_DRAIN_RECLAIM_MS, no connect may be left in flight, and Control
+# must be back at idle.
+#
+# The connect entry here is neither the Connect button nor a saved-session
+# restore: the control task re-enters connectAll() on its own after the link
+# dies, with infinite reconnect on. A user cancel arriving during that attempt
+# has to unwind an attempt no UI action started, and the drain has to empty even
+# though the reconnect loop is still trying to make targets.
+#
+# Offsets 200, 1500 and 3000 ms into the reconnect, then 200 ms again as the
+# repeat pass. The stall is armed only for the reconnect, because an armed
+# handshake is a failing handshake: the peer models the stale-bond block, where
+# the call returns false whether it expires or is terminated. So each cycle
+# connects healthy, arms the stall, drops the link, and cancels inside the
+# reconnect the control task starts.
+#
+# No client-pool guard here, unlike the other two sweeps. This leg severs the
+# link with `action drop`, and the mock frees a self-deleting client of a
+# link-loss disconnect only when reapDeferredClients() is pumped from a
+# quiescent point. The simulator has no such point yet, so the guard would
+# report a leak the firmware does not have. plans/172 records it.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+wait 300
+assert control.state idle
+
+# offset 200 ms into the reconnect, pass 1
+# A healthy handshake first: the session has to exist before the
+# control task can reconnect it.
+action ble-secure-stall 0
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+# The bond goes stale under the live session, so the reconnect that
+# follows parks in a handshake nothing can cancel.
+action ble-secure-stall 3500
+# The link dies. Nothing asks for the connect that follows: the
+# control task starts it itself, which is the third connect entry.
+action drop
+wait 200
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1500 ms into the reconnect, pass 1
+# A healthy handshake first: the session has to exist before the
+# control task can reconnect it.
+action ble-secure-stall 0
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+# The bond goes stale under the live session, so the reconnect that
+# follows parks in a handshake nothing can cancel.
+action ble-secure-stall 3500
+# The link dies. Nothing asks for the connect that follows: the
+# control task starts it itself, which is the third connect entry.
+action drop
+wait 1500
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3000 ms into the reconnect, pass 1
+# A healthy handshake first: the session has to exist before the
+# control task can reconnect it.
+action ble-secure-stall 0
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+# The bond goes stale under the live session, so the reconnect that
+# follows parks in a handshake nothing can cancel.
+action ble-secure-stall 3500
+# The link dies. Nothing asks for the connect that follows: the
+# control task starts it itself, which is the third connect entry.
+action drop
+wait 3000
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 200 ms into the reconnect, pass 2
+# A healthy handshake first: the session has to exist before the
+# control task can reconnect it.
+action ble-secure-stall 0
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+# The bond goes stale under the live session, so the reconnect that
+# follows parks in a handshake nothing can cancel.
+action ble-secure-stall 3500
+# The link dies. Nothing asks for the connect that follows: the
+# control task starts it itself, which is the third connect entry.
+action drop
+wait 200
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# The gate has to be open for the user's next connect.
+action ble-secure-stall 0
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert ui.liveness_violations 0
+exit

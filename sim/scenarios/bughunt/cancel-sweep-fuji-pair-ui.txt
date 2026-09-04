@@ -1,0 +1,138 @@
+# Cancel sweep: two Fujifilm peers, multi-connect UI entry
+#
+# Plan 172. One cancel per (offset, pass): each lands at a fixed virtual-time
+# offset across the connect window, and after every one of them the same settle
+# invariant runs. The drain must empty inside DISCONNECT_DRAIN_RECLAIM_MS, no
+# connect may be left in flight, and Control must be back at idle. The file ends
+# by proving the connect gate reopened, because a wedge presents as a session
+# that never comes back rather than as a bad state at the instant of the cancel.
+#
+# Two targets, so a cancel has to unwind two per-target tasks and two
+# connect attempts and the drain has to empty both. A teardown that settles
+# one target and strands the other reads here as zombies stuck above zero.
+#
+# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
+seed ble_peers fuji-pair
+seed ble_saved true
+seed reconnect true
+wait 300
+assert control.state idle
+
+# offset 10 ms, pass 1
+action connect-two
+wait 10
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 150 ms, pass 1
+action connect-two
+wait 150
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 400 ms, pass 1
+action connect-two
+wait 400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 900 ms, pass 1
+action connect-two
+wait 900
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1800 ms, pass 1
+action connect-two
+wait 1800
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 2600 ms, pass 1
+action connect-two
+wait 2600
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3400 ms, pass 1
+action connect-two
+wait 3400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 10 ms, pass 2
+action connect-two
+wait 10
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 150 ms, pass 2
+action connect-two
+wait 150
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 400 ms, pass 2
+action connect-two
+wait 400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 900 ms, pass 2
+action connect-two
+wait 900
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1800 ms, pass 2
+action connect-two
+wait 1800
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 2600 ms, pass 2
+action connect-two
+wait 2600
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3400 ms, pass 2
+action connect-two
+wait 3400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# The gate has to be open for the user's next connect.
+action connect-two
+assert-eventually-virtual 20000 control.state active
+assert control.connected 2
+assert ui.liveness_violations 0
+exit

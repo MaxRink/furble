@@ -1,0 +1,86 @@
+# Reproduction of the 2026-09-04 hardware wedge (issue #271, fix PR #272).
+#
+# Bench, M5StickS3 on master 8bdc52e4 with an X100VI bonded: 20 console cycles
+# of `connect 0` then `disconnect` at 2 s, 4 s or 6 s into the connect, with
+# infinite reconnect on. Afterwards Control stayed at `disconnecting` with
+# `connect_in_progress true` and `connecting none`, zombies climbing 3 to 7,
+# and a fresh `connect 0` refused, for more than two minutes until a reboot.
+# `connecting none` with `connect_in_progress true` is the signature: it is
+# only reachable through the interactive teardown breaking out of its
+# DISCONNECT_WAIT_MAX_MS cap and draining a target whose connect is still
+# running.
+#
+# The ingredient no certified scenario had is a cancel landing INSIDE a live
+# connect. `NimBLEClient::secureConnection()` takes no cancel token and
+# `Camera::connect()` holds `Camera::m_Mutex` across it, so an attempt parked
+# there is uncancellable and the target task's `Camera::disconnect()` blocks
+# behind it. The virtual peers answered that call in under a millisecond, so
+# every certified cancel landed either before the attempt started or after it
+# had finished. `seed secure_stall_ms` gives the peer the blocking shape. The
+# value is the BLE link supervision timeout bound, which is what releases the
+# real call when the camera never completes the encryption procedure: the
+# stale-bond window PR #272 records as its one residual hole.
+#
+# What the simulator then shows, in order:
+#   1. The cancel cannot unwind the attempt, so the interactive teardown burns
+#      its whole 30 s cap and breaks out with no log line.
+#   2. It drains a target whose connect is still running into the zombie list.
+#   3. The next user connect clears `m_ConnectAbort` for that in-flight
+#      attempt, so when it finally unwinds it takes the infinite-reconnect
+#      retry branch instead of reporting the abort, and churns against a camera
+#      that still holds the abandoned session.
+#   4. The user's own connect never reaches active.
+#
+# CERTIFIED FALSE: this FAILS on master, at `assert_max clock.ms`, and that is
+# the point. Promote it to certified once the fix lands.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+seed secure_stall_ms 32000
+wait 300
+assert control.state idle
+
+# Cycle 1. The cancel lands 2 s into a connect whose handshake is still
+# running, the first of the three bench offsets.
+action connect
+wait 2000
+assert control.state connecting
+action cancel
+# A cancel must unwind the attempt, not burn DISCONNECT_WAIT_MAX_MS. The run is
+# about 2320 virtual ms old at the cancel, so a teardown that honours the
+# cancel returns inside this bound with room to spare. On master it returns at
+# about 32335, which is the 30 s cap expiring silently.
+assert_max clock.ms 8000
+# The drain bound is DISCONNECT_DRAIN_RECLAIM_MS (2000 ms).
+assert-eventually-virtual 5000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# Cycle 2, cancelling 4 s in. The same bound, cumulative: one burned cap
+# anywhere in the run puts the clock past it.
+action connect
+wait 4000
+action cancel
+assert_max clock.ms 12000
+assert-eventually-virtual 5000 control.zombies 0
+assert control.connect_in_progress no
+
+# Cycle 3, cancelling 6 s in.
+action connect
+wait 6000
+action cancel
+assert_max clock.ms 25000
+assert-eventually-virtual 5000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# The bond is refreshed, so the camera completes its handshake again. The
+# cancels are over; what is being asserted from here is only that the session
+# comes back.
+action ble-secure-stall 0
+
+# And the connect gate must be open again for the user's next connect.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+exit

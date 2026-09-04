@@ -1,0 +1,49 @@
+# Cancel sweep: cancelling the boot autoconnect
+#
+# Plan 172. One cancel per (offset, pass): each lands at a fixed virtual-time
+# offset across the connect window, and after every one of them the same settle
+# invariant runs. The drain must empty inside DISCONNECT_DRAIN_RECLAIM_MS, no
+# connect may be left in flight, and Control must be back at idle. The file ends
+# by proving the connect gate reopened, because a wedge presents as a session
+# that never comes back rather than as a bad state at the instant of the cancel.
+#
+# The third connect entry that exists on the host: the connect main.cpp
+# starts before the UI exists, from the saved active camera, rather than one
+# a menu button requested. The simulator's autoconnect seed always restores
+# a FauxNY camera, so the window is FauxNY's 2500 ms polling connect.
+#
+# The `restart` verb reboots the device, so the boot connect can be cancelled
+# more than once in one run: that is the repeat pass.
+#
+# The console connect entry has no counterpart here. FURBLE_CONSOLE is not
+# compiled into the simulator, and its distinguishing property is that a
+# request can be queued while the UI task is blocked inside doDisconnect,
+# which a scripted action cannot express because the driver awaits its
+# result. plans/172 records what closing that needs.
+seed autoconnect true
+seed reconnect true
+wait 300
+
+# Pass 1: cancel 400 ms into the boot connect.
+wait 400
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+restart
+wait 300
+
+# Pass 2: cancel 1600 ms into the boot connect of the next boot.
+wait 1600
+action cancel
+assert-eventually-virtual 6000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# The gate has to be open for the user's next connect.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert ui.liveness_violations 0
+exit

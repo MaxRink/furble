@@ -137,6 +137,24 @@ int runSimulator() {
   if (connectFail) {
     Sim::bleSetConnectFail(true);
   }
+  // Model NimBLE freeing a self-deleting client on its disconnect. Off by
+  // default so no existing scenario changes lifetimes underneath it.
+  Sim::bleSetDeferredClientDelete(Sim::scenarioSettingIsTrue("ble_client_selfdelete"));
+
+  // Cap the client pool the way the board does. Off by default so no existing
+  // scenario changes, but a scenario that walks many connect cycles can hold
+  // the production leak guard to the real CONFIG_BT_NIMBLE_MAX_CONNECTIONS.
+  Sim::bleSetMaxClients(
+      static_cast<size_t>(std::stoul(Sim::scenarioSetting("ble_max_clients", "0"))));
+
+  // How long a Fujifilm peer holds the connecting task inside its security
+  // handshake. Zero keeps the instant handshake every existing scenario is
+  // timed against; a cancel sweep seeds the bench duration so a cancel can land
+  // inside a live connect at all.
+  if (topology != "none") {
+    Sim::bleSetSecureStallMs(
+        static_cast<uint32_t>(std::stoul(Sim::scenarioSetting("secure_stall_ms", "0"))));
+  }
 
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
