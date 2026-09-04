@@ -273,6 +273,7 @@ seed a bounded value.
 | --- | --- |
 | `none` | no peers (the default) |
 | `fuji` | one healthy Fujifilm Basic camera |
+| `fuji-secure` | one healthy Fujifilm Secure camera, which advertises a serial |
 | `fuji-pair` | two healthy Fujifilm Basic cameras |
 | `fuji-ricoh-flappy` | one healthy Fujifilm plus a Ricoh GR IV in BLE standby that fails one security handshake the way a supervision timeout does (rc=520) before letting a connect through |
 
@@ -446,6 +447,8 @@ The complete `ui.*` query set is:
 | `ui.modal_count` | Numeric live modal count. |
 | `ui.focus` | `none`, `stale`, or `ok`. |
 | `ui.focus_on_page` | `yes` or `no`. |
+| `ui.row_text` | Text of the focused menu row, or `none`. Every whitespace character is reported as an underscore, so a literal underscore and a space both read as `_`. |
+| `ui.row_scrolling` | `yes`, `no`, or `none`. Whether the focused menu row's label is running LVGL's scroll animation. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |

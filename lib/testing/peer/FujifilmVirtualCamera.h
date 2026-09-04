@@ -28,7 +28,13 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
     NimBLEAddress address = NimBLEAddress(0x112233445566ULL, 0);
     std::array<uint8_t, 4> token = {0xa1, 0xb2, 0xc3, 0xd4};
     bool secure = false;
-    std::array<uint8_t, 5> serial = {0x01, 0x02, 0x03, 0x04, 0x05};
+    // Bench capture, 2026-09-02: an X100VI in pairing mode advertises the bare
+    // local name "X100VI" and a five byte serial of 31 43 34 46 39, which is
+    // the ASCII text "1C4F9". The console lines are quoted in
+    // plans/167-fujifilm-device-name.md. The peer carries those bytes so the
+    // host tests derive the displayed name from a realistic advertisement
+    // rather than an arbitrary one.
+    std::array<uint8_t, 5> serial = {'1', 'C', '4', 'F', '9'};
     std::vector<NimBLEUUID> advertised_services;
   };
 

@@ -64,6 +64,15 @@ protocol core.
   flag and advance a per-connect callback generation before every Basic or
   Secure attempt, and keep active promotion behind a bounded wait that aborts
   on link loss or Control cancellation.
+- A Fujifilm Secure body advertises only the bare model in the BLE local name
+  ("X100VI"); the longer label on the camera's own Bluetooth screen is never on
+  the air. The displayed name is therefore the advertised model plus the
+  advertised five byte serial, composed by
+  `FujifilmProtocol::deviceName()`. Both constructors compose it, so a saved
+  entry gains the serial on load without any change to the stored record: the
+  serial was always in `nvs_t`. Keep the composition idempotent. Do not do this
+  for Basic, whose manufacturer data carries a rotating pairing token rather
+  than a stable serial. Name derivation must never change matcher acceptance.
 - Ricoh fresh pairing treats a bonded-address security failure as a stale local
   bond: delete that bond and return failure so the next bounded control retry
   can perform numeric comparison. Saved reconnect failures preserve the bond;

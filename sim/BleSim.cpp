@@ -67,10 +67,16 @@ VirtualPeer *peerForAddressLocked(const NimBLEAddress &address) {
   return nullptr;
 }
 
-void addFujifilm(uint64_t address, const std::string &name, uint32_t flappyFailAttempts) {
+void addFujifilm(uint64_t address,
+                 const std::string &name,
+                 uint32_t flappyFailAttempts,
+                 bool secure = false) {
   Host::FujifilmVirtualCamera::Config config;
   config.name = name;
   config.address = NimBLEAddress(address, 0);
+  // A Basic body advertises a rotating pairing token; a Secure body advertises
+  // its serial, which is what the displayed name is composed from.
+  config.secure = secure;
   auto peer = std::make_unique<VirtualPeer>();
   peer->name = name;
   peer->address = config.address;
@@ -162,8 +168,8 @@ void radioTask(void *) {
 }  // namespace
 
 bool bleTopologyIsValid(const std::string &topology) {
-  return topology == "none" || topology == "fuji" || topology == "fuji-pair"
-         || topology == "fuji-ricoh-flappy";
+  return topology == "none" || topology == "fuji" || topology == "fuji-secure"
+         || topology == "fuji-pair" || topology == "fuji-ricoh-flappy";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -172,6 +178,8 @@ void bleStartPeers(const std::string &topology) {
     const std::lock_guard<std::mutex> lock(peersMutex);
     if (topology == "fuji") {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
+    } else if (topology == "fuji-secure") {
+      addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0, /*secure=*/true);
     } else if (topology == "fuji-pair") {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addFujifilm(FUJIFILM_B_ADDRESS, "FUJIFILM X-S20", 0);

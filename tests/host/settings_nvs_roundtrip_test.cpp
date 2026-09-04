@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -536,6 +537,99 @@ void testUnknownAndAliasedKeysAreIgnored() {
         "wrong-namespace key remains isolated in the mock store");
 }
 
+// A remembered multi-connect entry is keyed on the camera's displayed name.
+// A vendor client may compose that name, so two bodies of one model can now
+// agree well past the old sixteen byte field. The stored field must be wide
+// enough to hold the whole name and the comparison must be over the whole
+// string, or the set ticks the wrong body.
+void testMultiselectDiscriminatesLongNames() {
+  const char *first = "X100VI DEADBEEF01";
+  const char *second = "X100VI DEADBEEF02";
+
+  check(std::strlen(first) >= Settings::MULTISELECT_NAME_LEGACY_MAX,
+        "the sample names do not fit the legacy field");
+  check(std::strncmp(first, second, Settings::MULTISELECT_NAME_LEGACY_MAX - 1) == 0,
+        "the sample names agree over the legacy compared length");
+  check(std::strlen(first) < Settings::MULTISELECT_NAME_MAX,
+        "the sample names fit the current field");
+
+  Settings::multiselect_t selection = {};
+  check(Settings::multiselectAdd(selection, first), "a composed name is remembered");
+  check(selection.count == 1, "the remembered count advanced");
+  check(Settings::multiselectContains(selection, first), "the remembered body is recognised");
+  check(!Settings::multiselectContains(selection, second),
+        "another body of the same model is not recognised");
+  check(!Settings::multiselectContains(selection, nullptr), "a missing name is never recognised");
+
+  // The store width boundary. The widest name that fits must round trip, and
+  // the narrowest that does not must be refused outright: stored truncated it
+  // would be byte-for-byte the widest name, and would then claim that entirely
+  // different camera.
+  const std::string widest(Settings::MULTISELECT_NAME_MAX - 1, 'x');
+  const std::string tooWide = widest + "y";
+
+  Settings::multiselect_t boundary = {};
+  check(Settings::multiselectAdd(boundary, widest.c_str()),
+        "a name that exactly fills the field is remembered");
+  check(boundary.count == 1, "the widest name advanced the count");
+  check(Settings::multiselectContains(boundary, widest.c_str()),
+        "a name that exactly fills the field is recognised");
+  check(!Settings::multiselectAdd(boundary, tooWide.c_str()),
+        "a name one character too long is refused");
+  check(boundary.count == 1, "a refused name does not advance the count");
+  check(!Settings::multiselectContains(boundary, tooWide.c_str()),
+        "a refused name is not recognised");
+
+  Settings::multiselect_t truncated = {};
+  check(!Settings::multiselectAdd(truncated, tooWide.c_str()),
+        "an oversized name is refused rather than stored truncated");
+  check(!Settings::multiselectContains(truncated, widest.c_str()),
+        "an oversized name never claims the camera its truncation would match");
+
+  Settings::multiselect_t full = {};
+  for (size_t i = 0; i < Settings::MULTISELECT_MAX; i++) {
+    check(Settings::multiselectAdd(full, ("Camera " + std::to_string(i)).c_str()),
+          "a name is remembered while the set has room");
+  }
+  check(!Settings::multiselectAdd(full, "Camera overflow"), "a full set rejects another name");
+}
+
+// Widening the field changed the stored record size. A set saved by an earlier
+// build must still load, or every user silently loses their selection.
+void testMultiselectLegacyRecordUpgrades() {
+  nvs_test_reset();
+  const auto &entry = Settings::get(Settings::MULTISELECT);
+
+  Settings::multiselect_legacy_t legacy = {};
+  std::snprintf(legacy.name[0], Settings::MULTISELECT_NAME_LEGACY_MAX, "%s", "X100VI 1C4F9");
+  std::snprintf(legacy.name[1], Settings::MULTISELECT_NAME_LEGACY_MAX, "%s", "FauxNY Camera");
+  legacy.count = 2;
+
+  Furble::Preferences preferences;
+  check(preferences.begin(entry.nvs_namespace, false), "opened the multi-connect namespace");
+  check(preferences.put(entry.key, &legacy, sizeof(legacy)) == sizeof(legacy),
+        "stored a record in the legacy layout");
+  preferences.end();
+
+  const Settings::multiselect_t upgraded = Settings::load<Settings::MULTISELECT>();
+  check(upgraded.count == 2, "the legacy remembered count survives the upgrade");
+  check(Settings::multiselectContains(upgraded, "X100VI 1C4F9"),
+        "a legacy remembered body is still recognised");
+  check(Settings::multiselectContains(upgraded, "FauxNY Camera"),
+        "the second legacy remembered body is still recognised");
+
+  // An SD backup exported before the field widened carries the old record size.
+  // Restoring it must widen the record instead of failing the whole import.
+  nvs_test_reset();
+  const std::string legacyHex =
+      std::to_string(sizeof(legacy)) + ":" + Furble::bytesToHex(&legacy, sizeof(legacy));
+  check(Furble::importSetting(Settings::get(Settings::MULTISELECT), legacyHex),
+        "a legacy SD backup still imports");
+  const Settings::multiselect_t restored = Settings::load<Settings::MULTISELECT>();
+  check(Settings::multiselectContains(restored, "X100VI 1C4F9"),
+        "a legacy SD backup restores the remembered body");
+}
+
 }  // namespace
 
 int main() {
@@ -545,6 +639,8 @@ int main() {
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
   testUnknownAndAliasedKeysAreIgnored();
+  testMultiselectDiscriminatesLongNames();
+  testMultiselectLegacyRecordUpgrades();
 
   if (failures != 0) {
     std::cerr << "settings NVS/SD round-trip tests: " << failures << " FAILED\n";
@@ -552,6 +648,7 @@ int main() {
   }
 
   std::cout << "settings NVS/SD round-trip tests: PASS (" << cases.size()
-            << " settings; defaults, typed NVS, SD serialize/import, unknown keys)\n";
+            << " settings; defaults, typed NVS, SD serialize/import, unknown keys, "
+            << "multi-connect keying)\n";
   return 0;
 }

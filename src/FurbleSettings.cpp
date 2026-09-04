@@ -1,6 +1,10 @@
 #include <esp_bt.h>
 #include <nvs_flash.h>
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
 #include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -398,7 +402,14 @@ Settings::multiselect_t Settings::load<Settings::multiselect_t>(type_t type) {
   prefs.begin(setting.nvs_namespace, true);
   size_t len = prefs.get(setting.key, &selection, sizeof(selection));
   if (len != sizeof(selection)) {
+    // A record written before MULTISELECT_NAME_MAX widened is still valid
+    // data. Read it back in its own layout and widen it, so a remembered set
+    // survives the upgrade instead of being silently dropped.
     selection = {};
+    multiselect_legacy_t legacy = {};
+    if (prefs.get(setting.key, &legacy, sizeof(legacy)) == sizeof(legacy)) {
+      selection = multiselectFromLegacy(legacy);
+    }
   }
   prefs.end();
 
@@ -585,6 +596,52 @@ void Settings::init(void) {
 
 bool Settings::batterySaver(void) {
   return load<BATTERY_SAVER>();
+}
+
+bool Settings::multiselectAdd(multiselect_t &selection, const char *name) {
+  if ((name == nullptr) || (selection.count >= MULTISELECT_MAX)) {
+    return false;
+  }
+  // A name that does not fit would be stored truncated, and a truncated entry
+  // compares equal to a different camera whose whole name is that prefix. Refuse
+  // it, so the set forgets one body rather than ticking another one.
+  if (strlen(name) >= MULTISELECT_NAME_MAX) {
+    return false;
+  }
+
+  snprintf(selection.name[selection.count], MULTISELECT_NAME_MAX, "%s", name);
+  selection.count++;
+  return true;
+}
+
+bool Settings::multiselectContains(const multiselect_t &selection, const char *name) {
+  if (name == nullptr) {
+    return false;
+  }
+
+  const size_t count = std::min<size_t>(selection.count, MULTISELECT_MAX);
+  for (size_t i = 0; i < count; i++) {
+    // A stored slot from a corrupt record need not be terminated, so bound the
+    // read before comparing it as a string.
+    if (strnlen(selection.name[i], MULTISELECT_NAME_MAX) >= MULTISELECT_NAME_MAX) {
+      continue;
+    }
+    if (strcmp(selection.name[i], name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Settings::multiselect_t Settings::multiselectFromLegacy(const multiselect_legacy_t &legacy) {
+  multiselect_t selection = {};
+
+  selection.count = static_cast<uint8_t>(std::min<size_t>(legacy.count, MULTISELECT_MAX));
+  for (size_t i = 0; i < MULTISELECT_MAX; i++) {
+    memcpy(selection.name[i], legacy.name[i], MULTISELECT_NAME_LEGACY_MAX);
+    selection.name[i][MULTISELECT_NAME_LEGACY_MAX - 1] = '\0';
+  }
+  return selection;
 }
 
 bool Settings::sleepConnEffective(void) {

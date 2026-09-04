@@ -515,7 +515,17 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::MULTISELECT:
     {
       Settings::multiselect_t selection = {};
-      if (!decodeSizedHex(text, &selection, sizeof(selection)) || !validMultiselect(selection)) {
+      if (!decodeSizedHex(text, &selection, sizeof(selection))) {
+        // A backup exported before MULTISELECT_NAME_MAX widened carries the old
+        // record size. It is still valid data, so widen it rather than failing
+        // the whole restore.
+        Settings::multiselect_legacy_t legacy = {};
+        if (!decodeSizedHex(text, &legacy, sizeof(legacy))) {
+          return false;
+        }
+        selection = Settings::multiselectFromLegacy(legacy);
+      }
+      if (!validMultiselect(selection)) {
         return false;
       }
       Settings::save<Settings::multiselect_t>(setting.type, selection);

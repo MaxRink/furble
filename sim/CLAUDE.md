@@ -271,7 +271,8 @@ a regression.
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
   boundary.
 - `seed ble_peers <topology>` selects the virtual radio topology (`none`,
-  `fuji`, `fuji-pair`, `fuji-ricoh-flappy`) and `seed ble_saved true` persists
+  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`) and `seed ble_saved
+  true` persists
   its cameras through the production `CameraList::match` and `save`. The
   `scan-distinct-rows-heartbeat.txt` scenario asserts both matched rows and the
   live watchdog after the UI task drains them. `seed scan_timeout N` bounds the
@@ -430,7 +431,11 @@ a regression.
   nothing about the bottom two.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but
   inactive camera so the Connect and Delete lists render and their buttons
-  enable; the `nav` action reaches `scan`, `connect`, `delete`, `infrared`,
+  enable; `ui.row_text` reports the focused row's text with whitespace as
+  underscores, since a scenario expected value is a single token;
+  `ui.row_scrolling` reports whether that row's label is running LVGL's scroll
+  animation, so a scenario proves a composed name fits rather than assuming it;
+  the `nav` action reaches `scan`, `connect`, `delete`, `infrared`,
   `feedback` and `storage` in addition to the settings pages. `nav level_main`
   clicks the home menu Level entry (plan 153), which is a second button onto
   the shared Level page and so has no `nav level` alias of its own; it reports

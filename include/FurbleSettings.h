@@ -102,12 +102,27 @@ class Settings {
   } calibration_t;
 
   static constexpr size_t MULTISELECT_MAX = 8;
-  static constexpr size_t MULTISELECT_NAME_MAX = 16;
+  // A remembered entry is the camera's displayed name, and a vendor client may
+  // compose that name rather than show the bare advertised one. A Fujifilm
+  // Secure body renders "MODEL SERIAL", and the serial falls back to ten hex
+  // characters when it is not printable text. Sixteen bytes truncated that, and
+  // a truncated name cannot tell two bodies of one model apart. Thirty-two
+  // holds a twenty-one character model, a space, and the ten character
+  // fallback.
+  static constexpr size_t MULTISELECT_NAME_MAX = 32;
+  /** The field width used before composed vendor names needed the extra room. */
+  static constexpr size_t MULTISELECT_NAME_LEGACY_MAX = 16;
 
   typedef struct {
     char name[MULTISELECT_MAX][MULTISELECT_NAME_MAX];
     uint8_t count;
   } multiselect_t;
+
+  /** The record layout written before MULTISELECT_NAME_MAX widened. */
+  typedef struct {
+    char name[MULTISELECT_MAX][MULTISELECT_NAME_LEGACY_MAX];
+    uint8_t count;
+  } multiselect_legacy_t;
 
   typedef struct {
     type_t type;
@@ -172,6 +187,29 @@ class Settings {
 
   /** Return true when the Battery Saver power profile is enabled. */
   static bool batterySaver(void);
+
+  /**
+   * Remember one camera name in a multi-connect selection.
+   *
+   * Returns false when the set is full, the name is missing, or the name does
+   * not fit the field. A truncated entry would compare equal to a different
+   * camera whose whole name is that prefix, so a name that does not fit is
+   * refused rather than shortened: the set forgets one body instead of ticking
+   * another one.
+   */
+  static bool multiselectAdd(multiselect_t &selection, const char *name);
+
+  /**
+   * Return true when a camera name is in a remembered multi-connect set.
+   *
+   * The comparison is over the whole stored string. A prefix comparison would
+   * tick a different body whose displayed name agrees only up to the compared
+   * length, which composed "model serial" names make reachable.
+   */
+  static bool multiselectContains(const multiselect_t &selection, const char *name);
+
+  /** Widen a record written in the layout that preceded MULTISELECT_NAME_MAX. */
+  static multiselect_t multiselectFromLegacy(const multiselect_legacy_t &legacy);
 
   // Effective power-setting accessors. When Battery Saver is on, each returns
   // the battery-optimal value from the bundle, otherwise the user's stored

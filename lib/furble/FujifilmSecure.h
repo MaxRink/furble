@@ -3,6 +3,8 @@
 
 #include <NimBLEUUID.h>
 
+#include <string>
+
 #include "Fujifilm.h"
 
 namespace Furble {
@@ -108,6 +110,14 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
 
   /** Log the first rejected Fujifilm advertisement of a scan window. */
   void logFirstReject(const char *reason);
+
+  /**
+   * Displayed name for a body, built from the advertised model and the serial.
+   *
+   * Used by both constructors, so a saved entry stored before this existed
+   * gains the serial on load without a stored-format change.
+   */
+  static std::string composeName(const std::string &advertisedName, const serial_t &serial);
 
   QueueHandle_t m_Queue = NULL;
   serial_t m_Serial = {0x00};
