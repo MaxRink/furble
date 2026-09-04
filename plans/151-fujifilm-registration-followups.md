@@ -250,7 +250,10 @@ separator is a contract between Control and the UI rather than formatting.
 Control substitutes "The camera" for an empty name, matching the connect-failed
 text, so the box can never open with a blank first line.
 
-Rendered evidence, captured from the scenarios on each panel build:
+Rendered evidence, captured from the scenarios on each panel build. PR #266 has
+merged, so the first three columns are rendered with the composed name it
+produces, `FUJIFILM X100VI 1C4F9`, rather than the bare model; the last column
+is the longest name that code path can produce, the hex fallback:
 
 | Panel | Pairing lost | Connect failed | Already saved | Longest #266 name |
 | --- | --- | --- | --- | --- |
@@ -258,8 +261,9 @@ Rendered evidence, captured from the scenarios on each panel build:
 | 135x240 M5StickS3 | full text | full text | full text | full name over three lines |
 | 80x160 M5StickC | full text, small font | full text, small font | full text, small font | full name over three lines, full instruction |
 
-Nothing is ellipsized on any panel today, including 80x160 with
-`FUJIFILM X-H2S 3143344639`. Step 5 is a guard that no message currently
+Nothing is ellipsized on any panel today, including 80x160 with the composed
+`FUJIFILM X100VI 1C4F9`, which wraps to two lines there, and with the longest
+hex fallback `FUJIFILM X-H2S 3143344639`. Step 5 is a guard that no message currently
 reaches: once the chrome shrink freed the header and footer rows, the name had
 room to wrap. It stays because a longer name or a larger text size can still get
 there, and the alternative to ellipsizing the name is losing the instruction.
@@ -536,21 +540,21 @@ Mutation evidence:
 Every mutation above was run from a verified green baseline and reverted with a
 verified green revert check, so no result is an artifact of a stale object.
 
-Verification, on the head rebased onto master 2e986fe6 (PRs #261, #264, #270
-and #274):
+Verification, on the head rebased onto master 8bdc52e4 (PRs #261, #264, #270,
+#274 and #266):
 
-- Host suite 96/96 ctests green, zero failures. Earlier revisions of this plan
-  carried a caveat about `sim-scheduler` failing under load; PR #274 fixed that,
-  and the caveat no longer applies.
-- Python suite 138 passed.
+- Host suite 97/97 ctests green, zero failures, `control-abort-republish`
+  included. Earlier revisions of this plan carried a caveat about
+  `sim-scheduler` failing under load; PR #274 fixed that, and it no longer
+  applies.
+- Python suite 144 passed.
 - Simulator scenario manifest complete (`check_sim_scenarios.py`), portability
-  contract clean, CI workflow trigger check passed, `run-invalid.sh` green
-  including the four `action-scan-row-*` fixtures.
+  contract clean, CI workflow trigger check passed.
 - Simulator builds green on all three modeled panels (135x240 M5StickS3, 80x160
-  M5StickC, 320x240 M5Stack Core). Certified suites, every panel, no failures:
-  e2e 85/85, 10/10 and 10/10; bughunt 8/8, 8/8 and 4/4. The four connect-error
-  scenarios also pass on every panel under the `FURBLE_SIM_NO_TOUCH=1`
-  environment override, 24 runs in all.
+  M5StickC, 320x240 M5Stack Core). Certified suites on M5StickS3: e2e 86/86 and
+  bughunt 8/8, no failures. The four connect-error scenarios pass on every panel
+  in the touch layout and under the `FURBLE_SIM_NO_TOUCH=1` environment
+  override, 24 runs in all.
 - Coverage floor green, and worth a note: the CI coverage job failed once on an
   earlier head with `lib/furble/Camera.cpp: 73.28% below floor 73.75%`, then
   passed on a re-run of the identical commit with no change. Measured locally on
@@ -604,13 +608,23 @@ asserted end to end, each with its dismissal and each with `ui.modal_overflow
 no`, on all three panels and in both input layouts. The last of them,
 already-saved, needed the `action scan-row` verb to be reachable at all.
 
-Coordination: PR #266 merges first, and it conflicts with this PR textually in
-`lib/furble/FujifilmSecure.h`. Both insert at the same anchor, immediately after
-`void logFirstReject(const char *reason);` and before `QueueHandle_t m_Queue`:
-#266 adds `composeName()`, this PR adds `SECURE_FAILURE_LIMIT`. Keep both
-insertions. It is a conflict, not a rebase error, and there is no semantic
-overlap: #266 touches the includes, `composeName()`, both constructors and
-`serialise()` in `FujifilmSecure.cpp`, while this PR touches only `_connect()`.
+Coordination: PR #266 has merged and this PR is rebased on it. The predicted
+conflict at the `logFirstReject` anchor in `lib/furble/FujifilmSecure.h`
+happened exactly as described, and both insertions were kept: #266's
+`composeName()` and this PR's `SECURE_FAILURE_LIMIT`. Three more came with it,
+all additive: the `ble_peers` allowlist and its documentation in
+`sim/CLAUDE.md`, where #266's `fuji-secure` and this PR's `fuji-secure-stale`
+both belong, and the simulator query block in `src/FurbleUI.cpp`, where #266
+adds `row_text` and `row_scrolling` and this PR adds `modal_overflow`.
+
+One behavioural interaction, which is the point of the merge order: #266's
+composed names now flow into these error boxes. A Secure body that advertised
+`FUJIFILM X100VI` is shown as `FUJIFILM X100VI 1C4F9`, so the camera line in
+every box is longer than it was. That is why `fujifilm-repair-needed` pins the
+reason against `Camera::getDisplayName()` rather than the advertised string:
+the two are no longer the same, and the displayed one is what the box has to
+fit. Re-captured on all three panels; 80x160 wraps the composed name to two
+lines and still renders the whole instruction with `ui.modal_overflow no`.
 
 Coordination: PR #265 adds the console `pair <scan-index>` verb. It routes
 through the same UI request path, so pointing its handler at
