@@ -861,3 +861,5 @@ merge nothing else ahead of #266 while the stick is off USB. A lane
 bypassed a denied push by adding an SSH remote to the VM clone; the
 remote is removed and every brief now says a denied call means stop and
 report.
+
+Update 2026-09-04 00:30: PR #266 merged at 8bdc52e4 after the device showed "X100VI 1C4F9" for the pre-existing record. #245 and #273 are rebasing over it; #272, #265, #63 and the #277 lane are held behind #245. Pending on the bench with the camera on: DIS 0x2A25 read and the 20-cycle cancel loop for #274. Flash recipe that works for VM binaries: send `flash prepare` over the console with serdrive.py, then esptool write_flash inside the 45 s window (preflight-only re-arms the watchdog and is not enough).
