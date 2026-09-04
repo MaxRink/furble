@@ -361,12 +361,13 @@ cancels rather than the full cross product. Measured on the 135x240 build:
 | `tools/check_ci_workflows.py`, `tools/check_portability_inventory.py --check` | pass |
 | `sim/scripts/check-doc-tokens.sh` | pass |
 | Certified e2e | 83 on 135x240, 8 on 80x160, 8 on 320x240 |
-| Certified bughunt | pass on all three panels, 116 s / 113 s / 110 s |
+| Certified bughunt | pass on all three panels, 17 / 16 / 12 scenarios, 163 s / 158 s / 161 s |
 | `run-invalid.sh`, `run-watchdog.sh` | pass |
 | `run-fuzz.sh`, 135x240 | 8 runs plus the determinism replay, exit 0, 0 forced completions |
 | clang-format 21.1.5 | clean |
 | em-dashes (bytes e2 80 94) | 0 |
 | sdkconfig | untouched |
+| `tools/coverage.py --check` | at or above every floor: host 64.02 (floor 62.55), sim union 54.42 (50.66), grand union 71.03 (69.26) |
 
 ### Against the fix branches
 
@@ -375,12 +376,15 @@ branch that fixes the token, and it says so by passing on exactly one of them.
 Both runs merged this branch into the fix branch in a scratch worktree and built
 the simulator there.
 
-| Tree | Reproduction | Detail |
+| Tree | `cancel-secure-window-wedge` | `power-off-during-connect-hang` |
 | --- | --- | --- |
-| master 8bdc52e4 | FAIL | `ASSERT_MAX FAILED: clock.ms expected <= 8000 got 32330` |
+| master 8bdc52e4 | FAIL, `clock.ms expected <= 8000 got 32330` | FAIL, `clock.ms expected <= 6000 got 32330` |
+| PR #272 head a376c4e7 | FAIL, identical assertion and value | FAIL, identical assertion and value |
+| PR #245 head 7987529d | PASS, cancels return at 2550, 7025 and 13255 ms | PASS, Off completes at 2550 ms |
 
-| PR #272 head a376c4e7 | FAIL | identical assertion, identical 32330 |
-| PR #245 head 7987529d | PASS | the cancel returns inside its bound, all three cycles settle, the closing connect reaches active |
+Every certified scenario in this PR passes on all three trees; the sweeps and
+the power-off matrix were rerun on both fix branches to confirm the fixes do not
+regress them.
 
 **#272 does not move this scenario at any offset, and that is correct.** #272
 makes the vendor waits that poll honour the plan 148 contract (Canon, DJI,
