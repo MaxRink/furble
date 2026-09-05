@@ -386,14 +386,14 @@ class UI {
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
-      // The units the roller offers are the units the rows show, so a board
-      // reads the same in both places. The narrow panels shorten both because
-      // their rows share one line with the value; see
-      // SpinValue::getShortUnitString.
-#if defined(FURBLE_M5COREX)
-      static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
-#else
+      // The narrow panels put four rollers on one row and the four character
+      // units make the last one wider than the room left, so it was drawn under
+      // the floating right legend. These are the conventional abbreviations and
+      // match what the value labels show through SpinValue::getShortUnitString.
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
       static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
+#else
+      static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
 #endif
       static constexpr std::array<uint32_t, 31> m_ExposurePresetMilliseconds = {
           1000,   1300,   1600,   2000,   2500,   3200,   4000,   5000,   6000,    8000,   10000,
@@ -683,6 +683,9 @@ class UI {
 
   static constexpr int32_t ICON_HEADER_SIZE = 24;
 
+  // Measured width of the floating right legend, or 0 where there is none.
+  static int32_t m_LegendWidth;
+
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
 
@@ -724,21 +727,18 @@ class UI {
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  // Rows sized to their content, not to equal halves of the page. At the
-  // largest size a name like "Settings" wraps to three lines, which is taller
-  // than half the page, and equal halves drew the second row of icons through
-  // the first row's text. Content rows grow instead and the page scrolls.
-  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_CONTENT, LV_GRID_CONTENT,
+  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_TEMPLATE_LAST};
 
   // the settings page holds more entries than the main menu, give it its own
   // rows so the main menu keeps its layout
-  // Four rows, sized to their content. The Settings page carries fourteen
-  // entries and three rows of four cells only held twelve, so two pairs shared
-  // a cell and drew through each other. Content rows also stop the row height
-  // clipping the entry labels off below their icons; the page scrolls instead.
+  //
+  // Four rows, not three. The page carries fourteen entries and three rows of
+  // four cells hold twelve, so two pairs shared a cell and drew through each
+  // other: Sensors with Intervalometer and IR settings with Feedback. One of
+  // each pair could not be opened.
   const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {
-      LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+      LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -834,36 +834,18 @@ class UI {
 
   /**
    * Count the visible labels and icons on the current page that intersect a
-   * navigation legend drawn over the page. Returns zero on a touch build, which
-   * draws no legends, and on a build whose legends are all in the reserved
-   * navigation band.
-   */
-  uint32_t countIndicatorOverlaps(void);
-
-  /**
-   * Count the pairs of visible labels on the current page whose drawn text
-   * overlaps. A grid or flex layout that puts two entries in one cell draws
-   * their labels through each other, which no fit or scroll query can see.
-   */
-  uint32_t countLabelOverlaps(void);
-  uint32_t countCutLabels(void);
-
-  /**
-   * Walk the spin rows on the current page, a container whose only visible
-   * children are a name label and a value label.
-   *
-   * Reports how many value labels are too narrow for their own text, which must
-   * always be zero because a clipped value reads as a different setting, and the
-   * fewest characters any name label still shows in full, which the layout holds
-   * at four. Returns {0, UINT32_MAX} when the page has no spin row.
+   * floating navigation indicator. Returns zero on a touch build, which has no
+   * indicators.
    */
   typedef struct {
     uint32_t clippedValues;
     uint32_t minNameChars;
     uint32_t cutNames;
   } spin_rows_t;
-
   spin_rows_t measureSpinRows(void);
+  uint32_t countIndicatorOverlaps(void);
+  uint32_t countLabelOverlaps(void);
+  uint32_t countCutLabels(void);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
@@ -968,6 +950,10 @@ class UI {
   /** Set the icon symbol in the root window header. */
   void setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol);
 
+  /** Pixels to keep clear on the right of a full width menu row. */
+  static int32_t floatingIndicatorReserve(void);
+  static void reserveLegendColumn(lv_obj_t *obj);
+
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
                                const lv_image_dsc_t *icon,
@@ -978,7 +964,7 @@ class UI {
                                bool wrapText = false);
 
   /** Add a menu switch item. */
-  void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
+  lv_obj_t *addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
 
   /** Add camera menu item. */
   static lv_obj_t *addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode);
@@ -1076,25 +1062,9 @@ class UI {
   void addDisplayMenu(const menu_t &parent);
 
   void addTextSizeMenu(const menu_t &parent);
-
-  /** Add the physical-button legend placement page. */
   void addLegendMenu(const menu_t &parent);
-
-  /**
-   * Where this build draws the physical-button legends, from the LEGEND
-   * setting. Always BOTTOM on a board whose legends live in a flex navbar,
-   * because nothing there floats and the setting has nothing to choose.
-   */
-  /** Whether this board draws legends the setting can actually move. */
   static bool legendSelectable(void);
-
   static uint8_t legendPlacement(void);
-
-  /**
-   * Pixels a full width page must keep clear on the right for the floating
-   * Right legend, or zero when nothing floats over the page.
-   */
-  static int32_t legendReserve(void);
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);
