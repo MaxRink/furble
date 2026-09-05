@@ -276,10 +276,14 @@ bool FujifilmSecure::_connect(void) {
     NimBLEDevice::deleteBond(bondAddress);
     clearSecureFailures();
 
-    // A camera already in pairing mode accepts a fresh pairing on this very
-    // link, so spend one attempt on it before giving up. m_Connected guards the
-    // m_Client deref: a security failure that dropped the link can free a
-    // self-deleting client (the #62 lifecycle rule).
+    // One fresh pairing attempt on this link before giving up. On NimBLE it
+    // always fails, because the deleteBond() above is ble_gap_unpair(), which
+    // terminates every connection to the peer before dropping the keys: there
+    // is no link left to pair on. It is kept because it costs one immediate
+    // failure, it is what produces the "Fresh pair failed" verdict below, and
+    // it recovers the session on any host whose unpair leaves the link up.
+    // m_Connected guards the m_Client deref: a security failure that dropped
+    // the link can free a self-deleting client (the #62 lifecycle rule).
     if (!m_Connected || !m_Client->secureConnection()) {
       // The camera is not in pairing mode. Retrying cannot conjure a pairing
       // the user has to authorise on the camera, so tell Control to stop the

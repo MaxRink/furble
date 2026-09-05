@@ -872,9 +872,16 @@ multi-connect session losing one camera's bond still keeps the other camera's
 link; scenario (d) fails if that scope is widened. Both the terminate and the
 scoping are pinned by mutation.
 
-The in-link fast path is not dead code: it stays the correct answer for a
-camera that refuses the dead keys on a link furble has not unpaired, which is
-the ordering `secureConnection()` takes when the bond was already absent.
+With the mock honest, the in-link fast path is unreachable on this stack, and
+it is worth being plain about that rather than dressing it up. It runs only
+immediately after `deleteBond()`, and an attempt that started unbonded returns
+earlier at `!bondedBefore`, so there is no ordering in which it meets a link
+the unpair has not already taken. What it still does is produce the verdict:
+the `secureConnection()` call fails, `Fresh pair failed` is logged, and
+`setNeedsRepair()` raises the prompt. Keeping the attempt costs one immediate
+failure and would recover the session on any host whose unpair leaves the link
+up, so it stays; the comment above it no longer promises a recovery this
+stack can deliver.
 
 Sim coverage: closed. The earlier revision of this plan noted that the
 simulator ran the real UI against `FurbleControlSim`, a fake Control, so there

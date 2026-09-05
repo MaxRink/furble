@@ -291,6 +291,17 @@ bool scenarioBondDeletePromptsThenPairsFresh() {
   check(NimBLEDevice::deleteBondCount() == 1, "with no further bond deletes");
   check(!camera->needsRepair(), "and the camera is no longer flagged for a re-pair");
 
+  // The recovered session has to stay up, not just touch ACTIVE. A fresh
+  // pairing that drops again a second later is not a recovery, and reaching
+  // the state is the one thing a wedged retry loop can also do briefly. The
+  // dwell also lets Control's periodic samplers run against the new link,
+  // which is what the pre-fix scenario got for free by recovering in place.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  check(control.getState() == Control::STATE_ACTIVE, "and the session is still up a moment later");
+  camera->shutterPress();
+  camera->shutterRelease();
+  check(!peer.writes().empty(), "with a shutter the camera actually receives");
+
   resetControl();
   return g_Failures == 0;
 }
