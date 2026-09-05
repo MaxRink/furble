@@ -244,6 +244,26 @@ jobs:
             FURBLE_SIM_BIN=sim/build-core/furble-sim \
             sh sim/scripts/run-e2e.sh
 
+      # Every step above measures the touch layout, because the M5GFX SDL panel
+      # always attaches a mouse-driven touch device. None of the three modeled
+      # boards has a touch panel: the Sticks and the M5Stack Core Basic all ship
+      # the physical-button layout, which is 26 px shorter. This step runs the
+      # same certified sets again in that layout, so the pages these boards
+      # really render are asserted rather than assumed. It is follow-up 3 of
+      # plan 165 and is green as of plan 168.
+      - name: Run certified scenarios in the shipped physical-button layout
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          sh sim/scripts/run-notouch.sh
+          FURBLE_SIM_BOARD_ID=m5stick-c \
+            FURBLE_SIM_BIN=sim/build-stickc/furble-sim \
+            sh sim/scripts/run-notouch.sh
+          FURBLE_SIM_BOARD_ID=m5stack-core \
+            FURBLE_SIM_BIN=sim/build-core/furble-sim \
+            sh sim/scripts/run-notouch.sh
+
       # Prove the IMU spirit level page (PR #28) is sim-verified on every panel
       # class. level-overflow.txt injects a tilt sweep through the sim IMU seam
       # and asserts the bubble tracks the tilt, the page renders and nothing

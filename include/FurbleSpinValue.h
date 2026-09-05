@@ -42,6 +42,15 @@ class SpinValue {
   /** Convert unit enumeration to string. */
   const char *getUnitString(void);
 
+  /**
+   * Convert unit enumeration to its shortest unambiguous string.
+   *
+   * The narrow panels put the row name and its value on one line, so the four
+   * character units cost the value the room it needs to show every digit. These
+   * are the conventional abbreviations and are never truncated.
+   */
+  const char *getShortUnitString(void);
+
   /** Convert milliseconds to hours:minutes:seconds. */
   static hms_t toHMS(uint32_t ms);
 
@@ -51,6 +60,7 @@ class SpinValue {
  private:
   // Relies on the unit_t enumeration order
   static constexpr std::array<const char *, 5> m_UnitMap = {"NIL", "INF", "msec", "secs", "mins"};
+  static constexpr std::array<const char *, 5> m_ShortUnitMap = {"NIL", "INF", "ms", "s", "min"};
 };
 }  // namespace Furble
 

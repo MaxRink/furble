@@ -386,7 +386,15 @@ class UI {
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
+      // The units the roller offers are the units the rows show, so a board
+      // reads the same in both places. The narrow panels shorten both because
+      // their rows share one line with the value; see
+      // SpinValue::getShortUnitString.
+#if defined(FURBLE_M5COREX)
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
+#else
+      static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
+#endif
       static constexpr std::array<uint32_t, 31> m_ExposurePresetMilliseconds = {
           1000,   1300,   1600,   2000,   2500,   3200,   4000,   5000,   6000,    8000,   10000,
           13000,  15000,  20000,  25000,  30000,  40000,  50000,  60000,  80000,   100000, 125000,
@@ -577,6 +585,7 @@ class UI {
   static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on";
   static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
   static constexpr const char *m_TextSizeStr = "Text size";
+  static constexpr const char *m_LegendStr = "Legend";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_SensorsStr = "Sensors";
   static constexpr const char *m_GPSStr = "GPS";
@@ -715,13 +724,21 @@ class UI {
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
+  // Rows sized to their content, not to equal halves of the page. At the
+  // largest size a name like "Settings" wraps to three lines, which is taller
+  // than half the page, and equal halves drew the second row of icons through
+  // the first row's text. Content rows grow instead and the page scrolls.
+  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_CONTENT, LV_GRID_CONTENT,
                                                    LV_GRID_TEMPLATE_LAST};
 
   // the settings page holds more entries than the main menu, give it its own
   // rows so the main menu keeps its layout
-  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
-                                                           LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  // Four rows, sized to their content. The Settings page carries fourteen
+  // entries and three rows of four cells only held twelve, so two pairs shared
+  // a cell and drew through each other. Content rows also stop the row height
+  // clipping the entry labels off below their icons; the page scrolls instead.
+  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {
+      LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -817,10 +834,36 @@ class UI {
 
   /**
    * Count the visible labels and icons on the current page that intersect a
-   * floating navigation indicator. Returns zero on a touch build, which has no
-   * indicators.
+   * navigation legend drawn over the page. Returns zero on a touch build, which
+   * draws no legends, and on a build whose legends are all in the reserved
+   * navigation band.
    */
   uint32_t countIndicatorOverlaps(void);
+
+  /**
+   * Count the pairs of visible labels on the current page whose drawn text
+   * overlaps. A grid or flex layout that puts two entries in one cell draws
+   * their labels through each other, which no fit or scroll query can see.
+   */
+  uint32_t countLabelOverlaps(void);
+  uint32_t countCutLabels(void);
+
+  /**
+   * Walk the spin rows on the current page, a container whose only visible
+   * children are a name label and a value label.
+   *
+   * Reports how many value labels are too narrow for their own text, which must
+   * always be zero because a clipped value reads as a different setting, and the
+   * fewest characters any name label still shows in full, which the layout holds
+   * at four. Returns {0, UINT32_MAX} when the page has no spin row.
+   */
+  typedef struct {
+    uint32_t clippedValues;
+    uint32_t minNameChars;
+    uint32_t cutNames;
+  } spin_rows_t;
+
+  spin_rows_t measureSpinRows(void);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
@@ -925,16 +968,14 @@ class UI {
   /** Set the icon symbol in the root window header. */
   void setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol);
 
-  /** Pixels to keep clear on the right of a full width menu row. */
-  static int32_t floatingIndicatorReserve(void);
-
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
                                const lv_image_dsc_t *icon,
                                const char *text,
                                bool checkbox = false,
                                const int32_t col_pos = 0,
-                               const int32_t row_pos = 0);
+                               const int32_t row_pos = 0,
+                               bool wrapText = false);
 
   /** Add a menu switch item. */
   void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
@@ -1035,6 +1076,25 @@ class UI {
   void addDisplayMenu(const menu_t &parent);
 
   void addTextSizeMenu(const menu_t &parent);
+
+  /** Add the physical-button legend placement page. */
+  void addLegendMenu(const menu_t &parent);
+
+  /**
+   * Where this build draws the physical-button legends, from the LEGEND
+   * setting. Always BOTTOM on a board whose legends live in a flex navbar,
+   * because nothing there floats and the setting has nothing to choose.
+   */
+  /** Whether this board draws legends the setting can actually move. */
+  static bool legendSelectable(void);
+
+  static uint8_t legendPlacement(void);
+
+  /**
+   * Pixels a full width page must keep clear on the right for the floating
+   * Right legend, or zero when nothing floats over the page.
+   */
+  static int32_t legendReserve(void);
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);

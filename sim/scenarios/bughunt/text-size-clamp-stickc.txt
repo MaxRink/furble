@@ -17,5 +17,10 @@ assert ui.page text_size
 # The roller clamps the out-of-range Large down to Normal, the board maximum.
 assert ui.text_size 1
 assert ui.text_size_options 2
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 exit

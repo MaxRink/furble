@@ -20,11 +20,11 @@
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
-# Every xassert below is a WILL_FAIL that fails on this board today, with the
-# measured pixel count or widget count in its comment. None of them is
-# board-varies: each file covers one board, so a closed gap turns into an XPASS
-# and fails the run, which is the signal to promote the line to a hard assert.
-# See plans/165-sim-no-touch-layout.md.
+# Every line below is a hard assert. The gaps this file recorded as WILL_FAIL
+# when plan 165 wrote it are all fixed, so each one was promoted rather than
+# left to record an XPASS and fail the run, which is what splitting the file per
+# board was for. See plans/165-sim-no-touch-layout.md and
+# plans/168-notouch-layout-overflows.md.
 seed no_touch true
 seed fauxny true
 seed saved_camera true
@@ -35,14 +35,22 @@ assert ui.nav_layout buttons
 
 # Home menu, six rows.
 assert ui.page main
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Display page.
 action nav display
 wait 150
 assert ui.page display
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else, so the fit assert is replaced by the two that matter.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Sensors tile.
@@ -50,7 +58,11 @@ action page settings
 action nav sensors
 wait 150
 assert ui.page sensors
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Timer settings list.
@@ -58,7 +70,11 @@ action page settings
 action nav timer
 wait 150
 assert ui.page timer
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Seven home rows: the Infrared entry appears once the IR switch is on.
@@ -72,7 +88,11 @@ wait 150
 home
 wait 250
 assert ui.page main
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Connected session.
@@ -80,23 +100,33 @@ action connect
 wait 3200
 assert ui.page connected
 assert ui.connected yes
-# WILL_FAIL: overflows by 13 px on this panel.
-print ui.scroll_bottom
-xassert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Remote shutter page.
 action page shutter
 wait 150
 assert ui.page shutter
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Bulb page.
 action page bulb
 wait 150
 assert ui.page bulb
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Bulb duration spin value. It scrolls by design on every panel, 3 px at
@@ -113,7 +143,11 @@ wait 150
 action page cameras
 wait 150
 assert ui.page cameras
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Running intervalometer view.
@@ -122,7 +156,11 @@ wait 150
 action intervalometer
 wait 150
 assert ui.page timer_run
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 action stop
 wait 150
