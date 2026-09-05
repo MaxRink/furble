@@ -1,0 +1,114 @@
+# Three-way UI audit capture. One run per panel x layout x text size x legend.
+seed fauxny true
+seed gps true
+seed saved_camera true
+wait 600
+
+home
+wait 400
+capture main
+
+action nav connect
+wait 400
+capture connect
+
+action nav settings
+wait 400
+capture settings
+
+action nav display
+wait 400
+capture display
+
+action nav text_size
+wait 400
+capture text_size
+
+action nav theme
+wait 400
+capture theme
+
+action nav features
+wait 400
+capture features
+
+action nav sensors
+wait 400
+capture sensors
+
+action nav infrared
+wait 400
+capture infrared
+
+action nav gps
+wait 400
+capture gps
+
+action nav gps_rate
+wait 400
+capture gps_rate
+
+action nav bluetooth
+wait 400
+capture bluetooth
+
+action nav tx_power
+wait 400
+capture tx_power
+
+action nav power
+wait 400
+capture power
+
+action nav feedback
+wait 400
+capture feedback
+
+action nav storage
+wait 400
+capture storage
+
+action nav about
+wait 400
+capture about
+
+action nav timer
+wait 400
+capture timer
+
+action nav bulb_duration
+wait 400
+capture bulb_duration
+
+action nav interval_count
+wait 400
+capture interval_count
+
+
+home
+wait 300
+action connect
+wait 3200
+capture connected
+
+action blind
+wait 500
+capture shutter
+
+action page bulb
+wait 400
+capture bulb
+
+action page cameras
+wait 400
+capture cameras
+
+action page remote_gps
+wait 400
+capture remote_gps
+
+action page timer_run
+wait 500
+capture timer_run
+
+exit

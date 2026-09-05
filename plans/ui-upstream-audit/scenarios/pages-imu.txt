@@ -1,0 +1,8 @@
+# Level page only. Needs the IMU seed; the entry is hidden without it.
+seed fauxny true
+seed imu true
+wait 500
+action nav level
+wait 500
+capture level
+exit

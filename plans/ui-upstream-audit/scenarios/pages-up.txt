@@ -1,0 +1,69 @@
+# Upstream page subset. Pages absent upstream are simply not listed.
+seed fauxny true
+seed gps true
+seed saved_camera true
+wait 600
+
+home
+wait 400
+capture main
+
+action nav connect
+wait 400
+capture connect
+
+action nav settings
+wait 400
+capture settings
+
+action nav display
+wait 400
+capture display
+
+action nav theme
+wait 400
+capture theme
+
+action nav features
+wait 400
+capture features
+
+action nav gps
+wait 400
+capture gps
+
+action nav tx_power
+wait 400
+capture tx_power
+
+action nav about
+wait 400
+capture about
+
+action nav timer
+wait 400
+capture timer
+
+action nav interval_count
+wait 400
+capture interval_count
+
+home
+wait 300
+action connect
+wait 3200
+capture connected
+
+action blind
+wait 500
+capture shutter
+
+action page remote_gps
+wait 400
+capture remote_gps
+
+action page timer_run
+wait 500
+capture timer_run
+
+exit
