@@ -194,19 +194,35 @@ bool FujifilmSecure::_connect(void) {
 
   // Snapshot the bond before connecting so a security failure below can tell a
   // stale bond apart from a first pairing.
-  const bool bondedBefore = NimBLEDevice::isBonded(m_Address);
-  if (!bondedBefore) {
-    // Nothing stale to measure: this is a first pairing, or the recovery below
-    // already deleted the bond. Either way the failure run starts over.
-    clearSecureFailures();
-  }
-
   ESP_LOGI(LOG_TAG, "Connecting to %s", m_Address.toString().c_str());
   if (!m_Client->connect(m_Address))
     return false;
 
   ESP_LOGI(LOG_TAG, "Connected");
   m_Progress += 5;
+
+  // Bond state is keyed on the identity address, and that is only known once
+  // the link is up, so the snapshot has to happen here rather than before the
+  // connect.
+  //
+  // A Fujifilm Secure body advertises a resolvable private address, and
+  // NimBLEDevice::isBonded() compares against the bond store's identity
+  // addresses (ble_store_util_bonded_peers). So isBonded(m_Address) answers
+  // false on every saved reconnect even when the bond is right there, which
+  // made the recovery below unreachable on exactly the camera it was written
+  // for: the 2026-09-05 bench looped eight times without logging a single
+  // "Security handshake failed (1 of 2)", because every attempt took the
+  // unbonded early return and cleared the run on the way in. Once the link is
+  // up the controller has resolved the RPA, so getConnInfo() carries the
+  // identity address; with no bond, and therefore no IRK to resolve with, it
+  // carries the advertised address and the unbonded path is still correct.
+  const NimBLEAddress bondAddress = m_Client->getConnInfo().getIdAddress();
+  const bool bondedBefore = NimBLEDevice::isBonded(bondAddress);
+  if (!bondedBefore) {
+    // Nothing stale to measure: this is a first pairing, or the recovery below
+    // already deleted the bond. Either way the failure run starts over.
+    clearSecureFailures();
+  }
 
   ESP_LOGI(LOG_TAG, "Securing");
   if (!m_Client->secureConnection()) {
@@ -248,7 +264,9 @@ bool FujifilmSecure::_connect(void) {
     ESP_LOGW(LOG_TAG,
              "Security handshake failed %u times on a bonded camera; deleting the stale local bond",
              static_cast<unsigned>(failures));
-    NimBLEDevice::deleteBond(m_Address);
+    // The identity address again: deleting by the advertised RPA would leave
+    // the stale bond in the store.
+    NimBLEDevice::deleteBond(bondAddress);
     clearSecureFailures();
 
     // A camera already in pairing mode accepts a fresh pairing on this very

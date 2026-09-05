@@ -718,7 +718,12 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   return true;
 }
 
+uint32_t FujifilmVirtualCamera::secureInitiateCount() const {
+  return m_SecureInitiates.load();
+}
+
 bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
+  m_SecureInitiates++;
   // Block first, like the real call. Parking here rather than polling a cancel
   // is the point: this is the one wait in the connect path that no token can
   // shorten. Only a link terminate ends it early, which is what the peer's own

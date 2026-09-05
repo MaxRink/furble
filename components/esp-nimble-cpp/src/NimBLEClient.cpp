@@ -343,6 +343,23 @@ error:
 bool NimBLEClient::secureConnection(bool async) const {
     NIMBLE_LOGD(LOG_TAG, ">> secureConnection()");
 
+    // Already encrypted: there is nothing to initiate, and asking anyway is
+    // harmful. ble_gap_security_initiate answers rc=2 "Operation already in
+    // progress or complete", and a Fujifilm X100VI terminates the link when it
+    // arrives. NimBLERemoteValueAttribute retries a read or write that answers
+    // insufficient encryption by calling straight back into here, so on the
+    // 2026-09-05 bench one such reply on a freshly paired, already encrypted
+    // link cost the whole session: "Secured!", "Requesting status",
+    // "ble_gap_security_initiate: rc=2", "Disconnected", every time.
+    //
+    // Reporting success is the honest answer to "make this connection secure"
+    // when it already is. The caller's retry then re-issues its read or write
+    // once more and gives up on its own terms instead of losing the link.
+    if (isConnected() && getConnInfo().isEncrypted()) {
+        NIMBLE_LOGD(LOG_TAG, "<< secureConnection: already encrypted");
+        return true;
+    }
+
     int rc = 0;
     if (async && !NimBLEDevice::startSecurity(m_connHandle, &rc)) {
         m_lastErr            = rc;
