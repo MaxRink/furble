@@ -103,6 +103,11 @@ bool g_ScanStartAllowed = true;
 uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
 size_t g_ConnParamApplyDelayReads = 1;
 bool g_Bonded = false;
+// Empty means "bonded to anything", which is what every test that only calls
+// setBonded(true) expects. A test that cares about which address the bond is
+// filed under sets it explicitly.
+NimBLEAddress g_BondAddress {};
+NimBLEAddress g_IdAddress {};
 size_t g_DeleteBondCount = 0;
 // Absent-peer model: addresses whose advertisements the scan never delivers.
 std::vector<NimBLEAddress> g_AbsentAddresses;
@@ -420,7 +425,9 @@ const NimBLEAddress &NimBLEConnInfo::getAddress() const {
 }
 
 const NimBLEAddress &NimBLEConnInfo::getIdAddress() const {
-  return getAddress();
+  // Defaults to the same empty address getAddress() returns, so a test that
+  // does not care reads exactly what it always did.
+  return g_IdAddress;
 }
 
 void NimBLEClientCallbacks::onConnect(NimBLEClient *client) {
@@ -1023,18 +1030,35 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
   return eraseClient(client);
 }
 
-bool NimBLEDevice::deleteBond(const NimBLEAddress &) {
+bool NimBLEDevice::deleteBond(const NimBLEAddress &address) {
+  if (g_Bonded && (g_BondAddress != NimBLEAddress {}) && (g_BondAddress != address)) {
+    // Deleting by the wrong address leaves the stale bond in the store, which
+    // is the failure mode worth reproducing rather than papering over.
+    return false;
+  }
   g_Bonded = false;
   g_DeleteBondCount++;
   return true;
 }
 
-bool NimBLEDevice::isBonded(const NimBLEAddress &) {
-  return g_Bonded;
+bool NimBLEDevice::isBonded(const NimBLEAddress &address) {
+  if (!g_Bonded) {
+    return false;
+  }
+  return (g_BondAddress == NimBLEAddress {}) || (g_BondAddress == address);
 }
 
 void NimBLEDevice::setBonded(bool bonded) {
   g_Bonded = bonded;
+}
+
+void NimBLEDevice::setBondedAddress(const NimBLEAddress &address) {
+  g_Bonded = true;
+  g_BondAddress = address;
+}
+
+void NimBLEDevice::setMockIdAddress(const NimBLEAddress &address) {
+  g_IdAddress = address;
 }
 
 size_t NimBLEDevice::deleteBondCount() {
@@ -1148,6 +1172,8 @@ void NimBLEDevice::resetMock() {
   g_ConnectDelayMs = 0;
   g_ConnParamApplyDelayReads = 1;
   g_Bonded = false;
+  g_BondAddress = NimBLEAddress {};
+  g_IdAddress = NimBLEAddress {};
   g_DeleteBondCount = 0;
   g_AbsentAddresses.clear();
   g_Initialised = false;

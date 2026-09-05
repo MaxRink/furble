@@ -372,6 +372,84 @@ void testResetConnectionStateClearsTheRun() {
   check(!camera.needsRepair(), "and no re-pair prompt is raised");
 }
 
+// The 2026-09-05 bench, replayed. The recovery never fired on real hardware and
+// the reason was not the counter logic: it was where the bond is looked up.
+//
+// A Fujifilm Secure body advertises a resolvable private address, and the bond
+// store files bonds under the identity address. `isBonded(advertised)`
+// therefore answers false on every saved reconnect even with the bond in place,
+// so every attempt took the "nothing stale to measure" early return, cleared
+// the run on the way in, and never counted a failure at all. Eight reconnects,
+// rc=13 and rc=520 throughout, and not one "Security handshake failed (1 of 2)"
+// line in the log.
+//
+// Here the advertised address and the identity address are deliberately
+// different, which is the whole point: read the bond by the advertised one and
+// this test fails exactly as the bench did.
+void testRotatingAddressFindsTheBondAndRecovers() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer(secureConfig());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  const NimBLEAddress identity(0x998877665544ULL, 0);
+  NimBLEDevice::setMockIdAddress(identity);
+  NimBLEDevice::setBondedAddress(identity);
+  check(!NimBLEDevice::isBonded(peer.config().address),
+        "the advertised address is not what the bond is filed under");
+  check(NimBLEDevice::isBonded(identity), "the identity address is");
+
+  // The bench shapes, in order: rc=13 then rc=520, both after "Connected" and
+  // "Securing". The third link-up finds the camera in its pairing screen and
+  // the fresh in-link pair goes through.
+  peer.setSecureTimeouts(2);
+
+  Furble::FujifilmSecure camera(&advertisement);
+
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first failure is not yet evidence");
+  check(NimBLEDevice::deleteBondCount() == 0, "and leaves the bond alone");
+
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the second failure fails its attempt too");
+  check(NimBLEDevice::deleteBondCount() == 1, "but it deletes the stale bond, exactly once");
+  check(!NimBLEDevice::isBonded(identity), "and it is the identity bond that went");
+  // rc=13 and rc=520 both take the link with them, so there is no live link
+  // left to pair on: the in-link fast path is for a camera that refuses the
+  // dead keys while staying connected, which is a different shape and has its
+  // own scenario above. Here the user gets the prompt.
+  check(camera.needsRepair(), "and the user is asked to re-pair");
+
+  // The third link-up. The bond is gone, the camera is in its pairing screen,
+  // so this is a first pairing and it has to go all the way through
+  // registration. On the bench this is the attempt that never came, because the
+  // two before it were never counted.
+  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the next attempt pairs fresh and connects");
+  check(peer.configured(), "and completes registration");
+  check(NimBLEDevice::deleteBondCount() == 1, "with no further bond deletes");
+  camera.disconnect();
+}
+
+// A successful connect establishes security once. A second initiate on a link
+// that is already encrypted is answered rc=2 by the stack and terminated by the
+// camera, which is how the 2026-09-05 bench lost every session that did manage
+// to pair: "Secured!", "Requesting status", "ble_gap_security_initiate: rc=2",
+// "Disconnected". The library-side retry that issued it is fixed in
+// components/esp-nimble-cpp (NimBLEClient::secureConnection now reports success
+// without re-initiating when the link is already encrypted); this pins the half
+// that lives in furble, that nothing here asks for security twice.
+void testSuccessfulConnectSecuresExactlyOnce() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer(secureConfig());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  Furble::FujifilmSecure camera(&advertisement);
+  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the camera connects");
+  check(peer.configured(), "and completes registration");
+  check(peer.secureInitiateCount() == 1,
+        "security is established exactly once, never again after Secured!");
+  camera.disconnect();
+}
+
 }  // namespace
 
 int main() {
@@ -385,6 +463,8 @@ int main() {
   testCancelledSecurityWaitIsNotAFailure();
   testUnbondedAttemptClearsTheRun();
   testResetConnectionStateClearsTheRun();
+  testRotatingAddressFindsTheBondAndRecovers();
+  testSuccessfulConnectSecuresExactlyOnce();
   NimBLEDevice::resetMock();
   if (failures != 0) {
     std::cerr << failures << " stale-bond checks failed\n";

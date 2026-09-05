@@ -250,6 +250,10 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // deadline? This is the difference between an abort that works and a test
   // that merely outwaited the block.
   bool secureStallWasAborted() const;
+  // How many times the central has asked to establish security on this peer.
+  // One per successful connect is the contract: a second initiate on an already
+  // encrypted link is what the X100VI terminates the session over.
+  uint32_t secureInitiateCount() const;
   // How many times the handshake has been entered, so a repeated-cycle test can
   // prove every cycle really reached the blocking call.
   uint32_t secureStallEntries() const;
@@ -375,6 +379,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_StallLinkDown = false;
   bool m_StallAborted = false;
   uint32_t m_StallEntries = 0;
+  std::atomic<uint32_t> m_SecureInitiates {0};
   bool m_RequireLongConnParamsAfterIdentifier = false;
   bool m_DelayRegistrationConnParamsUntilFastRequest = false;
   bool m_ConnParamsNegotiated = false;

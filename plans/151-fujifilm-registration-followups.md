@@ -257,6 +257,67 @@ Tracked as **plan 172**, the sim cancel-sweep lane, which owns driving this
 stall from a scenario; this PR's host regression drives the production Control
 end to end in the meantime.
 
+### 1c-ter. Why the recovery never fired on hardware, and the two defects behind it
+
+Bench step 3 on 2026-09-05, X100VI in pairing mode, firmware dev+g7987529d:
+eight reconnects, rc=13 and rc=520 throughout, and the recovery never ran. No
+`Security handshake failed (1 of 2)` line, no bond delete, no `Fresh pair
+failed`, no "Pairing lost" box, `control.connect_fail_reason` still `none`. Two
+independent defects, both now fixed.
+
+**Defect 1: the bond was looked up under the wrong address.** The counter logic
+was fine; it was never reached. `NimBLEDevice::isBonded()` compares against
+`ble_store_util_bonded_peers()`, which returns **identity** addresses, and a
+Fujifilm Secure body advertises a resolvable private address. So
+`isBonded(m_Address)` answered false on every saved reconnect with the bond
+sitting right there, and every attempt took the "nothing stale to measure"
+early return, clearing the run on the way in and never counting a failure at
+all. The recovery was unreachable on precisely the camera it was written for,
+and the absence of any "(1 of 2)" line in the bench log is the tell.
+
+The snapshot now happens after the link is up, where the controller has
+resolved the RPA, and reads `m_Client->getConnInfo().getIdAddress()`. The bond
+delete uses the same address; deleting by the advertised one would have left the
+stale bond in the store even once the counter worked. With no bond, and so no
+IRK to resolve with, the identity address is the advertised address and the
+unbonded path is unchanged.
+
+**Defect 2: a second security initiate after a successful pair.** Every session
+that did manage to pair died the same way: `Secured!`, `Requesting status`,
+`ble_gap_security_initiate: rc=2 Operation already in progress or complete`,
+`Disconnected`, `readValue failed rc=271 Insufficient encryption`. The initiate
+is not furble's. `NimBLERemoteValueAttribute` retries a read or write that
+answers insufficient encryption by calling straight back into
+`NimBLEClient::secureConnection()`, which on an already encrypted link initiates
+security again; the stack answers rc=2 and the X100VI terminates.
+
+Fixed in the vendored `components/esp-nimble-cpp`, in `secureConnection()`
+itself rather than at either retry site: an already encrypted link reports
+success without initiating. That is the honest answer to "make this connection
+secure" when it already is, and it fixes every caller at once, the two attribute
+retries and the async event path. The caller's retry then re-issues its read
+once more and gives up on its own terms instead of losing the session. Vendoring
+a fix here has precedent: plan 150 did the same for the task-data race.
+
+Regressions, both in `fujifilm-stale-bond`:
+
+- the bench replayed with the advertised and identity addresses deliberately
+  different, and the bond filed under the identity one: rc=13, then rc=520, and
+  the bond is deleted exactly once with the re-pair prompt raised, then the
+  third link-up pairs fresh and completes registration. Reading the bond by the
+  advertised address again fails four checks, exactly as the bench did; deleting
+  by it fails three.
+- a successful connect establishes security exactly once, counted on the peer.
+  Adding a redundant `secureConnection()` before the status read, which is what
+  the library retry did, fails it. The library-side guard itself is not host
+  reachable, since the host harness replaces `NimBLEClient` with MockNimBLE; the
+  half that lives in furble is what this pins.
+
+The mock bond store is address aware for this: `setBondedAddress()` files the
+bond under one identity address and `setMockIdAddress()` gives the link an
+identity distinct from the advertised address. Left alone it behaves exactly as
+before, so no existing test changes.
+
 ### 1d. Dismissable connect errors and the already-saved pairing refusal
 
 A failed connect used to drop straight back to the menu with only a log line,
