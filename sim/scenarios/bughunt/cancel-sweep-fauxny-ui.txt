@@ -14,6 +14,12 @@
 # where the contract is currently honoured, not only on the ones where it
 # is not.
 #
+# No client-pool guard on this leg. FauxNY has no radio, so nothing ever
+# delivers the GAP disconnect its client's self-delete waits on, and the
+# client stays in the mock pool after a perfectly clean teardown. Measured:
+# one connect and disconnect leaves live_clients at 1. That is the model, not
+# the firmware, so the guard rides on the peer-backed legs instead.
+#
 # Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
 seed fauxny true
 seed reconnect true
@@ -137,4 +143,9 @@ action connect
 assert-eventually-virtual 20000 control.state active
 assert control.connected 1
 assert ui.liveness_violations 0
+# Every cancel must have unwound its attempt, not outwaited it. The whole
+# run is bounded, and the bound has less slack than one connect window, so
+# a single cancel that sat out its window instead of aborting it puts the
+# clock past this. Eventual settling alone would pass such a run.
+assert_max clock.ms 24000
 exit

@@ -1,4 +1,8 @@
-# Reproduction of the 2026-09-04 hardware wedge (issue #271, fix PR #272).
+# Reproduction of the 2026-09-04 hardware wedge (issue #271, fixed by PR #245).
+#
+# PR #272 is not the fix for this one. It makes the vendor waits that poll
+# honour the plan 148 contract; the wait that strands this polls nothing, so
+# there is no token for it to preserve. Only #245's link terminate wakes it.
 #
 # Bench, M5StickS3 on master 8bdc52e4 with an X100VI bonded: 20 console cycles
 # of `connect 0` then `disconnect` at 2 s, 4 s or 6 s into the connect, with

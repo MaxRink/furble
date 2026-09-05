@@ -38,6 +38,9 @@ assert_max ble.live_clients 1
 action connect
 assert-eventually-virtual 20000 control.state active
 assert control.connected 1
+# A live session holds exactly one client. Without this the pool guard
+# below would be satisfied by a query that only ever reads zero.
+assert ble.live_clients 1
 action disconnect
 assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no

@@ -2,7 +2,6 @@
 #define FURBLE_HOST_FUJIFILM_VIRTUAL_CAMERA_H
 
 #include <array>
-#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>

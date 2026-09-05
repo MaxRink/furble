@@ -249,13 +249,18 @@ a regression.
   ble_max_clients` caps the pool at the board's
   `CONFIG_BT_NIMBLE_MAX_CONNECTIONS` (9) and `seed ble_client_selfdelete`
   models the free, and `ble.live_clients` is the guard: one client while a
-  session is up, zero after a settled teardown. Any scenario that walks more
-  than a couple of connect cycles should carry both, because a client leaked
-  per cycle is the shape of a bug that only a reboot clears and the simulator
-  is otherwise blind to it. The pool guard is sound on Camera-driven teardowns
-  only: the mock frees a link-loss client through `reapDeferredClients()`,
-  which the simulator does not pump, so a scenario using `action drop` must not
-  carry it (plans/172).
+  session is up, zero after a settled teardown. A scenario that walks many
+  connect cycles against a peer-backed camera should carry both, because a
+  client leaked per cycle is the shape of a bug that only a reboot clears and
+  the simulator is otherwise blind to it. Two shapes must not carry it, and
+  both are model artifacts rather than firmware behaviour: a leg that severs
+  the link (`action drop`, `action ble-standby`), because the mock frees a
+  link-loss client through `reapDeferredClients()` and the simulator does not
+  pump it; and a FauxNY leg, because FauxNY has no radio to deliver the GAP
+  disconnect its client's self-delete waits on, so the client outlives a clean
+  teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui` and
+  `reconnect-after-disconnect-sweep` carry it; the rest say in their header why
+  they do not (plans/172).
 - A virtual peer that answers instantly cannot model a wait. `seed
   secure_stall_ms` holds every Fujifilm peer inside
   `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm

@@ -119,4 +119,9 @@ action connect
 assert-eventually-virtual 20000 control.state active
 assert control.connected 1
 assert ui.liveness_violations 0
+# Every cancel must have unwound its attempt, not outwaited it. The whole
+# run is bounded, and the bound has less slack than one connect window, so
+# a single cancel that sat out its window instead of aborting it puts the
+# clock past this. Eventual settling alone would pass such a run.
+assert_max clock.ms 31000
 exit

@@ -325,6 +325,36 @@ guard, because it severs the link with `action drop` and the guard would report
 a leak the firmware does not have. Closing it needs a quiescent pump in the
 simulator, which is its own argument about where such a point exists.
 
+### Mutation evidence
+
+Plan 161 recorded that removing the `target->getCamera()->cancelConnect()` arm
+from `Control::disconnect()` failed no certified scenario, and named that as an
+open hole. It is closed here, on the topology where the contract it guards is
+actually honoured.
+
+Every leg with a real connect window is bounded by one `assert_max clock.ms`
+over the whole run, with less slack than a single connect window, so one cancel
+that sat out its window instead of aborting it puts the clock past the bound.
+Eventual settling alone would not: the settle assertions allow 6000 virtual ms
+against a 3500 ms window, which an outwaited cancel satisfies.
+
+With the arm removed and nothing else changed, `cancel-sweep-fauxny-ui` fails 5
+of 5 runs, deterministically, naming the number:
+
+```
+ASSERT_MAX FAILED: clock.ms expected <= 24000 got 46685
+```
+
+That is 14 cancels each waiting out FauxNY's 2500 ms connect instead of
+unwinding in one 25 ms slice. The mutation was reverted; none is left in the
+tree.
+
+The two Fujifilm Secure legs do **not** catch that mutation, and they cannot:
+their handshake is `secureConnection()`, which ignores the cancel token whether
+the arm is there or not. The mutation is about the polling contract, so the
+polling topology is where it has to be caught. That is why FauxNY is in the
+sweep at all.
+
 ## What is not covered, and what closing it needs
 
 **The console connect entry.** `FURBLE_CONSOLE` is not compiled into the
@@ -388,7 +418,7 @@ cancels rather than the full cross product. Measured on the 135x240 build:
 | `tools/check_ci_workflows.py`, `tools/check_portability_inventory.py --check` | pass |
 | `sim/scripts/check-doc-tokens.sh` | pass |
 | Certified e2e | 83 on 135x240, 8 on 80x160, 8 on 320x240 |
-| Certified bughunt | pass on all three panels, 17 / 16 / 12 scenarios, 163 s / 158 s / 161 s |
+| Certified bughunt | pass on all three panels, 18 / 17 / 13 scenarios |
 | `run-invalid.sh`, `run-watchdog.sh` | pass |
 | `run-fuzz.sh`, 135x240 | 8 runs plus the determinism replay, exit 0, 0 forced completions |
 | clang-format 21.1.5 | clean |
@@ -427,8 +457,15 @@ full `DISCONNECT_WAIT_MAX_MS`; offsets past it were never affected.
 signals its stall on that terminate, so the attempt unwinds in one slice instead
 of waiting out the modelled supervision timeout.
 
-The certified sweep scenarios pass on all three trees; the two expensive legs
-were rerun on #272 (48 s and 49 s) to confirm the fix does not regress them.
+Every certified scenario here passes on master and on #272. One does not pass
+on #245, and it is reported rather than adjusted:
+`reconnect-registration-delay` reaches `control.state active` on master and on
+#272 and does not on #245 (3a9a3c4), where the session stays `connecting` for
+more than 100 virtual seconds after the registration confirmation is released,
+with `control.reconnect_attempt` still 0, so it is stuck inside one attempt
+rather than cycling. Nothing in this branch touches that path. It is a finding
+for #245's lane, on the stale-bond recovery it rewrites, and it is exactly the
+class of thing this scenario exists to catch.
 
 ### Merging with #245
 
@@ -439,6 +476,12 @@ as follows, and the same resolution is the intended one:
 - peer: the stall itself is the same commit on both sides. Keep #245's three
   extra fault members, and take `waitForStallLocked()` and the `PeerStall.h`
   include from here.
+- `sim/scenario_action.cpp` must NOT be union-merged. Both sides add a parse
+  block ending in `return accept(); }`, and taking both drops a brace and does
+  not compile. Take #245's file and re-apply the two `SECURE_STALL` blocks, the
+  enumerator and the parse case, on top.
+- #245 flips both reproductions here to certified and widens them to all three
+  boards, since both pass on that branch.
 - `sim/scenario_action.*`: keep both, they each add one enumerator and one
   parse block (#245 adds `scan-row`, this adds `ble-secure-stall`).
 - `tests/host/`: keep #245's, they own that test.

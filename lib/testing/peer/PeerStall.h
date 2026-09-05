@@ -1,6 +1,7 @@
 #ifndef FURBLE_HOST_PEER_STALL_H
 #define FURBLE_HOST_PEER_STALL_H
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <thread>
@@ -31,8 +32,10 @@ namespace Host {
  */
 using peer_stall_fn_t = void (*)(uint32_t ms);
 
-inline peer_stall_fn_t &peerStallFunction(void) {
-  static peer_stall_fn_t function = nullptr;
+// Atomic because it is written from the simulator's boot path and read from
+// whichever task the peer answers on, which is not the same thread.
+inline std::atomic<peer_stall_fn_t> &peerStallFunction(void) {
+  static std::atomic<peer_stall_fn_t> function {nullptr};
   return function;
 }
 
@@ -41,7 +44,7 @@ inline peer_stall_fn_t &peerStallFunction(void) {
  * which a peer reads as "park on the host clock".
  */
 inline void setPeerStallFunction(peer_stall_fn_t function) {
-  peerStallFunction() = function;
+  peerStallFunction().store(function, std::memory_order_release);
 }
 
 /** Hold the calling task for `ms` on whichever clock is installed. */
@@ -49,7 +52,7 @@ inline void peerStall(uint32_t ms) {
   if (ms == 0) {
     return;
   }
-  const peer_stall_fn_t function = peerStallFunction();
+  const peer_stall_fn_t function = peerStallFunction().load(std::memory_order_acquire);
   if (function != nullptr) {
     function(ms);
     return;

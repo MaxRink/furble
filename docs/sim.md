@@ -288,9 +288,13 @@ invisible; on the device it ends the session for good, because
 `NimBLEDevice::createClient()` starts returning nullptr and every later connect
 fails until a reboot. `ble_client_selfdelete` models NimBLE freeing a
 self-deleting client when its disconnect fires, which is what
-`Camera::connect()` arms on a live session. Both are off by default so no
-existing scenario changes; a scenario that walks many connect cycles turns both
-on and bounds `ble.live_clients`. One limit: the mock frees a self-deleting
+`Camera::connect()` arms on a live session. Both are off by default, deliberately: turning them on globally
+would change client lifetimes under every existing scenario at once, and two
+shapes report a leak that is the model's and not the firmware's (a leg that
+severs the link, and any FauxNY leg, which has no radio to deliver the GAP
+disconnect its client's self-delete waits on). A scenario that walks many
+connect cycles against a peer-backed camera turns both on and bounds
+`ble.live_clients`. One limit: the mock frees a self-deleting
 client of a link-loss disconnect only when `reapDeferredClients()` is pumped
 from a quiescent point, and the simulator has no such point, so the pool guard
 is sound on Camera-driven teardowns and not on `action drop`.

@@ -741,7 +741,7 @@ void FujifilmVirtualCamera::setSecureConnectionResult(bool result) {
 
 bool FujifilmVirtualCamera::waitForStallLocked(std::unique_lock<std::mutex> &lock,
                                                uint32_t stallMs) {
-  if (Host::peerStallFunction() == nullptr) {
+  if (Host::peerStallFunction().load(std::memory_order_acquire) == nullptr) {
     // Host harness: park on the condition variable, on the host clock, exactly
     // as the terminate expects.
     return m_StallSignal.wait_for(lock, std::chrono::milliseconds(stallMs),
