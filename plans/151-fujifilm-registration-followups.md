@@ -362,6 +362,61 @@ bond under one identity address and `setMockIdAddress()` gives the link an
 identity distinct from the advertised address. Left alone it behaves exactly as
 before, so no existing test changes.
 
+### 1c-quater. A sim-fidelity regression this PR introduced, and the rule it teaches
+
+Found by the #278 lane against head 3a9a3c44: `reconnect-registration-delay`,
+which models the real X100VI confirming registration 30 to 40 s after a
+reconnect, passed on master and on #272 and failed here. After the withheld
+confirmation was released the session stayed `connecting` past 100 virtual
+seconds with `reconnect_attempt` 0, stuck inside one attempt.
+
+This one was ours, and it came in with the #266 conflict resolution rather than
+with any of the recovery work. `Fujifilm::waitForRegistration()` chooses between
+a FreeRTOS tick clock and `std::chrono::steady_clock`. Resolving that conflict
+moved the selector from `#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)` to
+`#if defined(ESP_PLATFORM)`, because the timeout macro had become always defined
+once `Fujifilm.h` carried its default and so was useless as a selector. The
+simulator defines neither macro, so the two selectors send it opposite ways:
+
+| build | old selector | new selector |
+| --- | --- | --- |
+| firmware | ticks | ticks |
+| host harness | chrono | chrono |
+| simulator | ticks | **chrono** |
+
+The simulator runs on a virtual clock its driver advances. On the wall-clock
+branch the loop sleeps with `std::this_thread::sleep_for` and measures
+`steady_clock` against the 25 s timeout, so a scenario that releases the
+confirmation and advances a hundred virtual seconds passes almost no real time:
+the attempt neither sees the confirmation nor times out. Nothing to do with the
+bonded snapshot or the failure counter; it sits on the reconnect path generally
+and the stale-bond scenario merely walks through it.
+
+**The rule: a clock selector keys on the clock's presence, never on a platform
+macro.** `#if __has_include(<freertos/FreeRTOS.h>)` cannot be wrong the way
+`defined(ESP_PLATFORM)` was, because the thing it tests is the thing the code
+needs. Firmware and the simulator both have the header and both want ticks, and
+the simulator's tick is the virtual clock its scenarios move. The host unit
+targets that link no FreeRTOS shim keep the wall clock, which is right there
+because nothing advances a virtual one for them. Deleting the branch outright
+does not build: `furble_host_camera` has no shim on its include path.
+
+Firmware behaviour is unchanged. ESP-IDF defines `ESP_PLATFORM` and provides the
+header, so both the old and the new selector pick ticks, which is why the
+95c66af1 bench stays valid until the post-#278 rebuild.
+
+Regression: `fujifilm-stale-bond` gains a delayed-confirmation scenario carrying
+the hardware fact. The 2026-09-04 console capture on a bonded X100VI reached
+progress 85 at +25 s and active at +40 to +45 s against a 25 s
+`REGISTRATION_TIMEOUT_MS`, so the first attempt after a reconnect can
+legitimately time out and a later retry is what completes. It asserts that a
+slow confirmation fails its own attempt on the timeout, never touches the bond,
+never counts toward the stale-bond run and never asks for a re-pair, and that
+the retry after the confirmation lands completes registration. Mutation: make
+the wait never time out and the test hangs, which is the wedge. The simulator
+scenario itself belongs to the #278 lane; it was borrowed to reproduce and not
+committed here.
+
 ### 1d. Dismissable connect errors and the already-saved pairing refusal
 
 A failed connect used to drop straight back to the menu with only a log line,

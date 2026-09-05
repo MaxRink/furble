@@ -450,6 +450,47 @@ void testSuccessfulConnectSecuresExactlyOnce() {
   camera.disconnect();
 }
 
+// A camera that answers everything and confirms registration late.
+//
+// Hardware fact this encodes, from the 2026-09-04 console capture on a bonded
+// X100VI: a reconnect reaches "Identifying" at +13 s and progress 85 at +25 s,
+// but the camera's registration notifications only arrive around +30 to +45 s.
+// REGISTRATION_TIMEOUT_MS is 25 s, so on that body the first attempt after a
+// reconnect can legitimately time out and a later retry is what completes. A
+// slow confirmation is therefore not a fault to be recovered from, and in
+// particular it is not a security failure: it must not touch the bond, must not
+// count toward the stale-bond run, and above all the wait must end on its own
+// rather than parking the attempt.
+//
+// That last point is what this catches. The wait picks its clock by asking
+// whether a FreeRTOS tick exists; picking by platform macro instead sent the
+// simulator, which defines no platform macro, onto the wall clock while its
+// scenarios advance a virtual one, and the attempt then neither confirmed nor
+// timed out.
+void testLateRegistrationTimesOutThenRecovers() {
+  init();
+  Furble::Host::FujifilmVirtualCamera peer(secureConfig());
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+
+  Furble::FujifilmSecure camera(&advertisement);
+
+  // Slower to confirm than the registration timeout allows.
+  peer.setWithholdRegistration(true);
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+        "an attempt whose confirmation never lands fails on its own timeout");
+  check(!peer.configured(), "and never reports itself registered");
+  check(NimBLEDevice::deleteBondCount() == 0, "a slow confirmation is not a security failure");
+  check(!camera.needsRepair(), "and never asks the user to re-pair");
+
+  // The confirmation arrives, which on the bench is the later retry completing.
+  peer.setWithholdRegistration(false);
+  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the retry once the camera confirms connects");
+  check(peer.configured(), "and completes registration");
+  check(NimBLEDevice::deleteBondCount() == 0, "with the bond still untouched throughout");
+  camera.disconnect();
+}
+
 }  // namespace
 
 int main() {
@@ -465,6 +506,7 @@ int main() {
   testResetConnectionStateClearsTheRun();
   testRotatingAddressFindsTheBondAndRecovers();
   testSuccessfulConnectSecuresExactlyOnce();
+  testLateRegistrationTimesOutThenRecovers();
   NimBLEDevice::resetMock();
   if (failures != 0) {
     std::cerr << failures << " stale-bond checks failed\n";

@@ -335,6 +335,17 @@ a regression.
   its instruction below the clip box. It answers `none` when the top layer has
   no visible children, so a scenario that forgets to raise its modal cannot read
   a pass. Assert it `no` in any scenario that raises a modal.
+- **A clock selector keys on the clock's presence, never on a platform macro.**
+  Use `#if __has_include(<freertos/FreeRTOS.h>)`, not `#if defined(ESP_PLATFORM)`
+  or any other platform test. The simulator defines no platform macro, so a
+  platform test silently drops it onto `std::chrono::steady_clock` and
+  `std::this_thread::sleep_for` while its scenarios advance a virtual clock: a
+  wait then neither observes what the scenario did nor times out, and the
+  session hangs inside one attempt. Firmware and the simulator both have the
+  header and both want the tick, and the simulator's tick is the virtual clock.
+  Host targets that link no FreeRTOS shim fall through to the wall clock, which
+  is correct there. This cost `reconnect-registration-delay` a hang, and the
+  selector that caused it looked entirely reasonable.
 - `action scan-row N` activates scan result row N through its production click
   handler, `UI::beginPairing()`. Focus-driven activation of that row is not
   reproducible, so this is how a scenario reaches the already-saved refusal.
