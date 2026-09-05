@@ -18,12 +18,12 @@
 # subject. The skip is derived from that guard rather than from a name list, so
 # a new touch-layout scenario is handled without editing this script.
 #
-# Two more are skipped by name on the 80x160 board. Both seed the maximum text
-# size, and that board cannot render its own pages at that size in the layout it
-# ships: a sub page leaves 87 px and the Connected page needs 108 for its six
-# rows, and the home page leaves 112 px against 129 for seven rows. That is
-# plan 153's pre-existing gap, made visible rather than caused by the layout
-# work, and it is recorded as the open follow-up in plan 168.
+# Nothing is skipped by name any more. Two 80x160 scenarios used to be, both
+# seeding the maximum text size, because that board cannot render its pages at
+# Large in the layout it ships. TextSizePolicy caps that board at Normal, the
+# Text size roller offers Small and Normal there, and a stored Large clamps to
+# Normal, so the two run like any other: they seed a size the board clamps and
+# measure the size it actually renders.
 
 set -eu
 
@@ -67,15 +67,6 @@ touch_layout_scenario() {
 }
 
 # The two 80x160 maximum text size scenarios, see the header.
-skipped_by_name() {
-  if [ "$BOARD" != "m5stick-c" ]; then
-    return 1
-  fi
-  case "$1" in
-    text-size-overflow-large | home-seven-rows-large) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 status=0
 count=0
@@ -94,11 +85,6 @@ for suite in bughunt e2e; do
     name=$(basename "$scenario" .txt)
     if touch_layout_scenario "$ROOT/$scenario"; then
       echo "SKIP $name (asserts the touch layout)"
-      skips=$((skips + 1))
-      continue
-    fi
-    if skipped_by_name "$name"; then
-      echo "SKIP $name (see the header of this script)"
       skips=$((skips + 1))
       continue
     fi

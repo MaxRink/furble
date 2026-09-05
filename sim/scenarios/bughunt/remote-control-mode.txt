@@ -1,0 +1,40 @@
+# The Remote page shows the same legends however it is reached.
+#
+# The page has its own control mode: the three buttons read back, shutter and
+# centre focus, not the menu's previous, select and next. On the device every
+# route into the page goes through the menu page-change handler, so the mode is
+# set there. The simulator has two entries, "blind" and "page shutter", and only
+# the first used to set it, so "page shutter" rendered the page with the menu
+# legends. Every measurement of that page taken through it was of a state the
+# device never shows, which is why this file asserts the mode from both.
+seed no_touch true
+seed fauxny true
+seed saved_camera true
+wait 400
+
+action connect
+wait 3200
+assert ui.connected yes
+
+# The entry the device takes.
+action page shutter
+wait 400
+assert ui.page shutter
+assert ui.control_mode shutter
+# Nothing runs off the page and nothing is drawn under a legend in that state.
+assert ui.overflow no
+assert ui.indicator_clearance clear
+
+# Leaving restores the menu legends.
+home
+wait 250
+assert ui.control_mode menu
+
+# The other entry has to agree with the first.
+action blind
+wait 400
+assert ui.page shutter
+assert ui.control_mode shutter
+assert ui.overflow no
+assert ui.indicator_clearance clear
+exit

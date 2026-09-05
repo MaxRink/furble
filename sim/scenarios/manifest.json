@@ -208,6 +208,21 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/remote-control-mode.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/legend-absent-core.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

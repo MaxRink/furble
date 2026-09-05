@@ -686,6 +686,9 @@ class UI {
   // Measured width of the floating right legend, or 0 where there is none.
   static int32_t m_LegendWidth;
 
+  // Breathing room between a row and the legend beside it.
+  static constexpr int32_t LEGEND_GAP = 2;
+
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
 
@@ -737,8 +740,14 @@ class UI {
   // four cells hold twelve, so two pairs shared a cell and drew through each
   // other: Sensors with Intervalometer and IR settings with Feedback. One of
   // each pair could not be opened.
+  //
+  // Sized to their content, not to equal slices of the page. Equal slices make
+  // the cell shorter as rows are added and at the larger text sizes the name
+  // under the icon was clipped away below it. A content row is as tall as the
+  // icon plus its name at whatever size is chosen, and the page scrolls when
+  // four of them no longer fit. It never squeezes.
   const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {
-      LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+      LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -952,7 +961,7 @@ class UI {
 
   /** Pixels to keep clear on the right of a full width menu row. */
   static int32_t floatingIndicatorReserve(void);
-  static void reserveLegendColumn(lv_obj_t *obj);
+  void reserveLegendColumns(lv_obj_t *page);
 
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
@@ -1054,6 +1063,7 @@ class UI {
   void updateBulbModeHint(void);
 
   /** Add spinner menu item entry. */
+  static const char *spinRowName(const char *item);
   lv_obj_t *addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner);
 
   /** Add the spinner page menu entry. */

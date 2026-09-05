@@ -660,7 +660,8 @@ UI::UI(const interval_t &interval)
           lv_obj_align(m_Right, LV_ALIGN_RIGHT_MID, 0, m_RightYOffset);
         }
 
-        // What the pages that keep this legend's column clear have to reserve.
+        // What a row level with this legend has to keep clear. Where it is is
+        // read live, in reserveLegendColumns().
         lv_obj_update_layout(m_Right);
         m_LegendWidth = lv_obj_get_width(m_Right);
 
@@ -1540,12 +1541,60 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
   lv_image_set_src(icon, symbol);
 }
 
-// Keep the floating right legend's column clear on one page. Applied by the
-// pages that were measured drawing content under it, never globally: a
-// reservation on every page left a gap on the ones nothing overlaps.
-void UI::reserveLegendColumn(lv_obj_t *obj) {
-  if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-    lv_obj_set_style_pad_right(obj, reserve, LV_PART_MAIN);
+// Give the floating right legend's column back to every row it does not touch.
+//
+// The legend sits in one y band partway down the right edge, so only the rows
+// level with it can collide. Reserving on every row of a page cost width on
+// rows the legend never reaches, which is what made "Cameras" and "GPS Data"
+// scroll on a page with room to spare. This runs when a page is loaded, once,
+// and pads only the rows whose vertical extent overlaps the legend's.
+//
+// ponytail: measured at rest. A row scrolled into the band afterwards is not
+// re-padded; re-running this on every scroll event would re-lay-out the page
+// mid-gesture. Every measured collision is an at-rest one.
+void UI::reserveLegendColumns(lv_obj_t *page) {
+  if ((page == nullptr) || (floatingIndicatorReserve() <= 0) || (m_Right == nullptr)
+      || !lv_obj_is_valid(m_Right)) {
+    return;
+  }
+  // Read the legend live. Its position is only settled once the screen has been
+  // laid out, which is after the constructor recorded its width, and a stale
+  // band puts the reservation on the wrong rows.
+  lv_obj_update_layout(m_Right);
+  lv_area_t legend;
+  lv_obj_get_coords(m_Right, &legend);
+  const int32_t reserve = lv_obj_get_width(m_Right) + LEGEND_GAP;
+  lv_obj_update_layout(page);
+
+  // The page's own children. Most pages are a list of row containers and each
+  // row is tested on its own, which is the whole point: the rows above and
+  // below the legend keep their full width. A page built as one full height
+  // container of centred widgets has a single child, so that container is what
+  // gets tested and padded, on its right side only. Its widgets shift left by
+  // the legend's width rather than each being measured, because a centred
+  // widget cannot be moved out from under the legend by padding it.
+  for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+    lv_obj_t *row = lv_obj_get_child(page, i);
+    if ((row == nullptr) || !lv_obj_is_valid(row)) {
+      continue;
+    }
+    lv_area_t area;
+    lv_obj_get_coords(row, &area);
+    if ((area.y1 <= legend.y2) && (area.y2 >= legend.y1)) {
+      lv_obj_set_style_pad_right(row, reserve, LV_PART_MAIN);
+      // A scrolling label draws its text across the whole row whatever the row
+      // reserves, because the animation is not bounded by the padding. On the
+      // one row that has to keep a column clear, wrap instead: it shows every
+      // character, it stays inside the row, and it stops animating.
+      for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
+        lv_obj_t *child = lv_obj_get_child(row, j);
+        if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
+            && ((lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL)
+                || (lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL_CIRCULAR))) {
+          lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
+        }
+      }
+    }
   }
 }
 
@@ -1585,6 +1634,10 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   [[maybe_unused]] const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  // A content sized grid row is only as tall as the container in it asks to be.
+  // Left at the default the container filled the whole page and the rows below
+  // it fell off the bottom.
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
@@ -1613,11 +1666,6 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   const int32_t pad = connectedPage ? 0 : (mainPage ? 1 : 6);
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
-  // The Connected page rows fill the page width, so their names were drawn
-  // under the floating right legend.
-  if (connectedPage) {
-    reserveLegendColumn(cont);
-  }
 #elif defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
   // (Connect, Scan, Delete, IR, Settings, Level, Power off) fits without
@@ -1646,8 +1694,9 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_set_size(img, ICON_MENU_SIZE, ICON_MENU_SIZE);
     lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
     lv_image_set_src(img, icon);
-    lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1, LV_GRID_ALIGN_STRETCH, row_pos,
-                         1);
+    // Start, not stretch, down the row: a stretched container reports the whole
+    // page as its height and a content sized row then swallows the page.
+    lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1, LV_GRID_ALIGN_START, row_pos, 1);
   }
 #endif
 
@@ -1664,13 +1713,19 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     if (icon) {
 #if defined(FURBLE_M5COREX)
       lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
-      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      // Wrap inside the cell rather than scroll across it. The rows size to
+      // their content now, so the name is visible instead of clipped away, and
+      // a scrolling name would animate every visible cell for as long as the
+      // page is open.
+      lv_obj_set_width(label, LV_PCT(100));
+      lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
 #else
-      // The Connected page rows keep a column clear for the floating right
-      // legend, but a label at its natural width simply overflows that padding,
-      // which is how "Disconnect" was drawn under the legend. Hold the label to
-      // the room the row gives it. It keeps the scrolling it has always had, so
-      // the page reads exactly as before minus the collision.
+      // A label at its natural width overflows whatever padding its row keeps,
+      // so the rows level with the floating right legend hold their label to
+      // the room the row gives them. reserveLegendColumns() sets that padding
+      // when the page loads; the grow is what makes the label respect it. Every
+      // row keeps the scrolling label it has always had.
       if (connectedPage && (floatingIndicatorReserve() > 0)) {
         lv_obj_set_flex_grow(label, 1);
       }
@@ -2111,6 +2166,20 @@ void UI::addMainMenu(void) {
         auto *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
         auto &scan = Scan::getInstance();
 
+        // The Remote page owns the shutter legends. Any other page gets the menu
+        // ones back: entering the page set them, and before this nothing put
+        // them back when the page was left by a route other than its own
+        // button, so the home menu could be left showing a camera legend.
+        if ((page != m_Menu.at(m_RemoteShutter).page)
+            && (ui->m_ControlMode == ControlMode::SHUTTER)) {
+          ui->configureControl(ControlMode::MENU);
+        }
+
+        // Rows level with the floating right legend keep its column clear; the
+        // rest of the page keeps its full width. Page load is where the row
+        // geometry is finally known.
+        ui->reserveLegendColumns(page);
+
         // A roller or slider can leave the shared encoder group in edit mode.
         // Menu pages always start in navigation mode so left/right can reach
         // the shared header back button.
@@ -2256,6 +2325,14 @@ void UI::addMainMenu(void) {
         } else if (page == m_Menu.at(m_DiagnosticsStr).page) {
           showIMUWidgets(imuEnabledForUI());
         } else if (page == m_Menu.at(m_RemoteShutter).page) {
+          // The Remote page has its own control mode: the legends read back,
+          // camera and centre focus, not the menu's previous, select and next.
+          // Setting it here, where every route into the page passes, is what
+          // makes the page look the same however it was reached. It used to be
+          // set only by the button handler and by the simulator's "blind"
+          // action, so "page shutter" rendered the page in menu mode and every
+          // measurement taken that way was of a state the device never shows.
+          ui->configureControl(ControlMode::SHUTTER);
           if (M5.Touch.isEnabled()) {
             // if touch screen, enable back
             lv_obj_remove_state(back, LV_STATE_DISABLED);
@@ -4159,6 +4236,22 @@ std::string UI::simQueryState(const char *key) {
   // shipped Stick boards always report "buttons" on hardware, so a scenario
   // that means to measure their layout asserts this first and fails loudly if
   // the run silently fell back to the touch grid.
+  // Which set of legends the three buttons are showing. "menu" is previous,
+  // select and next; "shutter" is back, shutter and centre focus, which is what
+  // the Remote page shows on the device. The two simulator entries into that
+  // page disagreed on it, so the page was measured in a state the device never
+  // renders.
+  if (query == "control_mode") {
+    switch (m_ControlMode) {
+      case ControlMode::SHUTTER:
+        return "shutter";
+      case ControlMode::PRESET:
+        return "preset";
+      default:
+        return "menu";
+    }
+  }
+
   if (query == "nav_layout") {
     return M5.Touch.isEnabled() ? "touch" : "buttons";
   }
@@ -6048,9 +6141,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
   } else {
     // add remote shutter text for buttons
-    lv_area_t a;
     lv_obj_update_layout(menuShutter.page);
-    lv_obj_get_coords(menuShutter.page, &a);
     lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
 
     m_ShutterLockIcon = lv_button_create(menuShutter.page);
@@ -6059,23 +6150,13 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
     lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
 
-    // Where the lock icon sits, unchanged. The grey leader line that used to
-    // run from it down to the select legend is gone: its last point was 103 px
-    // below the icon on the 135x240 panel and 64 px below the bottom of the
-    // page, which is the whole of that page's overflow. The icon is floating
-    // and never joined the scroll extent; the line did.
-#if defined(FURBLE_M5STICKC)
-    const int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    const int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 10;
-#elif defined(FURBLE_M5STACK_CORE)
-    const int32_t x1 = 188;
-    const int32_t y1 = 80;
-#else
-    const int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    const int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 7;
-#endif
-
-    lv_obj_set_pos(m_ShutterLockIcon, x1, y1);
+    // Centred on the page, which is where upstream draws it. The grey leader
+    // line that used to run from it down to the select legend is gone: its last
+    // point was 103 px below the icon on the 135x240 panel and 64 px below the
+    // bottom of the page, which was the whole of that page's overflow. The four
+    // hardcoded point sets it needed went with it, and with them the
+    // "@todo Clean up the plethora of hardcoded values here" they carried.
+    lv_obj_align(m_ShutterLockIcon, LV_ALIGN_CENTER, 0, 0);
 
     lv_obj_move_foreground(m_ShutterLockIcon);
   }
@@ -6552,9 +6633,7 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
 void UI::addSensorsMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
 
-  // The switch sits at the right end of its row, which on the 80x160 panel put
-  // it under the floating right legend. Keep that column clear on this row.
-  reserveLegendColumn(addSettingItem(menu.page, NULL, Settings::IMU));
+  addSettingItem(menu.page, NULL, Settings::IMU);
 
   lv_obj_t *notice = lv_menu_cont_create(menu.page);
   lv_obj_t *noticeLabel = lv_label_create(notice);
@@ -6924,13 +7003,29 @@ void UI::addIRMenu(void) {
   updateIRMenuVisibility();
 }
 
+// The name a spin row shows. On the narrow panels the row has to hold a name, a
+// value and the floating legend on one line, and at the maximum value
+// "Shutter 999 min" and "Duration 999 min" do not fit 135 px, let alone 80.
+// These are designed labels, not truncations: the page each one opens still
+// carries the full name in its title.
+const char *UI::spinRowName(const char *item) {
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  if (item == m_IntervalShutterStr) {
+    return "Shtr";
+  }
+  if (item == m_BulbDurationStr) {
+    return "Dur.";
+  }
+#endif
+  return item;
+}
+
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
   spinner.m_Button = lv_menu_cont_create(page);
-  lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
-  // The value fills the line to the row's right edge, which on the Stick boards
-  // is under the floating right legend: the Delay and Shutter seconds were
-  // drawn beneath it. These rows only.
-  reserveLegendColumn(spinner.m_Button);
+  // One line, never wrapped. The name gives up room to the value, never the
+  // other way round: a value that has lost a digit reads as a different
+  // setting, and a wrapped row reads as two settings.
+  lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
   // Shutter and Wait rows fit without scrolling the timer page.
@@ -6939,23 +7034,23 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
-  lv_label_set_text(spinner.m_Label, item);
-#if defined(FURBLE_M5COREX)
+  lv_label_set_text(spinner.m_Label, spinRowName(item));
+  // The name takes what the value leaves. The value is the one thing that may
+  // never lose a character, so it keeps its natural width and the name grows
+  // into whatever is left. Measured against the maxima, this is the arrangement
+  // that keeps every value whole: a zero base width or a clip on the name both
+  // make the name claim its full text and push the value out of the row
+  // instead. The designed short names keep the 135 px rows to one line at the
+  // maxima; see plans/168-notouch-layout-overflows.md for the 80 px numbers.
   lv_obj_set_flex_grow(spinner.m_Label, 1);
-#endif
 
   spinner.m_Value = lv_label_create(spinner.m_Button);
-  // Name left, value right, on one line. The value fills what the name leaves
-  // and draws right-aligned in it, so the two never read as one word. When the
-  // value needs more room than the line has left, it wraps inside its own box
-  // and the row becomes two lines at the same alignment. It is never cut and it
-  // never animates: a scrolling value hides most of itself at any instant and
-  // repaints the row every frame for as long as the page is open.
-  lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_WRAP);
+  // At its natural width, right of the name, so it always draws every digit and
+  // its unit. It does not animate: a scrolling value hides most of itself at
+  // any instant and repaints the row every frame for as long as the page is
+  // open.
+  lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_align(spinner.m_Value, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-#if !defined(FURBLE_M5COREX)
-  lv_obj_set_flex_grow(spinner.m_Value, 1);
-#endif
 
   lv_obj_add_event_cb(
       spinner.m_Value,
@@ -6976,9 +7071,6 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
 
   lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_scrollbar_mode(menu.page, LV_SCROLLBAR_MODE_OFF);
-  // The Infinite switch sits at the right end of a full width row, which on the
-  // Stick boards is under the floating right legend.
-  reserveLegendColumn(menu.page);
   spinner.m_RowInfinite = lv_obj_create(menu.page);
   lv_obj_set_size(spinner.m_RowInfinite, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_layout(spinner.m_RowInfinite, LV_LAYOUT_FLEX);
@@ -7011,10 +7103,11 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   spinner.m_RowSpinners = lv_obj_create(menu.page);
   lv_obj_set_size(spinner.m_RowSpinners, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_layout(spinner.m_RowSpinners, LV_LAYOUT_FLEX);
-  // Wrap rather than run off the edge. Four rollers do not fit the 135 px and
-  // 80 px panels on one line, and the units roller was drawn past the right
-  // edge under the floating legend, so its options could not be read. On the
-  // wider boards the four still fit on one line and nothing moves.
+  // Wrapping, so the unit roller takes the line below the digits rather than
+  // being drawn under the floating right legend. Four rollers need the whole
+  // 135 px and the legend needs 26 of it, so on the narrow panels one of the
+  // two has to move and it is not going to be the legend. On the wide boards
+  // nothing wraps and the row is unchanged.
   lv_obj_set_flex_flow(spinner.m_RowSpinners, LV_FLEX_FLOW_ROW_WRAP);
 
   switch (M5.getBoard()) {
@@ -7349,9 +7442,6 @@ void UI::updateBulbModeHint(void) {
 void UI::addBulbMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_RemoteBulb, &icon_camera, true, parent);
   menu_t &menuBulbRun = addMenu(m_BulbRunStr, NULL, false, menu);
-  // The mode hint spans the page width and was drawn under the floating right
-  // legend.
-  reserveLegendColumn(menu.page);
 
   addSpinnerPage(menu, m_BulbDurationStr, m_Bulb.m_Duration);
 
@@ -7502,14 +7592,6 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // not. See plans/168-notouch-layout-overflows.md.
   lv_obj_set_height(cont, LV_SIZE_CONTENT);
   lv_obj_set_style_min_height(cont, LV_PCT(100), 0);
-  // The brightness slider is centred at 90% of the page, which on the Stick
-  // boards reaches under the floating right legend. Pad both sides by the
-  // legend width so the row clears it and everything on the page stays centred
-  // where it was.
-  if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-    lv_obj_set_style_pad_left(cont, reserve, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(cont, reserve, LV_PART_MAIN);
-  }
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
