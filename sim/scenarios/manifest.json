@@ -281,6 +281,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/reconnect-registration-delay.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/stick-notouch-layout-135.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

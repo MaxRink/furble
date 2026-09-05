@@ -1,0 +1,58 @@
+# Reconnect after a link drop when the camera is slow to confirm registration
+#
+# Bench capture, 2026-09-04, console driven on master 8bdc52e4 plus #266, an
+# X100VI bonded and on (bench-logs/reconn-0904-*.log, reconn2-*.log). After a
+# central-initiated disconnect the camera advertises again at once: a `connect
+# 0` eleven seconds later logged "Scanning" and "Connecting to
+# 78:44:F1:6D:52:CF" in the same second, and "Securing" then "Secured!" inside
+# the next one. What is slow is the confirmation: "Identifying as furble-38a70"
+# landed at +13 s, progress reached 85 at +25 s, and the camera's registration
+# notifications only arrived around +30 to +45 s. A first connect of a session
+# reaches active in about 14 s; a reconnect on this body takes two to three
+# times that, and Fujifilm::REGISTRATION_TIMEOUT_MS is 25 s, so the first
+# attempt can legitimately time out and a later retry is what completes.
+#
+# So the model is not a camera that refuses. It is a camera that answers
+# everything and confirms late, which is exactly what
+# `action ble-withhold-registration` already builds. The scenario holds the
+# confirmation back across the registration timeout, so the reconnect loop has
+# to survive at least one timed-out attempt, then releases it and requires the
+# session back.
+#
+# What this guards is the shape of the bench report "Connect did not work again
+# after a Disconnect": a session that is slow to come back must still come back,
+# and the wait must not leave a target stranded in the drain or a client leaked
+# from the pool. The pool is capped at the board's
+# CONFIG_BT_NIMBLE_MAX_CONNECTIONS and the self-deleting client is modelled, so
+# a leak across the retries fails the run instead of being invisible.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+wait 300
+assert control.state idle
+
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+
+# The camera goes quiet on registration. Everything else it answers.
+action ble-withhold-registration
+action drop
+
+# Across the whole withheld window the UI must stay honest: never Connected,
+# and the drain must never accumulate.
+assert-eventually-virtual 5000 control.state connecting
+wait 30000
+assert ui.connected no
+# The link comes up; only the confirmation is withheld, so isConnected() is
+# true here. What must stay false is the session the UI presents.
+assert ui.liveness_violations 0
+
+# The confirmation finally arrives and the session has to come back.
+action ble-allow-registration
+assert-eventually-virtual 60000 control.state active
+assert control.connected 1
+assert-eventually-virtual 5000 ui.connected yes
+assert control.zombies 0
+assert ui.liveness_violations 0
+exit

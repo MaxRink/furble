@@ -211,10 +211,10 @@ assert control.state idle
 | `cancel-sweep-reconnect-entry` | fuji-secure | automatic reconnect | 4 | 3500 ms, no token polled |
 | `cancel-sweep-autoconnect-entry` | none (FauxNY) | boot autoconnect | 2 | 2500 ms, token polled |
 
-Three more certified scenarios come from the same bench session and are
-described under "Two more bench failures" below:
-`reconnect-after-disconnect-sweep`, `power-off-state-matrix`, and the
-non-certified `power-off-during-connect-hang`.
+Four more scenarios come from the same bench session and are described under
+"Two more bench failures" below: `reconnect-after-disconnect-sweep`,
+`reconnect-registration-delay` and `power-off-state-matrix`, all certified, plus
+the non-certified `power-off-during-connect-hang`.
 
 Two of the legs have a connect window a cancel can land inside without polling
 (`fuji-secure`), one has a window that does poll (`FauxNY`, the control case),
@@ -259,9 +259,13 @@ an active session, so the states where the inherited bound is currently harmless
 are pinned before the state where it is not. Each leg reboots first, because
 `m_PoweringOff` latches for the life of the process.
 
-The fix is not in this PR. A bounded power-off path is its own change: the
-teardown a power off needs is not the teardown an interactive disconnect needs,
-because nothing is going to observe the result.
+No fix is needed here and none is planned. PR #245 closes this as a side effect:
+its `abortBlockingConnect()` terminates the link, the peer's stall ends on the
+terminate, and `doDisconnect()` returns in milliseconds, so Off completes at
+2550 ms against the 6000 ms bound on that branch. A separately bounded
+power-off path was considered and dropped: it would be a second teardown policy
+for a case #245 already handles. `power-off-state-matrix.txt` stays as the
+regression net.
 
 **(a) Connect did not work again after a manual Disconnect, until a restart.**
 Not reproduced, and the negative result is worth as much as the scenario.
@@ -291,15 +295,27 @@ connect/cancel cycles. **So a client leak on the clean UI paths is refuted as
 the cause of (a).** The sweeps carry `assert_max ble.live_clients 1` so the
 result stays true.
 
-What is left is the peer. The virtual camera resumes advertising the instant a
-central-initiated disconnect lands and carries no session state across it. If
-the real X100VI needs seconds before it will accept a central again, or holds
-the old session open, the simulator cannot see it. The bench capture has to show
-two things: how long after a central-initiated disconnect the camera advertises
-again, and whether its next connect completes the security handshake or fails
-it. The first becomes a peer knob for advertising silence after a disconnect;
-the second is already expressible with `secure_stall_ms` plus PR #245's stall
-model.
+The bench capture settled what the peer was missing, and it was not
+advertising. After a central-initiated disconnect the X100VI advertises again at
+once: a `connect 0` eleven seconds later logged `Scanning` and `Connecting to
+78:44:F1:6D:52:CF` in the same second, and `Securing` then `Secured!` inside the
+next one. What is slow is the confirmation. `Identifying as furble-38a70` landed
+at +13 s, progress reached 85 at +25 s, and the registration notifications only
+arrived around +30 to +45 s. A first connect of a session reaches active in
+about 14 s; a reconnect on this body takes two to three times that, and
+`Fujifilm::REGISTRATION_TIMEOUT_MS` is 25 s, so the first attempt can time out
+legitimately and a later retry is what completes. That is the bench report
+"Connect did not work again": it did, eventually, and slower than a user waits.
+
+So the model is a camera that answers everything and confirms late, which
+`action ble-withhold-registration` already builds; no new peer knob was needed.
+`bughunt/reconnect-registration-delay.txt` holds the confirmation back across
+the registration timeout so the reconnect loop has to survive a timed-out
+attempt, requires the UI to stay honest for the whole 30 s, then releases it and
+requires the session back. Certified, 5 of 5 clean runs on 135x240.
+
+The peer knob for advertising silence after a disconnect is therefore not
+added: the capture says the silence is zero.
 
 One limit on the pool guard is written down rather than papered over: the mock
 frees a self-deleting client of a *link-loss* disconnect only when
@@ -337,6 +353,17 @@ release. The four points are sub-50 ms windows in the control task, and
 `control-interleave` in the host suite already forces the one that matters
 (`connectall_returned`), so this stayed out of a PR whose job is the class the
 host suite cannot reach: seconds-long vendor waits with a real UI on top.
+
+**The #245 stale-bond rc sequence.** The same bench session captured a distinct
+failure: `secureConnection` returning rc=13 after 30 s, then rc=520 after 5 s, a
+self-initiated re-pair on the third link-up whose second `security_initiate`
+returns rc=2, a terminate with rc=531, a `readValue` rc=271 and `registration
+aborted after link loss`, looping. Replaying it needs `setSecureTimeouts()`,
+`setRefuseWhileBonded()` and `setSecureConnectionDropsLink()`, which are exactly
+the three peer members this branch drops from the cherry-pick because they
+belong to PR #245's firmware commit. That reproduction belongs in #245's lane,
+on a peer that already carries them, not duplicated here where it would collide
+on merge.
 
 **A modelled window for the non-Secure topologies.** `fuji`, `fuji-pair` and
 `fuji-ricoh-flappy` complete their handshakes in under a millisecond, so their
