@@ -264,6 +264,7 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
+`legend`,
 `auto_off`, `low_batt`, and `fb_output`.
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
@@ -507,7 +508,7 @@ The complete `ui.*` query set is:
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
-| `ui.label_overlaps` | Numeric count of visible label pairs on the current page whose drawn text overlaps. |
+| `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
 | `ui.clipped_values` | Numeric count of spin-row values on the current page too narrow for their own text. |
 | `ui.min_name_chars` | Fewest characters any spin-row name on the current page still shows in full, or `n/a`. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
@@ -596,6 +597,10 @@ The other namespaces are:
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
+- `setting.legend`: the persisted physical-button legend placement, `0` for
+  Buttons and `1` for Bottom. `seed legend 0|1` selects it before the UI is
+  built, which is when the legends are anchored and the room they need is
+  reserved.
 `ui.nav_layout` reports which navigation layout the running build rendered:
 `touch` for the touch grid, `buttons` for the physical-button layout. A scenario
 that means to measure a board's shipped layout asserts this first, so a lost
@@ -616,8 +621,11 @@ reports nothing about the bottom two rather than proving them clear. Since plan
 so the query is a regression pin: it fails the moment an indicator is anchored
 over the content area again.
 
-`ui.label_overlaps` reports how many pairs of visible labels on the current page
-draw their text through each other. It is the one layout defect no fit or scroll
+`ui.label_overlaps` reports how many pairs of visible content widgets on the
+current page draw through each other: labels by their drawn text extent, and the
+value widgets a settings page puts beside them, rollers, sliders, switches,
+checkboxes and bars. A roller drawn over the label that names it is the same
+defect as two labels drawn over each other. It is the one layout defect no fit or scroll
 query can see: a grid cell holding two entries still fits, it is simply
 unreadable. It uses the same drawn-text extent and viewport clamp as
 `ui.indicator_clearance`, so a label scrolled out of sight is not counted.

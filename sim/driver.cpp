@@ -313,7 +313,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",    "fb_output",
+      "text_size",  "auto_off",   "low_batt",    "fb_output", "legend",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -866,6 +866,7 @@ std::string settingBoolValue(const std::string &name) {
 std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
+      {"legend",    Settings::LEGEND   },
   };
   const auto found = bytes.find(name);
   if (found == bytes.end()) {
@@ -1283,6 +1284,7 @@ void applyScenarioSettings(void) {
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
   saveByte("text_size", Settings::TEXT_SIZE);
+  saveByte("legend", Settings::LEGEND);
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);

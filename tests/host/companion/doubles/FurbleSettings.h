@@ -24,6 +24,7 @@ class Settings {
     DISPLAY_OFF,
     THEME,
     TEXT_SIZE,
+    LEGEND,
     TX_POWER,
     TX_ADAPTIVE,
     GPS,

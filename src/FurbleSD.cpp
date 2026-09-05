@@ -205,6 +205,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::SCAN_MODE:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
@@ -370,6 +371,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::TEXT_SIZE:
       if (!parseUnsigned(text, Settings::TEXT_SIZE_LARGE, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::LEGEND:
+      if (!parseUnsigned(text, Settings::LEGEND_BOTTOM, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));

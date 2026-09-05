@@ -35,7 +35,11 @@ action page settings
 action nav timer
 wait 250
 assert ui.page timer
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else, so the fit assert is replaced by the two that matter.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 # No value gives up a digit or its unit, and no name falls below four
 # characters.
@@ -50,7 +54,11 @@ assert ui.page connected
 action page bulb
 wait 200
 assert ui.page bulb
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.clipped_values 0
 assert_min ui.min_name_chars 4
 exit

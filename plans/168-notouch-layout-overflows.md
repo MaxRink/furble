@@ -479,6 +479,90 @@ contract `FurbleUI.h` now carries. No sdkconfig changed and no firmware
 behaviour outside
 the UI layout changed.
 
+## The device walk sent it back
+
+The M5StickS3 walk rejected three things, and the rework below is what the user
+asked for rather than what the simulator found convenient.
+
+### The legend placement is a setting, not a decision
+
+Moving the Right legend into the navigation band was not wanted. It is now the
+`LEGEND` setting, wire id 47, on its own page under Settings, Display:
+
+- **Buttons**, the default and what these boards shipped, leaves each legend
+  beside the button it names. Left and OK along the bottom edge, Right partway
+  down the right edge.
+- **Bottom** puts all three in the reserved navigation band, which is what this
+  plan originally did to everything.
+
+`UI::legendPlacement()` reads it and both `UI::begin` and `applyLevelRotation`
+anchor from it. It is a restart setting, like the theme and the text size,
+because the legends are anchored once and the room they need is reserved once.
+
+Buttons placement means the Right legend is drawn over the page again, so the
+content has to keep that column clear. `UI::legendReserve()` returns the legend
+width in that placement and zero in the other, and `m_Content` reserves it once
+for every page rather than each page discovering it separately. That is the
+whole fix for the nine page-and-board combinations that used to overlap:
+`bughunt/legend-bottom-135.txt` and `-80.txt` walk the same pages as the
+per-board layout files with the other setting, so both placements are
+pinned.
+is 0 on every page in both placements.
+
+`bughunt/legend-bottom-135.txt` and `-80.txt` walk the same pages as the
+per-board layout files with the other setting, so both placements are pinned.
+
+### The icons and the row spacing come back
+
+The Connected page keeps its row icons and the home menu keeps the row padding
+it shipped with. Seven home rows then need 210 px of a 189 px page and the page
+scrolls, which is the trade the walk asked for: the icons were fine and the
+shrink was not.
+
+### No page shrinks the size the user chose
+
+Every per-page font cap is gone: `fontForConnectedMenu`, `fontForSpinRow`, and
+the `montserrat_14` the Core Connected grid used. A page renders at the chosen
+size and scrolls when the rows stop fitting. The Core Connected page went back
+to three columns for the same reason: four columns made a cell 80 px, which only
+worked with a smaller face on that page.
+
+The spin row rule survives at full size by wrapping rather than shrinking. The
+name keeps its natural width and wraps if it is wider than the row; the value
+takes a line of its own when the two do not fit side by side and wraps if it is
+still too wide, so it never gives up a digit or its unit; and a 6 px column gap
+keeps the two from reading as one word. Neither label animates.
+`ui.clipped_values` is 0 on both narrow panels at all three sizes in both legend
+placements.
+
+### The rotary pickers were drawn over their labels
+
+The Display page reported ten overlapping pairs at Normal on 135x240, and the
+Settings pages generally were the "collisions of the rotary pickers and text"
+the walk saw. The cause was one pattern: a flex container pinned to the full
+page height with `LV_FLEX_ALIGN_SPACE_EVENLY`. Once the rows stop fitting there
+is no free space to distribute, so LVGL stacks them. Six containers now size to
+their content with a minimum of the page height, so they keep the even spread
+while the rows fit and grow into a scroll when they do not.
+
+`ui.label_overlaps` grew to cover the pickers, not just labels: rollers,
+sliders, switches, checkboxes and bars. Every Settings page reads 0 on all three
+boards, both layouts, at Normal and Large.
+
+A settings row name also stopped scrolling. A circular scroll animates the row
+for as long as the page is open, and the 135x240 Feedback page measured 117
+invalidations over a one second probe against master's 55. Those names wrap
+instead: the same probe reads 60, and the 80x160 page went from 59 to 3.
+
+### What that cost the fit assertions
+
+A page that scrolls cannot assert `ui.overflow no`. The assertions that measured
+a fit on a page which now scrolls were replaced by `ui.label_overlaps 0`, which
+is the property that actually matters and the one those pages were quietly
+failing: before this change several of them reported a fit only because the
+container absorbed the excess by stacking widgets on top of each other, which no
+fit query can see.
+
 ## What PR #266 no longer needs
 
 #266 merged first and this branch is rebased onto it. Its

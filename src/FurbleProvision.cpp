@@ -87,6 +87,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
 #if !defined(FURBLE_NO_DISPLAY)

@@ -1,0 +1,102 @@
+# The Bottom legend placement on the 135x240 panel.
+#
+# UI::legendPlacement() reads the LEGEND setting. BUTTONS, the default and what
+# these boards shipped, leaves the Right legend beside the button it names, at
+# LV_ALIGN_RIGHT_MID with a 65 px offset, level with the side button the right edge, drawn over the
+# page; every page then keeps that column clear through legendReserve().
+# BOTTOM puts it in the navigation band with the other two, so the three read as
+# one legend row and no page gives up any width.
+#
+# stick-notouch-layout-135.txt walks the same pages in the default placement.
+# This file is the other half of that pair: same pages, same assertions, the
+# other setting. Both have to hold, which is the point of making it a choice
+# rather than a change.
+#
+# See plans/168-notouch-layout-overflows.md.
+seed no_touch true
+seed legend 1
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed imu true
+wait 300
+assert ui.nav_layout buttons
+# The seeded placement was loaded before the legends were anchored.
+assert setting.legend 1
+
+# Home menu.
+assert ui.page main
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+
+# Display page.
+action nav display
+wait 150
+assert ui.page display
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+
+# Sensors tile.
+action page settings
+action nav sensors
+wait 150
+assert ui.page sensors
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+
+# Timer settings list, where the rows share a line with their values.
+action page settings
+action nav timer
+wait 150
+assert ui.page timer
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
+
+# Connected session.
+action connect
+wait 3200
+assert ui.page connected
+assert ui.connected yes
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+
+# Remote shutter page.
+action page shutter
+wait 150
+assert ui.page shutter
+assert ui.indicator_clearance clear
+
+# Bulb page and its duration spin value.
+action page bulb
+wait 150
+assert ui.page bulb
+assert ui.indicator_clearance clear
+assert ui.clipped_values 0
+action nav bulb_duration
+wait 150
+assert ui.page bulb_duration
+assert ui.indicator_clearance clear
+
+# Camera list.
+action page bulb
+wait 150
+action page cameras
+wait 150
+assert ui.page cameras
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+
+# Running intervalometer view.
+action page connected
+wait 150
+action intervalometer
+wait 150
+assert ui.page timer_run
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+action stop
+wait 150
+assert ui.interval_state idle
+exit

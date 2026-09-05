@@ -212,7 +212,9 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [
         "feedback"
@@ -356,6 +358,21 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/legend-bottom-135.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/stick-notouch-connected-large.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -397,6 +414,21 @@
       "capabilities": [
         "fauxny",
         "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/legend-bottom-80.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
       ],
       "expected_exit": 0,
       "certified": true

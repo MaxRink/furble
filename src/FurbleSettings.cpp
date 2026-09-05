@@ -28,6 +28,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {DISPLAY_OFF,       {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
     {THEME,             {THEME, 3, "Theme", "theme", "M5ez"}                                 },
     {TEXT_SIZE,         {TEXT_SIZE, 40, "Text size", "text_size", FURBLE_STR}                },
+    {LEGEND,            {LEGEND, 47, "Legend", "legend", FURBLE_STR}                         },
     {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
@@ -143,6 +144,7 @@ bool Settings::appliesImmediately(type_t type) {
     case DISPLAY_OFF:
     case THEME:
     case TEXT_SIZE:
+    case LEGEND:
     case INTERVAL:
     case TOUCH_CALIBRATION:
     case MULTISELECT:
@@ -186,6 +188,7 @@ bool Settings::isDangerous(type_t type) {
     case DISPLAY_OFF:
     case THEME:
     case TEXT_SIZE:
+    case LEGEND:
     case PRESET_PICKER:
     case GPS:
     case GPS_BAUD:
@@ -504,6 +507,11 @@ void Settings::init(void) {
           break;
         case BATT_STYLE:
           save<uint8_t>(setting.type, BATT_STYLE_ICON);
+          break;
+        case LEGEND:
+          // The legend beside the button it names is what these boards shipped
+          // before the setting existed, so it stays the default.
+          save<uint8_t>(setting.type, LEGEND_BUTTONS);
           break;
         case SHOW_TITLE:
           save<bool>(setting.type, true);

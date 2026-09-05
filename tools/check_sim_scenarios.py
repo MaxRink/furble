@@ -23,6 +23,7 @@ REQUIRED_SELECTIONS = {
 }
 EXACT_BOARDS = {
   "page-matrix.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
+  "feedback-hidden-route.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "overflow-sweep.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "level-overflow.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "imu-diagnostics.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
@@ -37,6 +38,8 @@ EXACT_BOARDS = {
   "stick-notouch-layout-135.txt": {"m5stick-s3"},
   "stick-notouch-connected-large.txt": {"m5stick-s3"},
   "spin-row-widths-135.txt": {"m5stick-s3"},
+  "legend-bottom-135.txt": {"m5stick-s3"},
+  "legend-bottom-80.txt": {"m5stick-c"},
   "spin-row-widths-80.txt": {"m5stick-c"},
   "stick-notouch-layout-80.txt": {"m5stick-c"},
   "text-size-gate-stickc.txt": {"m5stick-c"},

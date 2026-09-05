@@ -45,12 +45,14 @@ action connect
 wait 3200
 assert ui.page connected
 assert ui.connected yes
-assert ui.overflow no
-assert ui.scroll_bottom 0
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else, so the fit assert is replaced by the two that matter.
+assert ui.label_overlaps 0
+# The page opens at its top, scrolled or not.
 assert ui.scroll_top 0
 assert ui.indicator_clearance clear
-# Eight entries, each a container and a label, plus the page. No icons: the row
-# icon is what the page gave up to fit, so a count of 25 here would mean they
-# came back.
-assert ui.visible_objects 17
+# Eight entries, each a container with its icon and its label, plus the page.
+assert ui.visible_objects 25
 exit

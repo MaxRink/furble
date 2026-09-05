@@ -332,6 +332,7 @@ class UI {
     lv_obj_t *navLeft;
     lv_obj_t *navOK;
     lv_obj_t *navRight;
+    int32_t navRightYOffset;
     bool filterReady;
     bool displayReady;
   } level_t;
@@ -387,7 +388,7 @@ class UI {
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
       // The units the roller offers are the units the rows show, so a board
       // reads the same in both places. The narrow panels shorten both because
-      // their rows share one line with the value; see fontForSpinRow and
+      // their rows share one line with the value; see
       // SpinValue::getShortUnitString.
 #if defined(FURBLE_M5COREX)
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
@@ -539,6 +540,12 @@ class UI {
   const uint32_t m_KeyEnter = LV_KEY_ENTER;
   const uint32_t m_KeyRight = LV_KEY_RIGHT;
 
+#if defined(FURBLE_M5STICKS3)
+  const uint32_t m_RightYOffset = 65;
+#else
+  const uint32_t m_RightYOffset = 0;
+#endif
+
 #if defined(FURBLE_RIG)
   static constexpr const char *m_Title = "RIG BUILD, NO BLE, NO ENCRYPTION";
 #elif (FURBLE_TEST_VERSION + 0)
@@ -578,6 +585,7 @@ class UI {
   static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on";
   static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
   static constexpr const char *m_TextSizeStr = "Text size";
+  static constexpr const char *m_LegendStr = "Legend";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_SensorsStr = "Sensors";
   static constexpr const char *m_GPSStr = "GPS";
@@ -818,8 +826,9 @@ class UI {
 
   /**
    * Count the visible labels and icons on the current page that intersect a
-   * floating navigation indicator. Returns zero on a touch build, which has no
-   * indicators.
+   * navigation legend drawn over the page. Returns zero on a touch build, which
+   * draws no legends, and on a build whose legends are all in the reserved
+   * navigation band.
    */
   uint32_t countIndicatorOverlaps(void);
 
@@ -1052,6 +1061,22 @@ class UI {
   void addDisplayMenu(const menu_t &parent);
 
   void addTextSizeMenu(const menu_t &parent);
+
+  /** Add the physical-button legend placement page. */
+  void addLegendMenu(const menu_t &parent);
+
+  /**
+   * Where this build draws the physical-button legends, from the LEGEND
+   * setting. Always BOTTOM on a board whose legends live in a flex navbar,
+   * because nothing there floats and the setting has nothing to choose.
+   */
+  static uint8_t legendPlacement(void);
+
+  /**
+   * Pixels a full width page must keep clear on the right for the floating
+   * Right legend, or zero when nothing floats over the page.
+   */
+  static int32_t legendReserve(void);
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);
