@@ -35,8 +35,14 @@
 #      that still holds the abandoned session.
 #   4. The user's own connect never reaches active.
 #
-# CERTIFIED FALSE: this FAILS on master, at `assert_max clock.ms`, and that is
-# the point. Promote it to certified once the fix lands.
+# CERTIFIED FALSE: this FAILS on master, at `ble.secure_stall_aborted`, and that is
+# the point. Promote it to certified once the fix lands.#
+# The settle bounds are deliberately generous. What they assert is that the
+# drain empties at all, not that it empties quickly: convergence here needs a
+# starved target task to run, so a loaded host stretches it in virtual time too
+# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
+# runs on work that was healthy. The invariant survives a wide bound; a drain
+# that never empties still fails it.
 seed ble_peers fuji-secure
 seed ble_saved true
 seed reconnect true
@@ -50,31 +56,31 @@ action connect
 wait 2000
 assert control.state connecting
 action cancel
-# A cancel must unwind the attempt, not burn DISCONNECT_WAIT_MAX_MS. The run is
-# about 2320 virtual ms old at the cancel, so a teardown that honours the
-# cancel returns inside this bound with room to spare. On master it returns at
-# about 32335, which is the 30 s cap expiring silently.
-assert_max clock.ms 8000
+# A cancel must unwind the attempt, not outwait it. The peer records which
+# way its handshake ended: a link terminate, or its own deadline. Only a
+# terminate is an abort, and on master nothing issues one, so this reads no.
+# It is provenance rather than a clock because the clock is not sound here,
+# see issue #279.
+assert ble.secure_stall_aborted yes
 # The drain bound is DISCONNECT_DRAIN_RECLAIM_MS (2000 ms).
-assert-eventually-virtual 5000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
-# Cycle 2, cancelling 4 s in. The same bound, cumulative: one burned cap
-# anywhere in the run puts the clock past it.
+# Cycle 2, cancelling 4 s in.
 action connect
 wait 4000
 action cancel
-assert_max clock.ms 12000
-assert-eventually-virtual 5000 control.zombies 0
+assert ble.secure_stall_aborted yes
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 
 # Cycle 3, cancelling 6 s in.
 action connect
 wait 6000
 action cancel
-assert_max clock.ms 25000
-assert-eventually-virtual 5000 control.zombies 0
+assert ble.secure_stall_aborted yes
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 

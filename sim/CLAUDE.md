@@ -258,9 +258,16 @@ a regression.
   link-loss client through `reapDeferredClients()` and the simulator does not
   pump it; and a FauxNY leg, because FauxNY has no radio to deliver the GAP
   disconnect its client's self-delete waits on, so the client outlives a clean
-  teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui` and
-  `reconnect-after-disconnect-sweep` carry it; the rest say in their header why
-  they do not (plans/172).
+  teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui`,
+  `cancel-sweep-fuji-secure-ui` and `reconnect-after-disconnect-sweep` carry
+  it; every leg that does not says why in its own header (plans/172).
+- Do not assert cancel or teardown latency in virtual time. `Control::disconnect()`
+  polls on the UI thread and every 20 ms slice advances the virtual clock, so the
+  number of slices is set by how long the host takes to let the connect task run,
+  which is issue #279. Measured: a bound with 4 percent slack failed 2 of 65 idle
+  runs and 4 to 6 of 8 at loadavg 80. Assert provenance instead;
+  `ble.secure_stall_aborted` says whether a modelled handshake ended on a link
+  terminate or on its own deadline, and no amount of host load changes it.
 - A virtual peer that answers instantly cannot model a wait. `seed
   secure_stall_ms` holds every Fujifilm peer inside
   `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm

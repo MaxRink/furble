@@ -12,7 +12,16 @@
 # connect through. Each cancel therefore lands while a target is retrying,
 # which is the interleaving the original teardown wedge was found in.
 #
-# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
+# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.#
+# No client-pool guard on this leg: it severs the link, and the mock frees a
+# link-loss client through reapDeferredClients(), which the simulator does not
+# pump. It would report a leak the firmware does not have. plans/172 records it.#
+# The settle bounds are deliberately generous. What they assert is that the
+# drain empties at all, not that it empties quickly: convergence here needs a
+# starved target task to run, so a loaded host stretches it in virtual time too
+# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
+# runs on work that was healthy. The invariant survives a wide bound; a drain
+# that never empties still fails it.
 seed ble_peers fuji-ricoh-flappy
 seed ble_saved true
 seed reconnect true
@@ -23,7 +32,7 @@ assert control.state idle
 action connect
 wait 10
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -31,7 +40,7 @@ assert control.state idle
 action connect
 wait 150
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -39,7 +48,7 @@ assert control.state idle
 action connect
 wait 400
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -47,7 +56,7 @@ assert control.state idle
 action connect
 wait 900
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -55,7 +64,7 @@ assert control.state idle
 action connect
 wait 1800
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -63,7 +72,7 @@ assert control.state idle
 action connect
 wait 2600
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -71,7 +80,7 @@ assert control.state idle
 action connect
 wait 3400
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -79,7 +88,7 @@ assert control.state idle
 action connect
 wait 10
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -87,7 +96,7 @@ assert control.state idle
 action connect
 wait 150
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -95,7 +104,7 @@ assert control.state idle
 action connect
 wait 400
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -103,7 +112,7 @@ assert control.state idle
 action connect
 wait 900
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -111,7 +120,7 @@ assert control.state idle
 action connect
 wait 1800
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -119,7 +128,7 @@ assert control.state idle
 action connect
 wait 2600
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -127,7 +136,7 @@ assert control.state idle
 action connect
 wait 3400
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 

@@ -550,6 +550,12 @@ The other namespaces are:
 - `control.reconnect_attempt`: number of reconnect retries already performed,
   which walks the `ReconnectBackoff::delayMs()` curve.
 - `control.reconnect_backoff` and `control.infinite_reconnect`: `yes` or `no`.
+- `ble.secure_stall_aborted`: `yes` once a Fujifilm peer's modelled security
+  handshake has ended on a link terminate rather than on its own deadline. This
+  is the provenance a cancel bound cannot give: virtual-time bounds on cancel
+  latency are not sound while issue #279 is open, because the interactive
+  teardown polls on the UI thread and the ticks it burns are set by host
+  scheduling.
 - `ble.live_clients`: number of NimBLE clients the mock currently holds. With
   `ble_max_clients` and `ble_client_selfdelete` seeded this is the client-leak
   guard: a session holds one, and anything left over after a settled teardown is

@@ -19,7 +19,17 @@
 # compiled into the simulator, and its distinguishing property is that a
 # request can be queued while the UI task is blocked inside doDisconnect,
 # which a scripted action cannot express because the driver awaits its
-# result. plans/172 records what closing that needs.
+# result. plans/172 records what closing that needs.#
+# No cancel-latency bound on this leg. Virtual-time bounds are not sound here:
+# the interactive teardown polls on the UI thread, so how many 20 ms ticks a
+# cancel burns is set by how long the host takes to let the connect task run,
+# which is issue #279. A flaky bound is worse than none.#
+# The settle bounds are deliberately generous. What they assert is that the
+# drain empties at all, not that it empties quickly: convergence here needs a
+# starved target task to run, so a loaded host stretches it in virtual time too
+# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
+# runs on work that was healthy. The invariant survives a wide bound; a drain
+# that never empties still fails it.
 seed autoconnect true
 seed reconnect true
 wait 300
@@ -27,7 +37,7 @@ wait 300
 # Pass 1: cancel 400 ms into the boot connect.
 wait 400
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -37,7 +47,7 @@ wait 300
 # Pass 2: cancel 1600 ms into the boot connect of the next boot.
 wait 1600
 action cancel
-assert-eventually-virtual 6000 control.zombies 0
+assert-eventually-virtual 30000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 

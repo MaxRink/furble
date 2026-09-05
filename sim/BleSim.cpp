@@ -217,6 +217,16 @@ void bleSetDeferredClientDelete(bool enabled) {
   NimBLEDevice::setDeferredClientDelete(enabled);
 }
 
+bool bleSecureStallAborted(void) {
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  for (const auto &peer : peers) {
+    if (peer->fujifilm != nullptr && peer->fujifilm->secureStallWasAborted()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 size_t bleLiveClientCount(void) {
   return NimBLEDevice::liveClientCount();
 }

@@ -1201,6 +1201,9 @@ std::string queryValue(const std::string &key) {
   if (key == "platform.download_lock") {
     return downloadLockState();
   }
+  if (key == "ble.secure_stall_aborted") {
+    return bleSecureStallAborted() ? "yes" : "no";
+  }
   if (key == "ble.live_clients") {
     return std::to_string(bleLiveClientCount());
   }

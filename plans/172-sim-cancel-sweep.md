@@ -325,34 +325,61 @@ guard, because it severs the link with `action drop` and the guard would report
 a leak the firmware does not have. Closing it needs a quiescent pump in the
 simulator, which is its own argument about where such a point exists.
 
-### Mutation evidence
+### Cancel latency cannot be asserted in virtual time yet, and is not
+
+A first revision bounded each windowed leg with one `assert_max clock.ms` over
+the whole run, on the reasoning that an outwaited cancel adds a full connect
+window and would push the clock past a tight bound. Review measured it and the
+reasoning does not hold:
+
+- `cancel-sweep-fauxny-ui` failed its own 24000 bound in 2 of 65 idle runs and
+  in 4 to 6 of 8 at loadavg 80, once at 83330.
+- `cancel-sweep-fuji-secure-ui` failed 1 of 15 at 31085 against 31000.
+- A certified 80x160 bughunt pass failed at 55615.
+
+The cause is issue **#279**. `Control::disconnect()` polls on the UI thread in
+20 ms slices, and each slice advances the virtual clock, so the number of
+slices a cancel burns is set by how long the *host* takes to let the connect
+task run. Under plan 161's deadlock breaker that is host scheduling, leaking
+straight into virtual time. A flaky bound is worse than none, so every one of
+them is gone and no clock bound ships in the certified set until #279 closes.
+
+Review also measured that the Secure bounds were meaningless as well as flaky:
+with `waitForStallLocked()` instrumented, `m_StallLinkDown` is never true in
+any Secure leg on master, so every armed stall runs to its 3500 ms deadline and
+29555 to 29805 *is* the outwaited baseline. That is not a scenario defect. On
+master nothing terminates a parked handshake at all, so no cancel there can
+abort one; that is the bug, not the harness.
+
+What replaces the bounds is provenance the breaker cannot inflate. The peer
+already records which way its handshake ended, a link terminate or its own
+deadline, and `ble.secure_stall_aborted` exposes it. The two reproductions
+assert it, and it is exactly the assertion that separates the trees:
+
+| Tree | `ble.secure_stall_aborted` after a cancel |
+| --- | --- |
+| master 8bdc52e4 | `no`, nothing issues a terminate |
+| #272 a376c4e7 | `no`, its re-arm has no token to preserve here |
+| #245 996c07c7 | `yes`, `abortBlockingConnect()` terminates the link |
+
+### The plan 161 mutation, honestly
 
 Plan 161 recorded that removing the `target->getCamera()->cancelConnect()` arm
-from `Control::disconnect()` failed no certified scenario, and named that as an
-open hole. It is closed here, on the topology where the contract it guards is
-actually honoured.
+from `Control::disconnect()` failed no certified scenario. **This branch does
+not close that hole on master, and the earlier claim that it did was wrong.**
+The only signal that separated a cancelled attempt from an outwaited one was
+the clock bound, and the clock is not sound until #279 closes.
 
-Every leg with a real connect window is bounded by one `assert_max clock.ms`
-over the whole run, with less slack than a single connect window, so one cancel
-that sat out its window instead of aborting it puts the clock past the bound.
-Eventual settling alone would not: the settle assertions allow 6000 virtual ms
-against a 3500 ms window, which an outwaited cancel satisfies.
+It is closed on the fix branch. Once #245 lands, both reproductions become
+certified, and `ble.secure_stall_aborted` is exactly the assertion the mutation
+breaks: with the arm removed there is no token to gate the terminate on, so the
+stall runs to its deadline and the provenance reads `no`. Recorded here so the
+promotion carries the mutation proof with it rather than dropping it.
 
-With the arm removed and nothing else changed, `cancel-sweep-fauxny-ui` fails 5
-of 5 runs, deterministically, naming the number:
-
-```
-ASSERT_MAX FAILED: clock.ms expected <= 24000 got 46685
-```
-
-That is 14 cancels each waiting out FauxNY's 2500 ms connect instead of
-unwinding in one 25 ms slice. The mutation was reverted; none is left in the
-tree.
-
-The two Fujifilm Secure legs do **not** catch that mutation, and they cannot:
+The two Fujifilm Secure legs could never have caught that mutation in any case:
 their handshake is `secureConnection()`, which ignores the cancel token whether
 the arm is there or not. The mutation is about the polling contract, so the
-polling topology is where it has to be caught. That is why FauxNY is in the
+polling topology is where it has to be caught, which is why FauxNY is in the
 sweep at all.
 
 ## What is not covered, and what closing it needs
@@ -437,7 +464,7 @@ the simulator there.
 | --- | --- | --- |
 | master 8bdc52e4 | FAIL, `clock.ms expected <= 8000 got 32330` | FAIL, `clock.ms expected <= 6000 got 32330` |
 | PR #272 head a376c4e7 | FAIL, identical assertion and value | FAIL, identical assertion and value |
-| PR #245 head 7987529d | PASS, cancels return at 2550, 7025 and 13255 ms | PASS, Off completes at 2550 ms |
+| PR #245 head 996c07c7 | PASS, cancels return at 2550, 7025 and 13255 ms | PASS, Off completes at 2550 ms |
 
 Every certified scenario in this PR passes on all three trees; the sweeps and
 the power-off matrix were rerun on both fix branches to confirm the fixes do not
@@ -481,7 +508,11 @@ as follows, and the same resolution is the intended one:
   not compile. Take #245's file and re-apply the two `SECURE_STALL` blocks, the
   enumerator and the parse case, on top.
 - #245 flips both reproductions here to certified and widens them to all three
-  boards, since both pass on that branch.
+  boards, since both pass on that branch. That promotion is also where the plan
+  161 mutation proof lands, above.
+- #245's inline `m_StallSignal.wait_for(...)` initialiser of `terminated` must
+  be deleted, not kept alongside `waitForStallLocked()`, or the merge fails to
+  compile with a redefinition of `terminated`.
 - `sim/scenario_action.*`: keep both, they each add one enumerator and one
   parse block (#245 adds `scan-row`, this adds `ble-secure-stall`).
 - `tests/host/`: keep #245's, they own that test.

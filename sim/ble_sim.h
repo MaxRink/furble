@@ -122,6 +122,17 @@ void bleSetMaxClients(size_t max);
  */
 void bleSetDeferredClientDelete(bool enabled);
 
+/**
+ * Did any Fujifilm peer's modelled handshake end on a link terminate rather
+ * than on its own deadline?
+ *
+ * This is the only breaker-proof way to tell an aborted cancel from one that
+ * merely outwaited the attempt. Virtual-time bounds cannot: the interactive
+ * teardown polls on the UI thread, so how many 20 ms ticks it burns is set by
+ * how long the host takes to let the connect task run, which is issue #279.
+ */
+bool bleSecureStallAborted(void);
+
 /** Number of live NimBLE clients the mock currently holds. */
 size_t bleLiveClientCount(void);
 
