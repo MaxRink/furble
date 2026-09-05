@@ -282,22 +282,66 @@ stale bond in the store even once the counter worked. With no bond, and so no
 IRK to resolve with, the identity address is the advertised address and the
 unbonded path is unchanged.
 
-**Defect 2: a second security initiate after a successful pair.** Every session
-that did manage to pair died the same way: `Secured!`, `Requesting status`,
-`ble_gap_security_initiate: rc=2 Operation already in progress or complete`,
-`Disconnected`, `readValue failed rc=271 Insufficient encryption`. The initiate
-is not furble's. `NimBLERemoteValueAttribute` retries a read or write that
-answers insufficient encryption by calling straight back into
-`NimBLEClient::secureConnection()`, which on an already encrypted link initiates
-security again; the stack answers rc=2 and the X100VI terminates.
+**Defect 2: a redundant security initiate parks the connect task forever.**
+Every session that did manage to pair died the same way: `Secured!`,
+`Requesting status`, `ble_gap_security_initiate: rc=2`, then half a minute of
+nothing, then `Disconnected` and `readValue failed rc=271`.
+
+The first reading of this was wrong and worth correcting, because the wrong
+mechanism suggests a different fix. rc=2 is `BLE_HS_EALREADY`, a **local**
+return from `ble_gap_security_initiate()` when the link's security is already
+established. Nothing goes on air, so the camera never sees it and cannot
+terminate over it. The damage is entirely on our side:
+`NimBLEDevice::startSecurity()` maps `EALREADY` to success
+(`NimBLEDevice.cpp:1267`, `return rc == 0 || rc == BLE_HS_EALREADY;`), so the
+blocking `secureConnection()` arms its task data and waits
+`BLE_NPL_TIME_FOREVER` for a `BLE_GAP_EVENT_ENC_CHANGE` that can never arrive,
+because nothing was started. On the bench that held `Camera::m_Mutex` for
+29.85 s, t=1638312 to t=1668162, until the camera gave up and dropped the link.
+
+That makes this the **same unbounded-block class as the stale-bond stall in
+section 1c-bis**, reached from a different direction: a bare blocking call with
+no cancel path, parked on an event that is not coming. Two independent ways into
+the same failure mode is the reason the plan treats "does this wait have a
+bound" as the question worth asking of every NimBLE call, not just the ones the
+bench has already hit.
+
+`NimBLERemoteValueAttribute` retries a read or write that answers insufficient
+encryption by calling straight back into `NimBLEClient::secureConnection()`,
+which is how an already encrypted link comes to be asked at all.
 
 Fixed in the vendored `components/esp-nimble-cpp`, in `secureConnection()`
 itself rather than at either retry site: an already encrypted link reports
-success without initiating. That is the honest answer to "make this connection
-secure" when it already is, and it fixes every caller at once, the two attribute
-retries and the async event path. The caller's retry then re-issues its read
-once more and gives up on its own terms instead of losing the session. Vendoring
-a fix here has precedent: plan 150 did the same for the task-data race.
+success without initiating, so the park is never entered. That fixes every
+caller at once, both attribute retries and the async event path, and the
+caller's retry then re-issues its read once more and gives up on its own terms.
+Vendoring a fix here has precedent: plan 150 did the same for the task-data
+race.
+
+Upstream state, which plan 150's process asks for and this section owes:
+upstream esp-nimble-cpp master has no equivalent guard. `startSecurity()` still
+maps `EALREADY` to success and `secureConnection()` still waits forever on the
+event it implies. So this is a divergence to carry, not a local backport of
+something already fixed upstream, and it is a candidate to raise there. Plan
+150's own un-vendoring exit condition is stale for the same reason: it is
+written as though the task-data race were the only reason we hold a fork, and
+it now needs this guard in its list before the fork can be dropped.
+
+**Not fixed, and worth naming.** `CameraList::remove()` deletes the bond by
+`camera->getAddress()` (`lib/furble/CameraList.cpp:138`), which is the advertised
+RPA, so deleting a saved Fujifilm Secure camera in the UI leaves its bond in the
+store. That is the same defect-1 class on a different path. It is not fixed here
+because that path has no live link to resolve an identity address from: the fix
+wants the identity address stored in the saved record, which is a stored-format
+change and belongs with PR #266's naming work rather than bolted on here. The
+consequence is a leaked bond entry, not a wedged session.
+
+**Why the simulator cannot see defect 1.** The `fuji-secure-stale` topology
+calls `NimBLEDevice::setBonded(true)`, which files the bond against every
+address, so `isBonded(advertised)` answers true there and the sim would pass with
+or without the fix. Only the host regression, which sets an identity address
+distinct from the advertised one, can tell them apart. Worth knowing before
+anyone reads a green sim run as coverage of this.
 
 Regressions, both in `fujifilm-stale-bond`:
 
@@ -740,8 +784,20 @@ deleted bond alone does not end an infinite reconnect cycle, so the user needs
 an explicit re-pair outcome rather than a quieter loop.
 
 The refusal case is not lost. It is now one member of the failure run rather
-than a separate fast path, and the in-link fresh pair still recovers it inside
-a single attempt when the camera is in pairing mode.
+than a separate fast path.
+
+The in-link fresh pair after the bond delete, however, is unreachable on
+hardware, and this paragraph used to claim otherwise.
+`NimBLEDevice::deleteBond()` is `ble_gap_unpair()`, which terminates the live
+link, so by the time the fresh pair is attempted there is no link left to pair
+on and `Fresh pair failed` is the expected outcome. It survives as the correct
+answer for the one shape that does keep the link, a camera refusing the dead
+keys without dropping, which is what `setRefuseWhileBonded()` models and what
+the in-link recovery scenario covers. MockNimBLE's `deleteBond` does not
+terminate, which is why the host tests pass through that path and the bench does
+not. Closing that gap means teaching the mock to terminate on unpair, which
+would flip the in-link scenario to the prompt outcome; worth doing, and left for
+the mock's own change rather than folded in here.
 
 Sim coverage: closed. The earlier revision of this plan noted that the
 simulator ran the real UI against `FurbleControlSim`, a fake Control, so there
@@ -788,43 +844,57 @@ Hardware verification owed before merge, on the X100VI:
    path is never entered: the scan simply times out. The camera has to be
    advertising for any of steps 4 to 6 to mean anything.
 4. Reconnect from the console with `connect 0`, then poll `debug control`.
-   `status` prints unprefixed lines (`state:`, `targets:`); the `control.*`
-   fields below come from `debug control`. Expect two link-up attempts whose
-   handshake fails ("Connected", "Securing", "secureConnection: failed rc=13"
-   or "rc=520"), then "Security handshake failed 2 times on a bonded camera;
-   deleting the stale local bond", then the in-link fresh pair going through:
-   "Secured!" and a normal registration to an active shutter target.
-   `debug control` must then report `control.state: active`,
-   `control.connect_fail_reason: none` and `control.zombies: 0`, and the bond
-   must have been deleted exactly once. This is the expected outcome with the
-   camera in pairing mode, and it is the path
-   `fujifilm-repair-needed`'s in-link recovery scenario models.
+   (`status` prints unprefixed lines; the `control.*` fields come from `debug
+   control`.) The expected sequence, and these are the lines to check off:
+
+   - attempt 1: `Connected`, `Securing`, a `secureConnection: failed` of any
+     shape, then
+     `Security handshake failed (1 of 2); retrying before any bond change`;
+   - attempt 2: `Connected`, `Securing`, another failure, then
+     `Security handshake failed 2 times on a bonded camera; deleting the stale
+     local bond`, then
+     `Fresh pair failed; put the camera in pairing mode and reconnect`.
+
+   Then `debug control` reports `control.state: connect_failed`,
+   `control.connect_fail_reason:` naming the camera and asking for pairing
+   mode, a `control.reconnect_attempt` that has stopped climbing, and
+   `control.zombies: 0`, with the "Pairing lost" box on screen and its full
+   text readable on the 135x240 panel.
+
+   The `Fresh pair failed` line is expected here, not a fault.
+   `NimBLEDevice::deleteBond()` is `ble_gap_unpair()`, which terminates the live
+   link, so by the time the in-link fresh pair is attempted there is no link
+   left to pair on. The in-link fast path is unreachable on hardware for this
+   shape; MockNimBLE's `deleteBond` does not terminate, which is why the host
+   tests do not show it. An earlier revision of this plan predicted an in-link
+   pair ending active at this step and was wrong.
+
+   Legitimate alternative on attempt 1: `Secured!` roughly 200 ms after
+   `Securing` with no furble line between them. That is NimBLE resolving
+   `PINKEY_MISSING` and re-pairing by itself, below our visibility. It is a
+   pass; carry on to step 6 and note it.
 5. During one of those security waits, press Cancel. The device must respond
    immediately instead of freezing for the ~30 s handshake timeout. Do it a
    second time on the next attempt, then check `cameras list`: the camera must
-   still be listed. The bond evidence is negative, and it is the point of the
-   step: no `deleting the stale local bond` line in the log and no "Pairing
-   lost" box. `cameras list` enumerates saved records, not NimBLE bonds, so it
-   proves the saved entry survived and nothing more. Expect
+   still be listed. The bond evidence is negative and it is the point of the
+   step: no `deleting the stale local bond` line and no "Pairing lost" box.
+   `cameras list` enumerates saved records, not NimBLE bonds, so it proves the
+   saved entry survived and nothing more. Expect
    `Fujifilm Secure registration aborted by user cancel` or the vendor unwind.
-   A user cancel is not a failed handshake, and two in a row are the case that
-   would otherwise trip the recovery.
-6. The refusal case, which is what actually produces "Pairing lost", and it
-   needs a camera that advertises but will not complete a pairing. Steps 3 and 4
-   cannot produce it: a camera sitting in its pairing screen accepts the fresh
-   in-link pair. If it can be produced at all, the way to try is to leave the
-   pairing screen mid-handshake so the camera is still advertising but no longer
-   accepting, and repeat `connect 0`. Expect
-   "Fresh pair failed; put the camera in pairing mode and reconnect",
-   `debug control` reporting `control.state: connect_failed`,
-   `control.connect_fail_reason:` naming the camera and asking for pairing mode,
-   a `control.reconnect_attempt` that has stopped climbing, and the
-   "Pairing lost" box on screen with its full text readable on the 135x240
-   panel. Repeat it once from the UI rather than the console: the same Control
-   code, but the original bench failure was UI-driven. **If the camera cannot be
-   held in that state, say so on the PR rather than reporting the step as
-   passed.** The host regression covers the refusal path either way; what the
-   bench adds here is confirmation that a real X100VI can reach it.
+6. Dismiss the "Pairing lost" box and run `connect 0` again. The bond is gone
+   now, so this is a first pairing: `Securing`, `Secured!`, `Requesting
+   status`, `Status`, `Identifying`, through to an active shutter target, with
+   `debug control` reporting `control.state: active` and
+   `control.connect_fail_reason: none`.
+
+   Three things must **not** appear between `Requesting status` and `Status`,
+   and they are the whole of defect 2: no `ble_gap_security_initiate: rc=2`, no
+   gap of roughly 30 s, and no `readValue failed rc=271 Insufficient
+   encryption`. Any of them means the redundant-initiate guard is not doing its
+   job.
+
+   Repeat the pair once from the UI rather than the console. Same Control code,
+   but the original bench failure was UI-driven.
 7. On the Scan page, select a camera that is already saved. Expect the
    "Already saved" box and no connect. Dismiss it with the physical buttons
    only, not the touchscreen: the OK button joins the input group precisely so
