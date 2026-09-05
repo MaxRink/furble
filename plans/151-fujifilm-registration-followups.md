@@ -715,6 +715,17 @@ overrides unchanged.
   scenario-seed form PR #264 established, so CI gates it; a
   `FURBLE_SIM_NO_TOUCH` environment override is a local convenience and no
   workflow sets it.
+- sim/scenarios/bughunt/cancel-secure-window-wedge.txt and
+  sim/scenarios/bughunt/power-off-during-connect-hang.txt (promoted to
+  certified, widened from m5stick-s3 to all three panels): the two
+  reproductions the #278 sim lane landed uncertified because they fail on
+  master. Both park an attempt inside `secureConnection()` and then ask the
+  device to unwind it, one through Cancel and one through Off, and both burned
+  the 30 s interactive cap because nothing could release a blocking call. This
+  PR's `abortBlockingConnect()` releases it, so each now asserts
+  `ble.secure_stall_aborted yes` and lands inside its clock bound on every
+  panel. Their manifest `reason` strings, which said to promote and widen them
+  when this PR landed, go with the promotion.
 - All four certified scenarios also run green under the
   `FURBLE_SIM_NO_TOUCH=1` environment override on every declared panel.
 
