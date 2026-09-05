@@ -129,9 +129,11 @@ the page overflowed by 31, unchanged from master's number but now for a
 different reason. That matters more here than on other pages, because this page
 hides and disables the header back button: it is the session root, so a
 Disconnect below the fold is only reachable by scrolling the encoder through
-seven rows. The page therefore caps its own face at Normal, through
-`fontForConnectedMenu`, the same page-scoped step the Core takes. Small still
-shrinks it; Large no longer grows it. Eight rows are 144 px at every text size.
+seven rows. The first design capped the page's own face at Normal to hold the
+fit. The device walk rejected that: a page honours the size the user chose and
+scrolls when the rows stop fitting. The cap is gone, the page scrolls at Large,
+and what is asserted instead is that nothing is drawn over anything else and
+that the scroll is bounded. See "Rework after the device walk" below.
 
 ### 4. The Remote shutter page on 135x240
 
@@ -184,11 +186,12 @@ home menu already uses, and the eight entries take eight distinct cells:
 
 `LV_GRID_FR(1)` rows divide the page exactly, so it cannot overflow.
 
-Four columns make a cell 80 px. Two things follow. The row container gives up
-its horizontal padding, which only ever cost label width because the icon is
-centred either way. And this page, and only this page, steps its labels down to
-`lv_font_montserrat_14` through `fontForConnectedMenu`: "Disconnect" is 87 px at
-the icon menu font and lost its last glyphs to the cell edge.
+The first design used four columns, which make a cell 80 px, and stepped this
+page's labels down to `lv_font_montserrat_14` because "Disconnect" is 87 px at
+the icon menu font and lost its last glyphs to the cell edge. The device walk
+rejected the font step. The page runs three columns instead, which leave 106 px
+and fit "Disconnect" as it is, and the names under the icons wrap rather than
+scroll or clip. See "Rework after the device walk" below.
 
 ### 6b. The same three changes reach the Core2, and fix it too
 
@@ -278,52 +281,38 @@ ate its digits. It drew "Shutter 250 m" at 135x240 and "Shutter 25" for 250 ms
 at 80x160, and "999 m" at the maxima. A value that loses a digit or its unit
 reads as a different setting, and no user can tell 25 from 250.
 
-So the row now has a rule, in this order:
+So the row has a rule, in this order, and the rework settled it at the user's
+own font rather than by shrinking anything:
 
-1. The value never clips. It takes its natural width, so every digit and its
-   unit are always drawn.
-2. The name gives up the room, because it is recoverable from its position in a
-   fixed ordered list, but only down to four characters. `spinRowNameFloor`
-   measures the first four characters of the name in the row's own face and sets
-   that as the label's minimum width, which keeps Coun, Dela, Shut and Wait
-   distinct. Moving `flex_grow` to the name without that floor collapses it to a
-   single letter.
-3. If those two still do not fit, the unit text shortens rather than the value.
+1. Neither label is cut. The row wraps, so the value takes a line of its own
+   when the two do not fit side by side, and each label wraps within its line.
+   A name cut mid glyph reads as a different setting exactly as a lost digit
+   does: "Duratic" and "999 mi" are the same defect.
+2. A 6 px column gap keeps the name and its value from reading as one word.
+   The gap was set and then overwritten with 2 px by a later board block, which
+   is how 135x240 Large drew "Count10".
+3. Capping the name's width is what cut it, not what saved it: the cap made
+   LVGL wrap the name and the row then clipped the wrapped second line, so
+   80x160 Normal drew "Coun". The name keeps its natural width instead. On the
+   80x160 panel, where the reserved legend column leaves 52 px and "Shutter" is
+   63 px at the default face, the name takes the whole line and wraps inside it
+   with the value on the next line.
+4. If the two still do not fit, the unit text shortens rather than the value.
    The narrow panels use `SpinValue::getShortUnitString`, "ms", "s" and "min"
-   instead of "msec", "secs" and "mins", through the same board split the rest
-   of this row uses. The 320x240 grid has the width and keeps the spelled out
-   unit. The unit roller on the spin page follows the same split rather than
-   staying on the long names, so a board reads the same in both places: picking
-   a unit from a roller that says "mins" and getting a row that says "min" is a
-   worse trade than the three characters the roller gives up, and the roller is
-   how the user sets the unit the row then shows.
+   instead of "msec", "secs" and "mins". The 320x240 grid has the width and
+   keeps the spelled out unit, and the unit roller follows the same split so a
+   board reads the same in both places.
 
-The unit was chosen over the alternative of folding it into the row name
-("Shutter ms" with a bare "250") because that alternative lengthens the name on
-exactly the panels where the name is already the thing being squeezed, and it
-puts the unit somewhere the value roller page does not repeat it. Shortening the
-unit costs three characters and reads the same.
+Folding the unit into the row name ("Shutter ms" with a bare "250") was
+rejected: it lengthens the name on exactly the panels where the name is the
+thing being squeezed, and it puts the unit somewhere the value page does not
+repeat.
 
-Those rows also cap their face through `fontForSpinRow`: the board default on
-the 80x160 panel and Normal on the 135x240 one.
-
-That was still not enough on the 80x160 panel, and the first version of the
-query could not see it. The row's own horizontal padding took 20 px of the 80
-and the flex gap another 8, leaving 60 px of row for a 24 px name floor and a
-42 px "999 min". The value ran 14 px past the right edge of the row that draws
-it and rendered as "999 mi", with Shutter's "999 ms" 9 px past and the bulb
-Duration row the same. None of that padding does any work on a panel this
-narrow, so the row keeps 2 px a side and a 2 px gap. That is 24 px back and 8 px
-of slack at the widest value, and it is the whole fix: the four character name
-floor stands and the face is already at the board's own minimum, so there was no
-lever left in either of those.
-
-Measured on both narrow panels at all three text sizes, at ordinary values
-(250 ms, 30 s, 60 min) and at the maxima (999 of each unit, 999 count):
-`ui.clipped_values` is 0 in all twelve combinations and `ui.min_name_chars` is 4
-in all twelve, which is "Wait" shown whole rather than any name cut to four. The
-longest name, Shutter, shows six characters at 135x240 and four at 80x160. The
-bulb Duration row, the same shape on another page, is walked as well.
+`ui.cut_names` is the assertion that holds it, not `ui.min_name_chars`. A
+minimum of four can mean "Wait shown whole" or "Count cut to Coun", and only the
+count tells them apart; the earlier claim that the 4 was Wait was wrong.
+Measured on both narrow panels, both legend placements, all three text sizes:
+`ui.cut_names` and `ui.clipped_values` are 0 in all twelve combinations.
 
 `e2e/redraw-steady.txt` gained a timer page step, on all three boards, so the
 animation cannot come back. That step runs before the connect rather than after
@@ -340,32 +329,27 @@ at 1 clipped value on 135x240 and 3 on 80x160.
 
 ## Evidence
 
-Captured at native panel size with the scenario `capture` verb, before and
-after,
-in `docs/img/notouch/`. The before set is the one plan 165 committed, plus
-`135-shutter.png`, captured on f425fd38 before any of this landed.
+Every touched page, on every modeled panel, in both layouts, at all three text
+sizes, before and after, is captured in `plans/168-evidence/`: 720 palette PNGs,
+about 3 MB. The before set is the PR base, commit `8bdc52e4`; the after set is
+this branch. The directory is laid out as
+`<panel>/<before|after>/<layout>-ts<size>[-lg<legend>]--<page>.png`, so
+`320x240/before/buttons-ts1--settings.png` and
+`320x240/after/buttons-ts1-lg0--settings.png` are the pair that shows the
+Settings icon grid collision and its fix.
 
-| Before | After | What changed |
-| --- | --- | --- |
-| `135-main-seven-rows.png` | `after-135-main-seven-rows.png` | Infrared was below the fold, 21 px. All seven rows visible. |
-| `135-connected.png` | `after-135-connected.png` | Disconnect was below the fold and the Disconnect row ran under the Right indicator. All eight rows visible, indicators in one row along the bottom. |
-| `135-shutter.png` | `after-135-shutter.png` | The leader line ran off the bottom edge, 64 px. One lock icon above the select indicator. |
-| `80-sensors.png` | `after-80-sensors.png` | The Restart button was clipped, 10 px. Setting row and button both visible. |
-| `80-timer.png` | `after-80-timer.png` | The Right indicator covered the seconds value of the Delay and Shutter rows. Indicators along the bottom, rows clear. |
-| `320-connected.png` | `after-320-connected.png` | Cameras drawn over its own icon, bottom row clipped, 13 px. Eight entries in eight cells, every label readable. |
+`lg0` is the default Buttons legend placement, which is what master had. `lg1`
+is the new Bottom option, which has no before pair because it did not exist.
 
-Three captures have no before pair because they are the states this change
-introduced rather than repaired:
+The captures are generated by driving the `capture` verb through one scenario
+per layout, text size and legend placement, then quantised with `pngquant` and
+recompressed with `optipng`. The raw simulator capture is an uncompressed RGB
+PNG and the set would otherwise weigh about ten times as much.
 
-| Capture | What it shows |
-| --- | --- |
-| `after-135-connected-large.png` | The Connected page at the maximum text size, all eight rows on screen. This is the page-scoped font cap, without which it overflows by 31 px with the back button hidden. |
-| `after-135-timer-large.png` | The timer rows at the maximum text size on 135x240, each on one line with both name and value readable. |
-| `after-80-timer-large.png` | The same on 80x160, where the face caps at the board default. |
-
-All of these are palette PNGs, quantised and recompressed like the before set;
-the raw simulator capture is an uncompressed RGB PNG and the nine files together
-would otherwise weigh about 700 KB rather than 40.
+The first design's hand-picked before and after pairs under `docs/img/notouch/`
+are gone. The after half of that set showed the layout the device walk rejected,
+so it contradicted the head; plan 165's before captures stay where plan 165
+references them.
 
 ## What CI runs now
 
@@ -385,10 +369,10 @@ that size in the layout it ships:
   rows in the state it drives, 108 px of text rows in an 87 px sub page.
 - `e2e/home-seven-rows-large.txt`: seven home rows, 129 px in a 112 px page.
 
-The same board's timer page is capped rather than clipped: `fontForSpinRow`
-holds those rows at the board default, so choosing Normal there does not enlarge
-the Count, Delay, Shutter and Wait rows. That is a deliberate consequence of the
-same limit, not a separate one.
+The first design capped the same board's timer page with `fontForSpinRow`, so
+choosing Normal there did not enlarge the Count, Delay, Shutter and Wait rows.
+The device walk rejected that cap along with the others. The rows are drawn at
+the chosen face and the page scrolls.
 
 The rows are already at zero padding and every one of them is reachable only
 from that page, so there is nothing left to remove and nothing left to trim.
@@ -438,28 +422,32 @@ not belong in a layout change.
 
 ## Hardware checklist
 
-Owed on the M5StickS3 after review. Walkable in under five minutes.
+Owed on the M5StickS3 after review. Walkable in under ten minutes.
 
 | Page | How to reach it | What to look for |
 | --- | --- | --- |
-| Any page | Boot | Three indicators in one row across the bottom edge: previous, select, next. Nothing floating halfway down the right edge. |
-| Home menu | Settings, Infrared, turn IR on, then back to the home menu | Seven rows all visible without scrolling: Connect, Scan, Delete, IR, Settings, Level, Off. |
-| Connected, Normal | Connect to a camera | Eight text rows, no icons, all visible down to Disconnect without scrolling. |
-| Connected, Large | Settings, Text size, Large, then connect | Still eight rows and still no scrolling. The rows deliberately do not grow with the setting: this page is the session root with the back button hidden, so nothing on it may fall off. |
-| Remote shutter | Connected, Remote | The lock icon sits just above the select indicator. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
-| Display | Settings, Display | Every row clear of the indicator row along the bottom. |
+| Any page | Boot | The legends sit where they always did: previous and select along the bottom edge, next partway down the right edge. No page content is drawn underneath the next legend, on any page, at any text size. |
+| Legend setting | Settings, Display, Legend | The page opens and offers Buttons and Bottom. Buttons is selected on a fresh device. Choose Bottom, restart: all three legends now sit in one row along the bottom edge and the right hand column is given back to the content. Choose Buttons, restart: back to the shipped placement. The choice survives a power cycle either way. |
+| Home menu | Settings, Infrared, turn IR on, then back to the home menu | Seven rows: Connect, Scan, Delete, IR, Settings, Level, Off. The page scrolls to reach the last of them, which is the trade for keeping the row spacing. Nothing is drawn on top of anything else while scrolling. |
+| Connected, Normal | Connect to a camera | Eight rows, each with its icon, all readable. Nothing runs under the next legend. |
+| Connected, Large | Settings, Text size, Large, then connect | Rows are drawn at the Large face and the page scrolls. Every row still readable, nothing stacked. Disconnect is reachable by scrolling. |
+| Remote shutter | Connected, Remote | The lock icon sits just above the select legend. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
+| Display | Settings, Display | Every row clear of the next legend. The page scrolls; the rows do not overlap while it does. |
 | Bulb duration | Connected, Bulb, Duration | The spin value is readable and nothing covers it. |
-| Timer, Normal and Large | Settings, Intervalometer, at both text sizes | Count, Delay, Shutter and Wait all visible, each on one line. Every value complete, digits and unit: the units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. Names may be cut, never below four characters. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
-| Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and all three indicators land on the rotated bottom edge, not the old corners. |
-| Indicator legend, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible against the band in every theme. They moved into the band in this change, so their contrast against it is new on the Sticks. |
+| Timer, all three sizes | Settings, Intervalometer, at Small, Normal and Large | Count, Delay, Shutter and Wait all present. Every value complete, digits and unit: the units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. Every name whole, wrapped onto a second line where the row is too narrow, never cut. At Large the page scrolls rather than shrinking the face. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
+| Settings pages with a roller | Settings, Text size and Settings, Theme | The roller never covers the label that names it, at any text size. |
+| Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and the legends follow the rotated edges. |
+| Legend contrast, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible in every theme, in both legend placements. |
 
 ## Implementation state
 
-Implemented as described. `src/FurbleUI.cpp` carries fixes 1 to 6b and 8 and
-gains two font policy helpers, `fontForConnectedMenu` and `fontForSpinRow`,
-beside the existing `fontForTextSize` and `fontForIconMenu`, so no widget
-hardcodes a face. `include/FurbleUI.h` loses `m_RightYOffset` and
-`level_t::navRightYOffset`. The three board-scoped scenarios promote all
+Implemented as described, then reworked after the device walk. Read this
+section together with "Rework after the device walk" below, which supersedes it
+where the two differ. `src/FurbleUI.cpp` carries fixes 1 to 6b and 8. The two
+page-scoped font helpers the first design added, `fontForConnectedMenu` and
+`fontForSpinRow`, are gone again; `fontForTextSize` and `fontForIconMenu` are
+the whole font policy. `include/FurbleUI.h` keeps `m_RightYOffset` and
+`level_t::navRightYOffset`, which the legend placement setting needs back. The three board-scoped scenarios promote all
 fourteen lines, `bughunt/core-connected-grid.txt` and its `-large` companion are
 new for the Core2 touch layout, `e2e/redraw-steady.txt` gains a timer page step,
 `e2e/level-spirit.txt` takes fix 7,
@@ -473,7 +461,8 @@ scenario whose own guard is `assert ui.nav_layout touch`, derived from the guard
 rather than from a name list, so the two Core2 files are not forced into the
 layout they exist to contrast with. `src/CLAUDE.md`, `sim/CLAUDE.md` and
 `docs/sim.md` are updated for the indicator band, the font helpers,
-`ui.label_overlaps`, `ui.clipped_values`, `ui.min_name_chars`, the interval seed
+`ui.label_overlaps`, `ui.clipped_values`, `ui.cut_names`,
+`ui.min_name_chars`, the interval seed
 unit suffix and `assert_min`. `include/CLAUDE.md` records the layout geometry
 contract `FurbleUI.h` now carries. No sdkconfig changed and no firmware
 behaviour outside
@@ -487,7 +476,7 @@ asked for rather than what the simulator found convenient.
 ### The legend placement is a setting, not a decision
 
 Moving the Right legend into the navigation band was not wanted. It is now the
-`LEGEND` setting, wire id 47, on its own page under Settings, Display:
+`LEGEND` setting, wire id 65, on its own page under Settings, Display:
 
 - **Buttons**, the default and what these boards shipped, leaves each legend
   beside the button it names. Left and OK along the bottom edge, Right partway
@@ -504,13 +493,11 @@ content has to keep that column clear. `UI::legendReserve()` returns the legend
 width in that placement and zero in the other, and `m_Content` reserves it once
 for every page rather than each page discovering it separately. That is the
 whole fix for the nine page-and-board combinations that used to overlap:
+`ui.indicator_overlaps` is 0 on every page in both placements.
 `bughunt/legend-bottom-135.txt` and `-80.txt` walk the same pages as the
-per-board layout files with the other setting, so both placements are
-pinned.
-is 0 on every page in both placements.
-
-`bughunt/legend-bottom-135.txt` and `-80.txt` walk the same pages as the
-per-board layout files with the other setting, so both placements are pinned.
+per-board layout files with the other setting, so both placements are pinned,
+and `bughunt/legend-setting-135.txt` and `-80.txt` open the Legend page itself,
+assert both values render, and assert the choice survives a restart.
 
 ### The icons and the row spacing come back
 
@@ -554,6 +541,81 @@ for as long as the page is open, and the 135x240 Feedback page measured 117
 invalidations over a one second probe against master's 55. Those names wrap
 instead: the same probe reads 60, and the 80x160 page went from 59 to 3.
 
+### The Settings icon grid on 320x240, a defect that predates this PR
+
+Widening `ui.label_overlaps` to the whole page turned up a collision that is
+not this PR's. On the **M5Stack Core class boards (320x240), the Settings
+page**, the icon grid declares four columns and three rows, twelve cells, and
+the page carries fourteen entries. On the PR base, commit `8bdc52e4`, two pairs
+share a cell: Sensors and Intervalometer are both at `{3, 0}`, and IR settings
+and Feedback are both at `{1, 2}`. Master has it. It is reachable on hardware
+and it is why one of each pair could not be opened.
+
+It hid behind three things at once, none of which a fit or scroll query can
+see. The page still fits, so `ui.overflow` reads `no`. The rows were a fixed
+fraction of the page, so the name under an icon was clipped away below it and
+the collision drew label-on-label with no label visible. And the names scrolled,
+`LV_LABEL_LONG_SCROLL_CIRCULAR`, so at any instant a name showed only part of
+itself: "Features" read "atures" and "Sensors" read "nsors".
+
+Three changes close it, all `FURBLE_M5COREX`:
+
+- A fourth row. Fourteen entries need sixteen cells, so Intervalometer moves to
+  `{0, 3}` and Feedback to `{1, 3}` and every entry has a cell of its own.
+- The rows size to their content, `LV_GRID_CONTENT`, and the cell no longer
+  stretches its container down the row. A stretched container reports the whole
+  page as its height, which made one row as tall as the viewport and pushed the
+  rest off the bottom.
+- The name under an icon wraps instead of scrolling. That also retires a
+  permanent animation on every visible cell, the redraw trap the project guide
+  names.
+
+`bughunt/core-icon-grid.txt` and `core-icon-grid-large.txt` are the teeth, on
+the home menu as well as the Settings page, and they assert the new
+`ui.cut_labels` query at 0: no label may lose characters at its box edge. Both
+pages scroll at Large and neither cuts a name.
+
+### What now scrolls, in pixels
+
+The trade, stated so it is not buried: these pages render at the size the user
+chose and scroll instead of shrinking. Numbers are `ui.scroll_bottom`, the
+content below the fold, in the default Buttons legend placement and in the touch
+layout. A blank cell fits.
+
+| Panel | Page | Small | Normal | Large |
+| --- | --- | ---: | ---: | ---: |
+| 135x240 buttons | Display | 224 | 314 | 428 |
+| 135x240 buttons | Timer | | | 19 |
+| 135x240 buttons | Connected | | 1 | 7 |
+| 135x240 touch | Display | 156 | 204 | 318 |
+| 80x160 buttons | Display | 247 | 374 | 374 |
+| 80x160 buttons | Text size | 104 | 217 | 217 |
+| 80x160 buttons | Timer | 38 | 137 | 137 |
+| 80x160 buttons | Theme | 19 | 47 | 47 |
+| 80x160 buttons | Connected | | 39 | 39 |
+| 80x160 buttons | Intervalometer running | 8 | 15 | 15 |
+| 80x160 touch | Display | 221 | 316 | 316 |
+| 80x160 touch | Text size | 45 | 137 | 137 |
+| 80x160 touch | Timer | 12 | 75 | 75 |
+| 320x240 buttons | Display | 164 | 164 | 250 |
+| 320x240 buttons | Connected | 103 | 103 | 151 |
+| 320x240 buttons | Theme, Text size, Timer | | | 11, 11, 29 |
+| 320x240 buttons | Settings | 275 | 275 | 493 |
+| 320x240 buttons | Home menu | | | 73 |
+| 320x240 touch, the Core2 | Display | 180 | 180 | 278 |
+| 320x240 touch, the Core2 | Connected | 77 | 77 | 125 |
+| 320x240 touch, the Core2 | Settings | 249 | 249 | 467 |
+| 320x240 touch, the Core2 | Home menu | | | 47 |
+
+The Display page is the biggest number on every Stick because it is the longest
+settings page and it gained the Legend row. On the 320x240 boards the Settings
+page is the biggest, because it is an icon grid of fourteen entries whose rows
+now size to their content instead of being clipped to a fixed fraction of the
+page. The home menu is the one page there that still has to fit without
+scrolling, since it is the session root, and it does at Small and Normal in both
+layouts; at Large it scrolls. On the 80x160 panel the Large column
+equals the Normal one because that board clamps Large to Normal.
+
 ### What that cost the fit assertions
 
 A page that scrolls cannot assert `ui.overflow no`. The assertions that measured
@@ -568,13 +630,15 @@ fit query can see.
 #266 merged first and this branch is rebased onto it. Its
 `UI::floatingIndicatorReserve()` reserved the right indicator's width on any
 full width menu row, because a wrapped camera row is tall enough to reach an
-indicator that floats over the page. Fix 1 moved that indicator into the
-reserved navigation band, so nothing is drawn over page content on any board and
-there is nothing left to reserve. The function, its declaration, both call sites
-in `addMenuItem` and `rebuildCamerasPage`, its `include/CLAUDE.md` bullet and
-the paragraph in plan 167 that introduced it are deleted here, and the
-`src/CLAUDE.md` rule that told a full width row to keep it clear now says the
-opposite.
+indicator that floats over the page. The reservation is still needed in the
+default Buttons placement, where the Right legend is drawn over the page, but it
+does not belong on the row: `m_Content` reserves `UI::legendReserve()` once for
+every page instead, which is zero in the Bottom placement and on a touch panel.
+The function, its declaration, both call sites in `addMenuItem` and
+`rebuildCamerasPage`, its `include/CLAUDE.md` bullet and the paragraph in plan
+167 that introduced it are deleted here, and the `src/CLAUDE.md` rule that told
+a full width row to keep the column clear now points at the page level
+reservation.
 
 The camera rows still wrap on `LV_LABEL_LONG_WRAP` rather than scrolling, for
 the redraw reason #266 gives, and `e2e/camera-name-rows.txt` still asserts

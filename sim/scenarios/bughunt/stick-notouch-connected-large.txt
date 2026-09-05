@@ -4,12 +4,11 @@
 # stick-notouch-layout-135.txt walks the same layout at the default size. This
 # file exists for one measurement the default size cannot make.
 #
-# The Connected page carries eight rows in a 167 px sub page. Plan 168 dropped
-# its row icons so those rows fit, and that made the page height text-size
-# sensitive where the fixed 24 px icon had pinned it: at the Large face, 28 px a
-# line, eight rows are 224 px and the page overflows by 31. The page therefore
-# caps its own face at Normal through fontForConnectedMenu. This file is the pin
-# for that cap.
+# The Connected page carries eight rows in a 167 px sub page, so at the Large
+# face it does not fit and the page scrolls. That is the intended behaviour: a
+# page honours the size the user chose and scrolls rather than shrinking the
+# face. What has to hold instead is that nothing is drawn over anything else and
+# that the scroll is bounded, which is what this file pins.
 #
 # It matters more here than on other pages because addMainMenu's page dispatch
 # hides and disables the header back button on the Connected page. It is the

@@ -416,7 +416,7 @@ action imu.pitch DEGREES
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
-`gps_data`, `nmea`, `timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
+`gps_data`, `nmea`, `timer`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -427,7 +427,7 @@ action imu.pitch DEGREES
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
-`gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`, `about`,
+`gps_data`, `nmea`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, and `interval_wait`.
@@ -509,8 +509,10 @@ The complete `ui.*` query set is:
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
+| `ui.cut_labels` | Numeric count of visible labels on the current page that cannot draw all of their own text. |
 | `ui.clipped_values` | Numeric count of spin-row values on the current page too narrow for their own text. |
 | `ui.min_name_chars` | Fewest characters any spin-row name on the current page still shows in full, or `n/a`. |
+| `ui.cut_names` | Numeric count of spin-row names on the current page that lose characters. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
@@ -617,9 +619,11 @@ clamped to the page viewport, so rows scrolled out of sight are not counted. The
 viewport ends above the reserved navbar band, so the query cannot reach the
 bottom-edge indicators: it measures the indicators that float over content, and
 reports nothing about the bottom two rather than proving them clear. Since plan
-168 put all three indicators in that band, a fitted page is structurally clear,
-so the query is a regression pin: it fails the moment an indicator is anchored
-over the content area again.
+168 made the placement a setting, this depends on it: in Bottom placement all
+three are in that band and a fitted page is structurally clear, while in the
+default Buttons placement the Right one is over the content area and the query
+is what proves each page keeps its column clear. `seed legend 0|1` selects it,
+and `bughunt/legend-bottom-*.txt` are the files that assert the other value.
 
 `ui.label_overlaps` reports how many pairs of visible content widgets on the
 current page draw through each other: labels by their drawn text extent, and the
@@ -633,6 +637,16 @@ unreadable. It uses the same drawn-text extent and viewport clamp as
 The walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree. A widget
 on the top layer, a message box or any other modal, is not in that subtree, so a
 page showing one still reports 0. Use a capture for those.
+
+`ui.cut_labels` reports how many visible labels on the current page are wider
+than the box they were given, so they lose characters at the edge. A name that
+has lost characters reads as a different entry, which is why the count is
+asserted at 0 rather than measured. Scrolling labels are excluded: a
+`LV_LABEL_LONG_SCROLL` or `LV_LABEL_LONG_SCROLL_CIRCULAR` label shows the whole
+text over time by design. Floating widgets are excluded for the same reason
+`ui.label_overlaps` excludes them. The query is what holds the rule that a page
+honours the text size the user chose: a page may scroll when the rows stop
+fitting, but it may never cut a name to fake a fit.
 
 `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
 container whose only visible children are a name label and a value label, as
@@ -650,8 +664,10 @@ of its row. A value on `LV_LABEL_LONG_DOT` counts as clipped whatever its
 geometry says, because an ellipsis is a lost character.
 
 `ui.min_name_chars` reports the fewest characters any name still shows in full,
-measured against the room the row gives it, which the layout holds at four so
-the names stay distinct. A page with no spin row reports 0 and `n/a`.
+measured against the room the row gives it. `ui.cut_names` is the assertion that
+matters: how many names lose characters, which must be 0. A minimum of four can
+mean "Wait shown whole" or "Count cut to Coun", and only the count tells them
+apart. A page with no spin row reports 0 and `n/a`.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,

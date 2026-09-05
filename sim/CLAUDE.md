@@ -509,6 +509,10 @@ a regression.
   walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree, so a widget
   on the top layer, a message box or any other modal, is not in it and a page
   showing one still reports 0; use a capture for those.
+- `ui.cut_labels` counts the visible labels on the current page that cannot draw
+  all of their own text, so they lose characters at the box edge. Scrolling
+  labels and floating widgets are excluded. It is the teeth for the rule that a
+  page honours the chosen text size: a page may scroll, it may never cut a name.
 - `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
   container whose only visible children are a name label and a value label. The
   container class is part of that shape: the spirit level's readout row is a

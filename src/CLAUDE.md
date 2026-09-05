@@ -90,9 +90,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   invalidates the row on every frame, which `ui.row_scrolling` and
   `ui.invalidate_count` measure. A wrapped row is taller and fills its width; it
   used to reach the indicators the Stick boards floated over the page, and such
-  rows reserved the right indicator's width. All three indicators sit in the
-  reserved navigation band now, so nothing is drawn over the page and no row
-  reserves anything. `ui.indicator_clearance` is still the check.
+  rows reserved the right indicator's width themselves. Where the legends sit is
+  the `LEGEND` setting now: in the default Buttons placement the Right one is
+  drawn over the page and `m_Content` reserves `UI::legendReserve()` once for
+  every page, and in Bottom placement all three are in the navigation band and
+  the reserve is zero. No individual row reserves anything.
+  `ui.indicator_clearance` is still the check, and it has to hold in both
+  placements.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

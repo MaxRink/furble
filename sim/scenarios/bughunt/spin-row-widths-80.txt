@@ -45,6 +45,9 @@ assert ui.indicator_clearance clear
 # characters.
 assert ui.clipped_values 0
 assert_min ui.min_name_chars 4
+# And no name is cut: every name on the row draws in full at this size. A cut
+# name reads as a different setting, so this is 0, not a floor.
+assert ui.cut_names 0
 
 # The bulb Duration row is the same shape on a different page, and its seeded
 # unit is the widest one, so it is walked too rather than assumed.
@@ -61,4 +64,7 @@ assert ui.page bulb
 assert ui.label_overlaps 0
 assert ui.clipped_values 0
 assert_min ui.min_name_chars 4
+# And no name is cut: every name on the row draws in full at this size. A cut
+# name reads as a different setting, so this is 0, not a floor.
+assert ui.cut_names 0
 exit

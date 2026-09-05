@@ -724,13 +724,21 @@ class UI {
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
+  // Rows sized to their content, not to equal halves of the page. At the
+  // largest size a name like "Settings" wraps to three lines, which is taller
+  // than half the page, and equal halves drew the second row of icons through
+  // the first row's text. Content rows grow instead and the page scrolls.
+  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_CONTENT, LV_GRID_CONTENT,
                                                    LV_GRID_TEMPLATE_LAST};
 
   // the settings page holds more entries than the main menu, give it its own
   // rows so the main menu keeps its layout
-  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
-                                                           LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  // Four rows, sized to their content. The Settings page carries fourteen
+  // entries and three rows of four cells only held twelve, so two pairs shared
+  // a cell and drew through each other. Content rows also stop the row height
+  // clipping the entry labels off below their icons; the page scrolls instead.
+  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {
+      LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -838,6 +846,7 @@ class UI {
    * their labels through each other, which no fit or scroll query can see.
    */
   uint32_t countLabelOverlaps(void);
+  uint32_t countCutLabels(void);
 
   /**
    * Walk the spin rows on the current page, a container whose only visible
@@ -848,7 +857,13 @@ class UI {
    * fewest characters any name label still shows in full, which the layout holds
    * at four. Returns {0, UINT32_MAX} when the page has no spin row.
    */
-  std::pair<uint32_t, uint32_t> measureSpinRows(void);
+  typedef struct {
+    uint32_t clippedValues;
+    uint32_t minNameChars;
+    uint32_t cutNames;
+  } spin_rows_t;
+
+  spin_rows_t measureSpinRows(void);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
@@ -1070,6 +1085,9 @@ class UI {
    * setting. Always BOTTOM on a board whose legends live in a flex navbar,
    * because nothing there floats and the setting has nothing to choose.
    */
+  /** Whether this board draws legends the setting can actually move. */
+  static bool legendSelectable(void);
+
   static uint8_t legendPlacement(void);
 
   /**

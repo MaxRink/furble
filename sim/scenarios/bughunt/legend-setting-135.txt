@@ -1,0 +1,34 @@
+# The Legend setting page renders and persists both values.
+#
+# LEGEND is the physical-button legend placement, wire id 65, on its own page
+# under Settings, Display. It is a restart setting: the legends are anchored
+# once and the room a page keeps clear is reserved once, so the page saves and
+# reboots rather than reflowing live.
+#
+# This file proves the page itself. It seeds the non-default value, walks to the
+# page and asserts the setting survived the boot and the page renders without
+# drawing anything over anything else. legend-bottom-135.txt proves what the
+# value does to every other page; stick-notouch-layout-135.txt proves the
+# default.
+#
+# The page is only built where it can do something. UI::legendSelectable() is
+# the one board list both the page and UI::legendPlacement() obey, so on a board
+# whose legends live in the navigation bar the entry is absent rather than inert.
+# See plans/168-notouch-layout-overflows.md.
+seed no_touch true
+seed legend 1
+seed fauxny true
+seed gps true
+wait 300
+assert ui.nav_layout buttons
+assert setting.legend 1
+
+action nav display
+wait 200
+assert ui.page display
+action nav legend
+wait 200
+assert ui.page legend
+assert ui.label_overlaps 0
+assert setting.legend 1
+exit

@@ -28,7 +28,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {DISPLAY_OFF,       {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
     {THEME,             {THEME, 3, "Theme", "theme", "M5ez"}                                 },
     {TEXT_SIZE,         {TEXT_SIZE, 40, "Text size", "text_size", FURBLE_STR}                },
-    {LEGEND,            {LEGEND, 47, "Legend", "legend", FURBLE_STR}                         },
+    {LEGEND,            {LEGEND, 65, "Legend", "legend", FURBLE_STR}                         },
     {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
     {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
     {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },

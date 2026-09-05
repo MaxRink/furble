@@ -73,6 +73,19 @@ bool mustFit(const std::string &page) {
   return page == "shutter" || page == "bulb_run" || page == "timer_run";
 }
 
+// A scrolling page is fine, and a long settings list legitimately runs a few
+// panels: the 135x240 Display page is 428 px and About and Device info are
+// longer. This bound only catches a runaway, a layout that grows without
+// settling, so it is ten panels rather than one. Read at the point of use:
+// LV_VER_RES resolves the default display, which does not exist yet at static
+// initialization, and a file scope constant evaluated to zero and tripped on
+// every page.
+// ponytail: a fixed multiple, not a per-page budget. Tighten per page if a
+// real regression ever hides under it.
+int maxScrollBottom(void) {
+  return 10 * LV_VER_RES;
+}
+
 enum class Event {
   SELECT,
   NEXT,
@@ -281,6 +294,17 @@ void checkInvariants(UI *ui, const std::string &event) {
   }
   if (mustFit(page) && ui->simQueryState("overflow") == "yes") {
     recordFinding(ui, "layout-overflow", event, "compact page overflows the panel");
+  }
+  // The pages that gave up their fit check are not unchecked. Nothing may be
+  // drawn over anything else on any page, and a page that scrolls has to scroll
+  // a sane amount: a runaway extent is a layout fault even though scrolling is
+  // allowed. ponytail: the bound is a whole extra panel of content, loose on
+  // purpose so only a real runaway trips it.
+  if (ui->simQueryState("label_overlaps") != "0") {
+    recordFinding(ui, "layout-overlap", event, "widgets drawn over each other");
+  }
+  if (std::atoi(ui->simQueryState("scroll_bottom").c_str()) > maxScrollBottom()) {
+    recordFinding(ui, "layout-scroll-runaway", event, "page scroll extent ran away");
   }
 }
 

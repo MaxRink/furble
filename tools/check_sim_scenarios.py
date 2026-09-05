@@ -39,6 +39,8 @@ EXACT_BOARDS = {
   "stick-notouch-connected-large.txt": {"m5stick-s3"},
   "spin-row-widths-135.txt": {"m5stick-s3"},
   "legend-bottom-135.txt": {"m5stick-s3"},
+  "legend-setting-135.txt": {"m5stick-s3"},
+  "legend-setting-80.txt": {"m5stick-c"},
   "legend-bottom-80.txt": {"m5stick-c"},
   "spin-row-widths-80.txt": {"m5stick-c"},
   "stick-notouch-layout-80.txt": {"m5stick-c"},

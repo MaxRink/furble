@@ -242,12 +242,6 @@ const lv_font_t *fontForIconMenu(uint8_t textSize) {
   return base;
 }
 
-// The Connected page is the densest layout on any board and is the one page that
-// steps below the icon menu font. On the Core its four columns make a cell 80 px
-// while "Disconnect" is 87 px at the icon menu font, and on the 135x240 panel it
-// carries eight rows in a 167 px page, which the Large face does not fit. The
-// step lives here with the rest of the font policy rather than as a literal in a
-// widget. See plans/168-notouch-layout-overflows.md.
 // LVGL 9.4 has no public long press time getter. This is its default.
 constexpr uint32_t BUTTON_MODE_CLICK_WINDOW_MS = 400;
 
@@ -309,7 +303,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSAssistStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {0, 3}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalDelayStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalShutterStr,   {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -322,7 +316,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
     {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
-    {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 3}}},
     {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
     {m_StorageStr,           {nullptr, nullptr, nullptr, nullptr, {3, 2}}},
     {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -1572,6 +1566,20 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  // The icon grid rows are sized to their content so a wrapped name is never
+  // clipped away below its icon. A cell only reports the height it needs if the
+  // container in it asks for its content height; left at the default the row
+  // grew to the whole page and the next row of icons fell off the bottom.
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
+  // The home menu is the one page here that has to fit without scrolling: it is
+  // the root of the whole UI and it carries two rows. In the physical-button
+  // layout the page is 26 px shorter than in the touch layout and two rows of
+  // icon plus name ran 9 px past it, so the home rows give up their vertical
+  // padding. Every other page on this board keeps it and scrolls.
+  if (menu.page == m_MainMenu.page) {
+    lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
+  }
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
@@ -1618,8 +1626,10 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_set_size(img, ICON_MENU_SIZE, ICON_MENU_SIZE);
     lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
     lv_image_set_src(img, icon);
-    lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1, LV_GRID_ALIGN_STRETCH, row_pos,
-                         1);
+    // The row tracks size to their content, so the cell must not stretch the
+    // container down the row: a stretched container reports the whole page as
+    // its height and the rows below it fall off the bottom of the page.
+    lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1, LV_GRID_ALIGN_START, row_pos, 1);
   }
 
   if (checkbox) {
@@ -1635,20 +1645,19 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     const uint8_t textSize = Settings::load<Settings::TEXT_SIZE>();
     if (iconRow) {
 #if defined(FURBLE_M5COREX)
-      // The Connected page runs four columns to give its eight entries a cell
-      // each, so a cell is 80 px. "Disconnect" is 87 px at the icon menu font
-      // and lost its last glyphs to the cell edge, so that page steps down.
       lv_obj_set_style_text_font(label, fontForIconMenu(textSize), 0);
-      // Keep the label inside its own grid cell. At the largest size a name
-      // like "Disconnect" is wider than the cell, and an unconstrained label
-      // simply draws over its neighbour. Wrapping keeps every character at the
-      // size the user chose; the rows size to their content and the page
-      // scrolls. See plans/168-notouch-layout-overflows.md.
+      // Keep the label inside its own grid cell and show all of it. The name
+      // under an icon used to scroll, which runs a permanent animation that
+      // invalidates the cell on every frame (the redraw trap the project guide
+      // names) and hides most of the name at any instant. Wrapping keeps every
+      // character at the size the user chose; the rows size to their content
+      // and the page scrolls. See plans/168-notouch-layout-overflows.md.
+      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
       lv_obj_set_width(label, LV_PCT(100));
       lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-#endif
+#else
       lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+#endif
     } else if (wrapText) {
       // A camera name is composed by the vendor client, so it can be wider than
       // an 80x160 row. Wrap it instead of scrolling it.
@@ -1669,8 +1678,8 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       // content area and a wrapped row reached it. It no longer floats: all
       // three indicators sit in the reserved navigation band, so there is
       // nothing over the page to keep clear.
-      lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+      lv_obj_set_width(label, LV_PCT(100));
     } else {
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
@@ -2856,6 +2865,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
         {"timer",             m_IntervalometerStr  },
         {"theme",             m_ThemeStr           },
         {"text_size",         m_TextSizeStr        },
+        {"legend",            m_LegendStr          },
         {"bluetooth",         m_BluetoothStr       },
         {"tx_power",          m_TransmitPowerStr   },
         {"about",             m_AboutStr           },
@@ -3005,6 +3015,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       {"nmea",              m_GPSNMEAStr          },
       {"theme",             m_ThemeStr            },
       {"text_size",         m_TextSizeStr         },
+      {"legend",            m_LegendStr           },
       {"bluetooth",         m_BluetoothStr        },
       {"tx_power",          m_TransmitPowerStr    },
       {"about",             m_AboutStr            },
@@ -3125,7 +3136,10 @@ uint32_t UI::countLabelOverlaps(void) {
       }
       return false;
     };
-    if (measured(obj)) {
+    // A floating widget is drawn over the page on purpose: the shutter lock and
+    // the reconnect banner both sit on top of their page and are not a
+    // collision. Only widgets that take part in the layout can collide.
+    if (measured(obj) && !lv_obj_has_flag(obj, LV_OBJ_FLAG_FLOATING)) {
       lv_area_t coords;
       lv_obj_get_coords(obj, &coords);
       lv_area_t area = simDrawnArea(obj, coords);
@@ -3154,13 +3168,56 @@ uint32_t UI::countLabelOverlaps(void) {
   return overlaps;
 }
 
-std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
+// How many labels on the current page cannot draw all of their text. A label
+// whose own text is wider than the box it was given loses characters at the
+// edge, and a name that has lost characters reads as a different entry. The
+// query exists so a scenario can hold that at zero at every text size instead
+// of the layout quietly cutting names when the font grows.
+uint32_t UI::countCutLabels(void) {
+  lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if (page == nullptr) {
+    return 0;
+  }
+  lv_obj_update_layout(page);
+
+  lv_area_t viewport;
+  lv_obj_get_coords(page, &viewport);
+
+  uint32_t cut = 0;
+  std::function<void(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+    if ((obj == nullptr) || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
+      return;
+    }
+    // A scrolling label shows the whole text over time by design, and a
+    // floating widget is drawn over the page on purpose. Neither is a cut.
+    if (lv_obj_check_type(obj, &lv_label_class) && !lv_obj_has_flag(obj, LV_OBJ_FLAG_FLOATING)
+        && lv_label_get_long_mode(obj) != LV_LABEL_LONG_SCROLL
+        && lv_label_get_long_mode(obj) != LV_LABEL_LONG_SCROLL_CIRCULAR) {
+      lv_area_t coords;
+      lv_obj_get_coords(obj, &coords);
+      if (simAreasIntersect(coords, viewport)) {
+        const int32_t width = lv_obj_get_content_width(obj);
+        if ((width > 0) && (lv_obj_get_self_width(obj) > width)) {
+          cut++;
+        }
+      }
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+      visit(lv_obj_get_child(obj, i));
+    }
+  };
+  visit(page);
+  return cut;
+}
+
+UI::spin_rows_t UI::measureSpinRows(void) {
   uint32_t clippedValues = 0;
   uint32_t minNameChars = UINT32_MAX;
+  uint32_t cutNames = 0;
 
   lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
   if (page == nullptr) {
-    return {clippedValues, minNameChars};
+    return {clippedValues, minNameChars, cutNames};
   }
   lv_obj_update_layout(page);
 
@@ -3172,6 +3229,12 @@ std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
     const char *text = lv_label_get_text(label);
     if (text == nullptr) {
       return static_cast<uint32_t>(0);
+    }
+    // A label at its natural width shows all of its text, whatever the per
+    // glyph rounding of the prefix walk below says. Only a label narrower than
+    // its own text loses characters.
+    if (lv_obj_get_self_width(label) <= width) {
+      return static_cast<uint32_t>(std::char_traits<char>::length(text));
     }
     const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
     const int32_t spacing = lv_obj_get_style_text_letter_space(label, LV_PART_MAIN);
@@ -3240,7 +3303,12 @@ std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
       const int32_t drawn = (nameRight >= nameLeft) ? (nameRight - nameLeft + 1) : 0;
       const int32_t padded = drawn - lv_obj_get_style_pad_left(name, LV_PART_MAIN)
                              - lv_obj_get_style_pad_right(name, LV_PART_MAIN);
-      minNameChars = std::min(minNameChars, visibleChars(name, padded));
+      const uint32_t shown = visibleChars(name, padded);
+      minNameChars = std::min(minNameChars, shown);
+      const char *nameText = lv_label_get_text(name);
+      if ((nameText != nullptr) && (shown < std::char_traits<char>::length(nameText))) {
+        cutNames++;
+      }
       return;
     }
     for (lv_obj_t *child : visible) {
@@ -3249,7 +3317,7 @@ std::pair<uint32_t, uint32_t> UI::measureSpinRows(void) {
   };
   visit(page);
 
-  return {clippedValues, minNameChars};
+  return {clippedValues, minNameChars, cutNames};
 }
 
 uint32_t UI::countIndicatorOverlaps(void) {
@@ -3812,7 +3880,7 @@ std::string UI::simQueryState(const char *key) {
     // matrix scenario, so adding a page cannot silently turn into "other" in
     // host coverage. Optional capability pages are looked up with find below
     // because their menu entries are not built when the capability is absent.
-    const std::array<std::pair<const char *, const char *>, 50> pages = {
+    const std::array<std::pair<const char *, const char *>, 51> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -3834,6 +3902,7 @@ std::string UI::simQueryState(const char *key) {
          {m_SensorsStr, "sensors"},
          {m_DisplayStr, "display"},
          {m_TextSizeStr, "text_size"},
+         {m_LegendStr, "legend"},
          {m_GPSStr, "gps"},
          {m_GPSDataStr, "gps_data"},
          {m_GPSNMEAStr, "nmea"},
@@ -4069,6 +4138,12 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(countLabelOverlaps());
   }
 
+  // Labels that cannot draw all of their own text. Must read 0: a name that
+  // lost characters to its box edge reads as a different entry.
+  if (query == "cut_labels") {
+    return std::to_string(countCutLabels());
+  }
+
   // The spin rows put a setting name and its value on one line, so one of them
   // has to give up room on a narrow panel. "clipped_values" is how many values
   // are too narrow for their own text and must always read 0: a value that
@@ -4076,12 +4151,15 @@ std::string UI::simQueryState(const char *key) {
   // the fewest characters any name on the page still shows in full, which the
   // layout holds at four so the four names stay distinct. A page with no spin
   // row reports 0 and "n/a".
-  if (query == "clipped_values" || query == "min_name_chars") {
+  if (query == "clipped_values" || query == "min_name_chars" || query == "cut_names") {
     const auto measured = measureSpinRows();
     if (query == "clipped_values") {
-      return std::to_string(measured.first);
+      return std::to_string(measured.clippedValues);
     }
-    return (measured.second == UINT32_MAX) ? "n/a" : std::to_string(measured.second);
+    if (query == "cut_names") {
+      return std::to_string(measured.cutNames);
+    }
+    return (measured.minNameChars == UINT32_MAX) ? "n/a" : std::to_string(measured.minNameChars);
   }
 
   if (query == "indicator_clearance" || query == "indicator_overlaps") {
@@ -5928,6 +6006,12 @@ UI::menu_t &UI::addConnectedMenu(void) {
       lv_label_set_text(label, std::get<2>(i));
       lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
       lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+      // Keep the caption inside its own column. "Shutter" and "Shutter Lock"
+      // are wider than a third of the panel and an unconstrained label ran into
+      // its neighbours, drawing "hutt ocu hutt". Wrapping keeps every character
+      // at the size the user chose.
+      lv_obj_set_width(label, LV_PCT(100));
+      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     }
 
     m_OK = std::get<1>(buttons[0]);
@@ -6848,11 +6932,11 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // and the flex gap another 8, leaving 60 for a 24 px name floor and a 42 px
   // "999 min": the value ran 14 px past the row and drew as "999 mi". None of
   // that padding is doing any work on a panel this narrow, so the row keeps 2 px
-  // a side and a 2 px gap, which is 24 px back and 8 px of slack at the widest
-  // value. See plans/168-notouch-layout-overflows.md.
+  // a side. With the 6 px column gap above that leaves 70 px for a 24 px name
+  // floor and a 42 px "999 min", 4 px of slack at the widest value.
+  // See plans/168-notouch-layout-overflows.md.
   lv_obj_set_style_pad_left(spinner.m_Button, 2, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_right(spinner.m_Button, 2, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_column(spinner.m_Button, 2, LV_STATE_DEFAULT);
 #endif
 
 #if !defined(FURBLE_M5COREX)
@@ -6863,28 +6947,25 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_grow(spinner.m_Label, 1);
 #else
-  // Neither label animates on the narrow panels. The two share one row, so
-  // whichever one is grown gets a box narrower than its text, and
-  // LV_LABEL_LONG_SCROLL_CIRCULAR then repaints every frame: measured on the
-  // 80x160 timer page, 170 invalidations over a one second probe where a static
-  // page reads 3. That is exactly the per-tick repaint the LVGL redraw trap in
-  // CLAUDE.md warns about, so both labels clip instead of scrolling.
-  //
-  // Which one gets to clip is not a free choice. The value is the data: a lost
-  // digit or a lost unit reads as a different setting, so it takes its natural
-  // width and never clips. The name is recoverable from its position in a
-  // fixed, ordered list, so it is the one that gives up room, but not to
-  // nothing: it holds a floor of four characters, which keeps Coun, Dela, Shut
-  // and Wait distinct from each other.
-  // The name is never cut. Growing it and clipping drew "Duratic" with the
-  // value hard against it: a name cut mid glyph with no gap reads as a
-  // different setting just as a lost digit does. It keeps its natural width and
-  // wraps if it is wider than the row on its own, the value takes a line of its
-  // own when the two do not fit side by side, and the page scrolls. Neither
-  // label animates.
+  // Neither label animates and neither is cut. The row wraps, so the value
+  // takes a line of its own when the two do not fit side by side, and each
+  // label wraps within its line rather than losing characters. Clipping either
+  // one reads as a different setting: "Duratic" for Duration and "999 mi" for
+  // 999 min are the same defect. LV_LABEL_LONG_SCROLL_CIRCULAR is not the
+  // alternative, it repaints every frame for as long as the page is open.
+  // The name keeps its natural width. Capping it at the row width made LVGL
+  // wrap it, and the wrapped second line is then clipped by the row, which drew
+  // "Coun" for Count: a cap is how the name got cut, not how it was saved. At
+  // its natural width the name is whole and the value wraps to the line below.
   lv_label_set_long_mode(spinner.m_Label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_max_width(spinner.m_Label, LV_PCT(100), 0);
   lv_obj_set_style_text_font(spinner.m_Label, fontForTextSize(textSize), 0);
+#if defined(FURBLE_M5STICKC)
+  // 80x160 with the legend column reserved leaves 52 px of row, and "Shutter"
+  // is 63 px at the default face. The name takes the whole line here so it can
+  // wrap inside it; the value follows on the next line. Two lines a row, and
+  // the page scrolls, which is the trade: nothing is cut.
+  lv_obj_set_width(spinner.m_Label, LV_PCT(100));
+#endif
 #endif
 
   spinner.m_Value = lv_label_create(spinner.m_Button);
@@ -7597,8 +7678,9 @@ void UI::addDisplayMenu(const menu_t &parent) {
 
   // Where the physical-button legends sit. A display choice, and the Core
   // Settings grid has no free cell, so it hangs off this page rather than the
-  // Settings root. Boards with a touch panel draw no legends and skip it.
-  if (!M5.Touch.isEnabled()) {
+  // Settings root. Only where it does something: a board whose legends live in
+  // the navigation bar has nothing to place.
+  if (legendSelectable()) {
     addLegendMenu(menu);
   }
 
@@ -7665,18 +7747,28 @@ void UI::addTextSizeMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
-uint8_t UI::legendPlacement(void) {
-  // Only the Stick boards float their legends; everywhere else they are flex
-  // children of the navigation bar and there is nothing to place. Keep this
+bool UI::legendSelectable(void) {
+  // Only the Stick boards float their legends. Everywhere else they are flex
+  // children of the navigation bar, so there is nothing to place and the
+  // setting would render 45 identical pages whichever value it held. Keep this
   // board list in step with the legend construction in UI::UI().
+  if (M5.Touch.isEnabled()) {
+    return false;
+  }
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
     case m5::board_t::board_M5StickCPlus:
     case m5::board_t::board_M5StickCPlus2:
     case m5::board_t::board_M5StickS3:
-      break;
+      return true;
     default:
-      return Settings::LEGEND_BOTTOM;
+      return false;
+  }
+}
+
+uint8_t UI::legendPlacement(void) {
+  if (!legendSelectable()) {
+    return Settings::LEGEND_BOTTOM;
   }
 
   const uint8_t stored = Settings::load<Settings::LEGEND>();

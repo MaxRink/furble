@@ -137,7 +137,10 @@ wait 100
 # Timer settings list (Count, Delay, Shutter, Wait): must fit on every panel.
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav interval_count
 wait 100
 print ui.page

@@ -3,8 +3,8 @@
 # core-notouch-layout.txt covers the physical-button layout the M5Stack Core
 # Basic ships. This file covers the same page in the touch layout, because the
 # grid is not layout-scoped: the three FURBLE_M5COREX changes plan 168 made
-# (four columns instead of three, eight distinct cells instead of six with
-# three entries stacked in one, and the page-scoped label font) compile into
+# (eight distinct cells instead of six with three entries stacked in one, rows
+# sized to their content, and names that wrap instead of scrolling) compile into
 # every Core class build, and the M5Stack Core2 is a 320x240 board that does
 # ship the touch panel. sim/build.sh does not model the Core2 separately, so
 # this unseeded run on the Core binary is where that layout is measured.
@@ -14,7 +14,7 @@
 # maximum text size. Both are asserted away below.
 #
 # core-connected-grid-large.txt is the same walk at the maximum text size, which
-# is where master overflowed and where the page-scoped label font step earns its
+# is where master overflowed and where the wrapped names earn their
 # keep. Two files because the text size is a boot seed, following
 # home-seven-rows.txt and home-seven-rows-large.txt.
 seed fauxny true
