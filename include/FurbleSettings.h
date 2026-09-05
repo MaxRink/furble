@@ -47,6 +47,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    COMPANION_PASSWORD,
     CONN_SAVER,
     IR,
     IR_PROTO,
@@ -384,6 +385,10 @@ struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
 template <>
 struct Settings::storage_type<Settings::COMPANION> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::COMPANION_PASSWORD> {
+  using type = std::string;
 };
 template <>
 struct Settings::storage_type<Settings::CONN_SAVER> {

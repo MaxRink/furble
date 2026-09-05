@@ -218,6 +218,7 @@ const char *settingType(Settings::type_t type) {
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
