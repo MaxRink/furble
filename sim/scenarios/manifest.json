@@ -208,6 +208,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/legend-absent-core.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/core-icon-grid.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

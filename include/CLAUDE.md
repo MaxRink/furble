@@ -24,11 +24,17 @@ Public headers for the app layer in src/, one header per module
   placement wire id 65. A wire id is frozen the moment a branch generates its
   golden fixtures, so pick the next free one by surveying every open PR's
   `tests/protocol/golden/settings`, not by taking the next number after master.
-  Claimed at the time of writing: 1 to 41 and 43, 44, 46 on master; 42 by the
-  time policy work; 45 and 47 by the companion password; 48 by GPS motion;
-  49 and 50 by dead reckoning; 51 to 61 by provisioning, MQTT and the web UI;
-  62 by the cameras characteristic; 63 and 64 by IMU gestures. 65 is the legend
-  and 66 is the next free.
+  Claimed at the time of writing: 1 to 41 and 43, 44, 46 on master; 47 by the
+  companion password; 45, 63 and 64 by IMU on the gesture branches; 48 by GPS
+  motion; 49 and 50 by dead reckoning; 51 to 61 by provisioning, MQTT and the
+  web UI. 65 is the legend placement and 66 is the next free.
+
+  Two ids already have two open-PR owners each and will collide when the second
+  of each pair rebases: 42 is taken by both the time policy work and one other
+  open head, and 62 by both the cameras characteristic and one other. Neither is
+  this branch's to resolve; they are owed to those PRs, whichever lands second.
+  The survey is the reason this list exists: taking the next number after master
+  is how those pairs happened.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.
