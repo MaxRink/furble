@@ -217,6 +217,13 @@ bool FujifilmSecure::_connect(void) {
   // identity address; with no bond, and therefore no IRK to resolve with, it
   // carries the advertised address and the unbonded path is still correct.
   const NimBLEAddress bondAddress = m_Client->getConnInfo().getIdAddress();
+  if (bondAddress == NimBLEAddress {}) {
+    // No usable identity means the bond cannot be read, so the run resets and
+    // the recovery cannot fire this attempt. Say so rather than looking like a
+    // camera that was simply never bonded, which is what made the original
+    // defect so hard to see in the bench log.
+    ESP_LOGW(LOG_TAG, "No identity address on the live link; bond state unreadable this attempt");
+  }
   const bool bondedBefore = NimBLEDevice::isBonded(bondAddress);
   if (!bondedBefore) {
     // Nothing stale to measure: this is a first pairing, or the recovery below
