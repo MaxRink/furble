@@ -1,0 +1,37 @@
+# The connect error box must be operable on a body with no touchscreen.
+#
+# The motivating bench report for PR #245 was a device the user "straight up
+# can't cancel", so a modal that cannot be dismissed from the physical buttons
+# would reproduce exactly that complaint. showConnectError() puts its OK button
+# in the input group and focuses it for this reason.
+#
+# "seed no_touch true" detaches the SDL mouse-touch device, so the sim builds
+# the physical-button layout and the only way to clear the box is the button
+# path. Unlike a FURBLE_SIM_NO_TOUCH environment override this is a scenario
+# seed, so CI gates it on every panel the manifest declares.
+seed connect_fail true
+seed no_touch true
+wait 300
+
+assert ui.connect_error none
+action connect
+
+# The camera never links, so the cycle ends and the generic box goes up.
+assert-eventually-virtual 10000 control.state idle
+assert-eventually-virtual 5000 ui.connect_error connect_failed
+assert ui.modal_count 1
+assert ui.connect_box hidden
+# Reachable and readable are separate properties, and this scenario owns both:
+# an unsized box clips its own text and pushes the OK button off the panel.
+assert ui.modal_overflow no
+
+# The OK button holds the focus, so a plain activation clears it.
+capture connect-failed-notouch
+action select
+wait 300
+assert ui.connect_error none
+assert ui.modal_count 0
+assert control.state idle
+assert control.targets 0
+
+exit

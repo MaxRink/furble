@@ -187,6 +187,35 @@ bool testNullAndMissingIdentifierBoundaries() {
                "Fujifilm Basic rejects a missing identifier characteristic");
 }
 
+// Every user-facing message that names a camera puts the name on a line of its
+// own, so a camera that advertised no name would open a message box with a
+// blank first line. That is reachable: the already-saved refusal composes its
+// text from a saved record, and a saved record carries whatever the body
+// advertised, including nothing.
+bool testUnnamedCameraDisplayName() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+
+  Furble::Host::FujifilmVirtualCamera::Config named;
+  named.name = "FUJIFILM X100VI";
+  Furble::Host::FujifilmVirtualCamera namedPeer(named);
+  const auto namedAdvertisement = namedPeer.advertisement();
+  Furble::FujifilmBasic namedCamera(&namedAdvertisement);
+  if (!check(namedCamera.getDisplayName() == "FUJIFILM X100VI",
+             "a named camera is displayed under its own name"))
+    return false;
+
+  Furble::Host::FujifilmVirtualCamera::Config unnamed;
+  unnamed.name = "";
+  Furble::Host::FujifilmVirtualCamera unnamedPeer(unnamed);
+  const auto unnamedAdvertisement = unnamedPeer.advertisement();
+  Furble::FujifilmBasic unnamedCamera(&unnamedAdvertisement);
+  if (!check(unnamedCamera.getName().empty(), "the unnamed record really carries no name"))
+    return false;
+  return check(unnamedCamera.getDisplayName() == Furble::Camera::DISPLAY_NAME_FALLBACK,
+               "an unnamed camera is displayed as the stand-in, never as a blank line");
+}
+
 bool testNullNikonCallbacks() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -293,6 +322,7 @@ int main() {
                  && testSecureFastProfileWaitsForShutterDiscovery()
                  && testNullAndMissingIdentifierBoundaries() && testNullNikonCallbacks()
                  && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
+                 && testUnnamedCameraDisplayName()
              ? 0
              : 1;
 }

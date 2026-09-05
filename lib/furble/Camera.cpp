@@ -210,6 +210,10 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
 
   m_Power = power;
   m_ClientDeleteOnDisconnect = false;
+  // A verdict from the previous attempt never carries into this one. Control
+  // reads the flag only after connect() has returned, so clearing it here is
+  // always after the reader that mattered.
+  m_NeedsRepair = false;
 
   m_Client = NimBLEDevice::createClient();
   if (m_Client == nullptr) {
@@ -250,6 +254,12 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   // through onDisconnect exactly as before.
   m_Client->setSelfDelete(false, false);
 
+  {
+    // Publish the client to the cancel path for the duration of the attempt.
+    const std::lock_guard<std::mutex> cancel(m_CancelMutex);
+    m_CancelClient = m_Client;
+  }
+
   // adjust connection timeout and parameters
   m_Client->setConnectTimeout(timeout);
   // try extending range by adjusting connection parameters
@@ -260,6 +270,14 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(securityMode()));
 
   bool connected = this->_connect();
+
+  {
+    // Withdraw the client before any teardown below can free it. A cancel that
+    // arrives after this point finds nothing to terminate, which is correct:
+    // the attempt has already unwound.
+    const std::lock_guard<std::mutex> cancel(m_CancelMutex);
+    m_CancelClient = nullptr;
+  }
 
   if (connected) {
     m_Paired = true;
@@ -895,9 +913,33 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
 
 void Camera::cancelConnect(void) {
   // Lock-free on purpose: this must be callable while connect() holds m_Mutex
-  // across a long vendor wait. The wait polls connectCancelled() and unwinds,
-  // which is what bounds the m_Mutex acquisition in disconnect() below.
+  // across a long vendor wait, and Control::disconnect() calls it with its own
+  // mutex held, where no radio call is allowed. The wait polls
+  // connectCancelled() and unwinds, which is what bounds the m_Mutex
+  // acquisition in disconnect() below.
+  //
+  // The token alone cannot reach a call that is already blocked inside NimBLE.
+  // abortBlockingConnect() is the other half and must be called too.
   m_ConnectCancelled = true;
+}
+
+void Camera::abortBlockingConnect(void) {
+  // secureConnection() holds the connect task in the NimBLE host for the whole
+  // pairing timeout, up to 30 s on the rc=13 stale-bond reconnect measured on
+  // the X100VI (2026-09-02 bench). Nothing polls during that call, so the
+  // cancel token is unread, the interactive disconnect waits for the attempt
+  // to unwind, and the device looks locked up to the user, who cannot even
+  // cancel.
+  //
+  // Terminating the link makes the blocking call fail immediately. The vendor
+  // path then sees the token, or the cleared connected flag, on its next check
+  // and unwinds exactly as it does for any other mid-connect link loss.
+  // ble_gap_conn_cancel() in Control::disconnect() already covers the earlier
+  // GAP connect phase; this covers everything after the link comes up.
+  const std::lock_guard<std::mutex> lock(m_CancelMutex);
+  if ((m_CancelClient != nullptr) && m_CancelClient->isConnected()) {
+    m_CancelClient->disconnect();
+  }
 }
 
 void Camera::clearConnectCancel(void) {
@@ -906,6 +948,26 @@ void Camera::clearConnectCancel(void) {
 
 bool Camera::connectCancelled(void) const {
   return m_ConnectCancelled.load();
+}
+
+std::string Camera::getDisplayName(void) const {
+  return m_Name.empty() ? std::string(DISPLAY_NAME_FALLBACK) : m_Name;
+}
+
+bool Camera::needsRepair(void) const {
+  return m_NeedsRepair.load();
+}
+
+uint8_t Camera::noteSecureFailure(void) {
+  return static_cast<uint8_t>(m_SecureFailures.fetch_add(1) + 1);
+}
+
+void Camera::clearSecureFailures(void) {
+  m_SecureFailures = 0;
+}
+
+void Camera::setNeedsRepair(void) {
+  m_NeedsRepair = true;
 }
 
 void Camera::disconnect(void) {
@@ -940,6 +1002,12 @@ void Camera::resetConnectionState(void) {
   // so no lock is needed for them.
   m_Connected = false;
   m_Progress = 0;
+  // A fresh user connect request re-arms the camera: the user may have put it
+  // back into pairing mode since the re-pair prompt. The failure run goes with
+  // it, so "consecutive security failures" always means "within one connect
+  // cycle" and can never accumulate across days of idle transients.
+  m_NeedsRepair = false;
+  m_SecureFailures = 0;
 
   const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
   m_StatsValid = false;

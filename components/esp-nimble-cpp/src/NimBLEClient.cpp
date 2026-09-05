@@ -343,6 +343,33 @@ error:
 bool NimBLEClient::secureConnection(bool async) const {
     NIMBLE_LOGD(LOG_TAG, ">> secureConnection()");
 
+    // Already encrypted: there is nothing to initiate, and asking anyway parks
+    // this task forever.
+    //
+    // ble_gap_security_initiate answers BLE_HS_EALREADY (rc=2) on a link whose
+    // security is already established. That is a local return with no PDU on
+    // air, so the peer never sees it and cannot react to it. The damage is
+    // here: NimBLEDevice::startSecurity() maps EALREADY to success, so the
+    // blocking path below arms its task data and waits BLE_NPL_TIME_FOREVER for
+    // a BLE_GAP_EVENT_ENC_CHANGE that will never arrive, because nothing was
+    // started. On the 2026-09-05 bench that held Camera::m_Mutex for 29.85 s,
+    // t=1638312 to t=1668162, until the camera gave up and dropped the link:
+    // "Secured!", "Requesting status", "ble_gap_security_initiate: rc=2", then
+    // half a minute of nothing, then "Disconnected". Same unbounded-block class
+    // as the stale-bond stall, reached from a different direction.
+    //
+    // NimBLERemoteValueAttribute retries a read or write that answers
+    // insufficient encryption by calling straight back into here, which is how
+    // an already encrypted link gets asked at all.
+    //
+    // Reporting success is the honest answer to "make this connection secure"
+    // when it already is. The caller's retry then re-issues its read or write
+    // once more and gives up on its own terms instead of parking.
+    if (isConnected() && getConnInfo().isEncrypted()) {
+        NIMBLE_LOGD(LOG_TAG, "<< secureConnection: already encrypted");
+        return true;
+    }
+
     int rc = 0;
     if (async && !NimBLEDevice::startSecurity(m_connHandle, &rc)) {
         m_lastErr            = rc;

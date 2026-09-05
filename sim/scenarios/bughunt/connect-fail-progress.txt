@@ -11,4 +11,20 @@ action connect
 assert-eventually-virtual 10000 control.state idle
 assert ui.connect_box hidden
 assert ui.connected no
+
+# The progress box goes, but the failure must not vanish silently: a camera
+# that never links now raises a dismissable "Connect failed" box, and it is
+# the only thing that tells the user an out-of-range camera from one that lost
+# its pairing.
+assert-eventually-virtual 5000 ui.connect_error connect_failed
+assert ui.modal_count 1
+# Present is not the same as readable: an unsized message box renders past the
+# panel edges with its text clipped, and every other assertion here still holds.
+assert ui.modal_overflow no
+
+# It stays until dismissed, and dismissing it really clears it.
+action select
+wait 300
+assert ui.connect_error none
+assert ui.modal_count 0
 exit

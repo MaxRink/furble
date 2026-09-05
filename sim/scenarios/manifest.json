@@ -44,12 +44,13 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-c",
+        "m5stick-s3",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "fails on master until #245 lands: reproduces the 2026-09-04 hardware wedge from issue #271. The cancel cannot unwind an attempt parked in secureConnection(), so the interactive teardown burns its 30 s cap and drains a live connect. Fails at `assert_max clock.ms 8000` with 32330. Promote it, and widen it to all three panels, in the PR that fixes the blocking call. See plans/172-sim-cancel-sweep.md."
+      "certified": true
     },
     {
       "path": "sim/scenarios/bughunt/cancel-sweep-autoconnect-entry.txt",
@@ -151,7 +152,9 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [
         "fauxny"
@@ -247,12 +250,13 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-c",
+        "m5stick-s3",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "fails on master: reproduces the 2026-09-04 bench hang where Off froze the device and the next boot reported brownout. UI::doPowerOff() calls doDisconnect() before Platform::powerOff(), so the power-off path inherits Control::disconnect()'s 30 s interactive cap and adds no bound of its own. Fails at `assert_max clock.ms 6000` with 32330, and passes on PR #245, whose abortBlockingConnect() releases the parked handshake. Promote it, and widen it to all three panels, when #245 lands. See plans/172-sim-cancel-sweep.md."
+      "certified": true
     },
     {
       "path": "sim/scenarios/bughunt/power-off-state-matrix.txt",
@@ -1312,6 +1316,45 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/stale-bond-pairing-lost.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/connect-error-notouch-dismiss.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/scan-already-saved.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/scan-distinct-rows-heartbeat.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1525,6 +1568,50 @@
     },
     {
       "path": "sim/scenarios/invalid/action-imu-trailing.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-missing.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-negative.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-overflow.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-trailing.txt",
       "suite": "invalid",
       "owner": "sim-parser",
       "boards": [

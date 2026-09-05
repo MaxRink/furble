@@ -153,6 +153,16 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical battery action");
       }
       return true;
+    case scenario_action_kind_t::SCAN_ROW:
+      if (!action.name.empty() || !action.mode.empty() || action.integer != 0
+          || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
+          || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
+          || action.values[2] != 0.0F
+          || action.index > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+        return fail(error, "noncanonical scan-row action");
+      }
+      return true;
+
     case scenario_action_kind_t::DROP:
       if (!action.name.empty() || !action.mode.empty() || action.integer != 0
           || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
@@ -446,6 +456,27 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     }
     action->kind = scenario_action_kind_t::SECURE_STALL;
     action->index = static_cast<uint32_t>(stall);
+    return accept();
+  }
+
+  if (args[0] == "scan-row") {
+    // Activate a scan result row by index, dispatching the row's own click
+    // handler. A scan row is materialized by the UI task when an advertisement
+    // drains, after the page has already focused its back button, and no key or
+    // button verb moves the focus onto it reliably: measured at about half the
+    // presses on a page busy draining results. This is the deterministic entry
+    // the pairing refusal needs, and it runs the production handler rather than
+    // a simulator shortcut.
+    if (args.size() != 2) {
+      return fail(error, "scan-row requires exactly one row index");
+    }
+    uint64_t index = 0;
+    if (!parseUnsigned(args[1], static_cast<uint64_t>(std::numeric_limits<int32_t>::max()),
+                       &index)) {
+      return fail(error, "scan-row index is out of range");
+    }
+    action->kind = scenario_action_kind_t::SCAN_ROW;
+    action->index = static_cast<uint32_t>(index);
     return accept();
   }
 

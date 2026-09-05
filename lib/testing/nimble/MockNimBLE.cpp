@@ -103,6 +103,16 @@ bool g_ScanStartAllowed = true;
 uint32_t g_ConnectDelayMs = 0;  // one-shot block at the start of the next connect()
 size_t g_ConnParamApplyDelayReads = 1;
 bool g_Bonded = false;
+// Empty means "bonded to anything", which is what every test that only calls
+// setBonded(true) expects. A test that cares about which address the bond is
+// filed under sets it explicitly.
+NimBLEAddress g_BondAddress {};
+NimBLEAddress g_IdAddress {};
+// The peer of the most recent link. With no bond there is no IRK to resolve an
+// RPA with, so the identity address a live link reports is simply the address
+// it connected to; only a test that files a bond under a different identity
+// sets g_IdAddress explicitly.
+NimBLEAddress g_LinkPeerAddress {};
 size_t g_DeleteBondCount = 0;
 // Absent-peer model: addresses whose advertisements the scan never delivers.
 std::vector<NimBLEAddress> g_AbsentAddresses;
@@ -420,7 +430,9 @@ const NimBLEAddress &NimBLEConnInfo::getAddress() const {
 }
 
 const NimBLEAddress &NimBLEConnInfo::getIdAddress() const {
-  return getAddress();
+  // An explicitly filed identity wins; otherwise the live link's own peer,
+  // which is what an unresolved address resolves to.
+  return (g_IdAddress == NimBLEAddress {}) ? g_LinkPeerAddress : g_IdAddress;
 }
 
 void NimBLEClientCallbacks::onConnect(NimBLEClient *client) {
@@ -537,6 +549,7 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
 
   m_Peer = peer;
   m_Address = address;
+  g_LinkPeerAddress = address;
   m_Connected = true;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onConnect(this);
@@ -630,6 +643,10 @@ bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
 
 bool NimBLEClient::mockDisconnectEventPending(void) const {
   return m_DisconnectEventPending;
+}
+
+const NimBLEAddress &NimBLEClient::getPeerAddress() const {
+  return m_Address;
 }
 
 bool NimBLEClient::isConnected() const {
@@ -1023,18 +1040,61 @@ bool NimBLEDevice::deleteClient(NimBLEClient *client) {
   return eraseClient(client);
 }
 
-bool NimBLEDevice::deleteBond(const NimBLEAddress &) {
+bool NimBLEDevice::deleteBond(const NimBLEAddress &address) {
+  if (g_Bonded && (g_BondAddress != NimBLEAddress {}) && (g_BondAddress != address)) {
+    // Deleting by the wrong address leaves the stale bond in the store, which
+    // is the failure mode worth reproducing rather than papering over.
+    return false;
+  }
   g_Bonded = false;
   g_DeleteBondCount++;
+
+  // Unpairing terminates the live link, because ble_gap_unpair() does:
+  // it calls ble_gap_terminate_with_conn() for any connection to that peer
+  // before it drops the keys. Modelling only the key drop is what let the host
+  // tests walk a path hardware cannot: FujifilmSecure's in-link fresh pair runs
+  // straight after this call, so on a device there is no link left to pair on
+  // and "Fresh pair failed" is the real outcome, while the mock happily paired
+  // on a link that would not have existed.
+  //
+  // Only the links to this peer, which is what ble_gap_unpair() terminates. A
+  // multi-connect session losing one camera's bond must keep the other
+  // camera's link, and terminating every client would hide that.
+  std::vector<NimBLEClient *> live;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    for (const auto &client : g_Clients) {
+      if (client && client->isConnected() && (client->getPeerAddress() == address)) {
+        live.push_back(client.get());
+      }
+    }
+  }
+  for (NimBLEClient *client : live) {
+    // Outside the list lock: disconnect() reaches the peer, which can run
+    // callbacks and reap clients.
+    client->disconnect();
+  }
   return true;
 }
 
-bool NimBLEDevice::isBonded(const NimBLEAddress &) {
-  return g_Bonded;
+bool NimBLEDevice::isBonded(const NimBLEAddress &address) {
+  if (!g_Bonded) {
+    return false;
+  }
+  return (g_BondAddress == NimBLEAddress {}) || (g_BondAddress == address);
 }
 
 void NimBLEDevice::setBonded(bool bonded) {
   g_Bonded = bonded;
+}
+
+void NimBLEDevice::setBondedAddress(const NimBLEAddress &address) {
+  g_Bonded = true;
+  g_BondAddress = address;
+}
+
+void NimBLEDevice::setMockIdAddress(const NimBLEAddress &address) {
+  g_IdAddress = address;
 }
 
 size_t NimBLEDevice::deleteBondCount() {
@@ -1148,6 +1208,9 @@ void NimBLEDevice::resetMock() {
   g_ConnectDelayMs = 0;
   g_ConnParamApplyDelayReads = 1;
   g_Bonded = false;
+  g_BondAddress = NimBLEAddress {};
+  g_IdAddress = NimBLEAddress {};
+  g_LinkPeerAddress = NimBLEAddress {};
   g_DeleteBondCount = 0;
   g_AbsentAddresses.clear();
   g_Initialised = false;

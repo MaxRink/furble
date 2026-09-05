@@ -192,6 +192,8 @@ bool FujifilmSecure::_connect(void) {
     }
   }
 
+  // Snapshot the bond before connecting so a security failure below can tell a
+  // stale bond apart from a first pairing.
   ESP_LOGI(LOG_TAG, "Connecting to %s", m_Address.toString().c_str());
   if (!m_Client->connect(m_Address))
     return false;
@@ -199,10 +201,100 @@ bool FujifilmSecure::_connect(void) {
   ESP_LOGI(LOG_TAG, "Connected");
   m_Progress += 5;
 
+  // Bond state is keyed on the identity address, and that is only known once
+  // the link is up, so the snapshot has to happen here rather than before the
+  // connect.
+  //
+  // A Fujifilm Secure body advertises a resolvable private address, and
+  // NimBLEDevice::isBonded() compares against the bond store's identity
+  // addresses (ble_store_util_bonded_peers). So isBonded(m_Address) answers
+  // false on every saved reconnect even when the bond is right there, which
+  // made the recovery below unreachable on exactly the camera it was written
+  // for: the 2026-09-05 bench looped eight times without logging a single
+  // "Security handshake failed (1 of 2)", because every attempt took the
+  // unbonded early return and cleared the run on the way in. Once the link is
+  // up the controller has resolved the RPA, so getConnInfo() carries the
+  // identity address; with no bond, and therefore no IRK to resolve with, it
+  // carries the advertised address and the unbonded path is still correct.
+  const NimBLEAddress bondAddress = m_Client->getConnInfo().getIdAddress();
+  if (bondAddress == NimBLEAddress {}) {
+    // No usable identity means the bond cannot be read, so the run resets and
+    // the recovery cannot fire this attempt. Say so rather than looking like a
+    // camera that was simply never bonded, which is what made the original
+    // defect so hard to see in the bench log.
+    ESP_LOGW(LOG_TAG, "No identity address on the live link; bond state unreadable this attempt");
+  }
+  const bool bondedBefore = NimBLEDevice::isBonded(bondAddress);
+  if (!bondedBefore) {
+    // Nothing stale to measure: this is a first pairing, or the recovery below
+    // already deleted the bond. Either way the failure run starts over.
+    clearSecureFailures();
+  }
+
   ESP_LOGI(LOG_TAG, "Securing");
   if (!m_Client->secureConnection()) {
-    return false;
+    // Stale-bond recovery. When the camera side deletes its pairing while
+    // furble keeps the local bond, encrypting with the dead keys can never
+    // succeed. The saved reconnect then wedges forever and the only way back
+    // to a working pairing is deleting the camera in the furble UI.
+    //
+    // The trigger is a run of consecutive security failures on a camera that
+    // was bonded when the attempt started. Two facts shape it.
+    //
+    // First, the failure shape carries no usable verdict. The 2026-09-02
+    // X100VI bench run (bench-logs/stale-bond-245-run2), taken after deleting
+    // furble's pairing on the camera only, produced no refusal at all: the
+    // link came up and the handshake then failed "rc=13 Operation timed out"
+    // after ~30 s or "rc=520 Connection Timeout" after ~5 s, over and over.
+    // Nor does link state separate them: rc=520 wakes the connect task with
+    // the disconnect event still queued, so m_Connected reads true for a link
+    // that is already dead. A trigger keyed on "still connected" therefore
+    // fires on a transient timeout and misses the real signature entirely.
+    //
+    // Second, one failure is not evidence. A single lost pairing PDU looks
+    // identical, so SECURE_FAILURE_LIMIT consecutive failures against the same
+    // keys is the bar. See that constant for why it is two.
+    //
+    // Only attempts that got the link up reach here at all: a connect that
+    // never completed proves nothing about the keys. An attempt that started
+    // unbonded is a first pairing, so there is nothing stale to delete.
+    if (!bondedBefore || connectCancelled()) {
+      return false;
+    }
+    const uint8_t failures = noteSecureFailure();
+    if (failures < SECURE_FAILURE_LIMIT) {
+      ESP_LOGW(LOG_TAG, "Security handshake failed (%u of %u); retrying before any bond change",
+               static_cast<unsigned>(failures), static_cast<unsigned>(SECURE_FAILURE_LIMIT));
+      return false;
+    }
+
+    ESP_LOGW(LOG_TAG,
+             "Security handshake failed %u times on a bonded camera; deleting the stale local bond",
+             static_cast<unsigned>(failures));
+    // The identity address again: deleting by the advertised RPA would leave
+    // the stale bond in the store.
+    NimBLEDevice::deleteBond(bondAddress);
+    clearSecureFailures();
+
+    // A camera already in pairing mode accepts a fresh pairing on this very
+    // link, so spend one attempt on it before giving up. m_Connected guards the
+    // m_Client deref: a security failure that dropped the link can free a
+    // self-deleting client (the #62 lifecycle rule).
+    if (!m_Connected || !m_Client->secureConnection()) {
+      // The camera is not in pairing mode. Retrying cannot conjure a pairing
+      // the user has to authorise on the camera, so tell Control to stop the
+      // cycle and prompt instead of looping on a bond neither side now holds.
+      ESP_LOGW(LOG_TAG, "Fresh pair failed; put the camera in pairing mode and reconnect");
+      setNeedsRepair();
+      return false;
+    }
+    // The registration gate below (#232/#239) still decides acceptance: a
+    // secure link alone never promotes to an active shutter target.
   }
+  // A completed handshake ends any run of failures against these keys. Without
+  // this a failure, a success and a second failure would read as two in a row
+  // and delete a healthy bond on what is really a single failure.
+  clearSecureFailures();
   if (!registrationAlive())
     return false;
   ESP_LOGI(LOG_TAG, "Secured!");
