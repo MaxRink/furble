@@ -44,12 +44,13 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-c",
+        "m5stick-s3",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "fails on master until #245 lands: reproduces the 2026-09-04 hardware wedge from issue #271. The cancel cannot unwind an attempt parked in secureConnection(), so the interactive teardown burns its 30 s cap and drains a live connect. Fails at `assert_max clock.ms 8000` with 32330. Promote it, and widen it to all three panels, in the PR that fixes the blocking call. See plans/172-sim-cancel-sweep.md."
+      "certified": true
     },
     {
       "path": "sim/scenarios/bughunt/cancel-sweep-autoconnect-entry.txt",
@@ -249,12 +250,13 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-c",
+        "m5stick-s3",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "fails on master: reproduces the 2026-09-04 bench hang where Off froze the device and the next boot reported brownout. UI::doPowerOff() calls doDisconnect() before Platform::powerOff(), so the power-off path inherits Control::disconnect()'s 30 s interactive cap and adds no bound of its own. Fails at `assert_max clock.ms 6000` with 32330, and passes on PR #245, whose abortBlockingConnect() releases the parked handshake. Promote it, and widen it to all three panels, when #245 lands. See plans/172-sim-cancel-sweep.md."
+      "certified": true
     },
     {
       "path": "sim/scenarios/bughunt/power-off-state-matrix.txt",
