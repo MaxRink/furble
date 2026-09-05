@@ -236,10 +236,14 @@ bool scenarioSingleTimeoutKeepsBond() {
 }
 
 // (c) The camera dropped its pairing but is sitting in pairing mode: it refuses
-// the dead keys while staying on the link. After the bond is deleted the fresh
-// in-link pairing goes through and the connect proceeds to registration, so the
-// user never sees a prompt at all.
-bool scenarioInLinkFreshPairRecovers() {
+// the dead keys while staying on the link. Deleting the stale bond then takes
+// the link with it, because an unpair does: NimBLEDevice::deleteBond() is
+// ble_gap_unpair(), which terminates every connection to the peer before it
+// drops the keys. So the in-link fresh pair has nothing left to pair on, and
+// the user is prompted exactly as in (a). The pairing they are asked for then
+// succeeds, which is what separates this from (a): the camera is reachable, it
+// just needs the user to accept a new pairing.
+bool scenarioBondDeletePromptsThenPairsFresh() {
   freshEnvironment();
   auto &control = Control::getInstance();
 
@@ -261,11 +265,31 @@ bool scenarioInLinkFreshPairRecovers() {
   control.addActive(camera);
   control.connectAll(true);
 
-  check(waitForState(Control::STATE_ACTIVE, 30000),
-        "the in-link fresh pair recovers the session without user action");
+  check(waitForState(Control::STATE_CONNECT_FAILED, 30000),
+        "the unpair drops the link, so the cycle stops instead of pairing in place");
   check(NimBLEDevice::deleteBondCount() == 1, "the stale bond is deleted exactly once");
-  check(peer.configured(), "the fresh pairing proceeded through registration");
-  check(control.getConnectFailReason().empty(), "an in-link recovery raises no re-pair prompt");
+  check(!peer.configured(), "no registration ran on a link the unpair had already ended");
+  check(control.getConnectFailReason()
+            == camera->getDisplayName() + ": put it in pairing mode, then connect.",
+        "and the user gets the same re-pair prompt as a camera that never answered");
+
+  // The pairing the prompt asks for. The bond is gone and the camera is still
+  // on its pairing screen, so the retry is a first pairing and it completes.
+  // This is where (c) parts company with (a): the camera is there, it just
+  // needed the user to accept a new pairing.
+  //
+  // Driven the way the UI drives it. STATE_CONNECT_FAILED is terminal for the
+  // control task, which ignores CMD_CONNECT there, so the retry only exists
+  // after the box is dismissed: the UI handler calls doDisconnect(), which
+  // clears the targets, and the user then connects the camera again.
+  peer.setRefuseWhileBonded(false);
+  resetControl();
+  control.addActive(camera);
+  control.connectAll(true);
+  check(waitForState(Control::STATE_ACTIVE, 30000), "the re-pair the prompt asked for connects");
+  check(peer.configured(), "and registration completes on the fresh pairing");
+  check(NimBLEDevice::deleteBondCount() == 1, "with no further bond deletes");
+  check(!camera->needsRepair(), "and the camera is no longer flagged for a re-pair");
 
   resetControl();
   return g_Failures == 0;
@@ -360,8 +384,8 @@ int main() {
   scenarioRepairNeededStopsTheCycle();
   std::cout << "single timeout keeps the bond\n";
   scenarioSingleTimeoutKeepsBond();
-  std::cout << "in-link fresh pair recovers\n";
-  scenarioInLinkFreshPairRecovers();
+  std::cout << "bond delete prompts, then a fresh pair connects\n";
+  scenarioBondDeletePromptsThenPairsFresh();
   std::cout << "one stale camera does not blame the healthy one\n";
   scenarioOneStaleCameraDoesNotBlameTheHealthyOne();
 

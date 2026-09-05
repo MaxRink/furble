@@ -144,10 +144,11 @@ void testSingleTimeoutThenSuccessKeepsBond() {
 }
 
 // The camera deleted its pairing but is sitting in pairing mode: it refuses the
-// dead keys while staying on the link. Once the stale bond is deleted the fresh
-// pairing goes through on the same link and the connect proceeds to
-// registration, so the user never sees a prompt.
-void testInLinkFreshPairProceedsToRegistration() {
+// dead keys while staying on the link. Deleting the stale bond then terminates
+// that link, because an unpair does, so the in-link fresh pair cannot run and
+// the user is prompted instead. The pairing they are asked for succeeds on the
+// next attempt.
+void testBondDeleteDropsTheLinkAndPrompts() {
   init();
   Furble::Host::FujifilmVirtualCamera peer(secureConfig());
   NimBLEDevice::setMockPeer(&peer);
@@ -161,11 +162,25 @@ void testInLinkFreshPairProceedsToRegistration() {
   check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first refusal is not yet evidence");
   check(NimBLEDevice::deleteBondCount() == 0, "one refusal keeps the bond");
 
-  check(camera.connect(ESP_PWR_LVL_P3, 1000),
-        "the second refusal deletes the bond and the in-link fresh pair connects");
+  // The bond delete takes the link with it, so the in-link fresh pair has
+  // nothing to pair on and the user gets the prompt. That is the hardware
+  // outcome: NimBLEDevice::deleteBond() is ble_gap_unpair(), which terminates
+  // every connection to the peer before dropping the keys. The mock modelled
+  // only the key drop until this was fixed, which is why this scenario used to
+  // assert a recovery the device cannot perform.
+  check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+        "the second refusal deletes the bond, and the unpair drops the link with it");
   check(NimBLEDevice::deleteBondCount() == 1, "the recovery deletes the bond exactly once");
-  check(!camera.needsRepair(), "an in-link fresh pair needs no user re-pair");
-  check(peer.configured(), "the fresh pairing proceeded through registration");
+  check(camera.needsRepair(), "so the user is asked to re-pair rather than silently recovering");
+  check(!peer.configured(), "and no registration happened on a link that no longer exists");
+
+  // The pairing the user is being asked for. The bond is gone, the camera is
+  // still in its pairing screen, so the next attempt is a first pairing and it
+  // completes.
+  peer.setRefuseWhileBonded(false);
+  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the next attempt pairs fresh and connects");
+  check(peer.configured(), "and completes registration");
+  check(NimBLEDevice::deleteBondCount() == 1, "with no further bond deletes");
   camera.disconnect();
 }
 
@@ -497,7 +512,7 @@ int main() {
   testTimeoutRunDeletesBondAndFlagsRepair();
   testEventPendingTimeoutRunReachesTheSameVerdict();
   testSingleTimeoutThenSuccessKeepsBond();
-  testInLinkFreshPairProceedsToRegistration();
+  testBondDeleteDropsTheLinkAndPrompts();
   testUnbondedRefusalDeletesNothing();
   testCancelDuringSecurityUnblocksPromptly();
   testSuccessBetweenFailuresIsNotARun();

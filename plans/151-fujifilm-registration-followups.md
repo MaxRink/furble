@@ -611,9 +611,11 @@ overrides unchanged.
   a re-pair; the same verdict is reached through the shared `SecureTimeoutPeer`
   decorator for the rc=520 shape (failure delivered with the disconnect event
   still queued); a single timeout followed by success keeps the bond and raises
-  no prompt; a refusal that leaves the link up recovers through the in-link
-  fresh pair and proceeds to registration with no prompt; an unbonded refusal
-  never touches the bond store however often it is retried.
+  no prompt; a refusal that leaves the link up loses its bond on the second
+  attempt and, because the unpair takes the link with it, ends in the re-pair
+  prompt rather than an in-link recovery, with the pairing the prompt asks for
+  succeeding on the next attempt; an unbonded refusal never touches the bond
+  store however often it is retried.
 - tests/host/fujifilm_repair_needed_test.cpp (fujifilm-repair-needed), through
   the REAL Control: a SAVED camera rebuilt from its NVS record, the production
   `Scan` fed by a background advertiser, and `connectAll(true)` (infinite
@@ -621,8 +623,10 @@ overrides unchanged.
   `connect_failed` within bounds instead of looping, that it stays stopped and
   deletes no further bonds, that the reason names the camera and says to use
   pairing mode, and exactly one `deleteBond`. Two more scenarios cover the
-  single-timeout recovery to ACTIVE with the bond intact, and the in-link fresh
-  pair recovering to ACTIVE with no prompt.
+  single-timeout recovery to ACTIVE with the bond intact, and the refusing
+  camera reaching the same prompt as (a) and then coming up ACTIVE once the
+  user re-pairs it (driven the way the UI drives it, since `connect_failed` is
+  terminal for the control task).
 - tests/host/ricoh_control_flap_test.cpp (ricoh-control-flap): the standby GR IV
   flap now also asserts that no camera is ever flagged for a re-pair, plus a
   new saved-bond scenario where a PairType::SAVED GR IV fails two consecutive
@@ -845,14 +849,21 @@ The in-link fresh pair after the bond delete, however, is unreachable on
 hardware, and this paragraph used to claim otherwise.
 `NimBLEDevice::deleteBond()` is `ble_gap_unpair()`, which terminates the live
 link, so by the time the fresh pair is attempted there is no link left to pair
-on and `Fresh pair failed` is the expected outcome. It survives as the correct
-answer for the one shape that does keep the link, a camera refusing the dead
-keys without dropping, which is what `setRefuseWhileBonded()` models and what
-the in-link recovery scenario covers. MockNimBLE's `deleteBond` does not
-terminate, which is why the host tests pass through that path and the bench does
-not. Closing that gap means teaching the mock to terminate on unpair, which
-would flip the in-link scenario to the prompt outcome; worth doing, and left for
-the mock's own change rather than folded in here.
+on and `Fresh pair failed` is the expected outcome.
+
+That gap is now closed in the mock rather than left open. MockNimBLE's
+`deleteBond` used to model only the key drop, so the host tests walked a path
+hardware cannot walk and the two in-link scenarios asserted a silent recovery
+the device never performs. It now terminates the links to that peer, the way
+`ble_gap_unpair()` does, and both scenarios assert the prompt instead. The
+terminate is scoped to the peer being unpaired, not to every live client, so a
+multi-connect session losing one camera's bond still keeps the other camera's
+link; scenario (d) fails if that scope is widened. Both the terminate and the
+scoping are pinned by mutation.
+
+The in-link fast path is not dead code: it stays the correct answer for a
+camera that refuses the dead keys on a link furble has not unpaired, which is
+the ordering `secureConnection()` takes when the bond was already absent.
 
 Sim coverage: closed. The earlier revision of this plan noted that the
 simulator ran the real UI against `FurbleControlSim`, a fake Control, so there
@@ -920,9 +931,10 @@ Hardware verification owed before merge, on the X100VI:
    `NimBLEDevice::deleteBond()` is `ble_gap_unpair()`, which terminates the live
    link, so by the time the in-link fresh pair is attempted there is no link
    left to pair on. The in-link fast path is unreachable on hardware for this
-   shape; MockNimBLE's `deleteBond` does not terminate, which is why the host
-   tests do not show it. An earlier revision of this plan predicted an in-link
-   pair ending active at this step and was wrong.
+   shape. MockNimBLE's `deleteBond` now terminates too, so the host tests reach
+   the same verdict; before that fix they did not, which is how an earlier
+   revision of this plan came to predict an in-link pair ending active at this
+   step. It was wrong.
 
    Legitimate alternative on attempt 1: `Secured!` roughly 200 ms after
    `Securing` with no furble line between them. That is NimBLE resolving

@@ -255,6 +255,9 @@ class NimBLEClient {
   bool connect(const NimBLEAddress &address);
   void disconnect();
   bool isConnected() const;
+  // The peer this client is connected to, so an unpair can terminate only the
+  // links to that peer the way ble_gap_unpair() does.
+  const NimBLEAddress &getPeerAddress() const;
   NimBLERemoteService *getService(const NimBLEUUID &service);
   bool secureConnection();
   NimBLEAttValue getValue(const NimBLEUUID &service, const NimBLEUUID &characteristic);
