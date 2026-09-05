@@ -359,6 +359,18 @@ one board with `FURBLE_SIM_NO_TOUCH=1`, bounded per scenario by the same
 `.github/workflows/sim-e2e.yml` calls it on all three board binaries. That is
 follow-up 3 of plan 165 for the scenario suites.
 
+The runner takes its list from the manifest and skips only what its own header
+names, so a scenario added by another PR joins this layout without editing the
+script. The twelve cancel-sweep, power-off and reconnect scenarios plan 172
+added on `6245a301` are picked up that way and pass in both layouts.
+
+Rebased onto `6245a301` after PR #278 merged. That PR changed no file under
+`src/`, `include/`, `components/` or `lib/furble/`, so no capture in the
+evidence set moved: a regenerated after set on the rebased binaries is
+byte-identical except for six 320x240 frames whose header shows the GPS icon in
+its searching state rather than its fixed state, which is fix timing, not
+layout. Those six are refreshed anyway.
+
 ## Still open
 
 Two scenarios are skipped on the 80x160 board, named in the runner's header.
