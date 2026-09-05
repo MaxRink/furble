@@ -1072,6 +1072,16 @@ bool NimBLEDevice::deleteBond(const NimBLEAddress &address) {
   for (NimBLEClient *client : live) {
     // Outside the list lock: disconnect() reaches the peer, which can run
     // callbacks and reap clients.
+    //
+    // Raw pointers, because g_Clients owns through unique_ptr and there is no
+    // shared handle to take. That is the same lifetime the real NimBLE has, so
+    // the snapshot is bounded on purpose: disconnect() can free the client it
+    // is called on, when m_DeleteOnDisconnect is armed, through eraseClient().
+    // Each pointer here is therefore used exactly once and can only be freed by
+    // its own disconnect, never by a sibling's. Do not reuse this vector, do not
+    // re-read a client after its disconnect, and do not take the list lock
+    // around the loop: the peer callbacks that run inside disconnect() reach
+    // back into the mock.
     client->disconnect();
   }
   return true;

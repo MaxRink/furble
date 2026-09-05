@@ -12,8 +12,9 @@
 # the wait runs to DISCONNECT_WAIT_MAX_MS and Off takes 30 seconds with a frozen
 # UI. There is no bound on the power-off path of its own: it inherits that one.
 #
-# CERTIFIED FALSE: this FAILS on master, at `ble.secure_stall_aborted`, because
-# nothing there terminates the parked handshake. Promote it when #245 lands.
+# Certified as of PR #245, on all three panels. It still FAILS on master, at
+# `ble.secure_stall_aborted`, because nothing there terminates the parked
+# handshake.
 seed ble_peers fuji-secure
 seed ble_saved true
 seed reconnect true

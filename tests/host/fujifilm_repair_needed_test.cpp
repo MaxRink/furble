@@ -298,9 +298,13 @@ bool scenarioBondDeletePromptsThenPairsFresh() {
   // which is what the pre-fix scenario got for free by recovering in place.
   std::this_thread::sleep_for(std::chrono::milliseconds(1500));
   check(control.getState() == Control::STATE_ACTIVE, "and the session is still up a moment later");
+  // Snapshotted, not compared against empty: registration has already written
+  // to this peer, so a non-empty log proves nothing about the shutter. Only
+  // growth across the press does.
+  const size_t writesBeforeShutter = peer.writes().size();
   camera->shutterPress();
   camera->shutterRelease();
-  check(!peer.writes().empty(), "with a shutter the camera actually receives");
+  check(peer.writes().size() > writesBeforeShutter, "with a shutter the camera actually receives");
 
   resetControl();
   return g_Failures == 0;

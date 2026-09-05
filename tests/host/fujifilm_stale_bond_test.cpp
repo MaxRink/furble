@@ -143,6 +143,19 @@ void testSingleTimeoutThenSuccessKeepsBond() {
   camera.disconnect();
 }
 
+// Two limits of the mock this scenario runs against, so neither is mistaken for
+// tested behaviour.
+//
+// FujifilmSecure warns "No identity address on the live link" when the bond
+// snapshot cannot be read. That branch is unreachable here: MockNimBLE's
+// getIdAddress() falls back to the link's own peer, which a live link always
+// has, so it never returns the empty address the warning tests for. On hardware
+// the read can fail, which is why the warning exists.
+//
+// And the mock keeps one link peer address globally, not one per client. Every
+// scenario in this file drives a single camera, so that is enough; a test that
+// wanted two simultaneous unresolved links would need it per client.
+//
 // The camera deleted its pairing but is sitting in pairing mode: it refuses the
 // dead keys while staying on the link. Deleting the stale bond then terminates
 // that link, because an unpair does, so the in-link fresh pair cannot run and

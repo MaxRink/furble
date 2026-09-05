@@ -73,6 +73,19 @@ protocol core.
   serial was always in `nvs_t`. Keep the composition idempotent. Do not do this
   for Basic, whose manufacturer data carries a rotating pairing token rather
   than a stable serial. Name derivation must never change matcher acceptance.
+- Bond store lookups take the identity address, never the advertised one. A
+  Secure body advertises a resolvable private address that rotates, so
+  `NimBLEDevice::isBonded()` and `deleteBond()` keyed on it miss the bond every
+  time: the stale keys survive and the recovery loops. Read
+  `m_Client->getConnInfo().getIdAddress()` off the live link, which is the
+  address NimBLE resolved through the IRK and the address the bond is filed
+  under. That means the snapshot has to happen after `connect()`, not before.
+- `NimBLEDevice::deleteBond()` is `ble_gap_unpair()`, which calls
+  `ble_gap_terminate_with_conn()` for every connection to that peer before it
+  drops the keys. Unpairing therefore ends the live link. Nothing that needs the
+  link may run after it: Fujifilm Secure's in-link fresh pair is kept only
+  because it costs one immediate failure and produces the "Fresh pair failed"
+  verdict that raises the re-pair prompt, never because it can recover here.
 - Ricoh fresh pairing treats a bonded-address security failure as a stale local
   bond: delete that bond and return failure so the next bounded control retry
   can perform numeric comparison. Saved reconnect failures preserve the bond;
