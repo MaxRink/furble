@@ -1,0 +1,159 @@
+# Cancel sweep: FauxNY test camera, UI connect button
+#
+# Plan 172. One cancel per (offset, pass): each lands at a fixed virtual-time
+# offset across the connect window, and after every one of them the same settle
+# invariant runs. The drain must empty inside DISCONNECT_DRAIN_RECLAIM_MS, no
+# connect may be left in flight, and Control must be back at idle. The file ends
+# by proving the connect gate reopened, because a wedge presents as a session
+# that never comes back rather than as a bad state at the instant of the cancel.
+#
+# FauxNY has no radio and its connect is a 2500 ms wait that does poll the
+# cancel token, so this leg is the control case: every cancel here is
+# expected to unwind inside one 25 ms slice. It is in the sweep so that a
+# regression breaking the plan 148 polling contract fails on the topology
+# where the contract is currently honoured, not only on the ones where it
+# is not.
+#
+# No client-pool guard on this leg. FauxNY has no radio, so nothing ever
+# delivers the GAP disconnect its client's self-delete waits on, and the
+# client stays in the mock pool after a perfectly clean teardown. Measured:
+# one connect and disconnect leaves live_clients at 1. That is the model, not
+# the firmware, so the guard rides on the peer-backed legs instead.
+#
+# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
+#
+# No cancel-latency bound on this leg. Virtual-time bounds are not sound here:
+# the interactive teardown polls on the UI thread, so how many 20 ms ticks a
+# cancel burns is set by how long the host takes to let the connect task run,
+# which is issue #279. A flaky bound is worse than none. The abort provenance
+# that replaces it (`ble.secure_stall_aborted`) can only be true once a fix
+# terminates the link, so it lives in the certified-false reproduction.#
+# The settle bounds are deliberately generous. What they assert is that the
+# drain empties at all, not that it empties quickly: convergence here needs a
+# starved target task to run, so a loaded host stretches it in virtual time too
+# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
+# runs on work that was healthy. The invariant survives a wide bound; a drain
+# that never empties still fails it.
+seed fauxny true
+seed reconnect true
+wait 300
+assert control.state idle
+
+# offset 10 ms, pass 1
+action connect
+wait 10
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 150 ms, pass 1
+action connect
+wait 150
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 400 ms, pass 1
+action connect
+wait 400
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 900 ms, pass 1
+action connect
+wait 900
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1800 ms, pass 1
+action connect
+wait 1800
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 2600 ms, pass 1
+action connect
+wait 2600
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3400 ms, pass 1
+action connect
+wait 3400
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 10 ms, pass 2
+action connect
+wait 10
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 150 ms, pass 2
+action connect
+wait 150
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 400 ms, pass 2
+action connect
+wait 400
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 900 ms, pass 2
+action connect
+wait 900
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 1800 ms, pass 2
+action connect
+wait 1800
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 2600 ms, pass 2
+action connect
+wait 2600
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# offset 3400 ms, pass 2
+action connect
+wait 3400
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+
+# The gate has to be open for the user's next connect.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert ui.liveness_violations 0
+exit

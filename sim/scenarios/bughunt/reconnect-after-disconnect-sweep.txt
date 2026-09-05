@@ -1,0 +1,150 @@
+# Reconnect after a user Disconnect, swept over the idle gap
+#
+# Bench, 2026-09-04, M5StickS3 on master with an X100VI, UI driven: after a
+# manual Disconnect from an active session, Connect did not work again
+# until furble was restarted. This walks the one variable the bench could
+# not control, the time the user spent between the two presses, from the
+# same tick through half a minute.
+#
+# Gaps: 0, 100, 500, 1000, 2000, 5000, 10000, 20000, 30000 ms.
+#
+# Each cycle asserts the session really came up, that the teardown settled
+# (drain empty, no connect in flight, Control idle), and that the next
+# connect comes back.
+#
+# This PASSES on master. That is a statement about the peer, not a clean
+# bill of health for the firmware: the virtual camera goes on advertising
+# the instant a central-initiated disconnect lands and holds no session
+# state across it, so if the real X100VI needs seconds before it will
+# accept a central again, or keeps the old session open, the simulator
+# cannot see it yet. plans/172 records exactly what the bench capture has
+# to show and what peer knob it turns into.
+#
+# The NimBLE client pool is capped at the board's CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+# (9) and the self-deleting client is modelled, so a client leaked per cycle
+# ends this run instead of being invisible. Neither was modelled before plan 172:
+# the mock pool was unlimited and a clean teardown never freed its client, so the
+# simulator could not tell a leak from a healthy session at all.#
+# The settle bounds are deliberately generous. What they assert is that the
+# drain empties at all, not that it empties quickly: convergence here needs a
+# starved target task to run, so a loaded host stretches it in virtual time too
+# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
+# runs on work that was healthy. The invariant survives a wide bound; a drain
+# that never empties still fails it.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+seed ble_max_clients 9
+seed ble_client_selfdelete true
+wait 300
+assert control.state idle
+assert_max ble.live_clients 1
+
+# gap 0 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+# A live session holds exactly one client. Without this the pool guard
+# below would be satisfied by a query that only ever reads zero.
+assert ble.live_clients 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# gap 100 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 100
+
+# gap 500 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 500
+
+# gap 1000 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 1000
+
+# gap 2000 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 2000
+
+# gap 5000 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 5000
+
+# gap 10000 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 10000
+
+# gap 20000 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 20000
+
+# gap 30000 ms between the Disconnect and the next Connect
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action disconnect
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+wait 30000
+
+# The last cycle has to come back too, which is what the user could
+# only get from a restart on the bench.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert ui.liveness_violations 0
+exit

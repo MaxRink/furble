@@ -244,6 +244,41 @@ a regression.
   entire virtual-time budget has elapsed. The handoff does not provide
   instruction-level preemption or core affinity; scheduler boundaries now use
   the deterministic priority gate described by plan 158.
+- The mock NimBLE client pool is unlimited and a self-deleting client is not
+  freed on its disconnect unless a scenario asks for both. `seed
+  ble_max_clients` caps the pool at the board's
+  `CONFIG_BT_NIMBLE_MAX_CONNECTIONS` (9) and `seed ble_client_selfdelete`
+  models the free, and `ble.live_clients` is the guard: one client while a
+  session is up, zero after a settled teardown. A scenario that walks many
+  connect cycles against a peer-backed camera should carry both, because a
+  client leaked per cycle is the shape of a bug that only a reboot clears and
+  the simulator is otherwise blind to it. Two shapes must not carry it, and
+  both are model artifacts rather than firmware behaviour: a leg that severs
+  the link (`action drop`, `action ble-standby`), because the mock frees a
+  link-loss client through `reapDeferredClients()` and the simulator does not
+  pump it; and a FauxNY leg, because FauxNY has no radio to deliver the GAP
+  disconnect its client's self-delete waits on, so the client outlives a clean
+  teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui`,
+  `cancel-sweep-fuji-secure-ui` and `reconnect-after-disconnect-sweep` carry
+  it; every leg that does not says why in its own header (plans/172).
+- Do not assert cancel or teardown latency in virtual time. `Control::disconnect()`
+  polls on the UI thread and every 20 ms slice advances the virtual clock, so the
+  number of slices is set by how long the host takes to let the connect task run,
+  which is issue #279. Measured: a bound with 4 percent slack failed 2 of 65 idle
+  runs and 4 to 6 of 8 at loadavg 80. Assert provenance instead;
+  `ble.secure_stall_aborted` says whether a modelled handshake ended on a link
+  terminate or on its own deadline, and no amount of host load changes it.
+- A virtual peer that answers instantly cannot model a wait. `seed
+  secure_stall_ms` holds every Fujifilm peer inside
+  `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm
+  Secure connect that takes no cancel token, and which `Camera::connect()` holds
+  `Camera::m_Mutex` across. Until it existed every certified cancel landed
+  either before an attempt started or after it had finished, so the entire class
+  of "cancel arrives inside a live connect" was untested and the 2026-09-04
+  hardware wedge (issue #271) was unreachable. The stall runs on the virtual
+  clock in the simulator and on the wall clock in the host suite, through the
+  hook in `lib/testing/peer/PeerStall.h`. When you find a production wait that a
+  peer answers instantly, model the wait before writing the scenario.
 - Camera-link faults are transport faults on the real MockNimBLE link.
   `action drop` and `action drop <n>` sever a live link with the GAP disconnect
   delivered; `action ble-kill` severs it and leaves the event queued;
@@ -251,7 +286,9 @@ a regression.
   `action ble-connect-fail` and `action ble-connect-ok` toggle transport
   connect failure; `action ble-withhold-registration` and
   `action ble-allow-registration` hold a Fujifilm peer's registration
-  confirmation. `seed connect_fail true` registers one
+  confirmation; `action ble-secure-stall <ms>` is the runtime form of the
+  `secure_stall_ms` seed, and `0` models the stale bond being refreshed.
+  `seed connect_fail true` registers one
   virtual peer and fails its connects. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
   `--delay-ms`.
@@ -328,6 +365,36 @@ a regression.
 - A teardown that force-completes fails the run. `sim/main.cpp` checks the
   boolean `Control::disconnect()` already returned and calls
   `requestFailureExit()`; do not discard it again.
+- **A forced completion, or a drain that has not settled at teardown, is a bug
+  signal and never noise. It must fail the run and the failure must name the
+  state.** This rule is written down because it was learned twice. The fuzz
+  teardown used to force-complete on nearly every seed by accident, so the
+  signal was background noise nobody read; plan 166 fixed the starvation that
+  caused it and plan 170 recorded that a settled teardown no longer reaches
+  that state. What was lost with the noise was the only thing in the simulator
+  that had ever been near the zombie-drain wedge of issue #271. Do not soften a
+  force-completion into a warning, do not let a scenario exit with
+  `control.zombies` above zero, and do not tune a drain bound upward to make a
+  run green: name the state, in the failure, and fix the cause.
+- The cancel sweep (`sim/scenarios/bughunt/cancel-sweep-*.txt`, plan 172) is the
+  certified generalisation of that rule. For each peer topology and each connect
+  entry the simulator has (the UI Connect button, the control task's own
+  automatic reconnect, and the boot autoconnect), it cancels at fixed virtual
+  time offsets across the connect window, repeats the pass, and after every
+  single cancel asserts the same settle invariant: the drain empties inside
+  `DISCONNECT_DRAIN_RECLAIM_MS`, no connect is left in flight, and Control is
+  back at idle, followed by a fresh connect reaching active. Add a leg when a
+  topology or a connect entry is added; do not add a scenario that cancels once
+  and checks the state once.
+- Every UI action that tears a session down inherits `Control::disconnect()`'s
+  bounds, including the ones that look like they have nothing to do with BLE.
+  `UI::doPowerOff()` calls `doDisconnect()` before `Platform::powerOff()`, so a
+  power off during an uncancellable connect takes the full 30 s interactive cap
+  with a frozen UI, which is the 2026-09-04 bench hang.
+  `bughunt/power-off-state-matrix.txt` bounds power off from every settled
+  Control state and `bughunt/power-off-during-connect-hang.txt` is the
+  reproduction. When a new UI action calls into Control, bound it in a scenario
+  before assuming its own work is what it costs.
 - `sim/scripts/run-watchdog.sh` is the explicit M5StickS3 watchdog gate. It
   runs all retained-PMIC feed and boundary scenarios against the default freshly built
   binary; do not substitute a stale binary or a different panel profile.

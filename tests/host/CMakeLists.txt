@@ -856,6 +856,43 @@ target_compile_options(control_teardown_wedge_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_teardown_wedge_test PRIVATE Threads::Threads)
 
+# Bench reproduction for the Fujifilm Secure stale-bond stall (issue 271, the
+# 2026-09-04 hardware session). Not enabled as a ctest yet: it reproduces a
+# defect neither master nor plan 170 fixes, because the block is inside a NimBLE
+# call that polls nothing. It is the PR 245 gate.
+add_executable(control_secure_stall_test
+               control_secure_stall_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(control_secure_stall_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/preferences
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${FURBLE_ROOT}/lib/blowfish
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(control_secure_stall_test PRIVATE
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=10000)
+target_compile_options(control_secure_stall_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_secure_stall_test PRIVATE Threads::Threads)
+
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
 # the named sync points in lib/furble/FurbleTestSync.h are live, and links the

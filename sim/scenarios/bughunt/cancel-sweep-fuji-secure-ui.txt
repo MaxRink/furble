@@ -1,0 +1,135 @@
+# Cancel sweep: Fujifilm Secure, UI connect button
+#
+# Plan 172. One cancel per (offset, pass): each lands at a fixed virtual-time
+# offset across the connect window, and after every one of them the same settle
+# invariant runs. The drain must empty inside DISCONNECT_DRAIN_RECLAIM_MS, no
+# connect may be left in flight, and Control must be back at idle. The file ends
+# by proving the connect gate reopened, because a wedge presents as a session
+# that never comes back rather than as a bad state at the instant of the cancel.
+#
+# The peer holds the connecting task inside secureConnection() for 3500
+# virtual ms, the bench signature of a healthy X100VI Secure connect
+# (issue #271, 2026-09-04). That knob is what puts a cancel inside a live
+# connect at all: before it the virtual handshake finished in under a
+# millisecond, so every cancel in the certified suite landed in an empty
+# window. secureConnection() takes no cancel token and Camera::connect()
+# holds Camera::m_Mutex across it, so each of these cancels really is
+# waiting on an attempt it cannot shorten.
+#
+# Offsets 10, 900, 1800, 2700, 3400, 4200 ms, then 1800 and 2700 again as
+# the repeat pass. The last offset lands after the handshake has finished,
+# which is where every pre-plan-172 cancel landed.
+#
+# Sized to a runtime budget. A cancel that lands inside the handshake costs
+# a few host seconds because the target task blocks on Camera::m_Mutex,
+# which the simulator scheduler cannot see, and the plan 161 residual gap 3
+# deadlock breaker has to time out before the run continues. That is a real
+# simulator gap (plan 158 Phase 3), not a property of the firmware, and it
+# is why this leg walks eight cancels rather than a full cross product.
+# The NimBLE client pool is capped at the board's CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+# (9) and the self-deleting client is modelled, so a client leaked per cycle
+# ends this run instead of being invisible. Neither was modelled before plan 172:
+# the mock pool was unlimited and a clean teardown never freed its client, so the
+# simulator could not tell a leak from a healthy session at all.
+#
+# No cancel-latency bound on this leg. Virtual-time bounds are not sound here:
+# the interactive teardown polls on the UI thread, so how many 20 ms ticks a
+# cancel burns is set by how long the host takes to let the connect task run,
+# which is issue #279. A flaky bound is worse than none. The abort provenance
+# that replaces it (`ble.secure_stall_aborted`) can only be true once a fix
+# terminates the link, so it lives in the certified-false reproduction.#
+# The settle bounds are deliberately generous. What they assert is that the
+# drain empties at all, not that it empties quickly: convergence here needs a
+# starved target task to run, so a loaded host stretches it in virtual time too
+# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
+# runs on work that was healthy. The invariant survives a wide bound; a drain
+# that never empties still fails it.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+seed secure_stall_ms 3500
+seed ble_max_clients 9
+seed ble_client_selfdelete true
+wait 300
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 10 ms, pass 1
+action connect
+wait 10
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 900 ms, pass 1
+action connect
+wait 900
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 1800 ms, pass 1
+action connect
+wait 1800
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 2700 ms, pass 1
+action connect
+wait 2700
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 3400 ms, pass 1
+action connect
+wait 3400
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 4200 ms, pass 1
+action connect
+wait 4200
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 1800 ms, pass 2
+action connect
+wait 1800
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# offset 2700 ms, pass 2
+action connect
+wait 2700
+action cancel
+assert-eventually-virtual 30000 control.zombies 0
+assert control.connect_in_progress no
+assert control.state idle
+assert_max ble.live_clients 1
+
+# The gate has to be open for the user's next connect.
+action ble-secure-stall 0
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert ui.liveness_violations 0
+exit

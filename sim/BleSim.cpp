@@ -209,6 +209,45 @@ void bleSaveRegisteredPeers(void) {
   saveRegisteredPeers();
 }
 
+void bleSetMaxClients(size_t max) {
+  NimBLEDevice::setMaxClients(max);
+}
+
+void bleSetDeferredClientDelete(bool enabled) {
+  NimBLEDevice::setDeferredClientDelete(enabled);
+}
+
+bool bleSecureStallAborted(void) {
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  for (const auto &peer : peers) {
+    if (peer->fujifilm != nullptr && peer->fujifilm->secureStallWasAborted()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+size_t bleLiveClientCount(void) {
+  return NimBLEDevice::liveClientCount();
+}
+
+void bleSetSecureStallMs(uint32_t ms) {
+  // Run the stall on the virtual clock. The host suite keeps the wall clock,
+  // where a real second is the point; here a real second would be dead time and
+  // would not be deterministic. vTaskDelay parks the calling task on the plan
+  // 158 scheduler, so the control task really is unavailable for the duration
+  // while it still holds Camera::m_Mutex, which is the whole shape being
+  // modelled.
+  Host::setPeerStallFunction([](uint32_t slice) { vTaskDelay(pdMS_TO_TICKS(slice)); });
+
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  for (const auto &peer : peers) {
+    if (peer->fujifilm != nullptr) {
+      peer->fujifilm->setSecureConnectionStallMs(ms);
+    }
+  }
+}
+
 void bleStopPeers(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   radioRunning = false;

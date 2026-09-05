@@ -1,0 +1,5 @@
+# ble-secure-stall takes exactly one duration. A trailing value is a
+# scripting mistake and must be rejected before any thread starts.
+seed ble_peers fuji-secure
+action ble-secure-stall 1000 2000
+exit

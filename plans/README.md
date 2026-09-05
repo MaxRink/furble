@@ -185,6 +185,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [167-fujifilm-device-name.md](167-fujifilm-device-name.md) | Fujifilm Secure cameras show the advertised model plus the advertised serial, since the longer camera-menu name is never advertised |
 | [169-flaky-host-tests.md](169-flaky-host-tests.md) | Three flaky host tests made deterministic: real scheduler waits instead of spin budgets, a registration sync point instead of sleeps, the aborted-connect republish wedge, and a coverage run that fails on a scenario that never finished |
 | [171-console-coverage-crash.md](171-console-coverage-crash.md) | The console suite exits while the control task is still running: stop and join every shim task before static destruction, and a coverage run that names a host test it lost |
+| [172-sim-cancel-sweep.md](172-sim-cancel-sweep.md) | Simulator reproduction of the 2026-09-04 cancel wedge and a certified cancel sweep: a virtual peer that models the blocking Fujifilm Secure handshake, and cancels at fixed offsets across the connect window for every peer topology and connect entry, each checked against one settle invariant, plus the bench power-off hang and a NimBLE client-pool guard the simulator never had |
 
 ## Design documents
 
