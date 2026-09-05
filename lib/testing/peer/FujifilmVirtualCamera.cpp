@@ -815,6 +815,8 @@ bool FujifilmVirtualCamera::secureStallWasAborted() const {
 uint32_t FujifilmVirtualCamera::secureStallEntries() const {
   const std::lock_guard<std::mutex> lock(m_StallMutex);
   return m_StallEntries;
+}
+
 void FujifilmVirtualCamera::setSecureConnectionDropsLink(bool drop) {
   m_SecureConnectionDropsLink = drop;
 }
