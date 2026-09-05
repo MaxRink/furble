@@ -228,35 +228,10 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // in-link recovery the stale-bond path attempts before giving up.
   void setRefuseWhileBonded(bool refuse);
 
-  // Model the stale-bond secureConnection() block observed on hardware.
-  //
-  // NimBLE's secureConnection() is a blocking call with its own internal
-  // timeout, not a poll loop, so nothing inside Camera::connect() can shorten
-  // it and the plan 148 cancel token cannot reach it. On an X100VI whose bond
-  // the camera has deleted, it blocks for the full pairing timeout. Setting a
-  // stall here reproduces that: the control task is parked inside the attempt
-  // holding Camera::m_Mutex exactly as it is on the device.
-  //
-  // The wait is a condition variable rather than a sleep, because the block is
-  // only half the behaviour. NimBLE returns from a parked secureConnection()
-  // when the link is terminated under it, which is the whole reason
-  // Camera::abortBlockingConnect() issues that terminate. A sleep would model
-  // the wedge but not the escape, and a test built on it could only ever prove
-  // that the stall expired on its own. The peer's own disconnect() releases the
-  // wait and the call then returns false, the verdict NimBLE gives when the
-  // link dies under the handshake. 0 disables the stall.
-  void setSecureConnectionStallMs(uint32_t stallMs);
-  // Did a stall end because the link was terminated rather than by its own
-  // deadline? This is the difference between an abort that works and a test
-  // that merely outwaited the block.
-  bool secureStallWasAborted() const;
   // How many times the central has asked to establish security on this peer.
   // One per successful connect is the contract: a second initiate on an already
   // encrypted link is what the X100VI terminates the session over.
   uint32_t secureInitiateCount() const;
-  // How many times the handshake has been entered, so a repeated-cycle test can
-  // prove every cycle really reached the blocking call.
-  uint32_t secureStallEntries() const;
   void setRequireLongConnParamsAfterIdentifier(bool require);
   void setDelayRegistrationConnParamsUntilFastRequest(bool delay);
   void dropLinkOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic);
@@ -370,15 +345,6 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_SecureConnectionDropsLink = false;
   uint32_t m_SecureTimeoutsRemaining = 0;
   bool m_RefuseWhileBonded = false;
-  // Guards the stall handshake. Held only around the wait and the wake, and
-  // nests no other lock: the wake runs on the cancelling thread inside
-  // NimBLEClient::disconnect() while the connect thread waits here.
-  mutable std::mutex m_StallMutex;
-  std::condition_variable m_StallSignal;
-  uint32_t m_SecureConnectionStallMs = 0;
-  bool m_StallLinkDown = false;
-  bool m_StallAborted = false;
-  uint32_t m_StallEntries = 0;
   std::atomic<uint32_t> m_SecureInitiates {0};
   bool m_RequireLongConnParamsAfterIdentifier = false;
   bool m_DelayRegistrationConnParamsUntilFastRequest = false;
