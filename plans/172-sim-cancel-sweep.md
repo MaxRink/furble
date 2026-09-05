@@ -445,12 +445,13 @@ cancels rather than the full cross product. Measured on the 135x240 build:
 | `tools/check_ci_workflows.py`, `tools/check_portability_inventory.py --check` | pass |
 | `sim/scripts/check-doc-tokens.sh` | pass |
 | Certified e2e | 83 on 135x240, 8 on 80x160, 8 on 320x240 |
-| Certified bughunt | pass on all three panels, 18 / 17 / 13 scenarios |
+| Certified bughunt | pass on all three panels, 18 / 17 / 13 scenarios, 190 s / 179 s / 211 s |
 | `run-invalid.sh`, `run-watchdog.sh` | pass |
 | `run-fuzz.sh`, 135x240 | 8 runs plus the determinism replay, exit 0, 0 forced completions |
 | clang-format 21.1.5 | clean |
 | em-dashes (bytes e2 80 94) | 0 |
 | sdkconfig | untouched |
+| Load proof (issue #279) | `cancel-sweep-fauxny-ui` 0 failures in 50 runs and `cancel-sweep-fuji-secure-ui` 0 in 10, at loadavg 84 to 171 driven by 80 CPU hogs |
 | `tools/coverage.py --check` | at or above every floor: host 64.02 (floor 62.55), sim union 54.42 (50.66), grand union 71.03 (69.26) |
 
 ### Against the fix branches
