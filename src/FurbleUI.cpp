@@ -291,7 +291,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_DeleteStr,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_SettingsStr,          {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -330,12 +330,12 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_IMUDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
+    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
     {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
-    {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
-    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BulbRunStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_BulbDurationStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -1552,6 +1552,33 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
 // ponytail: measured at rest. A row scrolled into the band afterwards is not
 // re-padded; re-running this on every scroll event would re-lay-out the page
 // mid-gesture. Every measured collision is an at-rest one.
+// Turn wrapping into scrolling for the labels that cannot fit their box.
+//
+// LVGL breaks a long word mid-word when it wraps, which reads as two words. A
+// horizontal scroll shows the whole word instead. It costs one animation per
+// label, so it is applied only where the text really does not fit, and only to
+// labels inside a row: a label placed straight on a page is a paragraph and is
+// meant to wrap.
+void UI::scrollLabelsThatDoNotFit(lv_obj_t *page) {
+  std::function<void(lv_obj_t *, bool)> visit = [&](lv_obj_t *obj, bool inRow) {
+    if ((obj == nullptr) || !lv_obj_is_valid(obj)) {
+      return;
+    }
+    if (inRow && lv_obj_check_type(obj, &lv_label_class)
+        && (lv_label_get_long_mode(obj) == LV_LABEL_LONG_WRAP)) {
+      const int32_t width = lv_obj_get_content_width(obj);
+      if ((width > 0) && (lv_obj_get_self_width(obj) > width)) {
+        lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      }
+    }
+    const bool childInRow = inRow || lv_obj_check_type(obj, &lv_menu_cont_class);
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+      visit(lv_obj_get_child(obj, i), childInRow);
+    }
+  };
+  visit(page, false);
+}
+
 void UI::reserveLegendColumns(lv_obj_t *page) {
   if ((page == nullptr) || (floatingIndicatorReserve() <= 0) || (m_Right == nullptr)
       || !lv_obj_is_valid(m_Right)) {
@@ -1573,6 +1600,13 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // gets tested and padded, on its right side only. Its widgets shift left by
   // the legend's width rather than each being measured, because a centred
   // widget cannot be moved out from under the legend by padding it.
+  // A label that does not fit the width it was given scrolls rather than
+  // breaking a word across two lines: "Brightn/ess" and "Featur/es" are not
+  // words. Only the labels that do not fit, so a page's redraw cost is one
+  // animation per row that overflows and none at all on a page that fits.
+  // Rows are lv_menu_cont children; a label parked directly on the page, like
+  // the bulb mode hint, is meant to flow over as many lines as it needs and is
+  // left alone.
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
     if ((row == nullptr) || !lv_obj_is_valid(row)) {
@@ -1581,11 +1615,17 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
     lv_area_t area;
     lv_obj_get_coords(row, &area);
     if ((area.y1 <= legend.y2) && (area.y2 >= legend.y1)) {
-      lv_obj_set_style_pad_right(row, reserve, LV_PART_MAIN);
-      // A scrolling label draws its text across the whole row whatever the row
-      // reserves, because the animation is not bounded by the padding. On the
-      // one row that has to keep a column clear, wrap instead: it shows every
-      // character, it stays inside the row, and it stops animating.
+      // The row's own box, not its padding. A child is clipped to its parent's
+      // box, so padding alone still let a roller or a switch be drawn in the
+      // padded strip and under the legend. Recomputed from the page each time
+      // rather than subtracted from the current width, so loading a page twice
+      // does not shrink it twice.
+      lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
+      // A scrolling label is not bounded by the row it sits in: the animation
+      // draws its text across the full width whatever the row reserves. On the
+      // one row that keeps a column clear, wrap instead, so the text stays
+      // inside the narrowed row. scrollLabelsThatDoNotFit() runs afterwards and
+      // turns it back into a scroll if a word would have to break.
       for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
         lv_obj_t *child = lv_obj_get_child(row, j);
         if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
@@ -1594,6 +1634,26 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
           lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
         }
       }
+    }
+  }
+
+  // After the rows have their final width, not before: a label measured at the
+  // old width and left wrapping then broke a word on the row that had just been
+  // narrowed, and the extra line pushed the page into a scroll. Turning that
+  // label into a scrolling one changes the row's height, so the widths are
+  // settled once more afterwards.
+  lv_obj_update_layout(page);
+  scrollLabelsThatDoNotFit(page);
+  lv_obj_update_layout(page);
+  for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+    lv_obj_t *row = lv_obj_get_child(page, i);
+    if ((row == nullptr) || !lv_obj_is_valid(row)) {
+      continue;
+    }
+    lv_area_t area;
+    lv_obj_get_coords(row, &area);
+    if ((area.y1 <= legend.y2) && (area.y2 >= legend.y1)) {
+      lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
     }
   }
 }
@@ -1634,10 +1694,15 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   [[maybe_unused]] const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  // A content sized grid row is only as tall as the container in it asks to be.
-  // Left at the default the container filled the whole page and the rows below
-  // it fell off the bottom.
-  lv_obj_set_height(cont, LV_SIZE_CONTENT);
+  // Only where the grid rows are content sized, which is at the largest text
+  // size. A content sized row is as tall as the container in it asks to be, and
+  // left at the default that container fills the page and the rows below fall
+  // off. At the smaller sizes the rows are equal slices of the page, as master
+  // has them, and the container must fill its slice or the page gains a scroll
+  // master does not have.
+  if (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>()) >= Settings::TEXT_SIZE_LARGE) {
+    lv_obj_set_height(cont, LV_SIZE_CONTENT);
+  }
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
@@ -1694,9 +1759,14 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_set_size(img, ICON_MENU_SIZE, ICON_MENU_SIZE);
     lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
     lv_image_set_src(img, icon);
-    // Start, not stretch, down the row: a stretched container reports the whole
-    // page as its height and a content sized row then swallows the page.
-    lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1, LV_GRID_ALIGN_START, row_pos, 1);
+    // Start where the rows are content sized, stretch where they are equal
+    // slices: a stretched container reports the whole page as its height, which
+    // a content row would then swallow, and a started container leaves an equal
+    // row half empty.
+    const bool contentRows =
+        TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>()) >= Settings::TEXT_SIZE_LARGE;
+    lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1,
+                         contentRows ? LV_GRID_ALIGN_START : LV_GRID_ALIGN_STRETCH, row_pos, 1);
   }
 #endif
 
@@ -1791,11 +1861,11 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
 
   lv_obj_t *sw = lv_switch_create(obj);
 #if defined(FURBLE_M5STICKC)
-  // The theme switch is 50 px, and 80 px of panel has to hold it, its name and
-  // the floating right legend. At 50 the switch was drawn under the legend even
-  // on its own wrapped line. 40 keeps the rounded rectangle shape and its state
-  // readable, and clears the legend.
-  lv_obj_set_width(sw, 40);
+  // Sized to the row's text rather than to the theme's 50x25 default, which ate
+  // most of an 80 px row. A track twice as wide as it is tall still reads as a
+  // switch and still shows its state at a glance.
+  const int32_t swHeight = lv_font_get_line_height(fontForTextSize(Settings::load<Settings::TEXT_SIZE>()));
+  lv_obj_set_size(sw, swHeight * 2, swHeight);
 #endif
   lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
   addToInputGroup(m_Group, sw);
@@ -6061,14 +6131,22 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
 #if defined(FURBLE_M5COREX)
   // three by two suits the landscape screens, Cameras fills the last open cell
-  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
+  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                  LV_GRID_TEMPLATE_LAST};
-  // Three rows, not two. Eight entries in six cells put Infrared with GPS data
-  // and Cameras with Level, so one of each pair drew over the other and could
-  // not be opened, and the content rows grew around the stack, which is the
-  // 13 px this page overflowed.
-  static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT,
-                              LV_GRID_TEMPLATE_LAST};
+  // Four by two, not three by two. Eight entries in six cells put Infrared with
+  // GPS data and Cameras with Level, so one of each pair drew over the other and
+  // could not be opened. A fourth column gives each entry a cell without adding
+  // a row, so the page is the same height as master's and still fits at Small
+  // and Normal. A name too wide for an 80 px cell scrolls.
+  // Equal rows at Small and Normal, where eight entries fit the page as they do
+  // on master, and content sized rows at Large, where a name needs more than
+  // half the page and the grid scrolls rather than clipping it away.
+  static int32_t row_dsc_even[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  static int32_t row_dsc_content[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+  int32_t *row_dsc = (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
+                      >= Settings::TEXT_SIZE_LARGE)
+                         ? row_dsc_content
+                         : row_dsc_even;
   lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
   lv_obj_center(menuConnected.page);
   lv_obj_set_layout(menuConnected.page, LV_LAYOUT_GRID);
@@ -6076,7 +6154,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
   menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
   menu_t &menuIR = m_Menu.at(m_IRStr);
-  m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 1, 1);
+  m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 3, 0);
   lv_menu_set_load_page_event(menuIR.main, m_IRConnectedButton, menuIR.page);
   addCamerasMenu(menuConnected);
   addBulbMenu(menuConnected);
@@ -6141,7 +6219,9 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
   } else {
     // add remote shutter text for buttons
+    lv_area_t a;
     lv_obj_update_layout(menuShutter.page);
+    lv_obj_get_coords(menuShutter.page, &a);
     lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
 
     m_ShutterLockIcon = lv_button_create(menuShutter.page);
@@ -6150,13 +6230,48 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
     lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
 
-    // Centred on the page, which is where upstream draws it. The grey leader
-    // line that used to run from it down to the select legend is gone: its last
-    // point was 103 px below the icon on the 135x240 panel and 64 px below the
-    // bottom of the page, which was the whole of that page's overflow. The four
-    // hardcoded point sets it needed went with it, and with them the
-    // "@todo Clean up the plethora of hardcoded values here" they carried.
-    lv_obj_align(m_ShutterLockIcon, LV_ALIGN_CENTER, 0, 0);
+    // @todo Clean up the plethora of hardcoded values here
+#if defined(FURBLE_M5STICKC)
+    const size_t n = 3;
+    int32_t x1 = lv_obj_get_x(m_OK) - 2;
+    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 10;
+    static lv_point_precise_t points[] = {
+        {x1 + 40, y1 + 12},
+        {x1 + 6,  y1 + 12},
+        {x1 + 6,  y1 + 64}
+    };
+#elif defined(FURBLE_M5STACK_CORE)
+    const size_t n = 4;
+    const int32_t x1 = 188;
+    const int32_t y1 = 80;
+    static lv_point_precise_t points[] = {
+        {164, 153},
+        {164, 92 },
+        {82,  92 },
+        {82,  153}
+    };
+#else
+    const size_t n = 3;
+    int32_t x1 = lv_obj_get_x(m_OK) - 2;
+    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 7;
+    static lv_point_precise_t points[] = {
+        {x1 + 50, y1 + 12 },
+        {x1 - 1,  y1 + 12 },
+        {x1 - 1,  y1 + 103}
+    };
+#endif
+
+    lv_obj_set_pos(m_ShutterLockIcon, x1, y1);
+
+    static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_line_width(&style, 2);
+    lv_style_set_line_color(&style, lv_palette_main(LV_PALETTE_GREY));
+    lv_style_set_line_opa(&style, LV_OPA_50);
+
+    lv_obj_t *line = lv_line_create(menuShutter.page);
+    lv_line_set_points(line, points, n);
+    lv_obj_add_style(line, &style, 0);
 
     lv_obj_move_foreground(m_ShutterLockIcon);
   }
@@ -7003,23 +7118,6 @@ void UI::addIRMenu(void) {
   updateIRMenuVisibility();
 }
 
-// The name a spin row shows. On the narrow panels the row has to hold a name, a
-// value and the floating legend on one line, and at the maximum value
-// "Shutter 999 min" and "Duration 999 min" do not fit 135 px, let alone 80.
-// These are designed labels, not truncations: the page each one opens still
-// carries the full name in its title.
-const char *UI::spinRowName(const char *item) {
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  if (item == m_IntervalShutterStr) {
-    return "Shtr";
-  }
-  if (item == m_BulbDurationStr) {
-    return "Dur.";
-  }
-#endif
-  return item;
-}
-
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
   spinner.m_Button = lv_menu_cont_create(page);
   // One line, never wrapped. The name gives up room to the value, never the
@@ -7034,7 +7132,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
-  lv_label_set_text(spinner.m_Label, spinRowName(item));
+  lv_label_set_text(spinner.m_Label, item);
   // The name takes what the value leaves. The value is the one thing that may
   // never lose a character, so it keeps its natural width and the name grows
   // into whatever is left. Measured against the maxima, this is the arrangement
@@ -7103,12 +7201,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   spinner.m_RowSpinners = lv_obj_create(menu.page);
   lv_obj_set_size(spinner.m_RowSpinners, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_layout(spinner.m_RowSpinners, LV_LAYOUT_FLEX);
-  // Wrapping, so the unit roller takes the line below the digits rather than
-  // being drawn under the floating right legend. Four rollers need the whole
-  // 135 px and the legend needs 26 of it, so on the narrow panels one of the
-  // two has to move and it is not going to be the legend. On the wide boards
-  // nothing wraps and the row is unchanged.
-  lv_obj_set_flex_flow(spinner.m_RowSpinners, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_flow(spinner.m_RowSpinners, LV_FLEX_FLOW_ROW);
 
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
@@ -7220,23 +7313,34 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   // squeeze width for smaller displays
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
+      __attribute__((fallthrough));
+    case m5::board_t::board_M5StickCPlus2:
+    case m5::board_t::board_M5StickCPlus:
+    case m5::board_t::board_M5StickS3:
+      // One row, scrolled sideways when it runs out of width. Master already
+      // did this on the 80x160 board; the 135 px panels need it too once the
+      // row keeps the legend's column clear, and at the largest text size four
+      // rollers do not fit either panel. Scrolling keeps every roller its full
+      // size and reachable; wrapping the unit roller made it read as a separate
+      // control and shrinking the rollers is the squeeze this page must not do.
       lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                             LV_FLEX_ALIGN_CENTER);
       lv_obj_add_flag(spinner.m_RowSpinners, LV_OBJ_FLAG_SCROLLABLE);
       lv_obj_set_scrollbar_mode(spinner.m_RowSpinners, LV_SCROLLBAR_MODE_OFF);
       lv_obj_set_scroll_dir(spinner.m_RowSpinners, LV_DIR_HOR);
-      __attribute__((fallthrough));
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickS3:
+      // All four rollers stay on one row. What gives is the space between and
+      // inside them, not the row: a wrapped unit roller reads as a second
+      // control. The row keeps the legend's column clear like any other row
+      // level with it, so the four have to fit what is left.
+      lv_obj_set_style_pad_column(spinner.m_RowSpinners, 0, LV_STATE_DEFAULT);
       for (auto &r : spinner.m_Roller) {
-        lv_obj_set_style_pad_left(r, 2, LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_right(r, 2, LV_STATE_DEFAULT);
+        lv_obj_set_style_pad_left(r, 0, LV_STATE_DEFAULT);
+        lv_obj_set_style_pad_right(r, 0, LV_STATE_DEFAULT);
       }
 
       if (spinner.m_RollerUnit != nullptr) {
-        lv_obj_set_style_pad_left(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_right(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
+        lv_obj_set_style_pad_left(spinner.m_RollerUnit, 0, LV_STATE_DEFAULT);
+        lv_obj_set_style_pad_right(spinner.m_RollerUnit, 0, LV_STATE_DEFAULT);
       }
 
       if (spinner.m_PresetRow != nullptr) {
@@ -7447,10 +7551,12 @@ void UI::addBulbMenu(const menu_t &parent) {
 
   m_Bulb.m_ModeHintLabel = lv_label_create(menu.page);
   lv_obj_set_width(m_Bulb.m_ModeHintLabel, LV_PCT(100));
-  lv_label_set_long_mode(m_Bulb.m_ModeHintLabel, LV_LABEL_LONG_CLIP);
+  // A sentence, not a row label: it wraps over as many lines as it needs at the
+  // page width, left aligned. Clipped and squeezed to one line with negative
+  // letter spacing it was unreadable on every narrow panel.
+  lv_label_set_long_mode(m_Bulb.m_ModeHintLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_font(m_Bulb.m_ModeHintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Bulb.m_ModeHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_obj_set_style_text_letter_space(m_Bulb.m_ModeHintLabel, -2, LV_PART_MAIN);
+  lv_obj_set_style_text_align(m_Bulb.m_ModeHintLabel, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
   updateBulbModeHint();
 
   m_BulbStart = lv_button_create(menu.page);
@@ -7584,14 +7690,17 @@ void UI::addBulbMenu(const menu_t &parent) {
 void UI::addDisplayMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  // Grow with the content, with the page height as a floor. Pinned to exactly
-  // the page height there is no free space left to distribute once the rows
-  // stop fitting, and SPACE_EVENLY then packs them on top of each other: this
-  // page drew ten overlapping pairs at Normal on 135x240. With the floor the
-  // spread is identical while the rows fit and the page scrolls when they do
-  // not. See plans/168-notouch-layout-overflows.md.
-  lv_obj_set_height(cont, LV_SIZE_CONTENT);
-  lv_obj_set_style_min_height(cont, LV_PCT(100), 0);
+  lv_obj_set_height(cont, LV_PCT(100));
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // This page carries seven widgets in a container pinned to the page height,
+  // and SPACE_EVENLY has nothing to distribute once they no longer fit: it
+  // packs them on top of each other, which is the ten overlapping pairs this
+  // page drew at Normal. The container's own padding is the cheapest height to
+  // give back, and it is doing no work here.
+  lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
+#endif
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
@@ -7662,7 +7771,17 @@ void UI::addDisplayMenu(const menu_t &parent) {
   addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, "Never\n30 secs\n60 secs\n2 mins\n5 mins\n10 mins",
                         LV_ROLLER_MODE_INFINITE);
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // One visible option, not two. This page carries a slider, two rollers, a
+  // checkbox row and on some boards a calibration button in a container pinned
+  // to the page height, and the second row of each roller is what tipped it
+  // over: with no free space left SPACE_EVENLY stacks the rows on top of each
+  // other, which is the ten overlapping pairs this page drew at Normal. One row
+  // still shows the selected option and the encoder still scrolls the rest.
+  lv_roller_set_visible_row_count(roller, 1);
+#else
   lv_roller_set_visible_row_count(roller, 2);
+#endif
   uint8_t inactivity = Settings::load<Settings::INACTIVITY>();
   lv_roller_set_selected(roller, inactivityIndex(inactivity), LV_ANIM_ON);
 
@@ -7694,7 +7813,17 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_roller_set_options(roller,
                         M5.Touch.isEnabled() ? m_DisplayOffTouchOptions : m_DisplayOffOptions,
                         LV_ROLLER_MODE_INFINITE);
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // One visible option, not two. This page carries a slider, two rollers, a
+  // checkbox row and on some boards a calibration button in a container pinned
+  // to the page height, and the second row of each roller is what tipped it
+  // over: with no free space left SPACE_EVENLY stacks the rows on top of each
+  // other, which is the ten overlapping pairs this page drew at Normal. One row
+  // still shows the selected option and the encoder still scrolls the rest.
+  lv_roller_set_visible_row_count(roller, 1);
+#else
   lv_roller_set_visible_row_count(roller, 2);
+#endif
   uint8_t displayOff = m_DisplayOffMode;
   if (displayOff > 2) {
     displayOff = 0;
@@ -9095,8 +9224,13 @@ void UI::addSettingsMenu(void) {
   menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
 
 #if defined(FURBLE_M5COREX)
+  // Same rule as the Connected grid: equal rows while the entries fit, content
+  // rows at Large so a name is never clipped away below its icon.
   lv_obj_set_grid_dsc_array(menu.page, m_GridLayoutColDsc.data(),
-                            m_SettingsGridLayoutRowDsc.data());
+                            (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
+                             >= Settings::TEXT_SIZE_LARGE)
+                                ? m_SettingsGridLayoutRowDscContent.data()
+                                : m_SettingsGridLayoutRowDscEven.data());
   lv_obj_set_layout(menu.page, LV_LAYOUT_GRID);
 #else
 #endif

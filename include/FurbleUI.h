@@ -386,10 +386,11 @@ class UI {
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
-      // The narrow panels put four rollers on one row and the four character
-      // units make the last one wider than the room left, so it was drawn under
-      // the floating right legend. These are the conventional abbreviations and
-      // match what the value labels show through SpinValue::getShortUnitString.
+      // The roller's options only. The value label keeps the full words, so a
+      // bulb row still reads "Duration 30 secs"; this is the picker beside
+      // three digit rollers, where four columns of four characters do not fit
+      // a 135 px or 80 px panel at any text size and the unit is unambiguous
+      // from one or three.
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
       static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
 #else
@@ -746,7 +747,9 @@ class UI {
   // under the icon was clipped away below it. A content row is as tall as the
   // icon plus its name at whatever size is chosen, and the page scrolls when
   // four of them no longer fit. It never squeezes.
-  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {
+  const std::vector<int32_t> m_SettingsGridLayoutRowDscEven = {
+      LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  const std::vector<int32_t> m_SettingsGridLayoutRowDscContent = {
       LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
@@ -962,6 +965,7 @@ class UI {
   /** Pixels to keep clear on the right of a full width menu row. */
   static int32_t floatingIndicatorReserve(void);
   void reserveLegendColumns(lv_obj_t *page);
+  static void scrollLabelsThatDoNotFit(lv_obj_t *page);
 
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
@@ -1063,7 +1067,6 @@ class UI {
   void updateBulbModeHint(void);
 
   /** Add spinner menu item entry. */
-  static const char *spinRowName(const char *item);
   lv_obj_t *addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner);
 
   /** Add the spinner page menu entry. */
