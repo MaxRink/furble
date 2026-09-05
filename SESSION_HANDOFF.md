@@ -892,3 +892,5 @@ being reworked to the user's feedback (indicator placement toggle,
 icons back, no font caps, settings rotary collisions, pictures on the
 PR, user merges). The user's own UI disconnect/reconnect worked on the
 second try (intermittent, no log). The stick is idle on dev+g7987529d.
+
+Update 2026-09-05 07:00: PR #273 reworked to the user feedback (legend placement setting wire id 47 defaulting to the shipped positions, icons back, no font caps, spin rows wrap, settings container fix) with 675 before/after captures posted on the PR; the user merges UI PRs from the pictures. PR #278 (sim cancel sweep) in its closing round. PR #245 at 3a9a3c44 parked for the rebase over #278 (adds the MockNimBLE deleteBond terminate fidelity change); its hardware step 3 re-run waits for the camera pairing screen, expected outcome now Pairing lost box then a fresh pair on the next connect.
