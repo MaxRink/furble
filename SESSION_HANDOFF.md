@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 13:40)
+## Resume here (kept current; last updated 2026-09-07 14:20)
 
 Master `fork/master` = **35c0f4b8** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47, #45, #291). Upstream gkoh/furble is read-only.
@@ -24,8 +24,8 @@ Open PRs, head, state, next action:
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | MERGED 53fa8965 | fifteen-step GPS hardware gate owed post-merge (plan 21) |
 | #139 GPS phase 2 (plan 32) | 69cd3f09 | fix pushed 13:20, delta review running | same-day IMPLAUSIBLE retry never re-arms (compare UTC time not date; same-day fixture), check-doc-tokens predicate, stale comment, gps platform strtoul end check; arm compares the committed date value (emptyrmc, walkback fixtures), IMPLAUSIBLE bounded at 4; rebased onto 107a6b96 (keep-both resolutions repaired); on approval plus green CI merge, GPS gate owed post-merge |
 | #45 IMU gestures (plan 17) | cf5ec483 | MERGED 107a6b96 | eight-step IMU hardware gate owed post-merge (plan 17; trace capture and the hour drain can still change the design) |
-| #48 IMU hardware motion (plan 20) | c94f2e56 | wake-pin fix pushed; one commit pending | ship default HW_MOTION = Software until the six-step gate passes (Auto prefers the unverified hardware engine); then delta review, merge after #45, then #65 re-stacks |
-| #65 GPS motion detector (plan 18) | c1410d0b (bundle af50206a on #48 4b453968, not pushed) | waits for #48 final head | lane deleted FurbleMotion.h and the 100 ms timer (MotionSource holds the 60 s dwell); re-stack on #48 final head, push bundle, delta review, six-step gate; GitHub refuses a base change ("part of a stack"), so CI is red until #48 merges |
+| #48 IMU hardware motion (plan 20) | af3f982a | pushed 14:15 on master 35c0f4b8, delta review running | default HW_MOTION_SOFTWARE (flip to Auto is the gate deliverable); Motion Engine roller moved to #45 Gestures page; union-merge corrupted four files during rebase, repaired by hand (reviewer checks); on approval plus green CI merge, then #65 re-stacks |
+| #65 GPS motion detector (plan 18) | c1410d0b (bundle af50206a stale) | re-stacking on #48 af3f982a | lane deleted FurbleMotion.h and the 100 ms timer (MotionSource holds the 60 s dwell); re-stack on #48 final head, push bundle, delta review, six-step gate; GitHub refuses a base change ("part of a stack"), so CI is red until #48 merges |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #291 conn-saver idle coverage test (plan 163 deviation, from plan 151) | a8bb0a22 | MERGED 35c0f4b8 | test-only cherry-pick of #245 e3e3872c; the Camera.cpp floor 73.75 is timing-dependent (master 74.75, #139 72.17, lost lines all in requestConnProfile); merge first, then #139/#48/#65 rebase over it |
 | #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
