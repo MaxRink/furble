@@ -253,3 +253,14 @@ Known rough edges, recorded rather than fixed:
   instrument sources the report then discards, which costs build time and
   measures nothing. Narrow the glob to the same three directories when that
   lands, or export the list from one place.
+
+## Deviation 2026-09-06: deterministic idle-profile coverage
+
+The lib/furble/Camera.cpp floor (73.75) depended on a host test that only
+reached the idle connection-profile request path when the wall clock beat
+the retry guard. Master measured 74.75, the same code on PR #139 measured
+72.17 with the lost lines all in Camera::requestConnProfile. The
+connection-saver idle transition test from plan 151 (PR #245, commit
+e3e3872c) exercises that path on purpose, so it lands here first as a
+test-only change and makes the floor deterministic for every branch that
+follows. PR #245 keeps the same commit and drops it on rebase.
