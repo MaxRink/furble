@@ -1,6 +1,9 @@
 # 116 - Companion connection password (shared-secret auth gate)
 
-Status: design only. Firmware auth gate on the companion GATT service from
+Status: partially implemented. PR #166 lands the storage half only, the
+`COMPANION_PASSWORD` setting at wire id 47. The auth challenge itself is not
+implemented yet. See "Implementation state" below before reading the design.
+Firmware auth gate on the companion GATT service from
 `plans/50-companion-app-design.md`, which has landed as `FurbleCompanion` /
 `FurbleCompanionService`. Section 116b covers the matching Android app change.
 
@@ -82,9 +85,9 @@ Out of scope:
   characteristic, per-connection auth state, the challenge, and the privileged-op
   gate.
 - `include/FurbleSettings.h` / `src/FurbleSettings.cpp`: `COMPANION_PASSWORD`
-  setting and its `wire_id` (shared with `plans/114`/`plans/50`). Reserve the
-  wire id 45 is reserved for this companion-password contract; IMU uses wire
-  id 46. Do not reuse either id for another setting.
+  setting and its `wire_id` (shared with `plans/114`/`plans/50`). Wire id 47 is
+  the companion-password contract, reserved in `include/CLAUDE.md`. IMU already
+  owns wire id 46 on master. Do not reuse either id for another setting.
 - The PR27 console table: `companion password` subcommands.
 - `sim/shim/FurbleCompanionService.h` and the companion rig
   (`sim/CompanionRigTransport.cpp`): mirror the auth handshake so
@@ -98,6 +101,64 @@ Out of scope:
 
 Default empty means a fresh device and an upgraded device behave exactly as they
 do now: bonding + encryption, no extra step.
+
+## Implementation state
+
+PR #166 lands the storage half of this plan and nothing else.
+
+Landed by #166:
+
+- `Settings::COMPANION_PASSWORD`, a `std::string` at wire id 47, default empty.
+- Write-only over the companion GATT settings characteristic. A get returns
+  `SETTING_REJECTED` and the list walk skips the setting, because
+  `CompanionService::settingValue()` refuses it.
+- Refused by the SD exporter and the SD importer, so the secret never lands on
+  a removable card.
+- A `SETTING_SCHEMAS` row so a provisioning bundle can name id 47 by wire id.
+- Golden corpus fixtures for the get, set, and both responses, plus the host
+  round-trip and write-only SD contract checks.
+
+Not landed. This is the whole gate and it is still open:
+
+- The Auth characteristic, the 16-byte nonce, the truncated HMAC-SHA256
+  response, and the constant-time compare.
+- Per-connection auth state, the failure counter, the replay refusal, and the
+  clear on disconnect, reconnect and password reload.
+- The privileged-write gate itself. `handleSettings()` and `handleTrigger()`
+  still admit any encrypted, link-authenticated connection. Nothing reads
+  `COMPANION_PASSWORD` yet.
+- The empty-password fallback contract, because there is no gate to fall back
+  from.
+- The `companion_auth_test` host test and the `plans/119` rig assertions.
+- The provisioning `COMPANION_PASSWORD` field tag is still deferred in
+  `FurbleProvision.cpp`, so the flasher path does not persist the password.
+
+## Deviations
+
+- Wire id 47, not the 45 this plan first named. Master already ships IMU at 46,
+  and 45 is claimed by the gesture branches. 47 is free on master and on every
+  open PR head except the sibling app PRs #195 and #214, which already expect
+  it.
+- Four golden fixtures for id 47, not five. A write-only setting has no list
+  record, so `response-list-47.bin` would assert a record the firmware never
+  emits.
+- The companion settings write path caps a string at the 255-byte wire length,
+  not at the 63-byte `MAX_STRING_BYTES` the provisioning schema enforces. The
+  gate work should tighten that when it reads the password.
+
+## Owed verification
+
+The on-device handshake bench is owed post-merge and cannot run yet, because
+the handshake does not exist. When the gate lands, run it on the S3 with the
+Android app from 116b:
+
+- Set a password over the console, connect from the app, confirm the prompt.
+- Correct password unlocks trigger and settings writes.
+- Wrong password is refused and the link drops after the failure limit.
+- Empty password connects and triggers with no prompt.
+
+Until then, #166 is verified by the host suite, the sim, and the firmware
+builds only.
 
 ## Dependencies
 
@@ -143,7 +204,7 @@ logic over a mock connection object):
 Run:
 
 ```
-cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake -S tests/host -B build/host-tests
 cmake --build build/host-tests --parallel 2
 ctest --test-dir build/host-tests -R companion-auth --output-on-failure
 ```

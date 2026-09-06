@@ -29,23 +29,25 @@ namespace Furble {
 namespace {
 
 const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
-    {Settings::BRIGHTNESS,    {Settings::BRIGHTNESS, 1, "Brightness", "brightness", "furble"}        },
-    {Settings::TX_POWER,      {Settings::TX_POWER, 4, "TX Power", "tx_power", "furble"}              },
-    {Settings::IMU,           {Settings::IMU, 45, "IMU", "imu", "furble"}                            },
-    {Settings::IMU_WAKE,      {Settings::IMU_WAKE, 63, "Wake Gesture", "imu_wake", "furble"}         },
-    {Settings::IMU_TRIG,      {Settings::IMU_TRIG, 64, "Double-Tap Shutter", "imu_trigger", "furble"}},
-    {Settings::TX_ADAPTIVE,   {Settings::TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", "furble"}       },
+    {Settings::BRIGHTNESS,         {Settings::BRIGHTNESS, 1, "Brightness", "brightness", "furble"}        },
+    {Settings::TX_POWER,           {Settings::TX_POWER, 4, "TX Power", "tx_power", "furble"}              },
+    {Settings::IMU,                {Settings::IMU, 45, "IMU", "imu", "furble"}                            },
+    {Settings::IMU_WAKE,           {Settings::IMU_WAKE, 63, "Wake Gesture", "imu_wake", "furble"}         },
+    {Settings::IMU_TRIG,           {Settings::IMU_TRIG, 64, "Double-Tap Shutter", "imu_trigger", "furble"}},
+    {Settings::TX_ADAPTIVE,        {Settings::TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", "furble"}       },
     {Settings::MULTICONNECT,
-     {Settings::MULTICONNECT, 8, "Multi-Connect", "multiconnect", "furble"}                          },
-    {Settings::RECONNECT,     {Settings::RECONNECT, 9, "Infinite-ReConnect", "reconnect", "furble"}  },
+     {Settings::MULTICONNECT, 8, "Multi-Connect", "multiconnect", "furble"}                               },
+    {Settings::RECONNECT,          {Settings::RECONNECT, 9, "Infinite-ReConnect", "reconnect", "furble"}  },
     {Settings::RECON_BACKOFF,
-     {Settings::RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", "furble"}                   },
+     {Settings::RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", "furble"}                        },
     {Settings::SLEEP_CONN,
-     {Settings::SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", "furble"}                     },
-    {Settings::COMPANION,     {Settings::COMPANION, 12, "Companion", "companion", "furble"}          },
-    {Settings::GPS_PLATFORM,  {Settings::GPS_PLATFORM, 69, "GPS Platform", "gps_plat", "furble"}     },
+     {Settings::SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", "furble"}                          },
+    {Settings::COMPANION,          {Settings::COMPANION, 12, "Companion", "companion", "furble"}          },
+    {Settings::COMPANION_PASSWORD,
+     {Settings::COMPANION_PASSWORD, 47, "Companion password", "companion_pw", "furble"}                   },
+    {Settings::GPS_PLATFORM,       {Settings::GPS_PLATFORM, 69, "GPS Platform", "gps_plat", "furble"}     },
     {Settings::CONN_SAVER,
-     {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                     },
+     {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                          },
 };
 
 struct BatteryState {

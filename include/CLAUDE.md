@@ -25,11 +25,12 @@ Public headers for the app layer in src/, one header per module
 ### Companion wire id reservations
 
 The settings table in `src/FurbleSettings.cpp` is the source of truth for ids
-already on master, which run from 0 through 46 plus 67 and 68. Ids above that are handed out
-here so open PRs cannot collide, because two branches claiming one id produce an
-add/add conflict in `tests/protocol/golden/settings/*-<id>.bin` and a silent
-protocol break for the companion app. A PR claims its reserved ids at rebase
-time, regenerates its golden corpus, and updates its row. See issue #280.
+already on master, which run from 0 through 46 plus 67, 68, 72 and 73. Ids that
+master does not use are handed out here so open PRs cannot collide, because two
+branches claiming one id produce an add/add conflict in
+`tests/protocol/golden/settings/*-<id>.bin` and a silent protocol break for the
+companion app. A PR claims its reserved ids at rebase time, regenerates its
+golden corpus, and updates its row. See issue #280.
 
 A merged id is frozen and never moves afterwards, because a shipped id is a
 companion client contract: renumbering one and regenerating its fixtures
@@ -39,13 +40,14 @@ renumbering fails the build rather than passing quietly.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
+| #166 | `companion_pw` | 47 |
 | #273 | `legend` | 65 |
 | #65 | `gps_motion` | 66 |
 | #139 | plan 32 phase 2 | 69, 70, 71 |
 | #45 | `imu_wake`, `imu_trigger` | 72, 73 |
 | #48 | `hw_motion` | 74 |
 
-Ids 47 through 64 are claimed by other open PRs. Take the next free id below
+Ids 48 through 64 are claimed by other open PRs. Take the next free id below
 the reservations only after checking every open PR head.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
