@@ -546,6 +546,9 @@ reading the code.
 
 ## Hardware gate, executable
 
+Hardware gate (eight steps) owed post-merge; shipping with both settings
+off changes nothing.
+
 Reproduced verbatim from the PR #45 review on `dce53bf5`.
 
 M5StickS3 with the X100VI. Steps 1 and 8 are the two that can still change the shipped design.
