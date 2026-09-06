@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 08:30)
+## Resume here (kept current; last updated 2026-09-07 10:10)
 
 Master `fork/master` = **107a6b96** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47, #45). Upstream gkoh/furble is read-only.
@@ -25,7 +25,7 @@ Open PRs, head, state, next action:
 | #139 GPS phase 2 (plan 32) | 9acc9f48 | fix round running | an empty RMC date term still raises the parser's updated flag, so the count must require a valid changed date (emptyrmc fixture) and the IMPLAUSIBLE retry needs a bound; then delta review, hardware gate (receiver rejection of expired ephemeris measured first) |
 | #45 IMU gestures (plan 17) | cf5ec483 | MERGED 107a6b96 | eight-step IMU hardware gate owed post-merge (plan 17; trace capture and the hour drain can still change the design) |
 | #48 IMU hardware motion (plan 20) | c94f2e56 | wake-pin fix pushed; one commit pending | ship default HW_MOTION = Software until the six-step gate passes (Auto prefers the unverified hardware engine); then delta review, merge after #45, then #65 re-stacks |
-| #65 GPS motion detector (plan 18) | c1410d0b | rebasing onto #48 4b453968 | consume IMU::MotionSource (state() only, isArmed asserted), bundle, delta review, six-step gate |
+| #65 GPS motion detector (plan 18) | c1410d0b (bundle af50206a on #48 4b453968, not pushed) | waits for #48 final head | lane deleted FurbleMotion.h and the 100 ms timer (MotionSource holds the 60 s dwell); re-stack on #48 final head, push bundle, delta review, six-step gate; GitHub refuses a base change ("part of a stack"), so CI is red until #48 merges |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
 
@@ -50,9 +50,13 @@ as "X100VI 1C4F9". Flash VM binaries with `flash prepare` over the console
 Passive listening: serlisten.py. Console facts: `debug control` carries the
 control.* fields, `status` does not; an empty reason prints `none`.
 
-Host disk: hit 100 percent on 2026-09-07; finished host worktrees keep
-multi-GB .pio trees under ~/furble-build-wt and the OrbStack image holds 46
-VM worktrees; prune when lanes are idle (the coordinator may be denied rm).
+Host disk: hit 100 percent on 2026-09-07; the user authorized deleting old
+furble worktrees and remnants. Done 10:00: pio system prune (3.9 GB),
+scratchpad archives, finished host worktrees (three refused, small), VM
+prune of finished lanes. Host free 6 GiB to 78 GiB, VM 41 GB to 91 GB.
+Remaining host worktrees: wt-handoff, wt-168-push (#273), wt-63-fix
+(1.5 GB, queued #63), six small review leftovers. VM keeps audit-upui f245
+fw fw245b fw245d l168 mstr p139 p48 p65 p65base.
 
 VM: OrbStack `furble-build`, reboots about once a day (disk survives);
 PlatformIO works there (runbook ~/furble-build-wt/VM-FIRMWARE-BUILD.md);
