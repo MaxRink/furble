@@ -9,10 +9,10 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 13:10)
+## Resume here (kept current; last updated 2026-09-07 13:40)
 
-Master `fork/master` = **107a6b96** (merged this cycle in order: #261, #264,
-#270, #274, #276, #266, #278, #286, #287, #47, #45). Upstream gkoh/furble is read-only.
+Master `fork/master` = **35c0f4b8** (merged this cycle in order: #261, #264,
+#270, #274, #276, #266, #278, #286, #287, #47, #45, #291). Upstream gkoh/furble is read-only.
 
 Open PRs, head, state, next action:
 
@@ -27,7 +27,7 @@ Open PRs, head, state, next action:
 | #48 IMU hardware motion (plan 20) | c94f2e56 | wake-pin fix pushed; one commit pending | ship default HW_MOTION = Software until the six-step gate passes (Auto prefers the unverified hardware engine); then delta review, merge after #45, then #65 re-stacks |
 | #65 GPS motion detector (plan 18) | c1410d0b (bundle af50206a on #48 4b453968, not pushed) | waits for #48 final head | lane deleted FurbleMotion.h and the 100 ms timer (MotionSource holds the 60 s dwell); re-stack on #48 final head, push bundle, delta review, six-step gate; GitHub refuses a base change ("part of a stack"), so CI is red until #48 merges |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
-| #291 conn-saver idle coverage test (plan 163 deviation, from plan 151) | a8bb0a22 | APPROVED (comment 5561495268), CI nearly green | test-only cherry-pick of #245 e3e3872c; the Camera.cpp floor 73.75 is timing-dependent (master 74.75, #139 72.17, lost lines all in requestConnProfile); merge first, then #139/#48/#65 rebase over it |
+| #291 conn-saver idle coverage test (plan 163 deviation, from plan 151) | a8bb0a22 | MERGED 35c0f4b8 | test-only cherry-pick of #245 e3e3872c; the Camera.cpp floor 73.75 is timing-dependent (master 74.75, #139 72.17, lost lines all in requestConnProfile); merge first, then #139/#48/#65 rebase over it |
 | #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
 
 User directive 2026-09-07: merge everything whose verification does not
