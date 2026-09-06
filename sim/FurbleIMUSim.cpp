@@ -76,7 +76,7 @@ class VirtualMotionBackend final: public MotionBackend {
   bool poll(MotionState &state) override {
     // The firmware backends hold this for their register sequences. Taking it
     // here too keeps the simulator honest about the ownership contract.
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     float accel[3] = {};
     if (!Sim::imuGetAccel(&accel[0], &accel[1], &accel[2])) {

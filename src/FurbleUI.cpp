@@ -105,7 +105,7 @@ uint32_t g_simDisconnectCalls = 0;
 
 namespace Furble {
 
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
 
 namespace {
 bool imuSensorEnabledForUI(void) {
@@ -5588,7 +5588,7 @@ void UI::levelUpdate(lv_timer_t *timer) {
   lv_display_trigger_activity(NULL);
 
   float accel[3];
-  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+  std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
 #if defined(FURBLE_SIM)
   // The simulator has no sensor, so read the injected IMU state through the same
   // enabled, update and getAccel surface the firmware uses. A scenario drives
@@ -8515,7 +8515,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 
   // only poll the IMU over I2C while its live page is open
   if (diagnostics->imuPageActive) {
-    std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
 #if defined(FURBLE_SIM)
     // Read the injected IMU state through the same surface as the firmware, so a
     // scenario can drive the live diagnostics readout too.

@@ -670,7 +670,7 @@ void resetDoubles(void) {
 
 namespace Furble {
 
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
 
 void UI::notifyGestureSettingsChanged(void) {
   ConsoleHost::ui().gestureNotifications++;

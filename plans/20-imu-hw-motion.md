@@ -164,7 +164,12 @@ Also corrected:
   registers. All of them now hold `g_IMUMutex`, the same lock the spirit level,
   the IMU live page and the console probe already take. Its declaration moved
   from `FurbleUI.h` to `FurbleIMU.h` so the engines can take it without
-  depending on the UI, which is also where PR65 should rebase onto it.
+  depending on the UI, which is also where PR65 should rebase onto it. Its
+  type is `Furble::imu_mutex_t`, which is `std::mutex` everywhere except a
+  `FURBLE_SIM` build where it is `Sim::SchedulerMutex`. A simulator task
+  blocking on the bus has to stop being runnable or the host-clock deadlock
+  breaker times it out instead (issue #279), and PR286 established that
+  pattern for `connect_mutex_t`.
 - **Wake pin pulls.** Both interrupt sources are open drain active low, so the
   line needs a pull-up to return to idle. GPIO13 on the StickS3 takes the
   internal one and now enables it. GPIO35 on the StickC family is input only on

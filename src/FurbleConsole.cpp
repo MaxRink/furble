@@ -1580,7 +1580,7 @@ int cmdIMU(int argc, char **argv) {
   }
 
   const bool setting = Settings::load<bool>(Settings::IMU);
-  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+  std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
   const bool enabled = M5.Imu.isEnabled();
   const auto type = M5.Imu.getType();
   const char *typeName = "unknown";
