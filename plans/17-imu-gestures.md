@@ -519,6 +519,31 @@ seconds, a 1.0 to 1.1 g calibration ramp that the baseline must follow, the
 console scale in both directions plus its clamping of zero, NaN and 100, and the
 `poll()` hardware path including a disabled sensor.
 
+### Provisioning and the wire contract
+
+Three guards outside the detector, each verified by deleting it rather than by
+reading the code.
+
+- The `SETTING_SCHEMAS` rows in `lib/furble/protocol/ProvisionTLV.cpp`. A wire
+  id with no row is rejected at `UNSUPPORTED_SETTING` before any validation
+  runs, so a setting can be fully wired everywhere else and still be
+  unprovisionable. `{72, U8, 1, 1}` and `{73, BOOL, 1, 1}` are present, and
+  deleting either row fails two independent tests: `provision_apply_test` at
+  "valid settings apply successfully", because `apply()` consults the schema,
+  and `console_commands_test` at "the gesture blob encodes", because `encode()`
+  does too. `{46, BOOL, 1, 1}` is the same row for the shipped `IMU` setting,
+  which this branch exposes to provisioning for the first time.
+- The runtime hook. `reloadProvisionSetting()` is exercised end to end by the
+  console suite's `provision <hex>` case; deleting its IMU cases fails "a
+  provisioned gesture setting notifies the UI task".
+- The frozen ids. `tests/protocol/protocol_test.cpp` pins `IMU` to 46,
+  `IMU_WAKE` to 72 and `IMU_TRIG` to 73 with their wire types. Renumbering a
+  shipped id and regenerating its fixtures yields a self-consistent corpus that
+  silently breaks deployed clients, which is exactly what this branch did before
+  the rebase. A clean renumber plus regenerate now fails with "IMU wire id
+  moved", and dropping `case Settings::IMU:` from
+  `CompanionService::settingType` fails with "no wire type for setting IMU".
+
 ## Hardware gate, executable
 
 Reproduced verbatim from the PR #45 review on `dce53bf5`.
