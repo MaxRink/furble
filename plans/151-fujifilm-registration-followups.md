@@ -757,6 +757,40 @@ Firmware is unaffected either way. `connect_mutex_t` is `std::mutex` off
 `FURBLE_SIM`, and the `clock.h` include is behind the same guard, so the
 firmware translation unit is byte identical across this rebase.
 
+Coverage, and a gap the determinism fixes exposed. Making every stall cycle
+land its cancel inside the handshake removed the cycles that used to complete a
+connect by accident, and with them the only path that reached
+`Camera::maybeSetIdle()` calling `setConnProfile(ConnProfile::IDLE)`. Every host
+test sets `CONN_SAVER` false, so the connection saver's idle transition had
+never been tested on purpose: it was covered by accident and the accident was
+removed. `tests/host/camera_regression_test.cpp` now covers it deliberately.
+The test holds a live Secure session with the saver on, asserts a tick inside
+the quiet threshold leaves the fast profile alone, then that a tick past it
+drops the link to the idle interval with latency 0 and that `getConnProfile()`
+agrees, then that activity restores the fast profile and that the very next
+tick does not immediately undo it. Both halves are mutation pinned: zeroing
+`m_ConnSaverIdleMs` fails the inside-the-threshold check and raising it to ten
+minutes fails the past-the-threshold check.
+
+It costs the real threshold in wall time, a little over ten seconds, and that
+is deliberate. `m_ConnSaverIdleMs` is a `static constexpr` with no seam, the
+host harness has no virtual clock (`esp_timer_get_time()` is `steady_clock` in
+MockNimBLE, unlike the simulator), and plan 157's sync points are a preemption
+mechanism rather than a clock. The two ways to skip the wait are both worse
+than the wait: jumping the process-wide clock forward would perturb every other
+timeout in the test, and reaching `m_LastConnActivityMs` directly would mean a
+test-only setter in production `Camera.h`.
+
+Attribution for the drop that prompted this is moot, and would have cost a CI
+experiment to settle: the green measurement was taken on base 96a05b38 and the
+first red one had both the determinism fixes and PR #287 in it. #287 gives every
+test its own named profile and fails on an empty one, which is a more honest
+baseline than the shared process-id naming it replaced, so the number moved for
+good reasons on both sides. `lib/furble/Camera.cpp` sits in the floor's noise
+band either way (issue #277): measured on this branch it reads 533 to 558
+covered of 729 across runs and machines, against a floor of 73.75 percent,
+which is 538. The deliberate test is worth more than the attribution.
+
 The mock peer gained `setSecureTimeouts()` (a bounded run of handshake timeouts
 that take the link with them, the bench shape) and `setRefuseWhileBonded()` (a
 camera in pairing mode: dead keys refused on a live link, fresh pairing

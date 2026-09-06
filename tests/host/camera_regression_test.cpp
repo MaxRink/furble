@@ -1,5 +1,7 @@
+#include <chrono>
 #include <iostream>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "Device.h"
@@ -14,6 +16,11 @@
 const char *LOG_TAG = "camera-regression";
 
 namespace {
+// Camera::m_ConnSaverIdleMs plus a margin. Kept in one place so the reason for
+// the test's runtime is obvious, and so a change to the threshold shows up here
+// as a compile-time neighbour rather than as a mysterious timeout.
+constexpr uint32_t CONN_SAVER_IDLE_WAIT_MS = 10 * 1000 + 500;
+
 bool check(bool condition, const char *message) {
   if (!condition)
     std::cerr << "FAIL: " << message << '\n';
@@ -64,6 +71,98 @@ bool testRegistrationTimeoutException() {
     return false;
   return check(camera.setConnProfile(Furble::Camera::ConnProfile::IDLE),
                "confirmed fast transition releases the peer override for idle");
+}
+
+// The connection saver's idle transition, which nothing tested deliberately.
+//
+// maybeSetIdle() is the only caller of setConnProfile(ConnProfile::IDLE) in
+// production: the per-target task tick calls it, and it drops the link to the
+// long interval once the session has been quiet for m_ConnSaverIdleMs. Every
+// other host test sets CONN_SAVER false, so this path was only ever reached by
+// accident, and a test-determinism fix elsewhere in this PR removed the
+// accident. Covering it on purpose is the point of this test.
+//
+// It costs the real threshold in wall time, a little over ten seconds. That is
+// deliberate. m_ConnSaverIdleMs is a static constexpr with no seam, the host
+// harness has no virtual clock (esp_timer_get_time() is steady_clock in
+// MockNimBLE), and the two ways to skip the wait are both worse than the wait:
+// jumping the process-wide clock forward would perturb every other timeout in
+// the test, and reaching m_LastConnActivityMs directly would mean a test-only
+// setter in production Camera.h.
+bool testConnSaverIdleTransition() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "the Secure camera connects"))
+    return false;
+
+  NimBLEClient *client = NimBLEDevice::lastClient();
+  if (!check(client != nullptr, "the connect leaves a client"))
+    return false;
+
+  // What the controller has actually applied, not what was queued. The mock
+  // holds one stale read after every update on purpose, so that a test cannot
+  // request a profile and re-read it in the same breath and call that proof.
+  // These assertions are about the live link, so they drain the pending update
+  // first.
+  const auto applied = [client]() {
+    while (client->mockConnParamUpdatePending()) {
+      client->getConnInfo();
+    }
+    return client->getConnInfo();
+  };
+
+  // Enabling the saver requests the fast profile and starts the idle timer.
+  camera.setConnSaverEnabled(true);
+  if (!check(applied().getConnLatency() == 1, "the saver starts in the fast profile"))
+    return false;
+
+  // Before the threshold, the tick must leave the link alone. Without this the
+  // test would pass with the threshold removed altogether.
+  camera.maybeSetIdle();
+  if (!check(applied().getConnLatency() == 1,
+             "a tick inside the quiet threshold leaves the fast profile alone"))
+    return false;
+
+  // Past the threshold, the same tick drops to the idle profile.
+  std::this_thread::sleep_for(std::chrono::milliseconds(CONN_SAVER_IDLE_WAIT_MS));
+  camera.maybeSetIdle();
+  const NimBLEConnInfo idle = applied();
+  if (!check(idle.getConnInterval() >= 200 && idle.getConnInterval() <= 240
+                 && idle.getConnLatency() == 0,
+             "a tick past the quiet threshold requests the idle profile"))
+    return false;
+  // getConnProfile() classifies the cached snapshot rather than the live link,
+  // so refresh it first. The sleep above is well past the sampler's own one
+  // second rate limit, so this read is not the one it drops.
+  camera.updateConnStats();
+  if (!check(camera.getConnProfile() == Furble::Camera::ConnProfile::IDLE,
+             "and the camera reports itself idle"))
+    return false;
+
+  // Activity brings the link back. The user pressing the shutter must not wait
+  // out an idle interval, so the fast profile is restored on the press.
+  camera.noteConnActivity(true);
+  if (!check(camera.setConnProfile(Furble::Camera::ConnProfile::FAST),
+             "activity restores the fast profile"))
+    return false;
+  if (!check(applied().getConnLatency() == 1, "and the link carries it"))
+    return false;
+
+  // The activity also restarted the quiet timer, so the very next tick must not
+  // undo it. This is the half that fails if the threshold is keyed off the
+  // wrong timestamp rather than off the last activity.
+  camera.maybeSetIdle();
+  if (!check(applied().getConnLatency() == 1, "and the next tick does not immediately undo it"))
+    return false;
+
+  camera.disconnect();
+  return true;
 }
 
 bool testRegistrationFastProfileTimeout() {
@@ -322,7 +421,7 @@ int main() {
                  && testSecureFastProfileWaitsForShutterDiscovery()
                  && testNullAndMissingIdentifierBoundaries() && testNullNikonCallbacks()
                  && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
-                 && testUnnamedCameraDisplayName()
+                 && testUnnamedCameraDisplayName() && testConnSaverIdleTransition()
              ? 0
              : 1;
 }
