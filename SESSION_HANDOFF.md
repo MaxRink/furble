@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 19:30)
+## Resume here (kept current; last updated 2026-09-07 20:00)
 
 Master `fork/master` = **ae0aeafa** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47, #45, #291, #139). Upstream
@@ -32,8 +32,8 @@ Open PRs, head, state, next action:
 | --- | --- | --- | --- |
 | #48 IMU hardware motion (plan 20) | fd52a851 pushed 18:45 (7 commits on ae0aeafa) | delta review af3f982a..fd52a851 running, CI running | on approval and green CI merge; then #65 (the af3f982a review was CHANGES REQUIRED: union-merge residue in docs/sim.md and a scenario, stale edge-counter comments, SD clamp, MPU6886 transition counting, roller hint; all claimed fixed in 21973038), CI, merge; six-step IMU gate owed post-merge; default HW_MOTION_SOFTWARE, flip to Auto is the gate deliverable |
 | #65 GPS motion detector (plan 18) | 5fa2fdfb on af3f982a in ~/wt/p65 | re-stacking onto fd52a851 (told 18:40) | `git rebase --onto fd52a851 af3f982a` running; gates, bundle <final48>..HEAD, push, delta review, merge after #48; GitHub refuses changing a stacked PR's base so its CI is red until #48 merges; six-step gate owed |
-| #166 companion password gate (plan 116) | a6c06b1f on GitHub; bundle p166-86d5c0ca (storage only, NOT pushed) | lane implementing the plan 116 auth gate on ae0aeafa | the branch never had the gate, only the wire id 47 setting (46 is IMU on master); lane adds the Auth characteristic, nonce plus HMAC-SHA256, per-connection auth state, gate on settings and trigger writes, encryption on location writes, companion_auth_test with mutations, corrected PR body; then push, review, CI, merge; Android app handshake bench owed post-merge |
-| #75 companion cameras characteristic (plan 51) | 96c97aa4 pushed 19:25 (one commit on ae0aeafa, +1321/-89) | review and CI running | lane dropped the branch's 900-line NVS journal, took master's CameraList, minimal plan 51 2.1; connect/disconnect via UI::sendRequest (queue ungated from FURBLE_CONSOLE), Control::getTargetState() for rssi, stable ids with a v2 blob header, no new wire id; privileged ops all through handleCameras for the #166 gate; PR body replaced; merge after #166 or before, app bench owed |
+| #166 companion password gate (plan 116) | 423bd2b7 pushed 19:55 (3 commits on ae0aeafa) | review and CI running | full plan 116 gate now implemented (Auth char b57f4f6f, nonce, HMAC-SHA256/16, wire id 47, three-failure drop, location needs encryption only); PR title and body replaced; on approval and green CI merge; Android handshake bench owed; #195/#214 need wire id 47, the missing sim/FurbleCompanionCrypto.cpp link line, and (#195) committed conflict markers removed |
+| #75 companion cameras characteristic (plan 51) | 96c97aa4 pushed 19:25 (one commit on ae0aeafa, +1321/-89) | review running; CI fails camera_protocol_tests "CameraList persistence" (v2 header vs 2*INDEX_ENTRY_BYTES at line 342), lane fixing | lane dropped the branch's 900-line NVS journal, took master's CameraList, minimal plan 51 2.1; connect/disconnect via UI::sendRequest (queue ungated from FURBLE_CONSOLE), Control::getTargetState() for rssi, stable ids with a v2 blob header, no new wire id; privileged ops all through handleCameras for the #166 gate; PR body replaced; merge after #166 or before, app bench owed |
 | #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | not started | base branch feat/33-wifi-hub is stale (33a merged as #148); re-base onto master, review, CI; user WiFi bench on the stick (wifi set ssid/psk, enable, status, ntp), no camera |
 | #66 MQTT, #161 MQTT sim, #90 WebUI (33c/117/33d) | 47edf348 / dc38f1b5 / a21f4aa6 | not started | stacked on #53 in that order; broker bench by the user |
 | #59 deep sleep between interval shots (plan 19) + #177 sim | ffa5798d / e848a9b5 | not started, prep only | rebase and get the sim green; the bench is an interval run and needs a camera |
@@ -55,8 +55,8 @@ firmware-coverage artefacts and diff the llvm-cov html per line.
 
 Active agent lanes at 18:10 (they do not survive a new session; the VM
 worktrees do): #48 lane (~/wt/p48, done, fd52a851), #65 lane (~/wt/p65, re-stacking
-onto fd52a851), #166 lane (~/wt/p166, implementing the gate), #75 lane
-(~/wt/p75, done, 96c97aa4), #245 lane (~/wt/f245, parked), #273 lane
+onto fd52a851), #166 lane (~/wt/p166, done, 423bd2b7), #75 lane
+(~/wt/p75, fixing the protocol test), #245 lane (~/wt/f245, parked), #273 lane
 (host wt-168-push, parked). Reviewer worktrees r139 r139b r139c r48c r291
 idle and the fw245e build worktree can be pruned.
 
@@ -74,7 +74,7 @@ control` carries the control.* fields, `status` does not; an empty reason
 prints `none`. Staged firmware under ~/furble-build-wt/vm-out: 245-e3e3872c
 (bench), 48-fd52a851, 65-af50206a, 139-c64d8d80, 47-e9009bc9, 45-188b603c
 (merged heads for their owed gates). Bundles kept: p48-fd52a851,
-p65-cf82b561 (stale), p139-c64d8d80 (merged), p166-86d5c0ca (storage only).
+p65-cf82b561 (stale), p139-c64d8d80 (merged), p166-423bd2b7, p75-96c97aa4.
 
 Host disk: was 100 percent on 2026-09-07; the user authorized deleting old
 furble worktrees and remnants. After the prune: host 78 GiB free, VM 91 GB.
