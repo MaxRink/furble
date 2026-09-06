@@ -29,7 +29,7 @@ Open PRs, head, state, next action:
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #291 conn-saver idle coverage test (plan 163 deviation, from plan 151) | a8bb0a22 | MERGED 35c0f4b8 | test-only cherry-pick of #245 e3e3872c; the Camera.cpp floor 73.75 is timing-dependent (master 74.75, #139 72.17, lost lines all in requestConnProfile); merge first, then #139/#48/#65 rebase over it |
 | #166 companion password gate (plan 116) | a6c06b1f | lane dispatched 15:40 | rebase onto 35c0f4b8, wire id 46 check, schema row, gates, bundle; review, CI, merge; app handshake bench owed post-merge |
-| #75 companion cameras characteristic (plan 51) | 868a9660 | next lane when #139 merges | rebase, wire ids, companion harness, review, CI, merge; no camera needed |
+| #75 companion cameras characteristic (plan 51) | 868a9660 | lane dispatched 16:05 | rebase, wire ids, companion harness, review, CI, merge; no camera needed |
 | #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | after #75 | base still feat/33-wifi-hub (stale, 33a merged as #148): re-base onto master, review, CI; user WiFi bench (ssid/psk, enable, status, ntp), no camera |
 | #66 MQTT, #161 MQTT sim, #90 WebUI (33c/117/33d) | 47edf348 / dc38f1b5 / a21f4aa6 | after #53 | stacked in that order; broker bench by the user |
 | #59 deep sleep between interval shots (plan 19) + #177 sim | ffa5798d / e848a9b5 | prep only | rebase + sim green now; bench needs a camera (interval run) |
