@@ -9,10 +9,10 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 08:00)
+## Resume here (kept current; last updated 2026-09-07 08:30)
 
-Master `fork/master` = **53fa8965** (merged this cycle in order: #261, #264,
-#270, #274, #276, #266, #278, #286, #287, #47). Upstream gkoh/furble is read-only.
+Master `fork/master` = **107a6b96** (merged this cycle in order: #261, #264,
+#270, #274, #276, #266, #278, #286, #287, #47, #45). Upstream gkoh/furble is read-only.
 
 Open PRs, head, state, next action:
 
@@ -23,7 +23,7 @@ Open PRs, head, state, next action:
 | #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | MERGED 53fa8965 | fifteen-step GPS hardware gate owed post-merge (plan 21) |
 | #139 GPS phase 2 (plan 32) | 9acc9f48 | fix round running | an empty RMC date term still raises the parser's updated flag, so the count must require a valid changed date (emptyrmc fixture) and the IMPLAUSIBLE retry needs a bound; then delta review, hardware gate (receiver rejection of expired ephemeris measured first) |
-| #45 IMU gestures (plan 17) | 7c2f5038 | final check approved; rebasing onto 53fa8965 | push, CI green, merge (eight-step IMU gate owed post-merge) |
+| #45 IMU gestures (plan 17) | cf5ec483 | MERGED 107a6b96 | eight-step IMU hardware gate owed post-merge (plan 17; trace capture and the hour drain can still change the design) |
 | #48 IMU hardware motion (plan 20) | c94f2e56 | wake-pin fix pushed; one commit pending | ship default HW_MOTION = Software until the six-step gate passes (Auto prefers the unverified hardware engine); then delta review, merge after #45, then #65 re-stacks |
 | #65 GPS motion detector (plan 18) | c1410d0b | rebasing onto #48 4b453968 | consume IMU::MotionSource (state() only, isArmed asserted), bundle, delta review, six-step gate |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
@@ -49,6 +49,10 @@ as "X100VI 1C4F9". Flash VM binaries with `flash prepare` over the console
 (serdrive.py) then esptool (0x0, 0x8000, 0xf000, 0x20000; dio 8MB 40m).
 Passive listening: serlisten.py. Console facts: `debug control` carries the
 control.* fields, `status` does not; an empty reason prints `none`.
+
+Host disk: hit 100 percent on 2026-09-07; finished host worktrees keep
+multi-GB .pio trees under ~/furble-build-wt and the OrbStack image holds 46
+VM worktrees; prune when lanes are idle (the coordinator may be denied rm).
 
 VM: OrbStack `furble-build`, reboots about once a day (disk survives);
 PlatformIO works there (runbook ~/furble-build-wt/VM-FIRMWARE-BUILD.md);
