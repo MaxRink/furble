@@ -227,6 +227,10 @@ Control::state_t Control::connectAll(void) {
     camera->setConnSaverEnabled(connSaver);
   }
 
+  // Set when a camera reports that it no longer holds our pairing. Retrying is
+  // futile, so the cycle ends with a prompt instead of another backoff sleep.
+  std::string repairReason;
+
   for (const auto &camera : cameras) {
     if (m_ConnectAbort) {
       break;
@@ -235,6 +239,18 @@ Control::state_t Control::connectAll(void) {
     m_ConnectCamera = camera;
     if (!camera->connect(m_Power, timeout)) {
       m_ConnectFailCount++;
+      if (camera->needsRepair()) {
+        // "<camera>: <instruction>" exactly, and kept short on purpose. This
+        // string is the body of a message box that has to fit an 80x160 panel,
+        // and the camera name in front of it grows to model plus serial. The
+        // console prints the same string, so it has to stand on its own there
+        // too. UI::showConnectError() splits it on that first ": " to give the
+        // name a line of its own, so the separator is a contract rather than
+        // formatting; tests/host/fujifilm_repair_needed_test.cpp pins the whole
+        // string. getDisplayName() supplies the stand-in for a camera that
+        // advertised no name, so the box can never open with a blank first line.
+        repairReason = camera->getDisplayName() + ": put it in pairing mode, then connect.";
+      }
       break;
     } else {
       m_ConnectCamera = nullptr;
@@ -265,6 +281,18 @@ Control::state_t Control::connectAll(void) {
       m_ReconnectHintLogged = false;
       return STATE_ACTIVE;
     }
+  }
+
+  if (!repairReason.empty()) {
+    // The camera side dropped the bond and is not in pairing mode, so the
+    // stale-bond recovery already deleted the local bond. No amount of
+    // retrying re-creates a pairing the user has to authorise on the camera,
+    // and the 2026-09-02 X100VI bench run showed exactly that loop running
+    // forever. End the cycle and let the UI say what to do.
+    ESP_LOGE(LOG_TAG, "%s", repairReason.c_str());
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ConnectFailReason = repairReason;
+    return STATE_CONNECT_FAILED;
   }
 
   if (m_InfiniteReconnect || (m_ConnectFailCount < 2)) {
@@ -465,6 +493,7 @@ void Control::connectAll(bool infiniteReconnect) {
     for (const auto &target : m_Targets) {
       target->getCamera()->clearConnectCancel();
     }
+    m_ConnectFailReason.clear();
   }
 
   m_InfiniteReconnect = infiniteReconnect;
@@ -529,6 +558,10 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   // Force cancel any active connection attempts
   ble_gap_conn_cancel();
 
+  // Cameras whose in-flight connect has to be woken after the mutex below is
+  // released. Strong references so a camera cannot be freed in between.
+  std::vector<std::shared_ptr<Camera>> cancelling;
+
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -547,8 +580,18 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       // target task never stopped, the drained target could never be reaped,
       // and the connect gate stayed closed, the plan 148 wedge.
       target->getCamera()->cancelConnect();
+      cancelling.push_back(target->getCamera());
       target->sendCommand(CMD_DISCONNECT);
     }
+  }
+
+  // Now that m_Mutex is released, wake any attempt that is blocked inside
+  // NimBLE. The token above is what the vendor waits poll; this is what
+  // unblocks a call that is not polling at all, such as the ~30 s
+  // secureConnection() on a stale-bond reconnect. It is a radio call, so it
+  // cannot run in the block above.
+  for (const auto &camera : cancelling) {
+    camera->abortBlockingConnect();
   }
 
   if (!forRestart) {
@@ -787,6 +830,7 @@ Control::debug_state_t Control::getDebugState(void) const {
   snapshot.adaptivePowerLevel = static_cast<int>(m_AdaptivePower);
   snapshot.rssiStrongSamples = m_RssiStrongSamples;
   snapshot.rssiWeakSamples = m_RssiWeakSamples;
+  snapshot.connectFailReason = m_ConnectFailReason;
 
   size_t connected = 0;
   for (const auto &target : m_Targets) {
@@ -803,6 +847,11 @@ Control::debug_state_t Control::getDebugState(void) const {
   return snapshot;
 }
 #endif  // FURBLE_CONSOLE || FURBLE_SIM
+
+std::string Control::getConnectFailReason(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_ConnectFailReason;
+}
 
 size_t Control::getTargetCount(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -1158,6 +1207,10 @@ void Control::resetForTest(void) {
   m_ReconnectHintLogged = false;
   m_ConnectFailCount = 0;
   m_ConnectAbort = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ConnectFailReason.clear();
+  }
   setState(STATE_IDLE);
 }
 #endif

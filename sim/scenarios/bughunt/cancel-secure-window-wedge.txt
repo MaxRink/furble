@@ -35,8 +35,9 @@
 #      that still holds the abandoned session.
 #   4. The user's own connect never reaches active.
 #
-# CERTIFIED FALSE: this FAILS on master, at `ble.secure_stall_aborted`, and that is
-# the point. Promote it to certified once the fix lands.
+# Certified as of PR #245, on all three panels. It still FAILS on master, at
+# `ble.secure_stall_aborted`, which is the point: #245's abortBlockingConnect()
+# terminates the link under the parked handshake, and nothing on master does.
 #
 # The settle bounds are back at 6000 ms. PR #278 widened them to 30000 because
 # convergence needs a starved target task to run, and a loaded host stretched

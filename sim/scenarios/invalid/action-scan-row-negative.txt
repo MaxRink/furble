@@ -1,0 +1,2 @@
+action scan-row -1
+exit

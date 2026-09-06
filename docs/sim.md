@@ -287,6 +287,7 @@ seed a bounded value.
 | `fuji-secure` | one healthy Fujifilm Secure camera, which advertises a serial |
 | `fuji-pair` | two healthy Fujifilm Basic cameras |
 | `fuji-ricoh-flappy` | one healthy Fujifilm plus a Ricoh GR IV in BLE standby that fails one security handshake the way a supervision timeout does (rc=520) before letting a connect through |
+| `fuji-secure-stale` | one Fujifilm Secure body that the central is still bonded to and that no longer holds the pairing, so every security handshake times out and takes the link with it (the 2026-09-02 X100VI bench signature) |
 
 `ble_saved true` persists the topology's cameras through the production
 `CameraList::match` and `CameraList::save`, so the scenario boots with saved
@@ -396,6 +397,7 @@ The parameterized action forms are:
 ```text
 action toggle NAME
 action nav PAGE
+action scan-row N
 action scroll top|bottom|next|PIXELS
 action page PAGE
 action imu.accel X Y Z
@@ -407,6 +409,15 @@ action imu.pitch DEGREES
 `toggle NAME` accepts `gps`, `gps_nmea`, `autoconnect`, `reconnect`,
 `multiconnect`, `companion`, `watchdog`, `ir`, `show_title`, `tx_adaptive`,
 `conn_saver`, `preset_picker`, and `recon_backoff`.
+
+`scan-row N` activates scan result row N by dispatching that row's own click
+handler, which is `UI::beginPairing()`. It exists because focus-driven
+activation of a scan row is not reproducible: the row is materialized on the UI
+task after the page has already focused its back button, and a key press lands
+on it about half the time on a page busy draining advertisements. It reports
+`unavailable` when N is past the end of the scan list; both a started connect
+and a refused duplicate are `applied`, because both are real outcomes of the
+production handler.
 
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
@@ -475,6 +486,8 @@ The complete `ui.*` query set is:
 | Query | Returned value |
 | --- | --- |
 | `ui.connect_box` | `hidden` or `visible`. |
+| `ui.connect_error` | `none`, or the dismissable connect error box's title as one lowercased token: `already_saved`, `pairing_lost`, or `connect_failed`. |
+| `ui.modal_overflow` | `yes` when anything on the top layer is drawn outside the display, outside the content box of its own parent, or scrolled out of view (a non-zero scroll extent on any top-layer scrollable). `no` when the top layer was measured and is clean, `none` when the top layer has no visible children, `unknown` with no top layer. Position is compared, never size: two stacked labels can each be smaller than the room their parent has and still not fit together. Pair it with `ui.connect_error`: that one proves the box exists with the right text, this one proves the text was drawn where the user can read it. Limit: a `LV_LABEL_LONG_DOT` label always fits its own box, so an ellipsized label is reported clean by design. The camera name in the connect error box is deliberately dotted, and LVGL rewrites the label's text to insert the ellipsis, so an ellipsized string is also invisible to `ui.connect_error`, which reads that text back. Any label whose truncation must be caught has to be wrapped, not dotted. |
 | `ui.indicators_focused` | `yes` or `no`. |
 | `ui.bulb_ms` | Persisted bulb duration in milliseconds. |
 | `ui.disconnect_calls` | Numeric disconnect count. |

@@ -725,6 +725,8 @@ class UI {
   lv_timer_t *m_CompanionPairingTimer = nullptr;
   lv_obj_t *m_CompanionPairingDialog = nullptr;
   lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
+  lv_obj_t *m_ConnectErrorDialog = nullptr;
+  lv_obj_t *m_ConnectErrorPrevFocus = nullptr;
   lv_obj_t *m_StorageMessageBox = nullptr;
   bool m_StorageImport = false;
   lv_obj_t *m_StorageMenuMain = nullptr;
@@ -1320,6 +1322,30 @@ class UI {
 
   /** Close the pairing prompt and restore the focus captured before it opened. */
   void closeCompanionPairingDialog(void);
+
+  /**
+   * Show a connect failure the user has to dismiss.
+   *
+   * A failed connect used to drop straight back to the menu with nothing but a
+   * log line, so the user could not tell a camera that was out of range from
+   * one that had dropped its pairing. The box stays up until it is dismissed,
+   * which is what the 2026-09-02 bench session asked for.
+   */
+  void showConnectError(const char *title, const char *text);
+
+  /**
+   * Start pairing the scan result at this index, or refuse it.
+   *
+   * The single entry point for "the user asked to pair this scan result": the
+   * Scan page row tap, and the console pair verb once PR #265 lands, so the
+   * already-saved refusal applies to both without either duplicating it.
+   *
+   * @return true if a connect was started.
+   */
+  static bool beginPairing(size_t index, lv_event_t *e);
+
+  /** Close the connect error box and restore the focus captured before it opened. */
+  void closeConnectErrorDialog(void);
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);

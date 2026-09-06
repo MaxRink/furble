@@ -324,12 +324,47 @@ a regression.
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
   boundary.
 - `seed ble_peers <topology>` selects the virtual radio topology (`none`,
-  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`) and `seed ble_saved
-  true` persists
-  its cameras through the production `CameraList::match` and `save`. The
-  `scan-distinct-rows-heartbeat.txt` scenario asserts both matched rows and the
-  live watchdog after the UI task drains them. `seed scan_timeout N` bounds the
-  discovery scan so the production scan-end callback runs.
+  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`, `fuji-secure-stale`)
+  and `seed ble_saved true` persists its cameras through the production
+  `CameraList::match` and `save`. The `scan-distinct-rows-heartbeat.txt`
+  scenario asserts both matched rows and the live watchdog after the UI task
+  drains them. `fuji-secure-stale` is the 2026-09-02 X100VI bench signature: the
+  central keeps a bond the camera has deleted, so every security handshake times
+  out and takes the link with it, and `stale-bond-pairing-lost.txt` drives the
+  recovery through to the dismissable "Pairing lost" box. `seed scan_timeout N`
+  bounds the discovery scan so the production scan-end callback runs.
+- `ui.connect_error` reports the connect error box as one token: `none`,
+  `already_saved`, `pairing_lost`, or `connect_failed`. It reads the rendered
+  title, so it proves the text reached the widget tree rather than that a flag
+  was set. Dismissal is asserted in the same scenarios, on touch and under
+  `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
+  physical buttons.
+- `ui.modal_overflow` is the other half, and it exists because the first version
+  of that box passed every assertion above while rendering wider and taller than
+  the panel with its instruction clipped at both edges. `ui.overflow` measures
+  the current menu page, and a message box lives on the top layer outside any
+  page, so nothing could see it. The query walks the top layer and reports `yes`
+  when a descendant leaves the display or when a label overruns the content box
+  that clips it, or when a top-layer scrollable has a non-zero scroll extent.
+  That last shape is the one a size-only comparison missed: the 80x160
+  "Connect failed" box ended at the last row of the display with six pixels of
+  its instruction below the clip box. It answers `none` when the top layer has
+  no visible children, so a scenario that forgets to raise its modal cannot read
+  a pass. Assert it `no` in any scenario that raises a modal.
+- **A clock selector keys on the clock's presence, never on a platform macro.**
+  Use `#if __has_include(<freertos/FreeRTOS.h>)`, not `#if defined(ESP_PLATFORM)`
+  or any other platform test. The simulator defines no platform macro, so a
+  platform test silently drops it onto `std::chrono::steady_clock` and
+  `std::this_thread::sleep_for` while its scenarios advance a virtual clock: a
+  wait then neither observes what the scenario did nor times out, and the
+  session hangs inside one attempt. Firmware and the simulator both have the
+  header and both want the tick, and the simulator's tick is the virtual clock.
+  Host targets that link no FreeRTOS shim fall through to the wall clock, which
+  is correct there. This cost `reconnect-registration-delay` a hang, and the
+  selector that caused it looked entirely reasonable.
+- `action scan-row N` activates scan result row N through its production click
+  handler, `UI::beginPairing()`. Focus-driven activation of that row is not
+  reproducible, so this is how a scenario reaches the already-saved refusal.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA

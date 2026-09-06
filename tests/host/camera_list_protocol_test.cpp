@@ -20,6 +20,7 @@ using Furble::CameraListProtocol::encodeIndex;
 using Furble::CameraListProtocol::INDEX_ENTRY_BYTES;
 using Furble::CameraListProtocol::INDEX_NAME_BYTES;
 using Furble::CameraListProtocol::IndexEntry;
+using Furble::CameraListProtocol::sameSavedIdentity;
 using Furble::CameraListProtocol::upsertIndex;
 
 namespace {
@@ -130,6 +131,67 @@ void testUpsert() {
   check(index.size() == 3, "a fresh name appends after replacements");
 }
 
+// The already-saved refusal. The saved index is keyed on the BLE address, which
+// cannot recognise a camera the user is pairing a second time: a Fujifilm
+// Secure body advertises a resolvable private address that changes with every
+// pairing, so the same camera comes back under a new key and the list gains a
+// second, useless record.
+void testSameSavedIdentity() {
+  constexpr uint32_t kSecure = 8;  // Camera::Type::FUJIFILM_SECURE
+  constexpr uint32_t kBasic = 1;   // Camera::Type::FUJIFILM_BASIC
+  const std::string name = "FUJIFILM X100VI";
+
+  check(sameSavedIdentity(kSecure, 0x112233445566ULL, name, kSecure, 0x112233445566ULL, name),
+        "the same address and type is the same camera");
+
+  // The signature case: the body re-paired under a new resolvable private
+  // address. Nothing but the advertised name survives, and it has to be enough.
+  check(sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, name, kSecure, 0x112233445566ULL, name),
+        "a moved address still matches on the advertised name");
+
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, name, kSecure, 0x112233445566ULL,
+                           "FUJIFILM X-T5"),
+        "a different camera at a different address does not match");
+
+  check(!sameSavedIdentity(kSecure, 0x112233445566ULL, name, kBasic, 0x112233445566ULL, name),
+        "a different vendor mode is a different saved camera");
+
+  // An unnamed advertisement carries no identity of its own, so it must never
+  // match on the empty string and lock the user out of pairing.
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, "", kSecure, 0x112233445566ULL, ""),
+        "an empty name never matches");
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, "", kSecure, 0x112233445566ULL, name),
+        "an empty name does not match a real one");
+}
+
+// The name fallback exists only because a Fujifilm Secure body re-pairs under a
+// new resolvable private address. Every other vendor keeps a stable address, so
+// applying the fallback to them refuses a user who owns two bodies of the same
+// model: the advertised name is the bare model, the second body reads as
+// already saved, and there is no override. Multi-connect with two identical
+// bodies, which the saved list supports, would become unreachable.
+void testSecondBodyOfTheSameModelStaysPairable() {
+  constexpr uint32_t kSecure = 8;  // Camera::Type::FUJIFILM_SECURE
+  constexpr uint32_t kBasic = 1;   // Camera::Type::FUJIFILM_BASIC
+  constexpr uint32_t kSony = 7;    // Camera::Type::SONY
+  constexpr uint32_t kRicoh = 9;   // Camera::Type::RICOH
+
+  const uint64_t first = 0x112233445566ULL;
+  const uint64_t second = 0xAABBCCDDEEFFULL;
+
+  check(!sameSavedIdentity(kRicoh, second, "GR IV", kRicoh, first, "GR IV"),
+        "a second GR IV at its own address is a second camera, not the saved one");
+  check(!sameSavedIdentity(kBasic, second, "FUJIFILM X-T5", kBasic, first, "FUJIFILM X-T5"),
+        "a second X-T5 on the Basic protocol stays pairable");
+  check(!sameSavedIdentity(kSony, second, "ILCE-7M4", kSony, first, "ILCE-7M4"),
+        "a second Sony body of the same model stays pairable");
+
+  // The one vendor that does rotate its address keeps the fallback, so the
+  // re-pairing body is still recognised as the camera already saved.
+  check(sameSavedIdentity(kSecure, second, "FUJIFILM X100VI", kSecure, first, "FUJIFILM X100VI"),
+        "two Fujifilm Secure records with one name at two addresses are one camera");
+}
+
 }  // namespace
 
 int main() {
@@ -139,6 +201,8 @@ int main() {
   testEmpty();
   testRejects();
   testUpsert();
+  testSameSavedIdentity();
+  testSecondBodyOfTheSameModelStaysPairable();
 
   if (g_failures > 0) {
     std::cerr << "camera list protocol tests: " << g_failures << " FAILED\n";
