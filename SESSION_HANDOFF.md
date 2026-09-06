@@ -938,3 +938,5 @@ Update 2026-09-06 18:00: #139 delta review requested changes (the receiver-clock
 Update 2026-09-06 18:30: #45 final head 7c2f5038 (schema rows 72/73 mutation-covered, wire ids pinned by protocol_test, TSAN suppression scoped to libdbus); only its hardware gate remains; parked for its turn.
 
 Update 2026-09-06 19:45: #287 rebased to 33d4d214 and pushed; merges on green CI. #65 at c1410d0b (schema row 66; a missing schema row fails an entire provisioning batch), parked for #48. #245 and #47 rebasing onto 96a05b38; #48 and #139 fix rounds base on it. Rule: after every master merge, message every open lane the new SHA.
+
+Update 2026-09-06 20:15: PR #287 merged at 7e3e0d8d; every open lane has the new SHA. Merge order after the #245 bench: #245, #272, #265, #47, #139, #45, #48, #65, #63; #273 by the user from pictures.
