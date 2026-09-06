@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 05:00)
+## Resume here (kept current; last updated 2026-09-07 05:30)
 
 Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
@@ -29,8 +29,15 @@ Open PRs, head, state, next action:
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
 
-Merge order after the #245 bench: #245, #272, #265, #47, #139, #45, #48,
-#65, #63; #273 whenever the user approves it.
+User directive 2026-09-07: merge everything whose verification does not
+need an active camera. Camera-gated and parked until the bench: #245,
+#272, #265, #63. Not camera-gated, merged one at a time as their exact
+head is approved and CI is green, with the IMU or GPS hardware gate
+recorded as owed post-merge (features default off): #47, then #45, then
+#48, #65, #139 as they clear review. #273 whenever the user approves it.
+They all touch ProvisionTLV.cpp SETTING_SCHEMAS, the include/CLAUDE.md
+wire-id table, the golden corpus and plans/README.md, so every merge
+forces the next one to rebase.
 
 Waiting on the user: the #273 ruling plus pictures verdict; the X100VI on
 its pairing screen for the #245 bench (the camera-side pairing is already
