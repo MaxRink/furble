@@ -77,14 +77,20 @@ wait 40000
 assert uart.eph_replay 0
 
 # The implausible retry is bounded. This receiver hands over a new date every
-# burst, all of them behind the cache, so the retry is fed forever unless it
-# gives up. It has to give up before the walk reaches the capture date, or a
-# receiver whose clock is simply wrong replays a cache it should have dropped.
+# burst, walking forward a day at a time from 1 August, more than a month behind
+# the cache this scenario captured. The bound has to stop it before the walk
+# arrives: the wait below is long enough for the walk to reach the capture date
+# and replay if nothing stopped it, which is what makes the bound load-bearing
+# here rather than incidental. A clock merely stuck behind would leave an
+# unbounded retry armed and silently passing this assertion.
+#
+# The walking receiver reports no fix, so no poll runs and the capture cannot
+# move under the walk.
 gps-fix-date walkback
 action toggle gps
 wait 1000
 action toggle gps
-wait 40000
+wait 70000
 assert uart.eph_replay 0
 
 # A receiver on a noisy line whose RMC always arrives with a broken checksum.

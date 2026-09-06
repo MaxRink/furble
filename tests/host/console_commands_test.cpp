@@ -855,7 +855,7 @@ void testGPSDiagnostics(void) {
           what + " reached the real Settings store");
   }
 
-  for (const char *bad : {"5", "-1", "abc"}) {
+  for (const char *bad : {"5", "-1", "abc", "2x"}) {
     const std::string what = std::string("gps platform ") + bad;
     const Result platform = runDirect(what);
     check(platform.rc != 0, what + " fails");

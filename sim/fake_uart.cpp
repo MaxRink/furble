@@ -105,11 +105,20 @@ bool fixRmcCorrupt = false;
 // flag, so it is the exact sentence that fools an update-counted date.
 bool fixRmcEmpty = false;
 
-// A receiver whose clock is stuck well behind the cache but still ticking, so
-// every burst is a new reading and every one of them is implausible. It is here
-// so the bound on the implausible retry has something to hit, and it can never
-// catch up, so the leg does not depend on the value of that bound.
+// A receiver whose date walks forward one day per burst from far enough behind
+// the cache that it needs well over EPH_IMPLAUSIBLE_MAX readings to arrive. The
+// bound has to stop it first; if it does not, the walk reaches the capture and
+// replays, which is what makes the bound load-bearing in the certified leg.
+//
+// A clock merely stuck behind is not enough: an unbounded retry simply stays
+// armed and never replays, so the leg passes either way. It has to be able to
+// arrive.
+//
+// This receiver also reports no fix, so no ephemeris poll runs during the leg
+// and the capture it is walking towards cannot move under it.
 bool fixWalkback = false;
+uint32_t fixWalkDay = 1;
+uint32_t fixWalkMonth = 8;
 // day-of-month of the advancing fixture. "modern" is the 6th and "stale" is
 // the 13th, a week later, which is well past the four hour ephemeris window.
 const char *fixDay = "06";
@@ -292,8 +301,9 @@ std::string modernFixStream(void) {
   std::snprintf(stamp, sizeof(stamp), "%02u%02u%02u.00", (total / 3600) % 24, (total / 60) % 60,
                 total % 60);
   const std::string time(stamp);
+  const std::string quality = fixWalkback ? "0" : "1";
   const std::string gga =
-      nmea("GPGGA," + time + ",4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+      nmea("GPGGA," + time + ",4807.038,N,01131.000,E," + quality + ",08,0.9,545.4,M,46.9,M,,");
   // A null day is the RMC-pruned receiver: a ticking time and no date at all.
   if (fixDay == nullptr) {
     return gga;
@@ -303,9 +313,17 @@ std::string modernFixStream(void) {
     return nmea("GNRMC,,V,,,,,,,,,,N") + gga;
   }
 
-  const std::string day = fixWalkback ? std::string("01") : std::string(fixDay);
-  const std::string date = day + "0926";
-  std::string rmc = nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A");
+  std::string date = std::string(fixDay) + "0926";
+  if (fixWalkback) {
+    char walked[8];
+    std::snprintf(walked, sizeof(walked), "%02u%02u26", fixWalkDay, fixWalkMonth);
+    date = walked;
+  }
+  // A walking receiver reports its date but no fix, so nothing re-caches under
+  // it. V and quality 0 are what a receiver without a solution sends.
+  const std::string status = fixWalkback ? "V" : "A";
+  std::string rmc =
+      nmea("GPRMC," + time + "," + status + ",4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A");
   if (fixRmcCorrupt) {
     // Break the checksum, not the shape. The token is still in the stream.
     const size_t star = rmc.rfind('*');
@@ -383,6 +401,10 @@ void queueGpsEvent(QueueHandle_t queue) {
       fixSecond++;
       if (fixColdBursts > 0) {
         fixColdBursts--;
+      }
+      if (fixWalkback && (++fixWalkDay > 31)) {
+        fixWalkDay = 1;
+        fixWalkMonth++;
       }
       gpsStream = modernFixStream();
     }
@@ -612,9 +634,12 @@ void furble_sim_uart_set_fix_date(const char *name) {
     fixDateAdvances = true;
     gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "walkback")) {
-    // A clock stuck days behind the cache but still ticking, so the implausible
-    // retry keeps being handed a new reading that is still useless.
+    // The date walks a day per burst from 1 August, more than a month before any
+    // capture this scenario takes, so the bound has to stop it before it
+    // arrives.
     fixWalkback = true;
+    fixWalkDay = 1;
+    fixWalkMonth = 8;
     fixDateAdvances = true;
     gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "badrmc")) {

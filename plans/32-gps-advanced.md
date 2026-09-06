@@ -436,7 +436,7 @@ a MON-HW poll with a truncated payload.
 | `e2e/gps-ephemeris-stale` | replay never commits without a date received this session | replace the date-count check with `if (false)` |
 | `e2e/gps-ephemeris-stale` | a checksum-failed RMC commits nothing | count the token "RMC" in the raw read buffer instead |
 | `e2e/gps-ephemeris-stale` | the empty pre-fix RMC commits nothing | commit on any committed date rather than a changed one |
-| `e2e/gps-ephemeris-stale` | the implausible retry is bounded | let the retry run forever |
+| `e2e/gps-ephemeris-stale` | the implausible retry is bounded | raise `EPH_IMPLAUSIBLE_MAX` to 250, so the walking receiver arrives and replays |
 | `e2e/gps-ephemeris-replay` | a cold clock behind by minutes on the same day still recovers | key implausible re-entry on the date instead of the UTC |
 | `e2e/gps-ephemeris-replay` | a receiver clock behind the capture is retried, not settled | let `IMPLAUSIBLE` fall through and clear the cache |
 | `e2e/gps-ephemeris-stale` (TSAN) | `servicePoll` reads the fix through the locked snapshot | read `m_GPS.location.FixQuality()` directly, 4/5 runs fail |
