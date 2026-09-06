@@ -25,6 +25,10 @@ What this fork adds over upstream right now:
 - A host SDL simulator for the UI, plus an Android companion app
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
   under Settings > Sensors; the Level page appears while connected.
+- Software IMU gestures: configurable tap or shake display wake and an optional
+  debounced double-tap shutter trigger, under Settings > Sensors > Gestures.
+  Both are off by default and are simulator-tested through the same
+  accelerometer seam the firmware reads.
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or
@@ -227,7 +231,7 @@ status                              state, targets, uptime, heap, battery, reset
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
-imu status                         read-only IMU type/read diagnostic
+imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write every setting
 ui audit                            dump the current page layout

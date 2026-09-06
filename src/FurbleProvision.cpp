@@ -67,6 +67,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -92,6 +93,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::TEXT_SIZE:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -160,6 +162,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "GPS assistance setting must be 0, 1 or 2";
+        return false;
+      }
+      if ((setting.type == Settings::IMU_WAKE) && (field.value[0] > 3)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "IMU wake gesture must be 0, 1, 2 or 3";
         return false;
       }
       if ((setting.type == Settings::TEXT_SIZE) && (field.value[0] > Settings::TEXT_SIZE_LARGE)) {

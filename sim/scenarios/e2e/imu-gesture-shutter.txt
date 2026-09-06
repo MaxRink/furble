@@ -1,0 +1,75 @@
+# Double-Tap Shutter on a connected FauxNY peer. One gesture is exactly one
+# frame, and every guard that blocks a frame gets its own negative case.
+seed fauxny true
+seed imu true
+seed imu_trigger true
+wait 400
+action connect
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+assert camera.shutter_presses 0
+assert camera.shutter_releases 0
+
+# One double tap on the connected page takes exactly one frame.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_last double_tap
+assert ui.gesture_shutter_sends 1
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+
+# A repeat inside the refractory period cannot produce a second frame.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+
+# The Remote shutter page also accepts the trigger.
+wait 900
+action page shutter
+wait 200
+assert ui.page shutter
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_shutter_sends 2
+assert camera.shutter_presses 2
+assert camera.shutter_releases 2
+
+# A settings page is not a shutter page, so the same gesture takes no frame.
+wait 900
+home
+wait 200
+action nav sensors
+wait 200
+assert ui.page sensors
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_last double_tap
+assert ui.gesture_shutter_sends 2
+assert camera.shutter_presses 2
+exit

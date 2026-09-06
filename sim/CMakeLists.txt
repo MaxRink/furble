@@ -87,6 +87,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
+    "${FURBLE_ROOT}/src/FurbleUIGesture.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
     "${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp"
     "${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp"

@@ -177,6 +177,12 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-invalid.sh
 
+      - name: Verify simulator assertion exit status
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: sh sim/scripts/assert-exit-regression.sh
+
       # Build a second simulator for the M5StickC 80x160 panel. Its own build
       # dir keeps the 135x240 binary above intact. The full overflow sweep runs
       # after the 320x240 build below, so all three representative geometries

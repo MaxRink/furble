@@ -14,6 +14,7 @@ class UI {
   static bool isBatteryCharging(void);
   static uint8_t getIntervalometerState(void);
   static uint16_t getIntervalometerRemaining(void);
+  static void notifyGestureSettingsChanged(void) {}
 };
 
 namespace Host {

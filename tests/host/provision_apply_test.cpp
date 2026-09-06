@@ -72,6 +72,9 @@ void testValidatedApplyAndRuntimeHooks() {
       {26, ValueType::U8,     {5}                                               },
       {33, ValueType::U8,     {4}                                               },
       {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
+      {46, ValueType::BOOL,   {1}                                               },
+      {72, ValueType::U8,     {3}                                               },
+      {73, ValueType::BOOL,   {1}                                               },
   };
   ApplyReport report;
   ApplyOptions options;
@@ -80,7 +83,7 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 27}),
+  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 27, 46, 72, 73}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -91,6 +94,11 @@ void testValidatedApplyAndRuntimeHooks() {
   check(Furble::Settings::load<std::string>(Furble::Settings::BUTTON_MODE)
             == Furble::Settings::BUTTON_MODE_ONE_BUTTON_VALUE,
         "validated button mode setting is persisted");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+        "validated IMU wake setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU), "validated IMU setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
+        "validated IMU trigger setting is persisted");
 }
 
 void testDomainValidation() {
@@ -101,11 +109,12 @@ void testDomainValidation() {
   // the domain rule is ever reached, so asserting only "it failed" would pass
   // for a setting the bundle can never carry at all.
   const std::pair<SettingValue, const char *> cases[] = {
-      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15" },
-      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range" },
-      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"   },
-      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"},
-      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"  },
+      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15"      },
+      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range"      },
+      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"        },
+      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"     },
+      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"       },
+      {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"},
   };
 
   for (const auto &entry : cases) {
@@ -137,7 +146,6 @@ void testDomainValidation() {
 void testEverySettingHasASchemaRow() {
   static constexpr uint8_t KNOWN_MISSING[] = {
       43,  // AUTO_OFF_CHARGING
-      46,  // IMU
   };
 
   for (const auto &entry : Furble::Settings::all()) {

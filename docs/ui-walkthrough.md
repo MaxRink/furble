@@ -187,9 +187,9 @@ NMEA carries the HDOP, degraded state, and receiver counters on that board.
 ![Settings root](img/settings.png)
 
 The Settings menu groups every option. Its entries in order are Display,
-Features, Infrared, GPS, Timer, Theme, Text size, Bluetooth, About, Power,
-Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear only on
-boards with the matching hardware.
+Features, Infrared, Sensors, GPS, Timer, Theme, Text size, Bluetooth, About,
+Power, Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear
+only on boards with the matching hardware.
 
 The list is longer than the screen. The image above is the top; scrolling down
 reveals the rest:
@@ -386,7 +386,28 @@ Diagnostics groups read-only status pages.
 
 The Sensors page contains the **IMU** switch. It is off by default and requires
 Restart after changing it. When enabled, the Connected menu exposes **Level**;
-the live accelerometer page is also available under Diagnostics.
+the live accelerometer page is also available under Diagnostics. The page also
+holds the **Gestures** entry.
+
+Gestures contains the **Wake Gesture** roller (Off, Tap, Shake, Both), the
+**Double-Tap Shutter** switch, and the false-trigger warning. A wake gesture
+restores the display from dim or off. The shutter option fires one debounced
+shutter command, and only on an active Connected or Remote page: it is blocked
+while disconnected, on any other page, and during an intervalometer run. Every
+gesture control is disabled whenever the IMU is unavailable, and the 50 Hz
+detector only runs while one of the two is enabled.
+
+Deterministic scenarios cover this. `imu-gesture-detect.txt` and
+`imu-gesture-doubletap.txt` drive tap, double-tap, shake, walking and
+table-bump patterns through the same accelerometer seam the firmware reads.
+`imu-gesture-wake-tap.txt`, `-wake-shake.txt` and `-wake-off.txt` drive the
+real display-off path. `imu-gesture-shutter.txt` and `-shutter-blocked.txt`
+cover the shutter and each guard that blocks it. `imu-gesture-gating.txt` runs
+on all three panel widths and checks that every control disables when the
+sensor disappears.
+
+![Sensors settings](img/settings-sensors.png)
+![Gestures settings](img/settings-gestures.png)
 
 ### Storage
 

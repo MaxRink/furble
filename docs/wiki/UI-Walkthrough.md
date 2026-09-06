@@ -154,9 +154,9 @@ longitude, altitude, and UTC date and time. It is reachable both here and under
 ![Settings root](img/settings.png)
 
 The Settings menu groups every option. Its entries in order are Display,
-Features, Infrared, GPS, Timer, Theme, Text size, Bluetooth, About, Power,
-Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear only on
-boards with the matching hardware.
+Features, Infrared, Sensors, GPS, Timer, Theme, Text size, Bluetooth, About,
+Power, Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear
+only on boards with the matching hardware.
 
 ### Display
 
@@ -179,6 +179,20 @@ camera for development), Infinite-ReConnect, Reconnect Backoff, Multi-Connect,
 Companion (the companion BLE service), Watchdog (M5StickS3 only), Preset Picker
 (the exposure preset stepper on the shutter page), and Boot screen (the startup
 splash).
+
+### Sensors
+
+The Sensors page contains the **IMU** switch and the **Gestures** entry.
+Gestures holds the **Wake Gesture** roller (Off, Tap, Shake, Both), the
+**Double-Tap Shutter** switch, and the false-trigger warning. A gesture wakes
+the display or fires one debounced shutter command on an active remote page.
+Every gesture control is disabled when the IMU is unavailable. The
+`sim/scenarios/e2e/imu-gesture-*.txt` scenarios cover detection, the wake
+masks, the shutter guards, and the disabled state; the gating scenario runs on
+all three simulator panel sizes.
+
+![Sensors settings](../img/settings-sensors.png)
+![Gestures settings](../img/settings-gestures.png)
 
 ### Infrared
 

@@ -28,6 +28,8 @@ class Settings {
     TX_ADAPTIVE,
     GPS,
     IMU,
+    IMU_WAKE,
+    IMU_TRIG,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -140,6 +142,16 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::IMU> {
+  using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::IMU_WAKE> {
+  using type = uint8_t;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
   using type = bool;
 };
 

@@ -38,6 +38,8 @@ struct UIRequest {
 struct UIState {
   std::vector<UIRequest> requests;
   bool queueAvailable = true;
+  // Gesture settings notify the UI task through a counter, not a request.
+  unsigned gestureNotifications = 0;
 };
 
 UIState &ui(void);

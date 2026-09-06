@@ -3,6 +3,7 @@
 #if defined(FURBLE_CONSOLE)
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -43,6 +44,9 @@
 #include "FurbleProvision.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#if !defined(FURBLE_NO_DISPLAY)
+#include "FurbleUIGesture.h"
+#endif
 #include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -207,6 +211,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
@@ -225,6 +230,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::CONN_SAVER:
     case Settings::IR:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -295,6 +301,8 @@ const char *appliesWhen(Settings::type_t type) {
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -328,6 +336,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPX_PERIOD:
@@ -358,6 +367,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::CONN_SAVER:
     case Settings::IR:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -484,6 +494,15 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
     } break;
 #endif
+    case Settings::IMU_WAKE:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (*end != '\0') || (value > 3)) {
+        return fail("expected 0-3");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
 
     case Settings::SCAN_TIMEOUT:
     {
@@ -524,6 +543,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::CONN_SAVER:
     case Settings::IR:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -596,6 +616,10 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
 #endif
+  if ((setting.type == Settings::IMU) || (setting.type == Settings::IMU_WAKE)
+      || (setting.type == Settings::IMU_TRIG)) {
+    UI::notifyGestureSettingsChanged();
+  }
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -689,6 +713,11 @@ void reloadProvisionSetting(uint8_t wireId) {
       break;
     case Settings::COMPANION:
       CompanionGatt::getInstance().reloadSetting();
+      break;
+    case Settings::IMU:
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
+      UI::notifyGestureSettingsChanged();
       break;
     default:
       break;
@@ -1373,8 +1402,31 @@ int cmdStatus(int argc, char **argv) {
 }
 
 int cmdIMU(int argc, char **argv) {
+#if !defined(FURBLE_NO_DISPLAY)
+  // Gesture amplitude calibration. A real sensor in a real case never matches
+  // the paper thresholds, so this is the knob that tunes a board without a
+  // reflash. Runtime only: a tuning session is one USB session.
+  if ((argc == 2 || argc == 3) && strcmp(argv[1], "scale") == 0) {
+    if (argc == 3) {
+      char *end = nullptr;
+      const float value = strtof(argv[2], &end);
+      if ((end == argv[2]) || (*end != '\0') || !std::isfinite(value) || (value < 0.25f)
+          || (value > 4.0f)) {
+        return fail("expected 0.25-4.0");
+      }
+      GestureDetector::setScale(value);
+    }
+    printf("scale: %.2f\n", static_cast<double>(GestureDetector::getScale()));
+    return 0;
+  }
+#endif
+
   if (argc != 2 || strcmp(argv[1], "status") != 0) {
+#if defined(FURBLE_NO_DISPLAY)
     return fail("usage: imu status");
+#else
+    return fail("usage: imu status | scale [0.25-4.0]");
+#endif
   }
 
   const bool setting = Settings::load<bool>(Settings::IMU);
@@ -2121,7 +2173,11 @@ constexpr esp_console_cmd_t command(const char *name,
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
+#if defined(FURBLE_NO_DISPLAY)
     command("imu", "imu status (diagnostic sensor probe)", cmdIMU),
+#else
+    command("imu", "imu status | scale [value] (sensor probe, gesture calibration)", cmdIMU),
+#endif
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),

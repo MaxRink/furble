@@ -42,6 +42,7 @@ const char *const TIMER_NAMES[] = {
     "bulb_timer",
     "bulb_page_refresh",
     "companion_pairing_timer",
+    "gesture_timer",
 };
 
 struct OwnerData {

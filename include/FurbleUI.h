@@ -30,6 +30,9 @@ class UI {
   static bool isBatteryCharging(void);
   static uint8_t getIntervalometerState(void);
   static uint16_t getIntervalometerRemaining(void);
+  // Settings writes may notify the UI from shared console code. Headless
+  // builds have no UI task, so the notification is intentionally a no-op.
+  static void notifyGestureSettingsChanged(void) {}
 
 #if defined(FURBLE_CONSOLE)
   /** Operations the console asks the headless loop to carry out. */
@@ -78,6 +81,7 @@ class UI {
 #include <utility>
 #endif
 #include <unordered_map>
+#include <vector>
 
 #include <lvgl.h>
 
@@ -88,6 +92,7 @@ class UI {
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleUIGesture.h"
 #include "interval.h"
 
 namespace Furble {
@@ -131,6 +136,9 @@ class UI {
    */
   static bool sendRequest(Request request, int32_t arg);
 #endif
+
+  /** Notify the UI task that a gesture-related setting changed elsewhere. */
+  static void notifyGestureSettingsChanged(void);
 
   UI(const interval_t &interval);
 
@@ -581,6 +589,9 @@ class UI {
   static constexpr const char *m_TextSizeStr = "Text size";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_SensorsStr = "Sensors";
+  static constexpr const char *m_GesturesStr = "Gestures";
+  static constexpr const char *m_WakeGestureStr = "Wake Gesture";
+  static constexpr const char *m_WakeGestureOptions = "Off\nTap\nShake\nBoth";
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
@@ -695,6 +706,7 @@ class UI {
   static std::atomic<uint16_t> m_IntervalometerRemaining;
   static bool m_IntervalCountdownActive;
   static uint8_t m_IntervalLastAnnouncedSecond;
+  static std::atomic<uint32_t> m_GestureSettingsGeneration;
 
   static lv_timer_t *m_BulbTimer;
   static lv_timer_t *m_BulbPageRefresh;
@@ -702,6 +714,11 @@ class UI {
 
   lv_timer_t *m_IntervalTimer;
   lv_timer_t *m_InactivityTimer;
+  // 50 Hz. Fast enough for a tap edge, and the UI task already runs at 5 ms
+  // so this changes the work per tick, not the task's wake rate.
+  static constexpr uint32_t GESTURE_POLL_MS = 20;
+  lv_timer_t *m_GestureTimer = nullptr;
+  lv_timer_t *m_GestureShutterTimer = nullptr;
   lv_timer_t *m_IconTimer;
   lv_timer_t *m_BatteryTimer;
   lv_timer_t *m_DiagnosticsTimer;
@@ -862,6 +879,16 @@ class UI {
   /** Focused object before the warning stole the focus, restored on close. */
   lv_obj_t *m_LowBatteryPrevFocus = nullptr;
   bool m_PoweringOff = false;
+  uint8_t m_WakeGesture = 0;
+  bool m_DoubleTapShutter = false;
+  uint32_t m_GestureSettingsSeen = 0;
+  GestureDetector m_GestureDetector;
+#if defined(FURBLE_SIM)
+  uint32_t m_GestureEvents = 0;
+  uint32_t m_GestureShutterSends = 0;
+  const char *m_GestureLast = "none";
+#endif
+  std::vector<lv_obj_t *> m_IMUGestureWidgets;
 
   static menu_t m_MainMenu;
 
@@ -989,6 +1016,9 @@ class UI {
 
   /** Add the 'Sensors' menu entry. */
   void addSensorsMenu(const menu_t &parent);
+
+  /** Add the gesture page: wake roller, shutter switch, false-trigger warning. */
+  void addGesturesMenu(const menu_t &parent);
 
   /** Add 'GPS Data' page. */
   void addGPSDataMenu(const menu_t &parent);
@@ -1124,6 +1154,30 @@ class UI {
   /** Show or hide pages which need the IMU enabled. */
   static void showIMUWidgets(bool show);
 
+  /** Show or disable gesture settings which need the IMU enabled. */
+  void showIMUGestureWidgets(bool show);
+
+  /** Create or remove the gesture timer after a setting change. */
+  void updateGestureTimer(void);
+
+  /** Poll the accelerometer and handle one detected gesture. */
+  void pollGesture(void);
+
+  /** Handle a gesture reported by the detector. */
+  void handleGesture(GestureDetector::gesture_t gesture);
+
+  /** Wake the display and reset the LVGL inactivity counter. */
+  void wakeDisplayFromGesture(void);
+
+  /** Return whether the inactivity path currently considers the display idle. */
+  bool displayIsInactive(void) const;
+
+  /** Return whether the current page can accept an IMU shutter trigger. */
+  bool canTriggerGesture(void) const;
+
+  /** Send a short shutter command pair for a double tap. */
+  void fireGestureShutter(void);
+
   /** Describe the last reset reason. */
   static const char *getResetReason(void);
 
@@ -1185,6 +1239,11 @@ class UI {
 
   /** Clamp a level circle diameter to the panel content for the given size. */
   static int32_t levelDiameter(int32_t width, int32_t height);
+  /** Gesture poll timer handler. */
+  static void gestureUpdate(lv_timer_t *timer);
+
+  /** Gesture shutter release timer handler. */
+  static void gestureShutterRelease(lv_timer_t *timer);
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);

@@ -190,6 +190,33 @@ Backlights:
   burst averages 5 to 10 mA during transmission. The ESP32 GPIO absolute
   limit of about 40 mA bounds it from above.
 
+## Known model limitations
+
+Two of these matter whenever a scenario's subject is a periodic timer. Both are
+tracked in issue #285.
+
+- **Timer fires are billed at the UI loop quantum, not at their own cost.**
+  `sim/power_profiler.cpp` marks a UI cycle awake if any registered timer fired
+  in it, and then bills the whole interval at the board's `mcu_80` figure. A
+  timer whose callback is one I2C read and a few dozen float operations is
+  therefore charged the same as one that runs for the full 5 ms tick. The
+  baseline is artificial in the other direction: `UI::task()` runs
+  `lv_task_handler()` every 5 ms regardless, and the model still reports that
+  as full light-sleep residency. Treat a delta produced this way as a ceiling
+  with roughly an order of magnitude of headroom, not as an estimate of the
+  work, and settle the real number on hardware.
+- **Peripheral current is a single hardcoded constant.** `model.peripheral` in
+  `sim/power_profiler.cpp` is initialised to `0.0035` and is never read from
+  this directory: the `peripherals` subsection of `board-currents.yaml` reaches
+  the model nowhere. So enabling the IMU in a scenario changes nothing, and the
+  0.685 mA `bmi270_normal` figure a 50 Hz accelerometer read actually needs is
+  documented here and charged nowhere.
+
+Until they are fixed, `compare.py` is a
+regression guard against a scenario getting worse, not a source of absolute
+numbers. Note also that it only fails on increases, so a baseline cannot catch
+a change that lowers the estimate, such as a timer period going up.
+
 ## Numbers that could not be sourced (all tagged estimated)
 
 - ESP32 and ESP32-S3 BLE TX at 3 and 6 dBm (and 3/6/9 dBm entirely for the

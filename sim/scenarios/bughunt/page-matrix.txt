@@ -77,6 +77,15 @@ action nav sensors
 wait 100
 assert ui.page sensors
 assert ui.overflow no
+action nav gestures
+wait 100
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 100
 action nav infrared
 wait 100
 assert ui.page infrared

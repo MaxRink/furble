@@ -1,0 +1,34 @@
+# Gesture controls follow the live IMU, including after the sensor disappears
+# while the Sensors page is open. Both pages must fit their panel.
+seed imu true
+seed imu_wake 1
+seed imu_trigger true
+wait 400
+action nav sensors
+wait 200
+assert ui.page sensors
+# Certified in the touch layout. On the 80x160 non-touch layout Sensors is 7 px
+# over, which predates this feature: bughunt/stick-notouch-layout-80.txt carries
+# that as an xassert with the measurement. Running this scenario with
+# FURBLE_SIM_NO_TOUCH=1 on that panel fails here for that reason, not this one.
+assert ui.overflow no
+assert ui.imu_gesture_controls_enabled yes
+assert ui.gesture_timer yes
+
+action nav gestures
+wait 200
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 200
+
+# Losing the sensor disables every gesture control and stops the poll timer, so
+# a failed IMU cannot burn the 50 Hz timer forever.
+action imu.disable
+wait 200
+assert ui.imu_gesture_controls_enabled no
+assert ui.gesture_timer no
+exit

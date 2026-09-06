@@ -116,6 +116,11 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 - `imu status` performs a read-only probe: it reports the persisted opt-in,
   detected IMU type, update result, and independent accelerometer/gyroscope
   reads with values. It performs no NVS writes and does not access LVGL.
+- `imu scale` prints the gesture amplitude calibration scale and
+  `imu scale <0.25-4.0>` sets it. It multiplies the tap and shake thresholds on
+  top of the per-sensor gain, so a cased or strapped device can be tuned without
+  a reflash. It is runtime only and is not persisted: a tuning session is one
+  USB session. Available on display builds.
 
 ## shutter and focus
 

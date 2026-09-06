@@ -2,3 +2,10 @@
 # on different threads. Furble does not own that backend; suppress only its
 # frames so the focused GPS scenario still reports races in Furble code.
 race:lgfx::v1::Panel_sdl
+
+# SDL teardown reaches libdbus through Panel_sdl::close(), and dbus takes its
+# own connection and dispatch locks in one order there and the other order
+# during setup. Every frame in the report is inside libdbus-1.so; furble owns
+# neither lock and cannot order them. Match the module rather than
+# lgfx::v1::Panel_sdl so an inversion with a furble frame still fails the gate.
+deadlock:libdbus-1.so

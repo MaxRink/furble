@@ -36,6 +36,21 @@ wait 100
 assert ui.page display
 assert ui.overflow no
 action page settings
+action nav sensors
+wait 100
+# Sensors must fit at every text size the panel offers. The Gestures page holds
+# a roller, a switch and the warning, so it scrolls by design and is asserted
+# reachable instead.
+assert ui.page sensors
+assert ui.overflow no
+action nav gestures
+wait 100
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action page settings
 action nav features
 wait 100
 print ui.page

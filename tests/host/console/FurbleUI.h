@@ -35,6 +35,9 @@ class UI {
   };
 
   static bool sendRequest(Request request, int32_t arg);
+
+  /** Console and companion writes reconcile the gesture timer on the UI task. */
+  static void notifyGestureSettingsChanged(void);
 };
 
 }  // namespace Furble

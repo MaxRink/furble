@@ -288,6 +288,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
       "text_size",  "auto_off",   "low_batt",    "fb_output", "gps_hold",
+      "text_size",  "auto_off",   "low_batt",    "fb_output", "imu_wake",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -305,6 +306,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "recon_backoff", "auto_off_charging", "imu",
       "imu_sensor",    "liveness_check",    "ble_client_selfdelete",
       "gps_extrap",    "gps_stationary",    "sd_gpx",
+      "imu_trigger",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -836,6 +838,7 @@ std::string settingBoolValue(const std::string &name) {
       {"recon_backoff",     Settings::RECON_BACKOFF    },
       {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
       {"imu",               Settings::IMU              },
+      {"imu_trigger",       Settings::IMU_TRIG         },
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
@@ -849,6 +852,7 @@ std::string settingBoolValue(const std::string &name) {
 std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
+      {"imu_wake",  Settings::IMU_WAKE },
   };
   const auto found = bytes.find(name);
   if (found == bytes.end()) {
@@ -1377,6 +1381,8 @@ void applyScenarioSettings(void) {
   }
   furble_sim_uart_set_stationary(scenarioSettingIsTrue("gps_stationary"));
   saveBoolean("imu", Settings::IMU);
+  saveBoolean("imu_trigger", Settings::IMU_TRIG);
+  saveByte("imu_wake", Settings::IMU_WAKE);
   // Keep the host sensor surface in step with the setting used to construct
   // the UI. The SDL platform cannot initialize a physical IMU, so the shared
   // seam owns the enabled state for both page visibility and sensor reads.

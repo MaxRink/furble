@@ -219,9 +219,14 @@ charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
 source and the fetched/open persistent-time and WiFi charging branches; those
 refs do not expose 43. Off-wire
 id 0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`,
-and `BATTERY_SAVER`. Wire id 45 is reserved for the companion-password
+and `BATTERY_SAVER`. Wire id 47 is reserved for the companion-password
 contract. Stacked branches with provisional ids must renumber at
 rebase; ids only freeze when a PR merges.
+
+The complete reservation table, covering master and every open PR head, lives
+in [include/CLAUDE.md](../include/CLAUDE.md) and was assigned in issue #280.
+This branch claims 72 (`IMU_WAKE`) and 73 (`IMU_TRIG`); a shipped id such as
+46 (`IMU`) never moves, because it is a companion client contract.
 
 ## Dependencies
 
