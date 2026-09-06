@@ -24,6 +24,7 @@ std::atomic<float> g_accel[3] = {{0.0f}, {0.0f}, {1.0f}};
 std::atomic<float> g_gyro[3] = {{0.0f}, {0.0f}, {0.0f}};
 std::atomic<bool> g_accelAvailable {true};
 std::atomic<bool> g_gyroAvailable {true};
+std::atomic<imu_chip_t> g_chip {imu_chip_t::NONE};
 }  // namespace
 
 void imuSetEnabled(bool enabled) {
@@ -89,6 +90,14 @@ void imuSetAccelAvailable(bool available) {
 
 void imuSetGyroAvailable(bool available) {
   g_gyroAvailable.store(available);
+}
+
+void imuSetChip(imu_chip_t chip) {
+  g_chip.store(chip);
+}
+
+imu_chip_t imuChip(void) {
+  return g_chip.load();
 }
 
 void imuSetOrientation(float rollDeg, float pitchDeg) {

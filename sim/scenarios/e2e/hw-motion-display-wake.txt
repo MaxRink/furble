@@ -1,0 +1,34 @@
+# Motion wakes the panel, which is the consumer the motion source drives on this
+# base.
+#
+# The inactivity timeout puts the panel to sleep. Picking the device up has to
+# bring it back without a button press, the same way the spirit level page keeps
+# the panel awake while it is open. This is what makes the whole feature
+# observable: without a consumer the setting and both engines are dead code.
+#
+# Teeth: delete the lv_display_trigger_activity() call from the MOVING handler.
+# The motion state still flips, so ui.motion_state stays moving, but the idle
+# clock is never reset, the panel stays asleep and the wake assert fails.
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+seed hw_motion 2
+seed inactivity 1
+seed display_off 1
+wait 300
+assert ui.display on
+assert ui.motion_backend bmi270-motion
+
+# Sit still. The inactivity timeout sleeps the panel, and the engine reports
+# stationary on the same quiet window.
+action imu.accel 0 0 1
+advance 61000
+assert ui.display off
+assert ui.motion_state stationary
+
+# Pick it up. Motion alone brings the panel back, with no input event.
+action imu.accel 0 0 2
+advance 2000
+assert ui.motion_state moving
+assert ui.display on
+exit

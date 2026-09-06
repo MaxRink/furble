@@ -1,0 +1,36 @@
+# The software backend and a hardware engine report the same states at the same
+# times.
+#
+# This is the whole point of the abstraction: consumers must not care which
+# backend is running. Both use a 60 s quiet window, so the same script has to
+# produce the same transitions on both. This leg runs the hardware engine; the
+# software leg is hw-motion-parity-software.txt, which is the identical script
+# with a different seed.
+#
+# Teeth: change the virtual engine's no-motion window from 60 s to 30 s. The
+# stationary assert then fires one advance early and the pair diverges.
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+seed hw_motion 2
+wait 300
+assert ui.motion_backend bmi270-motion
+assert ui.motion_state moving
+
+# At rest, but not yet for long enough. 45 s is chosen so a window that was
+# quietly shortened, rather than merely shifted, reports stationary here.
+action imu.accel 0 0 1
+advance 45000
+assert ui.motion_state moving
+
+# Past the 60 s quiet window.
+advance 20000
+assert ui.motion_state stationary
+assert ui.motion_interrupts 1
+
+# One sample over the slope threshold leaves stationary immediately.
+action imu.accel 0 0 2
+advance 2000
+assert ui.motion_state moving
+assert ui.motion_interrupts 2
+exit

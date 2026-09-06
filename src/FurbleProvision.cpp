@@ -92,6 +92,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:

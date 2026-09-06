@@ -115,6 +115,17 @@ bool imuGetGyro(float *x, float *y, float *z);
 void imuSetAccelAvailable(bool available);
 void imuSetGyroAvailable(bool available);
 
+// Which internal IMU the simulated board carries. The motion engines are chip
+// specific, so a scenario picks one to exercise a hardware engine or the
+// software fallback. NONE models a board with no engine the firmware knows.
+enum class imu_chip_t {
+  NONE,
+  BMI270,
+  MPU6886,
+};
+void imuSetChip(imu_chip_t chip);
+imu_chip_t imuChip(void);
+
 // Set the gravity vector from a roll and pitch orientation in degrees, using
 // the same convention the spirit level derives from the accelerometer
 // (roll = atan2(ay, az), pitch = atan2(-ax, hypot(ay, az))).

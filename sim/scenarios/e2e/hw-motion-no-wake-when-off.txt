@@ -1,0 +1,27 @@
+# With the IMU setting off, nothing arms and no motion is detected.
+#
+# The motion source is gated on the same persisted IMU opt-in that hides the
+# spirit level and the IMU live page. A board that still armed its engine here
+# would keep the sensor powered and the wake source live for a user who turned
+# the whole feature off.
+#
+# Teeth: the gate is doubled on purpose, so both halves have to go. Removing the
+# imuEnabledForUI() check around the arm() call is not enough on its own,
+# because every backend also refuses to arm on a sensor that reports itself
+# disabled. Remove both and the backend reads bmi270-motion, the shake below
+# raises an event, and all three asserts fail.
+seed fauxny true
+seed imu false
+seed imu_chip bmi270
+seed hw_motion 2
+wait 300
+assert ui.motion_backend none
+assert ui.motion_state inactive
+
+# Shaking a device whose IMU is off must stay silent.
+action imu.accel 0 0 1
+advance 61000
+action imu.accel 0 0 2
+advance 2000
+assert ui.motion_interrupts 0
+exit

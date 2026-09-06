@@ -319,6 +319,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::TEXT_SIZE:
     case Settings::GPS_HOLD:
     case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
       return SETTING_U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
@@ -394,6 +395,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::TEXT_SIZE:
     case Settings::GPS_HOLD:
     case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
     {
       const uint8_t v = Settings::load<uint8_t>(type);
       value.assign(1, v);
@@ -442,6 +444,8 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       return true;
     case SETTING_U8:
       if ((length != 1) || ((type == Settings::IMU_WAKE) && (value[0] > 3))) {
+      if ((length != 1)
+          || ((type == Settings::HW_MOTION) && (value[0] > Settings::HW_MOTION_HARDWARE))) {
         return false;
       }
       if ((type == Settings::GPS_ASSIST) && (value[0] > 2)) {

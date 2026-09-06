@@ -208,6 +208,23 @@ void Platform::watchdogFeed(void) {
 
 void Platform::setDisplayOff(bool) {}
 
+// The IMU interrupt reaches an ESP32 pin only on the boards whose schematic
+// routes it there: GPIO35 on the StickC family, and M5PM1 GPIO4 chained to
+// GPIO13 on the StickS3. Model the same board answer here so a scenario can
+// tell a wake-capable board from one that has to poll.
+bool Platform::armMotionWake(void) {
+#if defined(FURBLE_M5COREX)
+  return false;
+#else
+  m_MotionWakeArmed = true;
+  return true;
+#endif
+}
+
+void Platform::disarmMotionWake(void) {
+  m_MotionWakeArmed = false;
+}
+
 void Platform::setCPUMaxFreq(uint8_t mhz) {
   m_CPUMaxFreqMHz = isCPUMaxFreqValid(mhz) ? mhz : CPU_MAX_FREQ_DEFAULT_MHZ;
 }

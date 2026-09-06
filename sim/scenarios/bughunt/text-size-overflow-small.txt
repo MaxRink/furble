@@ -16,10 +16,10 @@
 # print their overflow state.
 seed text_size 0
 seed fauxny true
+seed imu true
 seed gps true
 # The IMU seed puts the home Level row in place so the home fit assert below
 # covers the fullest home menu the setting allows.
-seed imu true
 wait 300
 # The seeded Small size was loaded on boot.
 assert setting.text_size 0
@@ -60,6 +60,18 @@ action nav gps
 wait 100
 print ui.page
 print ui.overflow
+action page settings
+action nav sensors
+wait 100
+# Sensors page: the IMU switch plus the Motion Engine entry and the Restart
+# button. Compact, must fit on the narrow panels at every text size.
+assert ui.page sensors
+assert ui.overflow no
+action nav motion_engine
+wait 100
+# The Motion Engine roller page: one roller, must fit.
+assert ui.page motion_engine
+assert ui.overflow no
 action page settings
 action nav timer
 wait 100

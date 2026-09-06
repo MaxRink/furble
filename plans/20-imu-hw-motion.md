@@ -7,6 +7,278 @@ change. The CPU then sleeps instead of polling the accelerometer. This replaces
 the software variance poll of PR18 where the hardware supports it, and keeps the
 software detector as a fallback everywhere else.
 
+## Implementation state
+
+Rebased onto master 6245a301. Base is `master`, not `feat/16-imu-spirit-level`.
+
+Shipped on `feat/20-hw-motion`:
+
+- `IMU::MotionSource`, a singleton with a `MotionBackend` interface and three
+  backends: software, BMI270 any-motion and no-motion, MPU6886 wake on motion.
+- `Platform::armMotionWake()` and `disarmMotionWake()`, the light-sleep GPIO
+  wake source, with the M5PM1 GPIO4 to GPIO13 chain on the M5StickS3 and GPIO35
+  on the StickC family.
+- The `HW_MOTION` setting, wire id 74, NVS key `hw_motion`, values Auto,
+  Software and Hardware, default Auto.
+- A Motion Engine roller on the Sensors page and three motion rows on the IMU
+  live diagnostics page.
+- Console `settings get hw_motion` and `settings set hw_motion`.
+- The consumer: motion counts as user activity, so picking the device up wakes
+  the panel.
+- Simulator coverage: a virtual motion engine per chip, two new seeds, four new
+  queries, and nine certified scenarios.
+- Host coverage: `tests/host/imu_motion_encoding_test.cpp` pins the register
+  sequence and the feature word encoding, and the console suite covers the new
+  setting.
+
+### What the first draft got wrong
+
+The draft was written against the pre-rebase base and reviewed against master.
+Seven things had to change before it was mergeable. They are recorded because
+each one is a trap the next hardware feature can fall into.
+
+1. **The feature was unreachable.** `arm()`, `poll()` and `setCallback()` had no
+   callers anywhere. The only reference was the diagnostics label, which
+   therefore always read `none`, `inactive` and `0`. The Motion Engine roller
+   wrote NVS and changed nothing. A user visible setting with no effect, plus
+   roughly 640 lines of dead driver code. Fixed by giving it a consumer, see
+   below.
+2. **Wire ids.** The draft renumbered `IMU` from 46 to 45 and took 47 for
+   `HW_MOTION`. Master pins `IMU` at 46, `include/CLAUDE.md` reserves 45 for the
+   companion password, and both settings documents state 46. Wire id 47 belongs
+   to the companion-password branches per issue #280. The renumber also created
+   an add and add conflict on `tests/protocol/golden/settings/*-45.bin` with
+   PR #45, which lands first. The renumber is dropped entirely and `HW_MOTION`
+   takes 74, the id issue #280 reserved for it. That is the only wire id this PR
+   claims.
+3. **`appliesImmediately()` and `isDangerous()`** are exhaustive switches over
+   `type_t` with no `default`. `HW_MOTION` was in neither, so it was classified
+   by accident through the trailing `return false` and warned under `-Wswitch`.
+   Both now name it: not immediate, not dangerous.
+4. **The roller was unreachable by navigation.** The draft hand rolled it and
+   omitted `addToInputGroup`, so no encoder or button board could focus it. It
+   also forced `LV_PCT(90)` that the shared `addRollerItem` helper guards with
+   `#if !defined(FURBLE_M5COREX)`, and re-set a flex flow `addMenu()` already
+   owns. Twenty six lines replaced by the shared helper.
+5. **`CompanionService::settingNeedsRestart()`** was declared, defined and never
+   called. `Settings::appliesImmediately()` already answers that question for
+   the companion, the console and the UI. Deleted.
+6. **BMI270 feature access was not gated on advanced power save.** The part
+   requires `PWR_CONF.adv_power_save` cleared before `FEAT_PAGE` and the
+   `FEATURES` window are reachable, and the draft never touched `PWR_CONF` at
+   0x7C, never checked `INTERNAL_STATUS` at 0x21 for the init-ok message, and
+   never checked `PWR_CTRL` at 0x7D for `acc_en`. If M5Unified leaves advanced
+   power save on after `M5.begin()`, every feature write is silently dropped and
+   the engine never fires. This is exactly the silent breakage the option B
+   section below warns about, and it would have been found on hardware or not at
+   all.
+7. **A wrong feature constant.** `NO_MOTION_WORD_1` was 0xB690, which decodes to
+   a threshold of 1680 counts, about 806 mg, against an any-motion threshold of
+   170 counts, about 83 mg. A no-motion threshold eight times looser than the
+   any-motion threshold reports stationary almost always. Checked against the
+   Bosch source rather than guessed: `bmi270_examples/no_motion_interrupt`
+   states the no-motion default is 70 mg, which is 0x090, one nibble away from
+   what the draft carried.
+
+The fix for 6 and 7 was to stop baking whole 16 bit words at all. The engines
+now read the feature page, set only the documented fields, and write it back,
+which is what `bmi2.c` itself does. Bits 14:11 of each threshold word are the
+output configuration, which Bosch never rewrites; preserving them removes four
+magic constants and the question of what they were supposed to contain.
+
+Two findings were recorded and deliberately not acted on:
+
+- Neither hardware backend needed a general I2C retry for correctness: a failed
+  read makes `poll()` return false and the next attempt is one second later, so
+  the worst case is one lost second, not a lost event. The retry is there anyway
+  because the internal bus is shared with the M5PM1, whose first transaction
+  after idle sleep fails. `Platform::m5pm1Access` already retries once and every
+  new PMIC call goes through it.
+- The companion app metadata gains no `hw_motion` entry. Master has no entry for
+  `imu` either, so the Sensors group is uniformly absent and unknown ids already
+  render as read-only rows. Adding one half of the pair would be worse than
+  adding neither.
+
+### The consumer
+
+A motion source with no consumer is dead code, so this PR wires one. On master
+today that is the panel:
+
+- The source arms at boot when the `IMU` setting is on, and is polled from the
+  existing one second housekeeping timer at `src/FurbleUI.cpp:398`. No new
+  timer: a hardware engine only needs its status register read, and the software
+  backend thresholds one sample.
+- On `MOVING` the callback calls `lv_display_trigger_activity()`. That is all it
+  needs: `processInactivity()` already wakes a sleeping panel as soon as the idle
+  clock is reset. The draft also called `wakeDisplay()`, which the mutation
+  testing below proved redundant, so it is gone.
+- On `STATIONARY` nothing happens. The inactivity timeout already owns the sleep
+  decision.
+
+### MotionSource is the shared API
+
+The #65 review changed the sequencing: this PR lands before #65, and #65's
+motion-adaptive GPS consumes `IMU::MotionSource` rather than keeping its own
+magnitude-variance detector. One detector, one IMU poller, one definition of
+stationary. That makes the interface a contract rather than an internal detail,
+so it stays small and stable:
+
+- `arm()`, `disarm()`, `poll()`, `setCallback()`, `state()`, and `MOVING` or
+  `STATIONARY`. Nothing else is required to consume it.
+- The 60 s quiet window and the slope threshold are the same in all three
+  backends, so a consumer's policy behaves identically whichever one armed.
+- `setScale()` and `getScale()` are the runtime calibration knob for the
+  software backend's 0.20 g threshold, clamped to 0.25 to 4.0 and reachable from
+  the console as `motion scale`. Accelerometers differ in noise floor between
+  parts and a cased device damps differently from a bare board; the shipped
+  0.20 g is a starting point, not a constant. The hardware engines threshold in
+  the chip and ignore the scale.
+- The source is polled from the existing UI housekeeping timer. It adds no
+  `lv_timer` of its own, so nothing new has to be registered with
+  `FURBLE_SIM_TIMER_FIRE` and the power model already sees every tick that
+  drives it. A consumer must not add one either.
+- Nothing in the motion path touches GPS. A motion setting change must never
+  route through `GPS::reloadSetting()` or `GPS::enable()`, which the #65 review
+  found reset the receiver.
+
+The panel consumer in this PR is the interim one. When #45 lands, re-point the
+callback at `IMU_WAKE` shake and drop the panel call if that subsumes it.
+
+## Simulator coverage
+
+The simulator has no I2C bus and no interrupt controller, so it cannot run
+either hardware engine. What a scenario needs to exercise is not the registers
+but the event semantics, so `sim/FurbleIMUSim.cpp` supplies one virtual backend
+per chip that models those and nothing else. It reads the injected
+accelerometer through `Sim::imuGetAccel`, the same boundary the software backend
+and the spirit level read, and applies the thresholds and durations decoded from
+the constants the firmware writes, so the simulator and the device share one
+source of truth. `createBMI270Backend()` returns a backend only when the
+modelled board carries a BMI270, which is what makes the fallback case testable.
+
+Backend selection became a probe rather than a board table as part of this.
+Each hardware backend already identifies its own chip from the bus and refuses
+to arm on anything else, so the `M5.Imu.getType()` switch was redundant. Dropping
+it costs one register read at boot on the wrong board and makes the simulator
+path identical to the firmware path.
+
+### Seams added
+
+| Seam | Where | Why |
+|---|---|---|
+| `seed hw_motion N` | `sim/driver.cpp` byte seeds, `applyScenarioSettings()`, `settingByteValue()` | The user's Auto, Software or Hardware choice, and `assert setting.hw_motion` for free. |
+| `seed imu_chip bmi270\|mpu6886\|none` | `sim/driver.cpp` validated string seeds and `applyScenarioSettings()` | Which engine the modelled board carries. Default `none`, so a scenario that does not ask for a chip exercises the software fallback. |
+| `ui.motion_backend`, `ui.motion_state`, `ui.motion_wake`, `ui.motion_interrupts` | `src/FurbleUI.cpp` sim query block | Read from `IMU::MotionSource`, not from the diagnostics labels, so the selection is assertable even when the IMU live page was never opened. |
+| `ui.display` | `src/FurbleUI.cpp` sim query block | Panel sleep state. Motion wake had no other observable. |
+| `Platform::armMotionWake()` / `disarmMotionWake()` | `sim/FurblePlatformSim.cpp` | The board answer, modelled: the wake path exists on the Stick boards and not on the Core. |
+
+No new action. Motion is driven by the existing `imu.accel` plus virtual time.
+An engine that needed a motion-specific action would not be modelling the
+sensor.
+
+### Scenarios
+
+All nine are in `sim/scenarios/e2e/`, certified, board `m5stick-s3`. They test
+logic, not layout; the layout coverage is the board matrix below. Nothing goes
+in `sim/scenarios/` top level, because the power gate iterates that directory
+and demands a committed baseline per file.
+
+Every killing mutation below was applied, built and run. Four of them are
+recorded because the first draft of the scenario did not have the teeth it
+claimed, and the mutation run is what proved it.
+
+| Ask | File | Killing mutation | Result |
+|---|---|---|---|
+| (a) selection | `hw-motion-select-software.txt` | `arm()` ignores `HW_MOTION_SOFTWARE` and always probes | kills |
+| (a) | `hw-motion-select-hardware.txt` | the MPU6886 factory ignores the seeded chip, and the probe order is swapped | kills |
+| (a) | `hw-motion-select-auto.txt` | the `HW_MOTION` default in `Settings::init()` becomes `HW_MOTION_SOFTWARE` | kills |
+| (b) consumer | `hw-motion-display-wake.txt` | delete `lv_display_trigger_activity()` from the `MOVING` handler | kills |
+| (b) parity | `hw-motion-parity.txt`, `hw-motion-parity-software.txt` | the virtual engine's no-motion window becomes 30 s | kills |
+| (c) wake source | `hw-motion-light-sleep.txt` | `Platform::armMotionWake()` returns false | kills |
+| (c) setting off | `hw-motion-no-wake-when-off.txt` | remove both the `imuEnabledForUI()` gate and the backend's own sensor check | kills |
+| (d) fallback | `hw-motion-fallback.txt` | `arm()` returns false instead of falling back | kills |
+| (e) settings row | `bughunt/page-matrix.txt`, `bughunt/stick-notouch-layout-135.txt`, `bughunt/core-notouch-layout.txt`, `bughunt/text-size-overflow-small.txt` extended, plus the new `bughunt/hw-motion-text-size.txt` | put the roller back on the Sensors page with `addRollerItem` | kills |
+| (f) console | `tests/host/console_commands_test.cpp` | change the accepted range in `FurbleConsole::setValue` | kills |
+| (f) calibration | `tests/host/console_commands_test.cpp` | widen or drop the 0.25 to 4.0 clamp in `MotionSource::setScale` | kills |
+
+### The roller does not fit on the Sensors page
+
+The draft put the roller inline on Sensors. It does not fit: 45 px past the
+135x240 panel, and the button layout renders that overflow under the floating
+navigation indicators. `page-matrix`, `stick-notouch-layout-135` and
+`overflow-sweep` all caught it, which is what those files are for.
+
+It now lives on its own page, reached from Sensors, the same shape the GPS
+rollers use. That needed four things, each of which is a table a new page has to
+be added to and none of which fails at compile time:
+
+- `m_Menu`, the grid map `addMenu()` looks the name up in. A missing entry
+  throws `std::out_of_range` at startup.
+- The page identity array behind `ui.page`, whose length is a template argument
+  and was the only one of the four the compiler caught.
+- The two `nav` and `page` name maps in `src/FurbleUI.cpp`.
+- The four page-name whitelists in `sim/scenario_action.cpp`, plus the two
+  vocabularies in `docs/sim.md` that `check-doc-tokens.sh` greps.
+
+Two smaller layout findings came out of the same work:
+
+- The Sensors restart notice was a label wrapped in its own menu container. That
+  container's padding was the last 3 px that pushed the page off 135x240 at
+  Large text once the Motion Engine row joined it. It is now a plain label on
+  the page, which is what the Features page already does for the same kind of
+  static hint.
+- At Large text on the 80x160 panel the Sensors page has four rows and legitimately
+  scrolls. `hw-motion-text-size.txt` asserts both scroll ends are reachable there
+  rather than a fit, and asserts the fit on the roller page, which is the
+  assertion that keeps the roller off Sensors.
+
+That scenario is deliberately narrow. An earlier attempt added the Sensors leg
+to the shared `text-size-overflow-large.txt`, which meant seeding the IMU on;
+that adds a Level row to the Connected page, which at Large text pushes that
+page off the 80x160 panel. Regressing an unrelated page to cover this one is not
+a trade worth making, so the shared file is untouched and the coverage lives in
+a file this feature owns.
+
+### Four assertions that had no teeth
+
+The first mutation build passed every scenario, which was the most useful result
+of the whole exercise:
+
+- `wakeDisplay()` could be deleted from the motion callback and the panel still
+  woke, because `lv_display_trigger_activity()` resets the idle clock and
+  `processInactivity()` wakes the panel on the next tick by itself. The call was
+  redundant, not the assertion. Removed from the code, and the mutation moved to
+  the call that actually matters.
+- `Platform::armMotionWake()` could return false with nothing failing, because
+  the scenario asserted the interrupt counter, which the backend increments
+  whether or not a wake source armed. Fixed by adding `ui.motion_wake` and
+  asserting that instead.
+- Removing the `imuEnabledForUI()` gate changed nothing, because every backend
+  also refuses to arm on a sensor that reports itself disabled. That is a real
+  second guard, so the mutation is now correctly stated as removing both.
+- Shortening the virtual no-motion window from 60 s to 30 s changed nothing,
+  because the parity scenario asserted `moving` at 30 s and the quiet timer
+  starts about a second late. The margin moved to 45 s.
+
+### What the simulator cannot cover
+
+The register programming, which is why
+`tests/host/imu_motion_encoding_test.cpp` exists. It builds both engine
+translation units against a recording bus and a stub platform, and asserts the
+write sequence and the decoded feature fields against the datasheet and Bosch
+API values cited in its header: 81 checks. Flipping `NO_MOTION_THRESHOLD` back
+to the draft's wrong 0x690 fails two of them.
+
+Two further things neither layer can reach, and only hardware can settle:
+
+- Whether a BMI270 INT1 edge on M5PM1 GPIO4 asserts PYG1_IRQ on ESP32-S3 GPIO13
+  while the system is running, rather than only waking the M5PM1 from its own
+  sleep. If it does not, `armMotionWake()` still returns true and nothing wakes.
+- Whether the non-latched interrupt pulse is long enough for the GPIO wake latch
+  to catch it. Both engines are configured non-latched on purpose, so the pin
+  releases without a bus transaction and light sleep stays re-entrant, but that
+  trades a held level for a short pulse.
+
 ## Scope
 
 In scope:
@@ -52,21 +324,25 @@ Verified anchors against the current tree.
 
 ## New settings
 
-None required. This is the recommended outcome.
+One key, shipped. The plan originally argued for none, on the grounds that
+`IMU_WAKE` and `GPS_MOTION` already express user intent and the detection
+mechanism is a platform detail. That argument still holds for the user, but it
+assumed the hardware path would be proven. It is not: the M5StickS3 interrupt
+chain is unverified, and a bug report that says "the battery got worse" has to
+be narrowable to a backend without a rebuild.
 
-`IMU_WAKE` (PR17) and `GPS_MOTION` (PR18) already express user intent. Whether
-the detection runs in hardware or software is a platform detail, not a
-preference. Adding a third key would make the user responsible for a choice they
-cannot evaluate.
+| Enum | Wire id | NVS key | Namespace | Type | Default | Notes |
+|---|---|---|---|---|---|---|
+| `HW_MOTION` | 74 | `hw_motion` | `FURBLE_STR` | `uint8_t` | 0 | 0 Auto, 1 Software, 2 Hardware. |
 
-One optional key for field debugging:
+Name string: `"Motion Engine"`. Auto preserves current behaviour on any board
+where the hardware path is not proven, because a chip backend that fails to arm
+falls back to software. Not immediate: the engine is chosen when the source is
+armed, which is at boot, so the Sensors page carries the existing Restart
+button. Not dangerous.
 
-| Enum | NVS key | Namespace | Type | Default | Notes |
-|---|---|---|---|---|---|
-| `IMU_HWMOT` | `imu_hwmotion` (12) | `FURBLE_STR` | `uint8_t` | `0` | 0 auto, 1 force software, 2 force hardware. 0 selects the current PR18 software path on any board where hardware is not verified, so the default preserves behaviour. |
-
-Name string: `"Motion Engine"`. Drop this key before merge if hardware detection
-proves stable. It exists so a bug report can be narrowed without a rebuild.
+Wire id 74 is the id issue #280 reserved for this setting. This PR claims no
+other id, and in particular it leaves `IMU` at 46.
 
 ## Menu placement
 
@@ -277,6 +553,17 @@ reporting bad battery life must be able to say which path is active.
 
 ## Dependencies
 
+- PR #45 (`feat/17-imu-gestures`). Not a code dependency. Its `GestureDetector`
+  is a tap, shake and double tap classifier over accelerometer samples; this
+  PR's `IMU::MotionSource` is a moving and stationary source with hardware
+  backends. No shared file, no shared type, no call in either direction. What
+  they share is textual conflict on `FurbleSettings`, the Sensors menu, the
+  source lists and `plans/README.md`, and both branches originally added the
+  same golden `*-45.bin` files. Dropping the `IMU` renumber from this PR removes
+  the last of those. The base is `master` and this PR is not stacked. It lands
+  last of the backlog, so one more rebase is expected; at that rebase, reuse
+  #45's `tests/host/gesture_stubs/` rather than keeping `tests/host/imu_stubs/`
+  as a second copy.
 - PR16. Hard. The IMU has to be enabled.
 - PR17. Shares the sensor. Do not let both configure the chip at once.
 - PR18. Hard. This PR replaces its detector input and is pointless without its
