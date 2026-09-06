@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 05:30)
+## Resume here (kept current; last updated 2026-09-07 06:00)
 
 Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
@@ -24,7 +24,7 @@ Open PRs, head, state, next action:
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | delta-reviewed, parked | fifteen-step hardware gate, then merge |
 | #139 GPS phase 2 (plan 32) | 9acc9f48 | fix round running | an empty RMC date term still raises the parser's updated flag, so the count must require a valid changed date (emptyrmc fixture) and the IMPLAUSIBLE retry needs a bound; then delta review, hardware gate (receiver rejection of expired ephemeris measured first) |
 | #45 IMU gestures (plan 17) | 7c2f5038 | approved, parked | eight-step hardware gate (trace capture first), merge after #139 |
-| #48 IMU hardware motion (plan 20) | 4b453968 | delta review running | six-step hardware gate (now executable via `motion status` pin/edges), merge before #65 |
+| #48 IMU hardware motion (plan 20) | 4b453968 | fix round running | the edge counter set an edge interrupt on the level wake pin (disables light-sleep wake) and GPIO13 cannot see the INT1 train; count via the M5PM1 GPIO4 status, host shim test of armMotionWake; then delta review, merge (gate deferred), before #65 |
 | #65 GPS motion detector (plan 18) | c1410d0b | rebasing onto #48 4b453968 | consume IMU::MotionSource (state() only, isArmed asserted), bundle, delta review, six-step gate |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
