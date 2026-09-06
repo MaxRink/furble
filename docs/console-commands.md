@@ -81,6 +81,8 @@ every setting, its default, and when it applies.
 
 - `gps` with no argument prints enabled, fix, satellites, lat, lon, alt, age,
   date, time, and error counts, then the receiver state behind them:
+  `receiver` (`detecting`, `present` or `absent`), `baud` (the baud the
+  autobaud ladder locked, or the configured fixed baud, 0 when none),
   `degraded` and `retries` for the power cycle health, `source` (`uart`,
   `companion` or `none`), `cycle` (the power cycle state), `policy`
   (`always_on`, `standby` or `rail_cycle`), `duty` (standby seconds), `rate`
@@ -97,6 +99,13 @@ every setting, its default, and when it applies.
 - `gps binary <class hex> <id hex> [payload bytes]` sends a CASIC binary frame.
 - `gps config` lists the binary configuration status.
 - `gps aid` sends an assisted-start (AID-INI) hint.
+- `gps sats [on | off]` enables or disables GSV/GSA capture; `gps sats` prints
+  in-view/used counts, DOP, and each decoded satellite.
+- `gps platform 0..4` saves the dynamic model (`0` do not send, `1` portable,
+  `2` stationary, `3` pedestrian, `4` vehicle) and reloads the receiver. The
+  dyModel/PCAS11 effect is hardware-tuning-pending.
+- `gps monhw` polls the CASIC MON-HW snapshot and prints the raw response. Its
+  field layout is hardware-tuning-pending.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
 
 ## time

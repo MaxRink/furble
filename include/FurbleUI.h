@@ -382,6 +382,13 @@ class UI {
     std::string configText;
   } nmea_t;
 
+  /** Labels on the satellite detail page. */
+  typedef struct {
+    lv_obj_t *summary;
+    lv_obj_t *table;
+    std::string tableText;
+  } satellites_t;
+
   class Intervalometer: public SpinnerOwner {
    public:
     class Spinner {
@@ -652,13 +659,16 @@ class UI {
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
+  static constexpr const char *m_GPSBaudStr = "GPS Baud";
   static constexpr const char *m_GPSRateStr = "Update rate";
   static constexpr const char *m_GPSSentencesStr = "Sentences";
   static constexpr const char *m_GPSConstellationStr = "Constellation";
   static constexpr const char *m_GPSPowerStr = "Power saving";
   static constexpr const char *m_GPSAssistStr = "Assisted start";
   static constexpr const char *m_GPSHoldStr = "Fix Hold";
+  static constexpr const char *m_GPSPlatformStr = "Platform";
   static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
+  static constexpr const char *m_GPSSatStr = "Satellites";
 
   // settings->gps rollers
   static constexpr const char *m_GPSRateOptions = "Default\n1000 ms\n500 ms\n200 ms\n100 ms";
@@ -667,8 +677,12 @@ class UI {
       "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
   static constexpr const char *m_GPSPowerOptions = "Always on\nStandby (PCAS12)\nRail cycling";
   static constexpr const char *m_GPSDutyOptions = "No standby\n5 s\n10 s\n15 s";
-  static constexpr const char *m_GPSAssistOptions = "Off\nPosition and time";
   static constexpr const char *m_GPSHoldOptions = "Off\n30 s\n2 min\n10 min\n60 min";
+  static constexpr const char *m_GPSAssistOptions =
+      "Off\nPosition and time\nPosition, time and ephemeris";
+  static constexpr const char *m_GPSBaudOptions = "Auto\n9600\n115200";
+  static constexpr const char *m_GPSPlatformOptions =
+      "Do not send\nPortable\nStationary\nPedestrian\nVehicle";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";
@@ -801,6 +815,8 @@ class UI {
   level_t m_Level = {};
   nmea_t m_NMEA;
   lv_timer_t *m_NMEATimer = nullptr;
+  satellites_t m_Satellites = {};
+  lv_timer_t *m_SatTimer = nullptr;
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
   bool m_ButtonModeFocusPressed = false;
@@ -1033,6 +1049,9 @@ class UI {
   /** Add the raw NMEA and satellite debug page. */
   void addGPSNMEAMenu(const menu_t &parent);
 
+  /** Add the per satellite signal detail page. */
+  void addGPSSatMenu(const menu_t &parent);
+
   /** Show or hide the widgets which need GPS enabled. */
   static void showGPSWidgets(status_t *status, bool show);
 
@@ -1247,6 +1266,7 @@ class UI {
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);
+  static void gpsSatStop(lv_event_t *e);
 
   /** Handle connection request. */
   static void doConnect(lv_event_t *e);

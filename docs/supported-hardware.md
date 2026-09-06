@@ -47,8 +47,9 @@ and the feature matrix.
 
 Location tagging uses an M5Stack GPS unit on Grove Port A. Every M5Stack GPS
 receiver furble targets is the AT6668/CASIC family, so the existing $PCAS and
-NMEA support covers them with no per-unit protocol code. Set
-`Settings` > `GPS` > `GPS baud 115200` for the AT6668 units.
+NMEA support covers them with no per-unit protocol code. The stored default
+baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
+`GPS Baud` for the AT6668 units.
 
 | Unit | Chipset | Antenna | furble boards | Wiring | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -57,7 +58,10 @@ NMEA support covers them with no per-unit protocol code. Set
 | Module GPS v2.1 | AT6668 | SMA | Core, Core2 only | M5-Bus module | Planned, not yet in firmware. Needs a Core/Core2 gated port setting before it works. |
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
 
-The older Mini GPS/BDS Unit is end of life and runs at 9600 baud.
+The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
+115200, 9600, 38400, 57600, 19200, and 4800, and requires two checksummed NMEA
+sentences before declaring the receiver present. If probing fails, furble marks
+the receiver absent, cuts the external rail, and retries once after 60 seconds.
 
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`.

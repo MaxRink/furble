@@ -100,3 +100,15 @@ protocol core.
 - The Fujifilm X100VI Secure golden GATT handshake (STATUS values, identity
   write, registration-accept notifications, shutter sequence) is recorded in
   `plans/95-engineering-lessons.md`. Cite it instead of re-capturing.
+- `protocol/` is the portable core: pure wire-format code with no BLE, NVS,
+  app-layer, RTOS or UI dependency. `tools/check_portability_inventory.py`
+  enforces that by keyword, comments included, and
+  `tools/portable_core_manifest.txt` must list every file here. Adding a file
+  means adding it to that manifest and keeping the platform names out of its
+  prose.
+- `GpsCasic` (`Furble::Casic`) lives here even though it is not a camera codec:
+  binary checksum and framing, the autobaud ladder, the GSV/GSA satellite
+  parser, ephemeris cache framing and freshness, and the MON-HW decode. GPS is
+  a furble feature rather than an ESP one, so a Nordic port carries it, and the
+  file already satisfies the portable contract unchanged. It is used by
+  `src/FurbleGPS`, by no camera, and is covered by the `gps-casic` host test.

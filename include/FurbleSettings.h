@@ -35,6 +35,7 @@ class Settings {
     GPS_ASSIST,
     GPS_HOLD,
     GPS_EXTRAP,
+    GPS_PLATFORM,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -156,6 +157,7 @@ class Settings {
     BUTTON_MODE_ONE_BUTTON = 1,
   } button_mode_t;
 
+  static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
@@ -340,6 +342,10 @@ struct Settings::storage_type<Settings::GPS_HOLD> {
 template <>
 struct Settings::storage_type<Settings::GPS_EXTRAP> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_PLATFORM> {
+  using type = uint8_t;
 };
 template <>
 struct Settings::storage_type<Settings::INTERVAL> {

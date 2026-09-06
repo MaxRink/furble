@@ -53,6 +53,12 @@ struct GPSState {
   Furble::GPS::Fix fix = Furble::GPS::Fix::NONE;
   uint32_t holdLimitMs = 0;
   uint32_t holdRemainingMs = 0;
+  Furble::GPS::receiver_state_t receiverState = Furble::GPS::receiver_state_t::UNKNOWN;
+  uint32_t detectedBaud = 0;
+  bool satCapture = false;
+  Furble::GPS::satellite_report_t satellites = {};
+  Furble::GPS::monhw_report_t monhw = {};
+  size_t monHwPolls = 0;
   std::vector<Furble::GPS::config_status_t> config;
   bool binaryResult = true;
   bool aidResult = true;

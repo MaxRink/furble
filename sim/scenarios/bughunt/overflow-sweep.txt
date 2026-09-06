@@ -123,6 +123,12 @@ print ui.page
 print ui.overflow
 assert ui.overflow no
 action nav gps_hold
+action nav gps_baud
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav gps_platform
 wait 100
 print ui.page
 print ui.overflow
@@ -132,6 +138,10 @@ wait 300
 print ui.page
 print ui.overflow
 action nav nmea
+wait 300
+print ui.page
+print ui.overflow
+action nav gps_sats
 wait 300
 print ui.page
 print ui.overflow

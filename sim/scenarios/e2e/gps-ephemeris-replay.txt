@@ -1,0 +1,77 @@
+# GPS_ASSIST tier 2. Once a fix is stable furble polls the receiver for its own
+# ephemeris, ionosphere and UTC frames and caches them verbatim in NVS. On the
+# next boot it replays them before the receiver has to decode them off the air,
+# which is the whole point of the tier: a warm start instead of a cold one.
+#
+# The fake receiver answers the three CFG-MSG polls with fixed frames, and it
+# counts the assistance frames written back to it, so the replay is observed at
+# the wire rather than inferred from a log line.
+#
+# The cache age is bounded by the receiver's own reported UTC, so the fix
+# stream is dated at the capture date and the replay commits once the receiver
+# has said what time it thinks it is. gps-ephemeris-stale moves that clock and
+# covers the refusal; gps-ephemeris-invalid covers a corrupted cache.
+seed gps true
+seed gps_baud 9600
+seed gps_assist 2
+seed gps_fix_date modern
+seed gps_uart_mode ack
+# Serve the fix burst in 40 byte reads, so every RMC spans several of them. A
+# real burst carrying GSA and GSV exceeds the driver's 256 byte read the same
+# way, with the sentence name in one read and the date in the next, and
+# GPS::task services the parser and the ephemeris arm in the same iteration.
+# Counting sentence names in raw bytes cannot survive this; counting the
+# parser's own committed dates does.
+seed gps_uart_chunk 40
+wait 300
+
+# Hold the GPS Data page open for the whole run. Its 1 Hz timer reads the
+# thread-safe status snapshot on the UI task while the GPS task polls, stores
+# and replays on its own thread, which is the ownership boundary this scenario
+# is also the ThreadSanitizer gate for. Without a page open nothing on the UI
+# side is reading the parser and the race is unobservable.
+action nav gps_data
+wait 500
+assert ui.page gps_data
+
+# nothing is cached on a fresh NVS, so nothing can be replayed
+assert gps.eph_cached 0
+assert uart.eph_replay 0
+
+# let a fix settle, then let the poll window close and the cache be written
+wait 8000
+assert-eventually 8000 gps.satellites 8
+wait 6000
+assert_min gps.eph_cached 200
+
+# Let the receiver clock run on past the capture before the reboot. The fixture
+# clock is monotonic across a restart, as a real receiver's is, so the resumed
+# boot meets a receiver seconds ahead of the cache rather than exactly level
+# with it. Without this the leg passed on a one second margin.
+wait 10000
+
+restart
+
+# The resumed boot meets a cold receiver: it reports a date a day behind for its
+# first few bursts, as a real unit does before it decodes TOW, then corrects. A
+# clock behind the capture is therefore not a verdict. The arm has to stand
+# through it and re-evaluate on the next date, or the replay asserted below
+# never happens.
+gps-fix-date coldstart
+
+# The resumed boot must find the cache and play it back at the receiver, with
+# the same page open and the same two threads in play.
+action nav gps_data
+wait 500
+assert ui.page gps_data
+wait 8000
+assert_min gps.eph_cached 200
+assert-eventually-virtual 20000 uart.eph_replay 3
+
+# Replay is assistance, so it has to go out before the receiver produces its
+# own fix, not after it. The paced send is EPH_REPLAY_GAP_MS apart and the
+# whole set is short, so the count above is reached inside the first seconds.
+wait 8000
+assert-eventually 8000 gps.satellites 8
+assert uart.eph_replay 3
+exit

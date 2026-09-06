@@ -742,6 +742,48 @@ uint32_t Furble::GPS::getHoldRemainingMs(void) const {
   return ConsoleHost::gps().holdRemainingMs;
 }
 
+GPS::receiver_state_t GPS::getReceiverState(void) const {
+  return ConsoleHost::gps().receiverState;
+}
+
+uint32_t GPS::getDetectedBaud(void) const {
+  return ConsoleHost::gps().detectedBaud;
+}
+
+const char *GPS::receiverStateName(receiver_state_t state) {
+  switch (state) {
+    case receiver_state_t::UNKNOWN:
+      return "unknown";
+    case receiver_state_t::DETECTING:
+      return "detecting";
+    case receiver_state_t::PRESENT:
+      return "present";
+    case receiver_state_t::ABSENT:
+      return "absent";
+  }
+  return "unknown";
+}
+
+void GPS::setSatelliteCapture(bool capture) {
+  ConsoleHost::gps().satCapture = capture;
+}
+
+bool GPS::satelliteCaptureEnabled(void) const {
+  return ConsoleHost::gps().satCapture;
+}
+
+GPS::satellite_report_t GPS::getSatelliteReport(void) {
+  return ConsoleHost::gps().satellites;
+}
+
+void GPS::pollMonHw(void) {
+  ConsoleHost::gps().monHwPolls++;
+}
+
+GPS::monhw_report_t GPS::getMonHw(void) {
+  return ConsoleHost::gps().monhw;
+}
+
 const char *GPS::sourceName(source_t source) {
   switch (source) {
     case SOURCE_NONE:

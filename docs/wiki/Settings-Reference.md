@@ -109,7 +109,7 @@ is enabled.
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | GPS | Off | On, Off | Now | Master switch for the GPS receiver. |
-| GPS baud 115200 | Off (9600) | 9600, 115200 | Now | The v1.1 (AT6668) unit needs 115200. The older unit uses 9600. |
+| GPS Baud | 9600 | Auto, 9600, 115200 | Now | Auto probes the six supported rates and requires two checksummed NMEA sentences. The v1.1 AT6668 unit is expected to use 115200; live hardware verification is pending. |
 | Update rate | Default | Default, 1000 ms, 500 ms, 200 ms, 100 ms | Now | How often the receiver reports a position. Default leaves the receiver alone. |
 | Sentences | Default | Default, RMC+GGA | Now | RMC+GGA prunes output to the sentences furble reads. |
 | Constellation | Default | Default, GPS, BDS, GPS+BDS, GLONASS, GPS+GLO, BDS+GLO, All | Now | Which satellite systems the receiver uses. |
@@ -119,10 +119,17 @@ is enabled.
 | Fix Hold | Off | Off, 30 s, 2 min, 10 min, 60 min | Now | Keep sending the last fix to the camera for this long after the receiver loses it, so photos taken in a tunnel or indoors still get a geotag. The held fix keeps its position and advances its clock, and the GPS Data page says how much of the window is left. The window is measured from the moment the fix is declared stale, which is 30 s after the receiver's last good reading, so a 30 s hold can hand the camera a position up to a minute old. The timestamp sent with it counts that whole time, so it is never wrong about how old the fix is. Off sends nothing once the fix is lost, which is the behaviour without this setting. |
 | Extrapolate | Off | On, Off | Now | While a fix is held, project the position along the last measured course and speed instead of repeating it. Needs Fix Hold, a course and speed from the receiver, and at least 2 m/s, so a stationary user is never moved. The projection stops advancing 30 seconds after the fix is lost. Experimental: it is a straight line, so it is wrong as soon as you turn. |
 | GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time. With Fix Hold on it also shows whether the fix is live or held, and how long a held fix has left. The position, altitude and time rows always report the receiver's own last reading, not the held or extrapolated values being sent to the camera. |
+| Assisted start | Off | Off, Position and time, Position, time and ephemeris | Now | Feeds the receiver a position and time hint for a faster fix. The ephemeris option also caches and replays receiver frames; its time to first fix benefit is hardware-tuning-pending. |
+| Platform | Do not send | Do not send, Portable, Stationary, Pedestrian, Vehicle | Now | Applies the CASIC dynamic model through CFG-NAVX, with a PCAS11 fallback. The receiver effect is hardware-tuning-pending. |
+| GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time. |
 | Raw NMEA | n/a | page | n/a | Live receiver sentences, fix state, and error counts. Includes a Hot restart button. |
+| Satellites | n/a | page | n/a | GSV/GSA detail: in-view/used counts, DOP, C/N0 and used flags. Capture runs only while this page is open. |
 
 The receiver is set from these when GPS is enabled, and it returns to its own
-defaults the next time it is powered off.
+defaults the next time it is powered off. With Auto selected, an absent receiver
+is reported and the external rail is dropped; furble retries once after 60
+seconds. Auto detection, ephemeris replay and Platform have simulator coverage
+and are pending live AT6668 verification.
 
 ### Timer (intervalometer)
 

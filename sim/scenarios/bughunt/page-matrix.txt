@@ -126,6 +126,13 @@ assert ui.overflow no
 action nav gps_hold
 wait 100
 assert ui.page gps_hold
+action nav gps_baud
+wait 100
+assert ui.page gps_baud
+assert ui.overflow no
+action nav gps_platform
+wait 100
+assert ui.page gps_platform
 assert ui.overflow no
 action nav gps_data
 wait 300
@@ -137,6 +144,13 @@ assert ui.scroll_top 0
 action nav nmea
 wait 300
 assert ui.page nmea
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav gps_sats
+wait 300
+assert ui.page gps_sats
 action scroll bottom
 assert ui.scroll_bottom 0
 action scroll top

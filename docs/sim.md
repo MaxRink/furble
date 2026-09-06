@@ -257,8 +257,9 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
-`text_size`, `auto_off`, `low_batt`, `fb_output`, and `imu_wake` (0 off, 1 tap,
-2 shake, 3 both).
+`text_size`, `auto_off`, `low_batt`, `fb_output`, `gps_assist` (0 off, 1
+position and time, 2 with ephemeris), `gps_platform` (0 do not send, 1 to 4 the
+dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -277,6 +278,17 @@ These boolean settings are applied before the UI is constructed:
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
 until the page is left, so a scenario that asserts a scan-end callback must
 seed a bounded value.
+
+The modelled GPS receiver is seeded before boot. `gps_baud` sets the `GPS_BAUD`
+setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` says what is on the
+Grove port: `any` (the default, answering whatever rate the driver programmed,
+which leaves every scenario written before the receiver model unchanged),
+`none` for an empty port, or one of `4800`, `9600`, `19200`, `38400`, `57600`,
+`115200`, which stays mute until the autobaud ladder reaches it. `gps_sats`
+picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
+detailed under the receiver model below. `gps_uart_chunk` serves the burst that
+many bytes at a time, paced, so a sentence spans several reads as it does off a
+real UART.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
@@ -411,8 +423,8 @@ action imu.pitch DEGREES
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
 `gps_rate`, `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`,
-`gps_hold`, `gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`,
-`bluetooth`, `tx_power`,
+`gps_hold`, `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`,
+`timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -423,8 +435,8 @@ action imu.pitch DEGREES
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
-`gps`, `gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`,
-`about`,
+`gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`, `theme`,
+`text_size`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, and `interval_wait`.
@@ -626,6 +638,48 @@ reports nothing about the bottom two rather than proving them clear.
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+
+GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
+`gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end
+scenario uses the fixed GSV/GSA fixture and proves the rendered route before
+docs capture runs.
+
+Phase 2 adds the receiver model and its queries. `gps.receiver` reports
+`unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the
+autobaud ladder locked (0 while none is known), `gps.eph_cached` reports the
+bytes the tier 2 ephemeris cache occupies in NVS, and `gps.monhw` reports the
+decoded MON-HW snapshot as `noise/agc/antenna/jam` or `none`. On the UART side
+`uart.baud` is the rate the driver has the port set to, `uart.eph_replay`
+counts the assistance frames replayed back at the receiver, and
+`uart.monhw_polls` counts MON-HW polls.
+
+Four seeds configure the modelled receiver before boot. `gps_baud` selects the
+`GPS_BAUD` setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` selects
+what is on the Grove port: `any` (the default, which answers whatever rate the
+driver programmed and keeps every pre-existing scenario unchanged), `none` for
+an empty port, or one of the six ladder rates, which makes the receiver mute
+until the ladder reaches it. `gps_sats` selects the GSV/GSA fixture
+(`default`, `none`, `one`, `twelve`, `duplicate`, `range`, `multi`,
+`malformed`). `gps_fix_date` selects the fix burst: `fixture` is the historic frozen RMC/GGA
+pair, `modern` and `stale` advance their clock one second per burst a week
+apart, `coldstart` is `modern` but reports a date a day behind for its first few
+bursts as a unit does before it decodes TOW, `badrmc` sends an RMC whose
+checksum is broken, `emptyrmc` sends the all-empty pre-fix RMC a receiver emits
+before it has a solution, `walkback` walks its date forward a day per burst from
+far behind the cache, and `nodate` is GGA only, a receiver that reports a
+position but never a date. The ephemeris rule commits on a date the parser has actually
+committed this session, so those are what exercise it. `gps_uart_chunk N` serves
+the burst N bytes at a time, paced 20 ms apart, so a sentence spans several
+reads and arrives over time the way it does off a real UART. `gps_assist` and
+`gps_platform` are ordinary byte seeds for their settings.
+
+Five script verbs drive the same model at runtime: `gps-receiver
+<any|none|BAUD>`, `gps-sats <fixture>`, `gps-fix-date
+<fixture|modern|stale|nodate>`, `gps-monhw <full|short>` (issue the production
+MON-HW poll, optionally answered with a truncated payload) and
+`gps-eph-corrupt` (flip one byte of the last frame in the stored ephemeris
+cache, so the reload path has to refuse the whole blob rather than replay up to
+the damage).
 
 ## Fault injection and fuzzing
 

@@ -59,6 +59,7 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {46, ValueType::BOOL,   1,  1               },
     {67, ValueType::U8,     1,  1               },
     {68, ValueType::BOOL,   1,  1               },
+    {69, ValueType::U8,     1,  1               },
     {72, ValueType::U8,     1,  1               },
     {73, ValueType::BOOL,   1,  1               },
 };

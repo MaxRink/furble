@@ -587,3 +587,57 @@ a regression.
   <key> <n>` and `assert_min <key> <n>` (integer parse, inclusive). They express
   a redraw ceiling and a width-agnostic direction or render floor (for example
   `assert_min ui.visible_objects 1`) without pinning a per-panel pixel value.
+- GPS docs use `nav gps_sats` and the `gps-satellite-page` scenario. The fake
+  UART includes a fixed GSV/GSA fixture, so the capture proves the satellite
+  page route and parsed counts without implying live AT6668 hardware coverage.
+- The fake UART models a receiver, not just a byte source. It records the rate
+  the driver programmed and answers only when the modelled receiver rate
+  matches, which is what makes the autobaud ladder and the no-receiver state
+  testable. The default is a receiver that answers at any rate, so every
+  scenario written before that model is unchanged. It also answers a CFG-MSG
+  poll at rate 0xFFFF for MON-HW and for the three assistance messages, and it
+  counts the assistance frames replayed back at it, so ephemeris replay is
+  observed at the wire rather than inferred from a log line. See
+  `gps_receiver`, `gps_sats`, `gps_fix_date`, `gps-receiver`, `gps-sats`,
+  `gps-monhw` and `gps-eph-corrupt` in docs/sim.md.
+- The GSV/GSA fixtures are stored as sentence bodies and checksummed at
+  runtime, so a fixture cannot carry a stale hand computed checksum. The
+  `default` set is the one docs/img/gps-satellites.png is pinned to; changing
+  its values means regenerating that capture.
+- The `modern`, `stale`, `coldstart`, `badrmc`, `emptyrmc`, `walkback` and
+  `nodate` fix bursts advance their clock one second
+  per burst, the way a receiver with a clock of its own does. The historic
+  default burst stays frozen so every scenario and capture written against it is
+  unchanged. A frozen clock is not a neutral simplification: an earlier
+  ephemeris freshness rule keyed off the receiver's reported time changing, and
+  the `nodate` burst passed its leg only because its clock stood still. Ticking
+  it turned the leg into a replay of three frames and exposed the rule as wrong.
+  If a fixture models a receiver, give it a clock that moves.
+- `seed gps_uart_chunk N` serves the fix burst N bytes at a time, paced 20 ms
+  apart, so a sentence spans several reads and arrives over time instead of
+  being drained inside one `serviceSerial()` call. A real burst carrying GSA and
+  GSV exceeds the driver's 256 byte read the same way. `gps_fix_date coldstart`
+  reports a date a day behind for its first few bursts, as a unit does before it
+  decodes TOW, `badrmc` sends an RMC whose checksum is broken, `emptyrmc` is the
+  all-empty pre-fix RMC a receiver sends before it has a solution, and
+  `walkback` walks its date forward a day per burst from far behind the cache.
+  Each models a receiver state a fixture serving one perfect burst can never
+  reach, and each one catches a defect that shipped in this branch.
+- `emptyrmc` is worth understanding before writing anything that keys off
+  TinyGPS++ update flags. The parser only dispatches a term when it is
+  non-empty, so an empty date field never reaches `setDate`, yet `date.commit()`
+  still runs and raises `updated` against the previous value. A flag-counted
+  date therefore counts a date the receiver never sent, and that sentence is
+  exactly what is on the wire before a first fix. Compare committed values.
+- The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
+  `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
+  GPS task's own reads of the parser: measured five runs per cell, unlocking
+  `servicePoll`'s fix read fails `gps-ephemeris-stale` 4/5 and
+  `gps-ephemeris-replay` 1/5. It is **not** a gate for `storeEphemeris`, which
+  measured 0/5 with its lock removed. Measure before claiming a leg does or does
+  not catch something, and measure more than once: a single green run is not
+  evidence of absence, and treating it as such nearly deleted this gate.
+- TinyGPSPlus ages come from `millis()`. That is the same clock as
+  `Platform::tick()` on the device and a different one here, so a check that
+  compares a parser age against a `Platform::tick()` value passes in the
+  simulator for the wrong reason. Compare reported values, not ages.

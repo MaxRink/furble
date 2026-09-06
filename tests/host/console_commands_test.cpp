@@ -121,26 +121,26 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",    "expected stats or log",                                       "",         {"stats", "log"}                      },
-    {"perf",     "expected tasks, heap or lvgl",                                "",         {"tasks", "heap", "lvgl"}             },
+    {"power",    "expected stats or log",                                                "",         {"stats", "log"}                      },
+    {"perf",     "expected tasks, heap or lvgl",                                         "",         {"tasks", "heap", "lvgl"}             },
     {"gps",
-     "expected on, off, raw, send, binary, config, aid or power",               "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "power"}                                                             },
-    {"time",     "usage: time status | flush",                                  "",         {"status", "flush"}                   },
-    {"settings", "expected list, get or set",                                   " theme",   {"list", "get", "set"}                },
-    {"ui",       "usage: ui audit",                                             "",         {"audit"}                             },
-    {"cameras",  "expected list or status",                                     "",         {"list", "status"}                    },
-    {"imu",      "usage: imu status",                                           "",         {"status"}                            },
-    {"shutter",  "expected press, release or hold",                             "",         {"press", "release", "hold"}          },
-    {"ir",       "usage: ir fire [protocol]",                                   "",         {"fire"}                              },
-    {"focus",    "expected press or release",                                   "",         {"press", "release"}                  },
-    {"scan",     "expected start, stop or list",                                "",         {"start", "stop", "list"}             },
-    {"bt",       "expected scan, explore, pair or journal",                     "",         {"scan", "explore", "pair", "journal"}},
-    {"feedback", "usage: feedback test",                                        " shutter", {"test"}                              },
-    {"flash",    "usage: flash prepare | cancel",                               "",         {"prepare", "cancel"}                 },
+     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                         },
+    {"time",     "usage: time status | flush",                                           "",         {"status", "flush"}                   },
+    {"settings", "expected list, get or set",                                            " theme",   {"list", "get", "set"}                },
+    {"ui",       "usage: ui audit",                                                      "",         {"audit"}                             },
+    {"cameras",  "expected list or status",                                              "",         {"list", "status"}                    },
+    {"imu",      "usage: imu status",                                                    "",         {"status"}                            },
+    {"shutter",  "expected press, release or hold",                                      "",         {"press", "release", "hold"}          },
+    {"ir",       "usage: ir fire [protocol]",                                            "",         {"fire"}                              },
+    {"focus",    "expected press or release",                                            "",         {"press", "release"}                  },
+    {"scan",     "expected start, stop or list",                                         "",         {"start", "stop", "list"}             },
+    {"bt",       "expected scan, explore, pair or journal",                              "",         {"scan", "explore", "pair", "journal"}},
+    {"feedback", "usage: feedback test",                                                 " shutter", {"test"}                              },
+    {"flash",    "usage: flash prepare | cancel",                                        "",         {"prepare", "cancel"}                 },
     {"debug",
-     "expected control, camera, ble, heap, tasks, power, gps, settings or all", "",
-     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                             },
+     "expected control, camera, ble, heap, tasks, power, gps, settings or all",          "",
+     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                      },
 };
 
 size_t expectedSubcommandCount(void) {
@@ -485,9 +485,53 @@ void testSettings(void) {
   check(badBool.rc != 0, "a bad boolean fails");
   checkContains(badBool.out, "expected on or off", "the boolean error names the values");
 
-  const Result badBaud = runDirect("settings set gps_baud 4800");
-  check(badBaud.rc != 0, "an unsupported baud fails");
-  checkContains(badBaud.out, "expected 9600 or 115200", "the baud error names the values");
+  // The GPS baud parser takes the two fixed rates and both spellings of the
+  // autobaud ladder. Each save is proved by seeding a different value first.
+  const struct {
+    const char *text;
+    uint32_t stored;
+  } BAUDS[] = {
+      {"auto",   0     },
+      {"AUTO",   0     },
+      {"0",      0     },
+      {"9600",   9600  },
+      {"115200", 115200},
+  };
+  for (const auto &entry : BAUDS) {
+    const std::string what = std::string("settings set gps_baud ") + entry.text;
+    runDirect(entry.stored == 9600 ? "settings set gps_baud 115200" : "settings set gps_baud 9600");
+    const Result baud = runDirect(what);
+    check(baud.rc == 0, what + " returns success");
+    checkContains(baud.out, "saved: gps_baud", what + " confirms the save");
+    check(Furble::Settings::load<uint32_t>(Furble::Settings::GPS_BAUD) == entry.stored,
+          what + " stored " + std::to_string(entry.stored));
+  }
+
+  // Everything else is refused, and the refused write leaves the store alone.
+  for (const char *bad : {"4800", "abc", ""}) {
+    const std::string what = std::string("settings set gps_baud ") + bad;
+    runDirect("settings set gps_baud 9600");
+    const Result baud = runDirect(what);
+    check(baud.rc != 0, what + " fails");
+    check(Furble::Settings::load<uint32_t>(Furble::Settings::GPS_BAUD) == 9600,
+          what + " left the stored baud alone");
+  }
+  checkContains(runDirect("settings set gps_baud 4800").out, "expected auto, 0, 9600 or 115200",
+                "the baud error names the values");
+  checkContains(runDirect("settings set gps_baud").out, "missing value",
+                "an empty baud names the missing value");
+
+  // The dynamic platform model, saved from settings as well as from gps.
+  checkContains(runDirect("settings set gps_plat 3").out, "saved: gps_plat",
+                "the platform model saves");
+  checkContains(runDirect("settings get gps_plat").out, "value: 3",
+                "the platform model reads back");
+  const Result badPlatform = runDirect("settings set gps_plat 5");
+  check(badPlatform.rc != 0, "a platform model above 4 fails");
+  checkContains(badPlatform.out, "expected 0 (off), 1 portable, 2 stationary, 3 pedestrian",
+                "the platform error names the models");
+  checkContains(runDirect("settings get gps_plat").out, "value: 3",
+                "a refused platform model leaves the store alone");
 
   const Result badDuty = runDirect("settings set gps_duty 7");
   check(badDuty.rc != 0, "an unsupported duty interval fails");
@@ -706,6 +750,142 @@ void testGPS(void) {
 
   checkContains(runDirect("gps raw").out, "usage: gps raw on | off", "gps raw needs an argument");
   checkContains(runDirect("gps send").out, "usage: gps send", "gps send needs a body");
+
+  const Result bogus = runDirect("gps bogus");
+  check(bogus.rc != 0, "an unknown gps subcommand fails");
+  checkContains(bogus.out,
+                "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",
+                "an unknown gps subcommand lists the accepted ones");
+}
+
+// Test 5b. Receiver detection, satellite detail, the platform model and the
+// MON-HW poll. These four surfaces are what a bench script reads when a
+// receiver stays silent, so each is asserted from the printed line outward.
+void testGPSDiagnostics(void) {
+  std::cerr << "test: the gps receiver, satellite, platform and monhw diagnostics\n";
+  ConsoleHost::resetDoubles();
+
+  auto &gps = ConsoleHost::gps();
+
+  // Detection state. A host script has to tell a receiver that answered from
+  // one that was never probed, so every state prints its own name.
+  const struct {
+    Furble::GPS::receiver_state_t state;
+    const char *name;
+  } RECEIVER_STATES[] = {
+      {Furble::GPS::receiver_state_t::UNKNOWN,   "unknown"  },
+      {Furble::GPS::receiver_state_t::DETECTING, "detecting"},
+      {Furble::GPS::receiver_state_t::PRESENT,   "present"  },
+      {Furble::GPS::receiver_state_t::ABSENT,    "absent"   },
+  };
+  for (const auto &entry : RECEIVER_STATES) {
+    gps.receiverState = entry.state;
+    const Result status = runDirect("gps");
+    check(status.rc == 0, std::string("gps status runs in the ") + entry.name + " state");
+    checkContains(status.out, std::string("receiver: ") + entry.name,
+                  std::string("gps status reports the ") + entry.name + " receiver state");
+  }
+
+  // The detected baud is zero until the ladder locks one, and zero must not
+  // read as a configured rate.
+  gps.detectedBaud = 0;
+  checkContains(runDirect("gps").out, "detected_baud: 0", "an unlocked baud reports as zero");
+  gps.detectedBaud = 115200;
+  checkContains(runDirect("gps").out, "detected_baud: 115200", "a locked baud reports itself");
+
+  // Satellite capture is off by default, and the empty report names the
+  // command that starts it instead of printing an empty table.
+  const Result empty = runDirect("gps sats");
+  check(empty.rc == 0, "gps sats returns success with an empty report");
+  checkContains(empty.out, "sats in view: 0", "an empty report prints a zero in view count");
+  checkContains(empty.out, "sats used: 0", "an empty report prints a zero used count");
+  checkContains(empty.out, "sats: none (enable with 'gps sats on')",
+                "an empty report names the command that starts capture");
+
+  const Result satsOn = runDirect("gps sats on");
+  check(satsOn.rc == 0, "gps sats on returns success");
+  checkContains(satsOn.out, "sats capture: true", "gps sats on reports the new capture state");
+  check(gps.satCapture, "gps sats on reached the receiver");
+
+  const Result satsOff = runDirect("gps sats off");
+  check(satsOff.rc == 0, "gps sats off returns success");
+  checkContains(satsOff.out, "sats capture: false", "gps sats off reports the new capture state");
+  check(!gps.satCapture, "gps sats off reached the receiver");
+
+  const Result satsBad = runDirect("gps sats garbage");
+  check(satsBad.rc != 0, "a bad capture argument fails");
+  checkContains(satsBad.out, "usage: gps sats [on | off]",
+                "a bad capture argument prints the usage");
+
+  // A populated report prints the counts, the DOP line and one line per
+  // satellite, tracked or not.
+  gps.satellites.in_view = 2;
+  gps.satellites.used = 1;
+  gps.satellites.dop = {2.5f, 1.2f, 2.0f, 3, true};
+  gps.satellites.satellites = {
+      {5,  Furble::Casic::CONSTELLATION_GPS,    45, 120, 38, true,  true },
+      {12, Furble::Casic::CONSTELLATION_BEIDOU, 10, 300, 0,  false, false},
+  };
+  const Result report = runDirect("gps sats");
+  check(report.rc == 0, "gps sats returns success with a populated report");
+  checkContains(report.out, "sats in view: 2", "the report prints the in view count");
+  checkContains(report.out, "sats used: 1", "the report prints the used count");
+  checkContains(report.out, "fix type: 3", "the report prints the fix type");
+  checkContains(report.out, "dop: pdop 2.5 hdop 1.2 vdop 2.0", "the report prints the DOP line");
+  checkContains(report.out, "sat: sys=1 prn=5 elev=45 az=120 cn0=38 used=true",
+                "the report prints a tracked satellite");
+  checkContains(report.out, "sat: sys=4 prn=12 elev=10 az=300 cn0=0 used=false",
+                "the report prints an untracked satellite");
+  check(!contains(report.out, "sats: none"),
+        "a populated report drops the hint that starts capture");
+
+  // The dynamic platform model. Every accepted value saves, and everything
+  // else is refused without touching the store.
+  const Result noModel = runDirect("gps platform");
+  check(noModel.rc != 0, "gps platform with no argument fails");
+  checkContains(noModel.out, "usage: gps platform 0..4", "gps platform prints its usage");
+
+  for (unsigned model = 0; model <= 4; model++) {
+    const std::string what = "gps platform " + std::to_string(model);
+    const Result platform = runDirect(what);
+    check(platform.rc == 0, what + " returns success");
+    checkContains(platform.out, "saved: gps_plat " + std::to_string(model),
+                  what + " confirms the save");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PLATFORM) == model,
+          what + " reached the real Settings store");
+  }
+
+  for (const char *bad : {"5", "-1", "abc", "2x"}) {
+    const std::string what = std::string("gps platform ") + bad;
+    const Result platform = runDirect(what);
+    check(platform.rc != 0, what + " fails");
+    checkContains(platform.out, "usage: gps platform 0 (off), 1 portable",
+                  what + " prints the accepted models");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PLATFORM) == 4,
+          what + " left the saved model alone");
+  }
+
+  // MON-HW. The poll is asynchronous, so the first call has nothing to print
+  // and says so instead of printing a zeroed snapshot.
+  const Result pending = runDirect("gps monhw");
+  check(pending.rc == 0, "gps monhw returns success before a response");
+  checkContains(pending.out, "monhw: polled, no response yet, retry 'gps monhw'",
+                "an unanswered poll says so");
+  check(gps.monHwPolls == 1, "gps monhw queued a poll");
+
+  gps.monhw.have = true;
+  gps.monhw.hw = {1234, 56, 2, 7, true};
+  gps.monhw.raw = {};
+  gps.monhw.raw[0] = 0xBA;
+  gps.monhw.raw[1] = 0xCE;
+  gps.monhw.raw[2] = 0x0A;
+  gps.monhw.raw_length = 3;
+  const Result monhw = runDirect("gps monhw");
+  check(monhw.rc == 0, "gps monhw returns success with a response");
+  checkContains(monhw.out, "monhw: noise=1234 agc=56 antenna=2 jam=7",
+                "a decoded snapshot prints its fields");
+  checkContains(monhw.out, "monhw raw: BA CE 0A", "a decoded snapshot prints its raw bytes");
+  check(gps.monHwPolls == 2, "every gps monhw queues a fresh poll");
 }
 
 // Test 6. Time, power and performance reporting.
@@ -1493,6 +1673,7 @@ int main(void) {
   testStatusAndVersion();
   testSettings();
   testGPS();
+  testGPSDiagnostics();
   testTimePowerPerf();
   testBt();
   testBoundaryCommands();

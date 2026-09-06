@@ -779,6 +779,14 @@ target_include_directories(gps_power_profiler_test PRIVATE
 target_compile_options(gps_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
 target_link_libraries(gps_power_profiler_test PRIVATE Threads::Threads)
+# Pure CASIC and NMEA helper logic from lib/furble/protocol/GpsCasic. No BLE or
+# NVS dependency, so it compiles the production source directly.
+add_executable(gps_casic_test
+               gps_casic_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp)
+target_include_directories(gps_casic_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                              -Wno-unused-parameter)
 
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
@@ -1447,6 +1455,7 @@ if(BUILD_TESTING)
   add_test(NAME gps-hold COMMAND gps_hold_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
+  add_test(NAME gps-casic COMMAND gps_casic_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   # The console suite drives the real console task through its transport, and
   # 'perf tasks' samples over a full second, so give it room while still
