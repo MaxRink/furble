@@ -944,3 +944,5 @@ Update 2026-09-06 20:15: PR #287 merged at 7e3e0d8d; every open lane has the new
 Update 2026-09-06 21:30: #48 fix round at ac474257 (all interrupt-path defects closed, scheduler-visible IMU mutex, schema row 74) and #139 fix round at 33f207ef (replay commits on an RMC count, TSAN caveat retracted) both pushed from the host via bundles; delta reviews running on both. #245 and #47 rebased and mergeable, waiting on CI. Stick idle on the #245 bench head.
 
 Update 2026-09-06 22:00: #48 CI 34/34 on ac474257 with PR body and tally posted; delta reviews running on #48 and #139; #245 and #47 rebased, waiting on CI. Lesson recorded: a mutation that only fails to compile proves nothing.
+
+Update 2026-09-06 22:30: #139 first fully green CI on 33f207ef; #245 (973e9d5e) and #47 (5900556b) green after rebases; delta reviews running on #48 and #139. Waiting on the user for the #273 pictures verdict plus the narrow-panel rule and for the X100VI pairing screen (bench of #245 on the flashed d5de73ee).
