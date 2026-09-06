@@ -22,6 +22,13 @@ Public headers for the app layer in src/, one header per module
   NVS writes.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46.
 
+- `FurbleCompanionService.h` gates the settings and trigger writes on the
+  companion password challenge in `FurbleCompanionAuth.h`. A new privileged
+  characteristic must call `allowProtected()` before it acts, which is still
+  owed by the reserved OTA control and data ids. `handleLocation` is
+  deliberately outside that gate and needs only an encrypted link; see
+  plans/116 for why.
+
 ### Companion wire id reservations
 
 The settings table in `src/FurbleSettings.cpp` is the source of truth for ids
