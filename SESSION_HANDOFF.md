@@ -9,10 +9,10 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 15:40)
+## Resume here (kept current; last updated 2026-09-07 17:20)
 
-Master `fork/master` = **35c0f4b8** (merged this cycle in order: #261, #264,
-#270, #274, #276, #266, #278, #286, #287, #47, #45, #291). Upstream gkoh/furble is read-only.
+Master `fork/master` = **ae0aeafa** (merged this cycle in order: #261, #264,
+#270, #274, #276, #266, #278, #286, #287, #47, #45, #291, #139). Upstream gkoh/furble is read-only.
 
 Open PRs, head, state, next action:
 
@@ -22,14 +22,14 @@ Open PRs, head, state, next action:
 | #272 cancellable in-flight connect (plan 170) | a376c4e7 | approved, parked | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
 | #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | MERGED 53fa8965 | fifteen-step GPS hardware gate owed post-merge (plan 21) |
-| #139 GPS phase 2 (plan 32) | c64d8d80 | pushed 16:00 on 35c0f4b8, short delta review + CI running, then merge | bound leg must be load-bearing again (walk past 16 dates, assert drop), "2x" console test, rebase onto 35c0f4b8; then push, CI, merge (GPS gate owed post-merge); earlier notes: same-day IMPLAUSIBLE retry never re-arms (compare UTC time not date; same-day fixture), check-doc-tokens predicate, stale comment, gps platform strtoul end check; arm compares the committed date value (emptyrmc, walkback fixtures), IMPLAUSIBLE bounded at 4; rebased onto 107a6b96 (keep-both resolutions repaired); on approval plus green CI merge, GPS gate owed post-merge |
+| #139 GPS phase 2 (plan 32) | c64d8d80 | MERGED ae0aeafa | bound leg must be load-bearing again (walk past 16 dates, assert drop), "2x" console test, rebase onto 35c0f4b8; then push, CI, merge (GPS gate owed post-merge); earlier notes: same-day IMPLAUSIBLE retry never re-arms (compare UTC time not date; same-day fixture), check-doc-tokens predicate, stale comment, gps platform strtoul end check; arm compares the committed date value (emptyrmc, walkback fixtures), IMPLAUSIBLE bounded at 4; rebased onto 107a6b96 (keep-both resolutions repaired); on approval plus green CI merge, GPS gate owed post-merge |
 | #45 IMU gestures (plan 17) | cf5ec483 | MERGED 107a6b96 | eight-step IMU hardware gate owed post-merge (plan 17; trace capture and the hour drain can still change the design) |
-| #48 IMU hardware motion (plan 20) | af3f982a | review CHANGES REQUIRED 15:10 (docs/scenario union-merge residue, stale edge-counter comments, SD clamp, MPU6886 count semantics, roller hint), fix round running | default HW_MOTION_SOFTWARE (flip to Auto is the gate deliverable); Motion Engine roller moved to #45 Gestures page; union-merge corrupted four files during rebase, repaired by hand (reviewer checks); on approval plus green CI merge, then #65 re-stacks |
+| #48 IMU hardware motion (plan 20) | 21973038 | fix round pushed 17:00, lane rebasing onto ae0aeafa | default HW_MOTION_SOFTWARE (flip to Auto is the gate deliverable); Motion Engine roller moved to #45 Gestures page; union-merge corrupted four files during rebase, repaired by hand (reviewer checks); on approval plus green CI merge, then #65 re-stacks |
 | #65 GPS motion detector (plan 18) | c1410d0b (bundle af50206a stale) | re-stacking on #48 af3f982a | lane deleted FurbleMotion.h and the 100 ms timer (MotionSource holds the 60 s dwell); re-stack on #48 final head, push bundle, delta review, six-step gate; GitHub refuses a base change ("part of a stack"), so CI is red until #48 merges |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #291 conn-saver idle coverage test (plan 163 deviation, from plan 151) | a8bb0a22 | MERGED 35c0f4b8 | test-only cherry-pick of #245 e3e3872c; the Camera.cpp floor 73.75 is timing-dependent (master 74.75, #139 72.17, lost lines all in requestConnProfile); merge first, then #139/#48/#65 rebase over it |
-| #166 companion password gate (plan 116) | a6c06b1f | lane dispatched 15:40 | rebase onto 35c0f4b8, wire id 46 check, schema row, gates, bundle; review, CI, merge; app handshake bench owed post-merge |
-| #75 companion cameras characteristic (plan 51) | 868a9660 | lane dispatched 16:05 | rebase, wire ids, companion harness, review, CI, merge; no camera needed |
+| #166 companion password gate (plan 116) | a6c06b1f (bundle 86d5c0ca storage-only, not pushed) | lane implementing the auth gate on ae0aeafa | the branch never had the gate (only the wire id 47 setting); lane adds Auth char, HMAC, per-connection state, gate on settings/trigger, encryption on location, companion_auth_test; then push, review, CI, merge; app handshake bench owed |
+| #75 companion cameras characteristic (plan 51) | 868a9660 | lane rebasing onto ae0aeafa | rebase, wire ids, companion harness, review, CI, merge; no camera needed |
 | #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | after #75 | base still feat/33-wifi-hub (stale, 33a merged as #148): re-base onto master, review, CI; user WiFi bench (ssid/psk, enable, status, ntp), no camera |
 | #66 MQTT, #161 MQTT sim, #90 WebUI (33c/117/33d) | 47edf348 / dc38f1b5 / a21f4aa6 | after #53 | stacked in that order; broker bench by the user |
 | #59 deep sleep between interval shots (plan 19) + #177 sim | ffa5798d / e848a9b5 | prep only | rebase + sim green now; bench needs a camera (interval run) |
