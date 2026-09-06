@@ -936,3 +936,5 @@ Update 2026-09-06 17:30: PR #286 merged at 96a05b38 (scheduler-visible mutex wai
 Update 2026-09-06 18:00: #139 delta review requested changes (the receiver-clock arm commits on a ticking time without a date; the TSAN leg does catch the servicePoll race 5/5 and stays a gate; five unlocked m_GPS reads remain); fix round running. #287 coverage rerun in progress; merge on green.
 
 Update 2026-09-06 18:30: #45 final head 7c2f5038 (schema rows 72/73 mutation-covered, wire ids pinned by protocol_test, TSAN suppression scoped to libdbus); only its hardware gate remains; parked for its turn.
+
+Update 2026-09-06 19:45: #287 rebased to 33d4d214 and pushed; merges on green CI. #65 at c1410d0b (schema row 66; a missing schema row fails an entire provisioning batch), parked for #48. #245 and #47 rebasing onto 96a05b38; #48 and #139 fix rounds base on it. Rule: after every master merge, message every open lane the new SHA.
