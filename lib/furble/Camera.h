@@ -546,6 +546,15 @@ class Camera: public NimBLEClientCallbacks {
   // Guards m_CancelClient only. Held around a pointer store on the connect task
   // and a link terminate on the cancelling task, both short and neither
   // nesting any other lock, so no ordering hazard with m_Mutex.
+  //
+  // Deliberately std::mutex, not connect_mutex_t. The scheduler-visible mutex
+  // exists for m_Mutex, which connect() holds across a whole attempt, so a
+  // waiter on it can be parked for virtual seconds (issue 279). Nothing that
+  // blocks runs under this one: the longest hold is a single link terminate.
+  // Measured before deciding, both cancel reproductions pass on virtual-time
+  // bounds of 6000 ms with this left as a host mutex, twelve of twelve runs at
+  // host loadavg 20. If a future change does something long under it, that
+  // stops being true and it needs the alias.
   std::mutex m_CancelMutex;
 
   // The NimBLE client of the attempt currently in flight, or nullptr.

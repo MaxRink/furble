@@ -725,9 +725,37 @@ overrides unchanged.
   PR's `abortBlockingConnect()` releases it, so each now asserts
   `ble.secure_stall_aborted yes` and lands inside its clock bound on every
   panel. Their manifest `reason` strings, which said to promote and widen them
-  when this PR landed, go with the promotion.
+  when this PR landed, go with the promotion, and their in-file
+  `CERTIFIED FALSE` headers with them.
+
+  On the rebase onto master 96a05b38 they run against PR #286's restored
+  settle bounds, back at 6000 ms of virtual time from the 30000 ms #278 had
+  widened them to. Both pass on all three panels. The bound is the reason
+  `Camera::m_CancelMutex` was examined this round and left as a plain
+  `std::mutex`: see below.
 - All four certified scenarios also run green under the
   `FURBLE_SIM_NO_TOUCH=1` environment override on every declared panel.
+
+PR #286 makes `Camera::m_Mutex` a `connect_mutex_t`, which is
+`Sim::SchedulerMutex` under `FURBLE_SIM` and `std::mutex` everywhere else, so a
+wait on it is visible to the simulator's scheduler and virtual time stops
+tracking host load. This PR adds one mutex to `Camera`, `m_CancelMutex`, and it
+stays a plain `std::mutex` on purpose.
+
+The alias earns its place on `m_Mutex` because `connect()` holds that lock
+across a whole attempt, so a waiter can be parked for virtual seconds. Nothing
+that blocks runs under `m_CancelMutex`: the connect task holds it for a pointer
+store, and the cancelling task holds it across a single link terminate. It was
+measured rather than argued, because the restored 6000 ms bounds are exactly
+what a scheduler-invisible wait would break: both cancel reproductions passed
+twelve of twelve runs at host loadavg 20 with `m_CancelMutex` left as a host
+mutex, and five of five unloaded. The reasoning and the measurement are
+recorded at the declaration in `Camera.h`, together with the condition that
+would reverse it: anything long done under that lock.
+
+Firmware is unaffected either way. `connect_mutex_t` is `std::mutex` off
+`FURBLE_SIM`, and the `clock.h` include is behind the same guard, so the
+firmware translation unit is byte identical across this rebase.
 
 The mock peer gained `setSecureTimeouts()` (a bounded run of handshake timeouts
 that take the link with them, the bench shape) and `setRefuseWhileBonded()` (a
