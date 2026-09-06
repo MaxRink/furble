@@ -11,10 +11,10 @@
 /*
  * Pure CASIC and NMEA helper logic for the AT6668 / CASIC GPS/BDS Unit v1.1.
  *
- * Everything here is free of ESP-IDF, M5Unified, NVS and LVGL so it links into
- * the host test suite unchanged. The firmware GPS driver calls into it. The
- * data sources for every constant and layout below are cited in
- * plans/32-gps-advanced.md under PR32a, PR32b, PR32d and PR32e.
+ * Everything here is free of ESP-IDF, NVS, the board support library and the
+ * UI toolkit, so it links into the host test suite unchanged. The firmware GPS
+ * driver calls into it. The data sources for every constant and layout below
+ * are cited in plans/32-gps-advanced.md under PR32a, PR32b, PR32d and PR32e.
  */
 
 namespace Furble {

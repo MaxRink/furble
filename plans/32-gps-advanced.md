@@ -287,6 +287,21 @@ deterministic mutation-checked fuzz loop over `NmeaSatellites`,
 subcommand, the four receiver states, and the `gps_baud` and `gps_plat`
 settings).
 
+### The documentation capture gate
+
+The branch shipped a CI step that re-rendered the two GPS documentation
+captures under xvfb and byte-compared them against the committed PNGs, twice,
+for determinism. It was dropped for two reasons. It ran the docs script without
+the optional capability environment variables the script's own header says the
+harness sets, so `nav infrared` returned UNAVAILABLE and the step could never
+pass. And the shape is wrong even when it runs: capture byte-equality only
+holds for two runs of the same binary (sim/CLAUDE.md), so a
+render-and-compare against a committed PNG is a tripwire that fires on any
+unrelated LVGL, font or layout change and lands on whoever made it. No other
+documentation image in the repository is gated that way. What is left is the
+part that cannot rot and is easy to forget: the `docs/img` and `docs/wiki/img`
+copies must match each other.
+
 ### Known coverage gaps
 
 - The four hour staleness arithmetic in `armEphemerisReplay` is covered by
