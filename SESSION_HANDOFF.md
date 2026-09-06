@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 07:00)
+## Resume here (kept current; last updated 2026-09-07 07:30)
 
 Master `fork/master` = **53fa8965** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47). Upstream gkoh/furble is read-only.
@@ -23,7 +23,7 @@ Open PRs, head, state, next action:
 | #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | MERGED 53fa8965 | fifteen-step GPS hardware gate owed post-merge (plan 21) |
 | #139 GPS phase 2 (plan 32) | 9acc9f48 | fix round running | an empty RMC date term still raises the parser's updated flag, so the count must require a valid changed date (emptyrmc fixture) and the IMPLAUSIBLE retry needs a bound; then delta review, hardware gate (receiver rejection of expired ephemeris measured first) |
-| #45 IMU gestures (plan 17) | 7c2f5038 | rebasing onto 53fa8965 | push, CI, merge (eight-step IMU gate owed post-merge) |
+| #45 IMU gestures (plan 17) | 7c2f5038 | final check approved; rebasing onto 53fa8965 | push, CI green, merge (eight-step IMU gate owed post-merge) |
 | #48 IMU hardware motion (plan 20) | 4b453968 | fix round running | the edge counter set an edge interrupt on the level wake pin (disables light-sleep wake) and GPIO13 cannot see the INT1 train; count via the M5PM1 GPIO4 status, host shim test of armMotionWake; then delta review, merge (gate deferred), before #65 |
 | #65 GPS motion detector (plan 18) | c1410d0b | rebasing onto #48 4b453968 | consume IMU::MotionSource (state() only, isArmed asserted), bundle, delta review, six-step gate |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
