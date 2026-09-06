@@ -137,6 +137,7 @@ void testValidatedApplyAndRuntimeHooks() {
       {46, ValueType::BOOL,   {1}                                               },
       {72, ValueType::U8,     {3}                                               },
       {73, ValueType::BOOL,   {1}                                               },
+      {66, ValueType::BOOL,   {1}                                               },
   };
   ApplyReport report;
   ApplyOptions options;
@@ -145,7 +146,7 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, 72, 73}),
+  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, 72, 73, 66}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -163,6 +164,13 @@ void testValidatedApplyAndRuntimeHooks() {
   check(Furble::Settings::load<bool>(Furble::Settings::IMU), "validated IMU setting is persisted");
   check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
         "validated IMU trigger setting is persisted");
+  // Wire id 66 is only provisionable because it has a SETTING_SCHEMAS row in
+  // lib/furble/protocol/ProvisionTLV.cpp. Provision::validateSetting() looks
+  // the wire id up there before it validates anything, and the decoder rejects
+  // an unknown id outright, so a missing row fails the whole batch before the
+  // value is ever examined. This assertion is what catches that.
+  check(Furble::Settings::load<bool>(Furble::Settings::GPS_MOTION),
+        "validated motion adaptive setting is persisted");
 }
 
 void testDomainValidation() {

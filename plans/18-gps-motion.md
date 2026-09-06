@@ -248,7 +248,12 @@ Implemented:
   the GPS rows when the receiver is off and renders disabled when the IMU is
   off.
 - Console and companion plumbing, SD import and export, provisioning, and the
-  NVS roundtrip case.
+  NVS roundtrip case. Provisioning needs two entries, not one: the runtime type
+  in `src/FurbleProvision.cpp` and a `SETTING_SCHEMAS` row in
+  `lib/furble/protocol/ProvisionTLV.cpp`. Without the schema row both the
+  decoder and `Provision::validateSetting()` reject the wire id before any
+  value is examined, so the setting is simply not provisionable. Cross-checked
+  from the #47 delta review, and it was missing here.
 
 Deliberately not implemented, all of it phase 2 and PR15:
 
@@ -336,6 +341,13 @@ documented in `docs/sim.md`.
 `sim/scripts/ui-screenshots.txt` gained one `key down`: the new row sits above
 GPS Data and that screenshot route counts focus steps.
 
+Wire ids 43 (`autooff_charge`) and 46 (`imu`) are in the settings table with no
+`SETTING_SCHEMAS` row, so they are not provisionable either. Both predate this
+branch and neither is touched here; they belong to whatever closes the class,
+which is what the #47 delta review is chasing. A check that every settings wire
+id has a schema row would catch all three at once and is the right shape, but
+it fails on those two today, so it is not this PR's to add.
+
 Two things the simulator does not cover, on purpose:
 
 - The 80x160 physical-button GPS list already reports one widget under an
@@ -366,8 +378,9 @@ reverted.
 | M10 | The switch callback skips the reload entirely | sim `e2e/gps-motion-setting.txt`: `gps.motion_state` |
 | M11 | The UI switch calls `reloadSetting()` instead of `reloadMotionSetting()`, which is the bug the review found | sim `e2e/gps-motion-setting.txt`: `gps.state` expected `tracking`, got `acquiring` |
 | M12 | The console puts GPS_MOTION back in the `GPS_RELOAD` group | host `console_commands_test`: the receiver restart and the queued UI request, 674 of 676 checks |
+| M13 | The wire id 66 `SETTING_SCHEMAS` row is deleted | host `provision_apply_test`: the whole batch fails, four checks including the new motion adaptive persistence |
 
-Twelve of twelve mutations were killed. M2 first reported as surviving because the
+Thirteen of thirteen mutations were killed. M2 first reported as surviving because the
 unused-variable build failure left the previous binary in place; rerun with the
 threshold raised instead of the term deleted, it is killed by four cases. A
 mutation harness that hides its build failures reports false survivors, so the
