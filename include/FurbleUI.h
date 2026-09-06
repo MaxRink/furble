@@ -7,10 +7,9 @@
 #include "scenario_action.h"
 #endif
 
-namespace Furble {
-/** Serializes M5.Imu transactions between UI timers and debug console probes. */
-extern std::mutex g_IMUMutex;
-}  // namespace Furble
+// g_IMUMutex is declared by FurbleIMU.h, the shared motion API, because the
+// motion engines take it too.
+#include "FurbleIMU.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 

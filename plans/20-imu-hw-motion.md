@@ -115,6 +115,101 @@ today that is the panel:
 - On `STATIONARY` nothing happens. The inactivity timeout already owns the sleep
   decision.
 
+### Interrupt path corrections from the PR48 review
+
+The abstraction survived review. The interrupt path did not: as first written it
+could not have worked on either board, and none of it would have been visible
+without hardware.
+
+1. **The BMI270 wake line carried data ready, not motion.** M5Unified writes
+   `INT_MAP_DATA` (0x58) 0xFF during `begin()`
+   (`BMI270_Class.cpp:60`), which maps data ready to both interrupt pins.
+   Enabling the INT1 output without clearing that turns the wake line into a
+   roughly 100 Hz pulse train, so the wake source fires continuously and light
+   sleep never settles. `arm()` now clears the INT1 nibble before the output is
+   enabled, and `disarm()` hands the original value back.
+2. **Nothing cleared the PMIC IRQ status after a wake.** `irqClearGpioAll()` ran
+   only at arm and disarm, so a latched GPIO4 status holds PYG1_IRQ asserted, and
+   a level-triggered wake source that never releases stops light sleep entirely.
+   `Platform::clearMotionWake()` now runs after each consumed event, through
+   `m5pm1Access` so the retry-once rule still applies.
+3. **The MPU6886 WOM status is clear-on-read and everyone reads it.**
+   `INT_STATUS` (0x3A) clears on read, and M5Unified's IMU update reads it on
+   every sample (`MPU6886_Class.cpp:253`). The spirit level, the IMU live page,
+   the console probe and this project's own software backend all call that, so
+   using the register as the source of truth means any open sensor page eats the
+   motion events. The interrupt is now latched and the pin level is the primary
+   signal, with the register read as the acknowledgement. Where no pin is wired
+   the register is all there is and the race remains; gate step 3 measures it.
+4. **`disarm()` did not restore what it repurposed.** `ACCEL_CONFIG2` and
+   `SMPLRT_DIV` were left at the wake-on-motion values, so the spirit level would
+   keep reading a 16-sample average at 50 Hz for the rest of the session.
+   M5Unified's init values are 0x00 and 3 respectively
+   (`MPU6886_Class.cpp` init table); `INT_PIN_CFG` goes back to 0xC0.
+5. **`setCallback` was a single slot.** `include/CLAUDE.md` declares
+   `MotionSource` the shared API for PR45 and PR65, and a single slot means
+   whichever consumer registers last silently unsubscribes the others. It is now
+   a small fixed registry with `addCallback` and `removeCallback`, bounded by
+   `MAX_CALLBACKS`. Callbacks run on the task that calls `poll()`, which is the
+   UI task; add and remove from that task, do not block, do not re-enter.
+
+Also corrected:
+
+- **Cross-task access.** `state()`, `backend()`, `backendName()`,
+  `usesInterrupt()` and `interruptCount()` are read by the diagnostics timer and
+  the simulator queries while `poll()` may be replacing the backend. Every one
+  of them now reads an atomic that `publish()` updates; none dereferences the
+  backend pointer.
+- **Bus serialisation.** Every engine sequence is a read-modify-write on shared
+  registers. All of them now hold `g_IMUMutex`, the same lock the spirit level,
+  the IMU live page and the console probe already take. Its declaration moved
+  from `FurbleUI.h` to `FurbleIMU.h` so the engines can take it without
+  depending on the UI, which is also where PR65 should rebase onto it.
+- **Wake pin pulls.** Both interrupt sources are open drain active low, so the
+  line needs a pull-up to return to idle. GPIO13 on the StickS3 takes the
+  internal one and now enables it. GPIO35 on the StickC family is input only on
+  the ESP32 with no internal pull of any kind and depends entirely on the board's
+  external pull-up on the shared `SYS_INT` net, which the BM8563 RTC also drives:
+  an RTC alarm there looks like motion. Both facts are in the code comment and
+  both are why gate step 1 counts edges while the device is still.
+
+Two claims in the first version of this plan were wrong and are withdrawn:
+
+- The advanced power save bracket was cited to `bmi2.c bmi2_set_regs`. It is not
+  there; `bmi270.c` brackets its own feature writes that way. Worse, on the
+  M5StickS3 the bracket is inert: M5Unified writes `PWR_CONF` 0x00 during
+  `begin()` (`BMI270_Class.cpp:55`) and never turns power save back on. The
+  bracket is kept because nothing guarantees that stays true and a silently
+  dropped feature write is indistinguishable from a dead interrupt, but it is
+  not what was fixing anything.
+- The power model was offered as evidence. It cannot express this feature: the
+  modelled current is 81.24 mA with the engine armed and with it off, because the
+  model has no term for an IMU or for a wake source. See issue #285. The hardware
+  gate is the only measurement of the power claim.
+
+### Hardware gate
+
+Run on the M5StickS3 unless stated. `motion status` on the USB console is the
+readout throughout.
+
+1. **No spurious wake traffic.** Arm the BMI270 engine, put the device down, and
+   count GPIO13 edges over 10 s while still. Expect **0**. Any edge rate near the
+   accelerometer ODR means the data-ready mapping is still on INT1; a slow
+   irregular rate on the StickC means the RTC is driving the shared net.
+2. **The line releases.** Shake once, then read the GPIO13 level 30 s later. It
+   **must** be released. A line still asserted means the PMIC IRQ status was not
+   cleared, and light sleep is dead for the rest of the session.
+3. **Page-open race.** On the M5StickC Plus, shake with the IMU live page closed
+   and confirm the motion event lands. Repeat with the page open. If the second
+   case loses events, M5Unified's IMU update is consuming the WOM status and the
+   pin latch is not covering it.
+4. **Wake and quiescence.** Wake from light sleep on motion; no wake while still.
+5. **Current.** Idle draw with the BMI270 engine armed versus the software
+   detector. This is the whole justification for the feature, and the power model
+   cannot answer it.
+6. **Retry once.** Confirm the first I2C access after the PMIC's idle sleep is
+   retried rather than reported as a failure.
+
 ### MotionSource is the shared API
 
 The #65 review changed the sequencing: this PR lands before #65, and #65's

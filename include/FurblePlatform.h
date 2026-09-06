@@ -139,6 +139,27 @@ class Platform {
   void disarmMotionWake(void);
 
   /**
+   * True while the IMU interrupt line is asserted.
+   *
+   * Both engines drive the line active low, so this reports a low level. The
+   * MPU6886 status register is clear-on-read and M5Unified's IMU update()
+   * reads it, so the pin is the only motion signal this project owns outright.
+   *
+   * @return false when no wake path is armed on this board.
+   */
+  bool motionWakeAsserted(void) const;
+
+  /**
+   * Clear a consumed IMU wake event at the PMIC.
+   *
+   * The M5StickS3 chains the IMU interrupt through M5PM1 GPIO4, which latches
+   * its IRQ status. A latched status holds PYG1_IRQ asserted, and a level-
+   * triggered wake source that never releases stops light sleep entirely, which
+   * is the opposite of the point. Call this after consuming an event.
+   */
+  void clearMotionWake(void);
+
+  /**
    * Set the maximum CPU frequency in MHz.
    *
    * Unsupported values fall back to the default. Use getCPUMaxFreq() to read

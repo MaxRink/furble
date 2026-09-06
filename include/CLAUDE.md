@@ -57,6 +57,24 @@ the reservations only after checking every open PR head.
   sitting in a navbar, and it must track the indicator construction in
   `UI::UI()`. It returns zero elsewhere, and callers must not write that zero
   over a theme padding.
+- `FurbleIMU.h` is the shared motion API. `IMU::MotionSource` is a singleton
+  with one interface and three backends: software, BMI270 any-motion and
+  no-motion, MPU6886 wake on motion. Every consumer uses `arm()`, `poll()`,
+  `addCallback()` and `state()`, and gets `MOVING` or `STATIONARY` on the same
+  contract from all three: a slope threshold plus a 60 s quiet window. Keep that
+  surface small. PR65's motion-adaptive GPS consumes this source rather than
+  running a second detector, so there is exactly one IMU poller and one
+  definition of stationary. `setScale()` is the runtime calibration knob for the
+  software backend's 0.20 g threshold, clamped to 0.25 to 4.0; the hardware
+  engines threshold in the chip and ignore it. The source is polled from the UI
+  housekeeping timer, never from its own, so the simulator power model sees it.
+  A motion setting change must never route through `GPS::reloadSetting()` or
+  `GPS::enable()`: those reset the receiver. Callbacks are a bounded registry,
+  not a single slot, and run on the task that calls `poll()`; add and remove
+  from that task and never block in one. Reader-facing state is atomic because
+  the diagnostics timer reads it while `poll()` writes. Every engine register
+  sequence holds `g_IMUMutex`, declared in this header, which the spirit level,
+  the IMU live page and the console probe also take.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.

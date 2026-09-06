@@ -434,7 +434,7 @@ UI::UI(const interval_t &interval)
   // between events instead of polling the accelerometer.
   if (imuEnabledForUI()) {
     auto &motion = IMU::MotionSource::getInstance();
-    motion.setCallback(
+    motion.addCallback(
         [](IMU::MotionState state, void *context) {
           if (state != IMU::MotionState::MOVING) {
             return;

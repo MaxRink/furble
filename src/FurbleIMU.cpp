@@ -181,8 +181,9 @@ bool MotionSource::arm(void) {
 
     if (selected) {
       m_Backend = std::move(selected);
-      m_State = m_Backend->state();
-      m_Armed = true;
+      m_State.store(m_Backend->state(), std::memory_order_relaxed);
+      m_Armed.store(true, std::memory_order_relaxed);
+      publish();
       ESP_LOGI(LOG_TAG, "Motion backend armed: %s%s", m_Backend->name(),
                m_Backend->usesInterrupt() ? " with interrupt" : " with polling");
       return true;
@@ -199,63 +200,106 @@ bool MotionSource::arm(void) {
     return false;
   }
 
-  m_State = m_Backend->state();
-  m_Armed = true;
+  m_State.store(m_Backend->state(), std::memory_order_relaxed);
+  m_Armed.store(true, std::memory_order_relaxed);
+  publish();
   ESP_LOGI(LOG_TAG, "Motion backend armed: software");
   return true;
 }
 
 void MotionSource::disarm(void) {
-  if (m_Backend && m_Armed) {
+  if (m_Backend && m_Armed.load(std::memory_order_relaxed)) {
     m_Backend->disarm();
   }
-  m_Armed = false;
+  m_Armed.store(false, std::memory_order_relaxed);
+  publish();
 }
 
 void MotionSource::poll(void) {
-  if (!m_Armed || !m_Backend) {
+  if (!m_Armed.load(std::memory_order_relaxed) || !m_Backend) {
     return;
   }
 
   MotionState state = m_Backend->state();
   if (m_Backend->poll(state)) {
     notify(state);
+    return;
   }
+  // The interrupt counter moves on transitions the backend absorbed too.
+  m_InterruptCount.store(m_Backend->interruptCount(), std::memory_order_relaxed);
 }
 
-void MotionSource::setCallback(event_callback_t callback, void *context) {
-  m_Callback = callback;
-  m_CallbackContext = context;
+bool MotionSource::addCallback(event_callback_t callback, void *context) {
+  if (callback == nullptr) {
+    return false;
+  }
+  for (size_t index = 0; index < m_SubscriberCount; index++) {
+    if ((m_Subscribers[index].callback == callback) && (m_Subscribers[index].context == context)) {
+      return false;
+    }
+  }
+  if (m_SubscriberCount >= MAX_CALLBACKS) {
+    ESP_LOGW(LOG_TAG, "Motion callback registry is full");
+    return false;
+  }
+  m_Subscribers[m_SubscriberCount++] = {callback, context};
+  return true;
 }
 
+bool MotionSource::removeCallback(event_callback_t callback, void *context) {
+  for (size_t index = 0; index < m_SubscriberCount; index++) {
+    if ((m_Subscribers[index].callback != callback) || (m_Subscribers[index].context != context)) {
+      continue;
+    }
+    m_Subscribers[index] = m_Subscribers[--m_SubscriberCount];
+    m_Subscribers[m_SubscriberCount] = {};
+    return true;
+  }
+  return false;
+}
+
+void MotionSource::publish(void) {
+  const bool live = m_Armed.load(std::memory_order_relaxed) && m_Backend;
+  m_BackendId.store(live ? m_Backend->backend() : Backend::NONE, std::memory_order_relaxed);
+  m_BackendName.store(live ? m_Backend->name() : "none", std::memory_order_relaxed);
+  m_UsesInterrupt.store(live && m_Backend->usesInterrupt(), std::memory_order_relaxed);
+  m_InterruptCount.store(live ? m_Backend->interruptCount() : 0, std::memory_order_relaxed);
+}
+
+// Every accessor below is read from the diagnostics timer and the simulator
+// queries while poll() runs on the UI task. They read the published atomics, so
+// none of them touches the backend pointer poll() may be replacing.
 bool MotionSource::isArmed(void) const {
-  return m_Armed;
+  return m_Armed.load(std::memory_order_relaxed);
 }
 
 MotionState MotionSource::state(void) const {
-  return m_State;
+  return m_State.load(std::memory_order_relaxed);
 }
 
 Backend MotionSource::backend(void) const {
-  return m_Backend && m_Armed ? m_Backend->backend() : Backend::NONE;
+  return m_BackendId.load(std::memory_order_relaxed);
 }
 
 const char *MotionSource::backendName(void) const {
-  return m_Backend && m_Armed ? m_Backend->name() : "none";
+  return m_BackendName.load(std::memory_order_relaxed);
 }
 
 bool MotionSource::usesInterrupt(void) const {
-  return m_Backend && m_Armed && m_Backend->usesInterrupt();
+  return m_UsesInterrupt.load(std::memory_order_relaxed);
 }
 
 uint32_t MotionSource::interruptCount(void) const {
-  return m_Backend && m_Armed ? m_Backend->interruptCount() : 0;
+  return m_InterruptCount.load(std::memory_order_relaxed);
 }
 
 void MotionSource::notify(MotionState state) {
-  m_State = state;
-  if (m_Callback) {
-    m_Callback(state, m_CallbackContext);
+  m_State.store(state, std::memory_order_relaxed);
+  publish();
+  // A subscriber must not add or remove during its own callback, so the count
+  // is stable across this loop.
+  for (size_t index = 0; index < m_SubscriberCount; index++) {
+    m_Subscribers[index].callback(state, m_Subscribers[index].context);
   }
 }
 
