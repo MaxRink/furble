@@ -1078,7 +1078,7 @@ int gpsSats(int argc, char **argv) {
 int gpsPlatform(const char *text) {
   char *end = nullptr;
   const unsigned long value = strtoul(text, &end, 0);
-  if ((end == text) || (value > 4)) {
+  if ((end == text) || (*end != '\0') || (value > 4)) {
     return fail("usage: gps platform 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
   }
   Settings::save<Settings::GPS_PLATFORM>(static_cast<uint8_t>(value));

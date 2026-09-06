@@ -90,6 +90,11 @@ constexpr uint32_t FIX_CHUNK_MS = 20;
 uint32_t fixColdBursts = 0;
 constexpr uint32_t FIX_COLD_BURSTS = 5;
 
+// How far behind the cold clock reads while the receiver is still waking. A
+// quarter of an hour on the same UTC day, which is what a real unit reports
+// before it decodes TOW, and which no date comparison can see.
+constexpr uint32_t FIX_COLD_BEHIND_S = 900;
+
 // A receiver on a noisy line whose RMC always arrives corrupt. The sentence is
 // there, so anything counting sentence names in the raw bytes counts it, but
 // the parser rejects it and never commits a date from it.
@@ -100,11 +105,11 @@ bool fixRmcCorrupt = false;
 // flag, so it is the exact sentence that fools an update-counted date.
 bool fixRmcEmpty = false;
 
-// A receiver whose date walks forward but stays behind the cache, one day per
-// burst. It models nothing real; it is here so the bound on the implausible
-// retry has something to hit.
+// A receiver whose clock is stuck well behind the cache but still ticking, so
+// every burst is a new reading and every one of them is implausible. It is here
+// so the bound on the implausible retry has something to hit, and it can never
+// catch up, so the leg does not depend on the value of that bound.
 bool fixWalkback = false;
-uint32_t fixWalkDay = 1;
 // day-of-month of the advancing fixture. "modern" is the 6th and "stale" is
 // the 13th, a week later, which is well past the four hour ephemeris window.
 const char *fixDay = "06";
@@ -278,7 +283,11 @@ void queueAckLocked(const uint8_t *request, bool ack) {
 }
 
 std::string modernFixStream(void) {
-  const uint32_t total = (12 * 3600) + (35 * 60) + 19 + fixSecond;
+  uint32_t total = (12 * 3600) + (35 * 60) + 19 + fixSecond;
+  if (fixColdBursts > 0) {
+    // Still waking: the clock reads behind, on the same day.
+    total -= FIX_COLD_BEHIND_S;
+  }
   char stamp[16];
   std::snprintf(stamp, sizeof(stamp), "%02u%02u%02u.00", (total / 3600) % 24, (total / 60) % 60,
                 total % 60);
@@ -294,13 +303,7 @@ std::string modernFixStream(void) {
     return nmea("GNRMC,,V,,,,,,,,,,N") + gga;
   }
 
-  // While the modelled receiver is still waking, its date reads a day behind.
-  std::string day = (fixColdBursts > 0) ? std::string("05") : std::string(fixDay);
-  if (fixWalkback) {
-    char walked[4];
-    std::snprintf(walked, sizeof(walked), "%02u", fixWalkDay);
-    day = walked;
-  }
+  const std::string day = fixWalkback ? std::string("01") : std::string(fixDay);
   const std::string date = day + "0926";
   std::string rmc = nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A");
   if (fixRmcCorrupt) {
@@ -380,9 +383,6 @@ void queueGpsEvent(QueueHandle_t queue) {
       fixSecond++;
       if (fixColdBursts > 0) {
         fixColdBursts--;
-      }
-      if (fixWalkback && (fixWalkDay < 28)) {
-        fixWalkDay++;
       }
       gpsStream = modernFixStream();
     }
@@ -612,10 +612,9 @@ void furble_sim_uart_set_fix_date(const char *name) {
     fixDateAdvances = true;
     gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "walkback")) {
-    // The date advances a day per burst from far behind the cache, so the
-    // implausible retry keeps being handed a new but still useless date.
+    // A clock stuck days behind the cache but still ticking, so the implausible
+    // retry keeps being handed a new reading that is still useless.
     fixWalkback = true;
-    fixWalkDay = 1;
     fixDateAdvances = true;
     gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "badrmc")) {
@@ -626,7 +625,9 @@ void furble_sim_uart_set_fix_date(const char *name) {
     gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "coldstart")) {
     // The modern burst, but the receiver spends its first few seconds reporting
-    // a date a day behind, as a cold unit does before it decodes TOW.
+    // a clock a quarter hour behind on the same day, as a cold unit does before
+    // it decodes TOW. Same day on purpose: a date a day behind is the easy case
+    // and it hid a bug where re-entry needed a new calendar date.
     fixColdBursts = FIX_COLD_BURSTS;
     fixDateAdvances = true;
     gpsStream = modernFixStream();

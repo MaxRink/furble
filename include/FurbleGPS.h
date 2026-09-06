@@ -112,6 +112,12 @@ class GPS {
     double longitude;
     double altitude;
     double speed_kmph;
+    double course_deg;
+    double speed_mps;
+    bool course_valid;
+    bool speed_valid;
+    uint32_t course_age;
+    uint32_t speed_age;
     double hdop;
     uint32_t location_age;
     uint32_t date_age;
@@ -366,9 +372,11 @@ class GPS {
   static constexpr uint32_t EPH_CACHE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
   static constexpr uint32_t EPH_POLL_MS = 1500;
   static constexpr uint32_t EPH_REPLAY_GAP_MS = 30;
-  // A receiver that reports this many different dates all behind the capture is
+  // A receiver reporting this many successive readings behind the capture is
   // not waking up, it is wrong. Give the cache up rather than retry forever.
-  static constexpr uint8_t EPH_IMPLAUSIBLE_MAX = 4;
+  // Sixteen at roughly one fix a second is a generous wake: a unit that has not
+  // corrected its coarse clock by then is not going to.
+  static constexpr uint8_t EPH_IMPLAUSIBLE_MAX = 16;
   static constexpr size_t EPH_MAX_BYTES = Casic::EphemerisCollector::MAX_BYTES;
 
   /** How long to wait for the receiver before sending the configuration. */
@@ -663,9 +671,7 @@ class GPS {
   uint32_t m_EphReplayNext = 0;
   int64_t m_EphCaptureUtc = 0;
   // Replay waits for the receiver's own clock before it commits, so arming and
-  // sending are two steps. m_EphArmTick is the boundary a date has to be
-  // committed after, so a date left over from the previous session cannot
-  // answer for this one.
+  // sending are two steps.
   bool m_EphReplayArmed = false;
   // The calendar date the parser held when replay was armed, packed as
   // yyyymmdd, or 0 when it held none. The commit waits for a different one.
@@ -683,6 +689,14 @@ class GPS {
   // as Platform::tick() on the device but not in the simulator, and mixing the
   // two makes every stale timestamp look fresh.
   uint32_t m_EphArmDate = 0;
+  // The UTC of the last reading that came back implausible. Once a date has
+  // committed after the arm the receiver is proven to be sending real dates, so
+  // re-entry keys on the reported UTC from then on. Keying on the date again
+  // would never re-trigger for a cold clock behind the capture by minutes on
+  // the same UTC day, which is the dominant case: the cache is four hours old
+  // at most, and a waking receiver corrects itself in a couple of sentences,
+  // which cannot change the date.
+  int64_t m_EphImplausibleUtc = 0;
   // Consecutive implausible readings before the cache is given up on.
   uint8_t m_EphImplausible = 0;
   bool m_EphPolled = false;

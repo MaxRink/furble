@@ -257,8 +257,9 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
-`text_size`, `auto_off`, `low_batt`, `fb_output`, and `imu_wake` (0 off, 1 tap,
-2 shake, 3 both).
+`text_size`, `auto_off`, `low_batt`, `fb_output`, `gps_assist` (0 off, 1
+position and time, 2 with ephemeris), `gps_platform` (0 do not send, 1 to 4 the
+dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -277,6 +278,17 @@ These boolean settings are applied before the UI is constructed:
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
 until the page is left, so a scenario that asserts a scan-end callback must
 seed a bounded value.
+
+The modelled GPS receiver is seeded before boot. `gps_baud` sets the `GPS_BAUD`
+setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` says what is on the
+Grove port: `any` (the default, answering whatever rate the driver programmed,
+which leaves every scenario written before the receiver model unchanged),
+`none` for an empty port, or one of `4800`, `9600`, `19200`, `38400`, `57600`,
+`115200`, which stays mute until the autobaud ladder reaches it. `gps_sats`
+picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
+detailed under the receiver model below. `gps_uart_chunk` serves the burst that
+many bytes at a time, paced, so a sentence spans several reads as it does off a
+real UART.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 

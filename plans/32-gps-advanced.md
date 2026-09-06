@@ -260,13 +260,28 @@ regenerated, and the reservation table now lives in `include/CLAUDE.md`.
   instead of throwing the cache away on the first reading. Only `TOO_OLD` and
   `REPLAY` settle it outright.
 
-  That retry is bounded at `EPH_IMPLAUSIBLE_MAX`, four different dates all
+  Re-entry after an implausible reading keys on the reported **UTC**, not the
+  date. The first commit after the arm has to be a changed date, because only
+  that proves an RMC carrying a real date field arrived; once one has, the
+  receiver is known to be sending dates and its time becomes trustworthy
+  evidence. Keying re-entry on the date as well was a bug: a cold clock behind
+  the capture by minutes on the same UTC day never re-triggered, so the arm
+  stood forever and the cache was neither replayed nor dropped. That is the
+  dominant case, since the cache is four hours old at most and a waking receiver
+  corrects itself in a couple of sentences, which cannot change the date. The
+  `coldstart` fixture had hidden it by putting the cold clock a whole day
+  behind; it now sits a quarter of an hour behind on the same day.
+
+  That retry is bounded at `EPH_IMPLAUSIBLE_MAX`, sixteen successive readings
   behind the capture, after which the cache is dropped. A receiver still waking
-  corrects itself within a couple of sentences; one that keeps reporting behind
-  the cache is wrong rather than waking, and without a bound it would be handed
-  a fresh reason to retry indefinitely. `gps_fix_date walkback` walks the date
-  forward a day per burst from far behind the cache and is the certified leg:
-  the retry has to give up before the walk reaches the capture date.
+  corrects itself in a second or two; one that keeps reporting behind the cache
+  is wrong rather than waking, and without a bound it would be handed a fresh
+  reason to retry indefinitely. Sixteen is deliberately generous: a tighter
+  bound fired before the modelled cold clock had finished waking, which is the
+  failure a real unit would hit too. `gps_fix_date walkback` is the certified
+  leg, a clock stuck days behind but still ticking, so every burst is a new and
+  still useless reading. It can never catch up, so the leg does not depend on
+  the value of the bound.
 
   The trade-off is explicit: a receiver that never sends RMC never gets a
   replay. That is the true cold start with the rail cut, where the cache age
@@ -422,6 +437,7 @@ a MON-HW poll with a truncated payload.
 | `e2e/gps-ephemeris-stale` | a checksum-failed RMC commits nothing | count the token "RMC" in the raw read buffer instead |
 | `e2e/gps-ephemeris-stale` | the empty pre-fix RMC commits nothing | commit on any committed date rather than a changed one |
 | `e2e/gps-ephemeris-stale` | the implausible retry is bounded | let the retry run forever |
+| `e2e/gps-ephemeris-replay` | a cold clock behind by minutes on the same day still recovers | key implausible re-entry on the date instead of the UTC |
 | `e2e/gps-ephemeris-replay` | a receiver clock behind the capture is retried, not settled | let `IMPLAUSIBLE` fall through and clear the cache |
 | `e2e/gps-ephemeris-stale` (TSAN) | `servicePoll` reads the fix through the locked snapshot | read `m_GPS.location.FixQuality()` directly, 4/5 runs fail |
 | `e2e/gps-satellite-fixtures` | 0, 1, 12, duplicate, partial, out of range and multi constellation populations | publish `set.building` without the complete-set check |

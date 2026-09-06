@@ -1677,6 +1677,7 @@ void GPS::armEphemerisReplay(void) {
   m_EphReplayArmed = true;
   m_EphArmDate = receiverDate(getStatusSnapshot());
   m_EphImplausible = 0;
+  m_EphImplausibleUtc = 0;
   ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, waiting for receiver time");
 }
 
@@ -1699,13 +1700,25 @@ void GPS::serviceEphemerisArm(void) {
   // put there, and none of those may answer for this session.
   const status_t status = getStatusSnapshot();
   const uint32_t date = receiverDate(status);
-  if ((date == 0) || (date == m_EphArmDate)) {
-    // Nothing to decide against yet. The arm stands until the next enable,
-    // which is the cold start case: replaying a cache whose age cannot be
-    // established is the thing this is here to prevent.
+  if (date == 0) {
     return;
   }
   const int64_t reported = receiverUtc(status);
+  if (m_EphImplausible == 0) {
+    // Nothing has committed since the arm. Only a changed *date* proves an RMC
+    // carrying a real date field arrived: the empty pre-fix RMC re-commits the
+    // stale date while the time ticks on from GGA.
+    if (date == m_EphArmDate) {
+      // The arm stands until the next enable, which is the cold start case:
+      // replaying a cache whose age cannot be established is the thing this is
+      // here to prevent.
+      return;
+    }
+  } else if (reported == m_EphImplausibleUtc) {
+    // A real date has already committed, so the receiver is sending them and
+    // the time is now trustworthy evidence. Re-enter on any newer reading.
+    return;
+  }
   if (reported <= 0) {
     // A committed but unusable date, such as the all-zero one an empty RMC
     // leaves on a parser that had none. Do not consume the arm date: a real one
@@ -1724,6 +1737,7 @@ void GPS::serviceEphemerisArm(void) {
     // throwing the cache away on the first reading. Bounded, though: a receiver
     // that keeps reporting behind the capture is wrong rather than waking.
     m_EphArmDate = date;
+    m_EphImplausibleUtc = reported;
     if (++m_EphImplausible < EPH_IMPLAUSIBLE_MAX) {
       return;
     }
@@ -2085,13 +2099,13 @@ void GPS::update(void) {
     satellites = static_cast<uint8_t>(std::min<uint32_t>(status.satellites, 255u));
     altitudeValid = status.altitude_valid;
     fix_tick = now_tick - status.time_age;
-    course_valid = m_GPS.course.isValid() && (m_GPS.course.age() < MAX_AGE_MS);
-    speed_valid = m_GPS.speed.isValid() && (m_GPS.speed.age() < MAX_AGE_MS);
+    course_valid = status.course_valid && (status.course_age < MAX_AGE_MS);
+    speed_valid = status.speed_valid && (status.speed_age < MAX_AGE_MS);
     if (course_valid) {
-      course_deg = m_GPS.course.deg();
+      course_deg = status.course_deg;
     }
     if (speed_valid) {
-      speed_mps = m_GPS.speed.mps();
+      speed_mps = status.speed_mps;
     }
   } else {
     external_fix_t external = {};
@@ -2671,6 +2685,15 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
   status.longitude = gps.location.lng();
   status.altitude = gps.altitude.meters();
   status.speed_kmph = gps.speed.kmph();
+  // Course and speed feed the dead reckoning in update(), which runs on the UI
+  // task. deg() and mps() clear the parser's update flag, so like every other
+  // accessor they are read here under the lock rather than there without it.
+  status.course_valid = gps.course.isValid();
+  status.speed_valid = gps.speed.isValid();
+  status.course_age = gps.course.age();
+  status.speed_age = gps.speed.age();
+  status.course_deg = gps.course.deg();
+  status.speed_mps = gps.speed.mps();
   status.hdop = gps.hdop.hdop();
   status.location_age = gps.location.age();
   status.date_age = gps.date.age();

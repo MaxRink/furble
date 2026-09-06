@@ -389,13 +389,10 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "gps_receiver") {
     // "any" answers whatever the driver programmed, "none" is an empty port,
     // otherwise the receiver only answers at that one rate.
-    if (value != "any" && value != "none") {
-      const uint32_t baud = parseUnsigned(value);
-      if (baud != 4800 && baud != 9600 && baud != 19200 && baud != 38400 && baud != 57600
-          && baud != 115200) {
-        std::cerr << "Invalid gps_receiver: " << value << '\n';
-        std::exit(2);
-      }
+    if (value != "any" && value != "none" && value != "4800" && value != "9600" && value != "19200"
+        && value != "38400" && value != "57600" && value != "115200") {
+      std::cerr << "Invalid gps_receiver: " << value << '\n';
+      std::exit(2);
     }
     return;
   } else if (name == "gps_sats") {
