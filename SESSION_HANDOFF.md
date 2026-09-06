@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 06:30)
+## Resume here (kept current; last updated 2026-09-07 07:00)
 
 Master `fork/master` = **53fa8965** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47). Upstream gkoh/furble is read-only.
@@ -65,7 +65,9 @@ Open issues: #267 #268 (fixed by #270), #269 flaky host tests (partly by
 #274), #271 (fixed by #272), #275 (fixed by #276), #277 (fixed by #287),
 #279 and #284 (fixed by #286), #280 wire ids, #281 upstream regressions,
 #282, #283 restart segfault (three sightings), #285 power model, #288
-provisioning schema gaps (43 and 46 on master), #289 #286 follow-ups.
+provisioning schema gaps (43 and 46 on master), #289 #286 follow-ups,
+#290 hand-sized simQueryState page array (bump it at every rebase that
+adds a page).
 
 Dated addenda follow in chronological order; the newest is at the bottom.
 
