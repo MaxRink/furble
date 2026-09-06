@@ -24,6 +24,10 @@ seed imu true
 seed gps_uart_mode ack
 wait 400
 
+# The source is armed, so "off" below is the setting being off and not a
+# detector that had nothing to read.
+assert ui.motion_state moving
+
 # Default off: no seed, no switch press, no detector.
 assert setting.gps_motion 0
 assert gps.motion_state off

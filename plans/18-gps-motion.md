@@ -221,15 +221,14 @@ Implemented:
   claimed at the rebase onto fork/master 6245a301 per issue #280, and the five
   golden fixtures under `tests/protocol/golden/settings/` were regenerated.
   `include/CLAUDE.md` records the claim.
-- `include/FurbleMotion.h` holds the detector as a pure header-only class, in
-  the same shape as `include/FurbleAutoOff.h` and
-  `include/FurbleGPSPowerCycle.h`. It keeps a 50 sample magnitude window at
-  10 Hz, enters stationary after a continuous 60 s under a 0.02 squared-g
-  variance threshold, and exits on the first sample past the threshold.
-  `GPS::updateMotion()` is the thin adapter that reads the IMU and the
-  monotonic clock and feeds it.
+- The detector is `IMU::MotionSource` from PR20. This PR owns no detector of
+  its own: it reads `state()`, gates on `isArmed()`, and adds the setting, the
+  menu row and the `isStationary()` hook PR15 consumes. `GPS::updateMotion()`
+  is eight lines that log the transition, driven by the existing 1 Hz GPS
+  service timer.
 - `GPS::isStationary()` is the hook PR15 consumes. `GPS::isMotionEnabled()`
-  reports whether the detector is running at all. Transitions are logged.
+  reports whether the detector is running at all. Transitions are logged, since
+  `MotionSource` logs its armed backend but not its state changes.
 - `GPS::reloadMotionSetting()` is the entry point every GPS_MOTION write uses,
   from the UI switch, the console and the companion alike. `reloadSetting()`
   calls `enable()` unconditionally, which parks the GPS task, re-sets the UART
@@ -238,12 +237,11 @@ Implemented:
   cost a full re-acquisition, and on the v1.1 unit a rail cut costs a ~108 s
   cold start. `reloadSetting()` still calls the new method, because turning the
   receiver off has to take the detector with it.
-- The 100 ms motion timer reports through `FURBLE_SIM_TIMER_FIRE` like the
-  other thirteen LVGL timers and is registered in `sim/power_profiler.cpp`, so
-  the power gate reports can see it. The committed baselines were not
-  regenerated: `compare.py` gates on `estimated_mA` and tolerates the new key,
-  and no power-gate scenario seeds `gps_motion`, so the timer reads zero in all
-  nine of them.
+- There is no motion timer any more. `MotionSource` is polled at 1 Hz from the
+  UI housekeeping timer, and plans/20 forbids a consumer adding an `lv_timer`
+  of its own, so the 100 ms timer and its `FURBLE_SIM_TIMER_FIRE` registration
+  are both gone. That removes the plan's own "the 10 Hz poll costs power, if it
+  costs more than the GPS saves the feature is pointless" risk outright.
 - Settings > GPS carries a Motion Adaptive switch. It hides with the rest of
   the GPS rows when the receiver is off and renders disabled when the IMU is
   off.
@@ -275,38 +273,45 @@ Deviations from the plan above:
   detector owns its own 100 ms LVGL timer, created and destroyed by
   `GPS::syncMotionTimer()` as the setting changes.
 
-Ceilings. These are properties of the method, not bugs, and any receiver
-policy built on this detector has to survive all of them:
+Ceilings. These are properties of the shared source, not bugs, and any
+receiver policy built on it has to survive all of them. The first two are
+recorded in plans/20 as the constraints PR65 inherits; they are repeated here
+because this PR is the consumer that hits them:
 
-- **Constant acceleration and slow rotation are invisible.** The detector
-  watches the variance of the acceleration magnitude, and neither changes it.
-  A vehicle cruising at a steady speed reads stationary, and so does a device
-  turning slowly on a tripod head. This is the important one: it is exactly the
-  case where a stale fix is most wrong, and it is why plan 15 must keep a
-  bounded cached-fix lifetime rather than trusting `isStationary()`.
-- **"Moving within one poll" has a floor.** The immediate exit fires on a
-  sample more than 0.141 g off the running mean, which is the square root of
-  the 0.02 threshold. A gentler start is not reported until the window variance
-  crosses, which can take up to the full 5 s window. The plan text above says
-  moving is reported within one poll period; that is true only above that
-  deviation.
-- **Low-amplitude vibration reads as stationary.** A sustained 0.2 g peak to
-  peak shake settles to a squared deviation of 0.01, half the threshold.
-  `testVibrationUnderTheThresholdReadsStationary` pins it, so moving the
-  threshold is a deliberate change with a measurement behind it. The risk list
-  above expects wind on a tripod to keep the detector moving; that holds only
-  above roughly 0.3 g peak to peak.
-- **No number here has met a sensor.** The threshold, the window and the dwell
-  were all derived on paper. They are a starting point for the hardware gate
-  below, not a result.
+- **The software backend has no bias compensation, and this one can silently
+  disable the whole feature.** It thresholds `fabs(magnitude - 1.0f)`, so 1 g is
+  a hardcoded reference for "at rest". A part whose resting magnitude sits
+  further from 1 g than the 0.20 g threshold reads `MOVING` permanently: the
+  quiet window never starts, `STATIONARY` never fires, and this PR's policy
+  simply never runs. `motion scale` scales the threshold, not the reference, so
+  it cannot rescue that case. The upgrade path in plans/20 is to sample the
+  resting magnitude at `arm()` and use it as the reference. The BMI270 and
+  MPU6886 engines threshold a slope in the chip and are unaffected, so this is a
+  software-backend exposure. Step 6 of the hardware gate below is what finds it.
+- **Constant acceleration and slow rotation are invisible.** All three backends
+  work from acceleration magnitude or its slope, and neither changes under
+  steady motion. A vehicle cruising at a steady speed reads stationary, and so
+  does a device turning slowly on a tripod head. This is the one that matters
+  most for phase 2: it is exactly the case where a stale fix is most wrong, and
+  it is why plan 15 must keep a bounded cached-fix lifetime rather than trusting
+  `isStationary()`.
+- **The exit is immediate at the source but up to a second late here.**
+  `MotionSource` reports MOVING on the first sample past its threshold, and this
+  PR reads that from the GPS service timer, a second 1 Hz timer that is not in
+  phase with the one driving the source. Phase 1 consumes nothing, so the skew
+  costs nothing today. `MotionSource::addCallback()` already reserves a slot for
+  this consumer and is the upgrade path if PR15 needs the receiver back sooner;
+  it is marked with a `ponytail:` comment at `GPS::updateMotion()`.
+- **No number here has met a sensor.** The 0.20 g threshold and the 60 s hold
+  are plans/20's, derived on paper. They are a starting point for the hardware
+  gate below, not a result.
 
 ## Test coverage
 
-Host, `tests/host/motion_detector_test.cpp` (ctest name `motion-detector`), ten
-cases over the pure detector: the full dwell, the partial-window guard, the
-immediate exit, a nudge under the threshold, re-entry paying the dwell again,
-sustained vibration, `reset()`, non-finite samples, the magnitude helper, and a
-`now_ms` of exactly zero.
+Host: no detector test of this PR's own any more. The dwell and the hysteresis
+now belong to `IMU::MotionSource`, and PR48's `imu_motion_encoding_test`
+covers them against the same constants. Deleting a duplicate test with the
+duplicate code it covered is the point of the integration, not a coverage loss.
 
 Console, `tests/host/console_commands_test.cpp`: `settings set gps_motion
 on|off`, the readback, the real NVS store, the `applies: immediately` line, and
@@ -326,12 +331,12 @@ Simulator, all certified on the 80x160 M5StickC, the 135x240 M5StickS3 and the
 
 | Scenario | What it pins |
 |---|---|
-| `e2e/gps-motion-detector.txt` | Slow entry and immediate exit, and the phase 1 contract: `gps.state`, `gps.degraded`, `uart.count` and `power.no_light_sleep` all read the same on both sides of a transition. |
+| `e2e/gps-motion-detector.txt` | That the source armed at all, slow entry and immediate exit, and the phase 1 contract: `gps.state`, `gps.degraded`, `uart.count` and `power.no_light_sleep` all read the same on both sides of a transition. |
 | `e2e/gps-motion-setting.txt` | Default off, the real Settings > GPS switch turning the detector on and off, and the receiver still tracking 50 ms after each flip. The 50 ms is the point: the old code re-acquired and was back at tracking within a second, so a settled assertion could not see it. |
 | `bughunt/gps-motion-row.txt` | The row at Normal text size: renders, both scroll extents reachable, no indicator overlap, and it follows the GPS visibility gate. |
 | `bughunt/gps-motion-row-small.txt` | The same at Small. |
 | `bughunt/gps-motion-row-large.txt` | The same at Large. |
-| `bughunt/gps-motion-row-gates.txt` | IMU off: the row renders disabled and the detector reports off even with the setting on. |
+| `bughunt/gps-motion-row-gates.txt` | IMU off: the row renders disabled, the source reads `inactive`, and the detector reports off even with the setting on. That pairing is the arm-once constraint made visible. |
 | `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`, `bughunt/core-notouch-layout.txt` | The row on the physical-button layout each board actually ships, with the indicator clearance assertions those files own. |
 
 New simulator seams: seed `gps_motion`, `action toggle gps_motion`, queries
@@ -421,8 +426,14 @@ is the one that reads on the panel where the whole label fits.
 
 ## Hardware gate
 
-Nothing in this PR has run on a device, and this is the merge gate. On the
-M5StickS3 with its BMI270 and the GPS/BDS Unit v1.1:
+Nothing in this PR has run on a device. This gate is recorded as owed
+post-merge rather than blocking the merge: `GPS_MOTION` defaults to false, and
+phase 1 changes no receiver behaviour whether it is on or off, so an unrun gate
+cannot regress a device that has not opted in. Verifying it needs no camera.
+
+It runs after PR48's own gate, since an unarmed or misbehaving source makes
+every step here meaningless. On the M5StickS3 with its BMI270 and the GPS/BDS
+Unit v1.1:
 
 1. With `IMU` off, confirm Settings > GPS shows Motion Adaptive greyed out and
    that `settings get gps_motion` still reads the stored value back.
@@ -435,12 +446,24 @@ M5StickS3 with its BMI270 and the GPS/BDS Unit v1.1:
    supply. Run it from all three surfaces: the UI switch, `settings set
    gps_motion`, and the companion app.
 4. Set the device down. The log should report `GPS motion: stationary` about
-   65 seconds later: 5 s to fill the window, then the 60 s dwell.
-5. Pick it up sharply. `GPS motion: moving` should appear within one 100 ms
-   poll. Then repeat with a slow, gentle lift: that is expected to take longer,
-   up to the 5 s window, and the point of the step is to find out how much
-   longer on a real BMI270.
-6. Blind spots, both of which need a car or a bike. Carry the device at a
+   61 seconds later: PR48's 60 s continuous-quiet hold plus the 1 Hz poll
+   granularity. Note which backend armed first, from `motion status` on the
+   console, because the BMI270 and MPU6886 engines time the hold in the chip
+   and the software backend times it on the host clock.
+5. Pick it up sharply. `GPS motion: moving` should appear within about a
+   second: immediate at the source, plus up to one second because the GPS
+   service timer reads it on its own 1 Hz tick. Then repeat with a slow, gentle
+   lift, which is expected to take longer, and record how much longer on a real
+   BMI270.
+6. The bias check, and the one most likely to find something. Leave the device
+   flat and still from boot and watch whether `GPS motion: stationary` ever
+   appears. On the software backend a part whose resting magnitude sits more
+   than 0.20 g from 1 g never leaves MOVING, and the whole feature silently
+   does nothing. If it never fires, read the resting magnitude from the IMU
+   live page and report it, because that number is what decides whether
+   plans/20 needs the resting-magnitude reference rather than the scale knob.
+   `motion scale` widens the threshold and is the workaround to try first.
+7. Blind spots, both of which need a car or a bike. Carry the device at a
    steady speed and confirm it reports stationary, because it will, and PR15
    has to be built knowing that. Then rotate it slowly on a tripod head and
    confirm the same. Record both, because they bound what a receiver policy is
@@ -449,67 +472,76 @@ M5StickS3 with its BMI270 and the GPS/BDS Unit v1.1:
 The battery comparison runs from the plan above are phase 2 work. Phase 1 saves
 nothing by design, so there is nothing to measure yet.
 
-## Sequencing and the PR48 integration contract
+## PR48 integration, as landed
 
-PR #48 lands before this one. After that, this branch rebases onto it and the
-detector consumes `IMU::MotionSource` instead of polling `M5.Imu` itself, so
-the device ends up with one IMU poller and one detector rather than two timers
-reading the same sensor. Until #48 is ready this branch stays on master. The
-`imuSensor*` helpers at `src/FurbleGPS.cpp:91-113` and their three call sites
-are the seam that gets replaced.
+This PR is stacked on PR48 (`feat/20-hw-motion`) and rebased onto 4b453968. The
+four decisions settled in review, and what each turned into:
 
-Four decisions were settled in review before the rebase, so the shape of the
-merge is not renegotiated while doing it.
-
-**1. This PR reads `MotionSource::state()` and nothing else.** It does not call
-`arm()` or `disarm()`. Ownership of the source's lifecycle stays with #48. That
-is what keeps `GPS::reloadMotionSetting()` to atomics and NVS reads, which is
-in turn what lets the console and companion call it directly instead of going
-through the UI request queue. If a later change makes this PR arm the source,
-that justification expires and the direct calls have to be revisited.
+**1. Reads `MotionSource::state()` and `isArmed()`, never `arm()` or
+`disarm()`.** Ownership of the source's lifecycle stays with PR48. That is what
+keeps `GPS::reloadMotionSetting()` to atomics and NVS reads, which is in turn
+what lets the console and companion call it directly instead of going through
+the UI request queue. If a later change makes this PR arm the source, that
+justification expires and the direct calls have to be revisited.
 
 **2. The source is armed once and never rearmed, so the IMU setting needs a
-restart.** #48 arms in `UI::task` gated on `imuEnabledForUI()`. Turning the IMU
-on without restarting therefore leaves an unarmed source that reports MOVING
-forever, and the detector would never report stationary. This is consistent
-with what the Sensors page already tells the user ("Restart to apply") and with
-step 2 of the hardware gate below, which restarts. It is a real constraint
-rather than a theoretical one, so it is written down here. Ask for an `armed`
-query on the source so the hardware gate and a scenario can assert the source
-is live rather than inferring it from a state that looks the same when it is
-not.
+restart.** PR48 arms in the UI constructor gated on `imuEnabledForUI()`. Turning
+the IMU on without restarting leaves an unarmed source, and an unarmed backend
+reports MOVING forever, so a gate that read `state()` alone would look exactly
+like a device that is genuinely moving.
 
-**3. The 5 s self-calibrating window does not survive the move, and this PR
-accepts that.** The detector currently compares each sample against the running
-mean of the last 5 s, so a sensor with a steady bias is still measured against
-itself. #48's backend is memoryless and absolute: it thresholds 0.20 g away
-from 1.0 g, so a steady 1.25 g reading is MOVING forever no matter how still
-the device is.
+`GPS::isMotionEnabled()` therefore gates on `isArmed()` rather than on the IMU
+setting. An unarmed source reports `off`, which is honest, instead of a
+permanent `moving` that no user could distinguish from a real fault.
+`bughunt/gps-motion-row-gates.txt` asserts `ui.motion_state inactive` next to
+`gps.motion_state off` so the pairing is pinned, and step 2 of the hardware gate
+restarts, which is what the Sensors page already tells the user to do.
 
-Keeping the running mean would mean reading raw magnitudes, which contradicts
-decision 1 and puts two consumers back on the sensor. So the ceiling changes
-instead, and the change is in the safe direction: a biased sensor produces a
-permanent MOVING, never a false stationary. The cost is no power saving on that
-device, not a stale fix on a moving one, and phase 1 saves nothing anyway. Entry
-time drops from 65 s to 60 s, because the 5 s window fill disappears and only
-the dwell remains.
+**3. The detector is gone, not reduced.** The review expected
+`include/FurbleMotion.h` to survive as the dwell over a boolean. Reading PR48's
+landed code changed that: `MotionSource` already implements the identical
+policy, a 60 s continuous-quiet hold with immediate exit, shared by all three
+backends (`STATIONARY_HOLD_MS` in `src/FurbleIMU.cpp`). Keeping a second dwell
+on top would have stacked two 60 s holds and taken 120 s to report stationary,
+and would have left two definitions of stationary in a codebase whose stated
+goal for this integration is one.
 
-What this PR keeps after the rebase is the dwell and the hysteresis, which is
-its actual contribution: 60 s continuous stationary to enter, immediate exit.
-`include/FurbleMotion.h` and `tests/host/motion_detector_test.cpp` therefore
-stay, reduced to a dwell over a boolean input; the variance window, the
-`magnitude()` helper and their cases go. Dropping the file entirely would
-delete the only host coverage of the hysteresis.
+So `include/FurbleMotion.h` and `tests/host/motion_detector_test.cpp` are
+deleted. `GPS::isStationary()` is now `m_MotionEnabled && state() ==
+STATIONARY`. The hysteresis those tests covered is covered by PR48's own host
+tests against the same constants.
 
-The bias ceiling should be closed on #48's side, not worked around here. Either
-a bias-compensated threshold or a raw-magnitude accessor would do it. A real
-accelerometer has an offset; an absolute threshold against a hardcoded 1.0 g
-has no knob for it, and that is worth raising with #48 rather than absorbing
-downstream.
+Measured effect: stationary entry moves from about 65 s to about 61 s. The 5 s
+variance window fill is gone, leaving PR48's 60 s hold plus boot and the 1 Hz
+poll granularity. `e2e/gps-motion-detector.txt` pins moving at 60 s and
+stationary at 63 s.
 
 **4.** `e2e/gps-motion-setting.txt` pins `gps.state` and `uart.count` before the
 first toggle as well as after it, so the receiver assertions are a delta rather
 than an absolute.
+
+Retarget the PR base to master when PR48 merges.
+
+A second rebase follows, once PR48 moves onto master and PR45 lands. It is a
+union merge in four files, pre-checked against master 53fa8965:
+
+- `SETTING_SCHEMAS` in `lib/furble/protocol/ProvisionTLV.cpp`. Master carries
+  67 and 68 from PR47, this PR carries 66, PR48 carries 74 and PR45 is expected
+  to add 72 and 73. Take every row and keep the list ascending, so it ends 66,
+  67, 68, 72, 73, 74. Nothing about wire id 66 changes.
+- The wire id table in `include/CLAUDE.md`. Same union, same reasoning.
+- The golden corpus under `tests/protocol/golden/settings/`. Wire id 66 does
+  not move, so its five fixtures must come out byte identical. If they do not,
+  the id was reassigned and this plan needs updating with it.
+- `simQueryState`'s page-name array is hand sized, so a merge that adds page
+  names from two branches has to correct the size rather than let it silently
+  truncate.
+
+PR47 also added `testEverySettingHasASchemaRow`, the class-wide guard that
+would have caught this PR shipping wire id 66 without a schema row: it walks
+every setting and requires a `SETTING_SCHEMAS` row, with 43 and 46 pinned as
+`KNOWN_MISSING`. Wire id 66 has its row, so the test passes with it as soon as
+the rebase lands, and it is what keeps the next new id from repeating the gap.
 
 ## References
 

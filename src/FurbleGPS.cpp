@@ -82,38 +82,6 @@ bool validCoordinate(double value, double min, double max) {
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #endif
 
-namespace {
-
-// The simulator has no accelerometer, so read the injected IMU state through the
-// same enabled, update and getAccel surface the firmware uses on hardware. The
-// detector below then runs unchanged against a scripted stationary or moving
-// device.
-bool imuSensorEnabled(void) {
-#if defined(FURBLE_SIM)
-  return Furble::Sim::imuEnabled();
-#else
-  return M5.Imu.isEnabled();
-#endif
-}
-
-void imuSensorUpdate(void) {
-#if defined(FURBLE_SIM)
-  Furble::Sim::imuUpdate();
-#else
-  M5.Imu.update();
-#endif
-}
-
-bool imuSensorGetAccel(float *x, float *y, float *z) {
-#if defined(FURBLE_SIM)
-  return Furble::Sim::imuGetAccel(x, y, z);
-#else
-  return M5.Imu.getAccel(x, y, z);
-#endif
-}
-
-}  // namespace
-
 void gps_task(void *param) {
   Furble::GPS *gps = static_cast<Furble::GPS *>(param);
   gps->task();
@@ -1479,10 +1447,13 @@ void GPS::reloadSetting(void) {
  * directly rather than through the UI request queue.
  */
 void GPS::reloadMotionSetting(void) {
-  const bool motionEnabled = m_Enabled && Settings::load<Settings::GPS_MOTION>()
-                             && Settings::load<Settings::IMU>() && imuSensorEnabled();
-  m_MotionEnabled.store(motionEnabled);
-  m_MotionResetPending.store(true);
+  // isArmed() subsumes the IMU setting: the source is armed once, from the UI
+  // constructor, only when the persisted IMU capability is on and the sensor is
+  // present. Gating on it rather than on the setting means an IMU switched on
+  // without the restart the Sensors page asks for leaves the detector reporting
+  // off, instead of running against a source that reports MOVING forever.
+  m_MotionEnabled.store(m_Enabled && Settings::load<Settings::GPS_MOTION>()
+                        && IMU::MotionSource::getInstance().isArmed());
 }
 
 /** Refresh the cached GPX logging settings from NVS. */
@@ -1503,7 +1474,8 @@ bool GPS::isMotionEnabled(void) const {
 }
 
 bool GPS::isStationary(void) const {
-  return m_MotionEnabled.load() && m_MotionStationary.load();
+  return m_MotionEnabled.load()
+         && (IMU::MotionSource::getInstance().state() == IMU::MotionState::STATIONARY);
 }
 
 /** Start timer event to service/update GPS. */
@@ -1520,64 +1492,31 @@ void GPS::startService(void) {
         gps->update();
       },
       SERVICE_MS, this);
-
-  syncMotionTimer();
 #endif
 }
 
-void GPS::syncMotionTimer(void) {
-  if (m_MotionResetPending.exchange(false)) {
-    resetMotion();
-  }
-
-#if !defined(FURBLE_NO_DISPLAY)
-  if (m_Timer == NULL) {
-    return;
-  }
-
-  if (m_MotionEnabled.load() && (m_MotionTimer == NULL)) {
-    m_MotionTimer = lv_timer_create(
-        [](lv_timer_t *timer) {
-          FURBLE_SIM_TIMER_FIRE("gps_motion_timer");
-          auto *gps = static_cast<GPS *>(lv_timer_get_user_data(timer));
-          gps->updateMotion();
-        },
-        Motion::Detector::SAMPLE_MS, this);
-  } else if (!m_MotionEnabled.load() && (m_MotionTimer != NULL)) {
-    lv_timer_del(m_MotionTimer);
-    m_MotionTimer = NULL;
-  }
-#endif
-}
-
-void GPS::resetMotion(void) {
-  m_Motion.reset();
-  m_MotionStationary.store(false);
-}
-
+/**
+ * Log motion state transitions.
+ *
+ * IMU::MotionSource owns the detector: the same 60 s continuous-quiet hold and
+ * immediate exit this PR used to implement itself, shared by all three
+ * backends. Duplicating the hold here would stack two 60 s dwells and take 120 s
+ * to report stationary, so the policy is consumed rather than reimplemented.
+ *
+ * This runs on the existing 1 Hz GPS service timer. The source is polled from
+ * the UI housekeeping timer at the same 1 Hz, so a faster read could not see
+ * anything sooner, and plans/20 forbids a consumer adding an lv_timer of its
+ * own.
+ *
+ * ponytail: reading a 1 Hz source from a second unsynchronised 1 Hz timer adds
+ * up to one second of skew to a transition. Nothing consumes isStationary() in
+ * phase 1, so it costs nothing today. If PR15 needs the receiver to resume
+ * sooner, subscribe to MotionSource::addCallback() instead of polling here; the
+ * registry already reserves a slot for this consumer.
+ */
 void GPS::updateMotion(void) {
-  if (!m_MotionEnabled.load()) {
-    return;
-  }
-
-  float accel[3];
-  {
-    std::lock_guard<std::mutex> imuLock(g_IMUMutex);
-    if (!imuSensorEnabled()) {
-      return;
-    }
-    imuSensorUpdate();
-    if (!imuSensorGetAccel(&accel[0], &accel[1], &accel[2])) {
-      return;
-    }
-  }
-
-  const uint64_t now_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000;
-  const bool was = m_MotionStationary.load();
-  const bool stationary =
-      m_Motion.sample(Motion::Detector::magnitude(accel[0], accel[1], accel[2]), now_ms);
-  if (stationary != was) {
-    m_MotionStationary.store(stationary);
+  const bool stationary = isStationary();
+  if (m_MotionStationary.exchange(stationary) != stationary) {
     ESP_LOGI(LOG_TAG, "GPS motion: %s", stationary ? "stationary" : "moving");
   }
 }
@@ -1637,7 +1576,7 @@ void GPS::clearExternalFix(void) {
 
 /** Send GPS data updates to the control task. */
 void GPS::update(void) {
-  syncMotionTimer();
+  updateMotion();
 
   const uint64_t now_ms = esp_timer_get_time() / 1000;
   Camera::gps_t dgps = {};
