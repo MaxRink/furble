@@ -112,20 +112,12 @@ void testDomainValidation() {
   // the domain rule is ever reached, so asserting only "it failed" would pass
   // for a setting the bundle can never carry at all.
   const std::pair<SettingValue, const char *> cases[] = {
-<<<<<<< HEAD
-      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15"      },
-      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range"      },
-      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"        },
-      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"     },
-      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"       },
-      {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"},
-=======
       {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15"         },
       {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range"         },
       {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"           },
       {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"        },
       {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"          },
->>>>>>> a64a9c89 (fix(gps): repair the merge collapses from the settings-table rebase)
+      {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"   },
       {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4"},
   };
 

@@ -43,7 +43,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::SLEEP_CONN,
      {Settings::SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", "furble"}                     },
     {Settings::COMPANION,     {Settings::COMPANION, 12, "Companion", "companion", "furble"}          },
-    {Settings::GPS_PLATFORM,  {Settings::GPS_PLATFORM, 69, "GPS Platform", "gps_plat", "furble"}},
+    {Settings::GPS_PLATFORM,  {Settings::GPS_PLATFORM, 69, "GPS Platform", "gps_plat", "furble"}     },
     {Settings::CONN_SAVER,
      {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                     },
 };
