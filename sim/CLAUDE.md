@@ -587,3 +587,20 @@ a regression.
   <key> <n>` and `assert_min <key> <n>` (integer parse, inclusive). They express
   a redraw ceiling and a width-agnostic direction or render floor (for example
   `assert_min ui.visible_objects 1`) without pinning a per-panel pixel value.
+- GPS docs use `nav gps_sats` and the `gps-satellite-page` scenario. The fake
+  UART includes a fixed GSV/GSA fixture, so the capture proves the satellite
+  page route and parsed counts without implying live AT6668 hardware coverage.
+- The fake UART models a receiver, not just a byte source. It records the rate
+  the driver programmed and answers only when the modelled receiver rate
+  matches, which is what makes the autobaud ladder and the no-receiver state
+  testable. The default is a receiver that answers at any rate, so every
+  scenario written before that model is unchanged. It also answers a CFG-MSG
+  poll at rate 0xFFFF for MON-HW and for the three assistance messages, and it
+  counts the assistance frames replayed back at it, so ephemeris replay is
+  observed at the wire rather than inferred from a log line. See
+  `gps_receiver`, `gps_sats`, `gps_fix_date`, `gps-receiver`, `gps-sats`,
+  `gps-monhw` and `gps-eph-corrupt` in docs/sim.md.
+- The GSV/GSA fixtures are stored as sentence bodies and checksummed at
+  runtime, so a fixture cannot carry a stale hand computed checksum. The
+  `default` set is the one docs/img/gps-satellites.png is pinned to; changing
+  its values means regenerating that capture.

@@ -1,0 +1,43 @@
+# GPS_ASSIST tier 2. Once a fix is stable furble polls the receiver for its own
+# ephemeris, ionosphere and UTC frames and caches them verbatim in NVS. On the
+# next boot it replays them before the receiver has to decode them off the air,
+# which is the whole point of the tier: a warm start instead of a cold one.
+#
+# The fake receiver answers the three CFG-MSG polls with fixed frames, and it
+# counts the assistance frames written back to it, so the replay is observed at
+# the wire rather than inferred from a log line.
+#
+# The fix stream is dated inside the window TimeKeeperPolicy accepts, because
+# the cache age is bounded with the kept clock. The historic 1994 fixture is
+# rejected by that policy, which is the case gps-ephemeris-invalid covers.
+seed gps true
+seed gps_baud 9600
+seed gps_assist 2
+seed gps_fix_date modern
+seed gps_uart_mode ack
+wait 300
+
+# nothing is cached on a fresh NVS, so nothing can be replayed
+assert gps.eph_cached 0
+assert uart.eph_replay 0
+
+# let a fix settle, then let the poll window close and the cache be written
+wait 8000
+assert-eventually 8000 gps.satellites 8
+wait 6000
+assert_min gps.eph_cached 200
+
+restart
+
+# The resumed boot must find the cache and play it back at the receiver.
+wait 8000
+assert_min gps.eph_cached 200
+assert-eventually-virtual 20000 uart.eph_replay 3
+
+# Replay is assistance, so it has to go out before the receiver produces its
+# own fix, not after it. The paced send is EPH_REPLAY_GAP_MS apart and the
+# whole set is short, so the count above is reached inside the first seconds.
+wait 8000
+assert-eventually 8000 gps.satellites 8
+assert uart.eph_replay 3
+exit

@@ -47,6 +47,110 @@ bool gpsStationary = false;
 
 const char *gpsSentences(void) {
   return gpsStationary ? gpsDataStationary : gpsData;
+// The 1 Hz fix burst. The default is the historic fixture above, byte for byte,
+// so every existing scenario and documentation capture is unchanged. The
+// "modern" variant only moves the RMC date inside the window
+// TimeKeeperPolicy::valid() accepts, which the persisted clock and therefore
+// the ephemeris cache freshness check both need.
+std::string gpsStream(gpsData, sizeof(gpsData) - 1);
+
+// Modelled receiver rate. 0 means the receiver answers whatever the driver
+// programmed, which is the default and keeps every pre-existing scenario
+// unchanged. A specific rate makes the receiver mute until the autobaud ladder
+// reaches it, and receiverPresent false models no unit on the Grove port.
+uint32_t uartBaud = 9600;
+uint32_t receiverBaud = 0;
+bool receiverPresent = true;
+
+// Which GSV/GSA fixture the satellite page sees. The default set is the eight
+// satellite fixture the documentation capture is pinned to; do not change its
+// values without regenerating docs/img/gps-satellites.png.
+std::string satelliteFixture = "default";
+
+// Counters the scenarios assert on. Ephemeris replay and MON-HW polls are
+// binary traffic, so a write count alone cannot see them.
+uint32_t ephReplayFrames = 0;
+uint32_t monHwPolls = 0;
+bool monHwShort = false;
+
+/** Wrap an NMEA body in its '$' and its computed checksum. */
+std::string nmea(const std::string &body) {
+  uint8_t sum = 0;
+  for (const char c : body) {
+    sum ^= static_cast<uint8_t>(c);
+  }
+  char tail[8];
+  std::snprintf(tail, sizeof(tail), "*%02X\r\n", sum);
+  return "$" + body + tail;
+}
+
+/**
+ * GSV and GSA fixtures for the satellite detail page.
+ *
+ * Each entry is a list of sentence bodies without the '$' or the checksum, so
+ * a fixture cannot carry a stale hand computed checksum. The names are the
+ * values of the `gps_sats` scenario seed.
+ */
+std::vector<std::string> satelliteBodies(const std::string &name) {
+  if (name == "none") {
+    // nothing in view, and a GSA with no used satellites and no DOP
+    return {"GPGSV,1,1,00,1", "GPGSA,A,1,,,,,,,,,,,,,,,,1"};
+  }
+  if (name == "one") {
+    return {"GPGSV,1,1,01,01,40,100,45,1", "GPGSA,A,2,01,,,,,,,,,,,,5.0,4.0,3.0,1"};
+  }
+  if (name == "twelve") {
+    return {"GPGSV,3,1,12,01,40,100,45,02,30,200,44,03,20,300,43,04,10,050,42,1",
+            "GPGSV,3,2,12,05,45,010,41,06,35,020,40,07,25,030,39,08,15,040,38,1",
+            "GPGSV,3,3,12,09,50,060,37,10,55,070,36,11,60,080,35,12,65,090,34,1",
+            "GPGSA,A,3,01,02,03,04,05,06,07,08,09,10,11,12,1.2,0.8,0.9,1"};
+  }
+  if (name == "partial") {
+    // sentence 1 of 2 only, so the set can never complete
+    return {"GPGSV,2,1,08,01,40,100,45,02,30,200,40,03,20,300,35,04,10,050,30,1",
+            "GPGSA,A,3,01,02,03,04,,,,,,,,,2.5,2.0,1.5,1"};
+  }
+  if (name == "duplicate") {
+    // the same PRN reported twice in one set, and twice in the GSA
+    return {"GPGSV,2,1,04,01,40,100,45,01,40,100,45,02,30,200,40,02,30,200,40,1",
+            "GPGSV,2,2,04,03,20,300,35,03,20,300,35,04,10,050,30,04,10,050,30,1",
+            "GPGSA,A,3,01,01,02,02,,,,,,,,,2.5,2.0,1.5,1"};
+  }
+  if (name == "range") {
+    // elevation, azimuth, C/N0 and PRN all past their documented maxima, plus
+    // one satellite that is in range, which must be the only one published
+    return {"GPGSV,1,1,04,01,91,100,45,02,30,400,40,03,20,300,120,70000,10,050,30,1",
+            "GPGSA,A,3,01,,,,,,,,,,,,2.5,2.0,1.5,1"};
+  }
+  if (name == "multi") {
+    return {"GPGSV,1,1,02,01,40,100,45,02,30,200,40,1", "GLGSV,1,1,02,65,50,110,44,66,20,210,33,1",
+            "BDGSV,1,1,02,201,35,120,41,202,15,220,29,1", "GNGSA,A,3,01,02,,,,,,,,,,,2.5,2.0,1.5,1",
+            "GNGSA,A,3,65,66,,,,,,,,,,,2.5,2.0,1.5,2"};
+  }
+  // default: the eight satellite documentation fixture
+  return {"GPGSV,2,1,08,01,40,100,45,02,30,200,40,03,20,300,35,04,10,050,30,1",
+          "GPGSV,2,2,08,05,45,010,50,06,35,020,42,07,25,030,38,08,15,040,33,1",
+          "GPGSA,A,3,01,02,03,04,,,,,,,,,2.5,2.0,1.5,1"};
+}
+
+/** The bytes the fake receiver answers a GSV/GSA request with. */
+std::vector<uint8_t> satelliteBytes(void) {
+  std::string text;
+  if (satelliteFixture == "malformed") {
+    // a bad checksum, a sentence with no terminator field, a truncated line and
+    // a run of raw noise. None of these may reach the satellite table.
+    text =
+        "$GPGSV,2,1,08,01,40,100,45,02,30,200,40,03,20,300,35,04,10,050,30,1*00\r\n"
+        "$GPGSV,2,2,08,05,45\r\n"
+        "$GPGSA,A,3,01,02\r\n"
+        "$GPGS\r\n"
+        "\x01\x02\x03\xff\xfe\r\n";
+  } else {
+    for (const auto &body : satelliteBodies(satelliteFixture)) {
+      text += nmea(body);
+    }
+  }
+  return std::vector<uint8_t>(text.begin(), text.end());
 }
 
 uint32_t gpsRatePeriodMillis(void) {
@@ -91,6 +195,11 @@ std::vector<uint8_t> binaryFrame(uint8_t classId,
   return frame;
 }
 
+/** Does the modelled receiver answer at the baud the driver has programmed? */
+bool receiverAnswersLocked(void) {
+  return receiverPresent && ((receiverBaud == 0) || (receiverBaud == uartBaud));
+}
+
 void queueRxLocked(const std::vector<uint8_t> &bytes) {
   rxBytes.insert(rxBytes.end(), bytes.begin(), bytes.end());
   if (!rxEventQueued && gpsQueue != nullptr) {
@@ -110,16 +219,76 @@ void queueAckLocked(const uint8_t *request, bool ack) {
   }
 }
 
+/**
+ * Answer a CFG-MSG poll at rate 0xFFFF with the message it asked for.
+ *
+ * The firmware polls MON-HW for the interference snapshot and MSG-GPSEPH,
+ * MSG-GPSION and MSG-GPSUTC for the tier 2 ephemeris cache. Payload lengths are
+ * multiples of four and the content is fixed, so a scenario can assert exact
+ * decoded values.
+ */
+void queuePollResponseLocked(const uint8_t *request, uint16_t length) {
+  if ((length != 4) || (request[4] != 0x06) || (request[5] != 0x01)) {
+    return;
+  }
+  const uint8_t wantClass = request[6];
+  const uint8_t wantId = request[7];
+  const uint16_t rate = readU16(request + 8);
+  if (rate != 0xFFFF) {
+    return;
+  }
+
+  if ((wantClass == 0x0A) && (wantId == 0x09)) {
+    monHwPolls++;
+    // A receiver that answers MON-HW with a truncated payload. The decode has
+    // to refuse it rather than read past the end of the frame.
+    std::vector<uint8_t> payload(monHwShort ? 20 : 56, 0);
+    payload[0] = 0x11;  // noise, little endian 0x00000311
+    payload[1] = 0x03;
+    payload[4] = 0x2a;  // agc 42
+    payload[8] = 2;     // antenna ok
+    payload[9] = 7;     // jamming indicator
+    queueRxLocked(binaryFrame(wantClass, wantId, payload));
+    return;
+  }
+
+  if (wantClass != 0x08) {
+    return;
+  }
+  size_t payloadLength = 0;
+  if (wantId == 0x07) {
+    payloadLength = 72;
+  } else if ((wantId == 0x06) || (wantId == 0x05)) {
+    payloadLength = 40;
+  } else {
+    return;
+  }
+  std::vector<uint8_t> payload(payloadLength, 0);
+  for (size_t i = 0; i < payload.size(); i++) {
+    payload[i] = static_cast<uint8_t>(wantId + i);
+  }
+  queueRxLocked(binaryFrame(wantClass, wantId, payload));
+}
+
 void queueGpsEvent(QueueHandle_t queue) {
   {
     std::lock_guard<std::mutex> lock(gpsMutex);
     if (uartMode == "pause") {
       gpsQueue = queue;
-      gpsOffset = sizeof(gpsData) - 1;
+      gpsOffset = gpsStream.size();
       rxBytes.clear();
       rxEventQueued = false;
       gpsEventQueued = false;
       gpsNextEventMillis = UINT32_MAX;
+      return;
+    }
+    if (!receiverAnswersLocked()) {
+      gpsQueue = queue;
+      gpsOffset = gpsStream.size();
+      rxBytes.clear();
+      rxEventQueued = false;
+      gpsEventQueued = false;
+      gpsNextEventMillis = Furble::Sim::clockMillis();
       return;
     }
     gpsQueue = queue;
@@ -129,7 +298,7 @@ void queueGpsEvent(QueueHandle_t queue) {
     gpsEventQueued = true;
     gpsNextEventMillis = Furble::Sim::clockMillis();
   }
-  const uart_event_t event = {.type = UART_PATTERN_DET, .size = sizeof(gpsData) - 1};
+  const uart_event_t event = {.type = UART_PATTERN_DET, .size = gpsStream.size()};
   xQueueSend(queue, &event, 0);
 }
 
@@ -165,7 +334,9 @@ esp_err_t uart_flush(uart_port_t) {
   return ESP_OK;
 }
 
-esp_err_t uart_set_baudrate(uart_port_t, uint32_t) {
+esp_err_t uart_set_baudrate(uart_port_t, uint32_t baud) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  uartBaud = baud;
   return ESP_OK;
 }
 
@@ -187,14 +358,14 @@ int uart_read_bytes(uart_port_t, uint8_t *buffer, uint32_t length, TickType_t) {
     }
     return static_cast<int>(count);
   }
-  if (gpsOffset >= sizeof(gpsData) - 1) {
+  if (gpsOffset >= gpsStream.size()) {
     return 0;
   }
-  const size_t remaining = (sizeof(gpsData) - 1) - gpsOffset;
+  const size_t remaining = (gpsStream.size()) - gpsOffset;
   const size_t count = std::min<size_t>(length, remaining);
-  std::memcpy(buffer, gpsSentences() + gpsOffset, count);
+  std::memcpy(buffer, gpsStream.data() + gpsOffset, count);
   gpsOffset += count;
-  if (gpsOffset >= sizeof(gpsData) - 1) {
+  if (gpsOffset >= gpsStream.size()) {
     gpsEventQueued = false;
     gpsNextEventMillis = Furble::Sim::clockMillis() + gpsRatePeriodMillis();
   }
@@ -206,9 +377,10 @@ void furble_sim_uart_update(void) {
   {
     std::lock_guard<std::mutex> lock(gpsMutex);
     const uint32_t now = Furble::Sim::clockMillis();
-    const bool due = (uartMode != "pause") && (static_cast<int32_t>(now - gpsNextEventMillis) >= 0);
-    if (gpsQueue != nullptr && !gpsEventQueued && rxBytes.empty()
-        && gpsOffset >= sizeof(gpsData) - 1 && due) {
+    const bool due = (uartMode != "pause") && receiverAnswersLocked()
+                     && (static_cast<int32_t>(now - gpsNextEventMillis) >= 0);
+    if (gpsQueue != nullptr && !gpsEventQueued && rxBytes.empty() && gpsOffset >= gpsStream.size()
+        && due) {
       queue = gpsQueue;
     }
   }
@@ -228,7 +400,18 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
     return -1;
   }
   const auto *bytes = static_cast<const uint8_t *>(data);
+  if (!receiverAnswersLocked()) {
+    // nothing on the port, or the driver is still probing another rate
+    return static_cast<int>(length);
+  }
+  if (command.find("PCAS03,1,0,1,1,1,0,0,0") != std::string::npos) {
+    queueRxLocked(satelliteBytes());
+  }
   if (length >= 10 && bytes[0] == SYNC_0 && bytes[1] == SYNC_1) {
+    // a replayed assistance frame is class 0x08 arriving from the host
+    if (bytes[4] == 0x08) {
+      ephReplayFrames++;
+    }
     if (uartMode == "timeout") {
       return static_cast<int>(length);
     }
@@ -238,6 +421,7 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
       queueRxLocked(malformed);
     } else {
       queueAckLocked(bytes, uartMode != "nack");
+      queuePollResponseLocked(bytes, readU16(bytes + 2));
     }
   }
   const std::string prefix = "PCAS12,";
@@ -247,7 +431,7 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
     const size_t end = command.find_first_not_of("0123456789", start);
     const uint32_t seconds = static_cast<uint32_t>(
         std::strtoul(command.substr(start, end - start).c_str(), nullptr, 10));
-    if (seconds > 0 && gpsQueue != nullptr && !gpsEventQueued && gpsOffset >= sizeof(gpsData) - 1) {
+    if (seconds > 0 && gpsQueue != nullptr && !gpsEventQueued && gpsOffset >= gpsStream.size()) {
       gpsNextEventMillis = Furble::Sim::clockMillis() + seconds * 1000;
     }
   }
@@ -274,6 +458,52 @@ void furble_sim_uart_clear_writes(void) {
 void furble_sim_uart_set_stationary(bool stationary) {
   const std::lock_guard<std::mutex> lock(gpsMutex);
   gpsStationary = stationary;
+  // The fix burst is a single buffer now, so choosing the stationary track
+  // swaps the buffer rather than switching a pointer at read time. Both canned
+  // tracks are the same length, which the static_assert above holds.
+  fixDateAdvances = false;
+  gpsStream.assign(gpsSentences(), sizeof(gpsData) - 1);
+  gpsOffset = gpsStream.size();
+void furble_sim_uart_set_fix_date(const char *name) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  if ((name != nullptr) && (std::string(name) == "modern")) {
+    gpsStream = nmea("GPRMC,123519.00,A,4807.038,N,01131.000,E,22.678,0.0,060926,,,A")
+                + nmea("GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+  } else {
+    gpsStream.assign(gpsData, sizeof(gpsData) - 1);
+  }
+  gpsOffset = gpsStream.size();
+}
+
+void furble_sim_uart_set_receiver(uint32_t baud, bool present) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  receiverBaud = baud;
+  receiverPresent = present;
+}
+
+void furble_sim_uart_set_monhw_short(bool shortFrame) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  monHwShort = shortFrame;
+}
+
+void furble_sim_uart_set_satellite_fixture(const char *name) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  satelliteFixture = (name == nullptr) ? "default" : name;
+}
+
+uint32_t furble_sim_uart_baud(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return uartBaud;
+}
+
+uint32_t furble_sim_uart_eph_replay_frames(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return ephReplayFrames;
+}
+
+uint32_t furble_sim_uart_monhw_polls(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return monHwPolls;
 }
 
 void furble_sim_uart_set_mode(const char *mode) {
@@ -281,7 +511,7 @@ void furble_sim_uart_set_mode(const char *mode) {
   uartMode = mode == nullptr ? "ack" : mode;
   if (uartMode == "pause") {
     gpsNextEventMillis = UINT32_MAX;
-  } else if (gpsQueue != nullptr && rxBytes.empty() && gpsOffset >= sizeof(gpsData) - 1) {
+  } else if (gpsQueue != nullptr && rxBytes.empty() && gpsOffset >= gpsStream.size()) {
     gpsNextEventMillis = Furble::Sim::clockMillis();
   }
 }

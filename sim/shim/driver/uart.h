@@ -85,6 +85,17 @@ void furble_sim_uart_set_mode(const char *mode);
 /** Select the stationary canned NMEA track instead of the moving one. */
 void furble_sim_uart_set_stationary(bool stationary);
 void furble_sim_uart_inject_event(const char *event);
+
+// The modelled receiver. baud 0 answers whatever rate the driver programmed,
+// which is the default; a specific rate makes it mute until the autobaud ladder
+// reaches it, and present false models an empty Grove port.
+void furble_sim_uart_set_receiver(uint32_t baud, bool present);
+void furble_sim_uart_set_satellite_fixture(const char *name);
+void furble_sim_uart_set_monhw_short(bool shortFrame);
+void furble_sim_uart_set_fix_date(const char *name);
+uint32_t furble_sim_uart_baud(void);
+uint32_t furble_sim_uart_eph_replay_frames(void);
+uint32_t furble_sim_uart_monhw_polls(void);
 #endif
 
 #endif

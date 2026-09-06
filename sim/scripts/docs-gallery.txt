@@ -36,6 +36,11 @@ wait 400
 capture gps
 print ui.page
 
+action nav gps_sats
+wait 2800
+capture gps-satellites
+print ui.page
+
 action nav bluetooth
 wait 400
 capture bluetooth

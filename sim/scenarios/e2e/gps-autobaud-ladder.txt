@@ -1,0 +1,59 @@
+# Autobaud has to lock at every rate the ladder knows, not only at the one the
+# fake receiver happens to default to. The modelled receiver answers at exactly
+# one rate, so the ladder must walk down to it before any sentence is parsed.
+# Each pass toggles GPS off and on, which re-runs GPS::enable() and re-arms the
+# ladder from the top.
+#
+# The ladder order is 115200, 9600, 38400, 57600, 19200, 4800 and each step is
+# bounded by Casic::Autobaud::STEP_MS, so the slowest rate costs six steps. The
+# waits below are generous multiples of that; they are not timing assertions.
+seed gps false
+seed gps_baud auto
+seed gps_uart_mode ack
+wait 300
+
+gps-receiver 115200
+action toggle gps
+wait 500
+assert-eventually-virtual 8000 gps.receiver present
+assert gps.baud 115200
+assert uart.baud 115200
+action toggle gps
+wait 500
+
+gps-receiver 9600
+action toggle gps
+assert-eventually-virtual 8000 gps.receiver present
+assert gps.baud 9600
+assert uart.baud 9600
+action toggle gps
+wait 500
+
+gps-receiver 38400
+action toggle gps
+assert-eventually-virtual 10000 gps.receiver present
+assert gps.baud 38400
+action toggle gps
+wait 500
+
+gps-receiver 57600
+action toggle gps
+assert-eventually-virtual 10000 gps.receiver present
+assert gps.baud 57600
+action toggle gps
+wait 500
+
+gps-receiver 19200
+action toggle gps
+assert-eventually-virtual 12000 gps.receiver present
+assert gps.baud 19200
+action toggle gps
+wait 500
+
+gps-receiver 4800
+action toggle gps
+assert-eventually-virtual 14000 gps.receiver present
+assert gps.baud 4800
+# A locked ladder must hand over to the normal fix path, not stop at detection.
+assert-eventually 8000 gps.satellites 8
+exit
