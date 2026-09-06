@@ -8,7 +8,22 @@
 #include <memory>
 #include <mutex>
 
+#if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
+// A simulator task blocking on the IMU bus has to stop being runnable, or the
+// host-clock deadlock breaker times it out instead (issue #279). Same pattern
+// and same reason as Furble::connect_mutex_t. Firmware, the host tests and
+// FURBLE_SIM_NO_SCHED_MUTEX all compile std::mutex, so the shipping path is
+// unchanged.
+#include "clock.h"
+#endif
+
 namespace Furble {
+
+#if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
+using imu_mutex_t = Sim::SchedulerMutex;
+#else
+using imu_mutex_t = std::mutex;
+#endif
 
 /**
  * Serializes M5.Imu transactions between the UI timers, the debug console
@@ -19,7 +34,7 @@ namespace Furble {
  * interleaved transaction from the spirit level or the IMU live page corrupts
  * one. Hold this for the whole sequence, never across a delay.
  */
-extern std::mutex g_IMUMutex;
+extern imu_mutex_t g_IMUMutex;
 
 namespace IMU {
 

@@ -194,7 +194,7 @@ namespace Furble {
 
 // The firmware defines this in FurbleUI.cpp or main.cpp depending on the build.
 // The engines take it around every register sequence, so the harness owns one.
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
 
 Platform &Platform::getInstance(void) {
   static Platform instance;

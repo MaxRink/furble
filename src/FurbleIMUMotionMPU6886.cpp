@@ -90,7 +90,7 @@ class MPU6886Backend final: public MotionBackend {
       return false;
     }
 
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     uint8_t whoAmI = 0;
     if (!readRegisters(WHO_AM_I, &whoAmI, 1) || (whoAmI != EXPECTED_WHO_AM_I)) {
@@ -149,7 +149,7 @@ class MPU6886Backend final: public MotionBackend {
       return;
     }
 
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     if (m_UsesInterrupt) {
       Platform::getInstance().disarmMotionWake();
@@ -182,7 +182,7 @@ class MPU6886Backend final: public MotionBackend {
     }
     m_LastPoll = now;
 
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     // The pin first. INT_STATUS is clear-on-read and M5Unified's IMU update
     // reads it, so on a board where the interrupt reaches a GPIO the pin is the

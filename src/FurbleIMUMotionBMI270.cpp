@@ -186,7 +186,7 @@ class BMI270Backend final: public MotionBackend {
     // The spirit level and the IMU live page share this bus, and everything
     // below is read-modify-write. Held for the whole sequence, never across a
     // delay.
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     uint8_t chipId = 0;
     if (!readRegisters(CHIP_ID, &chipId, 1) || (chipId != EXPECTED_CHIP_ID)) {
@@ -257,7 +257,7 @@ class BMI270Backend final: public MotionBackend {
       return;
     }
 
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     if (m_UsesInterrupt) {
       Platform::getInstance().disarmMotionWake();
@@ -282,7 +282,7 @@ class BMI270Backend final: public MotionBackend {
     }
     m_LastPoll = now;
 
-    std::lock_guard<std::mutex> lock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
 
     uint8_t status = 0;
     if (!readRegisters(INTERRUPT_STATUS_0, &status, 1)) {
