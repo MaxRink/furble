@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 18:50)
+## Resume here (kept current; last updated 2026-09-07 19:30)
 
 Master `fork/master` = **ae0aeafa** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47, #45, #291, #139). Upstream
@@ -33,7 +33,7 @@ Open PRs, head, state, next action:
 | #48 IMU hardware motion (plan 20) | fd52a851 pushed 18:45 (7 commits on ae0aeafa) | delta review af3f982a..fd52a851 running, CI running | on approval and green CI merge; then #65 (the af3f982a review was CHANGES REQUIRED: union-merge residue in docs/sim.md and a scenario, stale edge-counter comments, SD clamp, MPU6886 transition counting, roller hint; all claimed fixed in 21973038), CI, merge; six-step IMU gate owed post-merge; default HW_MOTION_SOFTWARE, flip to Auto is the gate deliverable |
 | #65 GPS motion detector (plan 18) | 5fa2fdfb on af3f982a in ~/wt/p65 | re-stacking onto fd52a851 (told 18:40) | `git rebase --onto fd52a851 af3f982a` running; gates, bundle <final48>..HEAD, push, delta review, merge after #48; GitHub refuses changing a stacked PR's base so its CI is red until #48 merges; six-step gate owed |
 | #166 companion password gate (plan 116) | a6c06b1f on GitHub; bundle p166-86d5c0ca (storage only, NOT pushed) | lane implementing the plan 116 auth gate on ae0aeafa | the branch never had the gate, only the wire id 47 setting (46 is IMU on master); lane adds the Auth characteristic, nonce plus HMAC-SHA256, per-connection auth state, gate on settings and trigger writes, encryption on location writes, companion_auth_test with mutations, corrected PR body; then push, review, CI, merge; Android app handshake bench owed post-merge |
-| #75 companion cameras characteristic (plan 51) | 868a9660 | lane rebasing onto ae0aeafa | connect/disconnect must use the UI's Control entry points, privileged ops behind one write handler for the #166 gate, deterministic companion host tests; push, review, CI, merge; app bench owed |
+| #75 companion cameras characteristic (plan 51) | 96c97aa4 pushed 19:25 (one commit on ae0aeafa, +1321/-89) | review and CI running | lane dropped the branch's 900-line NVS journal, took master's CameraList, minimal plan 51 2.1; connect/disconnect via UI::sendRequest (queue ungated from FURBLE_CONSOLE), Control::getTargetState() for rssi, stable ids with a v2 blob header, no new wire id; privileged ops all through handleCameras for the #166 gate; PR body replaced; merge after #166 or before, app bench owed |
 | #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | not started | base branch feat/33-wifi-hub is stale (33a merged as #148); re-base onto master, review, CI; user WiFi bench on the stick (wifi set ssid/psk, enable, status, ntp), no camera |
 | #66 MQTT, #161 MQTT sim, #90 WebUI (33c/117/33d) | 47edf348 / dc38f1b5 / a21f4aa6 | not started | stacked on #53 in that order; broker bench by the user |
 | #59 deep sleep between interval shots (plan 19) + #177 sim | ffa5798d / e848a9b5 | not started, prep only | rebase and get the sim green; the bench is an interval run and needs a camera |
@@ -56,7 +56,7 @@ firmware-coverage artefacts and diff the llvm-cov html per line.
 Active agent lanes at 18:10 (they do not survive a new session; the VM
 worktrees do): #48 lane (~/wt/p48, done, fd52a851), #65 lane (~/wt/p65, re-stacking
 onto fd52a851), #166 lane (~/wt/p166, implementing the gate), #75 lane
-(~/wt/p75, rebasing), #245 lane (~/wt/f245, parked), #273 lane
+(~/wt/p75, done, 96c97aa4), #245 lane (~/wt/f245, parked), #273 lane
 (host wt-168-push, parked). Reviewer worktrees r139 r139b r139c r48c r291
 idle and the fw245e build worktree can be pruned.
 
@@ -89,7 +89,7 @@ detached with nohup, an outer timeout kills it); the VM cannot push, lanes
 hand bundles under ~/furble-build-wt/ and the coordinator pushes from
 ~/furble-build-wt/wt-handoff (host git is slow: fetch single SHAs, never
 `worktree add` there; a first push sometimes fails with "failed to push
-some refs" and the retry succeeds; fetch new master commits by FULL sha before pushing a bundle built on them). Rules: -j2 on every tool, one sim per
+some refs" when the lease uses a SHORT sha or the base commit is missing locally: always use full SHAs in --force-with-lease and fetch new master commits by full sha before pushing a bundle built on them). Rules: -j2 on every tool, one sim per
 lane, own PIDs by build path only, a denied call means stop and report,
 new settings need a ProvisionTLV schema row, Camera locks use
 Furble::connect_mutex_t, the profile-naming foreach stays last in
