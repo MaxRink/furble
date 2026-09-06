@@ -922,3 +922,5 @@ Update 2026-09-06 12:30: the Claude session credential expired ("Not logged in")
 Update 2026-09-06 13:00: #65 fix round done at 232d707a (GPS::reloadMotionSetting, killable sim and host guards, timer registered with the profiler; CI 33/33), parked for #48 then a rebase to consume IMU::MotionSource; delta review owed after /login. Mutation-harness rule recorded: stash-and-restore, fail on non-zero build, verify the rebuild.
 
 Update 2026-09-06 13:30: PR #286 opened (plan 173): host mutex waits visible to the sim scheduler (issue #279 fixed at the source, clock bounds restored with 50-run proofs at loadavg 253), one flash image per simulated device (issue #284 real cause: shared flash between two sims of one scenario), SIGSEGV handler with backtrace (#283). Review owed after /login.
+
+Update 2026-09-06 14:00: session re-authenticated; all stopped lanes resumed and the reviews of #286, #48 and the #65 delta dispatched. Seven lanes active at VM load 1.3. The stick is idle on the #245 bench head.
