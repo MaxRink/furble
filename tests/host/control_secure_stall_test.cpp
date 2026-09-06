@@ -204,10 +204,29 @@ int main(void) {
   // across the cycles instead of failing out after two attempts.
   uint32_t aborts = 0;
   uint32_t slowest = 0;
+  bool reachedEveryCycle = true;
   for (uint32_t cycle = 0; cycle < CYCLES; cycle++) {
     for (uint32_t at : DISCONNECT_AT_MS) {
+      const uint32_t entriesBefore = peer.secureStallEntries();
       control.addActive(camera);
       control.connectAll(true);
+
+      // Wait for the attempt to actually reach the blocking handshake, rather
+      // than sleeping a fixed time and assuming it got there. The connect has
+      // to scan, link and run the Secure handshake up to secureConnection()
+      // first, and on a loaded host that took longer than the shortest offset,
+      // so a cancel landed before the stall had been entered and the run
+      // proved nothing about ending a blocking call. Measured on this branch,
+      // that lost 1 full-suite run in 6 under load.
+      if (!waitFor([&]() { return peer.secureStallEntries() > entriesBefore; }, STALL_MS * 3)) {
+        reachedEveryCycle = false;
+        control.disconnect();
+        waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, STALL_MS * 3);
+        continue;
+      }
+
+      // Now land the cancel at varying depths inside the stall, which is what
+      // the bench varied: 2 s, 4 s and 6 s into a connect that was parked.
       std::this_thread::sleep_for(std::chrono::milliseconds(at));
       const uint32_t issued = nowMs();
       control.disconnect(300);
@@ -224,7 +243,8 @@ int main(void) {
   }
 
   const uint32_t cycles = CYCLES * (sizeof(DISCONNECT_AT_MS) / sizeof(DISCONNECT_AT_MS[0]));
-  check(peer.secureStallEntries() >= cycles, "every cycle reached the blocking handshake");
+  check(reachedEveryCycle && (peer.secureStallEntries() >= cycles),
+        "every cycle reached the blocking handshake");
   check(aborts == cycles, "every disconnect ended the handshake by terminating the link");
   check(slowest < STALL_MS, "and none of them had to outwait the stall to get there");
   if (slowest >= STALL_MS) {

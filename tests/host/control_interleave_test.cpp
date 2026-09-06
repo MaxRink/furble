@@ -166,17 +166,28 @@ int main(void) {
                             "control task parked at connectall_returned");
 
   // Verify the premise rather than relying on the later checks to be
-  // fail-safe. connectAll() returns m_State on the abort path, so the value
-  // the parked task is holding is whatever the state read moments before the
-  // point fired. If that already read IDLE the guard below is never
-  // exercised and this test would pass vacuously. disconnect() cannot
-  // publish IDLE until targetTasksStopped(), which it polls in
-  // DISCONNECT_WAIT_SLICE_MS slices after the target task has taken the
-  // camera mutex the unwinding connect just released, so the park lands
-  // inside the DISCONNECTING window with a wide margin.
+  // fail-safe: if the parked task is not holding DISCONNECTING, the guard
+  // below is never exercised and this test passes vacuously.
+  //
+  // The premise is that the park is on the abort path, and the abort being
+  // armed is what proves that. Since PR #274 that path returns the literal
+  // STATE_DISCONNECTING rather than m_State, so the value the parked task
+  // holds does not depend on what the published state reads at any moment.
+  //
+  // This used to read control.getState() instead, from the era when the
+  // abort path did return m_State. That read was already a proxy, and it is
+  // a racy one: disconnect() publishes IDLE as soon as targetTasksStopped(),
+  // and PR #245 wakes an attempt blocked inside NimBLE through
+  // Camera::abortBlockingConnect() instead of waiting for it to notice the
+  // token, so the unwind now finishes fast enough that IDLE is often
+  // published before this line runs. Measured on that PR's branch, the read
+  // failed 2 of 8 full-suite runs under load and 0 of 8 on master, purely
+  // because the abort got quicker. The abort counter has no such window:
+  // disconnect() fires disconnect_abort_armed before it touches a target, so
+  // it is already set whenever the task can reach this park.
   if (parked) {
-    check(control.getState() == Control::STATE_DISCONNECTING,
-          "connectAll returned the DISCONNECTING result the guard must drop");
+    check(abortArmedCount.load() == 1,
+          "the park is on the abort path, which returns the DISCONNECTING the guard must drop");
   }
 
   disconnector.join();
