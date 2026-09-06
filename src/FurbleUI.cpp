@@ -302,6 +302,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSAssistStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSHoldStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -508,6 +509,8 @@ UI::UI(const interval_t &interval)
   m_Status.batteryCurrent = nullptr;
   m_Status.batteryCharging = nullptr;
   m_Status.batteryRuntime = nullptr;
+  m_Status.gpsExtrapolate = nullptr;
+  m_GPSData.fix = nullptr;
   m_Status.screenLocked = false;
 
   // prime the battery cache before anything renders it
@@ -1656,7 +1659,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   return cont;
 }
 
-void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
+lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting) {
   lv_obj_t *obj = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW_WRAP);
 
@@ -1711,6 +1714,17 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
           ui->setPresetPicker(lv_obj_has_state(sw, LV_STATE_CHECKED));
         },
         LV_EVENT_VALUE_CHANGED, this);
+  }
+
+  if (setting == Settings::GPS_EXTRAP) {
+    m_Status.gpsWidgets.push_back(obj);
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+          status->gps->reloadSetting();
+        },
+        LV_EVENT_VALUE_CHANGED, &m_Status);
   }
 
   if (setting == Settings::GPS) {
@@ -1805,6 +1819,8 @@ void UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t set
         },
         LV_EVENT_VALUE_CHANGED, this);
   }
+
+  return sw;
 }
 
 void UI::updateMultiConnectButton(lv_obj_t *button) {
@@ -2817,6 +2833,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
         {"gps_constellation", m_GPSConstellationStr},
         {"gps_power",         m_GPSPowerStr        },
         {"gps_assist",        m_GPSAssistStr       },
+        {"gps_hold",          m_GPSHoldStr         },
         {"gps",               m_GPSStr             },
         {"gps_data",          m_GPSDataStr         },
         {"nmea",              m_GPSNMEAStr         },
@@ -2967,6 +2984,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       {"gps_constellation", m_GPSConstellationStr },
       {"gps_power",         m_GPSPowerStr         },
       {"gps_assist",        m_GPSAssistStr        },
+      {"gps_hold",          m_GPSHoldStr          },
       {"gps",               m_GPSStr              },
       {"gps_data",          m_GPSDataStr          },
       {"nmea",              m_GPSNMEAStr          },
@@ -3613,7 +3631,7 @@ std::string UI::simQueryState(const char *key) {
     // matrix scenario, so adding a page cannot silently turn into "other" in
     // host coverage. Optional capability pages are looked up with find below
     // because their menu entries are not built when the capability is absent.
-    const std::array<std::pair<const char *, const char *>, 50> pages = {
+    const std::array<std::pair<const char *, const char *>, 51> pages = {
         {
          {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
@@ -3659,6 +3677,7 @@ std::string UI::simQueryState(const char *key) {
          {m_GPSConstellationStr, "gps_constellation"},
          {m_GPSPowerStr, "gps_power"},
          {m_GPSAssistStr, "gps_assist"},
+         {m_GPSHoldStr, "gps_hold"},
          {m_IntervalCountStr, "interval_count"},
          {m_IntervalDelayStr, "interval_delay"},
          {m_IntervalShutterStr, "interval_shutter"},
@@ -4025,6 +4044,54 @@ std::string UI::simQueryState(const char *key) {
       return satellites;
     }
     return query == "gps_lat" ? lat : lon;
+  }
+
+  // Is the Extrapolate switch reachable? It is greyed out until fix hold is set,
+  // because it has nothing to project without a held fix, and a control that is
+  // enabled when it cannot do anything is worse than one that is missing.
+  if (query == "gps_extrap_enabled") {
+    if ((m_Status.gpsExtrapolate == nullptr) || !lv_obj_is_valid(m_Status.gpsExtrapolate)) {
+      return "none";
+    }
+    return lv_obj_has_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED) ? "no" : "yes";
+  }
+
+  // Read the rendered fix hold row. "hidden" is the state a default build
+  // must report: the row only means something once fix hold is armed, so a
+  // regression that renders it unconditionally fails the defaults-off scenario
+  // rather than quietly changing the page for every user.
+  if (query == "gps_fix_state" || query == "gps_hold_remaining") {
+    if ((m_GPSData.fix == nullptr) || !lv_obj_is_valid(m_GPSData.fix)) {
+      return "none";
+    }
+    if (lv_obj_has_flag(m_GPSData.fix, LV_OBJ_FLAG_HIDDEN)) {
+      return query == "gps_fix_state" ? "hidden" : "none";
+    }
+    const char *text = lv_label_get_text(m_GPSData.fix);
+    if (text == nullptr) {
+      return "none";
+    }
+    const std::string line = text;
+    if (query == "gps_hold_remaining") {
+      // "fix: held, 27s left" reports 27. Any other state has no remaining
+      // time, so it reports "none" rather than a zero a scenario could misread.
+      const size_t comma = line.find(", ");
+      const size_t s = line.find("s left");
+      if ((comma == std::string::npos) || (s == std::string::npos) || (s < comma)) {
+        return "none";
+      }
+      return line.substr(comma + 2, s - comma - 2);
+    }
+    if (line.rfind("fix: live", 0) == 0) {
+      return "live";
+    }
+    if (line.rfind("fix: held", 0) == 0) {
+      return "held";
+    }
+    if (line.rfind("fix: searching", 0) == 0) {
+      return "searching";
+    }
+    return "other";
   }
 
   // Read the rendered GPS Data page receiver detail rows. Each query returns one
@@ -4983,6 +5050,14 @@ void UI::serviceRequests(void) {
 
       case Request::GPS_RELOAD:
         GPS::getInstance().reloadSetting();
+        if (m_Status.gpsExtrapolate != nullptr) {
+          const uint8_t hold = Settings::load<Settings::GPS_HOLD>();
+          if ((hold == 0) || (hold > GPS::HOLD_MAX)) {
+            lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+          } else {
+            lv_obj_remove_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+          }
+        }
         break;
 
       case Request::SD_RELOAD:
@@ -6162,6 +6237,29 @@ void UI::addGPSMenu(const menu_t &parent) {
         status->gps->reloadSetting();
       });
 
+  const uint8_t savedHold = Settings::load<Settings::GPS_HOLD>();
+  addGPSOptionMenu(menu, m_GPSHoldStr, m_GPSHoldOptions, savedHold <= GPS::HOLD_MAX ? savedHold : 0,
+                   [](lv_event_t *e) {
+                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+                     const uint8_t hold = static_cast<uint8_t>(lv_roller_get_selected(roller));
+
+                     Settings::save<Settings::GPS_HOLD>(hold);
+                     status->gps->reloadSetting();
+                     if (status->gpsExtrapolate != nullptr) {
+                       if (hold == 0) {
+                         lv_obj_add_state(status->gpsExtrapolate, LV_STATE_DISABLED);
+                       } else {
+                         lv_obj_remove_state(status->gpsExtrapolate, LV_STATE_DISABLED);
+                       }
+                     }
+                   });
+
+  m_Status.gpsExtrapolate = addSettingItem(menu.page, NULL, Settings::GPS_EXTRAP);
+  if ((savedHold == 0) || (savedHold > GPS::HOLD_MAX)) {
+    lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+  }
+
   addGPSDataMenu(menu);
   addGPSNMEAMenu(menu);
 
@@ -6283,6 +6381,31 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         FURBLE_SIM_TIMER_FIRE("gps_data_timer");
         auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
         const auto status = GPS::getInstance().getStatusSnapshot();
+
+        // The fix row only means something while fix hold is armed, so it stays
+        // hidden otherwise and the page renders exactly as it did before the
+        // hold feature existed.
+        if (m_GPSData.fix == nullptr) {
+          m_GPSData.fix = lv_label_create(gpsData->page);
+        }
+        lv_obj_t *fixState = m_GPSData.fix;
+        const bool holdArmed = GPS::getInstance().getHoldLimitMs() != 0;
+        showStatusIcon(fixState, holdArmed);
+        if (holdArmed) {
+          const uint32_t remainingMs = GPS::getInstance().getHoldRemainingMs();
+          switch (GPS::getInstance().getFix()) {
+            case GPS::Fix::LIVE:
+              setLabelTextIfChanged(fixState, "fix: live");
+              break;
+            case GPS::Fix::HELD:
+              setLabelTextFmtIfChanged(fixState, "fix: held, %lus left",
+                                       static_cast<unsigned long>((remainingMs + 999) / 1000));
+              break;
+            case GPS::Fix::NONE:
+              setLabelTextIfChanged(fixState, "fix: searching");
+              break;
+          }
+        }
 
         static lv_obj_t *age = lv_label_create(gpsData->page);
         setLabelTextFmtIfChanged(age, "%lus ago", status.location_age / 1000);

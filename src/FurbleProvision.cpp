@@ -1,4 +1,5 @@
 #include "FurbleProvision.h"
+#include "FurbleGPSHold.h"
 
 #include <cstring>
 
@@ -49,6 +50,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::GPS:
     case Settings::IR:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
@@ -79,6 +81,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -147,6 +150,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
       }
       break;
     case ProvisionTLV::ValueType::U8:
+      if ((setting.type == Settings::GPS_HOLD) && (field.value[0] > GPS_HOLD_MAX)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "GPS fix hold must be 0 through 4";
+        return false;
+      }
       if ((setting.type == Settings::GPS_ASSIST) && (field.value[0] > 2)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;

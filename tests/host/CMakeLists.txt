@@ -732,6 +732,15 @@ target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
 
+# Bounded GPS fix hold and dead reckoning. include/FurbleGPSHold.h holds the
+# bound, the held UTC advance and the straight line projection, free of
+# FreeRTOS, LVGL, NVS and the camera headers, so this pins the exact production
+# arithmetic without a device. No furble sources on its link line either.
+add_executable(gps_hold_test gps_hold_test.cpp)
+target_include_directories(gps_hold_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(gps_hold_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                             -Wno-unused-parameter)
+
 # The GPS Data page sentence age formatter. Pure, header only, and the only
 # unbounded field on a row with a hard character budget, so its clamp is a unit
 # test rather than a scenario assertion. The simulator cannot reach the ages
@@ -1419,6 +1428,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
   add_test(NAME gps-format COMMAND gps_format_test)
+  add_test(NAME gps-hold COMMAND gps_hold_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)

@@ -114,6 +114,10 @@ action nav gps_assist
 wait 100
 assert ui.page gps_assist
 assert ui.overflow no
+action nav gps_hold
+wait 100
+assert ui.page gps_hold
+assert ui.overflow no
 action nav gps_data
 wait 300
 assert ui.page gps_data

@@ -86,8 +86,11 @@ every setting, its default, and when it applies.
   (`always_on`, `standby` or `rail_cycle`), `duty` (standby seconds), `rate`
   (configured fix interval in ms, 0 for the receiver default), `sentence_age`
   (ms since the receiver last spoke, or `none` if it never has), `assist` (the
-  assisted start mode) and `assist_cache`. The GPS Data page shows a two row
-  summary of the same state; this is where all of it is readable.
+  assisted start mode) and `assist_cache`. It then reports the fix hold state:
+  `fix_state` (`live`, `held` or `none`), `hold` (the configured bound in ms,
+  0 when fix hold is off) and `hold_remaining` (ms left on a held fix). The GPS
+  Data page shows a two row summary of the same state; this is where all of it
+  is readable.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
 - `gps send <body>` sends a raw sentence, for example `gps send PCAS12,10`.

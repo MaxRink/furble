@@ -86,7 +86,11 @@ result. Inferred, synthetic, missing, or conflicting behavior must return
 `UNCERTIFIED` rather than a plausible compatibility pass.
 
 `FURBLE_SIM` conditionals in shared sources are audited at each release:
-`FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h` and
+`FauxNY.h` and `FauxNY.cpp` (the geotag the simulated camera last received,
+recorded so a scenario can assert the far end of the production GPS to camera
+path rather than inferring it from the GPS page; the send path itself is
+unchanged), `FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h`
+and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
@@ -156,9 +160,17 @@ a regression.
   move a fuzz run, but they are still invisible, so `observed_delta` and
   `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
   not the log.
-- Exception: `gps.txt` renders the TinyGPSPlus fix age from the real host
-  clock, so `gps.png` is not byte-reproducible and must not be a golden
-  baseline as-is.
+- Fix age is virtual too, so `gps.png` is byte-reproducible like every other
+  capture. It used to be the one exception. TinyGPSPlus ages every reading
+  against a global `millis()`, and its non-Arduino fallback read the host wall
+  clock, so fix age depended on how long the run happened to take.
+  `TinyGPS++.cpp` is now built with `__AVR__`, which suppresses only that
+  fallback, and `sim/clock.cpp` supplies the virtual clock instead. Keep the two
+  in step: without the build flag the simulator gets two definitions of
+  `millis()`, and without the definition it gets none.
+- Anything that depends on GPS fix age is therefore scriptable in virtual time,
+  including the freshness window expiring and fix hold engaging. `wait` ages the
+  fix exactly as it advances everything else.
 - The fake scan publishes two advertisement events and a scan end from a
   background host worker. `processPendingCallbacks()` drains them on the UI
   task, so the fake never mutates `CameraList` or touches LVGL from its worker.

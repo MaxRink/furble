@@ -22,6 +22,27 @@ Public headers for the app layer in src/, one header per module
   NVS writes.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46. Wire id 45 is
   reserved for the companion-password contract and must not be reused.
+
+### Companion wire id reservations
+
+The settings table in `src/FurbleSettings.cpp` is the source of truth for ids
+already on master, which run from 0 through 46. Ids above that are handed out
+here so open PRs cannot collide, because two branches claiming one id produce an
+add/add conflict in `tests/protocol/golden/settings/*-<id>.bin` and a silent
+protocol break for the companion app. A PR claims its reserved ids at rebase
+time, regenerates its golden corpus, and updates its row. See issue #280.
+
+| PR | Setting keys | Wire ids |
+| --- | --- | --- |
+| #273 | `legend` | 65 |
+| #65 | `gps_motion` | 66 |
+| #47 | `gps_hold`, `gps_extrap` | 67, 68 |
+| #139 | plan 32 phase 2 | 69, 70, 71 |
+| #45 | `imu_wake`, `imu_trigger` | 72, 73 |
+| #48 | `hw_motion` | 74 |
+
+Ids 47 through 64 are claimed by other open PRs. Take the next free id below
+the reservations only after checking every open PR head.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.

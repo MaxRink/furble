@@ -74,7 +74,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [20-imu-hw-motion.md](20-imu-hw-motion.md) | Hardware motion detection via IMU engines |
-| [21-imu-dead-reckoning.md](21-imu-dead-reckoning.md) | GPS position hold when fix is lost |
+| [21-imu-dead-reckoning.md](21-imu-dead-reckoning.md) | GPS position hold when fix is lost, bounded hold and extrapolation implemented |
 | [22-ir-remote-trigger.md](22-ir-remote-trigger.md) | IR shutter trigger (Nikon, Sony, Canon protocols) |
 | [23-feedback-outputs.md](23-feedback-outputs.md) | Beep, LED, vibration feedback |
 | [24-sd-gpx-logging.md](24-sd-gpx-logging.md) | SD card GPX logging and settings backup |
@@ -210,8 +210,10 @@ review and the FauxNY test camera, and are marked as untested in each PR.
  ## Wire ids
 
 The frozen setting wire_id ledger lives in
-[50-companion-app-design.md](50-companion-app-design.md). Current integrated
-allocations run through 46 (`IMU`). Wire id 42 is reserved for the
+[50-companion-app-design.md](50-companion-app-design.md), and the reservation
+table for the ids claimed by open PRs lives in `include/CLAUDE.md`. Current
+integrated allocations run through 46 (`IMU`). Fix hold and extrapolation hold
+67 and 68. Wire id 42 is reserved for the
 timezone setting planned by the time-policy work. Id 43 is allocated to the
 charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
 source and the fetched/open persistent-time and WiFi charging branches; those

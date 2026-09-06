@@ -216,7 +216,14 @@ compile_cpp() {
     return
   fi
   echo "[CXX] ${source#$ROOT/}"
-  "$CXX" $CXXFLAGS $(coverage_flags_for "$source") \
+  # TinyGPSPlus ages readings against a global millis(). Suppress its host
+  # wall-clock fallback so sim/clock.cpp can supply the virtual one, which is
+  # what makes fix age deterministic. __AVR__ guards nothing else in that file.
+  extra=""
+  case "$source" in
+    "$DEP_ROOT/TinyGPSPlus/"*) extra="-D__AVR__" ;;
+  esac
+  "$CXX" $CXXFLAGS $extra $(coverage_flags_for "$source") \
     -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"

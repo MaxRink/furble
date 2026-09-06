@@ -25,10 +25,13 @@
 
 #include <driver/uart.h>
 
+#include <FauxNY.h>
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
+
 #include "FurbleUI.h"
 #include "Scan.h"
 #include "ble_sim.h"
@@ -284,7 +287,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",    "fb_output",
+      "text_size",  "auto_off",   "low_batt",    "fb_output", "gps_hold",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -301,6 +304,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "saved_camera",  "scan_start_probe",  "ble_saved",
       "recon_backoff", "auto_off_charging", "imu",
       "imu_sensor",    "liveness_check",    "ble_client_selfdelete",
+      "gps_extrap",    "gps_stationary",    "sd_gpx",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -822,6 +826,8 @@ std::string settingBoolValue(const std::string &name) {
 #endif
       {"gps",               Settings::GPS              },
       {"gps_nmea",          Settings::GPS_NMEA         },
+      {"gps_extrap",        Settings::GPS_EXTRAP       },
+      {"sd_gpx",            Settings::SD_GPX           },
       {"ir",                Settings::IR               },
       {"conn_saver",        Settings::CONN_SAVER       },
       {"preset_picker",     Settings::PRESET_PICKER    },
@@ -1059,10 +1065,33 @@ std::string queryValue(const std::string &key) {
       return debug.connectingCamera;
     }
   }
+  // Track points the firmware queued for the SD writer. Fix hold deliberately
+  // keeps the camera geotagged without recording anything, so a scenario proves
+  // the split by holding this count still while camera.geo_count climbs.
+  if (key == "gpx.points") {
+    return std::to_string(SD::getInstance().loggedPoints());
+  }
+
   if (prefixed("camera.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("camera."));
     if (sub == "count") {
       return std::to_string(CameraList::size());
+    }
+    // The geotag that actually reached the camera. Fix hold exists so this
+    // keeps arriving after the receiver loses its fix, so a scenario asserts
+    // the far end of the production GPS to camera path here rather than
+    // inferring it from the GPS page. Coordinates are reported in units of
+    // 1e-5 degrees so assert_min and assert_max can bound them.
+    if (sub == "geo_count" || sub == "geo_lat_e5" || sub == "geo_lon_e5" || sub == "geo_utc_s") {
+      const auto geo = FauxNY::getGeoRecord();
+      if (sub == "geo_count") {
+        return std::to_string(geo.count);
+      }
+      if (sub == "geo_utc_s") {
+        return std::to_string((geo.hour * 3600) + (geo.minute * 60) + geo.second);
+      }
+      const double degrees = (sub == "geo_lat_e5") ? geo.latitude : geo.longitude;
+      return std::to_string(static_cast<long long>(std::llround(degrees * 100000.0)));
     }
     if (sub == "shutter_presses") {
       return std::to_string(cameraShutterPresses());
@@ -1280,6 +1309,7 @@ void applyScenarioSettings(void) {
   saveByte("gps_constel", Settings::GPS_CONSTEL);
   saveByte("gps_power", Settings::GPS_POWER);
   saveByte("gps_duty", Settings::GPS_DUTY);
+  saveByte("gps_hold", Settings::GPS_HOLD);
   saveByte("cpu_freq", Settings::CPU_FREQ);
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
@@ -1294,6 +1324,8 @@ void applyScenarioSettings(void) {
   saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
+  saveBoolean("gps_extrap", Settings::GPS_EXTRAP);
+  saveBoolean("sd_gpx", Settings::SD_GPX);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
   saveBoolean("reconnect", Settings::RECONNECT);
@@ -1343,6 +1375,7 @@ void applyScenarioSettings(void) {
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
+  furble_sim_uart_set_stationary(scenarioSettingIsTrue("gps_stationary"));
   saveBoolean("imu", Settings::IMU);
   // Keep the host sensor surface in step with the setting used to construct
   // the UI. The SDL platform cannot initialize a physical IMU, so the shared

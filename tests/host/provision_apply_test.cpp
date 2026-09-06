@@ -1,13 +1,16 @@
 // Host coverage for the production provisioning apply path.
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "FurbleProvision.h"
 #include "FurbleSettings.h"
 #include "nvs.h"
+#include "protocol/ProvisionTLV.h"
 
 namespace {
 
@@ -93,18 +96,66 @@ void testValidatedApplyAndRuntimeHooks() {
 void testDomainValidation() {
   resetSettings();
 
-  for (const SettingValue &invalid : {
-           SettingValue {26, ValueType::U8,     {6}                 },
-           SettingValue {33, ValueType::U8,     {5}                 },
-           SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}},
-  }) {
+  // The expected message matters as much as the rejection. A setting id with no
+  // row in SETTING_SCHEMAS is also rejected, but as UNSUPPORTED_SETTING before
+  // the domain rule is ever reached, so asserting only "it failed" would pass
+  // for a setting the bundle can never carry at all.
+  const std::pair<SettingValue, const char *> cases[] = {
+      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15" },
+      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range" },
+      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"   },
+      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"},
+      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"  },
+  };
+
+  for (const auto &entry : cases) {
     ProvisionBundle bundle;
-    bundle.settings = {invalid};
+    bundle.settings = {entry.first};
     ApplyReport report;
     check(!apply(bundle, report), "domain-invalid setting is rejected");
     check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
-          "domain-invalid setting reports BAD_SETTING");
+          std::string("setting ") + std::to_string(entry.first.wireId)
+              + " reports BAD_SETTING, not a missing schema row");
+    check(report.failedSettingId == entry.first.wireId, "the rejected setting id is reported");
+    check(report.message == entry.second,
+          std::string("setting ") + std::to_string(entry.first.wireId) + " names its own rule");
     check(report.settingsApplied == 0, "domain-invalid setting writes nothing");
+  }
+}
+
+// Every setting the companion can name by wire id needs a row in
+// SETTING_SCHEMAS, or schemaForSetting() returns nullptr and the whole bundle
+// is rejected as UNSUPPORTED_SETTING before any domain rule runs. That failure
+// is silent from the settings table's point of view: nothing in FurbleSettings
+// knows the mirror exists. Adding a setting and forgetting the row is therefore
+// the easy mistake, and this is the guard for it.
+//
+// The two ids below are already missing on master. Registering them changes the
+// provisioning surface for settings this test's PR did not add, so they are
+// named here as a known gap rather than quietly fixed. Do not extend this list
+// to cover a new setting: add the schema row instead.
+void testEverySettingHasASchemaRow() {
+  static constexpr uint8_t KNOWN_MISSING[] = {
+      43,  // AUTO_OFF_CHARGING
+      46,  // IMU
+  };
+
+  for (const auto &entry : Furble::Settings::all()) {
+    const uint8_t wireId = entry.second.wire_id;
+    if (wireId == 0) {
+      // Off-wire settings are deliberately unreachable by id.
+      continue;
+    }
+    const bool known = std::find(std::begin(KNOWN_MISSING), std::end(KNOWN_MISSING), wireId)
+                       != std::end(KNOWN_MISSING);
+    const bool registered = Furble::ProvisionTLV::schemaForSetting(wireId) != nullptr;
+    if (known) {
+      check(!registered, std::string("wire id ") + std::to_string(wireId)
+                             + " is still the known gap, drop it from KNOWN_MISSING if fixed");
+      continue;
+    }
+    check(registered, std::string("wire id ") + std::to_string(wireId) + " (" + entry.second.key
+                          + ") has a SETTING_SCHEMAS row");
   }
 }
 
@@ -114,6 +165,7 @@ int main() {
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
   testDomainValidation();
+  testEverySettingHasASchemaRow();
 
   if (failures != 0) {
     std::cerr << "provision apply tests: " << failures << " FAILED\n";

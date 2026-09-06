@@ -353,6 +353,10 @@ The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
 - `Sentences` (cut the receiver down to the sentences `furble` actually reads)
 - `Constellation` (which satellite systems the receiver listens to)
+- `Fix Hold` (keep sending the last fix for up to an hour after the receiver
+  loses it, so a tunnel or a doorway does not cost a run of geotags)
+- `Extrapolate` (while a fix is held, project it along the last course and
+  speed, experimental)
 
 Each of these defaults to `Default`, which leaves the receiver on its own
 settings and behaves exactly as before.

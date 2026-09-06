@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurbleGPSHold.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -202,6 +203,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::TEXT_SIZE:
@@ -235,6 +237,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -353,6 +356,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::GPS_HOLD:
+      if (!parseUnsigned(text, GPS_HOLD_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
       if (!parseUnsigned(text, UINT8_MAX, value)) {
@@ -448,6 +458,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
