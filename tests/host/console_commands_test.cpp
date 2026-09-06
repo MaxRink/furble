@@ -19,6 +19,7 @@
 // PMIC platform).
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -1293,6 +1294,28 @@ void testDebugWithLiveCamera(void) {
 
   NimBLEDevice::resetMock();
 }
+
+// Set by the task the shim must refuse to start once shutdown has begun.
+std::atomic<bool> g_LateTaskRan {false};
+
+// Test 15. The host-harness task lifetime contract itself. furbleHostStopTasks()
+// copies the task list before it joins, so a task created after that copy is
+// never joined and outlives main() exactly as a detached task did. The shim has
+// to refuse it. This test runs last because it stops every shim task: the
+// console task is joined here, so nothing after it can drive a command.
+void testTaskCreationAfterShutdownIsRejected(void) {
+  std::cerr << "test: the shim refuses a task created after shutdown has begun\n";
+
+  furbleHostStopTasks();
+
+  g_LateTaskRan = false;
+  const BaseType_t created =
+      xTaskCreate([](void *) { g_LateTaskRan = true; }, "late", 2048, nullptr, 1, nullptr);
+  check(created == pdFAIL, "xTaskCreate is refused once shutdown has begun");
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  check(!g_LateTaskRan.load(), "the refused task never ran");
+}
 }  // namespace
 
 int main(void) {
@@ -1332,6 +1355,9 @@ int main(void) {
   testErrorPaths();
   testConsoleTaskTransport();
   testDebugWithLiveCamera();
+
+  // Last: it stops and joins every shim task.
+  testTaskCreationAfterShutdownIsRejected();
 
   std::cerr << (g_Failures == 0 ? "PASS" : "FAIL") << ": " << (g_Checks - g_Failures) << "/"
             << g_Checks << " checks\n";
