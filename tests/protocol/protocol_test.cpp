@@ -293,10 +293,12 @@ void checkSettings(const std::string &root, const fs::path &golden) {
       {"IMU_TRIG", {73, FurbleProtocolTest::WireType::BOOL}},
   };
   for (const auto &[symbol, expected] : frozen) {
-    const auto found = std::find_if(settings.begin(), settings.end(),
-                                    [&symbol](const FurbleProtocolTest::SettingInfo &setting) {
-                                      return setting.symbol == symbol;
-                                    });
+    // Bound before the lambda on purpose: capturing a structured binding is
+    // valid C++20 but clang 14 rejects it, and CI still builds with it.
+    const std::string &name = symbol;
+    const auto found = std::find_if(
+        settings.begin(), settings.end(),
+        [&name](const FurbleProtocolTest::SettingInfo &setting) { return setting.symbol == name; });
     require(found != settings.end(), symbol + " is missing from the settings table");
     require(found->wire_id == expected.first, symbol + " wire id moved");
     require(found->type == expected.second, symbol + " wire type changed");

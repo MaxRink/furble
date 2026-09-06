@@ -527,12 +527,20 @@ reading the code.
 - The `SETTING_SCHEMAS` rows in `lib/furble/protocol/ProvisionTLV.cpp`. A wire
   id with no row is rejected at `UNSUPPORTED_SETTING` before any validation
   runs, so a setting can be fully wired everywhere else and still be
-  unprovisionable. `{72, U8, 1, 1}` and `{73, BOOL, 1, 1}` are present, and
-  deleting either row fails two independent tests: `provision_apply_test` at
-  "valid settings apply successfully", because `apply()` consults the schema,
-  and `console_commands_test` at "the gesture blob encodes", because `encode()`
-  does too. `{46, BOOL, 1, 1}` is the same row for the shipped `IMU` setting,
-  which this branch exposes to provisioning for the first time.
+  unprovisionable. `{72, U8, 1, 1}` and `{73, BOOL, 1, 1}` are present.
+  Deleting row 72 fails thirteen assertions and deleting row 73 fails eleven,
+  across three tests. The first to fire in both cases is
+  `provision_apply_test`'s "valid settings apply successfully", because
+  `apply()` consults the schema. Row 72 additionally fails that test's
+  "setting 72 reports BAD_SETTING, not a missing schema row" and "setting 72
+  names its own rule", which are the sharper guards: they distinguish a domain
+  rejection from a setting the bundle can never carry at all. Both rows fail
+  #47's `testEverySettingHasASchemaRow` at "wire id N has a SETTING_SCHEMAS
+  row", and `console_commands_test` at "the gesture blob encodes", because
+  `encode()` consults the schema too. `{46, BOOL, 1, 1}` is the same row for
+  the shipped `IMU` setting, which this branch exposes to provisioning for the
+  first time, and which is why 46 is no longer listed in that test's
+  `KNOWN_MISSING` gap list.
 - The runtime hook. `reloadProvisionSetting()` is exercised end to end by the
   console suite's `provision <hex>` case; deleting its IMU cases fails "a
   provisioned gesture setting notifies the UI task".
@@ -675,7 +683,9 @@ M5StickS3 with the X100VI. Steps 1 and 8 are the two that can still change the s
 - Deep wake through the M5PM1 remains documented only, as scoped.
 - The Core settings grid keeps master's `{3, 0}` tile for Sensors. PR #273 adds
   a fourth grid row; whichever of the two lands second re-checks the tile.
-- Hardware verification is outstanding and is the merge gate. The executable
+- Hardware verification is outstanding and the eight-step gate is owed
+  post-merge, not blocking it: both settings default off, so shipping them
+  changes nothing until a user turns one on. The executable
   eight-step version is above. Steps 1 and 8 are the two that can still change
   the shipped design: step 1 because no real accelerometer trace exists and the
   one-sample tap claim may alias, step 8 because the poll rate decision is
