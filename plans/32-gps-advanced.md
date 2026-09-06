@@ -197,8 +197,39 @@ regenerated, and the reservation table now lives in `include/CLAUDE.md`.
   not a date ever arrives. The decision itself is the pure
   `Casic::Eph::freshness`, host tested over eight cases.
 
-  A sentence split across two UART reads is missed by the counter, which costs
-  one burst of delay and never a false count.
+  The count comes from the parser raising its date update flag, read and
+  consumed inside the same lock the encode holds. That is the only place it can
+  be read safely, because any value accessor clears it and a status snapshot
+  taken between the two would eat it. Nothing else in furble reads
+  `isUpdated()`.
+
+  An earlier revision counted the token "RMC" in the raw read buffer and claimed
+  that only ever missed a count, never invented one. Both halves of that were
+  wrong, and the review proved it. `BUFFER_SIZE` is 256 and a burst carrying GSA
+  and GSV is bigger, so an RMC routinely spans two reads with its name in the
+  first and its date field in the second; `GPS::task` runs `serviceSerial()` and
+  `servicePoll()` in the same iteration, so the arm read the parser between the
+  halves and saw the previous session's date. And a sentence whose checksum
+  failed counted exactly like one that passed. The parser's flag has neither
+  problem: it is raised only for a complete sentence that passed its checksum.
+  Both scenarios serve the burst in 40 byte reads, paced 20 ms apart so the
+  chunks arrive over time rather than being drained inside one
+  `serviceSerial()` call, and `gps-ephemeris-stale` carries a receiver whose RMC
+  always arrives with a broken checksum. That corrupt-RMC leg is what kills the
+  raw-count mutant.
+
+  The fragment half of that defect is real but not observable here, and the
+  measurement says so rather than the prose assuming it: the arm is taken after
+  the settle gate, by which point several complete bursts have been parsed, so
+  the parser already holds the current session's date and a count that moved
+  half a sentence early reaches the same verdict. The checksum half is
+  observable and is covered. Counting committed dates fixes both regardless.
+
+  A receiver clock behind the capture is not a verdict either. A cold-start
+  AT6668 reports a coarse time before it decodes TOW, which is exactly the tier
+  2 case, so `IMPLAUSIBLE` keeps the arm standing and waits for the next date
+  instead of throwing the cache away on the first reading. Only `TOO_OLD` and
+  `REPLAY` settle it.
 
   The trade-off is explicit: a receiver that never sends RMC never gets a
   replay. That is the true cold start with the rail cut, where the cache age
@@ -350,8 +381,9 @@ a MON-HW poll with a truncated payload.
 | `e2e/gps-ephemeris-invalid` | a corrupted cache is refused whole, not replayed up to the bad frame | ignore the `splitFrames` result in `loadEphemerisCache` |
 | `e2e/gps-ephemeris-stale` | the four hour window against the receiver's own clock | make `Casic::Eph::freshness` always return `REPLAY` |
 | `e2e/gps-ephemeris-stale` | a receiver clock behind the capture cannot bound an age | drop the backwards-clock guard from `freshness` |
-| `e2e/gps-ephemeris-stale` | replay never commits without a date received this session | replace the RMC-count check with `if (false)` |
-| `e2e/gps-ephemeris-stale` | the receiver's ticking time cannot stand in for its date | key the commit on `receiverUtc() > 0` instead of the RMC count |
+| `e2e/gps-ephemeris-stale` | replay never commits without a date received this session | replace the date-count check with `if (false)` |
+| `e2e/gps-ephemeris-stale` | a checksum-failed RMC commits nothing | count the token "RMC" in the raw read buffer instead |
+| `e2e/gps-ephemeris-replay` | a receiver clock behind the capture is retried, not settled | let `IMPLAUSIBLE` fall through and clear the cache |
 | `e2e/gps-ephemeris-stale` (TSAN) | `servicePoll` reads the fix through the locked snapshot | read `m_GPS.location.FixQuality()` directly, 4/5 runs fail |
 | `e2e/gps-satellite-fixtures` | 0, 1, 12, duplicate, partial, out of range and multi constellation populations | publish `set.building` without the complete-set check |
 | `e2e/gps-satellite-fixtures` | a repeated PRN counts once | remove the in-set duplicate check |
@@ -401,12 +433,8 @@ copies must match each other.
   `$PCAS11` numbering, the MON-HW field offsets, and whether the ephemeris
   replay actually shortens time to first fix against the measured 108 s cold
   start.
-- **How long after enable the AT6668 first sends a dated RMC, relative to its
-  first fix.** The whole arm-and-commit two-step is built on that gap being
-  small. If the unit only dates its RMC once it already has a fix, the replay
-  lands after the fix it was meant to accelerate, and tier 2 is worthless in its
-  current shape whatever the simulator says.
-- **Whether the receiver itself rejects an expired ephemeris injection.** Every
+- **Whether the receiver itself rejects an expired ephemeris injection. Take
+  this one first.** Every
   GNSS receiver carries `toe` and IODE and is supposed to validate before use.
   If the AT6668 does, then the four hour rule belongs to the receiver and not to
   furble, and the arm-and-commit two-step, `Casic::Eph::freshness`, the
@@ -414,8 +442,13 @@ copies must match each other.
   in favour of replaying the cache unconditionally at arm. Measure it by
   capturing a cache, holding the unit unpowered past four hours, replaying, and
   watching whether time to first fix improves, degrades, or is unchanged against
-  a no-replay control. This is the single measurement that would remove the most
-  code in this plan, so take it early.
+  a no-replay control. It is the single measurement that would remove the most
+  code in this plan, which is why it is first.
+- **How long after enable the AT6668 first sends a dated RMC, relative to its
+  first fix.** The whole arm-and-commit two-step is built on that gap being
+  small. If the unit only dates its RMC once it already has a fix, the replay
+  lands after the fix it was meant to accelerate, and tier 2 is worthless in its
+  current shape whatever the simulator says.
 
 ## Motivation
 

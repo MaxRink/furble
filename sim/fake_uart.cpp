@@ -58,7 +58,40 @@ std::string gpsStream(gpsData, sizeof(gpsData) - 1);
 // receiver with a clock of its own does. The historic default fixture stays
 // frozen so every scenario and capture written against it is unchanged.
 bool fixDateAdvances = false;
-uint32_t fixSecond = 0;
+
+// Seconds the advancing fixture clock has run for. It is seeded from the
+// environment and handed back before a `restart` re-execs, because a real
+// receiver's clock does not rewind when the ESP32 reboots. Letting it reset
+// here made the positive ephemeris leg pass on a one second margin.
+uint32_t fixSecond = [] {
+  const char *carried = std::getenv("FURBLE_SIM_FIX_SECOND");
+  return carried != nullptr ? static_cast<uint32_t>(std::strtoul(carried, nullptr, 10)) : 0u;
+}();
+
+// Bytes served per read from the fix burst, 0 for the whole burst at once. A
+// real burst carrying GSA and GSV is larger than the driver's 256 byte read, so
+// a sentence routinely spans two reads; scenarios set this to prove the parser
+// path survives that.
+size_t fixChunk = 0;
+
+// When the burst is chunked, the chunks arrive over time the way bytes off a
+// real UART do, rather than all being drained inside one serviceSerial() call.
+// That is the whole point of chunking: GPS::task runs serviceSerial() and then
+// servicePoll() in the same iteration, so a sentence half delivered leaves the
+// ephemeris arm reading a parser that still holds the previous date.
+uint32_t fixChunkNext = 0;
+constexpr uint32_t FIX_CHUNK_MS = 20;
+
+// Bursts of coarse time a cold-start receiver reports before it decodes TOW and
+// corrects itself. Deliberately not carried across a restart: every boot is a
+// fresh cold start. A date behind the cache is what furble sees during it.
+uint32_t fixColdBursts = 0;
+constexpr uint32_t FIX_COLD_BURSTS = 5;
+
+// A receiver on a noisy line whose RMC always arrives corrupt. The sentence is
+// there, so anything counting sentence names in the raw bytes counts it, but
+// the parser rejects it and never commits a date from it.
+bool fixRmcCorrupt = false;
 // day-of-month of the advancing fixture. "modern" is the 6th and "stale" is
 // the 13th, a week later, which is well past the four hour ephemeris window.
 const char *fixDay = "06";
@@ -243,8 +276,18 @@ std::string modernFixStream(void) {
   if (fixDay == nullptr) {
     return gga;
   }
-  const std::string date = std::string(fixDay) + "0926";
-  return nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A") + gga;
+  // While the modelled receiver is still waking, its date reads a day behind.
+  const std::string day = (fixColdBursts > 0) ? std::string("05") : std::string(fixDay);
+  const std::string date = day + "0926";
+  std::string rmc = nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A");
+  if (fixRmcCorrupt) {
+    // Break the checksum, not the shape. The token is still in the stream.
+    const size_t star = rmc.rfind('*');
+    if (star != std::string::npos) {
+      rmc[star + 1] = (rmc[star + 1] == '0') ? '1' : '0';
+    }
+  }
+  return rmc + gga;
 }
 
 /**
@@ -312,6 +355,9 @@ void queueGpsEvent(QueueHandle_t queue) {
     }
     if (fixDateAdvances) {
       fixSecond++;
+      if (fixColdBursts > 0) {
+        fixColdBursts--;
+      }
       gpsStream = modernFixStream();
     }
     if (!receiverAnswersLocked()) {
@@ -394,7 +440,17 @@ int uart_read_bytes(uart_port_t, uint8_t *buffer, uint32_t length, TickType_t) {
     return 0;
   }
   const size_t remaining = (gpsStream.size()) - gpsOffset;
-  const size_t count = std::min<size_t>(length, remaining);
+  size_t count = std::min<size_t>(length, remaining);
+  if (fixChunk != 0) {
+    const uint32_t now = Furble::Sim::clockMillis();
+    if (static_cast<int32_t>(now - fixChunkNext) < 0) {
+      return 0;  // these bytes have not arrived off the wire yet
+    }
+    fixChunkNext = now + FIX_CHUNK_MS;
+    if (count > fixChunk) {
+      count = fixChunk;
+    }
+  }
   std::memcpy(buffer, gpsStream.data() + gpsOffset, count);
   gpsOffset += count;
   if (gpsOffset >= gpsStream.size()) {
@@ -408,6 +464,13 @@ void furble_sim_uart_update(void) {
   QueueHandle_t queue = nullptr;
   {
     std::lock_guard<std::mutex> lock(gpsMutex);
+    // A chunked burst is delivered a chunk at a time as the bytes arrive, so
+    // each one needs its own event. Without this the burst stalls half read.
+    if ((fixChunk != 0) && (gpsQueue != nullptr) && (gpsOffset < gpsStream.size())
+        && (static_cast<int32_t>(Furble::Sim::clockMillis() - fixChunkNext) >= 0)) {
+      const uart_event_t event = {.type = UART_DATA, .size = gpsStream.size() - gpsOffset};
+      xQueueSend(gpsQueue, &event, 0);
+    }
     const uint32_t now = Furble::Sim::clockMillis();
     const bool due = (uartMode != "pause") && receiverAnswersLocked()
                      && (static_cast<int32_t>(now - gpsNextEventMillis) >= 0);
@@ -487,6 +550,16 @@ void furble_sim_uart_clear_writes(void) {
   uartWrites.clear();
 }
 
+void furble_sim_uart_set_fix_chunk(size_t bytes) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  fixChunk = bytes;
+}
+
+uint32_t furble_sim_uart_fix_second(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return fixSecond;
+}
+
 void furble_sim_uart_set_stationary(bool stationary) {
   const std::lock_guard<std::mutex> lock(gpsMutex);
   gpsStationary = stationary;
@@ -500,7 +573,21 @@ void furble_sim_uart_set_fix_date(const char *name) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   fixDateAdvances = false;
   fixDay = "06";
-  if ((name != nullptr) && (std::string(name) == "stale")) {
+  fixColdBursts = 0;
+  fixRmcCorrupt = false;
+  if ((name != nullptr) && (std::string(name) == "badrmc")) {
+    // Every RMC arrives with a broken checksum. The parser commits no date from
+    // it, so the ephemeris arm must never commit either.
+    fixRmcCorrupt = true;
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+  } else if ((name != nullptr) && (std::string(name) == "coldstart")) {
+    // The modern burst, but the receiver spends its first few seconds reporting
+    // a date a day behind, as a cold unit does before it decodes TOW.
+    fixColdBursts = FIX_COLD_BURSTS;
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+  } else if ((name != nullptr) && (std::string(name) == "stale")) {
     fixDay = "13";
     fixDateAdvances = true;
     gpsStream = modernFixStream();

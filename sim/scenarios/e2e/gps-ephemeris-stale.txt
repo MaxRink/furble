@@ -19,6 +19,11 @@ seed gps_baud 9600
 seed gps_assist 2
 seed gps_fix_date modern
 seed gps_uart_mode ack
+# Serve the burst in 40 byte reads, so every RMC spans several of them with its
+# name in one read and its date field in the next. These legs switch the
+# receiver's date between sessions, so a count taken on the raw bytes commits
+# against the previous session's date, which is the defect this guards.
+seed gps_uart_chunk 40
 wait 300
 
 # The GPS Data page stays open throughout, so the UI task is reading the status
@@ -52,6 +57,19 @@ assert uart.eph_replay 0
 # has. Nothing may commit against a date this session did not receive, even
 # though that stale date would compare as perfectly fresh.
 gps-fix-date nodate
+action toggle gps
+wait 1000
+action toggle gps
+wait 40000
+assert_min gps.eph_cached 200
+assert uart.eph_replay 0
+
+# A receiver on a noisy line whose RMC always arrives with a broken checksum.
+# The sentence name is in the stream, so anything counting it in the raw bytes
+# counts it, but the parser rejects it and commits no date. Nothing may commit
+# against a date this session never received, even though the stale one it is
+# holding would compare as perfectly fresh.
+gps-fix-date badrmc
 action toggle gps
 wait 1000
 action toggle gps

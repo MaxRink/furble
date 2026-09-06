@@ -16,6 +16,13 @@ seed gps_baud 9600
 seed gps_assist 2
 seed gps_fix_date modern
 seed gps_uart_mode ack
+# Serve the fix burst in 40 byte reads, so every RMC spans several of them. A
+# real burst carrying GSA and GSV exceeds the driver's 256 byte read the same
+# way, with the sentence name in one read and the date in the next, and
+# GPS::task services the parser and the ephemeris arm in the same iteration.
+# Counting sentence names in raw bytes cannot survive this; counting the
+# parser's own committed dates does.
+seed gps_uart_chunk 40
 wait 300
 
 # Hold the GPS Data page open for the whole run. Its 1 Hz timer reads the
@@ -37,7 +44,20 @@ assert-eventually 8000 gps.satellites 8
 wait 6000
 assert_min gps.eph_cached 200
 
+# Let the receiver clock run on past the capture before the reboot. The fixture
+# clock is monotonic across a restart, as a real receiver's is, so the resumed
+# boot meets a receiver seconds ahead of the cache rather than exactly level
+# with it. Without this the leg passed on a one second margin.
+wait 10000
+
 restart
+
+# The resumed boot meets a cold receiver: it reports a date a day behind for its
+# first few bursts, as a real unit does before it decodes TOW, then corrects. A
+# clock behind the capture is therefore not a verdict. The arm has to stand
+# through it and re-evaluate on the next date, or the replay asserted below
+# never happens.
+gps-fix-date coldstart
 
 # The resumed boot must find the cache and play it back at the receiver, with
 # the same page open and the same two threads in play.

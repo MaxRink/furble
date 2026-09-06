@@ -663,22 +663,27 @@ class GPS {
   // committed after, so a date left over from the previous session cannot
   // answer for this one.
   bool m_EphReplayArmed = false;
-  // Count of date-bearing sentences seen, and its value when replay was armed.
-  // The commit waits for the count to move, which is proof that the receiver
+  // Count of dates the parser has committed, and its value when replay was
+  // armed. The commit waits for the count to move, which is proof the receiver
   // has sent a date this session rather than the parser still holding the one
   // the last session left behind.
   //
-  // Only RMC carries a date, so counting RMC is the signal. Neither the date
-  // value nor the time can stand in for it. A receiver with RMC pruned reports
-  // a ticking time against a stale date, so anything keyed on the time waves
-  // that stale date straight through, and the date value itself does not change
-  // from one second to the next inside a day. Both are GPS-task only.
+  // The count comes from TinyGPSPlus raising its date update flag, which it
+  // only does for a complete sentence whose checksum passed. Counting "RMC" in
+  // the raw bytes instead is wrong twice over: a burst carrying GSA and GSV
+  // exceeds BUFFER_SIZE so an RMC routinely spans two reads, with the token in
+  // the first half and the date in the second, and a checksum-failed sentence
+  // counts just the same.
+  //
+  // Neither the date value nor the time can stand in for the count. A receiver
+  // with RMC pruned reports a ticking time against a stale date, and the date
+  // value itself does not change from one second to the next inside a day.
   //
   // It never compares ages. TinyGPSPlus ages come from millis(), which is the
   // same clock as Platform::tick() on the device but not in the simulator, and
   // mixing the two makes every stale timestamp look fresh.
-  uint32_t m_RmcSentences = 0;
-  uint32_t m_EphArmRmc = 0;
+  uint32_t m_DateUpdates = 0;
+  uint32_t m_EphArmDateUpdates = 0;
   bool m_EphPolled = false;
   bool m_EphPollActive = false;
   uint32_t m_EphPollDeadline = 0;

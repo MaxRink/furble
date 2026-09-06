@@ -407,8 +407,12 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::exit(2);
     }
     return;
+  } else if (name == "gps_uart_chunk") {
+    parseUnsigned(value);
+    return;
   } else if (name == "gps_fix_date") {
-    if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale") {
+    if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale"
+        && value != "coldstart" && value != "badrmc") {
       std::cerr << "Invalid gps_fix_date: " << value << '\n';
       std::exit(2);
     }
@@ -630,8 +634,8 @@ void readScript(const std::string &path) {
       step.type = StepType::GPS_FIX_DATE;
       step.name = args[1];
       if (step.name != "fixture" && step.name != "modern" && step.name != "nodate"
-          && step.name != "stale") {
-        std::cerr << "gps-fix-date requires fixture, modern, stale or nodate\n";
+          && step.name != "stale" && step.name != "coldstart" && step.name != "badrmc") {
+        std::cerr << "gps-fix-date requires fixture, modern, stale, coldstart, badrmc or nodate\n";
         std::exit(2);
       }
       steps.push_back(step);
@@ -1560,6 +1564,10 @@ void applyScenarioSettings(void) {
   if (fixDate != scenarioSettings.end()) {
     furble_sim_uart_set_fix_date(fixDate->second.c_str());
   }
+  const auto fixChunk = scenarioSettings.find("gps_uart_chunk");
+  if (fixChunk != scenarioSettings.end()) {
+    furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
+  }
   saveBoolean("imu", Settings::IMU);
   saveBoolean("imu_trigger", Settings::IMU_TRIG);
   saveByte("imu_wake", Settings::IMU_WAKE);
@@ -2289,6 +2297,10 @@ void restartProcess(void) {
     arguments.push_back(argument.data());
   }
   arguments.push_back(nullptr);
+  // Carry the fixture clock across the re-exec. A receiver's clock does not
+  // rewind because the ESP32 rebooted, and letting it reset made the positive
+  // ephemeris leg pass on a one second margin.
+  setenv("FURBLE_SIM_FIX_SECOND", std::to_string(furble_sim_uart_fix_second()).c_str(), 1);
   execvp(arguments[0], arguments.data());
   std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
   std::_Exit(1);

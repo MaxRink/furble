@@ -1666,7 +1666,7 @@ void GPS::armEphemerisReplay(void) {
   // as a couple of minutes old. Arm here, and commit in servicePoll once the
   // receiver has reported a UTC of its own.
   m_EphReplayArmed = true;
-  m_EphArmRmc = m_RmcSentences;
+  m_EphArmDateUpdates = m_DateUpdates;
   ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, waiting for receiver time");
 }
 
@@ -1687,7 +1687,7 @@ void GPS::serviceEphemerisArm(void) {
   // only RMC carries a date. A receiver with no clock, or one with RMC pruned,
   // keeps whatever date the previous session left in the parser while its time
   // ticks on from GGA, so neither the time nor the date value is evidence here.
-  if (m_RmcSentences == m_EphArmRmc) {
+  if (m_DateUpdates == m_EphArmDateUpdates) {
     // Nothing to decide against yet. The arm stands until the next enable,
     // which is the cold start case: replaying a cache whose age cannot be
     // established is the thing this is here to prevent.
@@ -1701,9 +1701,19 @@ void GPS::serviceEphemerisArm(void) {
   const Casic::Eph::Freshness fresh =
       Casic::Eph::freshness(m_EphCaptureUtc, reported, EPH_CACHE_MAX_AGE_MS / 1000);
 
+  if (fresh == Casic::Eph::Freshness::IMPLAUSIBLE) {
+    // Not a verdict. A cold-start AT6668 reports a coarse time before it has
+    // decoded TOW, so a receiver clock behind the capture means the receiver
+    // has not finished waking, and it reports correctly seconds later. That is
+    // the tier 2 case, so keep the arm standing and wait for the next date
+    // rather than throwing the cache away on the first reading.
+    m_EphArmDateUpdates = m_DateUpdates;
+    return;
+  }
+
   m_EphReplayArmed = false;
   if (fresh != Casic::Eph::Freshness::REPLAY) {
-    ESP_LOGI(LOG_TAG, "GPS ephemeris cache is not replayable against receiver time");
+    ESP_LOGI(LOG_TAG, "GPS ephemeris cache is older than the receiver clock allows");
     m_EphReplay.clear();
     return;
   }
@@ -1730,16 +1740,8 @@ void GPS::storeEphemeris(void) {
 
   // TinyGPSPlus accessors clear update flags, so they are read only through the
   // locked snapshot. Touching m_GPS here would race the UI task.
-  const status_t status = getStatusSnapshot();
-  if (!status.date_valid || !status.time_valid) {
-    return;
-  }
-  const Camera::timesync_t timesync = {
-      status.year,   status.month,  status.day,         status.hour,
-      status.minute, status.second, status.centisecond,
-  };
-  const int64_t utc = toUnixSeconds(timesync);
-  if (utc < GPS_EPOCH_UNIX) {
+  const int64_t utc = receiverUtc(getStatusSnapshot());
+  if (utc <= 0) {
     return;
   }
 
@@ -2386,18 +2388,19 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   }
 
   Console::gpsRaw(reinterpret_cast<const char *>(data), length);
-  // Only RMC carries a date. Counting it here, on the raw bytes, is the one
-  // unambiguous signal that the receiver has sent a date this session; the
-  // parser's own date persists across a disable and enable and cannot say. A
-  // sentence split across two reads is missed, which costs one burst of delay
-  // and never a false count.
-  const std::string_view chunk(reinterpret_cast<const char *>(data), length);
-  if (chunk.find("RMC") != std::string_view::npos) {
-    m_RmcSentences++;
-  }
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
     m_GPS.encode(reinterpret_cast<char *>(data), length);
+    // The parser raises this only for a complete sentence whose checksum
+    // passed, so it is both fragment safe and checksum safe where scanning the
+    // raw bytes for "RMC" was neither. Read and consume it inside the same lock
+    // the encode holds: the flag is cleared by any value accessor, so a status
+    // snapshot taken between the two would eat it. Nothing else in furble reads
+    // isUpdated(), so this owns the flag.
+    if (m_GPS.date.isUpdated()) {
+      m_DateUpdates++;
+      (void)m_GPS.date.value();
+    }
   }
   captureSentences(reinterpret_cast<const char *>(data), length);
 }

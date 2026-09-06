@@ -93,6 +93,8 @@ void furble_sim_uart_set_receiver(uint32_t baud, bool present);
 void furble_sim_uart_set_satellite_fixture(const char *name);
 void furble_sim_uart_set_monhw_short(bool shortFrame);
 void furble_sim_uart_set_fix_date(const char *name);
+void furble_sim_uart_set_fix_chunk(size_t bytes);
+uint32_t furble_sim_uart_fix_second(void);
 uint32_t furble_sim_uart_baud(void);
 uint32_t furble_sim_uart_eph_replay_frames(void);
 uint32_t furble_sim_uart_monhw_polls(void);

@@ -650,9 +650,13 @@ until the ladder reaches it. `gps_sats` selects the GSV/GSA fixture
 (`default`, `none`, `one`, `twelve`, `duplicate`, `range`, `multi`,
 `malformed`). `gps_fix_date` selects the fix burst: `fixture` is the historic frozen RMC/GGA
 pair, `modern` and `stale` advance their clock one second per burst a week
-apart, and `nodate` is GGA only, a receiver that reports a position but never a
-date. The ephemeris freshness rule is decided against the receiver's own
-reported UTC, so those four are what exercise it. `gps_assist` and
+apart, `coldstart` is `modern` but reports a date a day behind for its first few
+bursts as a unit does before it decodes TOW, `badrmc` sends an RMC whose
+checksum is broken, and `nodate` is GGA only, a receiver that reports a position
+but never a date. The ephemeris rule commits on a date the parser has actually
+committed this session, so those are what exercise it. `gps_uart_chunk N` serves
+the burst N bytes at a time, paced 20 ms apart, so a sentence spans several
+reads and arrives over time the way it does off a real UART. `gps_assist` and
 `gps_platform` are ordinary byte seeds for their settings.
 
 Five script verbs drive the same model at runtime: `gps-receiver

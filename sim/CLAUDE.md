@@ -604,7 +604,7 @@ a regression.
   runtime, so a fixture cannot carry a stale hand computed checksum. The
   `default` set is the one docs/img/gps-satellites.png is pinned to; changing
   its values means regenerating that capture.
-- The `modern`, `stale` and `nodate` fix bursts advance their clock one second
+- The `modern`, `stale`, `coldstart`, `badrmc` and `nodate` fix bursts advance their clock one second
   per burst, the way a receiver with a clock of its own does. The historic
   default burst stays frozen so every scenario and capture written against it is
   unchanged. A frozen clock is not a neutral simplification: an earlier
@@ -612,6 +612,14 @@ a regression.
   the `nodate` burst passed its leg only because its clock stood still. Ticking
   it turned the leg into a replay of three frames and exposed the rule as wrong.
   If a fixture models a receiver, give it a clock that moves.
+- `seed gps_uart_chunk N` serves the fix burst N bytes at a time, paced 20 ms
+  apart, so a sentence spans several reads and arrives over time instead of
+  being drained inside one `serviceSerial()` call. A real burst carrying GSA and
+  GSV exceeds the driver's 256 byte read the same way. `gps_fix_date coldstart`
+  reports a date a day behind for its first few bursts, as a unit does before it
+  decodes TOW, and `badrmc` sends an RMC whose checksum is broken. Both model
+  receiver states a fixture serving one perfect burst can never reach, and each
+  one catches a defect that shipped in this branch.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking
