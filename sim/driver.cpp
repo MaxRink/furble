@@ -292,10 +292,10 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel", "gps_power",
-      "gps_duty",   "cpu_freq",   "tx_power",    "scan_mode", "text_size",   "auto_off",
-      "low_batt",   "fb_output",  "gps_hold",    "imu_wake",  "gps_assist",  "gps_platform",
-      "hw_motion",
+      "brightness", "inactivity", "display_off",  "gps_rate",  "gps_constel",
+      "gps_power",  "gps_duty",   "cpu_freq",     "tx_power",  "scan_mode",
+      "text_size",  "auto_off",   "low_batt",     "fb_output", "gps_hold",
+      "imu_wake",   "gps_assist", "gps_platform", "hw_motion",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {

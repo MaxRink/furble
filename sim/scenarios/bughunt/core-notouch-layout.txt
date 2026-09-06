@@ -53,7 +53,6 @@ assert ui.page sensors
 assert ui.overflow no
 assert ui.indicator_clearance clear
 
-
 # Timer settings list.
 action page settings
 action nav timer

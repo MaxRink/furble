@@ -6518,6 +6518,11 @@ void UI::addGesturesMenu(const menu_t &parent) {
 
   addSettingItem(menu.page, NULL, Settings::IMU_TRIG);
 
+  lv_obj_t *warning = lv_label_create(menu.page);
+  lv_obj_set_width(warning, LV_PCT(100));
+  lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(warning, "A knock can trigger a frame.");
+
   // Motion Engine lives on this page rather than as its own row on Sensors.
   // Sensors had no slack left after the IMU switch, this entry and the Restart
   // button: one more row there overflows the 135x240 non-touch layout and puts
@@ -6546,10 +6551,13 @@ void UI::addGesturesMenu(const menu_t &parent) {
       },
       LV_EVENT_VALUE_CHANGED, NULL);
 
-  lv_obj_t *warning = lv_label_create(menu.page);
-  lv_obj_set_width(warning, LV_PCT(100));
-  lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(warning, "A knock can trigger a frame.");
+  // The roller applies at boot, and the Restart button that does it lives on
+  // the parent Sensors page, so say so here rather than leaving the user to
+  // find it.
+  lv_obj_t *motionHint = lv_label_create(menu.page);
+  lv_obj_set_width(motionHint, LV_PCT(100));
+  lv_label_set_long_mode(motionHint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(motionHint, "Applies after restart.");
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }

@@ -1512,8 +1512,9 @@ int cmdMotion(int argc, char **argv) {
     printf("wake: %s\n", motion.usesInterrupt() ? "interrupt" : "polling");
     // The hardware gate's readout. "pin" is the IMU interrupt line itself, which
     // on the M5StickS3 is an internal PMIC net rather than an SoC pin, so it is
-    // read from the PMIC. "edges" is counted in an interrupt handler because a
-    // one-second poll cannot tell no edges from edges at the sensor rate.
+    // read from the PMIC. "edges" counts polls at which the line was found
+    // asserted, from a latched flag: nothing here configures a GPIO interrupt,
+    // because an interrupt on the wake pin cancels the wake source.
     auto &platform = Platform::getInstance();
     printf("pin: %s\n", platform.motionWakeAsserted() ? "asserted" : "idle");
     printf("edges: %lu\n", static_cast<unsigned long>(platform.motionWakeEdges()));

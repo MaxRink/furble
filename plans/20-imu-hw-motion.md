@@ -331,9 +331,10 @@ and 2 had no way to see the line, and step 6's only observable was an
 
 `pin` is the IMU interrupt line itself. On the M5StickS3 that line never reaches
 the SoC, so it is read from M5PM1 GPIO4 rather than from GPIO13, which carries
-only the PMIC's aggregated IRQ. `edges` is counted in a GPIO interrupt handler
-on the SoC wake pin, because a one second poll cannot tell no edges from edges
-at the accelerometer output rate.
+only the PMIC's aggregated IRQ. `edges` counts polls at which the line was
+found asserted, read from a latched flag. Nothing configures a GPIO interrupt
+on the wake pin, because that cancels the wake source, which is the defect the
+previous round removed.
 
 1. **No spurious wake traffic.** Arm the BMI270 engine, put the device down,
    read `edges` twice 10 s apart while still. Expect no change. `edges` counts
@@ -477,6 +478,18 @@ Removing the dedicated page meant unwinding six tables that named it: the
 this work), the `nav` and `page` name maps in `src/FurbleUI.cpp`, the four
 whitelists in `sim/scenario_action.cpp`, and the two vocabularies in
 `docs/sim.md`. Adding a page is not one edit, and neither is removing one.
+
+The roller sits below the "A knock can trigger a frame." hint, not above it.
+Above, it separated that warning from the Double-Tap Shutter switch it belongs
+to and the warning read as the roller's own description. The roller carries a
+one-line "Applies after restart." hint instead, because the Restart button that
+applies it lives on the parent Sensors page.
+
+That page does not fit at any text size once the roller is on it: the roller
+alone runs 103 px past the 135x240 panel at Small and the hint adds 15 more, and
+master already ran it 67 px past at Large before either existed. It is an
+intentional scroll page, so both text-size scenarios assert that the scroll ends
+stay reachable rather than a fit. A fit assertion there would be false.
 
 `ponytail:` the page is titled "Gestures" and a detection backend is not a
 gesture. Renaming it touches PR45's page identity, its simulator vocabularies

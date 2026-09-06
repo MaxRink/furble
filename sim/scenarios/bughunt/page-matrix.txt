@@ -85,6 +85,7 @@ assert ui.scroll_bottom 0
 action scroll top
 assert ui.scroll_top 0
 back
+wait 100
 action nav infrared
 wait 100
 assert ui.page infrared

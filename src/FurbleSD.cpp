@@ -374,9 +374,15 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::HW_MOTION:
+      if (!parseUnsigned(text, Settings::HW_MOTION_HARDWARE, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
-    case Settings::HW_MOTION:
       if (!parseUnsigned(text, UINT8_MAX, value)) {
         return false;
       }

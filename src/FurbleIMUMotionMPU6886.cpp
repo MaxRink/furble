@@ -209,16 +209,21 @@ class MPU6886Backend final: public MotionBackend {
 
     if (motion) {
       m_LastMotion = now;
-      m_InterruptCount++;
-      if (m_State != MotionState::MOVING) {
-        m_State = MotionState::MOVING;
-        state = m_State;
-        return true;
+      if (m_State == MotionState::MOVING) {
+        // Motion while already moving is not a transition. Counting it here
+        // would make this engine's interrupts a poll count while the BMI270's
+        // are transitions, and the hardware gate compares the two across
+        // boards.
+        return false;
       }
-      return false;
+      m_InterruptCount++;
+      m_State = MotionState::MOVING;
+      state = m_State;
+      return true;
     }
 
     if ((m_State == MotionState::MOVING) && ((now - m_LastMotion) >= STATIONARY_HOLD_MS)) {
+      m_InterruptCount++;
       m_State = MotionState::STATIONARY;
       state = m_State;
       return true;

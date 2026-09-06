@@ -63,13 +63,23 @@ print ui.overflow
 action page settings
 action nav sensors
 wait 100
-# Sensors page: the IMU switch plus the Motion Engine entry and the Restart
-# button. Compact, must fit on the narrow panels at every text size.
+# Sensors page: the IMU switch, the Gestures entry and the Restart button.
+# Compact, must fit on the narrow panels at every text size.
 assert ui.page sensors
 assert ui.overflow no
+# The page that carries the Motion Engine roller, next to the gesture settings.
+# It is an intentional scroll page: the roller alone runs 103 px past the
+# 135x240 panel even at Small, so a fit assertion here would be false. Assert
+# both scroll ends stay reachable, which is what a roller that pushed content
+# out of reach would break, and which is what hw-motion-text-size.txt asserts
+# at Large.
+action nav gestures
 wait 100
-# The Motion Engine roller page: one roller, must fit.
-assert ui.overflow no
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
 action page settings
 action nav timer
 wait 100
