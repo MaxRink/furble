@@ -192,7 +192,8 @@ Backlights:
 
 ## Known model limitations
 
-Two of these matter whenever a scenario's subject is a periodic timer.
+Two of these matter whenever a scenario's subject is a periodic timer. Both are
+tracked in issue #285.
 
 - **Timer fires are billed at the UI loop quantum, not at their own cost.**
   `sim/power_profiler.cpp` marks a UI cycle awake if any registered timer fired
@@ -204,12 +205,14 @@ Two of these matter whenever a scenario's subject is a periodic timer.
   as full light-sleep residency. Treat a delta produced this way as a ceiling
   with roughly an order of magnitude of headroom, not as an estimate of the
   work, and settle the real number on hardware.
-- **Sensor current does not follow sensor use.** A scenario that enables the
-  IMU is still billed the constant `peripherals` entry, which for the StickS3
-  is `bmi270_suspend`. A 50 Hz accelerometer read needs normal mode, listed
-  separately in `board-currents.yaml` at 0.685 mA, and nothing charges it.
+- **Peripheral current is a single hardcoded constant.** `model.peripheral` in
+  `sim/power_profiler.cpp` is initialised to `0.0035` and is never read from
+  this directory: the `peripherals` subsection of `board-currents.yaml` reaches
+  the model nowhere. So enabling the IMU in a scenario changes nothing, and the
+  0.685 mA `bmi270_normal` figure a 50 Hz accelerometer read actually needs is
+  documented here and charged nowhere.
 
-Both are tracked for a follow-up. Until they are fixed, `compare.py` is a
+Until they are fixed, `compare.py` is a
 regression guard against a scenario getting worse, not a source of absolute
 numbers. Note also that it only fails on increases, so a baseline cannot catch
 a change that lowers the estimate, such as a timer period going up.

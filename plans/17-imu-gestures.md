@@ -357,11 +357,11 @@ awake: 4.67 ms per fire, which is the UI task's 5 ms loop quantum, not the cost
 of one I2C read plus a few dozen float operations. The 0.311 mA baseline is
 artificial in the other direction, because `UI::task()` already runs
 `lv_task_handler()` every 5 ms on master and the model still calls that full
-light-sleep residency. The scenario also enables the IMU while the model bills
-the constant `bmi270_suspend` peripheral figure; the 0.685 mA normal-mode entry
-in `board-currents.yaml` that a 50 Hz read actually needs is charged nowhere.
-This limitation is now written down in `tools/power-model/README.md`, and the
-two fixes are a follow-up.
+light-sleep residency. Enabling the IMU in the scenario changes nothing either:
+`model.peripheral` in the profiler is a hardcoded 0.0035 and never reads the
+`peripherals` section of `board-currents.yaml`, so the 0.685 mA `bmi270_normal`
+figure a 50 Hz read actually needs is charged nowhere. Both limitations are
+written down in `tools/power-model/README.md` and tracked in issue #285.
 
 So the table above says the poll is not free and bounds how bad it can be. It
 does not say how bad it is.

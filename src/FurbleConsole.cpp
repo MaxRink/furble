@@ -2173,7 +2173,11 @@ constexpr esp_console_cmd_t command(const char *name,
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
+#if defined(FURBLE_NO_DISPLAY)
+    command("imu", "imu status (diagnostic sensor probe)", cmdIMU),
+#else
     command("imu", "imu status | scale [value] (sensor probe, gesture calibration)", cmdIMU),
+#endif
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
