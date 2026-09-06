@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -37,6 +38,7 @@
 #include "fuzz.h"
 #include "platform_state.h"
 #include "power_profiler.h"
+#include "watchdog.h"
 
 namespace Furble::Sim {
 namespace {
@@ -68,6 +70,9 @@ enum class StepType {
 
 struct Step {
   StepType type;
+  // The scenario line this step was parsed from. The crash handler prints it,
+  // which is the whole diagnosis for a fault inside a scripted run.
+  std::string source;
   uint32_t milliseconds = 0;
   SDL_Keycode key = SDLK_UNKNOWN;
   bool hold = false;
@@ -397,6 +402,7 @@ void readScript(const std::string &path) {
     }
 
     const std::vector<std::string> args = scriptWords(trim(line));
+    const size_t stepsBefore = steps.size();
     const auto rejectArity = [](const std::string &name, const std::string &usage) {
       std::cerr << name << " requires " << usage << '\n';
       std::exit(2);
@@ -675,6 +681,11 @@ void readScript(const std::string &path) {
     } else {
       std::cerr << "Unknown simulator script command: " << command << '\n';
       std::exit(2);
+    }
+
+    // Exactly one step per line, or none for a line that only carries a seed.
+    if (steps.size() > stepsBefore) {
+      steps.back().source = trim(line);
     }
   }
 
@@ -1226,14 +1237,38 @@ void preparePreferences(void) {
   if (scenarioName == "interactive") {
     return;
   }
+  // A resumed boot after a `restart` step keeps the store it was handed: that
+  // file is the flash NVS the reboot carries over, and the re-exec gave the
+  // rebooted device a new process id.
+  if (resumedBoot) {
+    const char *inherited = std::getenv("FURBLE_SIM_PREFS");
+    if (inherited != nullptr && inherited[0] != 0) {
+      return;
+    }
+  }
+  // One flash image per simulated device. The path used to be keyed on the
+  // scenario name alone, so two simulators running the same scenario from one
+  // working directory shared a store and each fresh boot erased the other
+  // one's flash. That is issue 284: two panel builds walking the same script
+  // side by side, with the loser reading back a setting the winner had just
+  // wiped. Hardware gives every device its own flash, so the store is keyed
+  // per process and dropped again on an orderly exit.
   const std::filesystem::path path =
-      std::filesystem::path(".pio") / ("furble-sim-preferences-" + scenarioName + ".bin");
+      std::filesystem::path(".pio")
+      / ("furble-sim-preferences-" + scenarioName + "-" + std::to_string(getpid()) + ".bin");
   setenv("FURBLE_SIM_PREFS", path.string().c_str(), 1);
-  // A resumed boot after a `restart` step keeps the preferences file: it is
-  // the flash NVS the reboot must carry over. Only a fresh scenario run starts
-  // from an empty store.
-  if (!resumedBoot) {
-    std::remove(path.c_str());
+  std::remove(path.c_str());
+}
+
+void removePreferences(void) {
+  // Scratch state, not an artifact worth keeping. A reboot still needs it, so
+  // this only runs once the process is really finished with the device.
+  if (scenarioName == "interactive" || restartPending.load()) {
+    return;
+  }
+  const char *path = std::getenv("FURBLE_SIM_PREFS");
+  if (path != nullptr && path[0] != 0) {
+    std::remove(path);
   }
 }
 
@@ -1603,6 +1638,21 @@ void driverTick(void) {
     return;
   }
   Step &step = steps[stepIndex];
+  // Name this line in the crash report if the step faults (issue 283). The
+  // steps vector is fixed after parsing, so the pointer stays valid.
+  watchdogScenarioStep(step.source.c_str());
+  // Self test for that reporter. Faulting deliberately at a chosen step is the
+  // only way to prove the handler names the right line, and there is no other
+  // way to produce a SIGSEGV on demand. Read once: this runs every tick.
+  static const int64_t crashAtStep = []() {
+    const char *step = std::getenv("FURBLE_SIM_CRASH_STEP");
+    return step == nullptr || step[0] == '\0' ? int64_t {-1}
+                                              : static_cast<int64_t>(parseUnsigned(step));
+  }();
+  if (crashAtStep >= 0 && static_cast<size_t>(crashAtStep) == stepIndex) {
+    volatile int *fault = nullptr;
+    *fault = 1;
+  }
   switch (step.type) {
     case StepType::WAIT:
       if (!waiting) {

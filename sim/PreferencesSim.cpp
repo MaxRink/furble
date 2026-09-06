@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -72,7 +74,9 @@ void saveValues(void) {
     std::system(command.c_str());
   }
 
-  const std::string temporaryPath = path + ".tmp";
+  // Per process: the rename is only atomic against another writer if the
+  // source it renames is this writer's own file.
+  const std::string temporaryPath = path + ".tmp." + std::to_string(getpid());
   std::ofstream file(temporaryPath, std::ios::binary | std::ios::trunc);
   const uint32_t count = static_cast<uint32_t>(values.size());
   file.write(reinterpret_cast<const char *>(&count), sizeof(count));

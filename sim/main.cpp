@@ -254,6 +254,7 @@ int main(int argc, char **argv) {
     Furble::Sim::restartProcess();
   }
 
+  Furble::Sim::removePreferences();
   Furble::Sim::watchdogStop();
   return simulatorResult == 0 ? closeResult : simulatorResult;
 }

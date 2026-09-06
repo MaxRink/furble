@@ -157,9 +157,11 @@ same event stream and reach the same pages.
 
 The comparison stops there on purpose. Firmware behaviour under the fuzzer is
 not yet reproducible line for line: two runs of the same seed can differ by one
-connect attempt, because production code blocks on plain host mutexes the
-simulator scheduler cannot see. Asserting the whole log would be a flaky gate
-until the scheduler-visible mutex in plan 158 Phase 3 lands.
+connect attempt. `Camera::m_Mutex`, the one host mutex a connect holds for its
+whole attempt, is scheduler visible since plans/173; the host mutexes that are
+left are held for microseconds each and have not been measured to move a run,
+but they are still invisible, so asserting the whole log stays out of the
+gate.
 
 ## Wall-clock bounds and the stall watchdog
 
@@ -172,6 +174,14 @@ for `FURBLE_SIM_WATCHDOG_SECONDS` host seconds (default 120, `0` disables it
 for an interactive debugging session) it prints the phase, the virtual clock,
 the scheduler task table and a native backtrace of every registered thread,
 then exits non-zero.
+
+A fatal fault is the other thing no virtual-time bound can see. `SIGSEGV`,
+`SIGBUS`, `SIGILL` and `SIGFPE` are caught, print `SIM CRASH:` with the
+scenario line being executed, the boot phase, the faulting thread and a native
+backtrace (`-rdynamic` is on), and are then re-raised so the process still ends
+with the real fatal status. Set `FURBLE_SIM_CRASH_STEP=<index>` to fault
+deliberately at a script step; that is the self test for the reporter and has
+no other use.
 
 `FURBLE_SIM_SDL_STEP_DETECT=1` restores the M5GFX debugger-detector thread,
 which is off by default. The detector infers that a debugger has stopped the
@@ -221,7 +231,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
-| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the NVS preferences file persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
+| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the per-run NVS preferences file is inherited through `FURBLE_SIM_PREFS` and persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
 | `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
@@ -552,10 +562,8 @@ The other namespaces are:
 - `control.reconnect_backoff` and `control.infinite_reconnect`: `yes` or `no`.
 - `ble.secure_stall_aborted`: `yes` once a Fujifilm peer's modelled security
   handshake has ended on a link terminate rather than on its own deadline. This
-  is the provenance a cancel bound cannot give: virtual-time bounds on cancel
-  latency are not sound while issue #279 is open, because the interactive
-  teardown polls on the UI thread and the ticks it burns are set by host
-  scheduling.
+  is provenance a cancel bound cannot give: a bound says the cancel was quick,
+  not that it was the cancel that ended the handshake.
 - `ble.live_clients`: number of NimBLE clients the mock currently holds. With
   `ble_max_clients` and `ble_client_selfdelete` seeded this is the client-leak
   guard: a session holds one, and anything left over after a settled teardown is
@@ -651,12 +659,17 @@ whatever the production stack does after a fault is what the scenario observes.
   capability presence. `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` select
   launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
-  simulator.
+  simulator; a scripted run overrides it with a per-run path
+  `.pio/furble-sim-preferences-<scenario>-<pid>.bin` and removes it again on an
+  orderly exit. One flash image per simulated device: keying it on the scenario
+  alone let two simulators running the same script from one working directory
+  erase each other's flash at boot (issue #284).
 - `FURBLE_SIM_RESTART_STEP` is set by the `restart` step for the process it
   re-executes, and nothing else should set it. The resumed boot consumes it,
-  unsets it, and skips the fresh-scenario preferences wipe, so it lives exactly
-  one boot; a value outside the script's step range fails the run with status
-  2.
+  unsets it, and keeps the `FURBLE_SIM_PREFS` store it inherited rather than
+  wiping a fresh one, so the reboot reads the flash the previous boot wrote. It
+  lives exactly one boot; a value outside the script's step range fails the run
+  with status 2.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the
