@@ -17,6 +17,7 @@ namespace {
 using Furble::Provision::apply;
 using Furble::Provision::ApplyOptions;
 using Furble::Provision::ApplyReport;
+using Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
 using Furble::ProvisionTLV::ProvisionBundle;
 using Furble::ProvisionTLV::SettingValue;
 using Furble::ProvisionTLV::ValueType;
@@ -45,6 +46,7 @@ void testPreflightIsAtomic() {
   resetSettings();
 
   ProvisionBundle bundle;
+  bundle.companionPassword = std::vector<uint8_t> {'n', 'e', 'w'};
   bundle.settings = {
       {1,  ValueType::U8, {77}},
       {26, ValueType::U8, {6} }, // GPS duty only accepts 0, 5, 10, or 15.
@@ -61,6 +63,8 @@ void testPreflightIsAtomic() {
   check(appliedIds.empty(), "atomic failure emits no runtime reload callbacks");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 128,
         "atomic failure leaves the earlier setting unchanged");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD).empty(),
+        "atomic failure leaves the companion password unchanged");
 }
 
 void testValidatedApplyAndRuntimeHooks() {
@@ -68,14 +72,17 @@ void testValidatedApplyAndRuntimeHooks() {
 
   ProvisionBundle bundle;
   bundle.settings = {
-      {1,  ValueType::U8,     {77}                                              },
-      {26, ValueType::U8,     {5}                                               },
-      {33, ValueType::U8,     {4}                                               },
-      {69, ValueType::U8,     {4}                                               },
-      {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
-      {46, ValueType::BOOL,   {1}                                               },
-      {72, ValueType::U8,     {3}                                               },
-      {73, ValueType::BOOL,   {1}                                               },
+      {1,                          ValueType::U8,     {77}                                              },
+      {26,                         ValueType::U8,     {5}                                               },
+      {33,                         ValueType::U8,     {4}                                               },
+      {69,                         ValueType::U8,     {4}                                               },
+      {27,                         ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
+      {46,                         ValueType::BOOL,   {1}                                               },
+      {COMPANION_PASSWORD_WIRE_ID,
+       ValueType::STRING,
+       {'s', 'e', 't', '-', 'b', 'y', '-', 'i', 'd'}                                                    },
+      {72,                         ValueType::U8,     {3}                                               },
+      {73,                         ValueType::BOOL,   {1}                                               },
   };
   ApplyReport report;
   ApplyOptions options;
@@ -84,7 +91,8 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, 72, 73}),
+  check(appliedIds
+            == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, COMPANION_PASSWORD_WIRE_ID, 72, 73}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -102,6 +110,46 @@ void testValidatedApplyAndRuntimeHooks() {
   check(Furble::Settings::load<bool>(Furble::Settings::IMU), "validated IMU setting is persisted");
   check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
         "validated IMU trigger setting is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "set-by-id",
+        "validated companion password setting is persisted");
+}
+
+void testDedicatedPasswordField() {
+  resetSettings();
+
+  ProvisionBundle bundle;
+  bundle.companionPassword = std::vector<uint8_t> {'d', 'e', 'd', 'i', 'c', 'a', 't', 'e', 'd'};
+  ApplyReport report;
+  ApplyOptions options;
+  options.onSettingApplied = recordApplied;
+  check(apply(bundle, report, options), "dedicated companion password applies");
+  check(report.settingsApplied == 1 && report.deferredFields == 0,
+        "dedicated companion password is counted as an applied setting");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "dedicated",
+        "dedicated companion password is persisted");
+  check(appliedIds == std::vector<uint8_t>({COMPANION_PASSWORD_WIRE_ID}),
+        "dedicated companion password invokes the wire-id callback");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {};
+  check(!apply(bundle, report), "empty dedicated companion password is rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "empty dedicated companion password reports wire id 47 without writing");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {'a', 0, 'b'};
+  check(!apply(bundle, report), "NUL-containing dedicated companion password is rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "malformed dedicated companion password reports wire id 47 without writing");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {'d', 'e', 'd', 'i', 'c', 'a', 't', 'e', 'd'};
+  bundle.settings = {
+      {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, {'o', 't', 'h', 'e', 'r'}}
+  };
+  check(!apply(bundle, report), "duplicate companion password sources are rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "duplicate password rejection happens before either source is written");
 }
 
 void testDomainValidation() {
@@ -176,6 +224,7 @@ void testEverySettingHasASchemaRow() {
 int main() {
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
+  testDedicatedPasswordField();
   testDomainValidation();
   testEverySettingHasASchemaRow();
 

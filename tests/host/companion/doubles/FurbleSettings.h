@@ -160,4 +160,9 @@ struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
   using type = bool;
 };
 
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::COMPANION_PASSWORD> {
+  using type = std::string;
+};
+
 #endif

@@ -257,6 +257,8 @@ done
 for source in \
   "$ROOT/src/FurbleBootScreen.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
+  "$ROOT/src/FurbleCompanionAuth.cpp" \
+  "$ROOT/tests/host/companion/companion_hmac.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \

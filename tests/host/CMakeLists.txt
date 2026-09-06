@@ -327,6 +327,16 @@ endif()
 # dependency. Each suite is standalone so a build or link break is isolated to
 # one module.
 
+# The companion password gate is transport-independent. Keep the production
+# state machine in this host target and inject the test HMAC and nonce seams.
+add_executable(companion_auth_test
+               companion_auth_test.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp)
+target_include_directories(companion_auth_test PRIVATE ${FURBLE_ROOT}/include
+                                                       ${CMAKE_CURRENT_SOURCE_DIR}/companion)
+target_compile_options(companion_auth_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
+
 add_executable(camera_list_protocol_test
                camera_list_protocol_test.cpp
                ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp)
@@ -1023,6 +1033,8 @@ set(COMPANION_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/companion)
 add_executable(companion_gatt_test
                companion_gatt_test.cpp
                ${COMPANION_HOST_DIR}/companion_doubles.cpp
+               ${COMPANION_HOST_DIR}/companion_hmac.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
@@ -1489,6 +1501,8 @@ if(BUILD_TESTING)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
   add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
+  add_test(NAME companion-auth
+           COMMAND companion_auth_test ${FURBLE_ROOT}/tests/protocol/golden/companion_auth.json)
 
   # Peer realism through the real Control (plan 154). Both carry their own
   # watchdog, the ctest timeout is the backstop for a wedged control task.
