@@ -49,6 +49,10 @@ class VirtualMotionBackend final: public MotionBackend {
       : m_Backend(backend), m_Name(name), m_Threshold(threshold) {}
 
   bool arm(void) override {
+    // Same contract as the firmware backends: the bus lock is held across the
+    // sensor access, arm() included.
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
+
     if (!Sim::imuEnabled()) {
       return false;
     }

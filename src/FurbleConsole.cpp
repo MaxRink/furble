@@ -1346,7 +1346,16 @@ int cmdMotion(int argc, char **argv) {
                ? "inactive"
                : (motion.state() == IMU::MotionState::STATIONARY ? "stationary" : "moving"));
     printf("wake: %s\n", motion.usesInterrupt() ? "interrupt" : "polling");
+    // The hardware gate's readout. "pin" is the IMU interrupt line itself, which
+    // on the M5StickS3 is an internal PMIC net rather than an SoC pin, so it is
+    // read from the PMIC. "edges" is counted in an interrupt handler because a
+    // one-second poll cannot tell no edges from edges at the sensor rate.
+    auto &platform = Platform::getInstance();
+    printf("pin: %s\n", platform.motionWakeAsserted() ? "asserted" : "idle");
+    printf("edges: %lu\n", static_cast<unsigned long>(platform.motionWakeEdges()));
     printf("interrupts: %lu\n", static_cast<unsigned long>(motion.interruptCount()));
+    printf("bus_retries: %lu\n", static_cast<unsigned long>(IMU::MotionSource::busRetries()));
+    printf("pmic_retries: %lu\n", static_cast<unsigned long>(platform.getM5PM1RetryCount()));
     printf("scale: %.2f\n", static_cast<double>(IMU::MotionSource::getScale()));
     printf("threshold: %.3f\n", static_cast<double>(IMU::MotionSource::threshold()));
     return 0;

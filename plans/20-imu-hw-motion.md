@@ -192,28 +192,81 @@ Two claims in the first version of this plan were wrong and are withdrawn:
   model has no term for an IMU or for a wake source. See issue #285. The hardware
   gate is the only measurement of the power claim.
 
+### Two constraints PR65 inherits
+
+Both are limitations of the shipped design, not defects. They are recorded here
+because PR65 consumes this source and will hit them first.
+
+**The software backend has no bias compensation.** It thresholds
+`fabs(magnitude - 1.0f)`, so 1 g is a hardcoded reference for "at rest".
+`setScale` scales the threshold, not the reference, which papers over a small
+bias at the cost of sensitivity but cannot move the reference. A part whose
+resting magnitude sits further from 1 g than the threshold reads `MOVING`
+permanently: the quiet window never starts, `STATIONARY` never fires, and a
+consumer that gates on stationary silently never runs. The MPU6886 and BMI270
+engines are unaffected because they threshold a slope in the chip.
+
+This is a real exposure for PR65, whose whole policy is driven by the stationary
+edge, and it is exactly the case a calibration knob cannot rescue. The upgrade
+path is to sample the resting magnitude at `arm()` and use that as the
+reference, which costs one calibration field and a settling period before the
+first verdict. It is marked with a `ponytail:` comment at the constant. Decide
+with a device that shows the bias, not before.
+
+**The source is armed once and never disarmed.** `arm()` has exactly one caller,
+the UI constructor, and `disarm()` has none outside the destructor and `arm()`'s
+own reset. That is deliberate: the engine is selected at boot from a setting
+that is not immediate, so nothing needs to rearm. The consequences PR65 should
+know:
+
+- Changing `HW_MOTION` takes effect on restart, which is what the Sensors page's
+  Restart button is for.
+- Turning the `IMU` setting off at runtime does not stop an already armed
+  engine, because the gate is evaluated once at construction.
+- Nothing releases the light-sleep wake source during a session.
+
+If PR65 needs to arm and disarm dynamically, that is a new requirement on this
+API rather than a bug in it, and the callback registry and the atomics are
+already shaped for it. The one thing to check first is that `arm()` calls
+`disarm()` on entry, so rearming is safe, but nothing today exercises that path.
+
 ### Hardware gate
 
-Run on the M5StickS3 unless stated. `motion status` on the USB console is the
-readout throughout.
+Run on the M5StickS3 unless stated. Every step reads out through
+`motion status` on the USB console, which prints `backend`, `armed`, `state`,
+`wake`, `pin`, `edges`, `interrupts`, `bus_retries`, `pmic_retries`, `scale` and
+`threshold`. The gate was not executable before those fields existed: steps 1
+and 2 had no way to see the line, and step 6's only observable was an
+`ESP_LOGD` that `CONFIG_LOG_MAXIMUM_LEVEL=3` compiles out of the shipping build.
 
-1. **No spurious wake traffic.** Arm the BMI270 engine, put the device down, and
-   count GPIO13 edges over 10 s while still. Expect **0**. Any edge rate near the
-   accelerometer ODR means the data-ready mapping is still on INT1; a slow
-   irregular rate on the StickC means the RTC is driving the shared net.
-2. **The line releases.** Shake once, then read the GPIO13 level 30 s later. It
-   **must** be released. A line still asserted means the PMIC IRQ status was not
-   cleared, and light sleep is dead for the rest of the session.
+`pin` is the IMU interrupt line itself. On the M5StickS3 that line never reaches
+the SoC, so it is read from M5PM1 GPIO4 rather than from GPIO13, which carries
+only the PMIC's aggregated IRQ. `edges` is counted in a GPIO interrupt handler
+on the SoC wake pin, because a one second poll cannot tell no edges from edges
+at the accelerometer output rate.
+
+1. **No spurious wake traffic.** Arm the BMI270 engine, put the device down,
+   read `edges` twice 10 s apart while still. Expect no change. A rate near the
+   accelerometer output rate means a data interrupt is still mapped onto the
+   pin; a slow irregular rate on the StickC family means the RTC is driving the
+   shared `SYS_INT` net.
+2. **The line releases.** Shake once, wait 30 s, read `pin`. It must be `idle`.
+   `asserted` means the PMIC IRQ status was not cleared, the level-triggered
+   wake source never releases, and light sleep is dead for the rest of the
+   session.
 3. **Page-open race.** On the M5StickC Plus, shake with the IMU live page closed
-   and confirm the motion event lands. Repeat with the page open. If the second
-   case loses events, M5Unified's IMU update is consuming the WOM status and the
-   pin latch is not covering it.
-4. **Wake and quiescence.** Wake from light sleep on motion; no wake while still.
-5. **Current.** Idle draw with the BMI270 engine armed versus the software
-   detector. This is the whole justification for the feature, and the power model
-   cannot answer it.
-6. **Retry once.** Confirm the first I2C access after the PMIC's idle sleep is
-   retried rather than reported as a failure.
+   and confirm `interrupts` increments. Repeat with the page open. Lost events
+   in the second case mean M5Unified's IMU update is consuming the WOM status
+   and the pin latch is not covering it.
+4. **Wake and quiescence.** Wake from light sleep on motion; no wake while
+   still.
+5. **Current.** Idle draw with the BMI270 engine armed versus `hw_motion 1`.
+   This is the whole justification for the feature and the power model cannot
+   answer it (#285).
+6. **Retry once.** Read `bus_retries` and `pmic_retries` after a light sleep
+   cycle. A non-zero count with the engine still armed and reporting state is
+   the retry working; a rising `pmic_retries` with a dead engine is the retry
+   failing to cover a real fault.
 
 ### MotionSource is the shared API
 

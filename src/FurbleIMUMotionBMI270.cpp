@@ -40,6 +40,8 @@ constexpr size_t FEATURE_SIZE = 16;
 // bit 3 output_en. 0x08 is push-pull, active low, output enabled.
 constexpr uint8_t INT1_IO_CONTROL = 0x53;
 constexpr uint8_t INT1_IO_CONTROL_PUSH_PULL_ACTIVE_LOW = 0x08;
+// output_en clear: the pin stops driving and reverts to its reset state.
+constexpr uint8_t INT1_IO_CONTROL_DISABLED = 0x00;
 // bmi2_defs.h BMI2_INT_LATCH_ADDR, datasheet 5.2.38. 0x00 is non-latched, so
 // the pin releases without a bus transaction and light sleep stays re-entrant.
 constexpr uint8_t INTERRUPT_LATCH = 0x55;
@@ -116,6 +118,7 @@ bool readRegisters(uint8_t reg, uint8_t *data, size_t length) {
   if (M5.In_I2C.readRegister(IMU_ADDRESS, reg, data, length, I2C_FREQUENCY)) {
     return true;
   }
+  MotionSource::noteBusRetry();
   return M5.In_I2C.readRegister(IMU_ADDRESS, reg, data, length, I2C_FREQUENCY);
 }
 
@@ -123,6 +126,7 @@ bool writeRegisters(uint8_t reg, const uint8_t *data, size_t length) {
   if (M5.In_I2C.writeRegister(IMU_ADDRESS, reg, data, length, I2C_FREQUENCY)) {
     return true;
   }
+  MotionSource::noteBusRetry();
   return M5.In_I2C.writeRegister(IMU_ADDRESS, reg, data, length, I2C_FREQUENCY);
 }
 
@@ -263,7 +267,11 @@ class BMI270Backend final: public MotionBackend {
       Platform::getInstance().disarmMotionWake();
     }
 
-    // Hand data-ready back to M5Unified exactly as it was found.
+    // Order matters. Disable the INT1 output first, then hand data ready back
+    // to it. The other way round republishes the ~100 Hz data-ready pulse train
+    // onto a pin that is still driving, which is the exact failure arm() goes
+    // out of its way to avoid.
+    writeRegister(INT1_IO_CONTROL, INT1_IO_CONTROL_DISABLED);
     writeRegister(INT_MAP_DATA, m_DataMapRestore);
 
     if (beginFeatureAccess()) {

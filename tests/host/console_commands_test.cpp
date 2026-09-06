@@ -424,6 +424,13 @@ void testSettings(void) {
   checkContains(motionStatus.out, "armed: no", "an unarmed source says so");
   checkContains(motionStatus.out, "state: inactive", "an unarmed source has no motion state");
   checkContains(motionStatus.out, "wake: polling", "an unarmed source claims no wake source");
+  // The hardware gate reads all of this over USB. Steps 1, 2 and 6 have no
+  // other observable: a one-second poll cannot count edges, and the retry was
+  // previously only visible through an ESP_LOGD that release builds compile out.
+  checkContains(motionStatus.out, "pin: ", "motion status reports the interrupt line");
+  checkContains(motionStatus.out, "edges: ", "motion status reports the wake edge count");
+  checkContains(motionStatus.out, "bus_retries: ", "motion status reports IMU bus retries");
+  checkContains(motionStatus.out, "pmic_retries: ", "motion status reports PMIC retries");
   checkContains(motionStatus.out, "scale: 1.00", "the scale defaults to one");
   checkContains(motionStatus.out, "threshold: 0.200", "the shipped threshold is 0.20 g");
 

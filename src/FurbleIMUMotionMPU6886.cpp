@@ -73,6 +73,7 @@ bool readRegisters(uint8_t reg, uint8_t *data, size_t length) {
   if (M5.In_I2C.readRegister(IMU_ADDRESS, reg, data, length, I2C_FREQUENCY)) {
     return true;
   }
+  MotionSource::noteBusRetry();
   return M5.In_I2C.readRegister(IMU_ADDRESS, reg, data, length, I2C_FREQUENCY);
 }
 
@@ -80,6 +81,7 @@ bool writeRegister(uint8_t reg, uint8_t value) {
   if (M5.In_I2C.writeRegister(IMU_ADDRESS, reg, &value, 1, I2C_FREQUENCY)) {
     return true;
   }
+  MotionSource::noteBusRetry();
   return M5.In_I2C.writeRegister(IMU_ADDRESS, reg, &value, 1, I2C_FREQUENCY);
 }
 

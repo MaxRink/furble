@@ -196,6 +196,24 @@ namespace Furble {
 // The engines take it around every register sequence, so the harness owns one.
 imu_mutex_t g_IMUMutex;
 
+namespace IMU {
+
+// The engines count their bus retries through MotionSource, which lives in a
+// translation unit this target deliberately does not link: the point here is
+// the register encoding, not the source's state machine.
+std::atomic<uint32_t> MotionSource::s_BusRetries {0};
+std::atomic<float> MotionSource::s_Scale {1.0f};
+
+void MotionSource::noteBusRetry(void) {
+  s_BusRetries.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint32_t MotionSource::busRetries(void) {
+  return s_BusRetries.load(std::memory_order_relaxed);
+}
+
+}  // namespace IMU
+
 Platform &Platform::getInstance(void) {
   static Platform instance;
   return instance;
@@ -218,6 +236,14 @@ void Platform::clearMotionWake(void) {
   if (wakeArmed) {
     wakeClears++;
   }
+}
+
+uint32_t Platform::motionWakeEdges(void) const {
+  return edges;
+}
+
+uint32_t Platform::getM5PM1RetryCount(void) const {
+  return 0;
 }
 
 }  // namespace Furble
@@ -354,6 +380,18 @@ void testBMI270Cycle(void) {
   const auto restored = g_Bus.writesTo(0x58);
   check(!restored.empty() && restored.back().data[0] == 0xFF,
         "disarm hands the data-ready mapping back to M5Unified");
+
+  // Handing data ready back to a pin that is still driving republishes the
+  // ~100 Hz pulse train arm() went out of its way to remove, so the output has
+  // to be disabled first. The previous version of this test asserted only that
+  // the mapping came back and so canonised the asymmetry.
+  const auto io1 = g_Bus.writesTo(0x53);
+  check(io1.size() == 2, "INT1_IO_CTRL is written on arm and again on disarm");
+  if (io1.size() == 2) {
+    checkEqual(io1[1].data[0], 0x00, "disarm clears the INT1 output enable");
+    check(g_Bus.writeIndex(0x53, 1) < g_Bus.writeIndex(0x58, 1),
+          "the INT1 output is disabled before the data-ready mapping returns");
+  }
 }
 
 // Test 3. The BMI270 refuses to arm on a part that is not ready.

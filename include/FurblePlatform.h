@@ -150,6 +150,20 @@ class Platform {
   bool motionWakeAsserted(void) const;
 
   /**
+   * Edges seen on the IMU wake line since it was armed.
+   *
+   * Gate step 1 counts these while the device is still and expects zero. A rate
+   * near the accelerometer output rate means a data interrupt is still mapped
+   * onto the pin; a slow irregular rate on the StickC family means the RTC is
+   * driving the shared net. A one-second poll cannot see either, so this is
+   * counted in a GPIO interrupt handler.
+   */
+  uint32_t motionWakeEdges(void) const;
+
+  /** M5PM1 transactions that failed once and succeeded on the retry. */
+  uint32_t getM5PM1RetryCount(void) const;
+
+  /**
    * Clear a consumed IMU wake event at the PMIC.
    *
    * The M5StickS3 chains the IMU interrupt through M5PM1 GPIO4, which latches

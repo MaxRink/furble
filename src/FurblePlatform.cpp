@@ -383,6 +383,17 @@ namespace {
  * and the PMIC drives PYG1_IRQ into GPIO13. That pin is a normal GPIO and does
  * take an internal pull-up, which is configured below.
  */
+// Counted in an interrupt handler because gate step 1 has to distinguish "no
+// edges" from "edges faster than a one-second poll can see". The handler does
+// nothing but increment, so it is safe to leave in flash: no ESP_INTR_FLAG_IRAM
+// is requested and the wake source itself is level triggered and independent of
+// this.
+volatile uint32_t g_MotionWakeEdges = 0;
+
+void IRAM_ATTR motionWakeIsr(void *) {
+  g_MotionWakeEdges++;
+}
+
 gpio_num_t motionWakeGpio(void) {
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
@@ -455,6 +466,16 @@ bool Platform::armMotionWake(void) {
   config.intr_type = GPIO_INTR_DISABLE;
   if ((gpio_config(&config) == ESP_OK) && (gpio_wakeup_enable(gpio, GPIO_INTR_LOW_LEVEL) == ESP_OK)
       && (esp_sleep_enable_gpio_wakeup() == ESP_OK)) {
+    // Diagnostic only. A failure here costs the edge count, not the wake path,
+    // so it is logged rather than treated as an arming failure.
+    g_MotionWakeEdges = 0;
+    const esp_err_t service = gpio_install_isr_service(0);
+    if ((service == ESP_OK) || (service == ESP_ERR_INVALID_STATE)) {
+      if (gpio_set_intr_type(gpio, GPIO_INTR_ANYEDGE) != ESP_OK
+          || gpio_isr_handler_add(gpio, motionWakeIsr, nullptr) != ESP_OK) {
+        ESP_LOGW("platform", "motion wake edge counter unavailable");
+      }
+    }
     m_MotionWakeArmed = true;
     return true;
   }
@@ -494,6 +515,8 @@ void Platform::disarmMotionWake(void) {
   }
 
   if (gpio != GPIO_NUM_NC) {
+    gpio_isr_handler_remove(gpio);
+    gpio_set_intr_type(gpio, GPIO_INTR_DISABLE);
     gpio_wakeup_disable(gpio);
   }
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
@@ -504,12 +527,37 @@ bool Platform::motionWakeAsserted(void) const {
   if (!m_MotionWakeArmed) {
     return false;
   }
+
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    // The BMI270 interrupt never reaches the SoC. GPIO13 carries the PMIC's
+    // aggregated IRQ, so reading it answers "did the PMIC raise something",
+    // not "is the IMU asserting". The IMU line itself is M5PM1 GPIO4, so read
+    // that: it is what gate steps 1 and 2 are actually asking about.
+    uint8_t level = 1;
+    auto *self = const_cast<Platform *>(this);
+    if (!self->m5pm1Access(
+            [self, &level]() { return self->m_M5PM1.gpioGetInput(M5PM1_GPIO_NUM_4, &level); })) {
+      return false;
+    }
+    return level == 0;
+  }
+#endif
+
   const gpio_num_t gpio = motionWakeGpio();
   if (gpio == GPIO_NUM_NC) {
     return false;
   }
   // Active low: asserted is a zero on the pin.
   return gpio_get_level(gpio) == 0;
+}
+
+uint32_t Platform::motionWakeEdges(void) const {
+  return g_MotionWakeEdges;
+}
+
+uint32_t Platform::getM5PM1RetryCount(void) const {
+  return m_M5PM1RetryCount;
 }
 
 void Platform::clearMotionWake(void) {

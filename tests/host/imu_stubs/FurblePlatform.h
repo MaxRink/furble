@@ -3,6 +3,8 @@
 #ifndef FURBLE_HOST_PLATFORM_H
 #define FURBLE_HOST_PLATFORM_H
 
+#include <cstdint>
+
 namespace Furble {
 
 class Platform {
@@ -13,11 +15,14 @@ class Platform {
   void disarmMotionWake(void);
   bool motionWakeAsserted(void) const;
   void clearMotionWake(void);
+  uint32_t motionWakeEdges(void) const;
+  uint32_t getM5PM1RetryCount(void) const;
 
   bool wakeArmed = false;
   bool wakeAvailable = true;
   bool wakeAsserted = false;
   int wakeClears = 0;
+  uint32_t edges = 0;
 };
 
 }  // namespace Furble

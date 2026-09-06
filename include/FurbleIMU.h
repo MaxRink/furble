@@ -117,6 +117,18 @@ class MotionSource {
   /** The software backend's effective slope threshold in g. */
   static float threshold(void);
 
+  /**
+   * IMU bus transactions that failed once and succeeded on the retry.
+   *
+   * The internal bus is shared with the PMIC, whose first transaction after its
+   * idle sleep always fails. Gate step 6 needs an observable for that, and a
+   * debug log is compiled out of release builds by CONFIG_LOG_MAXIMUM_LEVEL.
+   */
+  static uint32_t busRetries(void);
+
+  /** Record one retried bus transaction. Called by the hardware backends. */
+  static void noteBusRetry(void);
+
   bool isArmed(void) const;
   MotionState state(void) const;
   Backend backend(void) const;
@@ -138,6 +150,7 @@ class MotionSource {
   };
 
   static std::atomic<float> s_Scale;
+  static std::atomic<uint32_t> s_BusRetries;
 
   // m_Backend and the subscriber list are owned by the task that calls arm(),
   // disarm() and poll(). The diagnostics timer and the simulator queries read

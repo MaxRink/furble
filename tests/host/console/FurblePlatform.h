@@ -86,6 +86,13 @@ class Platform {
   void setFlashPrepareShouldFail(bool fail) { m_PrepareFails = fail; }
   void setFlashCancelShouldFail(bool fail) { m_CancelFails = fail; }
   bool isFlashReady(void) const { return m_FlashReady; }
+  // The motion source's hardware-gate readout. The host has no interrupt line,
+  // so these report the idle answer; the console suite asserts the fields are
+  // printed, not their values.
+  bool motionWakeAsserted(void) const { return false; }
+  uint32_t motionWakeEdges(void) const { return 0; }
+  uint32_t getM5PM1RetryCount(void) const { return 0; }
+
   uint32_t restartCount(void) const { return m_Restarts; }
   uint32_t dumpPMLocksCount(void) const { return m_DumpPMLocks; }
 
