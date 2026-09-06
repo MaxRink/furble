@@ -105,7 +105,7 @@ uint32_t g_simDisconnectCalls = 0;
 
 namespace Furble {
 
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
 
 namespace {
 bool imuSensorEnabledForUI(void) {
@@ -408,6 +408,10 @@ UI::UI(const interval_t &interval)
         ui->processInactivity();
         ui->processAutoOff();
         ui->processLowBattery();
+        // The motion source shares this timer rather than adding its own. A
+        // hardware engine only needs its status register read, and the software
+        // backend thresholds one sample, so 1 Hz is enough for all three.
+        IMU::MotionSource::getInstance().poll();
       },
       1000, this);
 
@@ -421,6 +425,24 @@ UI::UI(const interval_t &interval)
   m_Buffer2 = heap_caps_aligned_alloc(64, BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
   lv_display_set_buffers(m_Display, m_Buffer1, m_Buffer2, BUFFER_SIZE,
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+  // Motion counts as user activity, the same way the spirit level page keeps the
+  // panel awake while it is open. processInactivity() already wakes a sleeping
+  // panel as soon as the idle clock is reset, so this needs no wake call of its
+  // own. Arming also installs the light-sleep wake source, so the CPU sleeps
+  // between events instead of polling the accelerometer.
+  if (imuEnabledForUI()) {
+    auto &motion = IMU::MotionSource::getInstance();
+    motion.addCallback(
+        [](IMU::MotionState state, void *context) {
+          if (state != IMU::MotionState::MOVING) {
+            return;
+          }
+          lv_display_trigger_activity(static_cast<UI *>(context)->m_Display);
+        },
+        this);
+    motion.arm();
+  }
 
 #if defined(FURBLE_CONSOLE) && defined(CONFIG_LV_USE_PERF_MONITOR)
   // Create the sysmon label and timer, then keep the overlay hidden by default.
@@ -4548,6 +4570,32 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(m_Diagnostics.imuGyroUpdates);
   }
 
+  // Motion source state, read from the source rather than from the diagnostics
+  // labels, so a scenario asserts which engine actually armed and what it
+  // reported even when the IMU live page was never opened.
+  if (query == "motion_backend") {
+    return IMU::MotionSource::getInstance().backendName();
+  }
+  if (query == "motion_state") {
+    auto &motion = IMU::MotionSource::getInstance();
+    if (!motion.isArmed()) {
+      return "inactive";
+    }
+    return motion.state() == IMU::MotionState::STATIONARY ? "stationary" : "moving";
+  }
+  // Panel sleep state. Motion wake has no other observable, and the inactivity
+  // timeout is the only thing that turns the panel off, so a scenario asserts
+  // both halves of that pair here.
+  if (query == "display") {
+    return m_DisplayOff ? "off" : "on";
+  }
+  if (query == "motion_wake") {
+    return IMU::MotionSource::getInstance().usesInterrupt() ? "yes" : "no";
+  }
+  if (query == "motion_interrupts") {
+    return std::to_string(IMU::MotionSource::getInstance().interruptCount());
+  }
+
   return "";
 }
 #endif
@@ -5536,7 +5584,7 @@ void UI::levelUpdate(lv_timer_t *timer) {
   lv_display_trigger_activity(NULL);
 
   float accel[3];
-  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+  std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
 #if defined(FURBLE_SIM)
   // The simulator has no sensor, so read the injected IMU state through the same
   // enabled, update and getAccel surface the firmware uses. A scenario drives
@@ -6433,8 +6481,8 @@ void UI::addSensorsMenu(const menu_t &parent) {
   addGesturesMenu(menu);
 
   // The caption and the button said the same thing in two rows. One row does
-  // it, and the row this buys is what makes the page fit the 80x160 non-touch
-  // layout, where master already overflowed by 10 px before this page grew.
+  // it, and the row this buys is what keeps the page fitting now that the
+  // Motion Engine entry has joined it.
   lv_obj_t *restart = lv_button_create(menu.page);
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart to apply");
@@ -6475,6 +6523,42 @@ void UI::addGesturesMenu(const menu_t &parent) {
   lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
   lv_label_set_text(warning, "A knock can trigger a frame.");
 
+  // Motion Engine lives on this page rather than as its own row on Sensors.
+  // Sensors had no slack left after the IMU switch, this entry and the Restart
+  // button: one more row there overflows the 135x240 non-touch layout and puts
+  // content under the floating indicators. This page is the IMU behaviour page
+  // and has room.
+  //
+  // ponytail: the page is titled "Gestures" and a detection backend is not a
+  // gesture. Renaming it touches PR45's page identity, its sim vocabularies and
+  // its scenarios, so it is a follow-up, not a silent edit here.
+  lv_obj_t *motionEngine = addRollerItem(menu.page, m_MotionEngineStr, m_MotionEngineOptions);
+  m_IMUGestureWidgets.push_back(motionEngine);
+  uint8_t motionMode = Settings::load<Settings::HW_MOTION>();
+  if (motionMode > Settings::HW_MOTION_HARDWARE) {
+    motionMode = Settings::HW_MOTION_SOFTWARE;
+  }
+  lv_roller_set_selected(motionEngine, motionMode, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      motionEngine,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        const uint32_t selected = lv_roller_get_selected(roller);
+        if (selected > Settings::HW_MOTION_HARDWARE) {
+          return;
+        }
+        Settings::save<Settings::HW_MOTION>(static_cast<uint8_t>(selected));
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
+
+  // The roller applies at boot, and the Restart button that does it lives on
+  // the parent Sensors page, so say so here rather than leaving the user to
+  // find it.
+  lv_obj_t *motionHint = lv_label_create(menu.page);
+  lv_obj_set_width(motionHint, LV_PCT(100));
+  lv_label_set_long_mode(motionHint, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(motionHint, "Applies after restart.");
+
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
@@ -6483,8 +6567,22 @@ void UI::addGPSOptionMenu(const menu_t &parent,
                           const char *options,
                           uint32_t selected,
                           lv_event_cb_t handler) {
-  menu_t &menu = addMenu(name, NULL, true, parent);
+  menu_t &menu = addOptionMenu(parent, name, options, selected, handler, &m_Status);
   m_Status.gpsWidgets.push_back(menu.button);
+}
+
+/**
+ * A submenu holding one roller. Used where a multi-choice setting would
+ * overflow the page that owns it, which on the 80x160 and 135x240 panels is
+ * any page that already carries a control and a button.
+ */
+UI::menu_t &UI::addOptionMenu(const menu_t &parent,
+                              const char *name,
+                              const char *options,
+                              uint32_t selected,
+                              lv_event_cb_t handler,
+                              void *userData) {
+  menu_t &menu = addMenu(name, NULL, true, parent);
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
@@ -6502,9 +6600,10 @@ void UI::addGPSOptionMenu(const menu_t &parent,
   lv_roller_set_visible_row_count(roller, 2);
   lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
 
-  lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, &m_Status);
+  lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, userData);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  return menu;
 }
 
 void UI::addGPSDataMenu(const menu_t &parent) {
@@ -8342,6 +8441,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("diagnostics_timer");
   auto *diagnostics = static_cast<diagnostics_t *>(lv_timer_get_user_data(timer));
   auto &platform = Platform::getInstance();
+  auto &motion = IMU::MotionSource::getInstance();
 
   SpinValue::hms_t hms = SpinValue::toHMS(platform.tick());
   uint32_t heap = esp_get_free_heap_size();
@@ -8421,7 +8521,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 
   // only poll the IMU over I2C while its live page is open
   if (diagnostics->imuPageActive) {
-    std::lock_guard<std::mutex> imuLock(g_IMUMutex);
+    std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
 #if defined(FURBLE_SIM)
     // Read the injected IMU state through the same surface as the firmware, so a
     // scenario can drive the live diagnostics readout too.
@@ -8476,6 +8576,41 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
         diagnostics->imuGyroValid = false;
       }
     }
+  }
+
+  if ((diagnostics->imuBackend != nullptr) || (diagnostics->imuMotion != nullptr)
+      || (diagnostics->imuInterrupts != nullptr)) {
+    const auto backend = motion.backend();
+    const auto state = motion.state();
+    const uint32_t interrupts = motion.interruptCount();
+
+    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuBackendValue != backend)) {
+      if (diagnostics->imuBackend != nullptr) {
+        lv_label_set_text_fmt(diagnostics->imuBackend, "Backend:\n%s%s", motion.backendName(),
+                              motion.usesInterrupt() ? " (interrupt)" : " (polling)");
+      }
+      diagnostics->imuBackendValue = backend;
+    }
+
+    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuMotionValue != state)) {
+      if (diagnostics->imuMotion != nullptr) {
+        const char *stateName =
+            !motion.isArmed() ? "inactive"
+                              : (state == IMU::MotionState::STATIONARY ? "stationary" : "moving");
+        lv_label_set_text_fmt(diagnostics->imuMotion, "Motion:\n%s", stateName);
+      }
+      diagnostics->imuMotionValue = state;
+    }
+
+    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuInterruptCount != interrupts)) {
+      if (diagnostics->imuInterrupts != nullptr) {
+        lv_label_set_text_fmt(diagnostics->imuInterrupts, "Interrupts:\n%lu",
+                              static_cast<unsigned long>(interrupts));
+      }
+      diagnostics->imuInterruptCount = interrupts;
+    }
+
+    diagnostics->imuMotionValuesValid = true;
   }
 }
 
@@ -8726,6 +8861,12 @@ void UI::addIMUDataMenu(const menu_t &parent) {
   lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
   m_Diagnostics.imuGyro = addInfoRow(cont);
   lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
+  m_Diagnostics.imuBackend = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuBackend, "Backend:\nnone");
+  m_Diagnostics.imuMotion = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuMotion, "Motion:\ninactive");
+  m_Diagnostics.imuInterrupts = addInfoRow(cont);
+  lv_label_set_text(m_Diagnostics.imuInterrupts, "Interrupts:\n0");
 
   if (!imuEnabledForUI()) {
     lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);

@@ -1,0 +1,18 @@
+# Auto prefers the hardware engine when it is selected.
+#
+# Auto is no longer the shipped default: it picks the board's hardware engine,
+# and that path has had no hardware run yet, so nothing unproven may sit on the
+# path a user gets by turning the IMU on. Auto stays fully selectable, and this
+# asserts that selecting it still reaches the engine without naming the chip.
+# hw-motion-default-software.txt covers the default.
+#
+# Teeth: make arm() treat HW_MOTION_AUTO as software. The backend reads
+# software and the second assert fails.
+seed fauxny true
+seed imu true
+seed imu_chip mpu6886
+seed hw_motion 0
+wait 300
+assert setting.hw_motion 0
+assert ui.motion_backend mpu6886-wom
+exit

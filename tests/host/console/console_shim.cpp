@@ -47,6 +47,7 @@
 
 #include "FurbleCompanion.h"
 #include "FurbleFeedback.h"
+#include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "M5Unified.h"
@@ -669,7 +670,7 @@ void resetDoubles(void) {
 
 namespace Furble {
 
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
 
 void UI::notifyGestureSettingsChanged(void) {
   ConsoleHost::ui().gestureNotifications++;
@@ -1104,3 +1105,23 @@ void furbleHostStopTasks(void) {
     }
   }
 }
+
+// The console reports the motion source, so FurbleIMU.cpp is linked in. Its two
+// hardware engines are register programming against an I2C bus this harness
+// does not have, and they have their own coverage in
+// tests/host/imu_motion_encoding_test.cpp, so here they are simply absent. That
+// is the same answer a board with no supported IMU gives, and it exercises the
+// software fallback the console then reports.
+namespace Furble {
+namespace IMU {
+
+std::unique_ptr<MotionBackend> createBMI270Backend(void) {
+  return nullptr;
+}
+
+std::unique_ptr<MotionBackend> createMPU6886Backend(void) {
+  return nullptr;
+}
+
+}  // namespace IMU
+}  // namespace Furble

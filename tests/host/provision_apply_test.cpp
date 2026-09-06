@@ -41,6 +41,67 @@ void resetSettings() {
   Furble::Settings::init();
 }
 
+// A new wire id is not provisionable until it has a row in SETTING_SCHEMAS.
+// Without one the parser rejects UNKNOWN_SETTING_ID and the apply path reports
+// UNSUPPORTED_SETTING before any validation runs, so the setting is silently
+// unreachable over the companion link. Deleting the {74, U8, 1, 1} row fails
+// the first check below.
+void testMotionEngineProvisioning() {
+  resetSettings();
+
+  const auto *schema = Furble::ProvisionTLV::schemaForSetting(74);
+  check(schema != nullptr, "wire id 74 has a provisioning schema row");
+  if (schema != nullptr) {
+    check(schema->type == ValueType::U8, "the motion engine schema is U8");
+    check((schema->minLength == 1) && (schema->maxLength == 1),
+          "the motion engine schema is exactly one byte");
+  }
+
+  // The whole roller range provisions through the real validate path.
+  for (uint8_t value = 0; value <= 2; value++) {
+    resetSettings();
+    ProvisionBundle bundle;
+    bundle.settings = {
+        {74, ValueType::U8, {value}},
+    };
+    ApplyReport report;
+    ApplyOptions options;
+    options.onSettingApplied = recordApplied;
+    check(apply(bundle, report, options),
+          "motion engine value " + std::to_string(value) + " provisions");
+    check(report.settingsApplied == 1, "the motion engine apply reports one setting");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == value,
+          "the provisioned motion engine value reaches the store");
+  }
+
+  // Anything past Hardware is a domain error, not a silent clamp.
+  resetSettings();
+  ProvisionBundle outOfRange;
+  outOfRange.settings = {
+      {74, ValueType::U8, {3}},
+  };
+  ApplyReport report;
+  ApplyOptions options;
+  check(!apply(outOfRange, report, options), "motion engine value 3 is rejected");
+  check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
+        "an out-of-range motion engine reports BAD_SETTING");
+  check(report.failedSettingId == 74, "the rejection identifies wire id 74");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION)
+            == Furble::Settings::HW_MOTION_SOFTWARE,
+        "a rejected motion engine leaves the stored value alone");
+
+  // A wrong wire type is refused before the range check.
+  resetSettings();
+  ProvisionBundle wrongType;
+  wrongType.settings = {
+      {74, ValueType::BOOL, {1}},
+  };
+  ApplyReport typeReport;
+  check(!apply(wrongType, typeReport, options), "a BOOL motion engine field is rejected");
+  check(typeReport.error == Furble::Provision::ApplyError::UNSUPPORTED_SETTING,
+        "a wrong wire type reports UNSUPPORTED_SETTING");
+}
+
 void testPreflightIsAtomic() {
   resetSettings();
 
@@ -174,6 +235,7 @@ void testEverySettingHasASchemaRow() {
 }  // namespace
 
 int main() {
+  testMotionEngineProvisioning();
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
   testDomainValidation();

@@ -216,6 +216,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -368,6 +369,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::GPS_PLATFORM:
       if (!parseUnsigned(text, 4, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::HW_MOTION:
+      if (!parseUnsigned(text, Settings::HW_MOTION_HARDWARE, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
