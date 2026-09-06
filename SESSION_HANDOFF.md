@@ -940,3 +940,5 @@ Update 2026-09-06 18:30: #45 final head 7c2f5038 (schema rows 72/73 mutation-cov
 Update 2026-09-06 19:45: #287 rebased to 33d4d214 and pushed; merges on green CI. #65 at c1410d0b (schema row 66; a missing schema row fails an entire provisioning batch), parked for #48. #245 and #47 rebasing onto 96a05b38; #48 and #139 fix rounds base on it. Rule: after every master merge, message every open lane the new SHA.
 
 Update 2026-09-06 20:15: PR #287 merged at 7e3e0d8d; every open lane has the new SHA. Merge order after the #245 bench: #245, #272, #265, #47, #139, #45, #48, #65, #63; #273 by the user from pictures.
+
+Update 2026-09-06 21:30: #48 fix round at ac474257 (all interrupt-path defects closed, scheduler-visible IMU mutex, schema row 74) and #139 fix round at 33f207ef (replay commits on an RMC count, TSAN caveat retracted) both pushed from the host via bundles; delta reviews running on both. #245 and #47 rebased and mergeable, waiting on CI. Stick idle on the #245 bench head.
