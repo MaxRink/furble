@@ -150,6 +150,42 @@ class Platform {
   bool motionWakeAsserted(void) const;
 
   /**
+   * Sample the IMU wake line and accumulate the assertion count.
+   *
+   * Called once per motion poll. On the M5StickS3 this reads and clears the
+   * PMIC's latched GPIO4 interrupt flag, which is the only place the BMI270's
+   * INT1 activity is visible without touching the wake pin. On the StickC
+   * family the MPU6886 interrupt is latched in the sensor and holds the line,
+   * so the pin level is read directly.
+   *
+   * Nothing here configures a GPIO interrupt. gpio_set_intr_type and
+   * gpio_wakeup_enable write the same field and the IDF refuses an edge type on
+   * a wakeup pin, so an edge counter on the wake pin cancels the wake source.
+   *
+   * @return true when the line was asserted at this sample.
+   */
+  bool motionWakeSample(void);
+
+  /**
+   * Assertions of the IMU wake line counted since it was armed.
+   *
+   * Gate step 1 reads this twice while the device is still and expects no
+   * change. One increment per poll means the line is asserting continuously,
+   * which on the M5StickS3 means a data interrupt is still mapped onto INT1 and
+   * on the StickC family can also mean the RTC is driving the shared net.
+   *
+   * This counts polls at which the line was found asserted, not hardware edges:
+   * a latched flag read at the poll rate cannot distinguish one assertion from
+   * a thousand. It discriminates the failure gate step 1 is looking for, which
+   * is a line that never goes quiet, and it does so without touching the wake
+   * pin.
+   */
+  uint32_t motionWakeEdges(void) const;
+
+  /** M5PM1 transactions that failed once and succeeded on the retry. */
+  uint32_t getM5PM1RetryCount(void) const;
+
+  /**
    * Clear a consumed IMU wake event at the PMIC.
    *
    * The M5StickS3 chains the IMU interrupt through M5PM1 GPIO4, which latches

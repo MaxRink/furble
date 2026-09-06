@@ -196,6 +196,24 @@ namespace Furble {
 // The engines take it around every register sequence, so the harness owns one.
 imu_mutex_t g_IMUMutex;
 
+namespace IMU {
+
+// The engines count their bus retries through MotionSource, which lives in a
+// translation unit this target deliberately does not link: the point here is
+// the register encoding, not the source's state machine.
+std::atomic<uint32_t> MotionSource::s_BusRetries {0};
+std::atomic<float> MotionSource::s_Scale {1.0f};
+
+void MotionSource::noteBusRetry(void) {
+  s_BusRetries.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint32_t MotionSource::busRetries(void) {
+  return s_BusRetries.load(std::memory_order_relaxed);
+}
+
+}  // namespace IMU
+
 Platform &Platform::getInstance(void) {
   static Platform instance;
   return instance;
@@ -218,6 +236,22 @@ void Platform::clearMotionWake(void) {
   if (wakeArmed) {
     wakeClears++;
   }
+}
+
+bool Platform::motionWakeSample(void) {
+  if (wakeArmed && wakeAsserted) {
+    edges++;
+    return true;
+  }
+  return false;
+}
+
+uint32_t Platform::motionWakeEdges(void) const {
+  return edges;
+}
+
+uint32_t Platform::getM5PM1RetryCount(void) const {
+  return 0;
 }
 
 }  // namespace Furble
@@ -354,6 +388,18 @@ void testBMI270Cycle(void) {
   const auto restored = g_Bus.writesTo(0x58);
   check(!restored.empty() && restored.back().data[0] == 0xFF,
         "disarm hands the data-ready mapping back to M5Unified");
+
+  // Handing data ready back to a pin that is still driving republishes the
+  // ~100 Hz pulse train arm() went out of its way to remove, so the output has
+  // to be disabled first. The previous version of this test asserted only that
+  // the mapping came back and so canonised the asymmetry.
+  const auto io1 = g_Bus.writesTo(0x53);
+  check(io1.size() == 2, "INT1_IO_CTRL is written on arm and again on disarm");
+  if (io1.size() == 2) {
+    checkEqual(io1[1].data[0], 0x00, "disarm clears the INT1 output enable");
+    check(g_Bus.writeIndex(0x53, 1) < g_Bus.writeIndex(0x58, 1),
+          "the INT1 output is disabled before the data-ready mapping returns");
+  }
 }
 
 // Test 3. The BMI270 refuses to arm on a part that is not ready.
@@ -518,14 +564,23 @@ void testRetryOnceHasTeeth(void) {
   std::cerr << "test: the first failed bus access after idle sleep is retried\n";
 
   seedMPU6886();
+  const uint32_t before = Furble::IMU::MotionSource::busRetries();
   g_Bus.failNext = 1;
   check(Furble::IMU::createMPU6886Backend()->arm(),
         "the MPU6886 engine arms through one failed leading transaction");
+  // Gate step 6 reads this over USB, so it has to move. Deleting the
+  // noteBusRetry() calls leaves the engine working and the count flat, which is
+  // exactly the silent regression this asserts against.
+  check(Furble::IMU::MotionSource::busRetries() == before + 1,
+        "a retried transaction is counted for the hardware gate");
 
   seedBMI270();
+  const uint32_t beforeBmi = Furble::IMU::MotionSource::busRetries();
   g_Bus.failNext = 1;
   check(Furble::IMU::createBMI270Backend()->arm(),
         "the BMI270 engine arms through one failed leading transaction");
+  check(Furble::IMU::MotionSource::busRetries() == beforeBmi + 1,
+        "the BMI270 engine counts its retries too");
 
   // Two consecutive failures are a real fault and must not be papered over.
   seedMPU6886();

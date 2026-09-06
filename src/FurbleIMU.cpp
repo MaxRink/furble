@@ -12,6 +12,7 @@
 #include "driver.h"
 #endif
 
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
@@ -30,6 +31,14 @@ constexpr uint32_t STATIONARY_HOLD_MS = 60 * 1000;
 // has raw magnitude, which is noisier, so its threshold is deliberately looser
 // than the 83 mg the BMI270 any-motion engine uses. MotionSource::setScale is
 // the runtime knob for a board whose noise floor disagrees.
+//
+// ponytail: the reference is a hardcoded 1.0 g, so a part whose resting
+// magnitude is biased away from 1 g by more than the threshold reads MOVING
+// forever and never reaches the quiet window. setScale widens the threshold,
+// which papers over a small bias at the cost of sensitivity, but it cannot
+// move the reference. Upgrade path if a real part shows the bias: sample the
+// resting magnitude at arm() and use that as the reference instead of 1.0f,
+// which costs one calibration field and a settling period.
 constexpr float MOTION_DELTA_G = 0.20f;
 
 uint32_t nowMs(void) {
@@ -60,6 +69,12 @@ bool readAccel(float *accel) {
 class SoftwareBackend final: public MotionBackend {
  public:
   bool arm(void) override {
+    // The bus is shared with the spirit level, the IMU live page and the
+    // console probe, and M5Unified's I2C_Class has no lock of its own. This is
+    // the default path on every board left on Auto, so it is the one that
+    // actually races cmdIMU in practice.
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
+
     if (!sensorEnabled()) {
       return false;
     }
@@ -72,6 +87,8 @@ class SoftwareBackend final: public MotionBackend {
   void disarm(void) override {}
 
   bool poll(MotionState &state) override {
+    std::lock_guard<imu_mutex_t> lock(g_IMUMutex);
+
     float accel[3] = {};
     if (!readAccel(accel)) {
       return false;
@@ -121,6 +138,15 @@ class SoftwareBackend final: public MotionBackend {
 }  // namespace
 
 std::atomic<float> MotionSource::s_Scale {1.0f};
+std::atomic<uint32_t> MotionSource::s_BusRetries {0};
+
+uint32_t MotionSource::busRetries(void) {
+  return s_BusRetries.load(std::memory_order_relaxed);
+}
+
+void MotionSource::noteBusRetry(void) {
+  s_BusRetries.fetch_add(1, std::memory_order_relaxed);
+}
 
 void MotionSource::setScale(float scale) {
   if (!std::isfinite(scale)) {
@@ -219,6 +245,11 @@ void MotionSource::poll(void) {
   if (!m_Armed.load(std::memory_order_relaxed) || !m_Backend) {
     return;
   }
+
+  // One wake-line sample per poll, independent of the backend. This is the
+  // only thing that accumulates the assertion count gate step 1 reads, and it
+  // deliberately reads a latched flag rather than configuring a GPIO interrupt.
+  Platform::getInstance().motionWakeSample();
 
   MotionState state = m_Backend->state();
   if (m_Backend->poll(state)) {

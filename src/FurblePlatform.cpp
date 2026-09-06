@@ -383,6 +383,21 @@ namespace {
  * and the PMIC drives PYG1_IRQ into GPIO13. That pin is a normal GPIO and does
  * take an internal pull-up, which is configured below.
  */
+// Counted from a latched flag, never from a GPIO interrupt.
+//
+// The first version of this installed gpio_set_intr_type(GPIO_INTR_ANYEDGE) on
+// the wake pin. That silently disabled the wake source: gpio_set_intr_type and
+// gpio_wakeup_enable both write hw->pin[n].int_type, and the IDF refuses an
+// edge type on a wakeup pin ("GPIO wakeup only supports level mode"), so the
+// counter cancelled the level wake it existed to measure. Nothing may touch the
+// wake pin's interrupt type.
+//
+// Both boards already latch the event somewhere the poll can read without
+// touching the pin configuration: the M5StickS3 in the PMIC's GPIO IRQ status,
+// and the StickC family in the MPU6886's own latched interrupt, which holds the
+// line until the status register is read.
+uint32_t g_MotionWakeEdges = 0;
+
 gpio_num_t motionWakeGpio(void) {
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
@@ -455,6 +470,7 @@ bool Platform::armMotionWake(void) {
   config.intr_type = GPIO_INTR_DISABLE;
   if ((gpio_config(&config) == ESP_OK) && (gpio_wakeup_enable(gpio, GPIO_INTR_LOW_LEVEL) == ESP_OK)
       && (esp_sleep_enable_gpio_wakeup() == ESP_OK)) {
+    g_MotionWakeEdges = 0;
     m_MotionWakeArmed = true;
     return true;
   }
@@ -504,12 +520,74 @@ bool Platform::motionWakeAsserted(void) const {
   if (!m_MotionWakeArmed) {
     return false;
   }
+
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    // The BMI270 interrupt never reaches the SoC. GPIO13 carries the PMIC's
+    // aggregated IRQ, so reading it answers "did the PMIC raise something",
+    // not "is the IMU asserting". The IMU line itself is M5PM1 GPIO4, so read
+    // that: it is what gate steps 1 and 2 are actually asking about.
+    uint8_t level = 1;
+    auto *self = const_cast<Platform *>(this);
+    if (!self->m5pm1Access(
+            [self, &level]() { return self->m_M5PM1.gpioGetInput(M5PM1_GPIO_NUM_4, &level); })) {
+      return false;
+    }
+    return level == 0;
+  }
+#endif
+
   const gpio_num_t gpio = motionWakeGpio();
   if (gpio == GPIO_NUM_NC) {
     return false;
   }
   // Active low: asserted is a zero on the pin.
   return gpio_get_level(gpio) == 0;
+}
+
+bool Platform::motionWakeSample(void) {
+  if (!m_MotionWakeArmed) {
+    return false;
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    // The PMIC latches a GPIO4 edge in its IRQ status. Read and clear it: the
+    // flag is what makes a fast INT1 train visible to a one-second poll, and
+    // clearing it is also what stops a latched status from holding PYG1_IRQ
+    // asserted and blocking light sleep.
+    uint8_t status = 0;
+    if (!m5pm1Access(
+            [this, &status]() { return m_M5PM1.irqGetGpioStatus(&status, M5PM1_CLEAN_ONCE); })) {
+      return false;
+    }
+    if ((status & M5PM1_IRQ_GPIO4) == 0) {
+      return false;
+    }
+    g_MotionWakeEdges++;
+    return true;
+  }
+#endif
+
+  const gpio_num_t gpio = motionWakeGpio();
+  if (gpio == GPIO_NUM_NC) {
+    return false;
+  }
+  // The MPU6886 interrupt is latched in the sensor, so the line holds until the
+  // status register is read and a poll-rate sample is meaningful. Active low.
+  if (gpio_get_level(gpio) != 0) {
+    return false;
+  }
+  g_MotionWakeEdges++;
+  return true;
+}
+
+uint32_t Platform::motionWakeEdges(void) const {
+  return g_MotionWakeEdges;
+}
+
+uint32_t Platform::getM5PM1RetryCount(void) const {
+  return m_M5PM1RetryCount;
 }
 
 void Platform::clearMotionWake(void) {

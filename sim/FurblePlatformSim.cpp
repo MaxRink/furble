@@ -225,6 +225,25 @@ void Platform::disarmMotionWake(void) {
   m_MotionWakeArmed = false;
 }
 
+bool Platform::motionWakeAsserted(void) const {
+  // The host has no interrupt line. The virtual engines report motion through
+  // the injected accelerometer instead, so this stays idle.
+  return false;
+}
+
+bool Platform::motionWakeSample(void) {
+  // The host has no interrupt line, so nothing ever asserts.
+  return false;
+}
+
+uint32_t Platform::motionWakeEdges(void) const {
+  return 0;
+}
+
+uint32_t Platform::getM5PM1RetryCount(void) const {
+  return 0;
+}
+
 void Platform::setCPUMaxFreq(uint8_t mhz) {
   m_CPUMaxFreqMHz = isCPUMaxFreqValid(mhz) ? mhz : CPU_MAX_FREQ_DEFAULT_MHZ;
 }

@@ -81,6 +81,9 @@ jobs:
       - name: Check portability contract
         run: python3 tools/check_portability_inventory.py --check
 
+      - name: Guard the IMU wake pin interrupt configuration
+        run: python3 tools/check_wake_pin.py
+
       - name: Check UI restart path
         run: python3 tests/test_ui_restart_path.py
 
