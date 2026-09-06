@@ -271,6 +271,7 @@ for source in \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
+  "$ROOT/src/FurbleUIGesture.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
   "$ROOT/lib/blowfish/Blowfish.cpp" \
   "$ROOT/lib/furble/BtDebugJournal.cpp" \

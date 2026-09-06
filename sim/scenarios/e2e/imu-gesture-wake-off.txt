@@ -1,0 +1,30 @@
+# Wake Gesture off with Double-Tap Shutter on: the detector runs, so a gesture
+# is still detected, but nothing wakes the display.
+seed imu true
+seed imu_wake 0
+seed imu_trigger true
+seed inactivity 1
+seed display_off 1
+wait 31000
+assert ui.display_state off
+assert ui.gesture_timer yes
+
+action imu.accel 0 0 1.8
+wait 120
+action imu.accel 0 0 1
+wait 120
+assert ui.gesture_events 1
+assert ui.display_state off
+
+wait 900
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 120
+assert ui.gesture_last double_tap
+assert ui.display_state off
+exit

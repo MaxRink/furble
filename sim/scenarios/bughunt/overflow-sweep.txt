@@ -79,6 +79,15 @@ wait 100
 # colliding with Feedback/IR. The page itself must remain reachable and fit.
 assert ui.page sensors
 assert ui.overflow no
+action nav gestures
+wait 100
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 100
 action page settings
 action nav infrared
 wait 100

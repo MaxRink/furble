@@ -1,0 +1,68 @@
+# Detector patterns on the shared production seam. imu_wake 3 makes every
+# gesture class observable through ui.gesture_events without a camera.
+# Every assertion here has a recorded killing mutation in plans/17-imu-gestures.md.
+seed imu true
+seed imu_wake 3
+wait 400
+assert ui.gesture_timer yes
+assert ui.gesture_period_ms 20
+assert ui.gesture_events 0
+
+# A finger tap on the case is one 50 Hz sample of high acceleration followed by
+# a release. That is a tap.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 100
+assert ui.gesture_events 1
+assert ui.gesture_last tap
+
+# A second impulse inside the 750 ms refractory period is swallowed, so one
+# physical knock cannot produce a burst.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 100
+assert ui.gesture_events 1
+
+# Sustained high acceleration is a shake, not a tap, and reports exactly once
+# however long it lasts.
+wait 800
+action imu.accel 0 0 1.8
+wait 2000
+assert ui.gesture_events 2
+assert ui.gesture_last shake
+action imu.accel 0 0 1
+wait 900
+
+# Walking in a pocket: a 0.3 g sway, under the 0.6 g shake bar and far under
+# the 1.5 g tap bar. It must produce nothing at all.
+action imu.accel 0 0 1.3
+wait 100
+action imu.accel 0 0 0.7
+wait 100
+action imu.accel 0 0 1.3
+wait 100
+action imu.accel 0 0 0.7
+wait 100
+action imu.accel 0 0 1.3
+wait 100
+action imu.accel 0 0 0.7
+wait 100
+action imu.accel 0 0 1.3
+wait 100
+action imu.accel 0 0 0.7
+wait 100
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_events 2
+
+# A table bump is a single 0.9 g excursion: below the tap bar and too short for
+# the three-sample shake run.
+action imu.accel 0 0 1.9
+wait 20
+action imu.accel 0 0 1
+wait 900
+assert ui.gesture_events 2
+assert ui.gesture_last shake
+exit

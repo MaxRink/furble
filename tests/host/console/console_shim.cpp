@@ -671,6 +671,10 @@ namespace Furble {
 
 std::mutex g_IMUMutex;
 
+void UI::notifyGestureSettingsChanged(void) {
+  ConsoleHost::ui().gestureNotifications++;
+}
+
 bool UI::sendRequest(Request request, int32_t arg) {
   auto &state = ConsoleHost::ui();
   if (!state.queueAvailable) {
