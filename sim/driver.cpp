@@ -306,14 +306,29 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",           "gps_nmea",          "gps_motion",
-      "fauxny",        "autoconnect",       "reconnect",
-      "sleep_conn",    "boot_splash",       "connect_fail",
-      "no_touch",      "saved_camera",      "scan_start_probe",
-      "ble_saved",     "recon_backoff",     "auto_off_charging",
-      "imu",           "imu_sensor",        "liveness_check",
-      "ble_client_selfdelete", "gps_extrap", "gps_stationary",
-      "sd_gpx",        "imu_trigger",
+      "gps",
+      "gps_nmea",
+      "gps_motion",
+      "fauxny",
+      "autoconnect",
+      "reconnect",
+      "sleep_conn",
+      "boot_splash",
+      "connect_fail",
+      "no_touch",
+      "saved_camera",
+      "scan_start_probe",
+      "ble_saved",
+      "recon_backoff",
+      "auto_off_charging",
+      "imu",
+      "imu_sensor",
+      "liveness_check",
+      "ble_client_selfdelete",
+      "gps_extrap",
+      "gps_stationary",
+      "sd_gpx",
+      "imu_trigger",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {

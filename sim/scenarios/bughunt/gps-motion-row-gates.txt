@@ -10,6 +10,9 @@
 # The setting is seeded on here on purpose. A user who enabled motion adaptive
 # and then turned the IMU off must not leave a detector running against a sensor
 # that is not there, so the detector reports off even though the setting is on.
+# This is also the arm-once constraint PR20 documents: the source is armed from
+# the UI constructor and never rearmed, so turning the IMU on without the
+# restart the Sensors page asks for leaves it unarmed for the whole session.
 #
 # Mutations that kill these assertions are recorded in plans/18-gps-motion.md.
 seed gps true
@@ -19,6 +22,10 @@ seed gps_uart_mode ack
 wait 400
 
 assert setting.gps_motion 1
+# With the IMU capability off the source is never armed, and GPS::isStationary()
+# gates on isArmed() precisely so that an unarmed source reads "off" rather than
+# the permanent "moving" an unarmed backend reports.
+assert ui.motion_state inactive
 assert gps.motion_state off
 
 action nav settings
