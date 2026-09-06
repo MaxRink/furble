@@ -1193,6 +1193,42 @@ void testProvision(void) {
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 99,
         "the provisioned value reached the real Settings store");
 
+  // The gesture settings apply immediately, so a provision write must start the
+  // 50 Hz timer rather than waiting for the next boot. reloadProvisionSetting()
+  // is the only writer that reaches the UI here: deleting its IMU cases makes
+  // this fail.
+  {
+    Furble::ProvisionTLV::ProvisionBundle gestures;
+    Furble::ProvisionTLV::SettingValue wake;
+    wake.wireId = 72;
+    wake.type = Furble::ProvisionTLV::ValueType::U8;
+    wake.value = {3};
+    gestures.settings.push_back(wake);
+    Furble::ProvisionTLV::SettingValue trigger;
+    trigger.wireId = 73;
+    trigger.type = Furble::ProvisionTLV::ValueType::BOOL;
+    trigger.value = {1};
+    gestures.settings.push_back(trigger);
+
+    std::vector<uint8_t> gestureBytes;
+    if (check(Furble::ProvisionTLV::encode(gestures, gestureBytes), "the gesture blob encodes")) {
+      std::string gestureHex;
+      for (const uint8_t byte : gestureBytes) {
+        gestureHex.push_back(HEX[byte >> 4]);
+        gestureHex.push_back(HEX[byte & 0x0f]);
+      }
+      const unsigned before = ConsoleHost::ui().gestureNotifications;
+      const Result gestureRun = runDirect("provision " + gestureHex);
+      check(gestureRun.rc == 0, "the gesture blob applies");
+      check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+            "a provisioned imu_wake reaches the real Settings store");
+      check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
+            "a provisioned imu_trigger reaches the real Settings store");
+      check(ConsoleHost::ui().gestureNotifications >= before + 2,
+            "a provisioned gesture setting notifies the UI task");
+    }
+  }
+
   // An empty bundle is valid and reports that it carried nothing.
   Furble::ProvisionTLV::ProvisionBundle empty;
   std::vector<uint8_t> emptyBytes;

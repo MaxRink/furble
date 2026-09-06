@@ -714,6 +714,11 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::COMPANION:
       CompanionGatt::getInstance().reloadSetting();
       break;
+    case Settings::IMU:
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
+      UI::notifyGestureSettingsChanged();
+      break;
     default:
       break;
   }
