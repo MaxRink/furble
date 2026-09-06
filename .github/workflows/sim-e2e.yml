@@ -145,9 +145,17 @@ jobs:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1:suppressions=${{ github.workspace }}/sim/tsan.supp
-        run: >-
-          sim/build-tsan/furble-sim
-          --script sim/scenarios/e2e/gps-concurrent-pages.txt
+        # The ephemeris path is the other place the GPS task reads TinyGPSPlus
+        # state the UI task is also reading, and those accessors write. Keep
+        # all three here so a lost lock fails deterministically.
+        run: |
+          for scenario in \
+            sim/scenarios/e2e/gps-concurrent-pages.txt \
+            sim/scenarios/e2e/gps-ephemeris-replay.txt \
+            sim/scenarios/e2e/gps-ephemeris-stale.txt; do
+            echo "=== $scenario ==="
+            sim/build-tsan/furble-sim --script "$scenario"
+          done
 
       - name: Run end-to-end scenarios
         env:

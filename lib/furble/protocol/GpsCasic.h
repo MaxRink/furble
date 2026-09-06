@@ -184,6 +184,27 @@ constexpr uint8_t UTC_ID = 0x05;
 
 /** True for the three periodic assistance messages furble caches. */
 bool isEphemerisMessage(uint8_t class_id, uint8_t message_id);
+
+/** Can a cache captured at capture_utc still be replayed? */
+enum class Freshness : uint8_t {
+  REPLAY,      /**< inside the validity window */
+  TOO_OLD,     /**< the receiver's clock says the cache has expired */
+  IMPLAUSIBLE, /**< one of the two timestamps is not usable */
+};
+
+/*
+ * Decide whether a cache is still worth replaying, from the receiver's own
+ * reported UTC.
+ *
+ * The receiver is the only clock that can answer this. furble's kept clock
+ * cannot: after a power cut it restores as the last persisted epoch plus the
+ * monotonic time since boot, with no knowledge of how long the board was off,
+ * so a week unplugged reads as a couple of minutes old. Both timestamps are
+ * Unix seconds and both must be at or after the GPS epoch to be usable. A
+ * receiver time before the capture is a clock that moved backwards, which
+ * cannot bound an age either.
+ */
+Freshness freshness(int64_t capture_utc, int64_t receiver_utc, uint32_t max_age_seconds);
 }  // namespace Eph
 
 class EphemerisCollector {

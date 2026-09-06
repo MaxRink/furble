@@ -54,6 +54,15 @@ const char *gpsSentences(void) {
 // the ephemeris cache freshness check both need.
 std::string gpsStream(gpsData, sizeof(gpsData) - 1);
 
+// The "modern" fix fixture advances its clock one second per burst, the way a
+// receiver with a clock of its own does. The historic default fixture stays
+// frozen so every scenario and capture written against it is unchanged.
+bool fixDateAdvances = false;
+uint32_t fixSecond = 0;
+// day-of-month of the advancing fixture. "modern" is the 6th and "stale" is
+// the 13th, a week later, which is well past the four hour ephemeris window.
+const char *fixDay = "06";
+
 // Modelled receiver rate. 0 means the receiver answers whatever the driver
 // programmed, which is the default and keeps every pre-existing scenario
 // unchanged. A specific rate makes the receiver mute until the autobaud ladder
@@ -72,6 +81,9 @@ std::string satelliteFixture = "default";
 uint32_t ephReplayFrames = 0;
 uint32_t monHwPolls = 0;
 bool monHwShort = false;
+
+/** Rebuild the advancing fix burst at base 12:35:19 plus fixSecond. */
+std::string modernFixStream(void);
 
 /** Wrap an NMEA body in its '$' and its computed checksum. */
 std::string nmea(const std::string &body) {
@@ -219,6 +231,17 @@ void queueAckLocked(const uint8_t *request, bool ack) {
   }
 }
 
+std::string modernFixStream(void) {
+  const uint32_t total = (12 * 3600) + (35 * 60) + 19 + fixSecond;
+  char stamp[16];
+  std::snprintf(stamp, sizeof(stamp), "%02u%02u%02u.00", (total / 3600) % 24, (total / 60) % 60,
+                total % 60);
+  const std::string time(stamp);
+  const std::string date = std::string(fixDay) + "0926";
+  return nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A")
+         + nmea("GPGGA," + time + ",4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+}
+
 /**
  * Answer a CFG-MSG poll at rate 0xFFFF with the message it asked for.
  *
@@ -281,6 +304,10 @@ void queueGpsEvent(QueueHandle_t queue) {
       gpsEventQueued = false;
       gpsNextEventMillis = UINT32_MAX;
       return;
+    }
+    if (fixDateAdvances) {
+      fixSecond++;
+      gpsStream = modernFixStream();
     }
     if (!receiverAnswersLocked()) {
       gpsQueue = queue;
@@ -466,9 +493,21 @@ void furble_sim_uart_set_stationary(bool stationary) {
   gpsOffset = gpsStream.size();
 void furble_sim_uart_set_fix_date(const char *name) {
   std::lock_guard<std::mutex> lock(gpsMutex);
-  if ((name != nullptr) && (std::string(name) == "modern")) {
-    gpsStream = nmea("GPRMC,123519.00,A,4807.038,N,01131.000,E,22.678,0.0,060926,,,A")
-                + nmea("GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+  fixDateAdvances = false;
+  fixDay = "06";
+  if ((name != nullptr) && (std::string(name) == "stale")) {
+    fixDay = "13";
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+  } else if ((name != nullptr) && (std::string(name) == "nodate")) {
+    // GGA only. It carries a position but no date, so the parser keeps whatever
+    // date the previous session left it with. That is a receiver with RMC
+    // pruned, and it is the case where the ephemeris cache age can never be
+    // established.
+    gpsStream = nmea("GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+  } else if ((name != nullptr) && (std::string(name) == "modern")) {
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
   } else {
     gpsStream.assign(gpsData, sizeof(gpsData) - 1);
   }

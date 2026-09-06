@@ -511,6 +511,20 @@ bool isEphemerisMessage(uint8_t class_id, uint8_t message_id) {
   return (class_id == CLASS)
          && ((message_id == EPH_ID) || (message_id == ION_ID) || (message_id == UTC_ID));
 }
+
+Freshness freshness(int64_t capture_utc, int64_t receiver_utc, uint32_t max_age_seconds) {
+  // 1980-01-06, the GPS epoch. Anything before it is not a GPS timestamp.
+  constexpr int64_t GPS_EPOCH_UNIX = 315964800;
+  if ((capture_utc < GPS_EPOCH_UNIX) || (receiver_utc < GPS_EPOCH_UNIX)) {
+    return Freshness::IMPLAUSIBLE;
+  }
+  if (receiver_utc < capture_utc) {
+    return Freshness::IMPLAUSIBLE;
+  }
+  return ((receiver_utc - capture_utc) <= static_cast<int64_t>(max_age_seconds))
+             ? Freshness::REPLAY
+             : Freshness::TOO_OLD;
+}
 }  // namespace Eph
 
 bool EphemerisCollector::feed(const uint8_t *frame_data, size_t length) {

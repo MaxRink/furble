@@ -170,13 +170,35 @@ regenerated, and the reservation table now lives in `include/CLAUDE.md`.
   remove messages the assistance path relies on. Frames go out one per
   `servicePoll` pass, `EPH_REPLAY_GAP_MS` (30 ms) apart, so a full cache does
   not choke the receiver's navigation loop.
-- **Freshness.** The cache is refused when it is older than four hours. The
-  original code bounded that with `time(nullptr)`. That is wrong on the exact
-  device this feature exists for: a board with no RTC and no network boots at
-  the Unix epoch, so `wall >= capture_utc` is false and every cache is refused.
-  It now uses `TimeKeeper::getInstance().status()`, which persists across a
-  reboot, and refuses when that clock is not valid. The dead
-  `m_EphCaptureTickValid` branch (never set true) was removed with it.
+- **Freshness, and which clock can answer it.** The cache is refused when it is
+  older than four hours. Two earlier attempts at bounding that age were both
+  wrong, for the same underlying reason: neither clock furble has of its own
+  knows how long the board was off.
+  - `time(nullptr)`, which the branch shipped, is the Unix epoch on a board with
+    no RTC and no network, so `wall >= capture_utc` is false and every cache is
+    refused. Tier 2 was dead on exactly the device it exists for.
+  - `TimeKeeper` is no better for this. It restores as the last persisted epoch
+    plus the monotonic time since boot, with a fixed one hour uncertainty and no
+    knowledge of the off time, so a week unplugged reads as about two minutes
+    old. It reports fresh for a cache that expired six days ago.
+
+  The receiver is the only clock that knows. Replay now arms at enable and
+  commits later, once the receiver has reported a UTC of its own that differs
+  from the one the parser held when the arm was taken, so a timestamp left over
+  from the previous session cannot answer for this one. The decision itself is
+  the pure `Casic::Eph::freshness`, host tested over eight cases.
+
+  The trade-off is explicit: a receiver that never reports a time never gets a
+  replay. That is the true cold start with the rail cut, where the cache age
+  cannot be established at all, and replaying blind is what this is here to
+  prevent. Warm and hot starts, which is a device that has been in a bag for an
+  hour, are unaffected.
+
+  Note for anyone touching this: TinyGPSPlus ages come from `millis()`, which is
+  the same clock as `Platform::tick()` on the device but **not** in the
+  simulator. Comparing an age against a `Platform::tick()` value silently makes
+  every stale timestamp look fresh, which is how the first version of this check
+  passed its own scenario. Compare the reported value, not its age.
 - A cache whose frame count, byte count, magic, version or per frame checksums
   do not agree is dropped whole rather than partially replayed.
 
@@ -208,6 +230,32 @@ regenerated, and the reservation table now lives in `include/CLAUDE.md`.
   buffer, and the id-first checksum, before it is stored or replayed.
 - Null pointers and zero lengths are refused by `EphemerisCollector::feed`,
   `splitFrames` and `parseMonHw`.
+
+### Parser ownership
+
+`include/FurbleGPS.h` says it: TinyGPSPlus accessors clear update flags, so they
+write, and every read goes through the locked `getStatusSnapshot()`. Two places
+in this branch broke that rule and both raced the UI task's own snapshot.
+`servicePoll()` called `m_GPS.location.FixQuality()` directly, and
+`storeEphemeris()` read `m_GPS.date` and `m_GPS.time`. Both now read the
+snapshot, which needs no new lock because the snapshot already takes the one
+that exists. The new freshness decision reads the same snapshot.
+
+Both scenarios now hold the GPS Data page open for their whole run, so the UI
+task is reading the snapshot while the GPS task polls, stores and decides, and
+both were added to the sim-e2e ThreadSanitizer leg alongside
+`gps-concurrent-pages`. They are clean.
+
+State the limit of that honestly. Putting either unlocked read back and
+re-running under ThreadSanitizer did **not** reproduce a report, on either
+scenario, with the page open. The simulator schedules the GPS worker and the UI
+task through the virtual-clock scheduler with explicit handoffs, so the two
+reads are ordered by the harness even where the firmware has nothing ordering
+them. The fix stands on the ownership rule `include/FurbleGPS.h` states and on
+the reviewer's own reproduction, not on a green TSAN run here. The TSAN leg
+covers the ephemeris path for races the harness can see; it is not a gate for
+this particular defect, and a future scheduler change that removes those
+handoffs is what would turn it into one.
 
 ### Degraded-state concurrency
 
@@ -273,6 +321,8 @@ a MON-HW poll with a truncated payload.
 | `e2e/gps-ephemeris-replay` | a cache is written after a stable fix | return early from `storeEphemeris` |
 | `e2e/gps-ephemeris-replay` | three frames are replayed after `restart` | skip `armEphemerisReplay()` in `serviceConfig` |
 | `e2e/gps-ephemeris-invalid` | a corrupted cache is refused whole, not replayed up to the bad frame | ignore the `splitFrames` result in `loadEphemerisCache` |
+| `e2e/gps-ephemeris-stale` | the four hour window against the receiver's own clock | make `Casic::Eph::freshness` always return `REPLAY` |
+| `e2e/gps-ephemeris-stale` | a receiver clock behind the capture cannot bound an age | drop the backwards-clock guard from `freshness` |
 | `e2e/gps-satellite-fixtures` | 0, 1, 12, duplicate, partial, out of range and multi constellation populations | publish `set.building` without the complete-set check |
 | `e2e/gps-satellite-fixtures` | a repeated PRN counts once | remove the in-set duplicate check |
 | `e2e/gps-satellite-fixtures` | capture stops when the page closes | drop `setSatelliteCapture(false)` from `gpsSatStop` |
@@ -304,10 +354,14 @@ copies must match each other.
 
 ### Known coverage gaps
 
-- The four hour staleness arithmetic in `armEphemerisReplay` is covered by
-  reading only. The simulator cannot move the kept clock four hours forward
-  relative to a capture without a fabricated fix stream, and the branch is two
-  comparisons.
+- The replay commit requires a receiver timestamp that differs from the one
+  held at arm time. The weaker form, requiring only that some timestamp is
+  present, is not distinguishable from a scenario: in every fixture the
+  simulator can build, the two agree. The stronger form is kept because on
+  hardware the parser is a member that survives a disable and enable, so a
+  retained timestamp really can be present with no receiver behind it. The
+  substantive rules around it, the four hour window and the backwards clock,
+  are both mutation checked.
 - The satellite page, like the GPS Data page, carries no focusable control, so
   LVGL group navigation cannot scroll it with the physical buttons. Its content
   is unbounded where GPS Data's is not, so rows past the fold are unreachable on

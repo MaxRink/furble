@@ -648,15 +648,20 @@ driver programmed and keeps every pre-existing scenario unchanged), `none` for
 an empty port, or one of the six ladder rates, which makes the receiver mute
 until the ladder reaches it. `gps_sats` selects the GSV/GSA fixture
 (`default`, `none`, `one`, `twelve`, `duplicate`, `range`, `multi`,
-`malformed`). `gps_fix_date` selects `fixture` (the historic 1994 RMC date) or
-`modern`; only the modern date lands inside the window `TimeKeeperPolicy`
-accepts, which the ephemeris cache freshness check needs. `gps_assist` and
+`malformed`). `gps_fix_date` selects the fix burst: `fixture` is the historic frozen RMC/GGA
+pair, `modern` and `stale` advance their clock one second per burst a week
+apart, and `nodate` is GGA only, a receiver that reports a position but never a
+date. The ephemeris freshness rule is decided against the receiver's own
+reported UTC, so those four are what exercise it. `gps_assist` and
 `gps_platform` are ordinary byte seeds for their settings.
 
-Four script verbs drive the same model at runtime: `gps-receiver
-<any|none|BAUD>`, `gps-sats <fixture>`, `gps-monhw` (issue the production
-MON-HW poll) and `gps-eph-corrupt` (flip one byte of the stored ephemeris
-cache, so the reload path has to refuse it).
+Five script verbs drive the same model at runtime: `gps-receiver
+<any|none|BAUD>`, `gps-sats <fixture>`, `gps-fix-date
+<fixture|modern|stale|nodate>`, `gps-monhw <full|short>` (issue the production
+MON-HW poll, optionally answered with a truncated payload) and
+`gps-eph-corrupt` (flip one byte of the last frame in the stored ephemeris
+cache, so the reload path has to refuse the whole blob rather than replay up to
+the damage).
 
 ## Fault injection and fuzzing
 

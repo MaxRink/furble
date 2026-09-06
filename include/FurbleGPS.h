@@ -443,6 +443,8 @@ class GPS {
 
   /** Poll and replay the CASIC ephemeris for GPS_ASSIST tier 2. */
   void armEphemerisReplay(void);
+  void serviceEphemerisArm(void);
+  static int64_t receiverUtc(const status_t &status);
   void storeEphemeris(void);
   void loadEphemerisCache(void);
 
@@ -656,6 +658,20 @@ class GPS {
   size_t m_EphReplayIndex = 0;
   uint32_t m_EphReplayNext = 0;
   int64_t m_EphCaptureUtc = 0;
+  // Replay waits for the receiver's own clock before it commits, so arming and
+  // sending are two steps. m_EphArmTick is the boundary a date has to be
+  // committed after, so a date left over from the previous session cannot
+  // answer for this one.
+  bool m_EphReplayArmed = false;
+  // The UTC the receiver was reporting when replay was armed, or 0 if it was
+  // reporting none. The decision waits for a different one, so a timestamp left
+  // over from the previous session cannot answer for this one.
+  //
+  // This compares the reported value, not its age. TinyGPSPlus ages come from
+  // millis(), which is the same clock as Platform::tick() on the device but not
+  // in the simulator, and mixing the two silently makes every stale timestamp
+  // look fresh.
+  int64_t m_EphArmUtc = 0;
   bool m_EphPolled = false;
   bool m_EphPollActive = false;
   uint32_t m_EphPollDeadline = 0;

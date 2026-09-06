@@ -331,6 +331,7 @@ void GPS::enable(void) {
   m_EphPolled = false;
   m_EphPollActive = false;
   m_EphCapture = false;
+  m_EphReplayArmed = false;
   m_MonHwPending = false;
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
@@ -1636,23 +1637,74 @@ void GPS::loadEphemerisCache(void) {
   m_EphCaptureUtc = header.capture_utc;
 }
 
+/** The UTC the receiver is reporting, or 0 when it is reporting none. */
+int64_t GPS::receiverUtc(const status_t &status) {
+  if (!status.date_valid || !status.time_valid) {
+    return 0;
+  }
+  const Camera::timesync_t timesync = {
+      status.year,   status.month,  status.day,         status.hour,
+      status.minute, status.second, status.centisecond,
+  };
+  const int64_t utc = toUnixSeconds(timesync);
+  return (utc < GPS_EPOCH_UNIX) ? 0 : utc;
+}
+
 void GPS::armEphemerisReplay(void) {
+  m_EphReplayArmed = false;
   if ((m_AidMode.load() != 2) || m_EphReplay.empty()) {
     return;
   }
 
-  // Bound the cache age. GPS ephemeris is valid for roughly four hours. The
-  // capture tick is from a previous power session and cannot be compared, so
-  // the kept clock is the only source. time(nullptr) cannot be used here: a
-  // board with no RTC and no network boots at the Unix epoch, which would
-  // refuse every cache and make tier 2 dead on the cold start it exists for.
-  const auto clock = TimeKeeper::getInstance().status();
-  const int64_t wall = static_cast<int64_t>(clock.epoch_us / 1000000);
-  const bool fresh = clock.valid && (wall >= m_EphCaptureUtc)
-                     && ((wall - m_EphCaptureUtc) <= (EPH_CACHE_MAX_AGE_MS / 1000));
+  // Do not decide yet. GPS ephemeris is valid for roughly four hours, and the
+  // only clock that can bound that is the receiver's own: furble's kept clock
+  // restores as the last persisted epoch plus the monotonic time since boot,
+  // with no knowledge of how long the board was off, so a week unplugged reads
+  // as a couple of minutes old. Arm here, and commit in servicePoll once the
+  // receiver has reported a UTC of its own.
+  const status_t status = getStatusSnapshot();
+  m_EphReplayArmed = true;
+  m_EphArmUtc = receiverUtc(status);
+  ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, waiting for receiver time");
+}
 
-  if (!fresh) {
-    ESP_LOGI(LOG_TAG, "GPS ephemeris cache too old to replay");
+/**
+ * Commit or drop an armed ephemeris replay.
+ *
+ * Runs on the GPS task once a date has been committed after arming, so a date
+ * left over from the previous session cannot answer for this one. A receiver
+ * that never reports a time is a cold start with no clock at all: the cache age
+ * cannot be established, so it is dropped rather than replayed blind.
+ */
+void GPS::serviceEphemerisArm(void) {
+  if (!m_EphReplayArmed) {
+    return;
+  }
+
+  const status_t status = getStatusSnapshot();
+  // A different reported UTC means the receiver has spoken since arming. The
+  // same one means it has not: a receiver with no clock of its own, or one with
+  // RMC pruned, keeps whatever the previous session left in the parser, and
+  // neither can bound the cache age.
+  // A different reported UTC means the receiver has spoken since arming. The
+  // same one means it has not: a receiver with no clock of its own, or one with
+  // RMC pruned, keeps whatever the previous session left in the parser, and
+  // neither can bound the cache age.
+  const int64_t reported = receiverUtc(status);
+  const bool dated = (reported > 0) && (reported != m_EphArmUtc);
+  if (!dated) {
+    // A receiver that never reports a time of its own leaves the arm standing
+    // until the next enable. That is the cold start case, and replaying a cache
+    // whose age cannot be established is the thing this is here to prevent.
+    return;
+  }
+
+  const Casic::Eph::Freshness fresh =
+      Casic::Eph::freshness(m_EphCaptureUtc, reported, EPH_CACHE_MAX_AGE_MS / 1000);
+
+  m_EphReplayArmed = false;
+  if (fresh != Casic::Eph::Freshness::REPLAY) {
+    ESP_LOGI(LOG_TAG, "GPS ephemeris cache is not replayable against receiver time");
     m_EphReplay.clear();
     return;
   }
@@ -1677,9 +1729,15 @@ void GPS::storeEphemeris(void) {
     return;
   }
 
+  // TinyGPSPlus accessors clear update flags, so they are read only through the
+  // locked snapshot. Touching m_GPS here would race the UI task.
+  const status_t status = getStatusSnapshot();
+  if (!status.date_valid || !status.time_valid) {
+    return;
+  }
   const Camera::timesync_t timesync = {
-      m_GPS.date.year(),   m_GPS.date.month(),  m_GPS.date.day(),         m_GPS.time.hour(),
-      m_GPS.time.minute(), m_GPS.time.second(), m_GPS.time.centisecond(),
+      status.year,   status.month,  status.day,         status.hour,
+      status.minute, status.second, status.centisecond,
   };
   const int64_t utc = toUnixSeconds(timesync);
   if (utc < GPS_EPOCH_UNIX) {
@@ -1726,6 +1784,8 @@ void GPS::servicePoll(void) {
 
   const uint32_t now = Platform::getInstance().tick();
 
+  serviceEphemerisArm();
+
   // paced replay takes priority over polling
   if (!m_EphReplaySpans.empty() && (m_EphReplayIndex < m_EphReplaySpans.size())) {
     if (tickReached(now, m_EphReplayNext)) {
@@ -1764,9 +1824,10 @@ void GPS::servicePoll(void) {
     return;
   }
 
-  const bool stableFix = m_GPS.location.isValid()
-                         && (m_GPS.location.FixQuality() != TinyGPSLocation::Quality::Invalid)
-                         && (m_GPS.location.age() < MAX_AGE_MS);
+  // Same ownership rule: FixQuality() writes, so it is read under the snapshot
+  // lock rather than off the parser.
+  const status_t fixStatus = getStatusSnapshot();
+  const bool stableFix = fixStatus.fix && (fixStatus.location_age < MAX_AGE_MS);
   const bool due = !m_EphPolled || ((now - m_EphLastPoll) >= EPH_CACHE_WRITE_MS);
   if (!stableFix || !due) {
     return;
@@ -1816,6 +1877,7 @@ void GPS::disable(void) {
   m_DetectedBaud.store(0);
   m_EphCapture = false;
   m_EphPollActive = false;
+  m_EphReplayArmed = false;
   m_MonHwPending = false;
 
   // the SD writer task owns the track file, never touch it from here

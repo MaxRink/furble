@@ -604,3 +604,13 @@ a regression.
   runtime, so a fixture cannot carry a stale hand computed checksum. The
   `default` set is the one docs/img/gps-satellites.png is pinned to; changing
   its values means regenerating that capture.
+- The `modern` and `stale` fix bursts advance their clock one second per burst,
+  the way a receiver with a clock of its own does. The historic default burst
+  stays frozen so every scenario and capture written against it is unchanged.
+  A frozen clock is not a neutral simplification: the ephemeris freshness rule
+  asks whether the receiver has reported a *new* time, and a receiver that
+  repeats one timestamp forever can never answer that.
+- TinyGPSPlus ages come from `millis()`. That is the same clock as
+  `Platform::tick()` on the device and a different one here, so a check that
+  compares a parser age against a `Platform::tick()` value passes in the
+  simulator for the wrong reason. Compare reported values, not ages.

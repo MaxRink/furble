@@ -1070,6 +1070,41 @@ bool testSplitFramesEdges() {
 }
 
 // f. parseMonHw zeroes every field when the payload is short.
+bool testEphemerisFreshness() {
+  std::cout << "test: the ephemeris freshness rule against the receiver clock\n";
+  const int before = g_Failures;
+
+  // 2026-09-06T12:35:19Z, the modern simulator fixture.
+  constexpr int64_t capture = 1788698119;
+  constexpr uint32_t window = 4 * 60 * 60;
+  using Casic::Eph::Freshness;
+
+  check(Casic::Eph::freshness(capture, capture, window) == Freshness::REPLAY,
+        "the same instant replays");
+  check(Casic::Eph::freshness(capture, capture + window - 1, window) == Freshness::REPLAY,
+        "one second inside the window replays");
+  check(Casic::Eph::freshness(capture, capture + window, window) == Freshness::REPLAY,
+        "the window boundary is inclusive");
+  check(Casic::Eph::freshness(capture, capture + window + 1, window) == Freshness::TOO_OLD,
+        "one second past the window is too old");
+  check(Casic::Eph::freshness(capture, capture - 1, window) == Freshness::IMPLAUSIBLE,
+        "a receiver clock behind the capture cannot bound an age");
+  check(Casic::Eph::freshness(0, capture, window) == Freshness::IMPLAUSIBLE,
+        "a capture before the GPS epoch is not a timestamp");
+  check(Casic::Eph::freshness(capture, 0, window) == Freshness::IMPLAUSIBLE,
+        "a receiver time before the GPS epoch is not a timestamp");
+
+  // A week unpowered. furble's own kept clock reports this as about two
+  // minutes old, because it restores as the last persisted epoch plus the
+  // monotonic time since boot and knows nothing about the time it was off.
+  // The receiver reports it correctly, which is why the receiver is the clock
+  // this rule uses.
+  check(Casic::Eph::freshness(capture, capture + (7 * 24 * 60 * 60), window) == Freshness::TOO_OLD,
+        "a week later is too old");
+
+  return g_Failures == before;
+}
+
 bool testMonHwEdges() {
   std::cout << "test: parseMonHw zeroes every field when the payload is short\n";
   const int before = g_Failures;
@@ -1287,6 +1322,7 @@ int main() {
   testEphemerisMalformed();
   testEphemerisBudget();
   testSplitFramesEdges();
+  testEphemerisFreshness();
   testMonHwEdges();
   testConstellationForTalker();
   testFuzz();

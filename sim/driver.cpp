@@ -62,6 +62,7 @@ enum class StepType {
   GPS_RECEIVER,
   GPS_SATS,
   GPS_MONHW,
+  GPS_FIX_DATE,
   HOME,
   BACK,
   REPORT,
@@ -407,7 +408,7 @@ void validateSeed(const std::string &name, const std::string &value) {
     }
     return;
   } else if (name == "gps_fix_date") {
-    if (value != "fixture" && value != "modern") {
+    if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale") {
       std::cerr << "Invalid gps_fix_date: " << value << '\n';
       std::exit(2);
     }
@@ -618,6 +619,19 @@ void readScript(const std::string &path) {
       step.name = args[1];
       if (step.name != "full" && step.name != "short") {
         std::cerr << "gps-monhw requires full or short\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "gps-fix-date") {
+      if (!exactArgs(2)) {
+        rejectArity("gps-fix-date", "exactly one date fixture");
+      }
+      Step step;
+      step.type = StepType::GPS_FIX_DATE;
+      step.name = args[1];
+      if (step.name != "fixture" && step.name != "modern" && step.name != "nodate"
+          && step.name != "stale") {
+        std::cerr << "gps-fix-date requires fixture, modern, stale or nodate\n";
         std::exit(2);
       }
       steps.push_back(step);
@@ -1964,6 +1978,11 @@ void driverTick(void) {
 
     case StepType::GPS_SATS:
       furble_sim_uart_set_satellite_fixture(step.name.c_str());
+      ++stepIndex;
+      break;
+
+    case StepType::GPS_FIX_DATE:
+      furble_sim_uart_set_fix_date(step.name.c_str());
       ++stepIndex;
       break;
 
