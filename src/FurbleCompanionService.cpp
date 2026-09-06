@@ -2,13 +2,20 @@
 #include <cstring>
 #include <utility>
 
+// Scan.h leads: its CallbackProxy member is an incomplete type behind a
+// unique_ptr, and pulling <memory> in ahead of it makes the toolchain
+// instantiate the deleter too early.
+#include "Scan.h"
+
 #include "../include/FurbleCompanionService.h"
+#include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "protocol/CameraListProtocol.h"
 
 namespace Furble {
 
@@ -205,6 +212,10 @@ CompanionService::companion_status_t CompanionService::getStatus(void) const {
   return status;
 }
 
+CompanionService::companion_capability_t CompanionService::getCapability(void) {
+  return {CAPABILITY_VERSION, WIRE_VERSION, FEATURE_SETTINGS_V2 | FEATURE_CAMERAS};
+}
+
 void CompanionService::notifyStatus(bool force) {
   if (!m_Transport.isConnected()) {
     return;
@@ -265,6 +276,267 @@ void CompanionService::handleLocation(const uint8_t *data, size_t len) {
   fix.time_valid = (packet.flags & TIME_VALID) != 0;
   fix.altitude_valid = (packet.flags & ALTITUDE_VALID) != 0;
   GPS::getInstance().setExternalFix(fix);
+}
+
+// Cameras ------------------------------------------------------------------
+
+std::vector<CompanionService::camera_snapshot_t> CompanionService::getCameraSnapshots(void) {
+  std::vector<camera_snapshot_t> snapshots;
+
+  auto &control = Control::getInstance();
+  const Control::state_t controlState = control.getState();
+  const auto connecting = control.getConnectingCamera();
+
+  for (const auto &camera : CameraList::snapshot()) {
+    const uint8_t id = CameraList::getCameraId(camera.get());
+    if (id == CameraListProtocol::INDEX_ID_INVALID) {
+      // Scan results the user has not saved carry no stable id, so they have no
+      // wire identity and the companion never sees them.
+      continue;
+    }
+
+    int8_t rssi = 0;
+    const bool target = control.getTargetState(camera.get(), rssi);
+    const bool connected = camera->isConnected();
+
+    uint8_t state = CAMERA_IDLE;
+    if (!target) {
+      state = CAMERA_IDLE;
+    } else if (controlState == Control::STATE_DISCONNECTING) {
+      state = CAMERA_DISCONNECTING;
+    } else if (connected) {
+      state = CAMERA_CONNECTED;
+    } else if (controlState == Control::STATE_CONNECT_FAILED) {
+      state = CAMERA_LOST;
+    } else if (controlState == Control::STATE_ACTIVE) {
+      // The session is up but this link is down, which is the plans/25
+      // reconnecting row.
+      state = CAMERA_RECONNECTING;
+    } else if ((controlState == Control::STATE_CONNECT)
+               || (controlState == Control::STATE_CONNECTING)) {
+      state = CAMERA_CONNECTING;
+    }
+
+    uint8_t flags = CAMERA_FLAG_SAVED;
+    if (camera->isActive()) {
+      flags |= CAMERA_FLAG_SELECTED;
+    }
+    if (target) {
+      flags |= CAMERA_FLAG_TARGET;
+    }
+    if (connected) {
+      flags |= CAMERA_FLAG_CONNECTED;
+    }
+
+    camera_snapshot_t snapshot = {};
+    snapshot.record.status = CAMERA_OK;
+    snapshot.record.camera_id = id;
+    snapshot.record.cam_type = static_cast<uint8_t>(camera->getType());
+    snapshot.record.flags = flags;
+    snapshot.record.progress = camera->getConnectProgress();
+    // Only Control's filtered sample is used. Camera::getRssi() takes the
+    // camera connect mutex, which a cold connect holds for the whole connect
+    // timeout, so it must never be called from the companion task.
+    snapshot.record.rssi = (connected && (rssi != 0)) ? rssi : CAMERA_RSSI_UNKNOWN;
+    snapshot.record.state = state;
+    snapshot.name = camera->getName();
+    if (snapshot.name.size() > CAMERA_NAME_MAX) {
+      snapshot.name.resize(CAMERA_NAME_MAX);
+    }
+    snapshot.record.name_len = static_cast<uint8_t>(snapshot.name.size());
+
+    snapshots.push_back(std::move(snapshot));
+  }
+
+  return snapshots;
+}
+
+std::vector<uint8_t> CompanionService::encodeCameraRecord(const camera_snapshot_t &snapshot) {
+  std::vector<uint8_t> record(sizeof(companion_camera_t) + snapshot.name.size(), 0x00);
+  std::memcpy(record.data(), &snapshot.record, sizeof(companion_camera_t));
+  std::memcpy(record.data() + sizeof(companion_camera_t), snapshot.name.data(),
+              snapshot.name.size());
+  return record;
+}
+
+void CompanionService::indicateCameraStatus(uint8_t status, uint8_t cameraId) {
+  camera_snapshot_t snapshot = {};
+  snapshot.record.status = status;
+  snapshot.record.camera_id = cameraId;
+  snapshot.record.rssi = CAMERA_RSSI_UNKNOWN;
+
+  const auto record = encodeCameraRecord(snapshot);
+  m_Transport.indicate(COMPANION_CHAR_CAMERAS, record.data(), record.size());
+}
+
+void CompanionService::notifyCameras(bool force) {
+  if (!m_Transport.isConnected() || !m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
+    return;
+  }
+
+  const auto snapshots = getCameraSnapshots();
+  const uint64_t now = nowMs();
+
+  std::vector<camera_snapshot_t> changed;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    const bool rateAllowed =
+        !m_HaveLastCameras || ((now - m_LastCameraNotificationMs) >= CAMERA_NOTIFY_INTERVAL_MS);
+    if (!force && !rateAllowed) {
+      return;
+    }
+
+    for (const auto &snapshot : snapshots) {
+      const auto previous =
+          std::find_if(m_LastCameras.begin(), m_LastCameras.end(), [&snapshot](const auto &item) {
+            return item.record.camera_id == snapshot.record.camera_id;
+          });
+      const bool same =
+          (previous != m_LastCameras.end())
+          && (std::memcmp(&previous->record, &snapshot.record, sizeof(companion_camera_t)) == 0)
+          && (previous->name == snapshot.name);
+      if (force || !m_HaveLastCameras || !same) {
+        changed.push_back(snapshot);
+      }
+    }
+
+    // Publish the cache before entering the transport, exactly as notifyStatus
+    // does: a callback may re-enter and must see the new baseline.
+    m_LastCameras = snapshots;
+    m_HaveLastCameras = true;
+    m_LastCameraNotificationMs = now;
+  }
+
+  for (const auto &snapshot : changed) {
+    const auto record = encodeCameraRecord(snapshot);
+    m_Transport.notify(COMPANION_CHAR_CAMERAS, record.data(), record.size());
+  }
+}
+
+void CompanionService::handleCameras(const uint8_t *data, size_t len) {
+  if ((data == nullptr) || !m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
+    return;
+  }
+
+  if (len != CAMERA_REQUEST_BYTES) {
+    indicateCameraStatus(CAMERA_REJECTED, CameraListProtocol::INDEX_ID_ALL);
+    return;
+  }
+
+  const uint8_t op = data[0];
+  const uint8_t cameraId = data[1];
+  const auto snapshots = getCameraSnapshots();
+  const auto found = std::find_if(snapshots.begin(), snapshots.end(), [cameraId](const auto &item) {
+    return item.record.camera_id == cameraId;
+  });
+  const bool known = (cameraId == CameraListProtocol::INDEX_ID_ALL) || (found != snapshots.end());
+
+  switch (op) {
+    case CAMERA_OP_LIST:
+    {
+      for (const auto &snapshot : snapshots) {
+        const auto record = encodeCameraRecord(snapshot);
+        m_Transport.indicate(COMPANION_CHAR_CAMERAS, record.data(), record.size());
+      }
+      // The terminator mirrors the settings list terminator.
+      indicateCameraStatus(CAMERA_OK, CameraListProtocol::INDEX_ID_ALL);
+      return;
+    }
+
+    case CAMERA_OP_SELECT:
+    case CAMERA_OP_DESELECT:
+    {
+      if (!known) {
+        indicateCameraStatus(CAMERA_UNKNOWN_ID, cameraId);
+        return;
+      }
+      if (!Settings::load<Settings::MULTICONNECT>()) {
+        indicateCameraStatus(CAMERA_REJECTED, cameraId);
+        return;
+      }
+
+      const bool selected = (op == CAMERA_OP_SELECT);
+      for (const auto &camera : CameraList::snapshot()) {
+        const uint8_t id = CameraList::getCameraId(camera.get());
+        if (id == CameraListProtocol::INDEX_ID_INVALID) {
+          continue;
+        }
+        if ((cameraId == CameraListProtocol::INDEX_ID_ALL) || (id == cameraId)) {
+          camera->setActive(selected);
+        }
+      }
+
+      indicateCameraStatus(CAMERA_OK, cameraId);
+      notifyCameras(true);
+      return;
+    }
+
+    case CAMERA_OP_DISCONNECT:
+    {
+      // Control has no per-target addressing, so v1 disconnects every target.
+      // The wire already carries the id, so adding it later is not a wire
+      // change. The request runs on the UI task: Control::disconnect() waits
+      // for the teardown and must never block the companion link.
+      if (!UI::sendRequest(UI::Request::DISCONNECT, 0)) {
+        indicateCameraStatus(CAMERA_BUSY, CameraListProtocol::INDEX_ID_ALL);
+        return;
+      }
+      indicateCameraStatus(CAMERA_OK, CameraListProtocol::INDEX_ID_ALL);
+      return;
+    }
+
+    case CAMERA_OP_CONNECT:
+    {
+      if (!known) {
+        indicateCameraStatus(CAMERA_UNKNOWN_ID, cameraId);
+        return;
+      }
+
+      auto &control = Control::getInstance();
+      if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+          || (control.getTargetCount() != 0)) {
+        indicateCameraStatus(CAMERA_BUSY, cameraId);
+        return;
+      }
+
+      // Negative index means connect the current selection, which is what the
+      // on-device Connect item does. A concrete index replaces the selection,
+      // matching the console connect command.
+      int32_t index = -1;
+      if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+        const auto cameras = CameraList::snapshot();
+        for (size_t n = 0; n < cameras.size(); n++) {
+          if (CameraList::getCameraId(cameras[n].get()) == cameraId) {
+            index = static_cast<int32_t>(n);
+            break;
+          }
+        }
+        if (index < 0) {
+          indicateCameraStatus(CAMERA_UNKNOWN_ID, cameraId);
+          return;
+        }
+      } else {
+        const bool anySelected = std::any_of(
+            snapshots.begin(), snapshots.end(),
+            [](const auto &item) { return (item.record.flags & CAMERA_FLAG_SELECTED) != 0; });
+        if (!anySelected) {
+          indicateCameraStatus(CAMERA_REJECTED, cameraId);
+          return;
+        }
+      }
+
+      if (!UI::sendRequest(UI::Request::CONNECT, index)) {
+        indicateCameraStatus(CAMERA_BUSY, cameraId);
+        return;
+      }
+      indicateCameraStatus(CAMERA_OK, cameraId);
+      return;
+    }
+
+    default:
+      indicateCameraStatus(CAMERA_REJECTED, cameraId);
+      return;
+  }
 }
 
 CompanionService::setting_type_t CompanionService::settingType(Settings::type_t type) {

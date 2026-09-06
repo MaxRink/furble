@@ -34,8 +34,12 @@ class UI {
   // builds have no UI task, so the notification is intentionally a no-op.
   static void notifyGestureSettingsChanged(void) {}
 
-#if defined(FURBLE_CONSOLE)
-  /** Operations the console asks the headless loop to carry out. */
+  /**
+   * Operations the console and the companion service ask the headless loop to
+   * carry out. Not gated on FURBLE_CONSOLE: the companion cameras
+   * characteristic drives connect and disconnect through the same queue in
+   * every build.
+   */
   enum class Request {
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
     DISCONNECT,      /**< arg: unused */
@@ -56,7 +60,6 @@ class UI {
 
   /** Drain queued console operations in the headless main loop. */
   static void serviceRequests(void);
-#endif
 };
 }  // namespace Furble
 
@@ -105,8 +108,12 @@ class UI {
    */
   enum class ControlMode { MENU, SHUTTER, SLIDER, PRESET, REVERT };
 
-#if defined(FURBLE_CONSOLE)
-  /** Operations the console asks the UI task to carry out on its behalf. */
+  /**
+   * Operations the console and the companion service ask the UI task to carry
+   * out on their behalf. Not gated on FURBLE_CONSOLE: the companion cameras
+   * characteristic drives connect and disconnect through the same queue in
+   * every build.
+   */
   enum class Request {
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
     DISCONNECT,      /**< arg: unused */
@@ -117,10 +124,12 @@ class UI {
     IR_RELOAD,       /**< arg: unused */
     FEEDBACK_RELOAD, /**< arg: unused */
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
-    PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
-    AUDIT,           /**< arg: unused */
-    POWER_RELOAD,    /**< arg: unused */
-    SD_RELOAD,       /**< arg: unused */
+#if defined(FURBLE_CONSOLE)
+    PERF,  /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
+    AUDIT, /**< arg: unused */
+#endif
+    POWER_RELOAD, /**< arg: unused */
+    SD_RELOAD,    /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
@@ -135,7 +144,6 @@ class UI {
    * @return true if the request was queued.
    */
   static bool sendRequest(Request request, int32_t arg);
-#endif
 
   /** Notify the UI task that a gesture-related setting changed elsewhere. */
   static void notifyGestureSettingsChanged(void);
@@ -529,7 +537,6 @@ class UI {
 
   static std::mutex m_Mutex;
 
-#if defined(FURBLE_CONSOLE)
   typedef struct {
     Request request;
     int32_t arg;
@@ -539,9 +546,8 @@ class UI {
 
   static QueueHandle_t m_RequestQueue;
 
-  /** Drain the console request queue, called on the UI task with m_Mutex held. */
+  /** Drain the request queue, called on the UI task with m_Mutex held. */
   void serviceRequests(void);
-#endif
 
   static ConnectContext_t m_ConnectContext;
 

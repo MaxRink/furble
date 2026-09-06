@@ -40,6 +40,7 @@ enum companion_char_id_t : uint8_t {
   COMPANION_CHAR_STATUS = 0x03,
   COMPANION_CHAR_SETTINGS = 0x04,
   COMPANION_CHAR_TRIGGER = 0x05,
+  COMPANION_CHAR_CAMERAS = 0x06,
   COMPANION_CHAR_OTA_CONTROL = 0x10,
   COMPANION_CHAR_OTA_DATA = 0x11,
 };
@@ -50,7 +51,42 @@ class CompanionService {
   static constexpr uint8_t WIRE_VERSION = 2;
   static constexpr uint8_t CAPABILITY_VERSION = 1;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = 1U << 0;
+  static constexpr uint32_t FEATURE_CAMERAS = 1U << 1;
   static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
+
+  /** Operations the companion may write to the cameras characteristic. */
+  enum camera_op_t : uint8_t {
+    CAMERA_OP_LIST = 0,
+    CAMERA_OP_CONNECT = 1,
+    CAMERA_OP_DISCONNECT = 2,
+    CAMERA_OP_SELECT = 3,
+    CAMERA_OP_DESELECT = 4,
+  };
+
+  enum camera_status_t : uint8_t {
+    CAMERA_OK = 0,
+    CAMERA_UNKNOWN_ID = 1,
+    CAMERA_REJECTED = 2,
+    CAMERA_BUSY = 3,
+  };
+
+  /** Wire copy of the plans/25 camera row state. */
+  enum camera_state_t : uint8_t {
+    CAMERA_IDLE = 0,
+    CAMERA_CONNECTING = 1,
+    CAMERA_CONNECTED = 2,
+    CAMERA_RECONNECTING = 3,
+    CAMERA_LOST = 4,
+    CAMERA_DISCONNECTING = 5,
+  };
+
+  static constexpr uint8_t CAMERA_FLAG_SAVED = 1 << 0;
+  static constexpr uint8_t CAMERA_FLAG_SELECTED = 1 << 1;
+  static constexpr uint8_t CAMERA_FLAG_TARGET = 1 << 2;
+  static constexpr uint8_t CAMERA_FLAG_CONNECTED = 1 << 3;
+
+  /** Unknown connection rssi. Only meaningful while connected. */
+  static constexpr int8_t CAMERA_RSSI_UNKNOWN = -128;
 
   typedef struct __attribute__((packed)) {
     uint8_t version;
@@ -95,9 +131,22 @@ class CompanionService {
     uint32_t features;
   } companion_capability_t;
 
+  /** Fixed head of a camera record. The variable name bytes follow it. */
+  typedef struct __attribute__((packed)) {
+    uint8_t status;
+    uint8_t camera_id;
+    uint8_t cam_type;
+    uint8_t flags;
+    uint8_t progress;
+    int8_t rssi;
+    uint8_t state;
+    uint8_t name_len;
+  } companion_camera_t;
+
   static_assert(sizeof(companion_fix_t) == 42, "companion fix wire size changed");
   static_assert(sizeof(companion_status_t) == 20, "companion status wire size changed");
   static_assert(sizeof(companion_capability_t) == 6, "companion capability wire size changed");
+  static_assert(sizeof(companion_camera_t) == 8, "companion camera wire size changed");
 
   explicit CompanionService(CompanionTransport &transport);
 
@@ -121,8 +170,13 @@ class CompanionService {
   void handleLocation(const uint8_t *data, size_t len);
   void handleSettings(const uint8_t *data, size_t len);
   void handleTrigger(const uint8_t *data, size_t len);
+  void handleCameras(const uint8_t *data, size_t len);
   void notifyStatus(bool force = false);
+  /** Notify camera records whose state changed since the last batch. */
+  void notifyCameras(bool force = false);
   companion_status_t getStatus(void) const;
+  /** Capability record served by the read-only capability characteristic. */
+  static companion_capability_t getCapability(void);
   void releaseHeldCommands(void);
 
  private:
@@ -132,6 +186,13 @@ class CompanionService {
   static constexpr uint8_t PACKET_VERSION = 1;
   static constexpr uint8_t SETTING_NEEDS_RESTART = 1 << 0;
   static constexpr uint8_t SETTING_DANGEROUS = 1 << 1;
+
+  /** A cameras request is always {op, camera_id}. */
+  static constexpr size_t CAMERA_REQUEST_BYTES = 2;
+  /** Longest camera name carried on the wire. Fits one record in one indication. */
+  static constexpr size_t CAMERA_NAME_MAX = 64;
+  /** Steady-state camera notification rate limit, matching the status packet. */
+  static constexpr uint64_t CAMERA_NOTIFY_INTERVAL_MS = 1000;
 
   enum setting_type_t : uint8_t {
     SETTING_BOOL,
@@ -149,10 +210,20 @@ class CompanionService {
     SETTING_REJECTED,
   };
 
+  /** Camera record plus the name, as sampled from CameraList and Control. */
+  struct camera_snapshot_t {
+    companion_camera_t record;
+    std::string name;
+  };
+
   static uint64_t nowMs(void);
   bool allowTrigger(void);
   void notifySettings(const std::vector<uint8_t> &value);
   static void timedShutter(void *param);
+
+  static std::vector<camera_snapshot_t> getCameraSnapshots(void);
+  static std::vector<uint8_t> encodeCameraRecord(const camera_snapshot_t &snapshot);
+  void indicateCameraStatus(uint8_t status, uint8_t cameraId);
 
   static setting_type_t settingType(Settings::type_t type);
   static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
@@ -176,6 +247,10 @@ class CompanionService {
   companion_status_t m_LastStatus = {};
   bool m_HaveLastStatus = false;
   uint64_t m_LastStatusNotificationMs = 0;
+
+  std::vector<camera_snapshot_t> m_LastCameras;
+  bool m_HaveLastCameras = false;
+  uint64_t m_LastCameraNotificationMs = 0;
 
   uint64_t m_CommandWindowMs = 0;
   uint8_t m_CommandCount = 0;

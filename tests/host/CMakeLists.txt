@@ -1023,28 +1023,54 @@ set(COMPANION_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/companion)
 add_executable(companion_gatt_test
                companion_gatt_test.cpp
                ${COMPANION_HOST_DIR}/companion_doubles.cpp
+               advertisement_preferences_stub.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/CameraList.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/DJIOsmo.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
                ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
+               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/Sony.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp
                ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
 target_include_directories(companion_gatt_test
                            BEFORE PRIVATE
                                   ${COMPANION_HOST_DIR}/doubles
                                   ${COMPANION_HOST_DIR}
                                   ${CONTROL_E2E_DIR}
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
+                                  ${FURBLE_ROOT}/lib/preferences
+                                  ${FURBLE_ROOT}/lib/blowfish
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
 target_compile_definitions(companion_gatt_test PRIVATE FURBLE_NO_DISPLAY
                                                        FURBLE_HOST_COMPANION_TEST)
+# Omitted designated-initializer members are value initialized, so the glibc
+# struct tm tail in the Canon and Lumix time helpers is not a real gap.
 target_compile_options(companion_gatt_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                   -Wno-missing-field-initializers
+                                                   -Wno-sign-compare
                                                    -Wno-unused-parameter
                                                    -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(companion_gatt_test PRIVATE Threads::Threads)

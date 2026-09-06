@@ -76,7 +76,7 @@ uint16_t UI::getIntervalometerRemaining(void) {
 }  // namespace Furble
 #endif
 
-#if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
 namespace {
 
@@ -228,10 +228,8 @@ static void vUITask(void *param) {
   int64_t nextGPSService = esp_timer_get_time();
   while (true) {
     Platform::getInstance().update();
-#if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
-#endif
     Scan::getInstance().processPendingCallbacks();
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
@@ -313,7 +311,7 @@ void app_main() {
   Furble::GPS::init();
 #endif
 
-#if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_NO_DISPLAY)
   Furble::UI::init();
 #endif
 

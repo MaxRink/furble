@@ -349,13 +349,11 @@ UI::UI(const interval_t &interval)
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
-#if defined(FURBLE_CONSOLE)
   m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
   if (m_RequestQueue == NULL) {
-    ESP_LOGE(LOG_TAG, "Failed to create console request queue.");
+    ESP_LOGE(LOG_TAG, "Failed to create the UI request queue.");
     abort();
   }
-#endif
 
   // The backlight PWM is clocked from the APB bus. DFS scaling the APB
   // frequency modulates the PWM and the whole screen flickers, so pin the
@@ -5034,7 +5032,6 @@ void UI::intervalometer(lv_timer_t *timer) {
   }
 }
 
-#if defined(FURBLE_CONSOLE)
 QueueHandle_t UI::m_RequestQueue = NULL;
 
 bool UI::sendRequest(Request request, int32_t arg) {
@@ -5167,6 +5164,7 @@ void UI::serviceRequests(void) {
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
 
+#if defined(FURBLE_CONSOLE)
       case Request::PERF:
 #if defined(CONFIG_LV_USE_PERF_MONITOR)
       {
@@ -5199,6 +5197,7 @@ void UI::serviceRequests(void) {
       case Request::AUDIT:
         UIAudit::dump(lv_screen_active());
         break;
+#endif
 
       case Request::POWER_RELOAD:
         m_ConnectContext.ui->reloadPowerPolicies();
@@ -5211,7 +5210,6 @@ void UI::serviceRequests(void) {
     }
   }
 }
-#endif
 
 void UI::doConnect(lv_event_t *e) {
   auto &control = Control::getInstance();
@@ -9525,9 +9523,7 @@ void UI::task(void) {
     }
     serviceSimRequests();
 #endif
-#if defined(FURBLE_CONSOLE)
     serviceRequests();
-#endif
     Scan::getInstance().processPendingCallbacks();
     if (!m_DisplayConsole) {
       handleLockScreen();

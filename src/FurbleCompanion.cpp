@@ -250,16 +250,21 @@ void CompanionGatt::createGatt(void) {
   m_Capability = m_GattService->createCharacteristic(
       CAPABILITY_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC,
       sizeof(companion_capability_t));
-  const companion_capability_t capability = {
-      CAPABILITY_VERSION,
-      WIRE_VERSION,
-      FEATURE_SETTINGS_V2,
-  };
+  const companion_capability_t capability = CompanionService::getCapability();
   m_Capability->setValue(reinterpret_cast<const uint8_t *>(&capability), sizeof(capability));
 
   m_Trigger = m_GattService->createCharacteristic(
       TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN, 4);
   m_Trigger->setCallbacks(this);
+
+  // Command responses and list records are indicated, unsolicited state events
+  // are notified. Same split as settings versus status.
+  m_Cameras = m_GattService->createCharacteristic(CAMERAS_UUID,
+                                                  NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE
+                                                      | NIMBLE_PROPERTY::NOTIFY
+                                                      | NIMBLE_PROPERTY::WRITE_AUTHEN,
+                                                  256);
+  m_Cameras->setCallbacks(this);
 
   // OTA is intentionally reserved only. The characteristics are deferred.
   m_DeviceInfoService = m_Server->createService("180A");
@@ -436,6 +441,7 @@ void CompanionGatt::serviceTask(void) {
     }
 
     m_Service.notifyStatus();
+    m_Service.notifyCameras();
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 
@@ -566,15 +572,21 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
     m_Service.handleSettings(value.data(), value.size());
   } else if (characteristic == m_Trigger) {
     m_Service.handleTrigger(value.data(), value.size());
+  } else if (characteristic == m_Cameras) {
+    m_Service.handleCameras(value.data(), value.size());
   }
 }
 
 void CompanionGatt::onSubscribe(NimBLECharacteristic *characteristic,
                                 NimBLEConnInfo &connInfo,
                                 uint16_t subValue) {
-  (void)characteristic;
   (void)subValue;
-  if (isCompanionConnection(connInfo)) {
+  if (!isCompanionConnection(connInfo)) {
+    return;
+  }
+  if (characteristic == m_Cameras) {
+    m_Service.notifyCameras(true);
+  } else {
     m_Service.notifyStatus(true);
   }
 }
