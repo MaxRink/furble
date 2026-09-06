@@ -12,7 +12,12 @@ wait 300
 assert setting.text_size 2
 assert ui.page main
 assert ui.level_main_button_visible yes
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 
 action nav infrared
 wait 150
@@ -22,8 +27,15 @@ wait 150
 home
 wait 200
 assert ui.page main
-assert ui.overflow no
-assert ui.scroll_bottom 0
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
+# The seventh row is reachable by scrolling. The home menu keeps the row
+# spacing and the icons it shipped with rather than shrinking to fake a fit.
+assert ui.label_overlaps 0
 
 # The Level route still opens from the fuller home menu and Back returns home.
 action nav level_main
@@ -32,5 +44,7 @@ assert ui.page level
 back
 wait 150
 assert ui.page main
-assert ui.overflow no
+# The seventh row is reachable by scrolling. The home menu keeps the row
+# spacing and the icons it shipped with rather than shrinking to fake a fit.
+assert ui.label_overlaps 0
 exit

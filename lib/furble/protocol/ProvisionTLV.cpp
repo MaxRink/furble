@@ -56,6 +56,11 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {40, ValueType::U8,     1,  1               },
     {41, ValueType::U8,     1,  1               },
     {44, ValueType::BOOL,   1,  1               },
+    // Legend placement. One byte carrying 0 (Buttons) or 1 (Bottom); the schema
+    // fixes the wire length and UI::legendPlacement() clamps anything else to
+    // the default, so an out of range byte is a stale value, not a parse error.
+    // Without a row here provisioning answers UNSUPPORTED_SETTING for it.
+    {65, ValueType::U8,     1,  1               },
 };
 
 struct FieldSchema {

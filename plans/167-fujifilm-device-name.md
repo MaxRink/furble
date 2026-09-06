@@ -186,15 +186,20 @@ they always had.
 
 Wrapping has a second consequence the scroll hid. A scrolled row is one line
 tall near the top of the list; a wrapped row is taller and fills its width, so
-it reaches the navigation indicators the Stick boards float over the page
+it reached the navigation indicators the Stick boards floated over the page
 instead of reserving a navbar for. Measured with plan 165's
 `ui.indicator_clearance`, the 80x160 saved list went from `clear` to `overlap`
-the moment the row wrapped. `UI::floatingIndicatorReserve()` now returns the
-indicator width on those boards and zero everywhere else, and both the camera
-list rows and the connected Cameras page rows keep it clear. The Cameras page
-needed it too: its row is the composed name plus a status word, which wraps for
-the same reason. All three panels now assert `ui.indicator_clearance clear` on
-the saved list, the scan list and the Cameras page.
+the moment the row wrapped, and both the camera list rows and the connected
+Cameras page rows reserved the right indicator's width to keep it clear. The
+Cameras page needed it too: its row is the composed name plus a status word,
+which wraps for the same reason.
+
+That reservation is gone. Plan 168 moved the Right indicator into the navigation
+band the layout already reserves, so no indicator is drawn over page content on
+any board and a full width row has nothing to keep clear. The rows still wrap,
+and all three panels still assert `ui.indicator_clearance clear` on the saved
+list, the scan list and the Cameras page. The assertion now holds because the
+indicator moved, not because the row gave up width.
 
 That assertion has teeth on the Stick boards only. `countIndicatorOverlaps()`
 clamps every measured area to the page viewport, and on the Core boards the

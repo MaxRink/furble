@@ -12,6 +12,25 @@ seed fauxny true
 seed imu true
 wait 400
 
+# Timer settings list held at a fixed state, measured first because reaching it
+# means leaving the connected page, and leaving the connected page ends the
+# session. Its rows put a name and a value on one line, so a label's box is
+# often narrower than its text. On LV_LABEL_LONG_SCROLL_CIRCULAR that repaints
+# every frame: this page measured 170 invalidations over this window on the
+# 80x160 panel before plan 168 moved these rows to a non-animating mode. A
+# scrolling label is the same steady-state repaint the rest of this scenario
+# guards against, so it belongs here rather than in a layout file.
+action page settings
+action nav timer
+wait 300
+assert ui.page timer
+action invalidate.reset
+wait 1000
+assert_max ui.invalidate_count 3
+home
+wait 200
+assert ui.page main
+
 # Connected page with a live camera: the header battery and GPS status poll must
 # not repaint every tick when the readings hold.
 action connect

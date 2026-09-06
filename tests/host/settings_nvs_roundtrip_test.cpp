@@ -95,6 +95,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::TX_POWER:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
@@ -203,6 +204,8 @@ std::vector<SettingCase> settingCases() {
        StorageKind::STRING                                                                                                                                     },
       {Settings::TEXT_SIZE,         "TEXT_SIZE",         uint8_t {TextSizePolicy::DEFAULT},
        uint8_t {TextSizePolicy::LARGE},                                                                                                     StorageKind::U8    },
+      {Settings::LEGEND,            "LEGEND",            uint8_t {Settings::LEGEND_BUTTONS},
+       uint8_t {Settings::LEGEND_BOTTOM},                                                                                                   StorageKind::U8    },
       {Settings::TX_POWER,          "TX_POWER",          uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
       {Settings::TX_ADAPTIVE,       "TX_ADAPTIVE",       false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS,               "GPS",               false,                                                true,                        StorageKind::BOOL  },
@@ -272,6 +275,7 @@ ASSERT_STORAGE_TYPE(INACTIVITY, uint8_t);
 ASSERT_STORAGE_TYPE(DISPLAY_OFF, uint8_t);
 ASSERT_STORAGE_TYPE(THEME, std::string);
 ASSERT_STORAGE_TYPE(TEXT_SIZE, uint8_t);
+ASSERT_STORAGE_TYPE(LEGEND, uint8_t);
 ASSERT_STORAGE_TYPE(TX_POWER, uint8_t);
 ASSERT_STORAGE_TYPE(TX_ADAPTIVE, bool);
 ASSERT_STORAGE_TYPE(GPS, bool);
@@ -329,6 +333,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::TX_POWER:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:

@@ -480,26 +480,54 @@ a regression.
   renders the touch layout on every modeled board. None of the three modeled
   boards has a touch panel: the Sticks and the Core Basic all ship the non-touch
   layout, which reserves a 26 px navbar band at the bottom of the window
-  content. On the Sticks the band stays empty and the three indicators float
-  over the screen; on the Core they live inside the band. Only the Core2, which
-  `sim/build.sh` does not model, ships the touch layout. Every scenario except
-  the three below therefore measures a layout no modeled board has.
+  content. That band is where all three button indicators live: on the Core they
+  are flex children of it, and on the Sticks they float against the screen edges
+  and land in it. None of them is drawn over page content. Only the Core2, which
+  `sim/build.sh` does not model, ships the touch layout, so every unseeded
+  scenario measures a layout no modeled board has.
 - `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
   and `bughunt/core-notouch-layout.txt` seed `no_touch true` and are each
   certified for exactly one board, so the existing certified bug-hunt steps run
   them with no new job. One file per board on purpose: the expectations are
   geometry, and a shared file would have to soften every line to the weakest
   board. Each starts with `assert ui.nav_layout buttons`, so a lost seed fails
-  loudly rather than passing against the wrong layout. See
-  `plans/165-sim-no-touch-layout.md`.
+  loudly rather than passing against the wrong layout. Every line in them is a
+  hard assert since plan 168 closed the gaps they recorded.
+  `sim/scripts/run-notouch.sh` runs the whole certified bug-hunt and end-to-end
+  set for one board in that layout and CI runs it on all three binaries. See
+  `plans/165-sim-no-touch-layout.md` and
+  `plans/168-notouch-layout-overflows.md`.
 - `ui.nav_layout` reports `touch` or `buttons`. `ui.indicator_clearance` reports
   `clear`, `overlap` or `n/a` for the current page, and `ui.indicator_overlaps`
   gives the count. Labels, images, rollers, switches, sliders, checkboxes and
   bars are measured; containers are not. Only the drawn text extent of a label
   counts, not its flex-stretched box, and areas are clamped to the page
-  viewport, which also puts the bottom-edge indicators structurally out of
-  reach: the query measures the indicators that float over content and reports
-  nothing about the bottom two.
+  viewport. Since plan 168 put all three indicators in the reserved band, that
+  clamp makes a fitted page structurally clear, so these queries are regression
+  pins: they fail the moment an indicator is anchored over the content area
+  again.
+- `ui.label_overlaps` counts the pairs of visible labels on the current page
+  whose drawn text overlaps, which is the one layout defect no fit or scroll
+  query can see: a grid cell holding two entries still fits and is simply
+  unreadable. It shares the drawn-extent and viewport-clamp rules above. The
+  walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree, so a widget
+  on the top layer, a message box or any other modal, is not in it and a page
+  showing one still reports 0; use a capture for those.
+- `ui.cut_labels` counts the visible labels on the current page that cannot draw
+  all of their own text, so they lose characters at the box edge. Scrolling
+  labels and floating widgets are excluded. It is the teeth for the rule that a
+  page honours the chosen text size: a page may scroll, it may never cut a name.
+- `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
+  container whose only visible children are a name label and a value label. The
+  container class is part of that shape: the spirit level's readout row is a
+  plain object with two labels and is not a spin row. On the narrow panels the
+  name and value share one line, so `ui.clipped_values` must read 0, a value
+  that loses a digit or its unit reads as a different setting, and
+  `ui.min_name_chars` must stay at or above four so the names stay distinct.
+  `ui.clipped_values` measures the value's box against the row's content box.
+  Measuring a content-sized label against its own width is a tautology and reads
+  0 however far it hangs out of the row; that mistake certified a layout that was
+  losing digits.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but
   inactive camera so the Connect and Delete lists render and their buttons
   enable; `ui.row_text` reports the focused row's text with whitespace as

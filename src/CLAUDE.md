@@ -82,13 +82,21 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
-  Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
+  Camera list rows wrap (`LV_LABEL_LONG_WRAP`), and only those: `addMenuItem`
+  takes `wrapText` and `addCameraItem` is the only caller that sets it. Every
+  other row, icon or not, scrolls. A menu entry built with no icon is icon-less
+  but is not user data, and wrapping one onto a second line overflowed a page. A
   circular scroll on a row wider than the panel animates forever and
   invalidates the row on every frame, which `ui.row_scrolling` and
-  `ui.invalidate_count` measure. A wrapped row is taller and fills its width, so
-  it reaches the indicators the Stick boards float over the page: any full width
-  row must keep `UI::floatingIndicatorReserve()` clear on the right, and
-  `ui.indicator_clearance` is the check.
+  `ui.invalidate_count` measure. A wrapped row is taller and fills its width; it
+  used to reach the indicators the Stick boards floated over the page, and such
+  rows reserved the right indicator's width themselves. Where the legends sit is
+  the `LEGEND` setting now: in the default Buttons placement the Right one is
+  drawn over the page and `m_Content` reserves `UI::legendReserve()` once for
+  every page, and in Bottom placement all three are in the navigation band and
+  the reserve is zero. No individual row reserves anything.
+  `ui.indicator_clearance` is still the check, and it has to hold in both
+  placements.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

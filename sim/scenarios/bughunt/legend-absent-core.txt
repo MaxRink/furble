@@ -1,0 +1,25 @@
+# The Legend setting is absent on a board where it would do nothing.
+#
+# LEGEND places the right button legend, and only the Stick boards float their
+# legends over the page. Everywhere else the three are flex children of the
+# navigation bar, so there is nothing to place and both values would render the
+# same page. UI::legendSelectable() is what decides, and this file is the pin
+# for the "absent" half of it: legend-setting-135.txt and -80.txt cover the
+# boards that do offer it.
+#
+# A setting that is present and inert is worse than one that is absent, which is
+# why this is asserted rather than left to the reader of the board list.
+seed fauxny true
+wait 400
+
+# The Settings page is reachable and does not carry a Legend entry: navigating
+# to it is rejected because no such page was built.
+action page settings
+wait 250
+assert ui.page settings
+action expect unavailable nav legend
+
+# The stored value still round trips through the console and the companion,
+# because the setting itself exists on every board. It just has no page here.
+assert setting.legend 0
+exit

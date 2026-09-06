@@ -1,0 +1,70 @@
+# Spin row widths on the 80x160 panel, at the widest value every field can
+# hold, in the physical-button layout that board ships.
+#
+# The Count, Delay, Shutter and Wait rows put a name and its value on one line,
+# so one of the two has to give up room. That choice is not free. The value is
+# the data: a value that loses a digit or its unit reads as a different setting,
+# and a user cannot tell 250 ms from 25. The name is recoverable from its
+# position in a fixed ordered list, so the name is the one that clips, and only
+# down to a floor of four characters, which keeps Coun, Dela, Shut and Wait
+# distinct.
+#
+# This file drives the widest string each unit produces. 999 is the largest
+# value the digit rollers hold, and the seeds carry a unit suffix so all three
+# units are covered: 999 ms, 999 s and 999 min, the last being the widest of
+# the three. The text size is the maximum this board offers, where
+# fontForSpinRow caps the face at the board default.
+#
+# stick-notouch-layout-80.txt covers the same page at the default values and
+# size. See plans/168-notouch-layout-overflows.md.
+seed no_touch true
+seed text_size 2
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed interval_count 999
+seed interval_shutter 999ms
+seed interval_delay 999s
+seed interval_wait 999min
+seed bulb_duration 999min
+wait 300
+assert ui.nav_layout buttons
+
+# Timer settings list: four rows, all four units, widest values.
+action page settings
+action nav timer
+wait 250
+assert ui.page timer
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else, so the fit assert is replaced by the two that matter.
+assert ui.label_overlaps 0
+assert ui.indicator_clearance clear
+# No value gives up a digit or its unit, and no name falls below four
+# characters.
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
+# And no name is cut: every name on the row draws in full at this size. A cut
+# name reads as a different setting, so this is 0, not a floor.
+assert ui.cut_names 0
+
+# The bulb Duration row is the same shape on a different page, and its seeded
+# unit is the widest one, so it is walked too rather than assumed.
+action connect
+wait 3200
+assert ui.page connected
+action page bulb
+wait 200
+assert ui.page bulb
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
+# And no name is cut: every name on the row draws in full at this size. A cut
+# name reads as a different setting, so this is 0, not a floor.
+assert ui.cut_names 0
+exit

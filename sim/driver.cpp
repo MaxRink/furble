@@ -275,6 +275,40 @@ std::vector<std::string> scriptWords(const std::string &line) {
   return result;
 }
 
+// An interval seed is a count, optionally followed by a unit with no space:
+// "999", "250ms", "30s", "60min". The unit is how a scenario reaches a spin
+// value the field's own default unit cannot express, which is what the timer
+// row width assertions need. An unknown suffix is rejected rather than ignored.
+SpinValue::unit_t intervalSeedUnit(const std::string &value, SpinValue::unit_t fallback) {
+  const auto digits = value.find_first_not_of("0123456789");
+  if (digits == std::string::npos) {
+    return fallback;
+  }
+  const std::string suffix = value.substr(digits);
+  if (suffix == "ms") {
+    return SpinValue::UNIT_MS;
+  }
+  if (suffix == "s") {
+    return SpinValue::UNIT_SEC;
+  }
+  if (suffix == "min") {
+    return SpinValue::UNIT_MIN;
+  }
+  return SpinValue::UNIT_NIL;
+}
+
+bool intervalSeedIsValid(const std::string &value) {
+  const auto digits = value.find_first_not_of("0123456789");
+  if (digits == 0) {
+    return false;
+  }
+  if ((digits != std::string::npos)
+      && (intervalSeedUnit(value, SpinValue::UNIT_NIL) == SpinValue::UNIT_NIL)) {
+    return false;
+  }
+  return parseUnsigned(value.substr(0, digits)) <= std::numeric_limits<uint16_t>::max();
+}
+
 void validateSeed(const std::string &name, const std::string &value) {
   if (name == "clock_ms" || name == "liveness_grace_ms") {
     parseUnsigned(value);
@@ -284,7 +318,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",    "fb_output",
+      "text_size",  "auto_off",   "low_batt",    "fb_output", "legend",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -328,7 +362,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   };
   if (std::find(std::begin(intervalSeeds), std::end(intervalSeeds), name)
       != std::end(intervalSeeds)) {
-    if (parseUnsigned(value) > std::numeric_limits<uint16_t>::max()) {
+    if (!intervalSeedIsValid(value)) {
       std::cerr << "Invalid " << name << ": " << value << '\n';
       std::exit(2);
     }
@@ -843,6 +877,7 @@ std::string settingBoolValue(const std::string &name) {
 std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
+      {"legend",    Settings::LEGEND   },
   };
   const auto found = bytes.find(name);
   if (found == bytes.end()) {
@@ -1284,6 +1319,7 @@ void applyScenarioSettings(void) {
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
   saveByte("text_size", Settings::TEXT_SIZE);
+  saveByte("legend", Settings::LEGEND);
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);
@@ -1359,7 +1395,9 @@ void applyScenarioSettings(void) {
   const auto set_interval = [&](const char *name, SpinValue::nvs_t &value, SpinValue::unit_t unit) {
     const auto found = scenarioSettings.find(name);
     if (found != scenarioSettings.end()) {
-      value = {static_cast<uint16_t>(parseUnsigned(found->second)), unit};
+      const auto digits = found->second.find_first_not_of("0123456789");
+      value = {static_cast<uint16_t>(parseUnsigned(found->second.substr(0, digits))),
+               intervalSeedUnit(found->second, unit)};
       interval_changed = true;
     }
   };
@@ -1373,8 +1411,10 @@ void applyScenarioSettings(void) {
 
   const auto bulb_duration = scenarioSettings.find("bulb_duration");
   if (bulb_duration != scenarioSettings.end()) {
+    const auto digits = bulb_duration->second.find_first_not_of("0123456789");
     Settings::save<Settings::BULB>(SpinValue::nvs_t {
-        static_cast<uint16_t>(parseUnsigned(bulb_duration->second)), SpinValue::UNIT_SEC});
+        static_cast<uint16_t>(parseUnsigned(bulb_duration->second.substr(0, digits))),
+        intervalSeedUnit(bulb_duration->second, SpinValue::UNIT_SEC)});
   }
 }
 
