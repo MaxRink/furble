@@ -496,6 +496,16 @@ Moving the Right legend into the navigation band was not wanted. It is now the
 - **Bottom** puts all three in the reserved navigation band, which is what this
   plan originally did to everything.
 
+A wire id needs a second registration that is easy to miss. `SETTING_SCHEMAS`
+in `lib/furble/protocol/ProvisionTLV.cpp` is what batch provisioning checks an
+incoming setting against, and master's table stops at 44, so an id without a row
+there is answered `UNSUPPORTED_SETTING` and a batch carrying it is rejected
+whole. LEGEND has a row: 65, `U8`, one byte. The schema fixes the length only;
+the two valid values are held by `UI::legendPlacement()`, which clamps anything
+else to the default, so an out of range byte is a stale value rather than a
+parse error. `tests/host/provision_tlv_test.cpp` asserts the row exists and that
+an unknown id still has none, and deleting the row fails that test.
+
 `UI::legendPlacement()` reads it and both `UI::begin` and `applyLevelRotation`
 anchor from it. It is a restart setting, like the theme and the text size,
 because the legends are anchored once and the room they need is reserved once.

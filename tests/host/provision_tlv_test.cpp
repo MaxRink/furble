@@ -187,6 +187,26 @@ void testTextDecoding() {
         "truncated base64 quantum is rejected");
 }
 
+// Every setting the firmware can store has to have a schema row here, or
+// provisioning answers UNSUPPORTED_SETTING for it and a batch that carries it
+// is rejected whole. A new wire id is easy to add to FurbleSettings.h and easy
+// to forget here, so the ids this branch adds are named rather than counted.
+void testSettingSchemas(void) {
+  const auto *legend = Furble::ProvisionTLV::schemaForSetting(65);
+  check(legend != nullptr, "legend placement (65) has a provisioning schema");
+  if (legend != nullptr) {
+    check(legend->type == ValueType::U8, "legend placement is a single byte");
+    check(legend->minLength == 1 && legend->maxLength == 1,
+          "legend placement carries exactly one byte");
+  }
+
+  // The negative half: an id with no row is refused rather than guessed at, so
+  // the assertion above fails if the row is deleted rather than passing by
+  // accident on some default.
+  check(Furble::ProvisionTLV::schemaForSetting(200) == nullptr,
+        "an unknown setting id has no schema");
+}
+
 }  // namespace
 
 int main() {
@@ -194,6 +214,7 @@ int main() {
   testMalformedAndTruncated();
   testEncoderValidation();
   testTextDecoding();
+  testSettingSchemas();
 
   if (g_failures != 0) {
     std::cerr << "provision tlv tests: " << g_failures << " FAILED\n";
