@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 03:00)
+## Resume here (kept current; last updated 2026-09-07 03:30)
 
 Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
@@ -22,7 +22,7 @@ Open PRs, head, state, next action:
 | #272 cancellable in-flight connect (plan 170) | a376c4e7 | approved, parked | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
 | #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | delta-reviewed, parked | fifteen-step hardware gate, then merge |
-| #139 GPS phase 2 (plan 32) | 9acc9f48 | delta review running | count now uses the parser's committed dates; IMPLAUSIBLE retries; fixture clock monotonic; then hardware gate (receiver rejection of expired ephemeris measured first) |
+| #139 GPS phase 2 (plan 32) | 9acc9f48 | CI 33/33 green, delta review running | count now uses the parser's committed dates; IMPLAUSIBLE retries; fixture clock monotonic; then hardware gate (receiver rejection of expired ephemeris measured first) |
 | #45 IMU gestures (plan 17) | 7c2f5038 | approved, parked | eight-step hardware gate (trace capture first), merge after #139 |
 | #48 IMU hardware motion (plan 20) | ac474257 | fix round running | software backend must hold g_IMUMutex; BMI270 disarm must disable INT1 output; gate needs a GPIO13 readout and a visible step 6 log; then delta review, six-step hardware gate, merge before #65 |
 | #65 GPS motion detector (plan 18) | c1410d0b | approved, parked | rebase onto #48, consume IMU::MotionSource (state() only), six-step gate |
