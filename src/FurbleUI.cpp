@@ -1854,7 +1854,7 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   // legend on one line, and the switch was drawn under the legend. Without the
   // grow the row wraps instead and the switch takes the line below its name,
   // clear of the legend. Every wider panel keeps the single line.
-  (void) 0;
+  (void)0;
 #else
   lv_obj_set_flex_grow(label, 1);
 #endif
@@ -1864,7 +1864,8 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   // Sized to the row's text rather than to the theme's 50x25 default, which ate
   // most of an 80 px row. A track twice as wide as it is tall still reads as a
   // switch and still shows its state at a glance.
-  const int32_t swHeight = lv_font_get_line_height(fontForTextSize(Settings::load<Settings::TEXT_SIZE>()));
+  const int32_t swHeight =
+      lv_font_get_line_height(fontForTextSize(Settings::load<Settings::TEXT_SIZE>()));
   lv_obj_set_size(sw, swHeight * 2, swHeight);
 #endif
   lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -3576,8 +3577,8 @@ uint32_t UI::countCutLabels(void) {
           lv_area_t inner;
           lv_obj_get_content_coords(parent, &inner);
           lv_area_t drawn = simDrawnArea(obj, coords);
-          clippedByParent = (drawn.x1 < inner.x1) || (drawn.x2 > inner.x2)
-                            || (drawn.y1 < inner.y1) || (drawn.y2 > inner.y2);
+          clippedByParent = (drawn.x1 < inner.x1) || (drawn.x2 > inner.x2) || (drawn.y1 < inner.y1)
+                            || (drawn.y2 > inner.y2);
         }
         if (tooNarrow || clippedByParent) {
           cut++;
@@ -6143,10 +6144,10 @@ UI::menu_t &UI::addConnectedMenu(void) {
   // half the page and the grid scrolls rather than clipping it away.
   static int32_t row_dsc_even[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
   static int32_t row_dsc_content[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
-  int32_t *row_dsc = (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
-                      >= Settings::TEXT_SIZE_LARGE)
-                         ? row_dsc_content
-                         : row_dsc_even;
+  int32_t *row_dsc =
+      (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>()) >= Settings::TEXT_SIZE_LARGE)
+          ? row_dsc_content
+          : row_dsc_even;
   lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
   lv_obj_center(menuConnected.page);
   lv_obj_set_layout(menuConnected.page, LV_LAYOUT_GRID);
@@ -9226,11 +9227,11 @@ void UI::addSettingsMenu(void) {
 #if defined(FURBLE_M5COREX)
   // Same rule as the Connected grid: equal rows while the entries fit, content
   // rows at Large so a name is never clipped away below its icon.
-  lv_obj_set_grid_dsc_array(menu.page, m_GridLayoutColDsc.data(),
-                            (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
-                             >= Settings::TEXT_SIZE_LARGE)
-                                ? m_SettingsGridLayoutRowDscContent.data()
-                                : m_SettingsGridLayoutRowDscEven.data());
+  lv_obj_set_grid_dsc_array(
+      menu.page, m_GridLayoutColDsc.data(),
+      (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>()) >= Settings::TEXT_SIZE_LARGE)
+          ? m_SettingsGridLayoutRowDscContent.data()
+          : m_SettingsGridLayoutRowDscEven.data());
   lv_obj_set_layout(menu.page, LV_LAYOUT_GRID);
 #else
 #endif
