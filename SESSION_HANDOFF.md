@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 02:00)
+## Resume here (kept current; last updated 2026-09-07 02:30)
 
 Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
@@ -18,7 +18,7 @@ Open PRs, head, state, next action:
 
 | PR | head | state | next |
 | --- | --- | --- | --- |
-| #245 stale-bond recovery (plan 151) | 973e9d5e | approved, rebased | bench steps 3 to 10 on the flashed dev+gd5de73ee (camera in pairing mode for 3 to 6), then merge |
+| #245 stale-bond recovery (plan 151) | 1c949256 | approved, rebased, CI running | rebuild and reflash this head in the VM (firmware delta vs the flashed d5de73ee is only the #286 mutex alias), then bench steps 3 to 10 (camera in pairing mode for 3 to 6), then merge |
 | #272 cancellable in-flight connect (plan 170) | a376c4e7 | approved, parked | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
 | #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | delta-reviewed, parked | fifteen-step hardware gate, then merge |
