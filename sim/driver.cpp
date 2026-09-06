@@ -412,7 +412,8 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   } else if (name == "gps_fix_date") {
     if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale"
-        && value != "coldstart" && value != "badrmc") {
+        && value != "coldstart" && value != "badrmc" && value != "emptyrmc"
+        && value != "walkback") {
       std::cerr << "Invalid gps_fix_date: " << value << '\n';
       std::exit(2);
     }
@@ -634,8 +635,10 @@ void readScript(const std::string &path) {
       step.type = StepType::GPS_FIX_DATE;
       step.name = args[1];
       if (step.name != "fixture" && step.name != "modern" && step.name != "nodate"
-          && step.name != "stale" && step.name != "coldstart" && step.name != "badrmc") {
-        std::cerr << "gps-fix-date requires fixture, modern, stale, coldstart, badrmc or nodate\n";
+          && step.name != "stale" && step.name != "coldstart" && step.name != "badrmc"
+          && step.name != "emptyrmc" && step.name != "walkback") {
+        std::cerr << "gps-fix-date requires fixture, modern, stale, coldstart, badrmc, emptyrmc, "
+                     "walkback or nodate\n";
         std::exit(2);
       }
       steps.push_back(step);

@@ -366,6 +366,9 @@ class GPS {
   static constexpr uint32_t EPH_CACHE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
   static constexpr uint32_t EPH_POLL_MS = 1500;
   static constexpr uint32_t EPH_REPLAY_GAP_MS = 30;
+  // A receiver that reports this many different dates all behind the capture is
+  // not waking up, it is wrong. Give the cache up rather than retry forever.
+  static constexpr uint8_t EPH_IMPLAUSIBLE_MAX = 4;
   static constexpr size_t EPH_MAX_BYTES = Casic::EphemerisCollector::MAX_BYTES;
 
   /** How long to wait for the receiver before sending the configuration. */
@@ -445,6 +448,7 @@ class GPS {
   void armEphemerisReplay(void);
   void serviceEphemerisArm(void);
   static int64_t receiverUtc(const status_t &status);
+  static uint32_t receiverDate(const status_t &status);
   void storeEphemeris(void);
   void loadEphemerisCache(void);
 
@@ -663,27 +667,24 @@ class GPS {
   // committed after, so a date left over from the previous session cannot
   // answer for this one.
   bool m_EphReplayArmed = false;
-  // Count of dates the parser has committed, and its value when replay was
-  // armed. The commit waits for the count to move, which is proof the receiver
-  // has sent a date this session rather than the parser still holding the one
-  // the last session left behind.
+  // The calendar date the parser held when replay was armed, packed as
+  // yyyymmdd, or 0 when it held none. The commit waits for a different one.
   //
-  // The count comes from TinyGPSPlus raising its date update flag, which it
-  // only does for a complete sentence whose checksum passed. Counting "RMC" in
-  // the raw bytes instead is wrong twice over: a burst carrying GSA and GSV
-  // exceeds BUFFER_SIZE so an RMC routinely spans two reads, with the token in
-  // the first half and the date in the second, and a checksum-failed sentence
-  // counts just the same.
+  // A value, not an update count and not an age. TinyGPS++ only dispatches a
+  // term when it is non-empty, so the empty date field in the
+  // `$GNRMC,,V,,,,,,,,,,N` every receiver sends before its first fix never
+  // reaches setDate; date.commit() then re-commits the stale newDate and raises
+  // the update flag anyway. Any counter keyed on that flag, or on the sentence
+  // name in the raw bytes, counts a date the receiver never sent, and the arm
+  // window is exactly when those sentences arrive. The committed value does not
+  // move, so comparing values does not have that hole.
   //
-  // Neither the date value nor the time can stand in for the count. A receiver
-  // with RMC pruned reports a ticking time against a stale date, and the date
-  // value itself does not change from one second to the next inside a day.
-  //
-  // It never compares ages. TinyGPSPlus ages come from millis(), which is the
-  // same clock as Platform::tick() on the device but not in the simulator, and
-  // mixing the two makes every stale timestamp look fresh.
-  uint32_t m_DateUpdates = 0;
-  uint32_t m_EphArmDateUpdates = 0;
+  // Ages are no use either: TinyGPSPlus ages come from millis(), the same clock
+  // as Platform::tick() on the device but not in the simulator, and mixing the
+  // two makes every stale timestamp look fresh.
+  uint32_t m_EphArmDate = 0;
+  // Consecutive implausible readings before the cache is given up on.
+  uint8_t m_EphImplausible = 0;
   bool m_EphPolled = false;
   bool m_EphPollActive = false;
   uint32_t m_EphPollDeadline = 0;

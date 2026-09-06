@@ -92,6 +92,17 @@ constexpr uint32_t FIX_COLD_BURSTS = 5;
 // there, so anything counting sentence names in the raw bytes counts it, but
 // the parser rejects it and never commits a date from it.
 bool fixRmcCorrupt = false;
+
+// The empty pre-fix RMC every receiver sends before it has a solution. TinyGPS++
+// never dispatches its empty date term, but still commits and raises the update
+// flag, so it is the exact sentence that fools an update-counted date.
+bool fixRmcEmpty = false;
+
+// A receiver whose date walks forward but stays behind the cache, one day per
+// burst. It models nothing real; it is here so the bound on the implausible
+// retry has something to hit.
+bool fixWalkback = false;
+uint32_t fixWalkDay = 1;
 // day-of-month of the advancing fixture. "modern" is the 6th and "stale" is
 // the 13th, a week later, which is well past the four hour ephemeris window.
 const char *fixDay = "06";
@@ -276,8 +287,18 @@ std::string modernFixStream(void) {
   if (fixDay == nullptr) {
     return gga;
   }
+  if (fixRmcEmpty) {
+    // No fix yet: every field empty, exactly as a receiver reports on power up.
+    return nmea("GNRMC,,V,,,,,,,,,,N") + gga;
+  }
+
   // While the modelled receiver is still waking, its date reads a day behind.
-  const std::string day = (fixColdBursts > 0) ? std::string("05") : std::string(fixDay);
+  std::string day = (fixColdBursts > 0) ? std::string("05") : std::string(fixDay);
+  if (fixWalkback) {
+    char walked[4];
+    std::snprintf(walked, sizeof(walked), "%02u", fixWalkDay);
+    day = walked;
+  }
   const std::string date = day + "0926";
   std::string rmc = nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A");
   if (fixRmcCorrupt) {
@@ -357,6 +378,9 @@ void queueGpsEvent(QueueHandle_t queue) {
       fixSecond++;
       if (fixColdBursts > 0) {
         fixColdBursts--;
+      }
+      if (fixWalkback && (fixWalkDay < 28)) {
+        fixWalkDay++;
       }
       gpsStream = modernFixStream();
     }
@@ -575,7 +599,22 @@ void furble_sim_uart_set_fix_date(const char *name) {
   fixDay = "06";
   fixColdBursts = 0;
   fixRmcCorrupt = false;
-  if ((name != nullptr) && (std::string(name) == "badrmc")) {
+  fixRmcEmpty = false;
+  fixWalkback = false;
+  if ((name != nullptr) && (std::string(name) == "emptyrmc")) {
+    // A receiver that has not fixed yet: the RMC is well formed and its
+    // checksum passes, but every field including the date is empty.
+    fixRmcEmpty = true;
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+  } else if ((name != nullptr) && (std::string(name) == "walkback")) {
+    // The date advances a day per burst from far behind the cache, so the
+    // implausible retry keeps being handed a new but still useless date.
+    fixWalkback = true;
+    fixWalkDay = 1;
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+  } else if ((name != nullptr) && (std::string(name) == "badrmc")) {
     // Every RMC arrives with a broken checksum. The parser commits no date from
     // it, so the ephemeris arm must never commit either.
     fixRmcCorrupt = true;

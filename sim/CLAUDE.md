@@ -604,7 +604,8 @@ a regression.
   runtime, so a fixture cannot carry a stale hand computed checksum. The
   `default` set is the one docs/img/gps-satellites.png is pinned to; changing
   its values means regenerating that capture.
-- The `modern`, `stale`, `coldstart`, `badrmc` and `nodate` fix bursts advance their clock one second
+- The `modern`, `stale`, `coldstart`, `badrmc`, `emptyrmc`, `walkback` and
+  `nodate` fix bursts advance their clock one second
   per burst, the way a receiver with a clock of its own does. The historic
   default burst stays frozen so every scenario and capture written against it is
   unchanged. A frozen clock is not a neutral simplification: an earlier
@@ -617,9 +618,17 @@ a regression.
   being drained inside one `serviceSerial()` call. A real burst carrying GSA and
   GSV exceeds the driver's 256 byte read the same way. `gps_fix_date coldstart`
   reports a date a day behind for its first few bursts, as a unit does before it
-  decodes TOW, and `badrmc` sends an RMC whose checksum is broken. Both model
-  receiver states a fixture serving one perfect burst can never reach, and each
-  one catches a defect that shipped in this branch.
+  decodes TOW, `badrmc` sends an RMC whose checksum is broken, `emptyrmc` is the
+  all-empty pre-fix RMC a receiver sends before it has a solution, and
+  `walkback` walks its date forward a day per burst from far behind the cache.
+  Each models a receiver state a fixture serving one perfect burst can never
+  reach, and each one catches a defect that shipped in this branch.
+- `emptyrmc` is worth understanding before writing anything that keys off
+  TinyGPS++ update flags. The parser only dispatches a term when it is
+  non-empty, so an empty date field never reaches `setDate`, yet `date.commit()`
+  still runs and raises `updated` against the previous value. A flag-counted
+  date therefore counts a date the receiver never sent, and that sentence is
+  exactly what is on the wire before a first fix. Compare committed values.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking

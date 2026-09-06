@@ -92,8 +92,39 @@ Phase 2 is implemented on `feat/32-gps-advanced-phase2`, branched from
 - Hardware verification is pending for every Phase 2 item that touches the
   receiver: autobaud lock and no-receiver drop, ephemeris replay effect on TTFF,
   the `dyModel`/`$PCAS11` platform change, and the MON-HW decode. Host tests and
-  the five release plus `m5stick-s3-debug` firmware builds pass. On-device
-  verification uses the console script in each PR section below.
+  the five release plus `m5stick-s3-debug` firmware builds pass.
+
+  **This phase merges with that gate recorded as owed post-merge.** Its
+  verification needs a GPS unit rather than an active camera, and the standing
+  rule is that such work merges with the hardware run recorded as owed rather
+  than blocking on it. The owed run is, in order: the receiver-rejection of an
+  expired ephemeris injection first, because it can delete the whole freshness
+  apparatus; then autobaud from the unit's own default rate; the rail drop and
+  the single retry; time to first fix with and against replay, measured against
+  the 108 s cold start recorded in `00-hardware-experiments.md`; and the
+  satellite page against the sky.
+
+  What is being merged unverified is bounded, and the boundary is worth stating
+  plainly.
+
+  - **New capability, off by default.** Ephemeris replay is `GPS_ASSIST` mode 2
+    and the satellite page is a new route; neither runs unless a user selects
+    it. `GPS_PLATFORM` defaults to do-not-send. Nothing here can misbehave on a
+    device whose owner does not turn it on.
+  - **The receiver path for an unmodified unit is unchanged.** `GPS_BAUD` still
+    stores 9600, and a stored fixed baud takes the same branch it always did:
+    the ladder never arms, `PRESENT` is published immediately, and the
+    configuration pass runs exactly as before. `serviceProbe()` is a no-op in
+    that state and the absent-state sleep in `cycleWait()` is unreachable. So
+    the wire behaviour degrades to the previous behaviour, not merely to
+    something similar.
+  - **Two UI changes do reach an unmodified unit**, and they are not
+    behaviour-neutral even though the setting is preserved. The GPS baud switch
+    became a three way roller on its own page, so the control moved and gained
+    an Auto option; a stored 9600 or 115200 maps onto the same value. And the
+    Raw NMEA page gained a receiver-state and baud line, which on that path
+    reads `present 9600`. The GPS settings list also gains Platform and
+    Satellites rows.
 
 ## Phase 2 behaviour, as implemented after the rebase onto master
 
@@ -197,39 +228,45 @@ regenerated, and the reservation table now lives in `include/CLAUDE.md`.
   not a date ever arrives. The decision itself is the pure
   `Casic::Eph::freshness`, host tested over eight cases.
 
-  The count comes from the parser raising its date update flag, read and
-  consumed inside the same lock the encode holds. That is the only place it can
-  be read safely, because any value accessor clears it and a status snapshot
-  taken between the two would eat it. Nothing else in furble reads
-  `isUpdated()`.
+  The signal is the committed date **value**, snapshotted at arm and required to
+  differ before anything commits. Two earlier attempts at that signal were both
+  wrong, and both were caught in review.
 
-  An earlier revision counted the token "RMC" in the raw read buffer and claimed
-  that only ever missed a count, never invented one. Both halves of that were
-  wrong, and the review proved it. `BUFFER_SIZE` is 256 and a burst carrying GSA
-  and GSV is bigger, so an RMC routinely spans two reads with its name in the
-  first and its date field in the second; `GPS::task` runs `serviceSerial()` and
-  `servicePoll()` in the same iteration, so the arm read the parser between the
-  halves and saw the previous session's date. And a sentence whose checksum
-  failed counted exactly like one that passed. The parser's flag has neither
-  problem: it is raised only for a complete sentence that passed its checksum.
-  Both scenarios serve the burst in 40 byte reads, paced 20 ms apart so the
-  chunks arrive over time rather than being drained inside one
-  `serviceSerial()` call, and `gps-ephemeris-stale` carries a receiver whose RMC
-  always arrives with a broken checksum. That corrupt-RMC leg is what kills the
-  raw-count mutant.
+  Counting the token "RMC" in the raw read buffer was wrong twice over.
+  `BUFFER_SIZE` is 256 and a burst carrying GSA and GSV is bigger, so an RMC
+  routinely spans two reads with its name in the first and its date field in the
+  second, and a sentence whose checksum failed counted exactly like one that
+  passed.
 
-  The fragment half of that defect is real but not observable here, and the
-  measurement says so rather than the prose assuming it: the arm is taken after
-  the settle gate, by which point several complete bursts have been parsed, so
-  the parser already holds the current session's date and a count that moved
-  half a sentence early reaches the same verdict. The checksum half is
-  observable and is covered. Counting committed dates fixes both regardless.
+  Counting the parser's own date update flag looked airtight and is not.
+  TinyGPS++ only dispatches a term when it is non-empty, so the empty date field
+  in the `$GNRMC,,V,,,,,,,,,,N` that every receiver sends before its first fix
+  never reaches `setDate`; `date.commit()` then re-commits the stale `newDate`
+  and raises the flag anyway. That sentence is precisely what is on the wire
+  during the arm window, `m_GPS` is never reset while `loadEphemerisCache()`
+  reloads the cache on every enable, and `beginWindow()` re-arms on every rail-
+  off to rail-on, so the duty-cycle path meets it every cycle. The committed
+  value does not move across that sentence, which is why comparing values has no
+  such hole. `gps_fix_date emptyrmc` is the certified leg for it.
+
+  The cost of a value comparison is that a receiver repeating the same date
+  inside one day never re-triggers, so a same-boot re-enable does not replay.
+  That is deliberate and is why the positive path in `gps-ephemeris-replay` goes
+  through a `restart`, where the parser starts with no date at all.
 
   A receiver clock behind the capture is not a verdict either. A cold-start
   AT6668 reports a coarse time before it decodes TOW, which is exactly the tier
   2 case, so `IMPLAUSIBLE` keeps the arm standing and waits for the next date
   instead of throwing the cache away on the first reading. Only `TOO_OLD` and
-  `REPLAY` settle it.
+  `REPLAY` settle it outright.
+
+  That retry is bounded at `EPH_IMPLAUSIBLE_MAX`, four different dates all
+  behind the capture, after which the cache is dropped. A receiver still waking
+  corrects itself within a couple of sentences; one that keeps reporting behind
+  the cache is wrong rather than waking, and without a bound it would be handed
+  a fresh reason to retry indefinitely. `gps_fix_date walkback` walks the date
+  forward a day per burst from far behind the cache and is the certified leg:
+  the retry has to give up before the walk reaches the capture date.
 
   The trade-off is explicit: a receiver that never sends RMC never gets a
   replay. That is the true cold start with the rail cut, where the cache age
@@ -383,6 +420,8 @@ a MON-HW poll with a truncated payload.
 | `e2e/gps-ephemeris-stale` | a receiver clock behind the capture cannot bound an age | drop the backwards-clock guard from `freshness` |
 | `e2e/gps-ephemeris-stale` | replay never commits without a date received this session | replace the date-count check with `if (false)` |
 | `e2e/gps-ephemeris-stale` | a checksum-failed RMC commits nothing | count the token "RMC" in the raw read buffer instead |
+| `e2e/gps-ephemeris-stale` | the empty pre-fix RMC commits nothing | commit on any committed date rather than a changed one |
+| `e2e/gps-ephemeris-stale` | the implausible retry is bounded | let the retry run forever |
 | `e2e/gps-ephemeris-replay` | a receiver clock behind the capture is retried, not settled | let `IMPLAUSIBLE` fall through and clear the cache |
 | `e2e/gps-ephemeris-stale` (TSAN) | `servicePoll` reads the fix through the locked snapshot | read `m_GPS.location.FixQuality()` directly, 4/5 runs fail |
 | `e2e/gps-satellite-fixtures` | 0, 1, 12, duplicate, partial, out of range and multi constellation populations | publish `set.building` without the complete-set check |

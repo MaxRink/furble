@@ -64,6 +64,29 @@ wait 40000
 assert_min gps.eph_cached 200
 assert uart.eph_replay 0
 
+# The empty RMC every receiver sends before its first fix, which is exactly what
+# is on the wire during the arm window. TinyGPS++ never dispatches an empty term
+# so the date field never reaches setDate, but date.commit() still runs and
+# raises the update flag against the date the previous session left behind. The
+# committed value does not move, so nothing may commit here.
+gps-fix-date emptyrmc
+action toggle gps
+wait 1000
+action toggle gps
+wait 40000
+assert uart.eph_replay 0
+
+# The implausible retry is bounded. This receiver hands over a new date every
+# burst, all of them behind the cache, so the retry is fed forever unless it
+# gives up. It has to give up before the walk reaches the capture date, or a
+# receiver whose clock is simply wrong replays a cache it should have dropped.
+gps-fix-date walkback
+action toggle gps
+wait 1000
+action toggle gps
+wait 40000
+assert uart.eph_replay 0
+
 # A receiver on a noisy line whose RMC always arrives with a broken checksum.
 # The sentence name is in the stream, so anything counting it in the raw bytes
 # counts it, but the parser rejects it and commits no date. Nothing may commit

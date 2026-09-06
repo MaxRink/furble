@@ -652,8 +652,10 @@ until the ladder reaches it. `gps_sats` selects the GSV/GSA fixture
 pair, `modern` and `stale` advance their clock one second per burst a week
 apart, `coldstart` is `modern` but reports a date a day behind for its first few
 bursts as a unit does before it decodes TOW, `badrmc` sends an RMC whose
-checksum is broken, and `nodate` is GGA only, a receiver that reports a position
-but never a date. The ephemeris rule commits on a date the parser has actually
+checksum is broken, `emptyrmc` sends the all-empty pre-fix RMC a receiver emits
+before it has a solution, `walkback` walks its date forward a day per burst from
+far behind the cache, and `nodate` is GGA only, a receiver that reports a
+position but never a date. The ephemeris rule commits on a date the parser has actually
 committed this session, so those are what exercise it. `gps_uart_chunk N` serves
 the burst N bytes at a time, paced 20 ms apart, so a sentence spans several
 reads and arrives over time the way it does off a real UART. `gps_assist` and
