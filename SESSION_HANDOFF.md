@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 01:00)
+## Resume here (kept current; last updated 2026-09-07 01:30)
 
 Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
@@ -24,7 +24,7 @@ Open PRs, head, state, next action:
 | #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | delta-reviewed, parked | fifteen-step hardware gate, then merge |
 | #139 GPS phase 2 (plan 32) | 33f207ef | fix round running | RMC count must be checksum-valid and fragment-safe; IMPLAUSIBLE must not be final; fixture clock monotonic across restart; then delta review, hardware gate |
 | #45 IMU gestures (plan 17) | 7c2f5038 | approved, parked | eight-step hardware gate (trace capture first), merge after #139 |
-| #48 IMU hardware motion (plan 20) | ac474257 | delta review running | six-step hardware gate (GPIO13 edge count still, latch release), merge before #65 |
+| #48 IMU hardware motion (plan 20) | ac474257 | fix round running | software backend must hold g_IMUMutex; BMI270 disarm must disable INT1 output; gate needs a GPIO13 readout and a visible step 6 log; then delta review, six-step hardware gate, merge before #65 |
 | #65 GPS motion detector (plan 18) | c1410d0b | approved, parked | rebase onto #48, consume IMU::MotionSource (state() only), six-step gate |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 | #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
