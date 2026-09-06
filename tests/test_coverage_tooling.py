@@ -565,6 +565,114 @@ class CrashedHostTestTest(unittest.TestCase):
     self.assertIn("run_streamed(", source)
 
 
+class HeaderAnchorTest(unittest.TestCase):
+  """The summary block is a whole line, not a substring of captured stdout.
+
+  Issue #277: ctest runs with --output-on-failure, so a failing test's own
+  stdout is echoed above the summary block. The old scan latched on the first
+  line merely containing the header and then read every following row as a
+  failure, so a test that printed the header fabricated a crash report for
+  tests that never crashed.
+  """
+
+  ECHOED = (
+      "1/2 Test #1: liar .............................***Failed    0.10 sec\n"
+      "The following tests FAILED:\n"
+      "\t  7 - invented (SEGFAULT)\n"
+      "liar: FAIL\n"
+      "\n"
+      "The following tests FAILED:\n"
+      "\t  1 - liar (Failed)\n"
+  )
+
+  def test_a_failing_test_that_prints_the_header_fabricates_nothing(self):
+    self.assertEqual(COVERAGE.crashed_host_tests(self.ECHOED), [])
+
+  def test_the_real_block_is_still_read_after_an_echoed_one(self):
+    output = self.ECHOED.replace("1 - liar (Failed)", "1 - liar (SEGFAULT)")
+    crashed = COVERAGE.crashed_host_tests(output)
+    self.assertEqual(len(crashed), 1)
+    self.assertIn("liar", crashed[0])
+    self.assertNotIn("invented", "".join(crashed))
+
+  def test_an_indented_header_line_is_still_the_header(self):
+    output = "  The following tests FAILED:\n\t  1 - a (Timeout)\n"
+    self.assertEqual(len(COVERAGE.crashed_host_tests(output)), 1)
+
+
+class LostProfileTest(unittest.TestCase):
+  """An empty .profraw is a lost measurement that merges with exit 0.
+
+  Issue #277: control_disconnect_test and control_reclaim_uaf_test ended in
+  std::_Exit(), so __llvm_profile_write_file never ran and both wrote a 0 byte
+  profile on every run. llvm-profdata merge accepted it, so two suites measured
+  nothing and the report looked healthy.
+  """
+
+  def profiles(self, directory, *entries):
+    for name, size in entries:
+      (Path(directory) / name).write_bytes(b"x" * size)
+
+  def test_an_empty_profile_names_the_test_that_lost_it(self):
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory,
+                    ("control-disconnect.1234.profraw", 0),
+                    ("console-commands.1235.profraw", 4096))
+      lost = COVERAGE.lost_test_profiles(
+          Path(directory), ["console-commands", "control-disconnect"]
+      )
+      self.assertEqual(len(lost), 1)
+      self.assertIn("control-disconnect", lost[0])
+      self.assertIn("empty", lost[0])
+
+  def test_a_test_that_wrote_no_profile_at_all_is_named(self):
+    with tempfile.TemporaryDirectory() as directory:
+      lost = COVERAGE.lost_test_profiles(Path(directory), ["control-reclaim-uaf"])
+      self.assertEqual(len(lost), 1)
+      self.assertIn("control-reclaim-uaf", lost[0])
+      self.assertIn("no raw profile", lost[0])
+
+  def test_a_forked_test_counts_when_one_of_its_profiles_has_data(self):
+    """A test that forks writes one profile per process, and a child that
+    _exit()s writes nothing. The parent's data is the measurement."""
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory,
+                    ("control-fuzz-seed-1.100.profraw", 8192),
+                    ("control-fuzz-seed-1.101.profraw", 0))
+      self.assertEqual(
+          COVERAGE.lost_test_profiles(Path(directory), ["control-fuzz-seed-1"]),
+          [],
+      )
+
+  def test_a_longer_name_cannot_stand_in_for_a_shorter_one(self):
+    """bt-debug-journal is a hyphenated prefix of bt-debug-journal-s3-psram, so
+    the profile of the longer test must not answer for the shorter one."""
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory, ("bt-debug-journal-s3-psram.42.profraw", 2048))
+      lost = COVERAGE.lost_test_profiles(
+          Path(directory), ["bt-debug-journal", "bt-debug-journal-s3-psram"]
+      )
+      self.assertEqual(len(lost), 1)
+      self.assertIn("bt-debug-journal:", lost[0])
+
+  def test_a_healthy_run_reports_nothing(self):
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory, ("gps-format.9.profraw", 512))
+      self.assertEqual(
+          COVERAGE.lost_test_profiles(Path(directory), ["gps-format"]), []
+      )
+
+  def test_the_host_measurement_acts_on_the_lost_profiles(self):
+    """The check only helps if measure_host() raises on it, and it can only
+    name the test if each test writes a profile named after itself."""
+    source = inspect.getsource(COVERAGE.measure_host)
+    self.assertIn("lost_test_profiles(", source)
+    self.assertIn("raise CoverageError", source)
+    self.assertIn("FURBLE_PROFILE_DIR", source)
+    cmake = (ROOT / "tests/host/CMakeLists.txt").read_text(encoding="utf-8")
+    self.assertIn("LLVM_PROFILE_FILE=${FURBLE_PROFILE_DIR}/${furble_test_name}.%p.profraw", cmake)
+
+
 class ToolDiscoveryTest(unittest.TestCase):
   def test_a_missing_llvm_cov_fails_with_a_clear_message(self):
     original_path = os.environ.get("PATH", "")

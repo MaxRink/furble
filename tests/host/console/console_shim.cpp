@@ -206,14 +206,20 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
                        TaskHandle_t *created_task) {
   (void)stack_depth;
 
+  // A task created after furbleHostStopTasks() has copied the task list is
+  // never joined, so it would outlive main() exactly as a detached task did.
+  std::lock_guard<std::mutex> lock(g_TasksMutex);
+  if (g_StopTasks.load()) {
+    return pdFAIL;
+  }
+
   auto *task = new FurbleHostTask();
   task->name = (name != nullptr) ? name : "unnamed";
   task->priority = priority;
-  {
-    std::lock_guard<std::mutex> lock(g_TasksMutex);
-    task->number = g_NextTaskNumber++;
-    g_Tasks.push_back(task);
-  }
+  task->number = g_NextTaskNumber++;
+  g_Tasks.push_back(task);
+  // Created under g_TasksMutex, so a concurrent shutdown either sees the task
+  // and joins it or is rejected above. Left joinable for that join.
   task->thread = std::thread([task_code, parameters] {
     g_OnShimTask = true;
     try {
@@ -222,7 +228,6 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
       // Host shutdown unwinding a task that is immortal on device.
     }
   });
-  // Left joinable: furbleHostStopTasks() joins every task before main() returns.
   if (created_task != nullptr) {
     *created_task = task;
   }

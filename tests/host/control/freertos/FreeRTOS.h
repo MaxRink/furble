@@ -31,4 +31,31 @@ typedef uint32_t TickType_t;
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+/**
+ * Stop and join every shim-backed task before host static destruction.
+ *
+ * The control task is immortal on device: it loops forever and has no exit
+ * path. On the host the process does exit, and C++ static destruction then
+ * frees the objects that thread is still using, so a suite that leaves it
+ * running has to end in std::_Exit(). That skips atexit, and with it
+ * __llvm_profile_write_file, so the suite never writes its counters and
+ * measures nothing under coverage (issue #277).
+ *
+ * This sets a stop flag, wakes every blocking primitive a task can be parked
+ * in, and joins the threads. It is the same contract the console and the
+ * control end-to-end harnesses use. Call it, or let FurbleHostTaskScope call
+ * it, before main() returns.
+ */
+void furbleHostStopTasks(void);
+
+/** Scope guard that runs furbleHostStopTasks() on every exit path. */
+class FurbleHostTaskScope {
+ public:
+  FurbleHostTaskScope() = default;
+  ~FurbleHostTaskScope() { furbleHostStopTasks(); }
+
+  FurbleHostTaskScope(const FurbleHostTaskScope &) = delete;
+  FurbleHostTaskScope &operator=(const FurbleHostTaskScope &) = delete;
+};
+
 #endif

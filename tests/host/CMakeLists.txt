@@ -24,6 +24,15 @@ if(FURBLE_COVERAGE)
   add_link_options(-fprofile-instr-generate)
 endif()
 
+# Where each test writes its raw profile. tools/coverage.py passes the directory
+# it collects from, and the block at the end of this file names every test's
+# profile after the test. That is what lets a lost measurement be reported by
+# test name instead of as an anonymous empty file (issue #277). Empty outside a
+# coverage run, and then LLVM_PROFILE_FILE from the environment applies as
+# before.
+set(FURBLE_PROFILE_DIR "" CACHE PATH
+    "Directory each test writes its raw coverage profile into")
+
 set(FURBLE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(HOST_NIMBLE_DIR ${FURBLE_ROOT}/lib/testing/nimble)
 set(HOST_PEER_DIR ${FURBLE_ROOT}/lib/testing/peer)
@@ -1521,4 +1530,20 @@ if(BUILD_TESTING)
   # the guarded opMidConnectSelfDeleteDrop consumes once that lands.
   add_test(NAME control-fuzz-repro-handshake-phase-drop
            COMMAND control_fuzz --repro handshake-phase-drop 1)
+endif()
+
+# One raw profile per test, named after the test. ctest gives every test the
+# same environment, so without this every profile is named after the process id
+# alone and a test that wrote nothing cannot be told from a test that never ran.
+# tools/coverage.py checks these files and fails the run naming the test whose
+# profile is missing or empty. The dot before the process id is the separator
+# that check matches on: test names carry hyphens and one name is a hyphenated
+# prefix of another, so a hyphen there would let a longer name's profile stand
+# in for a shorter name that wrote nothing.
+if(FURBLE_COVERAGE AND FURBLE_PROFILE_DIR)
+  get_property(furble_test_names DIRECTORY PROPERTY TESTS)
+  foreach(furble_test_name IN LISTS furble_test_names)
+    set_tests_properties(${furble_test_name} PROPERTIES ENVIRONMENT
+                         "LLVM_PROFILE_FILE=${FURBLE_PROFILE_DIR}/${furble_test_name}.%p.profraw")
+  endforeach()
 endif()
