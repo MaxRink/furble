@@ -188,9 +188,9 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
       return true;
     case scenario_action_kind_t::TOGGLE:
       if (!action.mode.empty() || !allZero(action)
-          || !known(action.name, {"gps", "gps_nmea", "autoconnect", "reconnect", "multiconnect",
-                                  "companion", "watchdog", "ir", "show_title", "tx_adaptive",
-                                  "conn_saver", "preset_picker", "recon_backoff"})) {
+          || !known(action.name, {"gps", "gps_nmea", "gps_motion", "autoconnect", "reconnect",
+                                  "multiconnect", "companion", "watchdog", "ir", "show_title",
+                                  "tx_adaptive", "conn_saver", "preset_picker", "recon_backoff"})) {
         return fail(error, "noncanonical toggle action");
       }
       return true;
@@ -490,9 +490,9 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
 
   if (args[0] == "toggle") {
     if (args.size() != 2
-        || !oneOf(args[1], {"gps", "gps_nmea", "autoconnect", "reconnect", "multiconnect",
-                            "companion", "watchdog", "ir", "show_title", "tx_adaptive",
-                            "conn_saver", "preset_picker", "recon_backoff"})) {
+        || !oneOf(args[1], {"gps", "gps_nmea", "gps_motion", "autoconnect", "reconnect",
+                            "multiconnect", "companion", "watchdog", "ir", "show_title",
+                            "tx_adaptive", "conn_saver", "preset_picker", "recon_backoff"})) {
       return fail(error, "toggle requires a known setting name");
     }
     action->kind = scenario_action_kind_t::TOGGLE;

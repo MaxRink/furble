@@ -50,8 +50,10 @@ key left
 wait 200
 capture m5stick-s3-settings-gps
 # GPS starts enabled, so the page shows the full receiver configuration list.
-# Six focus steps skip baud, Update rate, Sentences, Constellation, and Power
-# to reach GPS Data.
+# Seven focus steps skip baud, Update rate, Sentences, Constellation, Power,
+# GPS Assistance and Motion Adaptive to reach GPS Data.
+key down
+wait 100
 key down
 wait 100
 key down
