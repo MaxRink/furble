@@ -393,7 +393,8 @@ void GPS::serviceProbe(void) {
   const uint32_t now = Platform::getInstance().tick();
 
   if (m_ProbePending.exchange(false)) {
-    const Casic::Autobaud::Action action = m_Autobaud.begin(now, m_GPS.passedChecksum());
+    const Casic::Autobaud::Action action =
+        m_Autobaud.begin(now, getStatusSnapshot().sentences_passed);
     if (action.change) {
       uart_set_baudrate(m_UART, action.baud);
       reset();
@@ -403,7 +404,8 @@ void GPS::serviceProbe(void) {
   }
 
   if (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::DETECTING) {
-    const Casic::Autobaud::Action action = m_Autobaud.service(now, m_GPS.passedChecksum());
+    const Casic::Autobaud::Action action =
+        m_Autobaud.service(now, getStatusSnapshot().sentences_passed);
     if (action.change) {
       uart_set_baudrate(m_UART, action.baud);
       reset();
@@ -430,7 +432,8 @@ void GPS::serviceProbe(void) {
     // to wake the task for.
     m_NoReceiverRetried = true;
     setRailPower(true);
-    const Casic::Autobaud::Action action = m_Autobaud.begin(now, m_GPS.passedChecksum());
+    const Casic::Autobaud::Action action =
+        m_Autobaud.begin(now, getStatusSnapshot().sentences_passed);
     uart_set_baudrate(m_UART, action.baud);
     reset();
     m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::DETECTING));
@@ -445,7 +448,7 @@ void GPS::onProbeLocked(uint32_t now) {
   {
     std::lock_guard<std::mutex> guard(m_CycleMutex);
     resetAcquisition(now);
-    m_ConfigChars = m_GPS.charsProcessed();
+    m_ConfigChars = getStatusSnapshot().chars_processed;
     m_ConfigStart = now;
     m_ConfigPending = true;
   }
@@ -680,7 +683,7 @@ void GPS::serviceCycle(void) {
       // enterDegraded() with a longer backoff, so the lock is never pinned.
       if (m_Degraded.retryDue(now)) {
         reset();
-        m_ConfigChars = m_GPS.charsProcessed();
+        m_ConfigChars = getStatusSnapshot().chars_processed;
         m_ConfigStart = now;
         m_ConfigPending = true;
         m_BurstActive = false;
@@ -1662,9 +1665,8 @@ void GPS::armEphemerisReplay(void) {
   // with no knowledge of how long the board was off, so a week unplugged reads
   // as a couple of minutes old. Arm here, and commit in servicePoll once the
   // receiver has reported a UTC of its own.
-  const status_t status = getStatusSnapshot();
   m_EphReplayArmed = true;
-  m_EphArmUtc = receiverUtc(status);
+  m_EphArmRmc = m_RmcSentences;
   ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, waiting for receiver time");
 }
 
@@ -1681,21 +1683,18 @@ void GPS::serviceEphemerisArm(void) {
     return;
   }
 
-  const status_t status = getStatusSnapshot();
-  // A different reported UTC means the receiver has spoken since arming. The
-  // same one means it has not: a receiver with no clock of its own, or one with
-  // RMC pruned, keeps whatever the previous session left in the parser, and
-  // neither can bound the cache age.
-  // A different reported UTC means the receiver has spoken since arming. The
-  // same one means it has not: a receiver with no clock of its own, or one with
-  // RMC pruned, keeps whatever the previous session left in the parser, and
-  // neither can bound the cache age.
-  const int64_t reported = receiverUtc(status);
-  const bool dated = (reported > 0) && (reported != m_EphArmUtc);
-  if (!dated) {
-    // A receiver that never reports a time of its own leaves the arm standing
-    // until the next enable. That is the cold start case, and replaying a cache
-    // whose age cannot be established is the thing this is here to prevent.
+  // Only a date the receiver has sent since arming can bound the cache age, and
+  // only RMC carries a date. A receiver with no clock, or one with RMC pruned,
+  // keeps whatever date the previous session left in the parser while its time
+  // ticks on from GGA, so neither the time nor the date value is evidence here.
+  if (m_RmcSentences == m_EphArmRmc) {
+    // Nothing to decide against yet. The arm stands until the next enable,
+    // which is the cold start case: replaying a cache whose age cannot be
+    // established is the thing this is here to prevent.
+    return;
+  }
+  const int64_t reported = receiverUtc(getStatusSnapshot());
+  if (reported <= 0) {
     return;
   }
 
@@ -2387,6 +2386,15 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   }
 
   Console::gpsRaw(reinterpret_cast<const char *>(data), length);
+  // Only RMC carries a date. Counting it here, on the raw bytes, is the one
+  // unambiguous signal that the receiver has sent a date this session; the
+  // parser's own date persists across a disable and enable and cannot say. A
+  // sentence split across two reads is missed, which costs one burst of delay
+  // and never a false count.
+  const std::string_view chunk(reinterpret_cast<const char *>(data), length);
+  if (chunk.find("RMC") != std::string_view::npos) {
+    m_RmcSentences++;
+  }
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
     m_GPS.encode(reinterpret_cast<char *>(data), length);

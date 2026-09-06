@@ -663,15 +663,22 @@ class GPS {
   // committed after, so a date left over from the previous session cannot
   // answer for this one.
   bool m_EphReplayArmed = false;
-  // The UTC the receiver was reporting when replay was armed, or 0 if it was
-  // reporting none. The decision waits for a different one, so a timestamp left
-  // over from the previous session cannot answer for this one.
+  // Count of date-bearing sentences seen, and its value when replay was armed.
+  // The commit waits for the count to move, which is proof that the receiver
+  // has sent a date this session rather than the parser still holding the one
+  // the last session left behind.
   //
-  // This compares the reported value, not its age. TinyGPSPlus ages come from
-  // millis(), which is the same clock as Platform::tick() on the device but not
-  // in the simulator, and mixing the two silently makes every stale timestamp
-  // look fresh.
-  int64_t m_EphArmUtc = 0;
+  // Only RMC carries a date, so counting RMC is the signal. Neither the date
+  // value nor the time can stand in for it. A receiver with RMC pruned reports
+  // a ticking time against a stale date, so anything keyed on the time waves
+  // that stale date straight through, and the date value itself does not change
+  // from one second to the next inside a day. Both are GPS-task only.
+  //
+  // It never compares ages. TinyGPSPlus ages come from millis(), which is the
+  // same clock as Platform::tick() on the device but not in the simulator, and
+  // mixing the two makes every stale timestamp look fresh.
+  uint32_t m_RmcSentences = 0;
+  uint32_t m_EphArmRmc = 0;
   bool m_EphPolled = false;
   bool m_EphPollActive = false;
   uint32_t m_EphPollDeadline = 0;

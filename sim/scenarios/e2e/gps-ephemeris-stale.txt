@@ -3,15 +3,17 @@
 # furble kept clock cannot answer this. After a power cut it restores as the
 # last persisted epoch plus the monotonic time since boot, with no knowledge of
 # how long the board was off, so a week unplugged reads as a couple of minutes
-# old. The receiver is the only clock that knows. Replay therefore arms at
-# enable and commits only once the receiver has reported a UTC of its own,
-# committed after the arm so a date left from the previous session cannot
-# answer for this one.
+# old. The receiver is the only clock that knows.
 #
-# The fake receiver clock is moved a week forward between the capture and the
-# next enable, which is what a real receiver reports after a long time
-# unpowered. It keeps ticking, so the refusal is the age rule and not the
-# receiver having gone quiet.
+# Replay therefore arms at enable and commits only once the receiver has
+# reported a calendar DATE that is valid and different from the one the parser
+# held at arm time. Only RMC carries a date, so a changed date is proof RMC has
+# arrived this session. The time is deliberately not part of that test: a
+# receiver with RMC pruned reports a ticking time against a stale date, and
+# keying off the time would wave that stale date straight through.
+#
+# This file is the refusals. The positive path, where a fresh boot has no date
+# at all until RMC arrives and the replay then commits, is gps-ephemeris-replay.
 seed gps true
 seed gps_baud 9600
 seed gps_assist 2
@@ -21,7 +23,7 @@ wait 300
 
 # The GPS Data page stays open throughout, so the UI task is reading the status
 # snapshot while the GPS task polls, stores and decides on its own thread. This
-# scenario is the second ThreadSanitizer gate for that boundary.
+# scenario is also the ThreadSanitizer gate for that boundary.
 action nav gps_data
 wait 500
 assert ui.page gps_data
@@ -33,42 +35,37 @@ wait 6000
 assert_min gps.eph_cached 200
 assert uart.eph_replay 0
 
-# Move the receiver clock a long way from the capture, then re-enable. The
-# cache is still on flash and still loads, and it must not be replayed.
+# Move the receiver clock a week forward and re-enable. The date changes, so the
+# commit happens and the age rule is what decides: a week is well past four
+# hours, so the cache is refused.
 gps-fix-date stale
 action toggle gps
 wait 1000
 action toggle gps
-wait 15000
+wait 16000
 assert_min gps.eph_cached 200
 assert uart.eph_replay 0
 
-# A receiver with RMC pruned reports a position but never a date, so the parser
-# keeps whatever date the previous session left it with. A stale date must not
-# be allowed to answer for this session: with no receiver time at all the cache
-# age cannot be established, so after the arm deadline the cache is dropped
-# rather than replayed blind. This is the true cold start case.
+# That leg re-cached at 2026-09-13, so the cache and the receiver now agree.
+# Switch to a receiver with RMC pruned: it reports a position and a ticking
+# time, but never a date, so the parser keeps the 2026-09-13 date it already
+# has. Nothing may commit against a date this session did not receive, even
+# though that stale date would compare as perfectly fresh.
 gps-fix-date nodate
 action toggle gps
 wait 1000
 action toggle gps
 wait 40000
+assert_min gps.eph_cached 200
 assert uart.eph_replay 0
 
-# Move the receiver clock back and let it cache again at the current date. The
-# cache written during the stale leg carries the far away capture time, so this
-# leg has to re-capture before it can prove the positive path.
+# A receiver clock behind the capture cannot bound an age either. Move it back
+# a week: the date changes, so the commit happens, and the backwards clock is
+# refused rather than treated as a zero age.
 gps-fix-date modern
 action toggle gps
 wait 1000
 action toggle gps
 wait 16000
 assert uart.eph_replay 0
-
-# Same cache, same code path, current receiver clock. It replays now, so the
-# refusals above are the age check and not a broken replay path.
-action toggle gps
-wait 1000
-action toggle gps
-assert-eventually-virtual 30000 uart.eph_replay 3
 exit

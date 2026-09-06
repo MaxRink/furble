@@ -604,12 +604,22 @@ a regression.
   runtime, so a fixture cannot carry a stale hand computed checksum. The
   `default` set is the one docs/img/gps-satellites.png is pinned to; changing
   its values means regenerating that capture.
-- The `modern` and `stale` fix bursts advance their clock one second per burst,
-  the way a receiver with a clock of its own does. The historic default burst
-  stays frozen so every scenario and capture written against it is unchanged.
-  A frozen clock is not a neutral simplification: the ephemeris freshness rule
-  asks whether the receiver has reported a *new* time, and a receiver that
-  repeats one timestamp forever can never answer that.
+- The `modern`, `stale` and `nodate` fix bursts advance their clock one second
+  per burst, the way a receiver with a clock of its own does. The historic
+  default burst stays frozen so every scenario and capture written against it is
+  unchanged. A frozen clock is not a neutral simplification: an earlier
+  ephemeris freshness rule keyed off the receiver's reported time changing, and
+  the `nodate` burst passed its leg only because its clock stood still. Ticking
+  it turned the leg into a replay of three frames and exposed the rule as wrong.
+  If a fixture models a receiver, give it a clock that moves.
+- The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
+  `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
+  GPS task's own reads of the parser: measured five runs per cell, unlocking
+  `servicePoll`'s fix read fails `gps-ephemeris-stale` 4/5 and
+  `gps-ephemeris-replay` 1/5. It is **not** a gate for `storeEphemeris`, which
+  measured 0/5 with its lock removed. Measure before claiming a leg does or does
+  not catch something, and measure more than once: a single green run is not
+  evidence of absence, and treating it as such nearly deleted this gate.
 - TinyGPSPlus ages come from `millis()`. That is the same clock as
   `Platform::tick()` on the device and a different one here, so a check that
   compares a parser age against a `Platform::tick()` value passes in the

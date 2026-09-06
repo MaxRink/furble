@@ -237,9 +237,14 @@ std::string modernFixStream(void) {
   std::snprintf(stamp, sizeof(stamp), "%02u%02u%02u.00", (total / 3600) % 24, (total / 60) % 60,
                 total % 60);
   const std::string time(stamp);
+  const std::string gga =
+      nmea("GPGGA," + time + ",4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+  // A null day is the RMC-pruned receiver: a ticking time and no date at all.
+  if (fixDay == nullptr) {
+    return gga;
+  }
   const std::string date = std::string(fixDay) + "0926";
-  return nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A")
-         + nmea("GPGGA," + time + ",4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+  return nmea("GPRMC," + time + ",A,4807.038,N,01131.000,E,22.678,0.0," + date + ",,,A") + gga;
 }
 
 /**
@@ -500,11 +505,14 @@ void furble_sim_uart_set_fix_date(const char *name) {
     fixDateAdvances = true;
     gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "nodate")) {
-    // GGA only. It carries a position but no date, so the parser keeps whatever
-    // date the previous session left it with. That is a receiver with RMC
-    // pruned, and it is the case where the ephemeris cache age can never be
-    // established.
-    gpsStream = nmea("GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,");
+    // GGA only, with a ticking clock. It carries a position and a time but no
+    // date, so the parser keeps whatever date the previous session left it
+    // with. That is a receiver with RMC pruned, and it is the case where the
+    // cache age can never be established. The clock has to tick: a frozen one
+    // would let a rule that keys off the time pass for the wrong reason.
+    fixDay = nullptr;
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
   } else if ((name != nullptr) && (std::string(name) == "modern")) {
     fixDateAdvances = true;
     gpsStream = modernFixStream();
