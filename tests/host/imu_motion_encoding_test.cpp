@@ -89,6 +89,9 @@ struct Bus {
   std::vector<Access> log;
   bool imuEnabled = true;
   uint8_t page = 0;
+  // Number of leading transactions to fail, which is how the shared bus behaves
+  // after the PMIC's idle sleep: the first one wakes it and reports failure.
+  int failNext = 0;
 
   void reset(void) {
     registers.clear();
@@ -144,6 +147,11 @@ bool read(uint8_t address, uint8_t reg, uint8_t *data, size_t length) {
   if (address != IMU_ADDRESS) {
     return false;
   }
+  if (g_Bus.failNext > 0) {
+    g_Bus.failNext--;
+    g_Bus.log.push_back({false, reg, {}});
+    return false;
+  }
   if ((reg == FEATURES) && (length == FEATURE_SIZE)) {
     std::memcpy(data, g_Bus.pages[g_Bus.page].data(), FEATURE_SIZE);
   } else {
@@ -157,6 +165,11 @@ bool read(uint8_t address, uint8_t reg, uint8_t *data, size_t length) {
 
 bool write(uint8_t address, uint8_t reg, const uint8_t *data, size_t length) {
   if (address != IMU_ADDRESS) {
+    return false;
+  }
+  if (g_Bus.failNext > 0) {
+    g_Bus.failNext--;
+    g_Bus.log.push_back({true, reg, {}});
     return false;
   }
   g_Bus.log.push_back({true, reg, std::vector<uint8_t>(data, data + length)});
@@ -179,6 +192,10 @@ HostM5 M5;
 
 namespace Furble {
 
+// The firmware defines this in FurbleUI.cpp or main.cpp depending on the build.
+// The engines take it around every register sequence, so the harness owns one.
+std::mutex g_IMUMutex;
+
 Platform &Platform::getInstance(void) {
   static Platform instance;
   return instance;
@@ -193,6 +210,16 @@ void Platform::disarmMotionWake(void) {
   wakeArmed = false;
 }
 
+bool Platform::motionWakeAsserted(void) const {
+  return wakeArmed && wakeAsserted;
+}
+
+void Platform::clearMotionWake(void) {
+  if (wakeArmed) {
+    wakeClears++;
+  }
+}
+
 }  // namespace Furble
 
 namespace {
@@ -205,6 +232,8 @@ void seedBMI270(void) {
   g_Bus.registers[0x21] = 0x01;  // INTERNAL_STATUS, message BMI2_INIT_OK
   g_Bus.registers[0x7C] = 0x01;  // PWR_CONF, advanced power save on
   g_Bus.registers[0x7D] = 0x04;  // PWR_CTRL, acc_en already set
+  // M5Unified maps data ready to both interrupt pins during begin().
+  g_Bus.registers[0x58] = 0xFF;  // INT_MAP_DATA
   // The config file M5Unified uploads leaves an output configuration in bits
   // 14:11 of each threshold word. Bosch never rewrites it, so neither may we.
   g_Bus.pages[1][0x0E] = 0x00;
@@ -234,6 +263,17 @@ void testBMI270Arm(void) {
   const auto map = g_Bus.writesTo(0x56);
   check(map.size() == 1 && map[0].data[0] == 0x60,
         "INT1_MAP_FEAT routes any-motion and no-motion to INT1");
+
+  // Without this the wake line carries M5Unified's data-ready mapping, which is
+  // the accelerometer sample rate, and the wake source never stops firing.
+  const auto dataMap = g_Bus.writesTo(0x58);
+  check(!dataMap.empty(), "INT_MAP_DATA is written");
+  if (!dataMap.empty()) {
+    checkEqual(dataMap[0].data[0] & 0x0F, 0, "data-ready is taken off INT1 before arming");
+    checkEqual(dataMap[0].data[0] & 0xF0, 0xF0, "the INT2 data mapping is left alone");
+    check(g_Bus.writeIndex(0x58, 0) < g_Bus.writeIndex(0x53),
+          "data-ready is unmapped before the INT1 output is enabled");
+  }
 
   // Advanced power save must be cleared before the feature window is touched
   // and restored afterwards, exactly as bmi2_set_regs does.
@@ -278,6 +318,7 @@ void testBMI270Arm(void) {
 void testBMI270Cycle(void) {
   std::cerr << "test: BMI270 swaps one engine per transition\n";
   seedBMI270();
+  Furble::Platform::getInstance().wakeClears = 0;
   auto backend = Furble::IMU::createBMI270Backend();
   backend->arm();
 
@@ -303,10 +344,16 @@ void testBMI270Cycle(void) {
   checkEqual(g_Bus.featureWord(2, 0x02) & 0x07FF, 0x090,
              "no-motion threshold survives the toggles");
 
+  check(Furble::Platform::getInstance().wakeClears == 2,
+        "each consumed transition clears the latched PMIC wake status");
+
   backend->disarm();
   checkEqual(g_Bus.featureWord(1, 0x0E) & 0x8000, 0, "disarm disables any-motion");
   checkEqual(g_Bus.featureWord(2, 0x02) & 0x8000, 0, "disarm disables no-motion");
   check(!Furble::Platform::getInstance().wakeArmed, "disarm releases the wake source");
+  const auto restored = g_Bus.writesTo(0x58);
+  check(!restored.empty() && restored.back().data[0] == 0xFF,
+        "disarm hands the data-ready mapping back to M5Unified");
 }
 
 // Test 3. The BMI270 refuses to arm on a part that is not ready.
@@ -332,7 +379,7 @@ void seedMPU6886(void) {
   g_Bus.reset();
   g_Bus.registers[0x75] = 0x19;  // WHO_AM_I
   g_Bus.registers[0x6B] = 0x41;  // PWR_MGMT_1 with bits the arm sequence must clear
-  g_Bus.registers[0x37] = 0x20;  // INT_PIN_CFG with LATCH_INT_EN set
+  g_Bus.registers[0x37] = 0xC0;  // INT_PIN_CFG as M5Unified leaves it: active low, open drain
 }
 
 // Test 4. The MPU6886 wake-on-motion sequence.
@@ -377,12 +424,15 @@ void testMPU6886Arm(void) {
           "cycle mode is entered after the WOM registers are written");
   }
 
-  // INT_PIN_CFG: active low, and not latched, so the pin releases by itself.
+  // INT_PIN_CFG: active low, and latched. The latch is what makes the pin
+  // readable at all: a 50 us pulse cannot be seen by a 1 Hz poll, and it is
+  // marginal for the level-triggered light-sleep wake latch too.
   const auto pin = g_Bus.writesTo(0x37);
-  check(pin.size() == 1, "INT_PIN_CFG is written once");
+  check(!pin.empty(), "INT_PIN_CFG is written");
   if (!pin.empty()) {
     checkEqual(pin[0].data[0] & 0x80, 0x80, "INT_PIN_CFG sets ACTL, active low");
-    checkEqual(pin[0].data[0] & 0x20, 0, "INT_PIN_CFG clears LATCH_INT_EN");
+    checkEqual(pin[0].data[0] & 0x20, 0x20, "INT_PIN_CFG latches the interrupt");
+    checkEqual(pin[0].data[0] & 0x40, 0x40, "the open-drain bit M5Unified set is preserved");
   }
 
   check(backend->usesInterrupt(), "the backend reports the interrupt path");
@@ -416,23 +466,72 @@ void testMPU6886Timing(void) {
   check(!enable.empty() && enable.back().data[0] == 0, "disarm clears INT_ENABLE");
   const auto intel = g_Bus.writesTo(0x69);
   check(!intel.empty() && intel.back().data[0] == 0, "disarm clears ACCEL_INTEL_CTRL");
+
+  // Everything the engine repurposed goes back to M5Unified's init values, or
+  // the spirit level keeps reading a 16-sample average at 50 Hz afterwards.
+  const auto config2 = g_Bus.writesTo(0x1D);
+  check(!config2.empty() && config2.back().data[0] == 0x00,
+        "disarm restores ACCEL_CONFIG2 to M5Unified's 0x00");
+  const auto divider = g_Bus.writesTo(0x19);
+  check(!divider.empty() && divider.back().data[0] == 0x03,
+        "disarm restores SMPLRT_DIV to M5Unified's 3");
+  const auto pinBack = g_Bus.writesTo(0x37);
+  check(!pinBack.empty() && pinBack.back().data[0] == 0xC0,
+        "disarm restores INT_PIN_CFG to M5Unified's 0xC0");
 }
 
-// Test 6. A first failed transaction is retried once, which is the documented
-// behaviour of the shared internal bus after idle sleep.
-void testRetryOnce(void) {
-  std::cerr << "test: the first failed bus access after idle sleep is retried\n";
+// The interrupt pin, not the status register, is the motion signal on a board
+// where the interrupt reaches a GPIO. INT_STATUS is clear-on-read and
+// M5Unified's IMU update reads it, so anything that opens the spirit level or
+// the IMU live page consumes WOM events.
+void testMPU6886UsesThePin(void) {
+  std::cerr << "test: MPU6886 reads the interrupt pin, not just the stolen status\n";
   seedMPU6886();
+  auto &platform = Furble::Platform::getInstance();
+  platform.wakeClears = 0;
   auto backend = Furble::IMU::createMPU6886Backend();
-  check(backend->arm(), "the backend arms");
+  g_Micros = 0;
+  backend->arm();
+  check(backend->usesInterrupt(), "the wake path is armed");
 
-  size_t reads = 0;
-  for (const auto &access : g_Bus.log) {
-    if (!access.write && (access.reg == 0x75)) {
-      reads++;
-    }
-  }
-  check(reads == 1, "a bus that answers first time is read exactly once");
+  MotionState state = MotionState::MOVING;
+  g_Micros = 61000000;
+  g_Bus.registers[0x3A] = 0x00;
+  platform.wakeAsserted = false;
+  check(backend->poll(state), "60 s of quiet with the pin idle reports stationary");
+  check(state == MotionState::STATIONARY, "the state is stationary");
+
+  // The status register has already been consumed by an IMU update elsewhere,
+  // so only the pin carries the event.
+  g_Micros = 62000000;
+  g_Bus.registers[0x3A] = 0x00;
+  platform.wakeAsserted = true;
+  check(backend->poll(state), "an asserted pin reports motion with a cleared status register");
+  check(state == MotionState::MOVING, "the state is moving");
+  check(platform.wakeClears > 0, "consuming the event clears the latched wake status");
+}
+
+// A first failed transaction is retried once. The bus fails the leading access
+// on purpose, which is what the shared internal bus does after the PMIC's idle
+// sleep, and the backend still has to arm.
+void testRetryOnceHasTeeth(void) {
+  std::cerr << "test: the first failed bus access after idle sleep is retried\n";
+
+  seedMPU6886();
+  g_Bus.failNext = 1;
+  check(Furble::IMU::createMPU6886Backend()->arm(),
+        "the MPU6886 engine arms through one failed leading transaction");
+
+  seedBMI270();
+  g_Bus.failNext = 1;
+  check(Furble::IMU::createBMI270Backend()->arm(),
+        "the BMI270 engine arms through one failed leading transaction");
+
+  // Two consecutive failures are a real fault and must not be papered over.
+  seedMPU6886();
+  g_Bus.failNext = 2;
+  check(!Furble::IMU::createMPU6886Backend()->arm(),
+        "two consecutive failures refuse to arm rather than retrying forever");
 }
 
 }  // namespace
@@ -443,7 +542,8 @@ int main(void) {
   testBMI270Refusals();
   testMPU6886Arm();
   testMPU6886Timing();
-  testRetryOnce();
+  testMPU6886UsesThePin();
+  testRetryOnceHasTeeth();
 
   std::cerr << g_Checks << " checks, " << g_Failures << " failures\n";
   return (g_Failures == 0) ? 0 : 1;

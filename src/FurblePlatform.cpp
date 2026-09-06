@@ -367,6 +367,38 @@ void Platform::setDisplayOff(bool off) {
 }
 #endif
 
+namespace {
+
+/**
+ * The ESP32 pin the IMU interrupt reaches on this board, or GPIO_NUM_NC.
+ *
+ * M5StickC and M5StickC Plus: the MPU6886 INT is on GPIO35, shared with the
+ * BM8563 RTC on the SYS_INT net. M5Unified configures that pin open-drain
+ * active low, so the net needs a pull-up. GPIO35 is input only on the ESP32 and
+ * has no internal pull of any kind, so it relies entirely on the board's
+ * external pull-up, and an RTC alarm on the same net looks like motion. Both
+ * facts are why the hardware gate reads the line rather than trusting it.
+ *
+ * M5StickS3: the BMI270 INT1 does not reach the SoC. It goes to M5PM1 GPIO4,
+ * and the PMIC drives PYG1_IRQ into GPIO13. That pin is a normal GPIO and does
+ * take an internal pull-up, which is configured below.
+ */
+gpio_num_t motionWakeGpio(void) {
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+    case m5::board_t::board_M5StickCPlus:
+      return GPIO_NUM_35;
+#if defined(FURBLE_M5STICKS3)
+    case m5::board_t::board_M5StickS3:
+      return GPIO_NUM_13;
+#endif
+    default:
+      return GPIO_NUM_NC;
+  }
+}
+
+}  // namespace
+
 bool Platform::armMotionWake(void) {
   if (m_MotionWakeArmed) {
     return true;
@@ -414,7 +446,11 @@ bool Platform::armMotionWake(void) {
   gpio_config_t config = {};
   config.pin_bit_mask = 1ULL << static_cast<uint32_t>(gpio);
   config.mode = GPIO_MODE_INPUT;
-  config.pull_up_en = GPIO_PULLUP_DISABLE;
+  // Both interrupt sources are open-drain active low, so the line needs a
+  // pull-up to return to idle. GPIO35 on the StickC family is input only with
+  // no internal pull and depends on the board's external pull-up on the SYS_INT
+  // net; every other pin here takes the internal one.
+  config.pull_up_en = (gpio == GPIO_NUM_35) ? GPIO_PULLUP_DISABLE : GPIO_PULLUP_ENABLE;
   config.pull_down_en = GPIO_PULLDOWN_DISABLE;
   config.intr_type = GPIO_INTR_DISABLE;
   if ((gpio_config(&config) == ESP_OK) && (gpio_wakeup_enable(gpio, GPIO_INTR_LOW_LEVEL) == ESP_OK)
@@ -462,6 +498,32 @@ void Platform::disarmMotionWake(void) {
   }
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
   m_MotionWakeArmed = false;
+}
+
+bool Platform::motionWakeAsserted(void) const {
+  if (!m_MotionWakeArmed) {
+    return false;
+  }
+  const gpio_num_t gpio = motionWakeGpio();
+  if (gpio == GPIO_NUM_NC) {
+    return false;
+  }
+  // Active low: asserted is a zero on the pin.
+  return gpio_get_level(gpio) == 0;
+}
+
+void Platform::clearMotionWake(void) {
+  if (!m_MotionWakeArmed) {
+    return;
+  }
+#if defined(FURBLE_M5STICKS3)
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    // m5pm1Access retries once, which is the documented behaviour of the first
+    // transaction after the PMIC's idle sleep, and a wake is exactly when that
+    // first transaction happens.
+    m5pm1Access([this]() { return m_M5PM1.irqClearGpioAll(); });
+  }
+#endif
 }
 
 void Platform::initBattery(void) {

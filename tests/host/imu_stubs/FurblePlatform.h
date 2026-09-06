@@ -11,9 +11,13 @@ class Platform {
 
   bool armMotionWake(void);
   void disarmMotionWake(void);
+  bool motionWakeAsserted(void) const;
+  void clearMotionWake(void);
 
   bool wakeArmed = false;
   bool wakeAvailable = true;
+  bool wakeAsserted = false;
+  int wakeClears = 0;
 };
 
 }  // namespace Furble

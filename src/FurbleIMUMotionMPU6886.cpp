@@ -1,6 +1,7 @@
 #include "FurbleIMU.h"
 
 #include <cstddef>
+#include <mutex>
 
 #include <esp_timer.h>
 
@@ -43,6 +44,24 @@ constexpr uint8_t WOM_THRESHOLD = 0x10;
 // INT_STATUS bits 7, 6 and 5 are WOM_X, WOM_Y and WOM_Z.
 constexpr uint8_t WOM_STATUS_MASK = 0xE0;
 
+// M5Unified's values for the registers this engine repurposes, from the init
+// table in MPU6886_Class.cpp. disarm() has to put them back or the spirit level
+// and the IMU live page keep running at the wake-on-motion sample rate and
+// filter after the engine is gone.
+constexpr uint8_t M5UNIFIED_ACCEL_CONFIG_2 = 0x00;
+constexpr uint8_t M5UNIFIED_SAMPLE_RATE_DIVIDER = 0x03;
+// M5Unified leaves INT_PIN_CFG at 0xC0: active low, open drain. Open drain is
+// why the wake pin needs a pull-up, and the StickC family has no internal one
+// on GPIO35.
+constexpr uint8_t M5UNIFIED_INT_PIN_CONFIG = 0xC0;
+// INT_PIN_CFG bit 5 latches the interrupt so the pin holds until the status is
+// read, instead of emitting a 50 us pulse. The pin is the only motion signal
+// this project owns: INT_STATUS at 0x3A is clear-on-read, and M5Unified reads
+// it on every IMU update (MPU6886_Class.cpp:253), so the spirit level, the IMU
+// live page and the console probe all consume WOM events if the register is
+// used as the source of truth.
+constexpr uint8_t INT_PIN_CONFIG_LATCH = 0x20;
+
 uint32_t nowMs(void) {
   return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
 }
@@ -71,6 +90,8 @@ class MPU6886Backend final: public MotionBackend {
       return false;
     }
 
+    std::lock_guard<std::mutex> lock(g_IMUMutex);
+
     uint8_t whoAmI = 0;
     if (!readRegisters(WHO_AM_I, &whoAmI, 1) || (whoAmI != EXPECTED_WHO_AM_I)) {
       return false;
@@ -92,7 +113,9 @@ class MPU6886Backend final: public MotionBackend {
     if (!readRegisters(INT_PIN_CONFIG, &interruptConfig, 1)) {
       return false;
     }
-    interruptConfig = static_cast<uint8_t>((interruptConfig | 0x80) & 0xDF);
+    // Active low, and latched so the line holds for a level-triggered wake
+    // source and for the pin read in poll().
+    interruptConfig = static_cast<uint8_t>(interruptConfig | 0x80 | INT_PIN_CONFIG_LATCH);
 
     if (!writeRegister(INT_PIN_CONFIG, interruptConfig) || !writeRegister(INT_ENABLE, 0xE0)
         || !writeRegister(WOM_X_THRESHOLD, WOM_THRESHOLD)
@@ -126,6 +149,8 @@ class MPU6886Backend final: public MotionBackend {
       return;
     }
 
+    std::lock_guard<std::mutex> lock(g_IMUMutex);
+
     if (m_UsesInterrupt) {
       Platform::getInstance().disarmMotionWake();
     }
@@ -138,6 +163,14 @@ class MPU6886Backend final: public MotionBackend {
       writeRegister(POWER_MANAGEMENT_1, static_cast<uint8_t>(powerManagement & 0xDF));
     }
     writeRegister(POWER_MANAGEMENT_2, 0);
+
+    // Put back everything this engine repurposed. Leaving ACCEL_CONFIG2 and
+    // SMPLRT_DIV at the wake-on-motion values would leave the spirit level
+    // reading a 16-sample average at 50 Hz for the rest of the session.
+    writeRegister(ACCEL_CONFIG_2, M5UNIFIED_ACCEL_CONFIG_2);
+    writeRegister(SAMPLE_RATE_DIVIDER, M5UNIFIED_SAMPLE_RATE_DIVIDER);
+    writeRegister(INT_PIN_CONFIG, M5UNIFIED_INT_PIN_CONFIG);
+
     m_UsesInterrupt = false;
     m_Armed = false;
   }
@@ -149,12 +182,30 @@ class MPU6886Backend final: public MotionBackend {
     }
     m_LastPoll = now;
 
+    std::lock_guard<std::mutex> lock(g_IMUMutex);
+
+    // The pin first. INT_STATUS is clear-on-read and M5Unified's IMU update
+    // reads it, so on a board where the interrupt reaches a GPIO the pin is the
+    // only signal that cannot be consumed by the spirit level or the IMU live
+    // page. Where there is no pin, the register is all there is, and an open
+    // sensor page can still steal an event: that is what the hardware gate's
+    // page-open comparison measures.
+    auto &platform = Platform::getInstance();
+    bool motion = m_UsesInterrupt && platform.motionWakeAsserted();
+
     uint8_t status = 0;
     if (!readRegisters(INT_STATUS, &status, 1)) {
       return false;
     }
+    motion = motion || ((status & WOM_STATUS_MASK) != 0);
 
-    if ((status & WOM_STATUS_MASK) != 0) {
+    // Reading INT_STATUS above released the latch, so the wake line is free to
+    // assert again and light sleep stays re-entrant.
+    if (motion && m_UsesInterrupt) {
+      platform.clearMotionWake();
+    }
+
+    if (motion) {
       m_LastMotion = now;
       m_InterruptCount++;
       if (m_State != MotionState::MOVING) {

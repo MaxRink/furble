@@ -1,6 +1,7 @@
 #include "FurbleIMU.h"
 
 #include <cstddef>
+#include <mutex>
 
 #include <esp_timer.h>
 
@@ -44,13 +45,26 @@ constexpr uint8_t INT1_IO_CONTROL_PUSH_PULL_ACTIVE_LOW = 0x08;
 constexpr uint8_t INTERRUPT_LATCH = 0x55;
 // bmi2_defs.h BMI2_INT1_MAP_FEAT_ADDR, datasheet 5.2.39.
 constexpr uint8_t INT1_MAP_FEATURE = 0x56;
+// bmi2_defs.h BMI2_INT_MAP_DATA_ADDR, datasheet 5.2.40. Bits 3:0 map the data
+// interrupts to INT1, bits 7:4 to INT2. M5Unified writes 0xFF here during
+// begin() (BMI270_Class.cpp:60), which maps data-ready to both pins. Enabling
+// the INT1 output without clearing that turns the wake line into a ~100 Hz
+// pulse train, so the wake source fires continuously and light sleep never
+// settles. BMI2_DRDY_INT is 0x04 (bmi2_defs.h:1366-1368).
+constexpr uint8_t INT_MAP_DATA = 0x58;
+constexpr uint8_t INT_MAP_DATA_INT1_MASK = 0x0F;
 // bmi270.h BMI270_INT_NO_MOT_MASK and BMI270_INT_ANY_MOT_MASK. The same bit
 // assignment is used by INT1_MAP_FEAT and INT_STATUS_0.
 constexpr uint8_t NO_MOTION_STATUS = 0x20;
 constexpr uint8_t ANY_MOTION_STATUS = 0x40;
 // bmi2_defs.h BMI2_PWR_CONF_ADDR and BMI2_ADV_POW_EN_MASK, datasheet 5.2.44.
 // The feature window is inaccessible while advanced power save is on, so every
-// feature access brackets it exactly as bmi2.c bmi2_set_regs does.
+// feature access brackets it the way bmi270.c does around its own feature
+// writes. On the M5StickS3 the bracket is inert: M5Unified writes PWR_CONF 0x00
+// during begin() (BMI270_Class.cpp:55) and never turns power save back on. It
+// is kept because nothing guarantees that stays true, and because a silently
+// dropped feature write is indistinguishable on the bench from a dead
+// interrupt.
 constexpr uint8_t PWR_CONF = 0x7C;
 constexpr uint8_t PWR_CONF_ADV_POWER_SAVE = 0x01;
 // bmi2_defs.h BMI2_PWR_CTRL_ADDR and BMI2_ACC_EN_MASK, datasheet 5.2.45.
@@ -169,6 +183,11 @@ class BMI270Backend final: public MotionBackend {
       return false;
     }
 
+    // The spirit level and the IMU live page share this bus, and everything
+    // below is read-modify-write. Held for the whole sequence, never across a
+    // delay.
+    std::lock_guard<std::mutex> lock(g_IMUMutex);
+
     uint8_t chipId = 0;
     if (!readRegisters(CHIP_ID, &chipId, 1) || (chipId != EXPECTED_CHIP_ID)) {
       return false;
@@ -194,12 +213,17 @@ class BMI270Backend final: public MotionBackend {
     m_Armed = true;
 
     uint8_t map = 0;
-    if (!readRegisters(INT1_MAP_FEATURE, &map, 1) || !beginFeatureAccess()) {
+    if (!readRegisters(INT1_MAP_FEATURE, &map, 1)
+        || !readRegisters(INT_MAP_DATA, &m_DataMapRestore, 1) || !beginFeatureAccess()) {
       return false;
     }
 
     const bool configured =
-        writeRegister(INT1_IO_CONTROL, INT1_IO_CONTROL_PUSH_PULL_ACTIVE_LOW)
+        // Take data-ready off INT1 before the output is enabled, or the wake
+        // line carries the accelerometer sample rate instead of motion events.
+        writeRegister(INT_MAP_DATA,
+                      static_cast<uint8_t>(m_DataMapRestore & ~INT_MAP_DATA_INT1_MASK))
+        && writeRegister(INT1_IO_CONTROL, INT1_IO_CONTROL_PUSH_PULL_ACTIVE_LOW)
         && writeRegister(INTERRUPT_LATCH, 0x00)
         && writeRegister(INT1_MAP_FEATURE,
                          static_cast<uint8_t>(map | ANY_MOTION_STATUS | NO_MOTION_STATUS))
@@ -233,9 +257,14 @@ class BMI270Backend final: public MotionBackend {
       return;
     }
 
+    std::lock_guard<std::mutex> lock(g_IMUMutex);
+
     if (m_UsesInterrupt) {
       Platform::getInstance().disarmMotionWake();
     }
+
+    // Hand data-ready back to M5Unified exactly as it was found.
+    writeRegister(INT_MAP_DATA, m_DataMapRestore);
 
     if (beginFeatureAccess()) {
       setFeatureEnabled(ANY_MOTION_PAGE, ANY_MOTION_OFFSET, false);
@@ -252,6 +281,8 @@ class BMI270Backend final: public MotionBackend {
       return false;
     }
     m_LastPoll = now;
+
+    std::lock_guard<std::mutex> lock(g_IMUMutex);
 
     uint8_t status = 0;
     if (!readRegisters(INTERRUPT_STATUS_0, &status, 1)) {
@@ -270,6 +301,13 @@ class BMI270Backend final: public MotionBackend {
 
     if (!swapEngines(toStationary)) {
       return false;
+    }
+
+    // The PMIC latches its GPIO IRQ status. Left set it holds PYG1_IRQ
+    // asserted, and a level-triggered wake source that never releases stops
+    // light sleep entirely.
+    if (m_UsesInterrupt) {
+      Platform::getInstance().clearMotionWake();
     }
 
     m_InterruptCount++;
@@ -326,6 +364,7 @@ class BMI270Backend final: public MotionBackend {
   MotionState m_State = MotionState::MOVING;
   uint32_t m_LastPoll = 0;
   uint32_t m_InterruptCount = 0;
+  uint8_t m_DataMapRestore = 0;
   bool m_UsesInterrupt = false;
   bool m_Armed = false;
   bool m_PowerSaveRestore = false;
