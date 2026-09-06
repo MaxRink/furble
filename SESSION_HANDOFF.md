@@ -934,3 +934,5 @@ Update 2026-09-06 17:00: #65 delta approved at 232d707a; it stays parked for the
 Update 2026-09-06 17:30: PR #286 merged at 96a05b38 (scheduler-visible mutex waits; follow-ups in issue #289). PR #287 approved, waiting on a coverage-job rerun (Camera.cpp floor flake) before merge. Rule for every open PR touching Camera locks: name Furble::connect_mutex_t or the wait is invisible to the scheduler. #245 rebasing onto 96a05b38.
 
 Update 2026-09-06 18:00: #139 delta review requested changes (the receiver-clock arm commits on a ticking time without a date; the TSAN leg does catch the servicePoll race 5/5 and stays a gate; five unlocked m_GPS reads remain); fix round running. #287 coverage rerun in progress; merge on green.
+
+Update 2026-09-06 18:30: #45 final head 7c2f5038 (schema rows 72/73 mutation-covered, wire ids pinned by protocol_test, TSAN suppression scoped to libdbus); only its hardware gate remains; parked for its turn.
