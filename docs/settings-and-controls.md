@@ -218,6 +218,8 @@ Submenu: `Settings` > `Sensors`.
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | IMU | Off | On, Off | Restart | Enables the spirit level and live IMU diagnostics. The setting is stored as wire ID 46. The supported sensor must be present; press Restart after changing it. |
+| Wake Gesture | Off | Off, Tap, Shake, Both | Immediately | Software IMU wake detector, on the `Gestures` page (wire ID 72). Active only when IMU is enabled. |
+| Double-Tap Shutter | Off | On, Off | Immediately | A debounced double tap fires one short shutter command on an active Connected or Remote page (wire ID 73). Also on the `Gestures` page. |
 
 When enabled, `Connected` contains the **Level** page and `Settings` >
 `Diagnostics` contains the live **IMU** page. The simulator injects deterministic

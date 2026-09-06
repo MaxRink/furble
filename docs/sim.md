@@ -257,7 +257,8 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
-`text_size`, `auto_off`, `low_batt`, and `fb_output`.
+`text_size`, `auto_off`, `low_batt`, `fb_output`, and `imu_wake` (0 off, 1 tap,
+2 shake, 3 both).
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -270,7 +271,7 @@ Battery seeds select the initial deterministic platform sample:
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `recon_backoff`,
 `sleep_conn`, and
-`boot_splash`, `gps_extrap`, `sd_gpx`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
+`boot_splash`, `gps_extrap`, `sd_gpx`, `imu`, and `imu_trigger`. `auto_off_charging` opts into auto-off while charging, and
 `imu_sensor` controls modeled IMU presence. The M5StickS3 model also accepts
 `watchdog`; other board models reject that seed because they cannot apply it.
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
@@ -408,10 +409,10 @@ action imu.pitch DEGREES
 `conn_saver`, `preset_picker`, and `recon_backoff`.
 
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
-`bulb`, `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
-`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
-`gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`, `bluetooth`,
-`tx_power`,
+`bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
+`gps_rate`, `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`,
+`gps_hold`, `gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`,
+`bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -720,6 +721,41 @@ Checked-in scenarios cover the setting gate, live diagnostics, portrait and
 rotated level layouts, redraw stability, and overflow on all three panel sizes:
 `e2e/imu-gating.txt`, `e2e/imu-diagnostics.txt`, `e2e/level-spirit.txt`,
 `e2e/level-overflow.txt`, and `e2e/redraw-steady.txt`.
+
+### IMU gestures
+
+The gesture detector is the same `Furble::GestureDetector` the firmware runs;
+the simulator feeds it through the shared `M5.Imu` seam with `imu.accel`, so a
+scenario measures the production state machine rather than a stand-in. Seed the
+two settings with `imu_wake` (0 off, 1 tap, 2 shake, 3 both) and `imu_trigger`
+(boolean). Both default off, which is master behaviour: no detector is
+constructed and no accelerometer is read.
+
+Query keys, all `FURBLE_SIM` only: `ui.gesture_timer` (`yes`/`no`, whether the
+50 Hz poll timer exists), `ui.gesture_period_ms`, `ui.gesture_events` (gestures
+accepted by the UI, which is not the same as shutter frames, so a swallowed or
+wake-only gesture is still observable), `ui.gesture_last` (`none`, `tap`,
+`double_tap`, `shake`) and `ui.display_state` (`on`/`dim`/`off`, the value
+production already feeds the power profiler).
+
+At 50 Hz a tap is one sample: hold the high value for 20 ms, then release to
+baseline. Two consecutive high samples is a shove and three is a shake, so an
+impulse longer than 40 ms is classified as a shake by design.
+
+Checked-in scenarios: `e2e/imu-gesture-detect.txt` (tap, refractory, shake,
+walking, table bump), `e2e/imu-gesture-doubletap.txt` (the 80 to 400 ms
+window's boundaries), `e2e/imu-gesture-wake-tap.txt`, `-wake-shake.txt` and
+`-wake-off.txt` (the wake masks, driven through the real display-off path with
+`inactivity` and `display_off` seeds), `e2e/imu-gesture-shutter.txt` and
+`-shutter-blocked.txt` (one gesture is one frame; disconnected, wrong page and
+a running intervalometer each block it), `e2e/imu-gesture-defaults.txt`
+(defaults change nothing, including the invalidation count),
+`e2e/imu-gesture-disabled.txt` and `e2e/imu-gesture-gating.txt` (the IMU gate
+and live sensor loss, run on all three panels).
+
+`sim/scenarios/gesture-idle-30s.txt` is the power baseline with the detector
+on. The 50 Hz timer costs real light-sleep residency in the model, so this
+scenario is what stops a future rate change from going unnoticed.
 
 ### Real-code host BLE faults
 

@@ -20,23 +20,27 @@ Public headers for the app layer in src/, one header per module
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
-- `FurbleSettings.h` assigns the IMU enable switch wire id 46. Wire id 45 is
-  reserved for the companion-password contract and must not be reused.
+- `FurbleSettings.h` assigns the IMU enable switch wire id 46.
 
 ### Companion wire id reservations
 
 The settings table in `src/FurbleSettings.cpp` is the source of truth for ids
-already on master, which run from 0 through 46. Ids above that are handed out
+already on master, which run from 0 through 46 plus 67 and 68. Ids above that are handed out
 here so open PRs cannot collide, because two branches claiming one id produce an
 add/add conflict in `tests/protocol/golden/settings/*-<id>.bin` and a silent
 protocol break for the companion app. A PR claims its reserved ids at rebase
 time, regenerates its golden corpus, and updates its row. See issue #280.
 
+A merged id is frozen and never moves afterwards, because a shipped id is a
+companion client contract: renumbering one and regenerating its fixtures
+yields a self-consistent corpus that silently breaks every deployed client.
+`tests/protocol/protocol_test.cpp` pins the ids it has been given so that
+renumbering fails the build rather than passing quietly.
+
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
 | #273 | `legend` | 65 |
 | #65 | `gps_motion` | 66 |
-| #47 | `gps_hold`, `gps_extrap` | 67, 68 |
 | #139 | plan 32 phase 2 | 69, 70, 71 |
 | #45 | `imu_wake`, `imu_trigger` | 72, 73 |
 | #48 | `hw_motion` | 74 |
@@ -56,6 +60,13 @@ the reservations only after checking every open PR head.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.
+- `FurbleUIGesture.h` is the accelerometer gesture state machine. `sample()` is
+  the deterministic seam host tests and the simulator drive; `poll()` is the
+  only method that touches hardware. Amplitude thresholds are scaled by a
+  per-sensor gain and a console-settable calibration scale, because a real
+  sensor in a real case never matches the paper numbers. Gesture settings
+  written from the console or the companion must go through
+  `UI::notifyGestureSettingsChanged()`; no other task may touch LVGL.
 - Under `FURBLE_SIM`, `FurbleUI.h` exposes the typed `simScenarioAction` API
   using `Sim::scenario_action_t` from `sim/scenario_action.h`. Calls return
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct
