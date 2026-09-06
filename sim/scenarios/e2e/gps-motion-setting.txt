@@ -35,6 +35,12 @@ wait 200
 assert ui.page gps
 assert ui.gps_motion_row enabled
 
+# Pin the receiver before the first toggle. Without this the post-toggle
+# assertions are absolutes that could have been true anyway; with it they are a
+# delta from a known state.
+assert gps.state tracking
+assert uart.count 0
+
 # Flip the real switch. Before anything else, prove the receiver did not move:
 # still tracking, no bytes written, not degraded.
 action toggle gps_motion

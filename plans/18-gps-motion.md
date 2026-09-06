@@ -449,14 +449,67 @@ M5StickS3 with its BMI270 and the GPS/BDS Unit v1.1:
 The battery comparison runs from the plan above are phase 2 work. Phase 1 saves
 nothing by design, so there is nothing to measure yet.
 
-## Sequencing
+## Sequencing and the PR48 integration contract
 
-PR #48 lands before this one. After that, this branch rebases onto #48 and the
+PR #48 lands before this one. After that, this branch rebases onto it and the
 detector consumes `IMU::MotionSource` instead of polling `M5.Imu` itself, so
 the device ends up with one IMU poller and one detector rather than two timers
-reading the same sensor. Until #48 is ready this branch stays on master, and
-the `imuSensor*` helpers in `src/FurbleGPS.cpp` are the seam that gets replaced
-by that consumption.
+reading the same sensor. Until #48 is ready this branch stays on master. The
+`imuSensor*` helpers at `src/FurbleGPS.cpp:91-113` and their three call sites
+are the seam that gets replaced.
+
+Four decisions were settled in review before the rebase, so the shape of the
+merge is not renegotiated while doing it.
+
+**1. This PR reads `MotionSource::state()` and nothing else.** It does not call
+`arm()` or `disarm()`. Ownership of the source's lifecycle stays with #48. That
+is what keeps `GPS::reloadMotionSetting()` to atomics and NVS reads, which is
+in turn what lets the console and companion call it directly instead of going
+through the UI request queue. If a later change makes this PR arm the source,
+that justification expires and the direct calls have to be revisited.
+
+**2. The source is armed once and never rearmed, so the IMU setting needs a
+restart.** #48 arms in `UI::task` gated on `imuEnabledForUI()`. Turning the IMU
+on without restarting therefore leaves an unarmed source that reports MOVING
+forever, and the detector would never report stationary. This is consistent
+with what the Sensors page already tells the user ("Restart to apply") and with
+step 2 of the hardware gate below, which restarts. It is a real constraint
+rather than a theoretical one, so it is written down here. Ask for an `armed`
+query on the source so the hardware gate and a scenario can assert the source
+is live rather than inferring it from a state that looks the same when it is
+not.
+
+**3. The 5 s self-calibrating window does not survive the move, and this PR
+accepts that.** The detector currently compares each sample against the running
+mean of the last 5 s, so a sensor with a steady bias is still measured against
+itself. #48's backend is memoryless and absolute: it thresholds 0.20 g away
+from 1.0 g, so a steady 1.25 g reading is MOVING forever no matter how still
+the device is.
+
+Keeping the running mean would mean reading raw magnitudes, which contradicts
+decision 1 and puts two consumers back on the sensor. So the ceiling changes
+instead, and the change is in the safe direction: a biased sensor produces a
+permanent MOVING, never a false stationary. The cost is no power saving on that
+device, not a stale fix on a moving one, and phase 1 saves nothing anyway. Entry
+time drops from 65 s to 60 s, because the 5 s window fill disappears and only
+the dwell remains.
+
+What this PR keeps after the rebase is the dwell and the hysteresis, which is
+its actual contribution: 60 s continuous stationary to enter, immediate exit.
+`include/FurbleMotion.h` and `tests/host/motion_detector_test.cpp` therefore
+stay, reduced to a dwell over a boolean input; the variance window, the
+`magnitude()` helper and their cases go. Dropping the file entirely would
+delete the only host coverage of the hysteresis.
+
+The bias ceiling should be closed on #48's side, not worked around here. Either
+a bias-compensated threshold or a raw-magnitude accessor would do it. A real
+accelerometer has an offset; an absolute threshold against a hardcoded 1.0 g
+has no knob for it, and that is worth raising with #48 rather than absorbing
+downstream.
+
+**4.** `e2e/gps-motion-setting.txt` pins `gps.state` and `uart.count` before the
+first toggle as well as after it, so the receiver assertions are a delta rather
+than an absolute.
 
 ## References
 
