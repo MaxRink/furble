@@ -9,10 +9,10 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 06:00)
+## Resume here (kept current; last updated 2026-09-07 06:30)
 
-Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
-#270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
+Master `fork/master` = **53fa8965** (merged this cycle in order: #261, #264,
+#270, #274, #276, #266, #278, #286, #287, #47). Upstream gkoh/furble is read-only.
 
 Open PRs, head, state, next action:
 
@@ -21,9 +21,9 @@ Open PRs, head, state, next action:
 | #245 stale-bond recovery (plan 151) | 1c949256 | approved; coverage red | firmware for 1c949256 staged at vm-out/245-1c949256 (sha 7e8a5873); lane adds a deliberate conn-saver idle test (test-only, no rebuild expected) and pushes; then reflash, bench steps 3 to 10 (camera in pairing mode for 3 to 6), merge |
 | #272 cancellable in-flight connect (plan 170) | a376c4e7 | approved, parked | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
 | #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
-| #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | delta-reviewed, parked | fifteen-step hardware gate, then merge |
+| #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | MERGED 53fa8965 | fifteen-step GPS hardware gate owed post-merge (plan 21) |
 | #139 GPS phase 2 (plan 32) | 9acc9f48 | fix round running | an empty RMC date term still raises the parser's updated flag, so the count must require a valid changed date (emptyrmc fixture) and the IMPLAUSIBLE retry needs a bound; then delta review, hardware gate (receiver rejection of expired ephemeris measured first) |
-| #45 IMU gestures (plan 17) | 7c2f5038 | approved, parked | eight-step hardware gate (trace capture first), merge after #139 |
+| #45 IMU gestures (plan 17) | 7c2f5038 | rebasing onto 53fa8965 | push, CI, merge (eight-step IMU gate owed post-merge) |
 | #48 IMU hardware motion (plan 20) | 4b453968 | fix round running | the edge counter set an edge interrupt on the level wake pin (disables light-sleep wake) and GPIO13 cannot see the INT1 train; count via the M5PM1 GPIO4 status, host shim test of armMotionWake; then delta review, merge (gate deferred), before #65 |
 | #65 GPS motion detector (plan 18) | c1410d0b | rebasing onto #48 4b453968 | consume IMU::MotionSource (state() only, isArmed asserted), bundle, delta review, six-step gate |
 | #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
