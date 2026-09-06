@@ -77,6 +77,10 @@ action nav sensors
 wait 100
 assert ui.page sensors
 assert ui.overflow no
+action nav motion_engine
+wait 100
+assert ui.page motion_engine
+assert ui.overflow no
 action nav infrared
 wait 100
 assert ui.page infrared

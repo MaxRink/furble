@@ -212,6 +212,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::HW_MOTION:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -355,6 +356,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::HW_MOTION:
       if (!parseUnsigned(text, UINT8_MAX, value)) {
         return false;
       }

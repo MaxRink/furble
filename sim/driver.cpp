@@ -284,7 +284,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   constexpr const char *byteSeeds[] = {
       "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",    "fb_output",
+      "text_size",  "auto_off",   "low_batt",    "fb_output", "hw_motion",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -372,6 +372,12 @@ void validateSeed(const std::string &name, const std::string &value) {
     if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
         && value != "partial" && value != "write-error" && value != "pause") {
       std::cerr << "Invalid gps_uart_mode: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "imu_chip") {
+    if (value != "bmi270" && value != "mpu6886" && value != "none") {
+      std::cerr << "Invalid imu_chip: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -843,6 +849,7 @@ std::string settingBoolValue(const std::string &name) {
 std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
+      {"hw_motion", Settings::HW_MOTION},
   };
   const auto found = bytes.find(name);
   if (found == bytes.end()) {
@@ -1287,6 +1294,7 @@ void applyScenarioSettings(void) {
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);
+  saveByte("hw_motion", Settings::HW_MOTION);
   const auto scanTimeout = scenarioSettings.find("scan_timeout");
   if (scanTimeout != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));
@@ -1353,6 +1361,16 @@ void applyScenarioSettings(void) {
     imu_sensor = parseBool(imu_sensor_setting->second);
   }
   imuSetEnabled(imu_sensor);
+  // Which motion engine the modelled board carries. Default none, so a scenario
+  // that does not ask for a chip exercises the software fallback.
+  imu_chip_t chip = imu_chip_t::NONE;
+  const auto chip_setting = scenarioSettings.find("imu_chip");
+  if (chip_setting != scenarioSettings.end()) {
+    chip = (chip_setting->second == "bmi270")    ? imu_chip_t::BMI270
+           : (chip_setting->second == "mpu6886") ? imu_chip_t::MPU6886
+                                                 : imu_chip_t::NONE;
+  }
+  imuSetChip(chip);
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;

@@ -216,6 +216,7 @@ Submenu: `Settings` > `Sensors`.
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | IMU | Off | On, Off | Restart | Enables the spirit level and live IMU diagnostics. Stored as wire ID 46. Press Restart after changing it. |
+| Motion Engine | Auto | Auto, Software, Hardware | Restart | Chooses how motion is detected while the IMU is on. Auto prefers the hardware engine the board's IMU offers and falls back to the software detector. Stored as wire ID 74. |
 
 When enabled, `Connected` contains **Level** and `Settings` > `Diagnostics`
 contains the live **IMU** page.

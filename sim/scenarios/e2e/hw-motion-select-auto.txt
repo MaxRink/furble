@@ -1,0 +1,15 @@
+# Auto is the default and prefers the hardware engine when one is present.
+#
+# Nothing is seeded for hw_motion, so this also pins the shipped default. An
+# MPU6886 board must reach the wake-on-motion engine without the user choosing
+# anything.
+#
+# Teeth: change the HW_MOTION default in Settings::init() to HW_MOTION_SOFTWARE.
+# Both asserts fail, the setting one first.
+seed fauxny true
+seed imu true
+seed imu_chip mpu6886
+wait 300
+assert setting.hw_motion 0
+assert ui.motion_backend mpu6886-wom
+exit

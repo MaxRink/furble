@@ -101,9 +101,10 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",     "version",   "status", "imu",      "power",   "perf",       "gps",     "time",
-    "settings", "provision", "ui",     "cameras",  "connect", "disconnect", "shutter", "ir",
-    "focus",    "scan",      "bt",     "feedback", "log",     "debug",      "flash",   "reboot",
+    "help",       "version", "status",   "imu",       "motion", "power",   "perf",
+    "gps",        "time",    "settings", "provision", "ui",     "cameras", "connect",
+    "disconnect", "shutter", "ir",       "focus",     "scan",   "bt",      "feedback",
+    "log",        "debug",   "flash",    "reboot",
 };
 
 }  // namespace
@@ -386,6 +387,66 @@ void testSettings(void) {
   const Result noValue = runDirect("settings set brightness");
   check(noValue.rc != 0, "settings set with no value fails");
   checkContains(noValue.out, "missing value", "settings set names the missing value");
+
+  // The motion engine is an enum with three values, so both ends of the range
+  // matter: the console must take 0 through 2 and refuse anything above.
+  checkContains(list.out, "hw_motion: ", "settings list prints hw_motion");
+  const Result motionGet = runDirect("settings get hw_motion");
+  check(motionGet.rc == 0, "settings get hw_motion returns success");
+  checkContains(motionGet.out, "key: hw_motion", "settings get names the motion engine key");
+  checkContains(motionGet.out, "name: Motion Engine", "settings get names the motion engine");
+  checkContains(motionGet.out, "type: uint8", "settings get reports the motion engine type");
+  checkContains(motionGet.out, "applies: on reboot",
+                "the motion engine is chosen when the source arms, so it needs a restart");
+  checkContains(motionGet.out, "value: 0", "the motion engine defaults to Auto");
+
+  const Result motionSet = runDirect("settings set hw_motion 2");
+  check(motionSet.rc == 0, "settings set hw_motion returns success");
+  checkContains(motionSet.out, "saved: hw_motion", "settings set confirms the motion engine save");
+  checkContains(runDirect("settings get hw_motion").out, "value: 2",
+                "the saved motion engine reads back");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == 2,
+        "the motion engine value reached the real Settings store");
+
+  const Result motionBad = runDirect("settings set hw_motion 3");
+  check(motionBad.rc != 0, "settings set rejects a motion engine value above Hardware");
+  checkContains(motionBad.out, "expected 0-2", "the motion engine error names the range");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == 2,
+        "a rejected motion engine write leaves the stored value alone");
+
+  // The motion source: the hardware gate's readout, and the calibration knob
+  // for a board whose accelerometer noise floor disagrees with the shipped
+  // threshold. PR65's motion-adaptive GPS consumes the same source, so the
+  // knob has to be stable and clamped.
+  const Result motionStatus = runDirect("motion status");
+  check(motionStatus.rc == 0, "motion status returns success");
+  checkContains(motionStatus.out, "backend: none", "an unarmed source reports no backend");
+  checkContains(motionStatus.out, "armed: no", "an unarmed source says so");
+  checkContains(motionStatus.out, "state: inactive", "an unarmed source has no motion state");
+  checkContains(motionStatus.out, "wake: polling", "an unarmed source claims no wake source");
+  checkContains(motionStatus.out, "scale: 1.00", "the scale defaults to one");
+  checkContains(motionStatus.out, "threshold: 0.200", "the shipped threshold is 0.20 g");
+
+  const Result scaleSet = runDirect("motion scale 2.0");
+  check(scaleSet.rc == 0, "motion scale accepts a value in range");
+  checkContains(scaleSet.out, "scale: 2.00", "the new scale reads back");
+  checkContains(runDirect("motion status").out, "threshold: 0.400",
+                "the scale multiplies the software threshold");
+
+  for (const char *bad : {"motion scale 0", "motion scale 5", "motion scale -1", "motion scale abc",
+                          "motion scale 1.0.0"}) {
+    const Result rejected = runDirect(bad);
+    check(rejected.rc != 0, std::string("motion scale rejects: ") + bad);
+  }
+  checkContains(runDirect("motion status").out, "scale: 2.00",
+                "a rejected scale leaves the previous value alone");
+
+  check(runDirect("motion bogus").rc != 0, "motion rejects an unknown subcommand");
+  checkContains(runDirect("motion bogus").out, "usage: motion status | scale",
+                "the motion error names the usage");
+
+  // Leave the calibration where the rest of the suite expects it.
+  runDirect("motion scale 1.0");
 
   const Result badRange = runDirect("settings set brightness 999");
   check(badRange.rc != 0, "an out of range value fails");

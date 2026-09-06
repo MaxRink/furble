@@ -95,6 +95,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
     case Settings::TX_POWER:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:
@@ -207,6 +208,8 @@ std::vector<SettingCase> settingCases() {
       {Settings::TX_ADAPTIVE,       "TX_ADAPTIVE",       false,                                                true,                        StorageKind::BOOL  },
       {Settings::GPS,               "GPS",               false,                                                true,                        StorageKind::BOOL  },
       {Settings::IMU,               "IMU",               false,                                                true,                        StorageKind::BOOL  },
+      {Settings::HW_MOTION,         "HW_MOTION",         uint8_t {Settings::HW_MOTION_AUTO},
+       uint8_t {Settings::HW_MOTION_HARDWARE},                                                                                              StorageKind::U8    },
       {Settings::GPS_BAUD,          "GPS_BAUD",          uint32_t {Settings::BAUD_9600},
        uint32_t {Settings::BAUD_115200},                                                                                                    StorageKind::U32   },
       {Settings::GPS_RATE,          "GPS_RATE",          uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
@@ -272,6 +275,7 @@ ASSERT_STORAGE_TYPE(INACTIVITY, uint8_t);
 ASSERT_STORAGE_TYPE(DISPLAY_OFF, uint8_t);
 ASSERT_STORAGE_TYPE(THEME, std::string);
 ASSERT_STORAGE_TYPE(TEXT_SIZE, uint8_t);
+ASSERT_STORAGE_TYPE(HW_MOTION, uint8_t);
 ASSERT_STORAGE_TYPE(TX_POWER, uint8_t);
 ASSERT_STORAGE_TYPE(TX_ADAPTIVE, bool);
 ASSERT_STORAGE_TYPE(GPS, bool);
@@ -329,6 +333,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
     case Settings::TX_POWER:
     case Settings::GPS_RATE:
     case Settings::GPS_CONSTEL:

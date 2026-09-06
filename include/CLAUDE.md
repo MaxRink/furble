@@ -20,8 +20,11 @@ Public headers for the app layer in src/, one header per module
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
-- `FurbleSettings.h` assigns the IMU enable switch wire id 46. Wire id 45 is
-  reserved for the companion-password contract and must not be reused.
+- `FurbleSettings.h` assigns the IMU enable switch wire id 46 and the motion
+  engine selector wire id 74. Wire id 45 is reserved for the companion-password
+  contract and wire id 47 for the companion-password branches; neither may be
+  reused. A PR claims the next free id at rebase time and regenerates its golden
+  corpus. See issue #280 for the full reservation table.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.
@@ -32,6 +35,19 @@ Public headers for the app layer in src/, one header per module
   sitting in a navbar, and it must track the indicator construction in
   `UI::UI()`. It returns zero elsewhere, and callers must not write that zero
   over a theme padding.
+- `FurbleIMU.h` is the shared motion API. `IMU::MotionSource` is a singleton
+  with one interface and three backends: software, BMI270 any-motion and
+  no-motion, MPU6886 wake on motion. Every consumer uses `arm()`, `poll()`,
+  `setCallback()` and `state()`, and gets `MOVING` or `STATIONARY` on the same
+  contract from all three: a slope threshold plus a 60 s quiet window. Keep that
+  surface small. PR65's motion-adaptive GPS consumes this source rather than
+  running a second detector, so there is exactly one IMU poller and one
+  definition of stationary. `setScale()` is the runtime calibration knob for the
+  software backend's 0.20 g threshold, clamped to 0.25 to 4.0; the hardware
+  engines threshold in the chip and ignore it. The source is polled from the UI
+  housekeeping timer, never from its own, so the simulator power model sees it.
+  A motion setting change must never route through `GPS::reloadSetting()` or
+  `GPS::enable()`: those reset the receiver.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.

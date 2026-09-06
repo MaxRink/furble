@@ -28,6 +28,7 @@ class Settings {
     TX_ADAPTIVE,
     GPS,
     IMU,
+    HW_MOTION,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -78,6 +79,12 @@ class Settings {
 
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
+
+  typedef enum {
+    HW_MOTION_AUTO = 0,
+    HW_MOTION_SOFTWARE = 1,
+    HW_MOTION_HARDWARE = 2,
+  } hw_motion_t;
 
   static void init(void) {}
 
@@ -139,6 +146,11 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::IMU> {
   using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::HW_MOTION> {
+  using type = uint8_t;
 };
 
 #endif

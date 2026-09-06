@@ -53,6 +53,13 @@ assert ui.page sensors
 assert ui.overflow no
 assert ui.indicator_clearance clear
 
+# Motion Engine roller page.
+action nav motion_engine
+wait 150
+assert ui.page motion_engine
+assert ui.overflow no
+assert ui.indicator_clearance clear
+
 # Timer settings list.
 action page settings
 action nav timer

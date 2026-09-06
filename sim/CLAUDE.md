@@ -35,6 +35,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
+| IMU motion engines | Production `IMU::MotionSource`, backend selection, the software fallback and every consumer | The BMI270 and MPU6886 engines are register programming against a bus the host does not have. `sim/FurbleIMUSim.cpp` supplies a virtual backend per chip that models the engine's event semantics only, driven by the same `Sim::imuGetAccel` surface the software backend reads. `seed imu_chip` decides which chip the modelled board carries. The register encoding is covered by `tests/host/imu_motion_encoding_test.cpp`, not here. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
 | Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
 
@@ -558,6 +559,16 @@ a regression.
   than only the page contents.
   `imu_accel_updates` and `imu_gyro_updates` count actual label redraws; validity
   is tracked independently so one failed sensor does not redraw the other.
+- Motion detection has three backends and the host build can only run one of
+  them for real. `seed imu_chip bmi270|mpu6886|none` picks the engine the
+  modelled board carries, and `seed hw_motion 0|1|2` is the user's Auto,
+  Software or Hardware choice. `motion_backend`, `motion_state`,
+  `motion_wake` and `motion_interrupts` report what actually armed, read from `IMU::MotionSource`
+  rather than from the diagnostics labels, so a scenario asserts the selection
+  even when the IMU live page was never opened. `display` reports panel sleep
+  state, which is what makes motion wake observable. Drive motion with the
+  existing `imu.accel` action and virtual time: there is no motion-specific
+  action, because an engine that needs one would not be modelling the sensor.
   Script actions are queued onto the UI task before touching LVGL; the
   `sim_action_on_ui` query is a thread-ownership regression guard.
   `level_root_width/height` expose the pixel-sized top-level window after panel

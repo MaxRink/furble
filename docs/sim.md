@@ -257,7 +257,7 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
-`auto_off`, `low_batt`, and `fb_output`.
+`auto_off`, `low_batt`, `fb_output`, and `hw_motion`.
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -338,6 +338,11 @@ false` opts a scenario out of the continuous liveness invariant enforcement
 `gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`,
 `write-error`, or `pause` before the GPS task starts.
 
+`imu_chip` selects `bmi270`, `mpu6886`, or `none` as the internal IMU the
+modelled board carries. The motion engines are chip specific, so this is what
+decides whether a hardware engine or the software fallback arms. The default is
+`none`.
+
 ### `action` commands
 
 The fixed action commands are:
@@ -402,7 +407,7 @@ action imu.pitch DEGREES
 `conn_saver`, `preset_picker`, and `recon_backoff`.
 
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
-`bulb`, `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
+`bulb`, `settings`, `display`, `features`, `sensors`, `motion_engine`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
 `gps_data`, `nmea`, `timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
@@ -413,7 +418,7 @@ action imu.pitch DEGREES
 `page PAGE` accepts `main`, `menu`, `connect`, `scan`, `delete`, `power_off`,
 `connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
-`settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
+`settings`, `display`, `features`, `sensors`, `motion_engine`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
 `gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
@@ -498,6 +503,11 @@ The complete `ui.*` query set is:
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
+| `ui.display` | Panel sleep state, `on` or `off`. |
+| `ui.motion_backend` | Armed motion backend name: `none`, `software`, `bmi270-motion` or `mpu6886-wom`. |
+| `ui.motion_state` | Motion source state: `inactive`, `moving` or `stationary`. |
+| `ui.motion_wake` | `yes` when the armed backend holds a light-sleep wake source, `no` when it polls. |
+| `ui.motion_interrupts` | Motion state transitions the armed backend has reported. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
 | `ui.text_size_options` | Numeric roller option count, or `unknown`. |
 | `ui.interval_state` | `idle`, `wait`, `shutter`, `delay`, `finished`, or `unknown`. |
@@ -580,6 +590,8 @@ The other namespaces are:
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
+- `setting.hw_motion`: the persisted motion engine choice, 0 auto, 1 software,
+  2 hardware.
 `ui.nav_layout` reports which navigation layout the running build rendered:
 `touch` for the touch grid, `buttons` for the physical-button layout. A scenario
 that means to measure a board's shipped layout asserts this first, so a lost
