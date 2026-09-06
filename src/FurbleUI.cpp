@@ -276,6 +276,7 @@ std::atomic<uint8_t> UI::m_IntervalometerState {0};
 std::atomic<uint16_t> UI::m_IntervalometerRemaining {0};
 bool UI::m_IntervalCountdownActive;
 uint8_t UI::m_IntervalLastAnnouncedSecond;
+std::atomic<uint32_t> UI::m_GestureSettingsGeneration {0};
 
 lv_timer_t *UI::m_BulbTimer;
 lv_timer_t *UI::m_BulbPageRefresh;
@@ -295,6 +296,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_GesturesStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -715,9 +717,15 @@ UI::UI(const interval_t &interval)
   addMainMenu();
 
   setPresetPicker(Settings::load<Settings::PRESET_PICKER>());
+  showIMUGestureWidgets(imuEnabledForUI());
+  updateGestureTimer();
 
   m_GPS.startService();
   setDisplayMode(Settings::load<uint8_t>(Settings::DISPLAY_MODE));
+}
+
+void UI::notifyGestureSettingsChanged(void) {
+  m_GestureSettingsGeneration.fetch_add(1, std::memory_order_release);
 }
 
 void UI::startCompanionPairingTimer(void) {
@@ -1683,6 +1691,10 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
 #endif
   bool enable = Settings::load<bool>(setting);
   lv_obj_add_state(sw, enable ? LV_STATE_CHECKED : LV_STATE_DEFAULT);
+  if (setting == Settings::IMU_TRIG) {
+    m_IMUGestureWidgets.push_back(obj);
+    m_IMUGestureWidgets.push_back(sw);
+  }
   lv_obj_add_event_cb(
       sw,
       [](lv_event_t *e) {
@@ -1750,12 +1762,25 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
         LV_EVENT_VALUE_CHANGED, NULL);
   }
 
-  if (setting == Settings::AUTO_OFF_CHARGING) {
+  if (setting == Settings::IMU) {
     lv_obj_add_event_cb(
         sw,
         [](lv_event_t *e) {
           auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-          ui->reloadPowerPolicies();
+          notifyGestureSettingsChanged();
+          ui->showIMUGestureWidgets(imuEnabledForUI());
+          ui->updateGestureTimer();
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+  }
+
+  if (setting == Settings::IMU_TRIG) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          notifyGestureSettingsChanged();
+          ui->updateGestureTimer();
         },
         LV_EVENT_VALUE_CHANGED, this);
   }
@@ -2858,6 +2883,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
         {"battery",           m_BatteryStr         },
         {"storage",           m_StorageStr         },
         {"imu",               m_IMUDataStr         },
+        {"gestures",          m_GesturesStr        },
         {"level",             m_LevelStr           },
     };
     const auto found = buttons.find(name);
@@ -3651,6 +3677,7 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalometerRunStr, "timer_run"},
          {m_FeaturesStr, "features"},
          {m_SensorsStr, "sensors"},
+         {m_GesturesStr, "gestures"},
          {m_DisplayStr, "display"},
          {m_TextSizeStr, "text_size"},
          {m_GPSStr, "gps"},
@@ -4424,6 +4451,51 @@ std::string UI::simQueryState(const char *key) {
     return lv_obj_has_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
   }
 
+  if (query == "gesture_timer") {
+    return m_GestureTimer != nullptr ? "yes" : "no";
+  }
+
+  if (query == "gesture_period_ms") {
+    return m_GestureTimer == nullptr ? "0" : std::to_string(GESTURE_POLL_MS);
+  }
+
+  // Gestures accepted by handleGesture(), which is distinct from shutter
+  // frames: a wake-only or swallowed gesture is counted here and nowhere else.
+  if (query == "gesture_events") {
+    return std::to_string(m_GestureEvents);
+  }
+
+  // Shutter commands the gesture path queued. Distinct from the camera's own
+  // counters, which cannot observe a command blocked before it is sent.
+  if (query == "gesture_shutter_sends") {
+    return std::to_string(m_GestureShutterSends);
+  }
+
+  if (query == "gesture_last") {
+    return m_GestureLast;
+  }
+
+  // The value production already feeds profilerSetDisplayState(). Reporting it
+  // keeps the wake scenarios on the real display state machine.
+  if (query == "display_state") {
+    if (m_DisplayOff) {
+      return "off";
+    }
+    return m_DisplayState == DisplayState::DIM ? "dim" : "on";
+  }
+
+  if (query == "imu_gesture_controls_enabled") {
+    if (m_IMUGestureWidgets.empty()) {
+      return "no";
+    }
+    for (const auto *widget : m_IMUGestureWidgets) {
+      if (lv_obj_has_state(widget, LV_STATE_DISABLED)) {
+        return "no";
+      }
+    }
+    return "yes";
+  }
+
   // Number of LVGL invalidation events since the last invalidate.reset action.
   // A scenario resets it, holds a page steady over a wait and asserts the count
   // stays low, so an unguarded per-tick setter that redraws every frame (the
@@ -4890,6 +4962,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       lv_label_set_text(interval->m_StateLabel, "IDLE");
       lv_timer_ready(timer);
       interval->m_State = Intervalometer::STATE_WAIT;
+      m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
       break;
 
     case Intervalometer::STATE_WAIT:
@@ -6159,6 +6232,16 @@ void UI::showIMUWidgets(bool show) {
   }
 }
 
+void UI::showIMUGestureWidgets(bool show) {
+  for (auto *widget : m_IMUGestureWidgets) {
+    if (show) {
+      lv_obj_remove_state(widget, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(widget, LV_STATE_DISABLED);
+    }
+  }
+}
+
 void UI::addGPSMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_GPSStr, &icon_location_searching, true, parent);
 
@@ -6328,17 +6411,50 @@ void UI::addSensorsMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
 
   addSettingItem(menu.page, NULL, Settings::IMU);
+  addGesturesMenu(menu);
 
-  lv_obj_t *notice = lv_menu_cont_create(menu.page);
-  lv_obj_t *noticeLabel = lv_label_create(notice);
-  lv_label_set_text(noticeLabel, "Restart to apply");
-
+  // The caption and the button said the same thing in two rows. One row does
+  // it, and the row this buys is what makes the page fit the 80x160 non-touch
+  // layout, where master already overflowed by 10 px before this page grew.
   lv_obj_t *restart = lv_button_create(menu.page);
   lv_obj_t *label = lv_label_create(restart);
-  lv_label_set_text(label, "Restart");
+  lv_label_set_text(label, "Restart to apply");
   lv_obj_center(label);
   lv_obj_add_event_cb(
       restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
+
+  showIMUGestureWidgets(imuEnabledForUI());
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
+void UI::addGesturesMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_GesturesStr, NULL, true, parent);
+  m_IMUGestureWidgets.push_back(menu.button);
+
+  lv_obj_t *roller = addRollerItem(menu.page, m_WakeGestureStr, m_WakeGestureOptions);
+  m_IMUGestureWidgets.push_back(roller);
+  uint8_t wake = Settings::load<Settings::IMU_WAKE>();
+  if (wake > 3) {
+    wake = 0;
+  }
+  lv_roller_set_selected(roller, wake, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        Settings::save<Settings::IMU_WAKE>(static_cast<uint8_t>(lv_roller_get_selected(target)));
+        notifyGestureSettingsChanged();
+        ui->updateGestureTimer();
+      },
+      LV_EVENT_VALUE_CHANGED, this);
+
+  addSettingItem(menu.page, NULL, Settings::IMU_TRIG);
+
+  lv_obj_t *warning = lv_label_create(menu.page);
+  lv_obj_set_width(warning, LV_PCT(100));
+  lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(warning, "A knock can trigger a frame.");
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
@@ -6967,6 +7083,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         interval->m_State = Intervalometer::STATE_IDLE;
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
+        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_WAIT));
         lv_timer_resume(timer);
 
         lv_timer_resume(m_IntervalPageRefresh);
@@ -7001,6 +7118,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         lv_timer_pause(m_IntervalPageRefresh);
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
+        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
 
         // reset the run state so a subsequent start begins a fresh run, and
         // mirror it to the atomic the console status query reads
@@ -8242,9 +8360,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
  * Add a labelled roller row to a menu page.
  *
  * The row is sized to its content so the page keeps flowing, a full height row
- * pushes later rows off screen and stops the page scrolling. The roller is
- * flagged to scroll itself into view, which is the only way the page scrolls
- * under encoder navigation.
+ * pushes later rows off screen and stops the page scrolling.
  */
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options) {
   lv_obj_t *cont = lv_menu_cont_create(page);
@@ -8741,6 +8857,181 @@ void UI::updateItems(const menu_t &menu) {
   addCameraItem(CameraList::size() - 1, menu, MODE_SCAN);
 }
 
+void UI::updateGestureTimer(void) {
+  m_GestureSettingsSeen = m_GestureSettingsGeneration.load(std::memory_order_acquire);
+  m_WakeGesture = Settings::load<Settings::IMU_WAKE>();
+  if (m_WakeGesture > 3) {
+    m_WakeGesture = 0;
+  }
+  m_DoubleTapShutter = Settings::load<Settings::IMU_TRIG>();
+
+  const bool imuEnabled = imuEnabledForUI();
+  const bool gesturesEnabled = imuEnabled && ((m_WakeGesture != 0) || m_DoubleTapShutter);
+  showIMUGestureWidgets(imuEnabled);
+
+  if (!gesturesEnabled) {
+    if (m_GestureTimer != nullptr) {
+      lv_timer_del(m_GestureTimer);
+      m_GestureTimer = nullptr;
+    }
+    m_GestureDetector.reset();
+    return;
+  }
+
+  m_GestureDetector.reset();
+  if (m_GestureTimer == nullptr) {
+    m_GestureTimer = lv_timer_create(gestureUpdate, GESTURE_POLL_MS, this);
+  }
+}
+
+void UI::gestureUpdate(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("gesture_timer");
+  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+  ui->pollGesture();
+}
+
+void UI::pollGesture(void) {
+  const bool imuEnabled = imuEnabledForUI();
+  if (!imuEnabled) {
+    // Sensor availability can change independently of the IMU setting while
+    // this page is open. Keep every gesture control disabled and stop polling
+    // so an unplugged/failed sensor does not burn the gesture timer forever.
+    showIMUGestureWidgets(false);
+    if (m_GestureTimer != nullptr) {
+      lv_timer_del(m_GestureTimer);
+      m_GestureTimer = nullptr;
+    }
+    m_GestureDetector.reset();
+    return;
+  }
+  showIMUGestureWidgets(true);
+  GestureDetector::gesture_t gesture;
+  if (m_GestureDetector.poll(m_DoubleTapShutter, gesture)) {
+    handleGesture(gesture);
+  }
+}
+
+void UI::handleGesture(GestureDetector::gesture_t gesture) {
+  const char *name = "unknown";
+  bool wakes = false;
+  switch (gesture) {
+    case GestureDetector::gesture_t::TAP:
+      name = "tap";
+      wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
+      break;
+    case GestureDetector::gesture_t::SHAKE:
+      name = "shake";
+      wakes = (m_WakeGesture == 2) || (m_WakeGesture == 3);
+      break;
+    case GestureDetector::gesture_t::DOUBLE_TAP:
+      name = "double_tap";
+      wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
+      break;
+  }
+
+  ESP_LOGI("ui", "IMU gesture: %s", name);
+#if defined(FURBLE_SIM)
+  m_GestureEvents++;
+  m_GestureLast = name;
+#endif
+  const bool inactive = displayIsInactive();
+  if (wakes) {
+    wakeDisplayFromGesture();
+    if (inactive) {
+      return;
+    }
+  }
+
+  if ((gesture == GestureDetector::gesture_t::DOUBLE_TAP) && m_DoubleTapShutter && !inactive) {
+    fireGestureShutter();
+  }
+}
+
+void UI::wakeDisplayFromGesture(void) {
+  // Use the same panel/APB/PMIC state machine as button wake. Directly calling
+  // M5.Display.wakeup() leaves m_DisplayOff, icon timers and power locks out of
+  // sync on the display-off path.
+  const bool wasOff = m_DisplayOff;
+  const bool wasDim = m_DisplayState == DisplayState::DIM;
+  wakeDisplay();
+  if (wasOff || wasDim) {
+    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+    m_DisplayState = DisplayState::ACTIVE;
+#if defined(FURBLE_SIM)
+    Sim::profilerSetDisplayState("on");
+#endif
+  }
+  if (m_Display != nullptr) {
+    lv_display_trigger_activity(m_Display);
+  }
+}
+
+bool UI::displayIsInactive(void) const {
+  return (m_Display != nullptr) && (m_InactivityTimeout > 0)
+         && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
+}
+
+bool UI::canTriggerGesture(void) const {
+  if (Control::getInstance().getState() != Control::STATE_ACTIVE) {
+    return false;
+  }
+
+  if (m_ShutterLock || (m_MainMenu.main == nullptr)) {
+    return false;
+  }
+
+  auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  if ((page != m_Menu.at(m_ConnectedStr).page) && (page != m_Menu.at(m_RemoteShutter).page)) {
+    return false;
+  }
+
+  switch (m_IntervalometerState.load()) {
+    case Intervalometer::STATE_WAIT:
+    case Intervalometer::STATE_SHUTTER_OPEN:
+    case Intervalometer::STATE_DELAY:
+      return false;
+    case Intervalometer::STATE_IDLE:
+    case Intervalometer::STATE_FINISHED:
+      break;
+  }
+
+  return true;
+}
+
+void UI::fireGestureShutter(void) {
+  // The detector's 750 ms refractory period is what guarantees one gesture is
+  // one frame. This timer check is the second line: it keeps a press and its
+  // release paired if a future caller ever reaches here faster than 30 ms.
+  if ((m_GestureShutterTimer != nullptr) || !canTriggerGesture()) {
+    return;
+  }
+
+#if defined(FURBLE_SIM)
+  // Count the decision, not the queue result. A send on a dropped link fails on
+  // its own, which would mask a missing guard rather than expose it.
+  m_GestureShutterSends++;
+#endif
+  auto &control = Control::getInstance();
+  if (control.sendCommand(Control::CMD_SHUTTER_PRESS) != pdTRUE) {
+    ESP_LOGW("ui", "IMU shutter press was not queued");
+    return;
+  }
+
+  constexpr uint32_t SHUTTER_HOLD_MS = 30;
+  m_GestureShutterTimer = lv_timer_create(gestureShutterRelease, SHUTTER_HOLD_MS, this);
+  if (m_GestureShutterTimer == nullptr) {
+    control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+    ESP_LOGW("ui", "IMU shutter release timer was not created");
+  }
+}
+
+void UI::gestureShutterRelease(lv_timer_t *timer) {
+  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+  Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
+  lv_timer_del(timer);
+  ui->m_GestureShutterTimer = nullptr;
+}
+
 void UI::setInactivityTimeout(uint8_t timeout) {
   m_InactivityTimeout = m_InactivityTimeouts[inactivityIndex(timeout)];
 }
@@ -9091,6 +9382,9 @@ void UI::task(void) {
     Platform::getInstance().update();
 
     m_Mutex.lock();
+    if (m_GestureSettingsSeen != m_GestureSettingsGeneration.load(std::memory_order_acquire)) {
+      updateGestureTimer();
+    }
 #if defined(FURBLE_SIM)
     {
       std::lock_guard<std::mutex> lock(m_SimRequestMutex);

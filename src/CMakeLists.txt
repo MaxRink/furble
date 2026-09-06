@@ -37,6 +37,7 @@ if(NOT FURBLE_NO_DISPLAY)
        FurbleUI.cpp
        FurbleUIAudit.cpp
        FurbleUIBulb.cpp
+       FurbleUIGesture.cpp
        FurbleUIIntervalometer.cpp)
 endif()
 
