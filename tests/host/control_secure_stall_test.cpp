@@ -273,6 +273,16 @@ int main(void) {
         "a fresh connect reaches active after the stall cycles");
   check(control.getConnectedTargetCount() == 1, "the fresh connect is really connected");
 
+  // Hold it, rather than declaring recovery on the instant ACTIVE is reached.
+  // A machine whose drain never reaped can also touch ACTIVE briefly before
+  // the next tick puts it back, and that is exactly the wedge this test is
+  // about. The dwell also lets the per-target task tick run against the
+  // recovered link, which is what exercises the connection-profile and stats
+  // samplers.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  check(control.getState() == Control::STATE_ACTIVE, "and the session is still up a moment later");
+  check(control.getConnectedTargetCount() == 1, "with the camera still connected");
+
   control.disconnect();
   waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 5000);
 
