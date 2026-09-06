@@ -1,5 +1,6 @@
 // Host companion shim. The console only asks the companion transport to reload
-// its setting after a provisioning write, so the double counts that call.
+// its setting or password after a provisioning write, so the double counts
+// those calls.
 #ifndef FURBLE_COMPANION_H
 #define FURBLE_COMPANION_H
 
@@ -10,6 +11,7 @@ class CompanionGatt {
   static CompanionGatt &getInstance(void);
 
   void reloadSetting(void);
+  void reloadPassword(void);
 
  private:
   CompanionGatt() = default;

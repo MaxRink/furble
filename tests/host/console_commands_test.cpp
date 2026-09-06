@@ -1359,8 +1359,10 @@ void testProvision(void) {
   checkContains(applied.out,
                 "provision: decoded " + std::to_string(encoded.size()) + " bytes as hex",
                 "the blob is reported as hex with its length");
-  for (const char *field : {"wifi_ssid", "wifi_psk", "companion_password", "mqtt_uri",
-                            "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
+  // companion_password is no longer in this list: it now has a setting to land
+  // in, so the provisioner applies it instead of deferring it.
+  for (const char *field :
+       {"wifi_ssid", "wifi_psk", "mqtt_uri", "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
     checkContains(applied.out, std::string("provision: ") + field + " parsed (not applied",
                   std::string(field) + " is named as deferred");
   }
@@ -1368,8 +1370,10 @@ void testProvision(void) {
   check(!contains(applied.out, "furble\n"), "no deferred field value is printed");
   checkContains(applied.out, "provision: setting 1 (brightness) applied",
                 "an applied setting names its key");
-  checkContains(applied.out, "1 setting(s) applied, 7 field(s) deferred",
+  checkContains(applied.out, "2 setting(s) applied, 6 field(s) deferred",
                 "the summary counts applied and deferred fields");
+  check(!contains(applied.out, "companion_password parsed (not applied"),
+        "the companion password is no longer deferred");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 99,
         "the provisioned value reached the real Settings store");
 

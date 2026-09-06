@@ -1,6 +1,8 @@
 # 116 - Companion connection password (shared-secret auth gate)
 
-Status: design only. Firmware auth gate on the companion GATT service from
+Status: implemented by PR #166. See "Implementation state" below for the wire
+contract, the two threat-model decisions, and what is still owed.
+Firmware auth gate on the companion GATT service from
 `plans/50-companion-app-design.md`, which has landed as `FurbleCompanion` /
 `FurbleCompanionService`. Section 116b covers the matching Android app change.
 
@@ -82,9 +84,9 @@ Out of scope:
   characteristic, per-connection auth state, the challenge, and the privileged-op
   gate.
 - `include/FurbleSettings.h` / `src/FurbleSettings.cpp`: `COMPANION_PASSWORD`
-  setting and its `wire_id` (shared with `plans/114`/`plans/50`). Reserve the
-  wire id 45 is reserved for this companion-password contract; IMU uses wire
-  id 46. Do not reuse either id for another setting.
+  setting and its `wire_id` (shared with `plans/114`/`plans/50`). Wire id 47 is
+  the companion-password contract, reserved in `include/CLAUDE.md`. IMU already
+  owns wire id 46 on master. Do not reuse either id for another setting.
 - The PR27 console table: `companion password` subcommands.
 - `sim/shim/FurbleCompanionService.h` and the companion rig
   (`sim/CompanionRigTransport.cpp`): mirror the auth handshake so
@@ -98,6 +100,118 @@ Out of scope:
 
 Default empty means a fresh device and an upgraded device behave exactly as they
 do now: bonding + encryption, no extra step.
+
+## Implementation state
+
+The gate is implemented. The firmware half is the same code the companion app
+PRs #195 and #214 carry, so the wire contract cannot drift from the clients.
+
+Setting:
+
+- `Settings::COMPANION_PASSWORD`, a `std::string` at wire id 47, default empty.
+- Write-only over the companion settings characteristic. A get returns
+  `SETTING_REJECTED` and the list walk skips it.
+- Refused by the SD exporter and importer, so the secret never reaches a card.
+- Capped at 63 bytes and rejected if it contains a NUL.
+- Applied by the provisioning TLV, both as a settings record at wire id 47 and
+  through the dedicated `COMPANION_PASSWORD` field tag. The field is no longer
+  deferred.
+
+Auth:
+
+- `CompanionAuth` in `include/FurbleCompanionAuth.h` and
+  `src/FurbleCompanionAuth.cpp` is the connection-local state machine. It takes
+  the HMAC and the nonce generator as function pointers, so it has no mbedTLS
+  or ESP-IDF dependency and runs unchanged on the host.
+- `src/FurbleCompanionCrypto.cpp` is the firmware HMAC adapter over mbedTLS.
+  `tests/host/companion/companion_hmac.cpp` is the host counterpart over the
+  shared SHA-256 in `tests/host/companion/HostHmacSha256.h`.
+- The nonce comes from `esp_fill_random`.
+- The comparison is constant time and the password and nonce buffers are
+  zeroed on replacement and destruction.
+
+Wire contract, matching the clients:
+
+| Item | Value |
+| --- | --- |
+| Auth characteristic UUID | `b57f4f6f-087b-4740-b71d-8262cf26ebbc` |
+| Nonce | 16 bytes |
+| Response | HMAC-SHA256 truncated to the leading 16 bytes |
+| Begin packet | `01 00` |
+| Challenge indication | `01 00` then the 16 nonce bytes |
+| Proof packet | `01 01` then the 16 response bytes |
+| Result indication | `01 02` then the status |
+| Status codes | 1 authenticated, 2 rejected, 3 dropped, 4 not required |
+| ATT error on a gated write | `0x80` |
+| Failure limit | 3, then the link is dropped |
+
+Client sources this was read against:
+
+- `companion/android/app/src/main/java/com/furble/companion/ble/GattConnection.kt`
+  and `.../protocol/FurbleProtocol.kt` on PR #214.
+- `companion/apple/Sources/FurbleCompanionCore/FurbleBLEClient.swift` and
+  `.../FurbleProtocol.swift` on PR #195.
+
+The two apps carry byte-identical firmware halves, so there was nothing to
+reconcile. Both were written against an older master and needed two
+corrections here: the wire id moved from 46 to 47, because master now ships the
+IMU enable switch at 46, and `tests/host/CMakeLists.txt` referenced a
+`sim/FurbleCompanionCrypto.cpp` that does not exist in either branch.
+
+Session lifecycle:
+
+- Cleared on connect, on disconnect, and whenever the password is reloaded.
+- A password rotation over the settings characteristic revokes the session
+  before the acknowledgement is sent, so the acknowledgement cannot race a
+  protected follow-up write that still carries the old authorization.
+- A response consumes its nonce whether it succeeds, fails, or is malformed.
+  One nonce is never valid twice.
+- An empty password authenticates every connection immediately, so a user who
+  never sets one sees no change. A password that fails to load cleanly is
+  treated as set and invalid, never as empty, so a corrupt value cannot become
+  a bypass.
+
+## Threat model decisions
+
+- **`handleLocation` requires an encrypted, link-authenticated connection but
+  not the password.** It had no check at all before this PR, which was the real
+  bug. It stays outside the password gate because both companion apps stream
+  fixes as soon as the link is ready and only authenticate before settings and
+  trigger, so a password gate there would silently drop fixes with no error the
+  app can surface. The write is still bounded by the bonded encrypted link.
+- **`COMPANION_CHAR_OTA_CONTROL` and `COMPANION_CHAR_OTA_DATA` have no handler
+  yet.** No stubs were added. When their handler lands it must call
+  `allowProtected()` first, like `handleSettings` and `handleTrigger` do. OTA
+  writes firmware, so it is the most privileged operation on the service.
+
+## Deviations
+
+- Wire id 47, not the 45 this plan first named and not the 46 the app branches
+  assumed. Master ships IMU at 46 and the gesture branches claim 45. 47 is free
+  on master and on every open PR head except #195 and #214, which expect it.
+- Four golden fixtures for id 47, not five. A write-only setting has no list
+  record, so a `response-list-47.bin` would assert a record the firmware never
+  emits.
+- No challenge expiry. A pending challenge stays unprivileged until it is
+  answered or the link drops, so an unanswered challenge grants nothing. A
+  wall-clock timeout can be separate hardening.
+- The host SHA-256 lives in one header shared by the auth and GATT tests rather
+  than being copied into each, so the two cannot drift.
+
+## Owed verification
+
+The on-device handshake bench with the Android app from 116b is owed
+**post-merge** and is the gate on calling 116 done:
+
+- Set a password over the console, connect from the app, confirm the prompt.
+- Correct password unlocks trigger and settings writes.
+- Wrong password is refused and the link drops after three failures.
+- Replayed proof is refused.
+- Disconnect and reconnect require the handshake again.
+- Empty password connects and triggers with no prompt.
+
+Until that runs, #166 is verified by the host suite, the simulator, and the
+firmware builds only.
 
 ## Dependencies
 
@@ -143,7 +257,7 @@ logic over a mock connection object):
 Run:
 
 ```
-cmake -S tests/host -B build/host-tests -DCMAKE_BUILD_TYPE=Release
+cmake -S tests/host -B build/host-tests
 cmake --build build/host-tests --parallel 2
 ctest --test-dir build/host-tests -R companion-auth --output-on-failure
 ```

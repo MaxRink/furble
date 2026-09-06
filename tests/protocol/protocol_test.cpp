@@ -262,20 +262,25 @@ void checkSettings(const std::string &root, const fs::path &golden) {
 
     const auto get = fixture(golden, settingFile("response-get", setting.wire_id));
     require(isValidStandardResponse(get), setting.symbol + " get response is not a TLV");
-    require(get[0] == 0 && get[1] == setting.wire_id && get[2] == type && get[3] == value.size(),
-            setting.symbol + " get response header changed");
-    expectBytes(Bytes(get.begin() + 4, get.end()), value, setting.symbol + " get response value");
+    if (FurbleProtocolTest::settingIsWriteOnly(setting)) {
+      require(get == Bytes({4, setting.wire_id, type, 0}),
+              setting.symbol + " write-only get response changed");
+    } else {
+      require(get[0] == 0 && get[1] == setting.wire_id && get[2] == type && get[3] == value.size(),
+              setting.symbol + " get response header changed");
+      expectBytes(Bytes(get.begin() + 4, get.end()), value, setting.symbol + " get response value");
 
-    const auto list = fixture(golden, settingFile("response-list", setting.wire_id));
-    require(isValidListResponse(list), setting.symbol + " list response is not a list TLV");
-    require(
-        list[0] == 0 && list[1] == setting.wire_id && list[2] == type && list[3] == value.size(),
-        setting.symbol + " list response header changed");
-    expectBytes(Bytes(list.begin() + 4, list.begin() + 4 + value.size()), value,
-                setting.symbol + " list response value");
-    require(
-        list.size() == static_cast<size_t>(4 + value.size() + 1) && list[4 + value.size()] == flags,
-        setting.symbol + " list response trailing flags changed");
+      const auto list = fixture(golden, settingFile("response-list", setting.wire_id));
+      require(isValidListResponse(list), setting.symbol + " list response is not a list TLV");
+      require(
+          list[0] == 0 && list[1] == setting.wire_id && list[2] == type && list[3] == value.size(),
+          setting.symbol + " list response header changed");
+      expectBytes(Bytes(list.begin() + 4, list.begin() + 4 + value.size()), value,
+                  setting.symbol + " list response value");
+      require(list.size() == static_cast<size_t>(4 + value.size() + 1)
+                  && list[4 + value.size()] == flags,
+              setting.symbol + " list response trailing flags changed");
+    }
 
     expectBytes(fixture(golden, settingFile("response-set", setting.wire_id)),
                 {0, setting.wire_id, type, 0}, setting.symbol + " set response");

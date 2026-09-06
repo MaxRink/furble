@@ -56,6 +56,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    COMPANION_PASSWORD,
     CONN_SAVER,
     IR,
     IR_PROTO,
@@ -157,6 +158,11 @@ struct Furble::Settings::storage_type<Furble::Settings::IMU_WAKE> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
   using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::COMPANION_PASSWORD> {
+  using type = std::string;
 };
 
 #endif
