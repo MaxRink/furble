@@ -9,6 +9,61 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
+## Resume here (kept current; last updated 2026-09-07 01:00)
+
+Master `fork/master` = **7e3e0d8d** (merged this cycle in order: #261, #264,
+#270, #274, #276, #266, #278, #286, #287). Upstream gkoh/furble is read-only.
+
+Open PRs, head, state, next action:
+
+| PR | head | state | next |
+| --- | --- | --- | --- |
+| #245 stale-bond recovery (plan 151) | 973e9d5e | approved, rebased | bench steps 3 to 10 on the flashed dev+gd5de73ee (camera in pairing mode for 3 to 6), then merge |
+| #272 cancellable in-flight connect (plan 170) | a376c4e7 | approved, parked | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
+| #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
+| #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | delta-reviewed, parked | fifteen-step hardware gate, then merge |
+| #139 GPS phase 2 (plan 32) | 33f207ef | fix round running | RMC count must be checksum-valid and fragment-safe; IMPLAUSIBLE must not be final; fixture clock monotonic across restart; then delta review, hardware gate |
+| #45 IMU gestures (plan 17) | 7c2f5038 | approved, parked | eight-step hardware gate (trace capture first), merge after #139 |
+| #48 IMU hardware motion (plan 20) | ac474257 | delta review running | six-step hardware gate (GPIO13 edge count still, latch release), merge before #65 |
+| #65 GPS motion detector (plan 18) | c1410d0b | approved, parked | rebase onto #48, consume IMU::MotionSource (state() only), six-step gate |
+| #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
+| #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
+
+Merge order after the #245 bench: #245, #272, #265, #47, #139, #45, #48,
+#65, #63; #273 whenever the user approves it.
+
+Waiting on the user: the #273 ruling plus pictures verdict; the X100VI on
+its pairing screen for the #245 bench (the camera-side pairing is already
+deleted, which is the precondition steps 3 to 6 need).
+
+Bench: M5StickS3 on /dev/cu.usbmodem2101 runs dev+gd5de73ee (the #245
+bench head; later #245 commits are test and doc only), idle, X100VI saved
+as "X100VI 1C4F9". Flash VM binaries with `flash prepare` over the console
+(serdrive.py) then esptool (0x0, 0x8000, 0xf000, 0x20000; dio 8MB 40m).
+Passive listening: serlisten.py. Console facts: `debug control` carries the
+control.* fields, `status` does not; an empty reason prints `none`.
+
+VM: OrbStack `furble-build`, reboots about once a day (disk survives);
+PlatformIO works there (runbook ~/furble-build-wt/VM-FIRMWARE-BUILD.md);
+the VM cannot push, lanes hand bundles under ~/furble-build-wt/ and the
+coordinator pushes from ~/furble-build-wt/wt-handoff (host git is slow:
+fetch single SHAs, never `worktree add` there). Rules: -j2 on every tool,
+own PIDs by build path only, a denied call means stop and report, new
+settings need a ProvisionTLV schema row, Camera locks use
+Furble::connect_mutex_t, the profile-naming foreach stays last in
+tests/host/CMakeLists.txt, mutation harnesses stash-and-restore and fail
+on non-zero builds.
+
+Open issues: #267 #268 (fixed by #270), #269 flaky host tests (partly by
+#274), #271 (fixed by #272), #275 (fixed by #276), #277 (fixed by #287),
+#279 and #284 (fixed by #286), #280 wire ids, #281 upstream regressions,
+#282, #283 restart segfault (three sightings), #285 power model, #288
+provisioning schema gaps (43 and 46 on master), #289 #286 follow-ups.
+
+Dated addenda follow in chronological order; the newest is at the bottom.
+
+---
+
 ## 0. 2026-09-02 addendum (read first)
 
 Between 2026-08-30 and 09-01 another agent merged PRs #253 to #258: plan 158
