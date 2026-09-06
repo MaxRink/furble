@@ -924,3 +924,5 @@ Update 2026-09-06 13:00: #65 fix round done at 232d707a (GPS::reloadMotionSettin
 Update 2026-09-06 13:30: PR #286 opened (plan 173): host mutex waits visible to the sim scheduler (issue #279 fixed at the source, clock bounds restored with 50-run proofs at loadavg 253), one flash image per simulated device (issue #284 real cause: shared flash between two sims of one scenario), SIGSEGV handler with backtrace (#283). Review owed after /login.
 
 Update 2026-09-06 14:00: session re-authenticated; all stopped lanes resumed and the reviews of #286, #48 and the #65 delta dispatched. Seven lanes active at VM load 1.3. The stick is idle on the #245 bench head.
+
+Update 2026-09-06 15:00: PR #287 opened (plan 174, fixes #277: control shim on the task-scope contract, coverage.py fails on empty or missing profiles); #139 fix round at ccdeb08a pushed (ephemeris replay bounded by the receiver clock; the sim serialises the GPS and UI tasks so TSAN could not reproduce the race there, header rule plus snapshot is the gate). Reviews running: #286, #287, #48, #65 delta, #139 delta, #47 delta. #45 finishing its suppression commit.
