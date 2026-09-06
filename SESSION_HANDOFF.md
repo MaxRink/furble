@@ -5,84 +5,106 @@ sim-realism session. This is an untracked working note in the main checkout,
 same convention as `HARDWARE_DEBUG_NOTES.md`. **Do not commit it.**
 
 Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
-`fork/master` at handoff: **70774434** (2026-09-02). The 2026-08-30 sections below are historical; read the 2026-09-02 addendum first.
+`fork/master` at handoff: **ae0aeafa** (2026-09-07). Read "Resume here" first; the dated sections below are historical.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 17:20)
+## Resume here (kept current; last updated 2026-09-07 18:10)
 
 Master `fork/master` = **ae0aeafa** (merged this cycle in order: #261, #264,
-#270, #274, #276, #266, #278, #286, #287, #47, #45, #291, #139). Upstream gkoh/furble is read-only.
+#270, #274, #276, #266, #278, #286, #287, #47, #45, #291, #139). Upstream
+gkoh/furble is read-only. Merge command:
+`gh api --method PUT repos/MaxRink/furble/pulls/N/merge-async -f merge_method=merge -f sha=<head>`
+after an exact-head independent review and green CI.
+
+Merge order for the not-camera-gated queue: #48, then #65 (stacked on #48),
+then #166, then #75, then #53, then #66, #161, #90. #273 whenever the user
+approves it. Every merge touches the settings switch tables, ProvisionTLV
+SETTING_SCHEMAS, include/CLAUDE.md wire-id table, golden corpus,
+plans/README.md and the hand-sized simQueryState page array, so each merge
+forces the next PR to rebase (by hand, never union merge; after any table
+conflict build the host suite AND the firmware, the sim does not compile
+FurbleSD.cpp or FurbleConsole.cpp).
 
 Open PRs, head, state, next action:
 
 | PR | head | state | next |
 | --- | --- | --- | --- |
-| #245 stale-bond recovery (plan 151) | e3e3872c | rebased on 107a6b96, CI 34/34 green, lane parked | flash e3e3872c (staged at vm-out/245-e3e3872c, firmware sha256 fd9715fd; d5de73ee is stale by 21 files), bench steps 3 to 10 (camera in pairing mode for 3 to 6), merge |
-| #272 cancellable in-flight connect (plan 170) | a376c4e7 | approved, parked | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
-| #265 console workflow verbs (plan 166) | 37c03322 | approved plus mediums closed | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
-| #47 GPS fix hold, dead reckoning (plan 21) | e9009bc9 | MERGED 53fa8965 | fifteen-step GPS hardware gate owed post-merge (plan 21) |
-| #139 GPS phase 2 (plan 32) | c64d8d80 | MERGED ae0aeafa | bound leg must be load-bearing again (walk past 16 dates, assert drop), "2x" console test, rebase onto 35c0f4b8; then push, CI, merge (GPS gate owed post-merge); earlier notes: same-day IMPLAUSIBLE retry never re-arms (compare UTC time not date; same-day fixture), check-doc-tokens predicate, stale comment, gps platform strtoul end check; arm compares the committed date value (emptyrmc, walkback fixtures), IMPLAUSIBLE bounded at 4; rebased onto 107a6b96 (keep-both resolutions repaired); on approval plus green CI merge, GPS gate owed post-merge |
-| #45 IMU gestures (plan 17) | cf5ec483 | MERGED 107a6b96 | eight-step IMU hardware gate owed post-merge (plan 17; trace capture and the hour drain can still change the design) |
-| #48 IMU hardware motion (plan 20) | 21973038 | fix round pushed 17:00, lane rebasing onto ae0aeafa | default HW_MOTION_SOFTWARE (flip to Auto is the gate deliverable); Motion Engine roller moved to #45 Gestures page; union-merge corrupted four files during rebase, repaired by hand (reviewer checks); on approval plus green CI merge, then #65 re-stacks |
-| #65 GPS motion detector (plan 18) | c1410d0b (bundle cf82b561 on af3f982a, not pushed; gates 98/98, 213/213) | parked until #48 final head; then `rebase --onto <final48> af3f982a` | lane deleted FurbleMotion.h and the 100 ms timer (MotionSource holds the 60 s dwell); re-stack on #48 final head, push bundle, delta review, six-step gate; GitHub refuses a base change ("part of a stack"), so CI is red until #48 merges |
-| #63 pairing codes (plan for issue 66) | 90b86739 | approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
-| #291 conn-saver idle coverage test (plan 163 deviation, from plan 151) | a8bb0a22 | MERGED 35c0f4b8 | test-only cherry-pick of #245 e3e3872c; the Camera.cpp floor 73.75 is timing-dependent (master 74.75, #139 72.17, lost lines all in requestConnProfile); merge first, then #139/#48/#65 rebase over it |
-| #166 companion password gate (plan 116) | a6c06b1f (bundle 86d5c0ca storage-only, not pushed) | lane implementing the auth gate on ae0aeafa | the branch never had the gate (only the wire id 47 setting); lane adds Auth char, HMAC, per-connection state, gate on settings/trigger, encryption on location, companion_auth_test; then push, review, CI, merge; app handshake bench owed |
-| #75 companion cameras characteristic (plan 51) | 868a9660 | lane rebasing onto ae0aeafa | rebase, wire ids, companion harness, review, CI, merge; no camera needed |
-| #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | after #75 | base still feat/33-wifi-hub (stale, 33a merged as #148): re-base onto master, review, CI; user WiFi bench (ssid/psk, enable, status, ntp), no camera |
-| #66 MQTT, #161 MQTT sim, #90 WebUI (33c/117/33d) | 47edf348 / dc38f1b5 / a21f4aa6 | after #53 | stacked in that order; broker bench by the user |
-| #59 deep sleep between interval shots (plan 19) + #177 sim | ffa5798d / e848a9b5 | prep only | rebase + sim green now; bench needs a camera (interval run) |
-| #195 iOS/macOS apps, #214 Android auth | fb1e62f8 / 8c3f9c89 | after #166 | stacked on #166 |
-| #273 physical-button layout (plan 168) | 188a7e9a | user decision | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then gates, rebase, the user merges |
+| #48 IMU hardware motion (plan 20) | 21973038 pushed (ten review fixes on af3f982a) | lane rebasing onto ae0aeafa, bundle pending | push bundle, ONE delta review af3f982a..final (the af3f982a review was CHANGES REQUIRED: union-merge residue in docs/sim.md and a scenario, stale edge-counter comments, SD clamp, MPU6886 transition counting, roller hint; all claimed fixed in 21973038), CI, merge; six-step IMU gate owed post-merge; default HW_MOTION_SOFTWARE, flip to Auto is the gate deliverable |
+| #65 GPS motion detector (plan 18) | 5fa2fdfb in the lane worktree on af3f982a (PR still shows c1410d0b; bundle p65-cf82b561 is stale) | parked for #48 final head | `git rebase --onto <final48> af3f982a`, gates, bundle <final48>..HEAD, push, delta review, merge after #48; GitHub refuses changing a stacked PR's base so its CI is red until #48 merges; six-step gate owed |
+| #166 companion password gate (plan 116) | a6c06b1f on GitHub; bundle p166-86d5c0ca (storage only, NOT pushed) | lane implementing the plan 116 auth gate on ae0aeafa | the branch never had the gate, only the wire id 47 setting (46 is IMU on master); lane adds the Auth characteristic, nonce plus HMAC-SHA256, per-connection auth state, gate on settings and trigger writes, encryption on location writes, companion_auth_test with mutations, corrected PR body; then push, review, CI, merge; Android app handshake bench owed post-merge |
+| #75 companion cameras characteristic (plan 51) | 868a9660 | lane rebasing onto ae0aeafa | connect/disconnect must use the UI's Control entry points, privileged ops behind one write handler for the #166 gate, deterministic companion host tests; push, review, CI, merge; app bench owed |
+| #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | not started | base branch feat/33-wifi-hub is stale (33a merged as #148); re-base onto master, review, CI; user WiFi bench on the stick (wifi set ssid/psk, enable, status, ntp), no camera |
+| #66 MQTT, #161 MQTT sim, #90 WebUI (33c/117/33d) | 47edf348 / dc38f1b5 / a21f4aa6 | not started | stacked on #53 in that order; broker bench by the user |
+| #59 deep sleep between interval shots (plan 19) + #177 sim | ffa5798d / e848a9b5 | not started, prep only | rebase and get the sim green; the bench is an interval run and needs a camera |
+| #195 iOS/macOS apps, #214 Android auth | fb1e62f8 / 8c3f9c89 | not started | stacked on #166; expect wire id 47 and the plan 116 handshake |
+| #273 physical-button layout (plan 168) | 188a7e9a | waiting for the user | user rules on the narrow-panel trade (page scrolls, label scrolls, or a widget goes) and judges the pictures at PR comment 5555598241; then rebase (page array 53, schema rows 44/46/65/67/68/72/73, take master's addSensorsMenu, re-capture Sensors), gates, evidence on the PR; the user merges |
+| #245 stale-bond recovery (plan 151) | e3e3872c, CI 34/34 | camera-gated, lane parked | flash vm-out/245-e3e3872c (firmware sha256 fd9715fd; the stick runs d5de73ee, 21 files stale), bench steps 3 to 10 (camera pairing screen for 3 to 6), merge; at its rebase the idle-test commit conflicts with master's #291 copy: take master's test file, keep plans/151 |
+| #272 cancellable in-flight connect (plan 170) | a376c4e7 | camera-gated, approved | rebase over #245 (five actions in plan 170), delta review, bench (re-arm regression, five cycles), merge |
+| #265 console workflow verbs (plan 166) | 37c03322 | camera-gated, approved | rebase over #245 (pair verb calls UI::beginPairing, keep the menuName == m_ScanStr gate), delta review, on-device pair run |
+| #63 pairing codes (issue 66) | 90b86739 | camera-gated, approved in substance | rebase over #245 and #272 (setConnectCameraLocked vs setConnectCamera deadlock hazard; add the user-reject exclusion to #245's counter), GR IV bench |
 
-User directive 2026-09-07: merge everything whose verification does not
-need an active camera. Camera-gated and parked until the bench: #245,
-#272, #265, #63. Not camera-gated, merged one at a time as their exact
-head is approved and CI is green, with the IMU or GPS hardware gate
-recorded as owed post-merge (features default off): #47, then #45, then
-#48, #65, #139 as they clear review. #273 whenever the user approves it.
-They all touch ProvisionTLV.cpp SETTING_SCHEMAS, the include/CLAUDE.md
-wire-id table, the golden corpus and plans/README.md, so every merge
-forces the next one to rebase.
+Merged this cycle with hardware gates still owed: #47 (fifteen-step GPS gate,
+plan 21), #45 (eight-step IMU gate, plan 17; trace capture and the hour
+drain can still change the design), #139 (GPS gate, receiver rejection of
+expired ephemeris measured first, plan 32). #291 landed the deterministic
+conn-saver idle test because the Camera.cpp coverage floor (73.75) was
+timing-dependent (master 74.75, #139 72.17, lost lines all inside
+requestConnProfile); diagnosis recipe: download both runs'
+firmware-coverage artefacts and diff the llvm-cov html per line.
+
+Active agent lanes at 18:10 (they do not survive a new session; the VM
+worktrees do): #48 lane (~/wt/p48, rebasing), #65 lane (~/wt/p65, parked
+at 5fa2fdfb), #166 lane (~/wt/p166, implementing the gate), #75 lane
+(~/wt/p75, rebasing), #245 lane (~/wt/f245, parked), #273 lane
+(host wt-168-push, parked). Reviewer worktrees r139 r139b r139c r48c r291
+idle and the fw245e build worktree can be pruned.
 
 Waiting on the user: the #273 ruling plus pictures verdict; the X100VI on
 its pairing screen for the #245 bench (the camera-side pairing is already
-deleted, which is the precondition steps 3 to 6 need).
+deleted, which is the precondition steps 3 to 6 need); later the WiFi and
+broker benches for #53 and #66.
 
-Bench: M5StickS3 on /dev/cu.usbmodem2101 runs dev+gd5de73ee (the #245
-bench head; later #245 commits are test and doc only), idle, X100VI saved
-as "X100VI 1C4F9". Flash VM binaries with `flash prepare` over the console
-(serdrive.py) then esptool (0x0, 0x8000, 0xf000, 0x20000; dio 8MB 40m).
-Passive listening: serlisten.py. Console facts: `debug control` carries the
-control.* fields, `status` does not; an empty reason prints `none`.
+Bench: M5StickS3 on /dev/cu.usbmodem2101 runs dev+gd5de73ee, idle, X100VI
+saved as "X100VI 1C4F9". Flash VM binaries with `flash prepare` over the
+console (serdrive.py) then esptool (0x0 bootloader, 0x8000 partitions,
+0xf000 ota_data, 0x20000 firmware; dio 8MB 40m). Passive listening:
+serlisten.py (stalls silently when USB CDC drops). Console facts: `debug
+control` carries the control.* fields, `status` does not; an empty reason
+prints `none`. Staged firmware under ~/furble-build-wt/vm-out: 245-e3e3872c
+(bench), 48-21973038, 65-af50206a, 139-c64d8d80, 47-e9009bc9, 45-188b603c
+(merged heads for their owed gates). Bundles kept: p48-21973038,
+p65-cf82b561 (stale), p139-c64d8d80 (merged), p166-86d5c0ca (storage only).
 
-Host disk: hit 100 percent on 2026-09-07; the user authorized deleting old
-furble worktrees and remnants. Done 10:00: pio system prune (3.9 GB),
-scratchpad archives, finished host worktrees (three refused, small), VM
-prune of finished lanes. Host free 6 GiB to 78 GiB, VM 41 GB to 91 GB.
-Remaining host worktrees: wt-handoff, wt-168-push (#273), wt-63-fix
-(1.5 GB, queued #63), six small review leftovers. VM keeps audit-upui f245
-fw fw245b fw245d l168 mstr p139 p48 p65 p65base.
+Host disk: was 100 percent on 2026-09-07; the user authorized deleting old
+furble worktrees and remnants. After the prune: host 78 GiB free, VM 91 GB.
+Remaining host worktrees: wt-handoff (branch docs/session-handoff, the
+push point), wt-168-push (#273), wt-63-fix (1.5 GB, queued #63), six small
+review leftovers that refused removal.
 
 VM: OrbStack `furble-build`, reboots about once a day (disk survives);
-PlatformIO works there (runbook ~/furble-build-wt/VM-FIRMWARE-BUILD.md);
-the VM cannot push, lanes hand bundles under ~/furble-build-wt/ and the
-coordinator pushes from ~/furble-build-wt/wt-handoff (host git is slow:
-fetch single SHAs, never `worktree add` there). Rules: -j2 on every tool,
-own PIDs by build path only, a denied call means stop and report, new
-settings need a ProvisionTLV schema row, Camera locks use
+PlatformIO works there (runbook ~/furble-build-wt/VM-FIRMWARE-BUILD.md; a
+clean m5stick-s3-debug build takes about 21 minutes at -j2, so run it
+detached with nohup, an outer timeout kills it); the VM cannot push, lanes
+hand bundles under ~/furble-build-wt/ and the coordinator pushes from
+~/furble-build-wt/wt-handoff (host git is slow: fetch single SHAs, never
+`worktree add` there; a first push sometimes fails with "failed to push
+some refs" and the retry succeeds). Rules: -j2 on every tool, one sim per
+lane, own PIDs by build path only, a denied call means stop and report,
+new settings need a ProvisionTLV schema row, Camera locks use
 Furble::connect_mutex_t, the profile-naming foreach stays last in
 tests/host/CMakeLists.txt, mutation harnesses stash-and-restore and fail
-on non-zero builds.
+on non-zero builds, a sim build dir from before #47 must be wiped once
+(-D__AVR__ for TinyGPSPlus, stale objects fail to link with multiple
+definition of millis).
 
 Open issues: #267 #268 (fixed by #270), #269 flaky host tests (partly by
 #274), #271 (fixed by #272), #275 (fixed by #276), #277 (fixed by #287),
-#279 and #284 (fixed by #286), #280 wire ids, #281 upstream regressions,
-#282, #283 restart segfault (three sightings), #285 power model, #288
-provisioning schema gaps (43 and 46 on master), #289 #286 follow-ups,
-#290 hand-sized simQueryState page array (bump it at every rebase that
-adds a page).
+#279 and #284 (fixed by #286), #280 wire ids (47 = #166, 66 = #65,
+74 = #48), #281 upstream regressions, #282, #283 restart segfault (three
+sightings), #285 power model, #288 provisioning schema gaps (only 43
+remains on master), #289 #286 follow-ups, #290 hand-sized simQueryState
+page array (bump it at every rebase that adds a page).
 
 Dated addenda follow in chronological order; the newest is at the bottom.
 
