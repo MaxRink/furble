@@ -361,6 +361,11 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::GPS_HOLD:
       if (!parseUnsigned(text, GPS_HOLD_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::GPS_PLATFORM:
       if (!parseUnsigned(text, 4, value)) {
         return false;

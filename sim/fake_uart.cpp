@@ -47,6 +47,8 @@ bool gpsStationary = false;
 
 const char *gpsSentences(void) {
   return gpsStationary ? gpsDataStationary : gpsData;
+}
+
 // The 1 Hz fix burst. The default is the historic fixture above, byte for byte,
 // so every existing scenario and documentation capture is unchanged. The
 // "modern" variant only moves the RMC date inside the window
@@ -593,6 +595,8 @@ void furble_sim_uart_set_stationary(bool stationary) {
   fixDateAdvances = false;
   gpsStream.assign(gpsSentences(), sizeof(gpsData) - 1);
   gpsOffset = gpsStream.size();
+}
+
 void furble_sim_uart_set_fix_date(const char *name) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   fixDateAdvances = false;

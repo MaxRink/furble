@@ -740,6 +740,8 @@ uint32_t Furble::GPS::getHoldLimitMs(void) const {
 
 uint32_t Furble::GPS::getHoldRemainingMs(void) const {
   return ConsoleHost::gps().holdRemainingMs;
+}
+
 GPS::receiver_state_t GPS::getReceiverState(void) const {
   return ConsoleHost::gps().receiverState;
 }

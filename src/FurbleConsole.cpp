@@ -600,7 +600,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
-      || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)) {
+      || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)
       || (setting.type == Settings::GPS_PLATFORM)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
