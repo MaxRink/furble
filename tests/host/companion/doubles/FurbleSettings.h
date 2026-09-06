@@ -166,6 +166,7 @@ struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
   using type = bool;
 };
 
+template <>
 struct Furble::Settings::storage_type<Furble::Settings::HW_MOTION> {
   using type = uint8_t;
 };

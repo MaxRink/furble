@@ -1269,6 +1269,20 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/hw-motion-default-software.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/hw-motion-display-wake.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

@@ -297,7 +297,6 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_GesturesStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_MotionEngineStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
     {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSBaudStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -2878,7 +2877,6 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
         {"display",           m_DisplayStr         },
         {"features",          m_FeaturesStr        },
         {"sensors",           m_SensorsStr         },
-        {"motion_engine",     m_MotionEngineStr    },
         {"infrared",          m_IRSettingsStr      },
         {"gps_rate",          m_GPSRateStr         },
         {"gps_sentences",     m_GPSSentencesStr    },
@@ -3034,7 +3032,6 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       {"display",           m_DisplayStr          },
       {"features",          m_FeaturesStr         },
       {"sensors",           m_SensorsStr          },
-      {"motion_engine",     m_MotionEngineStr     },
       {"infrared",          m_IRSettingsStr       },
       {"gps_rate",          m_GPSRateStr          },
       {"gps_sentences",     m_GPSSentencesStr     },
@@ -3712,7 +3709,6 @@ std::string UI::simQueryState(const char *key) {
          {m_FeaturesStr, "features"},
          {m_SensorsStr, "sensors"},
          {m_GesturesStr, "gestures"},
-         {m_MotionEngineStr, "motion_engine"},
          {m_DisplayStr, "display"},
          {m_TextSizeStr, "text_size"},
          {m_GPSStr, "gps"},
@@ -6485,34 +6481,8 @@ void UI::addSensorsMenu(const menu_t &parent) {
   addGesturesMenu(menu);
 
   // The caption and the button said the same thing in two rows. One row does
-  // it, and the row this buys is what makes the page fit the 80x160 non-touch
-  // layout, where master already overflowed by 10 px before this page grew.
-  // The roller lives on its own page. Inline it overflows this page by 45 px on
-  // the 135x240 panel, which the button layout renders under the floating
-  // navigation indicators.
-  uint8_t motionMode = Settings::load<Settings::HW_MOTION>();
-  if (motionMode > Settings::HW_MOTION_HARDWARE) {
-    motionMode = Settings::HW_MOTION_AUTO;
-  }
-  addOptionMenu(
-      menu, m_MotionEngineStr, m_MotionEngineOptions, motionMode,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        const uint32_t selected = lv_roller_get_selected(roller);
-        if (selected > Settings::HW_MOTION_HARDWARE) {
-          return;
-        }
-        Settings::save<Settings::HW_MOTION>(static_cast<uint8_t>(selected));
-      },
-      NULL);
-
-  // A plain label rather than a label inside a menu container. The container's
-  // padding is what pushed this page 3 px past the 135x240 panel at Large text
-  // once the Motion Engine row joined it, and the Features page already uses a
-  // bare label for the same kind of static hint.
-  lv_obj_t *noticeLabel = lv_label_create(menu.page);
-  lv_label_set_text(noticeLabel, "Restart to apply");
-
+  // it, and the row this buys is what keeps the page fitting now that the
+  // Motion Engine entry has joined it.
   lv_obj_t *restart = lv_button_create(menu.page);
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart to apply");
@@ -6547,6 +6517,34 @@ void UI::addGesturesMenu(const menu_t &parent) {
       LV_EVENT_VALUE_CHANGED, this);
 
   addSettingItem(menu.page, NULL, Settings::IMU_TRIG);
+
+  // Motion Engine lives on this page rather than as its own row on Sensors.
+  // Sensors had no slack left after the IMU switch, this entry and the Restart
+  // button: one more row there overflows the 135x240 non-touch layout and puts
+  // content under the floating indicators. This page is the IMU behaviour page
+  // and has room.
+  //
+  // ponytail: the page is titled "Gestures" and a detection backend is not a
+  // gesture. Renaming it touches PR45's page identity, its sim vocabularies and
+  // its scenarios, so it is a follow-up, not a silent edit here.
+  lv_obj_t *motionEngine = addRollerItem(menu.page, m_MotionEngineStr, m_MotionEngineOptions);
+  m_IMUGestureWidgets.push_back(motionEngine);
+  uint8_t motionMode = Settings::load<Settings::HW_MOTION>();
+  if (motionMode > Settings::HW_MOTION_HARDWARE) {
+    motionMode = Settings::HW_MOTION_SOFTWARE;
+  }
+  lv_roller_set_selected(motionEngine, motionMode, LV_ANIM_OFF);
+  lv_obj_add_event_cb(
+      motionEngine,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        const uint32_t selected = lv_roller_get_selected(roller);
+        if (selected > Settings::HW_MOTION_HARDWARE) {
+          return;
+        }
+        Settings::save<Settings::HW_MOTION>(static_cast<uint8_t>(selected));
+      },
+      LV_EVENT_VALUE_CHANGED, NULL);
 
   lv_obj_t *warning = lv_label_create(menu.page);
   lv_obj_set_width(warning, LV_PCT(100));

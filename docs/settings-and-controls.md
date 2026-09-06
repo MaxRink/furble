@@ -228,7 +228,7 @@ Submenu: `Settings` > `Sensors`.
 | IMU | Off | On, Off | Restart | Enables the spirit level and live IMU diagnostics. The setting is stored as wire ID 46. The supported sensor must be present; press Restart after changing it. |
 | Wake Gesture | Off | Off, Tap, Shake, Both | Immediately | Software IMU wake detector, on the `Gestures` page (wire ID 72). Active only when IMU is enabled. |
 | Double-Tap Shutter | Off | On, Off | Immediately | A debounced double tap fires one short shutter command on an active Connected or Remote page (wire ID 73). Also on the `Gestures` page. |
-| Motion Engine | Auto | Auto, Software, Hardware | Restart | Chooses how motion is detected while the IMU is on. Auto prefers the hardware engine the board's IMU offers and falls back to the software detector. Stored as wire ID 74. Motion counts as user activity, so picking the device up wakes the panel. |
+| Motion Engine | Software | Auto, Software, Hardware | Restart | Chooses how motion is detected while the IMU is on. Software is the shipped default while the hardware path is unverified. Auto prefers the hardware engine the board's IMU offers and falls back to the software detector. Stored as wire ID 74. Motion counts as user activity, so picking the device up wakes the panel. |
 
 When enabled, `Connected` contains the **Level** page and `Settings` >
 `Diagnostics` contains the live **IMU** page. The simulator injects deterministic

@@ -444,11 +444,12 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       return true;
     case SETTING_U8:
       if ((length != 1) || ((type == Settings::IMU_WAKE) && (value[0] > 3))) {
-      if ((length != 1)
-          || ((type == Settings::HW_MOTION) && (value[0] > Settings::HW_MOTION_HARDWARE))) {
         return false;
       }
       if ((type == Settings::GPS_ASSIST) && (value[0] > 2)) {
+        return false;
+      }
+      if ((type == Settings::HW_MOTION) && (value[0] > Settings::HW_MOTION_HARDWARE)) {
         return false;
       }
       if ((type == Settings::GPS_HOLD) && (value[0] > GPS::HOLD_MAX)) {

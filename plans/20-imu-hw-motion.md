@@ -194,22 +194,39 @@ Two claims in the first version of this plan were wrong and are withdrawn:
 
 ### Merge posture
 
-The six-step hardware gate is owed post-merge, read through `motion status`
-(`pin` and `edges`). Nothing in this PR needs a camera, so it does not block on
-the shared hardware.
+`HW_MOTION` ships as **Software**, not Auto.
 
-What makes merging safe is not the `HW_MOTION` default. `HW_MOTION` defaults to
-Auto, and Auto prefers the board's hardware engine, falling back to software
-only when none arms. The dormancy comes from one level up: the motion source is
-armed only when the `IMU` setting is on, and `IMU` ships off
-(`Settings::init()`). So a stock device never arms any engine, never touches the
-interrupt registers and never takes a wake source, and merging changes nothing
-until a user turns the IMU on.
+The earlier version of this section said the default was Auto and argued that
+merging was safe because `IMU` ships off, so nothing arms. That is true but it
+is the wrong place to draw the line. The moment a user turns the IMU on, Auto
+selects the board's hardware engine, and that engine has now had two rounds of
+interrupt-level defects found by review alone, with no hardware run behind it:
+a wake line carrying the accelerometer sample rate, a PMIC status that was
+never cleared, a status register other code consumes, a disarm that handed
+data ready back to a live pin, and an edge counter that silently cancelled the
+wake source it was measuring. Every one of those was invisible to the whole
+gate suite. Shipping that as what a user gets by default is not a defensible
+posture while the six-step gate has not run.
 
-Once a user does turn the IMU on, the unverified hardware path is what runs,
-because Auto selects it. A user who wants the proven path has to set Motion
-Engine to Software explicitly. That is the honest statement of the risk this
-merge carries, and it is why the gate is owed rather than optional.
+So the default is the path with coverage behind it. Auto and both explicit
+engines stay fully selectable, and `hw-motion-select-auto.txt` still asserts
+that selecting Auto reaches the hardware engine.
+
+Two scenarios hold this in place:
+
+- `hw-motion-default-software.txt` seeds nothing for `hw_motion` on a BMI270
+  board and asserts the software backend armed. An Auto default fails it.
+- `hw-motion-select-auto.txt` seeds `hw_motion 0` explicitly and asserts Auto
+  still prefers the chip engine.
+
+**The follow-up commit is the hardware gate's deliverable.** When all six steps
+pass on the M5StickS3, one commit flips `Settings::init()` to `HW_MOTION_AUTO`,
+updates `hw-motion-default-software.txt`, the two settings documents and the
+console suite's default assertion, and records the gate results here. Until
+that commit exists, this PR does not put unverified hardware code on the
+default path. Nothing else in the feature is gated on it: the abstraction, the
+setting, the console, the simulator coverage and the panel consumer all ship
+now.
 
 ### The edge counter cancelled the wake source
 
@@ -432,43 +449,38 @@ claimed, and the mutation run is what proved it.
 | (f) console | `tests/host/console_commands_test.cpp` | change the accepted range in `FurbleConsole::setValue` | kills |
 | (f) calibration | `tests/host/console_commands_test.cpp` | widen or drop the 0.25 to 4.0 clamp in `MotionSource::setScale` | kills |
 
-### The roller does not fit on the Sensors page
+### Where the Motion Engine roller ended up
 
-The draft put the roller inline on Sensors. It does not fit: 45 px past the
-135x240 panel, and the button layout renders that overflow under the floating
-navigation indicators. `page-matrix`, `stick-notouch-layout-135` and
-`overflow-sweep` all caught it, which is what those files are for.
+Three placements were tried, each ruled out by a geometry gate rather than by
+taste.
 
-It now lives on its own page, reached from Sensors, the same shape the GPS
-rollers use. That needed four things, each of which is a table a new page has to
-be added to and none of which fails at compile time:
+Inline on the Sensors page overflowed the 135x240 panel by 45 px, which the
+button layout renders under the floating navigation indicators.
+`page-matrix`, `stick-notouch-layout-135` and `overflow-sweep` all caught it.
 
-- `m_Menu`, the grid map `addMenu()` looks the name up in. A missing entry
-  throws `std::out_of_range` at startup.
-- The page identity array behind `ui.page`, whose length is a template argument
-  and was the only one of the four the compiler caught.
-- The two `nav` and `page` name maps in `src/FurbleUI.cpp`.
-- The four page-name whitelists in `sim/scenario_action.cpp`, plus the two
-  vocabularies in `docs/sim.md` that `check-doc-tokens.sh` greps.
+Its own page, reached by one nav row on Sensors, fixed that until PR45 landed
+and added the Gestures entry. Sensors then held the IMU switch, the Gestures
+entry and the Restart button with no slack left, and one more row overflowed the
+135x240 non-touch layout by 1 px and put content under the indicators. One
+pixel, but the same class of defect. Softening those two assertions to fit a row
+would have degraded a geometry gate to accommodate this feature, which is the
+wrong direction, so the row went instead.
 
-Two smaller layout findings came out of the same work:
+The roller now sits on PR45's IMU behaviour page next to Wake Gesture and
+Double-Tap Shutter, which costs Sensors nothing. That page is an intentional
+scroll page: master already runs it 67 px past the 135x240 panel at Large text,
+so `hw-motion-text-size.txt` asserts both scroll ends stay reachable there
+rather than a fit. The fit assertions stay on the pages that must fit.
 
-- The Sensors restart notice was a label wrapped in its own menu container. That
-  container's padding was the last 3 px that pushed the page off 135x240 at
-  Large text once the Motion Engine row joined it. It is now a plain label on
-  the page, which is what the Features page already does for the same kind of
-  static hint.
-- At Large text on the 80x160 panel the Sensors page has four rows and legitimately
-  scrolls. `hw-motion-text-size.txt` asserts both scroll ends are reachable there
-  rather than a fit, and asserts the fit on the roller page, which is the
-  assertion that keeps the roller off Sensors.
+Removing the dedicated page meant unwinding six tables that named it: the
+`m_Menu` grid map, the page identity array (hand sized, and wrong twice during
+this work), the `nav` and `page` name maps in `src/FurbleUI.cpp`, the four
+whitelists in `sim/scenario_action.cpp`, and the two vocabularies in
+`docs/sim.md`. Adding a page is not one edit, and neither is removing one.
 
-That scenario is deliberately narrow. An earlier attempt added the Sensors leg
-to the shared `text-size-overflow-large.txt`, which meant seeding the IMU on;
-that adds a Level row to the Connected page, which at Large text pushes that
-page off the 80x160 panel. Regressing an unrelated page to cover this one is not
-a trade worth making, so the shared file is untouched and the coverage lives in
-a file this feature owns.
+`ponytail:` the page is titled "Gestures" and a detection backend is not a
+gesture. Renaming it touches PR45's page identity, its simulator vocabularies
+and its scenarios, so it is a follow-up rather than a silent edit here.
 
 ### Four assertions that had no teeth
 

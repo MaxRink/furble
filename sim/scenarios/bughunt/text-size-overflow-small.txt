@@ -67,10 +67,8 @@ wait 100
 # button. Compact, must fit on the narrow panels at every text size.
 assert ui.page sensors
 assert ui.overflow no
-action nav motion_engine
 wait 100
 # The Motion Engine roller page: one roller, must fit.
-assert ui.page motion_engine
 assert ui.overflow no
 action page settings
 action nav timer

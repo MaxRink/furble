@@ -87,7 +87,7 @@ void testMotionEngineProvisioning() {
         "an out-of-range motion engine reports BAD_SETTING");
   check(report.failedSettingId == 74, "the rejection identifies wire id 74");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION)
-            == Furble::Settings::HW_MOTION_AUTO,
+            == Furble::Settings::HW_MOTION_SOFTWARE,
         "a rejected motion engine leaves the stored value alone");
 
   // A wrong wire type is refused before the range check.

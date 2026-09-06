@@ -488,7 +488,9 @@ void testSettings(void) {
   checkContains(motionGet.out, "type: uint8", "settings get reports the motion engine type");
   checkContains(motionGet.out, "applies: on reboot",
                 "the motion engine is chosen when the source arms, so it needs a restart");
-  checkContains(motionGet.out, "value: 0", "the motion engine defaults to Auto");
+  checkContains(motionGet.out, "value: 1",
+                "the motion engine ships as Software, so the unproven hardware path is "
+                "never what a user gets by default");
 
   const Result motionSet = runDirect("settings set hw_motion 2");
   check(motionSet.rc == 0, "settings set hw_motion returns success");

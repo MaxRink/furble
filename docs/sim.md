@@ -438,7 +438,7 @@ action imu.pitch DEGREES
 `page PAGE` accepts `main`, `menu`, `connect`, `scan`, `delete`, `power_off`,
 `connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
-`settings`, `display`, `features`, `sensors`, `motion_engine`, `infrared`, `gps_rate`,
+`settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
 `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`, `theme`,
 `text_size`, `bluetooth`, `tx_power`, `about`,

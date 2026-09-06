@@ -1,9 +1,9 @@
 # The Sensors page and the Motion Engine roller page at Large text.
 #
-# The roller does not live on the Sensors page: inline it overflowed the
-# 135x240 panel by 45 px and the 80x160 panel by more, which the button layout
-# renders under the floating navigation indicators. It lives on its own page,
-# and these are the assertions that keep it there.
+# The roller does not live on the Sensors page. Inline it overflowed the
+# 135x240 panel by 45 px; even as its own nav row it overflowed the 135x240
+# non-touch layout by 1 px and put content under the floating indicators. It
+# lives on the IMU behaviour page instead, and these assertions keep it there.
 #
 # Large is the worst case, so it is the only size asserted here. The shared
 # text-size sweeps cover Small and Normal, and page-matrix covers Normal on all
@@ -34,12 +34,21 @@ assert ui.scroll_bottom 0
 action scroll top
 assert ui.scroll_top 0
 
-# The roller page holds one roller and must fit on every panel at every size.
-action nav motion_engine
+# The page that actually holds the Motion Engine roller. It is an intentional
+# scroll page: master already runs it 67 px past the 135x240 panel at Large
+# text, so a fit assertion here would be wrong. Assert both scroll ends stay
+# reachable, which is how this repo treats its scrolling pages, and which is
+# what a roller that pushed content out of reach would break.
+action nav gestures
 wait 150
-assert ui.page motion_engine
-assert ui.overflow no
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
 
 # The setting still round-trips from the page that owns it.
-assert setting.hw_motion 0
+# The shipped default, asserted here so a default change cannot slip through a
+# layout scenario unnoticed.
+assert setting.hw_motion 1
 exit

@@ -85,11 +85,6 @@ assert ui.scroll_bottom 0
 action scroll top
 assert ui.scroll_top 0
 back
-wait 100
-action nav motion_engine
-wait 100
-assert ui.page motion_engine
-assert ui.overflow no
 action nav infrared
 wait 100
 assert ui.page infrared

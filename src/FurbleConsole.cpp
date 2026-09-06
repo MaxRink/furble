@@ -504,18 +504,22 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
     } break;
 #endif
-    case Settings::IMU_WAKE:
-    {
-      char *end = nullptr;
-      unsigned long value = strtoul(text, &end, 0);
-      if ((end == text) || (*end != '\0') || (value > 3)) {
-        return fail("expected 0-3");
     case Settings::HW_MOTION:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > Settings::HW_MOTION_HARDWARE)) {
         return fail("expected 0-2 (auto, software, hardware)");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::IMU_WAKE:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (*end != '\0') || (value > 3)) {
+        return fail("expected 0-3");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -1589,7 +1593,7 @@ int cmdIMU(int argc, char **argv) {
   }
 
   const bool setting = Settings::load<bool>(Settings::IMU);
-  std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
+  std::lock_guard<std::mutex> imuLock(g_IMUMutex);
   const bool enabled = M5.Imu.isEnabled();
   const auto type = M5.Imu.getType();
   const char *typeName = "unknown";
