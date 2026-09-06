@@ -17,9 +17,25 @@
 
 #include "FurbleTypes.h"
 
+#if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
+// FURBLE_SIM only, and a type alias only: the simulator substitutes a mutex
+// that reports a contended wait to its scheduler. connect() holds m_Mutex for
+// a whole attempt, and a host mutex the scheduler cannot see had to be broken
+// by a host-time deadlock timeout that leaked into the virtual clock (issue
+// 279). Firmware, the host tests and FURBLE_SIM_NO_SCHED_MUTEX all compile
+// std::mutex, so the shipping path is unchanged.
+#include "clock.h"
+#endif
+
 #define MAX_NAME (64)
 
 namespace Furble {
+
+#if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
+using connect_mutex_t = Sim::SchedulerMutex;
+#else
+using connect_mutex_t = std::mutex;
+#endif
 
 class NikonBase;
 
@@ -425,7 +441,7 @@ class Camera: public NimBLEClientCallbacks {
 
   static constexpr SecurityMode m_SecurityModeDefault = SecurityMode::SECURE_DISPLAY_YESNO;
 
-  mutable std::mutex m_Mutex;
+  mutable connect_mutex_t m_Mutex;
 
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
   bool m_FromScan = false;

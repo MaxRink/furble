@@ -22,6 +22,8 @@ struct battery_reading_t {
 void configure(int argc, char **argv);
 void startProfiler(void);
 void preparePreferences(void);
+/** Drop the per-run preferences store once the device is finished with it. */
+void removePreferences(void);
 void applyScenarioSettings(void);
 bool scenarioSettingIsTrue(const char *name);
 /** Read a scenario seed value, or the fallback when it was not seeded. */

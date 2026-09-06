@@ -32,8 +32,22 @@ void watchdogUnregisterThread(void);
  */
 void watchdogStart(void);
 
-/** Record the boot or run phase the simulator has reached. */
+/**
+ * Record the boot or run phase the simulator has reached. The pointer is kept
+ * for the crash report, so it must outlive the process: pass a literal.
+ */
 void watchdogPhase(const char *phase);
+
+/**
+ * Record the scenario line the driver is executing.
+ *
+ * A fatal fault kills the process with nothing but an exit status, which is
+ * all issue 283's single sighting left behind. The crash reporter prints this
+ * line, the phase and a native backtrace before the fault is re-raised. The
+ * pointer must outlive the process; the driver passes the parsed step's own
+ * source string, which is stable for the run.
+ */
+void watchdogScenarioStep(const char *line);
 
 /** Stop and join the watchdog thread. */
 void watchdogStop(void);

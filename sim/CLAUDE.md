@@ -31,6 +31,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | BLE discovery | Production `Scan` and `CameraList`, including advertisement matching and preferences-backed list persistence | `sim/BleSim.cpp` owns a virtual radio task that advertises the seeded virtual peers into the mock `NimBLEScan` and models the controller-owned discovery timer. Scan start responsiveness probing and the scan-end callback counter are `FURBLE_SIM` observability inside production `Scan`. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
+| Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`: the same mutex with a contended wait reported to the scheduler, so a task waiting for a connect to finish stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
@@ -148,14 +149,13 @@ a regression.
 - Fuzzer reproducibility is not total. Two runs of the same seed on the same
   binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
   event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
-  now enforces that with a replay of one guarded seed. Firmware behaviour under
-  the fuzzer is not reproducible line for line: two runs can still differ by one
-  connect attempt, because production code blocks on plain host mutexes the
-  simulator scheduler cannot see, so how far a connect gets before a disconnect
-  lands is host timed. Closing that needs the scheduler-visible mutex plan 158
-  Phase 3 owns. `observed_delta` and `no_observed_delta` move for the same
-  reason and are masked in the replay. Compare the fuzz report lines, not the
-  log, and do not tighten the replay to the whole log until that gap closes.
+  now enforces that with a replay of one guarded seed. `Camera::m_Mutex`, the
+  one host mutex a connect holds for its whole attempt, is scheduler visible
+  since plans/173, so that source of drift is gone. The remaining host mutexes
+  in production code are held for microseconds and have not been measured to
+  move a fuzz run, but they are still invisible, so `observed_delta` and
+  `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
+  not the log.
 - Exception: `gps.txt` renders the TinyGPSPlus fix age from the real host
   clock, so `gps.png` is not byte-reproducible and must not be a golden
   baseline as-is.
@@ -261,13 +261,17 @@ a regression.
   teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui`,
   `cancel-sweep-fuji-secure-ui` and `reconnect-after-disconnect-sweep` carry
   it; every leg that does not says why in its own header (plans/172).
-- Do not assert cancel or teardown latency in virtual time. `Control::disconnect()`
-  polls on the UI thread and every 20 ms slice advances the virtual clock, so the
-  number of slices is set by how long the host takes to let the connect task run,
-  which is issue #279. Measured: a bound with 4 percent slack failed 2 of 65 idle
-  runs and 4 to 6 of 8 at loadavg 80. Assert provenance instead;
-  `ble.secure_stall_aborted` says whether a modelled handshake ended on a link
-  terminate or on its own deadline, and no amount of host load changes it.
+- Cancel and teardown latency can be asserted in virtual time again (issue
+  #279, plans/173). `Control::disconnect()` polls on the UI thread and every
+  20 ms slice advances the virtual clock, so the number of slices used to be
+  set by how long the host took to let the connect task run: the target task
+  waiting on `Camera::m_Mutex` was invisible to the scheduler, so the turn had
+  to be taken from it by a host-time deadlock breaker. `Camera::m_Mutex` is a
+  `Furble::connect_mutex_t` now, which under `FURBLE_SIM` reports the wait, so
+  the holder is dispatched at once and no host time reaches the clock. Assert
+  provenance as well, not instead: `ble.secure_stall_aborted` says whether a
+  modelled handshake ended on a link terminate or on its own deadline, which a
+  bound cannot say.
 - A virtual peer that answers instantly cannot model a wait. `seed
   secure_stall_ms` holds every Fujifilm peer inside
   `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm

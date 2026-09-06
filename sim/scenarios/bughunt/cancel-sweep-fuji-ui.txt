@@ -15,13 +15,13 @@
 # Giving this topology a modelled window needs the calibrated peer work in
 # plan 159; plans/172 records that.
 #
-# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.#
-# The settle bounds are deliberately generous. What they assert is that the
-# drain empties at all, not that it empties quickly: convergence here needs a
-# starved target task to run, so a loaded host stretches it in virtual time too
-# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
-# runs on work that was healthy. The invariant survives a wide bound; a drain
-# that never empties still fails it.
+# Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
+#
+# The settle bounds are back at 6000 ms. PR #278 widened them to 30000 because
+# convergence needs a starved target task to run, and a loaded host stretched
+# that into virtual time (issue #279). That is closed: a wait on
+# Camera::m_Mutex is a scheduler-visible block now, so the drain converges on
+# virtual time alone. A drain that never empties still fails it.
 seed ble_peers fuji
 seed ble_saved true
 seed reconnect true
@@ -35,7 +35,7 @@ assert_max ble.live_clients 1
 action connect
 wait 10
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -44,7 +44,7 @@ assert_max ble.live_clients 1
 action connect
 wait 150
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -53,7 +53,7 @@ assert_max ble.live_clients 1
 action connect
 wait 400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -62,7 +62,7 @@ assert_max ble.live_clients 1
 action connect
 wait 900
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -71,7 +71,7 @@ assert_max ble.live_clients 1
 action connect
 wait 1800
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -80,7 +80,7 @@ assert_max ble.live_clients 1
 action connect
 wait 2600
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -89,7 +89,7 @@ assert_max ble.live_clients 1
 action connect
 wait 3400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -98,7 +98,7 @@ assert_max ble.live_clients 1
 action connect
 wait 10
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -107,7 +107,7 @@ assert_max ble.live_clients 1
 action connect
 wait 150
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -116,7 +116,7 @@ assert_max ble.live_clients 1
 action connect
 wait 400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -125,7 +125,7 @@ assert_max ble.live_clients 1
 action connect
 wait 900
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -134,7 +134,7 @@ assert_max ble.live_clients 1
 action connect
 wait 1800
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -143,7 +143,7 @@ assert_max ble.live_clients 1
 action connect
 wait 2600
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1
@@ -152,7 +152,7 @@ assert_max ble.live_clients 1
 action connect
 wait 3400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 assert_max ble.live_clients 1

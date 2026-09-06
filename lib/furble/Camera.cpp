@@ -193,7 +193,7 @@ void Camera::onDisconnect(NimBLEClient *pClient, int reason) {
 }
 
 bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
+  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
 
 #if defined(FURBLE_CONSOLE)
   m_DebugAttemptId = BtDebugJournal::instance().nextAttempt();
@@ -580,7 +580,7 @@ void Camera::updateConnStats(void) {
   // m_Mutex guards m_Client against the connect and disconnect paths. Use
   // try_lock so this sampler never stalls behind a connection attempt; the
   // previous snapshot simply stays in place.
-  const std::unique_lock<std::mutex> lock(m_Mutex, std::try_to_lock);
+  const std::unique_lock<connect_mutex_t> lock(m_Mutex, std::try_to_lock);
   if (!lock.owns_lock()) {
     return;
   }
@@ -909,7 +909,7 @@ bool Camera::connectCancelled(void) const {
 }
 
 void Camera::disconnect(void) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
+  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
   m_Active = false;
   m_Progress = 0;
   // Only tear down a live link. When m_Connected is false the NimBLE client has
@@ -946,7 +946,7 @@ void Camera::resetConnectionState(void) {
 }
 
 void Camera::reclaimClient(void) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
+  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
 
   // A gone peer whose ble_gap_terminate stalled: the link is still locally
   // connected, so onDisconnect has not fired and will not until the supervision
@@ -1001,7 +1001,7 @@ uint8_t Camera::getConnectProgress(void) const {
 }
 
 int8_t Camera::getRssi(void) const {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
+  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
   if ((m_Type == Type::FAUXNY) || !m_Connected || (m_Client == nullptr)
       || !m_Client->isConnected()) {
     return 0;

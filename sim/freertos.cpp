@@ -601,6 +601,20 @@ void runSchedulerTimerCallback(SchedulerCallback callback, void *argument) {
   simTaskName = previousName;
 }
 
+void schedulerHostBlockBegin(void) {
+  const std::lock_guard<std::mutex> lock(schedulerMutex());
+  // No wait kind and no deadline: nothing in the scheduler releases this
+  // waiter. The task releases itself in schedulerHostBlockEnd() once the host
+  // mutex is in hand, which is the real event the wait ends on.
+  setTaskBlockedLocked(true);
+}
+
+void schedulerHostBlockEnd(void) {
+  std::unique_lock<std::mutex> lock(schedulerMutex());
+  setTaskBlockedLocked(false);
+  waitForTurnLocked(lock);
+}
+
 }  // namespace Furble::Sim
 
 BaseType_t xTaskCreate(TaskFunction_t task,

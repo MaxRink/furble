@@ -22,18 +22,18 @@
 #
 # Offsets 10, 150, 400, 900, 1800, 2600, 3400 ms, two passes each.
 #
-# No cancel-latency bound on this leg. Virtual-time bounds are not sound here:
-# the interactive teardown polls on the UI thread, so how many 20 ms ticks a
-# cancel burns is set by how long the host takes to let the connect task run,
-# which is issue #279. A flaky bound is worse than none. The abort provenance
-# that replaces it (`ble.secure_stall_aborted`) can only be true once a fix
-# terminates the link, so it lives in the certified-false reproduction.#
-# The settle bounds are deliberately generous. What they assert is that the
-# drain empties at all, not that it empties quickly: convergence here needs a
-# starved target task to run, so a loaded host stretches it in virtual time too
-# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
-# runs on work that was healthy. The invariant survives a wide bound; a drain
-# that never empties still fails it.
+# The cancel-latency bound at the end of this leg is back. It was removed by
+# PR #278 because the interactive teardown polls on the UI thread, so the
+# number of 20 ms ticks a cancel burned was set by how long the host took to
+# let the connect task run (issue #279). Issue #279 is closed: a target task
+# waiting on Camera::m_Mutex is now a scheduler-visible block, so the turn goes
+# to the connect task at once and no host time reaches the virtual clock.
+#
+# The settle bounds are back at 6000 ms. PR #278 widened them to 30000 because
+# convergence needs a starved target task to run, and a loaded host stretched
+# that into virtual time (issue #279). That is closed: a wait on
+# Camera::m_Mutex is a scheduler-visible block now, so the drain converges on
+# virtual time alone. A drain that never empties still fails it.
 seed fauxny true
 seed reconnect true
 wait 300
@@ -43,7 +43,7 @@ assert control.state idle
 action connect
 wait 10
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -51,7 +51,7 @@ assert control.state idle
 action connect
 wait 150
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -59,7 +59,7 @@ assert control.state idle
 action connect
 wait 400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -67,7 +67,7 @@ assert control.state idle
 action connect
 wait 900
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -75,7 +75,7 @@ assert control.state idle
 action connect
 wait 1800
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -83,7 +83,7 @@ assert control.state idle
 action connect
 wait 2600
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -91,7 +91,7 @@ assert control.state idle
 action connect
 wait 3400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -99,7 +99,7 @@ assert control.state idle
 action connect
 wait 10
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -107,7 +107,7 @@ assert control.state idle
 action connect
 wait 150
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -115,7 +115,7 @@ assert control.state idle
 action connect
 wait 400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -123,7 +123,7 @@ assert control.state idle
 action connect
 wait 900
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -131,7 +131,7 @@ assert control.state idle
 action connect
 wait 1800
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -139,7 +139,7 @@ assert control.state idle
 action connect
 wait 2600
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -147,7 +147,7 @@ assert control.state idle
 action connect
 wait 3400
 action cancel
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -156,4 +156,9 @@ action connect
 assert-eventually-virtual 20000 control.state active
 assert control.connected 1
 assert ui.liveness_violations 0
+# Every cancel must have unwound its attempt, not outwaited it. The whole
+# run is bounded, and the bound has less slack than one connect window, so
+# a single cancel that sat out its window instead of aborting it puts the
+# clock past this. Eventual settling alone would pass such a run.
+assert_max clock.ms 24000
 exit

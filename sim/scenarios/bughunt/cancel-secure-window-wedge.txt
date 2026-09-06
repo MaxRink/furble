@@ -36,13 +36,13 @@
 #   4. The user's own connect never reaches active.
 #
 # CERTIFIED FALSE: this FAILS on master, at `ble.secure_stall_aborted`, and that is
-# the point. Promote it to certified once the fix lands.#
-# The settle bounds are deliberately generous. What they assert is that the
-# drain empties at all, not that it empties quickly: convergence here needs a
-# starved target task to run, so a loaded host stretches it in virtual time too
-# (issue #279). Measured at loadavg 171, a 6000 ms settle bound failed 2 of 50
-# runs on work that was healthy. The invariant survives a wide bound; a drain
-# that never empties still fails it.
+# the point. Promote it to certified once the fix lands.
+#
+# The settle bounds are back at 6000 ms. PR #278 widened them to 30000 because
+# convergence needs a starved target task to run, and a loaded host stretched
+# that into virtual time (issue #279). That is closed: a wait on
+# Camera::m_Mutex is a scheduler-visible block now, so the drain converges on
+# virtual time alone. A drain that never empties still fails it.
 seed ble_peers fuji-secure
 seed ble_saved true
 seed reconnect true
@@ -63,7 +63,7 @@ action cancel
 # see issue #279.
 assert ble.secure_stall_aborted yes
 # The drain bound is DISCONNECT_DRAIN_RECLAIM_MS (2000 ms).
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
@@ -72,7 +72,7 @@ action connect
 wait 4000
 action cancel
 assert ble.secure_stall_aborted yes
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 
 # Cycle 3, cancelling 6 s in.
@@ -80,7 +80,7 @@ action connect
 wait 6000
 action cancel
 assert ble.secure_stall_aborted yes
-assert-eventually-virtual 30000 control.zombies 0
+assert-eventually-virtual 6000 control.zombies 0
 assert control.connect_in_progress no
 assert control.state idle
 
