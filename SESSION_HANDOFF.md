@@ -946,3 +946,5 @@ Update 2026-09-06 21:30: #48 fix round at ac474257 (all interrupt-path defects c
 Update 2026-09-06 22:00: #48 CI 34/34 on ac474257 with PR body and tally posted; delta reviews running on #48 and #139; #245 and #47 rebased, waiting on CI. Lesson recorded: a mutation that only fails to compile proves nothing.
 
 Update 2026-09-06 22:30: #139 first fully green CI on 33f207ef; #245 (973e9d5e) and #47 (5900556b) green after rebases; delta reviews running on #48 and #139. Waiting on the user for the #273 pictures verdict plus the narrow-panel rule and for the X100VI pairing screen (bench of #245 on the flashed d5de73ee).
+
+Update 2026-09-06 23:00: #47 at e9009bc9 (schema rows, band, testEverySettingHasASchemaRow as the #288 guard; its sim-e2e red was the master cancel-sweep clock-bound flake, 1 in 24 on both). Delta reviews on #48 and #139 still running. #273 checks on 3c87f819 being diagnosed by its lane.
