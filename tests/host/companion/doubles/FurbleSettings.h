@@ -39,6 +39,7 @@ class Settings {
     GPS_ASSIST,
     GPS_HOLD,
     GPS_EXTRAP,
+    GPS_PLATFORM,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -82,6 +83,9 @@ class Settings {
 
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
+  static constexpr uint32_t BAUD_AUTO = 0;
+  static constexpr uint32_t BAUD_9600 = 9600;
+  static constexpr uint32_t BAUD_115200 = 115200;
 
   static void init(void) {}
 
@@ -141,8 +145,8 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 };
 
 template <>
-struct Furble::Settings::storage_type<Furble::Settings::IMU> {
-  using type = bool;
+struct Furble::Settings::storage_type<Furble::Settings::GPS_PLATFORM> {
+  using type = uint8_t;
 };
 
 template <>

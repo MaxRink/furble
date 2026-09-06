@@ -17,6 +17,10 @@ name: UI screenshots
       - 'include/FurbleSpinValue.h'
       - 'include/FurbleCalibrate.h'
       - 'components/icons/**'
+      - 'sim/scripts/docs-*.txt'
+      - 'sim/scripts/docs-capture.sh'
+      - 'docs/ui-walkthrough.md'
+      - 'docs/wiki/UI-Walkthrough.md'
       - 'sim/**'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
@@ -98,6 +102,36 @@ jobs:
               ./sim/build/furble-sim \
               --script sim/scripts/ui-screenshots.txt \
               --out "$RUNNER_TEMP/ui-screenshots"
+
+      - name: Gate deterministic GPS documentation captures
+        env:
+          SDL_VIDEODRIVER: x11
+          SDL_AUDIODRIVER: dummy
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          first="$RUNNER_TEMP/docs-gps-first"
+          second="$RUNNER_TEMP/docs-gps-second"
+          mkdir -p "$first" "$second"
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
+            env FURBLE_SIM_THEME=Default ./sim/build/furble-sim \
+            --script sim/scripts/docs-screenshots.txt --out "$first"
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
+            env FURBLE_SIM_THEME=Dark ./sim/build/furble-sim \
+            --script sim/scripts/docs-screenshots-dark.txt --out "$first"
+          test -s "$first/gps-satellites.png"
+          test -s "$first/dark-gps-satellites.png"
+          cmp "$first/gps-satellites.png" docs/img/gps-satellites.png
+          cmp "$first/dark-gps-satellites.png" docs/img/dark-gps-satellites.png
+          cmp docs/img/gps-satellites.png docs/wiki/img/gps-satellites.png
+          cmp docs/img/dark-gps-satellites.png docs/wiki/img/dark-gps-satellites.png
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
+            env FURBLE_SIM_THEME=Default ./sim/build/furble-sim \
+            --script sim/scripts/docs-screenshots.txt --out "$second"
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
+            env FURBLE_SIM_THEME=Dark ./sim/build/furble-sim \
+            --script sim/scripts/docs-screenshots-dark.txt --out "$second"
+          cmp "$first/gps-satellites.png" "$second/gps-satellites.png"
+          cmp "$first/dark-gps-satellites.png" "$second/dark-gps-satellites.png"
 
       - name: Write screenshot list and job summary
         shell: bash

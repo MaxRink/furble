@@ -349,9 +349,13 @@ See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
 must also be configured to request location data.
 
-The default baud rate for the GPS unit is 9600.
-The new v1.1 unit runs at a higher baud rate and must be configured under
-`Settings->GPS->GPS baud 115200` for correct operation.
+The default GPS baud is 9600, preserving existing installations. The v1.1
+AT6668 unit is expected to use 115200. Select `Auto` to probe 115200, 9600,
+38400, 57600, 19200, and 4800, or select a fixed rate under
+`Settings->GPS->GPS Baud`. Auto declares a receiver only after two checksummed
+NMEA sentences; if none arrive it reports `absent`, drops the external rail,
+and retries once after 60 seconds. A live AT6668 lock has not yet been recorded
+on hardware.
 
 The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
@@ -361,15 +365,23 @@ The GPS receiver itself can also be configured under `Settings->GPS`:
   loses it, so a tunnel or a doorway does not cost a run of geotags)
 - `Extrapolate` (while a fix is held, project it along the last course and
   speed, experimental)
+- `Power saving` (always on, PCAS12 standby, or experimental rail cycling)
+- `Assisted start` (position/time, with optional cached ephemeris replay)
+- `Platform` (portable, stationary, pedestrian, or vehicle dynamic model)
 
-Each of these defaults to `Default`, which leaves the receiver on its own
-settings and behaves exactly as before.
-A change is sent to the receiver when GPS is enabled, and the receiver goes
-back to its own defaults the next time it is powered off.
+Update rate, Sentences, and Constellation default to `Default`, which leaves
+those receiver settings alone. Power saving defaults to Always on, Assisted
+start is Off, and Platform defaults to Do not send. A change is sent to the
+receiver when GPS is enabled, and the receiver goes back to its own defaults
+the next time it is powered off.
 
-`Settings->GPS->Raw NMEA` shows the sentences arriving from the receiver along
-with the fix state and error counts.
-It is the place to look to confirm the receiver accepted a change.
+`Settings->GPS->GPS Data` shows fix age, satellites, speed, coordinates,
+altitude, and UTC time. `Raw NMEA` shows received sentences, fix/error
+counters, binary configuration status, and a Hot restart button. `Satellites`
+enables the extra GSV/GSA parser and shows per-satellite C/N0, used flags, and
+PDOP/HDOP/VDOP. `gps platform` and MON-HW diagnostics are intentionally marked
+hardware-tuning-pending; the receiver's response and the effect of its dynamic
+model have not been verified on an AT6668 unit.
 
 ### Intervalometer/Timer
 

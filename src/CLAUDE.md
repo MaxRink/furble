@@ -63,17 +63,20 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   decides `cfg.internal_spk`), only the event mask and volume reload live.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
-- Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
-  every new `Settings::type_t` case. The host
-  `settings_nvs_roundtrip_test` keeps an exhaustive storage-kind mirror so a
-  new enum value fails the host build until its table and switch handling are
-  updated.
+  Phase 2 adds `GPS_BAUD` Auto with the `Casic::Autobaud` ladder and a
+  no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
+  page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
+  parseable logic lives in `lib/furble/protocol/GpsCasic`.
 - `CompanionService::m_Mutex` serializes the status notification cache and all
   trigger rate and held-command state, including timer and disconnect release.
   Keep transport-triggered callbacks on that ownership rule, but never hold it
   across a transport virtual call because production GATT takes its own mutex.
   A zero-duration timed trigger releases inline because `handleTrigger()`
   already owns the service mutex.
+- Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
+  `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
+  enforces this with `-Werror=switch`, so build a debug env after adding a
+  setting.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic

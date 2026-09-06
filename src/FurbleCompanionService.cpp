@@ -303,6 +303,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -377,6 +378,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -448,6 +450,9 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       if ((type == Settings::GPS_HOLD) && (value[0] > GPS::HOLD_MAX)) {
         return false;
       }
+      if ((type == Settings::GPS_PLATFORM) && (value[0] > 4)) {
+        return false;
+      }
       Settings::save<uint8_t>(type, value[0]);
       return true;
     case SETTING_U32:
@@ -457,6 +462,10 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       }
       uint32_t v;
       std::memcpy(&v, value, sizeof(v));
+      if ((type == Settings::GPS_BAUD) && (v != Settings::BAUD_AUTO) && (v != Settings::BAUD_9600)
+          && (v != Settings::BAUD_115200)) {
+        return false;
+      }
       Settings::save<uint32_t>(type, v);
       return true;
     }
@@ -601,6 +610,7 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_PLATFORM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:

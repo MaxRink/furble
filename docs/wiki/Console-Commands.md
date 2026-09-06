@@ -62,7 +62,8 @@ and when it applies.
 
 ## gps
 
-- `gps` with no argument prints the fix, satellites, position, age, and error
+- `gps` with no argument prints the receiver state (`detecting`, `present` or
+  `absent`), the detected baud, the fix, satellites, position, age, and error
   counts.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
@@ -70,6 +71,13 @@ and when it applies.
 - `gps binary <class hex> <id hex> [payload bytes]` sends a CASIC binary frame.
 - `gps config` lists the binary configuration status.
 - `gps aid` sends an assisted-start hint.
+- `gps sats [on | off]` enables or disables GSV/GSA capture; `gps sats` prints
+  in-view/used counts, DOP, and each decoded satellite.
+- `gps platform 0..4` saves the dynamic model (`0` do not send, `1` portable,
+  `2` stationary, `3` pedestrian, `4` vehicle) and reloads the receiver. The
+  dyModel/PCAS11 effect is hardware-tuning-pending.
+- `gps monhw` polls the CASIC MON-HW snapshot and prints the raw response. Its
+  field layout is hardware-tuning-pending.
 - `gps power on | off` drives the external 5V rail.
 
 ## time

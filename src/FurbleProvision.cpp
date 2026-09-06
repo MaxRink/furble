@@ -83,6 +83,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -170,6 +171,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.message = "IMU wake gesture must be 0, 1, 2 or 3";
         return false;
       }
+      if ((setting.type == Settings::GPS_PLATFORM) && (field.value[0] > 4)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "GPS platform setting must be 0 through 4";
+        return false;
+      }
       if ((setting.type == Settings::TEXT_SIZE) && (field.value[0] > Settings::TEXT_SIZE_LARGE)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
@@ -202,11 +209,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
       break;
     case ProvisionTLV::ValueType::U32:
       if ((setting.type == Settings::GPS_BAUD)
+          && (littleEndianU32(field.value) != Settings::BAUD_AUTO)
           && (littleEndianU32(field.value) != Settings::BAUD_9600)
           && (littleEndianU32(field.value) != Settings::BAUD_115200)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
-        report.message = "GPS baud must be 9600 or 115200";
+        report.message = "GPS baud must be auto, 9600 or 115200";
         return false;
       }
       break;

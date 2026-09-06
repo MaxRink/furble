@@ -411,8 +411,8 @@ action imu.pitch DEGREES
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
 `gps_rate`, `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`,
-`gps_hold`, `gps`, `gps_data`, `nmea`, `timer`, `theme`, `text_size`,
-`bluetooth`, `tx_power`,
+`gps_hold`, `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`,
+`timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -423,8 +423,8 @@ action imu.pitch DEGREES
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
-`gps`, `gps_data`, `nmea`, `theme`, `text_size`, `bluetooth`, `tx_power`,
-`about`,
+`gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`, `theme`,
+`text_size`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, and `interval_wait`.
@@ -626,6 +626,37 @@ reports nothing about the bottom two rather than proving them clear.
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+
+GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
+`gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end
+scenario uses the fixed GSV/GSA fixture and proves the rendered route before
+docs capture runs.
+
+Phase 2 adds the receiver model and its queries. `gps.receiver` reports
+`unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the
+autobaud ladder locked (0 while none is known), `gps.eph_cached` reports the
+bytes the tier 2 ephemeris cache occupies in NVS, and `gps.monhw` reports the
+decoded MON-HW snapshot as `noise/agc/antenna/jam` or `none`. On the UART side
+`uart.baud` is the rate the driver has the port set to, `uart.eph_replay`
+counts the assistance frames replayed back at the receiver, and
+`uart.monhw_polls` counts MON-HW polls.
+
+Four seeds configure the modelled receiver before boot. `gps_baud` selects the
+`GPS_BAUD` setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` selects
+what is on the Grove port: `any` (the default, which answers whatever rate the
+driver programmed and keeps every pre-existing scenario unchanged), `none` for
+an empty port, or one of the six ladder rates, which makes the receiver mute
+until the ladder reaches it. `gps_sats` selects the GSV/GSA fixture
+(`default`, `none`, `one`, `twelve`, `duplicate`, `range`, `multi`,
+`malformed`). `gps_fix_date` selects `fixture` (the historic 1994 RMC date) or
+`modern`; only the modern date lands inside the window `TimeKeeperPolicy`
+accepts, which the ephemeris cache freshness check needs. `gps_assist` and
+`gps_platform` are ordinary byte seeds for their settings.
+
+Four script verbs drive the same model at runtime: `gps-receiver
+<any|none|BAUD>`, `gps-sats <fixture>`, `gps-monhw` (issue the production
+MON-HW poll) and `gps-eph-corrupt` (flip one byte of the stored ephemeris
+cache, so the reload path has to refuse it).
 
 ## Fault injection and fuzzing
 

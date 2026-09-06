@@ -68,10 +68,11 @@ void testRoundTrip() {
   original.mqttPassword = text("mqtt-secret");
   original.mqttBaseTopic = text("studio/camera");
   original.settings = {
-      {1, ValueType::U8,     {0x09}                  },
-      {3, ValueType::STRING, text("Dark")            },
-      {5, ValueType::BOOL,   {0x01}                  },
-      {6, ValueType::U32,    {0x78, 0x56, 0x34, 0x12}},
+      {1,  ValueType::U8,     {0x09}                  },
+      {3,  ValueType::STRING, text("Dark")            },
+      {5,  ValueType::BOOL,   {0x01}                  },
+      {6,  ValueType::U32,    {0x78, 0x56, 0x34, 0x12}},
+      {69, ValueType::U8,     {0x04}                  },
   };
 
   Bytes encoded;
