@@ -9,7 +9,7 @@ Repo: fork `MaxRink/furble` for all work, upstream `gkoh/furble` is read-only.
 
 ---
 
-## Resume here (kept current; last updated 2026-09-07 18:10)
+## Resume here (kept current; last updated 2026-09-07 18:50)
 
 Master `fork/master` = **ae0aeafa** (merged this cycle in order: #261, #264,
 #270, #274, #276, #266, #278, #286, #287, #47, #45, #291, #139). Upstream
@@ -30,8 +30,8 @@ Open PRs, head, state, next action:
 
 | PR | head | state | next |
 | --- | --- | --- | --- |
-| #48 IMU hardware motion (plan 20) | 21973038 pushed (ten review fixes on af3f982a) | lane rebasing onto ae0aeafa, bundle pending | push bundle, ONE delta review af3f982a..final (the af3f982a review was CHANGES REQUIRED: union-merge residue in docs/sim.md and a scenario, stale edge-counter comments, SD clamp, MPU6886 transition counting, roller hint; all claimed fixed in 21973038), CI, merge; six-step IMU gate owed post-merge; default HW_MOTION_SOFTWARE, flip to Auto is the gate deliverable |
-| #65 GPS motion detector (plan 18) | 5fa2fdfb in the lane worktree on af3f982a (PR still shows c1410d0b; bundle p65-cf82b561 is stale) | parked for #48 final head | `git rebase --onto <final48> af3f982a`, gates, bundle <final48>..HEAD, push, delta review, merge after #48; GitHub refuses changing a stacked PR's base so its CI is red until #48 merges; six-step gate owed |
+| #48 IMU hardware motion (plan 20) | fd52a851 pushed 18:45 (7 commits on ae0aeafa) | delta review af3f982a..fd52a851 running, CI running | on approval and green CI merge; then #65 (the af3f982a review was CHANGES REQUIRED: union-merge residue in docs/sim.md and a scenario, stale edge-counter comments, SD clamp, MPU6886 transition counting, roller hint; all claimed fixed in 21973038), CI, merge; six-step IMU gate owed post-merge; default HW_MOTION_SOFTWARE, flip to Auto is the gate deliverable |
+| #65 GPS motion detector (plan 18) | 5fa2fdfb on af3f982a in ~/wt/p65 | re-stacking onto fd52a851 (told 18:40) | `git rebase --onto fd52a851 af3f982a` running; gates, bundle <final48>..HEAD, push, delta review, merge after #48; GitHub refuses changing a stacked PR's base so its CI is red until #48 merges; six-step gate owed |
 | #166 companion password gate (plan 116) | a6c06b1f on GitHub; bundle p166-86d5c0ca (storage only, NOT pushed) | lane implementing the plan 116 auth gate on ae0aeafa | the branch never had the gate, only the wire id 47 setting (46 is IMU on master); lane adds the Auth characteristic, nonce plus HMAC-SHA256, per-connection auth state, gate on settings and trigger writes, encryption on location writes, companion_auth_test with mutations, corrected PR body; then push, review, CI, merge; Android app handshake bench owed post-merge |
 | #75 companion cameras characteristic (plan 51) | 868a9660 | lane rebasing onto ae0aeafa | connect/disconnect must use the UI's Control entry points, privileged ops behind one write handler for the #166 gate, deterministic companion host tests; push, review, CI, merge; app bench owed |
 | #53 WiFi provisioning + NTP (plan 33b) | fc618f7d | not started | base branch feat/33-wifi-hub is stale (33a merged as #148); re-base onto master, review, CI; user WiFi bench on the stick (wifi set ssid/psk, enable, status, ntp), no camera |
@@ -54,8 +54,8 @@ requestConnProfile); diagnosis recipe: download both runs'
 firmware-coverage artefacts and diff the llvm-cov html per line.
 
 Active agent lanes at 18:10 (they do not survive a new session; the VM
-worktrees do): #48 lane (~/wt/p48, rebasing), #65 lane (~/wt/p65, parked
-at 5fa2fdfb), #166 lane (~/wt/p166, implementing the gate), #75 lane
+worktrees do): #48 lane (~/wt/p48, done, fd52a851), #65 lane (~/wt/p65, re-stacking
+onto fd52a851), #166 lane (~/wt/p166, implementing the gate), #75 lane
 (~/wt/p75, rebasing), #245 lane (~/wt/f245, parked), #273 lane
 (host wt-168-push, parked). Reviewer worktrees r139 r139b r139c r48c r291
 idle and the fw245e build worktree can be pruned.
@@ -72,8 +72,8 @@ console (serdrive.py) then esptool (0x0 bootloader, 0x8000 partitions,
 serlisten.py (stalls silently when USB CDC drops). Console facts: `debug
 control` carries the control.* fields, `status` does not; an empty reason
 prints `none`. Staged firmware under ~/furble-build-wt/vm-out: 245-e3e3872c
-(bench), 48-21973038, 65-af50206a, 139-c64d8d80, 47-e9009bc9, 45-188b603c
-(merged heads for their owed gates). Bundles kept: p48-21973038,
+(bench), 48-fd52a851, 65-af50206a, 139-c64d8d80, 47-e9009bc9, 45-188b603c
+(merged heads for their owed gates). Bundles kept: p48-fd52a851,
 p65-cf82b561 (stale), p139-c64d8d80 (merged), p166-86d5c0ca (storage only).
 
 Host disk: was 100 percent on 2026-09-07; the user authorized deleting old
@@ -89,7 +89,7 @@ detached with nohup, an outer timeout kills it); the VM cannot push, lanes
 hand bundles under ~/furble-build-wt/ and the coordinator pushes from
 ~/furble-build-wt/wt-handoff (host git is slow: fetch single SHAs, never
 `worktree add` there; a first push sometimes fails with "failed to push
-some refs" and the retry succeeds). Rules: -j2 on every tool, one sim per
+some refs" and the retry succeeds; fetch new master commits by FULL sha before pushing a bundle built on them). Rules: -j2 on every tool, one sim per
 lane, own PIDs by build path only, a denied call means stop and report,
 new settings need a ProvisionTLV schema row, Camera locks use
 Furble::connect_mutex_t, the profile-naming foreach stays last in
