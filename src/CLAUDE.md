@@ -67,12 +67,21 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
   page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
   parseable logic lives in `lib/furble/protocol/GpsCasic`.
-- `CompanionService::m_Mutex` serializes the status notification cache and all
+- `CompanionService::m_Mutex` serializes the status and camera notification
+  caches and all
   trigger rate and held-command state, including timer and disconnect release.
   Keep transport-triggered callbacks on that ownership rule, but never hold it
   across a transport virtual call because production GATT takes its own mutex.
   A zero-duration timed trigger releases inline because `handleTrigger()`
   already owns the service mutex.
+- The companion cameras characteristic never drives `Control` itself. Connect
+  and disconnect go through `UI::sendRequest`, the same request queue the
+  console uses, because `Control::disconnect()` waits for the teardown and the
+  on-device screen has to follow the remote action. That queue is compiled into
+  every build; only `PERF` and `AUDIT` stay behind `FURBLE_CONSOLE`. For the
+  same reason the camera records read rssi from `Control::getTargetState()`,
+  never `Camera::getRssi()`, which takes the camera connect mutex a cold
+  connect holds for the whole connect timeout.
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a

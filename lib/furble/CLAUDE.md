@@ -18,6 +18,14 @@ protocol core.
   but its value stays reserved).
 - `CameraList` handles persistence of paired cameras, `Scan` handles
   advertisement matching and discovery.
+- The saved index blob is versioned by an explicit four byte header. A v1 blob
+  has no header and no camera ids, so it still decodes and `load()` assigns and
+  persists ids once. Camera ids are the companion wire identity: 1 to 254, zero
+  means unassigned, `0xff` means all cameras, and the allocator walks forward
+  from a persisted counter so a delete does not hand an id straight back.
+- `CameraList::m_Mutex` guards the connect list and the id map. Off-UI-task
+  callers take `snapshot()` rather than iterating `size()` and `get()`, which
+  race a concurrent `load()`.
 - `Scan` owns one stable NimBLE callback proxy. In the pinned
   esp-nimble-cpp 2.5.0 source (`NimBLEScan.cpp`, `stop()`), cancellation calls
   `ble_gap_disc_cancel()` and does not synthesize `onScanEnd`; Apache NimBLE's

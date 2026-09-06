@@ -24,11 +24,33 @@ namespace {
 
 using Furble::CameraListProtocol::IndexEntry;
 
-IndexEntry makeIndexEntry(const char *name, uint32_t type) {
+IndexEntry makeIndexEntry(const char *name, uint32_t type, uint8_t camera_id = 0) {
   IndexEntry entry = {};
   std::strncpy(entry.name, name, sizeof(entry.name) - 1);
   entry.type = type;
+  entry.camera_id = camera_id;
   return entry;
+}
+
+bool sameIndexEntry(const IndexEntry &a, const IndexEntry &b) {
+  return std::memcmp(a.name, b.name, sizeof(a.name)) == 0 && a.type == b.type
+         && a.camera_id == b.camera_id;
+}
+
+// A v1 index blob: bare records of name and little endian type, no header and
+// no camera ids. This is what an upgrading device reads out of NVS.
+std::vector<uint8_t> encodeLegacyIndex(const std::vector<IndexEntry> &entries) {
+  std::vector<uint8_t> bytes(entries.size() * Furble::CameraListProtocol::INDEX_LEGACY_ENTRY_BYTES,
+                             0x00);
+  for (size_t i = 0; i < entries.size(); i++) {
+    uint8_t *record = bytes.data() + i * Furble::CameraListProtocol::INDEX_LEGACY_ENTRY_BYTES;
+    std::memcpy(record, entries[i].name, Furble::CameraListProtocol::INDEX_NAME_BYTES);
+    for (size_t b = 0; b < sizeof(uint32_t); b++) {
+      record[Furble::CameraListProtocol::INDEX_NAME_BYTES + b] =
+          static_cast<uint8_t>(entries[i].type >> (8 * b));
+    }
+  }
+  return bytes;
 }
 
 bool testFujifilmAdvertisementParsing() {
@@ -334,23 +356,53 @@ bool testMalformedAdvertisementOutputIsolation() {
 }
 
 bool testCameraListPersistence() {
-  const IndexEntry first = makeIndexEntry("001122334455", 1);
-  const IndexEntry second = makeIndexEntry("AABBCCDDEEFF", 8);
+  const IndexEntry first = makeIndexEntry("001122334455", 1, 3);
+  const IndexEntry second = makeIndexEntry("AABBCCDDEEFF", 8, 200);
   const std::vector<IndexEntry> source = {first, second};
   std::vector<uint8_t> encoded;
   CHECK(Furble::CameraListProtocol::encodeIndex(source, encoded));
-  CHECK(encoded.size() == 2 * Furble::CameraListProtocol::INDEX_ENTRY_BYTES);
-  CHECK(std::equal(std::begin(first.name), std::end(first.name), encoded.begin()));
-  CHECK(encoded[Furble::CameraListProtocol::INDEX_NAME_BYTES] == 0x01);
-  CHECK(encoded[Furble::CameraListProtocol::INDEX_NAME_BYTES + 1] == 0x00);
-  CHECK(encoded[Furble::CameraListProtocol::INDEX_NAME_BYTES + 2] == 0x00);
-  CHECK(encoded[Furble::CameraListProtocol::INDEX_NAME_BYTES + 3] == 0x00);
+  // A v2 blob is the schema header followed by the records.
+  CHECK(encoded.size()
+        == Furble::CameraListProtocol::INDEX_HEADER_BYTES
+               + 2 * Furble::CameraListProtocol::INDEX_ENTRY_BYTES);
+  CHECK(std::memcmp(encoded.data(), Furble::CameraListProtocol::INDEX_HEADER,
+                    Furble::CameraListProtocol::INDEX_HEADER_BYTES)
+        == 0);
+  const uint8_t *record = encoded.data() + Furble::CameraListProtocol::INDEX_HEADER_BYTES;
+  CHECK(std::equal(std::begin(first.name), std::end(first.name), record));
+  CHECK(record[Furble::CameraListProtocol::INDEX_NAME_BYTES] == 0x01);
+  CHECK(record[Furble::CameraListProtocol::INDEX_NAME_BYTES + 1] == 0x00);
+  CHECK(record[Furble::CameraListProtocol::INDEX_NAME_BYTES + 2] == 0x00);
+  CHECK(record[Furble::CameraListProtocol::INDEX_NAME_BYTES + 3] == 0x00);
+  CHECK(record[Furble::CameraListProtocol::INDEX_NAME_BYTES + 4] == 0x03);
 
   std::vector<IndexEntry> decoded;
   CHECK(Furble::CameraListProtocol::decodeIndex(encoded.data(), encoded.size(), decoded));
   CHECK(decoded.size() == source.size());
-  CHECK(std::memcmp(&decoded[0], &source[0], sizeof(IndexEntry)) == 0);
-  CHECK(std::memcmp(&decoded[1], &source[1], sizeof(IndexEntry)) == 0);
+  CHECK(sameIndexEntry(decoded[0], source[0]));
+  CHECK(sameIndexEntry(decoded[1], source[1]));
+
+  // A v1 blob still decodes. Its entries carry no id, so CameraList assigns and
+  // persists one on the next load.
+  const std::vector<uint8_t> legacy = encodeLegacyIndex(source);
+  CHECK(legacy.size() == 2 * Furble::CameraListProtocol::INDEX_LEGACY_ENTRY_BYTES);
+  std::vector<IndexEntry> migrated;
+  CHECK(Furble::CameraListProtocol::decodeIndex(legacy.data(), legacy.size(), migrated));
+  CHECK(migrated.size() == source.size());
+  CHECK(std::memcmp(migrated[0].name, first.name, sizeof(first.name)) == 0);
+  CHECK(migrated[0].type == first.type && migrated[1].type == second.type);
+  CHECK(migrated[0].camera_id == Furble::CameraListProtocol::INDEX_ID_INVALID);
+  CHECK(migrated[1].camera_id == Furble::CameraListProtocol::INDEX_ID_INVALID);
+
+  // 21 v1 records also divide by the v2 record size. The explicit header is
+  // what keeps that length from decoding two ways.
+  const std::vector<IndexEntry> ambiguous(21, first);
+  const std::vector<uint8_t> ambiguousBytes = encodeLegacyIndex(ambiguous);
+  CHECK(ambiguousBytes.size() % Furble::CameraListProtocol::INDEX_ENTRY_BYTES == 0);
+  std::vector<IndexEntry> ambiguousDecoded;
+  CHECK(Furble::CameraListProtocol::decodeIndex(ambiguousBytes.data(), ambiguousBytes.size(),
+                                                ambiguousDecoded));
+  CHECK(ambiguousDecoded.size() == ambiguous.size());
 
   std::vector<uint8_t> malformed(encoded.begin(), encoded.end() - 1);
   CHECK(!Furble::CameraListProtocol::decodeIndex(malformed.data(), malformed.size(), decoded));
@@ -362,7 +414,7 @@ bool testCameraListPersistence() {
   CHECK(Furble::CameraListProtocol::addressKey(0x112233445566ULL) == "112233445566");
 
   std::vector<IndexEntry> entries = {first};
-  IndexEntry replacement = makeIndexEntry("001122334455", 9);
+  IndexEntry replacement = makeIndexEntry("001122334455", 9, 3);
   Furble::CameraListProtocol::upsertIndex(entries, replacement);
   CHECK(entries.size() == 1);
   CHECK(entries[0].type == 9);

@@ -10,6 +10,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include "freertos/FreeRTOS.h"
 
@@ -22,7 +23,7 @@
 #include "FurbleUI.h"
 #include "esp_timer.h"
 
-const char *LOG_TAG = "furble-host";
+// LOG_TAG is defined by lib/furble/Scan.cpp, which this target links.
 
 namespace Furble {
 
@@ -58,6 +59,10 @@ struct BatteryState {
 
 std::mutex g_BatteryMutex;
 BatteryState g_Battery;
+
+std::mutex g_RequestMutex;
+std::vector<Host::UIRequest> g_Requests;
+bool g_RequestsAccepted = true;
 
 }  // namespace
 
@@ -127,6 +132,27 @@ void Host::setBatteryStatus(int32_t level,
                             bool charging) {
   const std::lock_guard<std::mutex> lock(g_BatteryMutex);
   g_Battery = {level, voltage, current, vbus, charging};
+}
+
+bool UI::sendRequest(Request request, int32_t arg) {
+  const std::lock_guard<std::mutex> lock(g_RequestMutex);
+  if (!g_RequestsAccepted) {
+    return false;
+  }
+  g_Requests.push_back({request, arg});
+  return true;
+}
+
+std::vector<Host::UIRequest> Host::takeUIRequests(void) {
+  const std::lock_guard<std::mutex> lock(g_RequestMutex);
+  std::vector<Host::UIRequest> requests;
+  requests.swap(g_Requests);
+  return requests;
+}
+
+void Host::setUIRequestsAccepted(bool accepted) {
+  const std::lock_guard<std::mutex> lock(g_RequestMutex);
+  g_RequestsAccepted = accepted;
 }
 
 int32_t UI::getBatteryLevel(void) {

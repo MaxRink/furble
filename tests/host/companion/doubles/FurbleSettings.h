@@ -159,4 +159,14 @@ struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
   using type = bool;
 };
 
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MULTICONNECT> {
+  using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::RECONNECT> {
+  using type = bool;
+};
+
 #endif

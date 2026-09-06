@@ -1,5 +1,6 @@
 #include "MockNimBLE.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <mutex>
@@ -1199,9 +1200,22 @@ void NimBLEDevice::setConnParamApplyDelayReads(size_t reads) {
 // The simulator already owns a virtual clock and defines this in its esp_timer
 // shim, so leave it alone there: two definitions would fight, and the wall
 // clock would make every scenario's timing nondeterministic.
+namespace {
+// Test-driven offset on the mock clock. Lets a suite jump a rate limit forward
+// deterministically instead of sleeping for it.
+std::atomic<int64_t> g_TimeOffsetUs {0};
+}  // namespace
+
 extern "C" int64_t esp_timer_get_time(void) {
   static const auto start = std::chrono::steady_clock::now();
   const auto elapsed = std::chrono::steady_clock::now() - start;
-  return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+  return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()
+         + g_TimeOffsetUs.load();
+}
+
+// Jump the mock clock forward. Host suites use this to cross a rate limit
+// deterministically instead of sleeping through it.
+extern "C" void furble_host_advance_time(int64_t us) {
+  g_TimeOffsetUs.fetch_add(us);
 }
 #endif
