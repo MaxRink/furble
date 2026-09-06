@@ -232,7 +232,7 @@ Implemented and rebased onto `fork/master` 6245a301.
   press/release pair.
 - Console (`settings get/set`, plus `imu scale`), companion, provisioning and
   SD import/export.
-- Simulator: ten certified e2e scenarios, the Gestures and Sensors routes in the
+- Simulator: eleven certified e2e scenarios, the Gestures and Sensors routes in the
   bughunt page matrix, overflow sweep and text-size sweeps, and a power baseline
   with the detector on.
 
@@ -330,7 +330,7 @@ intervalometer to be IDLE or FINISHED. The two missing
 `m_IntervalometerState.store()` calls that made that last check honest are part
 of this change.
 
-### Power cost, measured
+### Power cost: a model ceiling, not a measurement
 
 The gesture path takes no power lock. It calls neither `Power::acquire` nor
 `Power::release`, so it does not itself hold `APB_FREQ_MAX`. The wake path takes
@@ -338,10 +338,9 @@ the display lock through `wakeDisplay()`, exactly as a button wake does. No
 mutex is held across a delay: the shutter send is a non-blocking queue send from
 the UI task and the 30 ms hold is a timer, not a sleep.
 
-The cost is in light-sleep residency, and it is large.
-`sim/scenarios/gesture-idle-30s.txt` runs both features on with the display off
-and is checked against its own baseline in `tools/power-model/baseline/`. The
-simulator power model reports, on the M5StickS3 with the display off:
+`sim/scenarios/gesture-idle-30s.txt` runs both features on with the display off,
+checked against its own baseline in `tools/power-model/baseline/`. On the
+M5StickS3 with the display off the model reports:
 
 | Poll rate | Modelled standing current | Light-sleep residency |
 | --- | --- | --- |
@@ -350,15 +349,37 @@ simulator power model reports, on the M5StickS3 with the display off:
 | 25 Hz (40 ms) | 5.637 mA | 86.6 % |
 | 50 Hz (20 ms) | 9.632 mA | 76.6 % |
 
-Decision on the 25 Hz display-off fallback the scope section proposed: not
-implemented. It halves a thirty-one-fold increase to an eighteen-fold one while
-costing tap detection, so it buys a second mode and a worse detector without
-changing the answer. Any software poll that has to run while the display is off
-is expensive here. The real fix for wake-while-off is the BMI270 any-motion
-interrupt on INT1, which is already scoped out of this PR and documented below.
-Until then the honest statement is the one in the PR body and the UI: Wake
-Gesture costs battery, it is off by default, and the number above is the model's
-estimate rather than a hardware measurement.
+**These are a ceiling with roughly an order of magnitude of headroom, not an
+estimate of the work the timer does.** `sim/power_profiler.cpp` marks a UI cycle
+awake if any registered timer fired in it, then bills the whole interval at
+`mcu_80` = 40.2 mA. The report shows 1500 fires in 30 s charged as 7000 ms
+awake: 4.67 ms per fire, which is the UI task's 5 ms loop quantum, not the cost
+of one I2C read plus a few dozen float operations. The 0.311 mA baseline is
+artificial in the other direction, because `UI::task()` already runs
+`lv_task_handler()` every 5 ms on master and the model still calls that full
+light-sleep residency. The scenario also enables the IMU while the model bills
+the constant `bmi270_suspend` peripheral figure; the 0.685 mA normal-mode entry
+in `board-currents.yaml` that a 50 Hz read actually needs is charged nowhere.
+This limitation is now written down in `tools/power-model/README.md`, and the
+two fixes are a follow-up.
+
+So the table above says the poll is not free and bounds how bad it can be. It
+does not say how bad it is.
+
+Decision on the 25 Hz display-off fallback the scope section proposed: **not
+implemented, and deliberately not decided on this table.** The model cannot
+separate a 20 ms poll from a 40 ms one by anything except how often the 5 ms
+quantum is charged, so choosing a rate from it would be choosing from an
+artefact. What settles the rate is step 8 of the hardware gate below, the hour
+drain run. Under about 2 mA of measured delta and both the "the cost is large"
+framing and the rejection of 25 Hz have to be rewritten; near 9 mA and the INT1
+follow-up becomes urgent. The shipped position until that run is the
+conservative one: 50 Hz, off by default, and the real fix for wake-while-off is
+the BMI270 any-motion interrupt on INT1, which stays scoped out.
+
+Note for whoever reads the power gate: `compare.py` only fails on increases, so
+this baseline guards against the rate going up and cannot catch it going down.
+A rate reduction prints `-41.47% PASS`.
 
 One follow-up is worth recording rather than doing here. When only Double-Tap
 Shutter is enabled, the detector does not need to run while the display is off
@@ -366,6 +387,30 @@ at all, because `handleGesture()` already refuses to fire the shutter in that
 state. Stopping the timer for that configuration needs a hook in `wakeDisplay()`
 and `processInactivity()`, which are hot shared paths, and it does not help the
 headline wake case. It belongs in the same PR as the interrupt work.
+
+### Thresholds are hand-written and unvalidated against a real sensor
+
+This is the largest open risk in the change and it is not visible from the test
+results.
+
+Every threshold, every host fixture and every scenario waveform in this branch
+is a hand-written step function. No accelerometer trace from real hardware
+exists anywhere in the tree, so the numbers 1.5 g, 0.6 g, 0.5 g, 120 ms, 80 to
+400 ms and 750 ms are reasoned, not fitted, and the MPU6886 gain of 1.25 is an
+educated guess.
+
+The shipped shape rests on one physical claim, stated in `docs/sim.md` and
+above: at the 50 Hz poll rate a tap is one sample. `M5.Imu.getAccel()` returns
+the latest register value with no peak hold, and a finger tap on a cased Stick
+is a few milliseconds, so a 20 ms sampling window can alias the impulse away and
+drop taps at random. The scenarios cannot see this, because they hold the high
+value for a full sample period by construction. If taps prove unreliable at
+every `imu scale`, the answer is a higher poll rate or a hardware peak hold, not
+a different constant.
+
+The hardware gate below therefore starts with trace capture, not with pass/fail
+checks. Those traces must be committed as simulator fixtures and the tap path
+re-derived against them before any of these constants can be called tuned.
 
 ## Simulator coverage and killing mutations
 
@@ -410,7 +455,7 @@ existing `imu.accel`, `imu.enable` and `imu.disable` actions.
 | | losing the sensor disables every control and stops the timer | drop the live check in `pollGesture()` | killed |
 | `bughunt/page-matrix.txt` | Sensors fits and Gestures scrolls cleanly on all three panels | the pre-fix Sensors layout | killed |
 | `bughunt/stick-notouch-layout-135.txt` | Sensors fits the non-touch layout too | the pre-fix Sensors layout | killed |
-| `gesture-idle-30s.txt` | the poll rate is a tracked power number | `GESTURE_POLL_MS` 20 to 40 | killed |
+| `gesture-idle-30s.txt` | the poll rate is a tracked power number | none: `compare.py` only fails on increases, so a rate reduction prints `-41.47% PASS`. `GESTURE_POLL_MS` 20 to 40 is killed by `assert ui.gesture_period_ms 20` in `imu-gesture-detect.txt`, not by this gate | n/a |
 
 Sixteen mutations were built and run; all sixteen fail the named scenario. Four
 of them survived on the first pass and each survivor was a real weakness in the
@@ -474,6 +519,115 @@ seconds, a 1.0 to 1.1 g calibration ramp that the baseline must follow, the
 console scale in both directions plus its clamping of zero, NaN and 100, and the
 `poll()` hardware path including a disabled sensor.
 
+## Hardware gate, executable
+
+Reproduced verbatim from the PR #45 review on `dce53bf5`.
+
+M5StickS3 with the X100VI. Steps 1 and 8 are the two that can still change the shipped design.
+
+```
+0  FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug -t upload
+   pio device monitor -e m5stick-s3-debug   (log to a file for every step)
+   settings set imu on
+   restart
+   imu status        expect bmi270 and live reads
+   imu scale         expect 1.00
+
+1  Trace capture, the missing fixture data.
+   settings set imu_wake 3
+   settings set imu_trigger off
+   Tap once, wait 2 s. Double tap, wait 2 s. Shake 2 s, wait 2 s.
+   Repeat the whole sequence at imu scale 0.5, 1.0 and 2.0.
+   Deliverable: every "IMU gesture:" line with its timestamp, and the scale
+   that gives one event per intended gesture and nothing else. If no scale
+   makes single taps reliable, that is the 20 ms aliasing prediction in
+   finding 3 and the poll rate has to change before merge.
+
+2  Single events.
+   For imu_wake 1, 2 and 3: ten repetitions of the matching gesture,
+   expect exactly ten lines, one class each, no bursts.
+   settings set imu_wake 0, then shake: expect nothing logged.
+
+3  Wake from display off, including after a long sleep.
+   settings set inactivity 1
+   settings set display_off 1
+   settings set imu_wake 2
+   Wait for the panel to go dark, shake once. The panel must return at the
+   configured brightness and stay on for the full inactivity window rather
+   than dimming immediately. Repeat with imu_wake 1 and a tap.
+   Then leave it idle five minutes and repeat once. A missed first gesture
+   after a long light-sleep window is the report that matters here.
+
+4  Shutter, X100VI connected.
+   settings set imu_trigger on ; settings set imu_wake 0
+   20 double taps on Connected      expect 20 frames, 20 double_tap lines
+   20 single taps on Connected      expect 0 frames
+   10 double taps on Remote         expect 10 frames
+   10 double taps on Settings>Sensors  expect 0 frames
+   5 frame intervalometer, 2 double taps during the run  expect 5 frames
+   disconnect, 10 double taps       expect 0 frames, 10 gesture lines
+
+5  False triggers.
+   imu_wake 2, imu_trigger off, device in a trouser pocket, walk 5 minutes.
+   Count wakes.
+   imu_wake 0, imu_trigger on, connected, device in a camera bag, carry
+   5 minutes. Count frames.
+   Report both numbers including zero. If either is non-zero, record the
+   imu scale that makes it zero and whether tap still works at that scale.
+
+6  Mounted recoil.
+   Strap the Stick to the camera, connect, imu_trigger on, fire 20 frames
+   from the Remote page button. Count gesture lines. Non-zero means the
+   camera's own shutter can re-trigger the remote.
+
+7  Per-sensor gain.
+   Repeat steps 1 and 2 on an MPU6886 board (StickC Plus or Core2) and
+   record the working imu scale against the shipped 1.25 typeGain.
+
+8  Hour drain, the number that decides the poll rate.
+   USB unplugged, full charge, connected to the X100VI, display off.
+   power log 30    (CSV to the captured monitor log)
+   Run A  imu_wake 0, imu_trigger off, 60 minutes
+   Run B  imu_wake 3, imu_trigger on, 60 minutes
+   Deliverable: both slopes in mA and the measured delta against the model's
+   9.32 mA. Under about 2 mA and the plan's "the cost is large" plus the
+   rejection of 25 Hz both need rewriting. Near 9 mA and the INT1 follow-up
+   becomes urgent and finding 7's docs warning becomes required.
+```
+
+## Recorded, not fixed here
+
+- The refractory period is global rather than per gesture class. With Wake
+  Gesture on Shake and Double-Tap Shutter off, `doubleTap` is false, so every
+  tap release reports TAP, the wake mask discards it, and `recordGesture()`
+  still arms the 750 ms window. A tap shortly before a genuine shake swallows
+  the shake. It fails safe, in the direction of fewer false wakes, but it needs
+  a deliberate trial in step 2 of the gate above before it is called intended.
+- `m_IntervalometerState` now pre-announces WAIT at the start callback so the
+  gesture guard sees a run immediately. `UI::getIntervalometerState()` is also
+  what the console `status` and the companion read, so both report WAIT for one
+  5 ms tick before the state machine gets there. There is a comment at the
+  store.
+- On the 80x160 non-touch panel the `Gestures` row breaks mid-word, rendering as
+  "Gesture" over "s". The 7 px overflow forces a scrollbar, the scrollbar
+  narrows the row, and the label wraps inside the word. In the touch layout on
+  the same panel, where the page fits, it sits on one line. This is the residue
+  of the pre-existing overflow that `bughunt/stick-notouch-layout-80.txt`
+  already carries as an `xassert`, and it belongs to whoever promotes that
+  assertion. `imu-gesture-gating.txt` carries a comment saying so, because the
+  scenario fails its fit assertion if it is run in the non-touch layout on that
+  panel.
+- No power warning reaches the user. The Gestures page says only "A knock can
+  trigger a frame." and the settings docs describe Wake Gesture with no cost
+  note. Wake Gesture is the one setting in furble whose cost is a standing
+  current increase while the display is off, so the docs row wants a sentence
+  once step 8 of the gate produces a real number. A second on-screen warning
+  line is the wrong answer: that page is already the tightest thing on 80x160.
+- `lib/furble/protocol/ProvisionTLV.cpp` also gains wire id 46, so the shipped
+  `IMU` setting becomes provisionable for the first time. That is a deliberate
+  behaviour change beyond the two new settings, recorded here because it is
+  easy to miss in the diff.
+
 ## Deviations
 
 - Observed while adding the text-size routes, and left alone: seeding the IMU in
@@ -486,15 +640,21 @@ console scale in both directions plus its clamping of zero, NaN and 100, and the
   1.0) rather than a full per-board threshold set. One scalar covers the noise
   floor difference the plan describes, and the console scale covers the rest.
   Both numbers are estimates until the hardware gate runs.
-- The 25 Hz display-off fallback is not implemented. See the measured table
-  above for why.
+- The 25 Hz display-off fallback is not implemented, and the decision is
+  deferred to step 8 of the hardware gate rather than taken from the model
+  table. The model cannot separate a 20 ms poll from a 40 ms one except by how
+  often it charges the 5 ms UI quantum.
 - Deep wake through the M5PM1 remains documented only, as scoped.
 - The Core settings grid keeps master's `{3, 0}` tile for Sensors. PR #273 adds
   a fourth grid row; whichever of the two lands second re-checks the tile.
-- Hardware verification is outstanding: tap, double tap and shake with the
-  X100VI connected, the false-trigger walk, and a one hour drain comparison with
-  Wake Gesture on against off. The 9.6 mA model estimate above is the number the
-  drain run has to confirm or correct.
+- Hardware verification is outstanding and is the merge gate. The executable
+  eight-step version is above. Steps 1 and 8 are the two that can still change
+  the shipped design: step 1 because no real accelerometer trace exists and the
+  one-sample tap claim may alias, step 8 because the poll rate decision is
+  waiting on a measured drain rather than a model ceiling.
+- All thresholds are hand-written. Nothing in this branch has been fitted to a
+  real sensor reading, and the traces from step 1 have to be committed as
+  simulator fixtures before they can be.
 
 ## References
 

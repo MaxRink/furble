@@ -7083,6 +7083,10 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         interval->m_State = Intervalometer::STATE_IDLE;
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
+        // Announce WAIT before the timer's first tick sets it. The gesture guard
+        // needs the run to be visible immediately; the cost is that the console
+        // status and the companion report WAIT for one 5 ms tick before the
+        // state machine gets there.
         m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_WAIT));
         lv_timer_resume(timer);
 
@@ -8360,7 +8364,9 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
  * Add a labelled roller row to a menu page.
  *
  * The row is sized to its content so the page keeps flowing, a full height row
- * pushes later rows off screen and stops the page scrolling.
+ * pushes later rows off screen and stops the page scrolling. The roller is
+ * flagged to scroll itself into view, which is the only way the page scrolls
+ * under encoder navigation.
  */
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options) {
   lv_obj_t *cont = lv_menu_cont_create(page);

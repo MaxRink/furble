@@ -7,6 +7,10 @@ wait 400
 action nav sensors
 wait 200
 assert ui.page sensors
+# Certified in the touch layout. On the 80x160 non-touch layout Sensors is 7 px
+# over, which predates this feature: bughunt/stick-notouch-layout-80.txt carries
+# that as an xassert with the measurement. Running this scenario with
+# FURBLE_SIM_NO_TOUCH=1 on that panel fails here for that reason, not this one.
 assert ui.overflow no
 assert ui.imu_gesture_controls_enabled yes
 assert ui.gesture_timer yes

@@ -130,7 +130,7 @@ object FurbleSettingMetadata {
                 option(0, "Off"),
                 option(1, "Tap"),
                 option(2, "Shake"),
-                option(3, "Tap or shake"),
+                option(3, "Both"),
             ),
         ),
         SettingMetadata(73, "imu_trigger", "Double-Tap Shutter", "Sensors", FurbleProtocol.SettingType.BOOL,
