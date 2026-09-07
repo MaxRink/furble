@@ -23,6 +23,8 @@ What this fork adds over upstream right now:
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
 - A host SDL simulator for the UI, plus an Android companion app
+- Companion camera management: list saved cameras, select Multi-Connect targets,
+  and connect or disconnect them from the phone
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
   under Settings > Sensors; the Level page appears while connected.
 - Software IMU gestures: configurable tap or shake display wake and an optional
@@ -46,6 +48,17 @@ cameras. furble now supports:
 
 The remote uses the camera's native Bluetooth Low Energy interface thus additional
 adapters are not required.
+
+### Companion camera management
+
+The companion BLE service exposes the Cameras characteristic at
+`b57f4f63-087b-4740-b71d-8262cf26ebbc`. A companion can list the saved camera
+catalog, select or deselect stable camera IDs for Multi-Connect, and request a
+connect or disconnect. Camera state records include saved, selected,
+active-target, and connected flags, progress, RSSI while connected, state, and
+the camera name. A scan remains separate from the saved catalog, and a connect
+request is reported busy while scanning or another connect is in flight. See
+[the companion reference](docs/companion.md) for the packet layout.
 
 furble is developed on ESP32 devices as a PlatformIO project.
 

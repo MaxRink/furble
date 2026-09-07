@@ -82,7 +82,7 @@ bool Nikon::_connect(void) {
   // vendor teardown cannot leave it pointing into a freed client.
   m_Nikon.reset();
 
-  if (m_PairType == PairType::SAVED || m_Paired) {
+  if (getPairType() == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
     // need to scan for advertising camera
     auto &scan = Scan::getInstance();

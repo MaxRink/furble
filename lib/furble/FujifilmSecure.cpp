@@ -154,7 +154,7 @@ bool FujifilmSecure::_connect(void) {
     return true;
   };
 
-  if (m_PairType == PairType::SAVED || m_Paired) {
+  if (getPairType() == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
     // need to scan for advertising camera
     auto &scan = Scan::getInstance();

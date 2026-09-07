@@ -20,6 +20,9 @@ This wiki is a friendly fork of the upstream furble project.
   units.
 - **[Console Commands](Console-Commands)**: the USB serial console in debug
   builds.
+- **[Companion camera management](../companion.md)**: the BLE characteristic for
+  listing saved cameras, selecting Multi-Connect targets, and connecting or
+  disconnecting cameras.
 
 ## At a glance
 

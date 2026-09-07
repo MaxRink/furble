@@ -46,6 +46,7 @@
 #include "FurbleTime.h"
 #include "FurbleUI.h"
 #include "interval.h"
+#include "protocol/CameraListProtocol.h"
 
 // Firmware builds define these from SOURCE_DATE_EPOCH in reproducible.py.
 // Keep the simulator independent from PlatformIO's pre-build scripts.
@@ -349,13 +350,11 @@ UI::UI(const interval_t &interval)
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
-#if defined(FURBLE_CONSOLE)
   m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
   if (m_RequestQueue == NULL) {
-    ESP_LOGE(LOG_TAG, "Failed to create console request queue.");
+    ESP_LOGE(LOG_TAG, "Failed to create the UI request queue.");
     abort();
   }
-#endif
 
   // The backlight PWM is clocked from the APB bus. DFS scaling the APB
   // frequency modulates the PWM and the whole screen flickers, so pin the
@@ -4888,7 +4887,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         // if from scan, save the connection
         if (ctx->menuName == m_ScanStr) {
           for (const auto &target : control.getTargets()) {
-            CameraList::save(target->getCamera().get());
+            CameraList::save(target->getCamera());
           }
           ctx->menuName = NULL;
         }
@@ -5086,7 +5085,6 @@ void UI::intervalometer(lv_timer_t *timer) {
   }
 }
 
-#if defined(FURBLE_CONSOLE)
 QueueHandle_t UI::m_RequestQueue = NULL;
 
 bool UI::sendRequest(Request request, int32_t arg) {
@@ -5119,6 +5117,39 @@ void UI::serviceRequests(void) {
         }
         doConnect(NULL);
         break;
+
+      case Request::CONNECT_SAVED:
+      {
+        auto &control = Control::getInstance();
+        if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+            || (control.getTargetCount() != 0)) {
+          ESP_LOGW(LOG_TAG, "companion: connect request is busy");
+          break;
+        }
+
+        const uint8_t cameraId = static_cast<uint8_t>(item.arg);
+        const auto saved = CameraList::savedSnapshot();
+        if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+          const auto found =
+              std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
+                return CameraList::getCameraId(camera.get()) == cameraId;
+              });
+          if (found == saved.end()) {
+            ESP_LOGW(LOG_TAG, "companion: no saved camera id %u", static_cast<unsigned>(cameraId));
+            break;
+          }
+        }
+
+        CameraList::load();
+        if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            const auto camera = CameraList::get(n);
+            camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
+          }
+        }
+        doConnect(NULL);
+        break;
+      }
 
       case Request::DISCONNECT:
         doDisconnect();
@@ -5219,6 +5250,7 @@ void UI::serviceRequests(void) {
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
 
+#if defined(FURBLE_CONSOLE)
       case Request::PERF:
 #if defined(CONFIG_LV_USE_PERF_MONITOR)
       {
@@ -5251,6 +5283,7 @@ void UI::serviceRequests(void) {
       case Request::AUDIT:
         UIAudit::dump(lv_screen_active());
         break;
+#endif
 
       case Request::POWER_RELOAD:
         m_ConnectContext.ui->reloadPowerPolicies();
@@ -5263,7 +5296,6 @@ void UI::serviceRequests(void) {
     }
   }
 }
-#endif
 
 void UI::doConnect(lv_event_t *e) {
   auto &control = Control::getInstance();
@@ -9670,9 +9702,7 @@ void UI::task(void) {
     }
     serviceSimRequests();
 #endif
-#if defined(FURBLE_CONSOLE)
     serviceRequests();
-#endif
     Scan::getInstance().processPendingCallbacks();
     if (!m_DisplayConsole) {
       handleLockScreen();

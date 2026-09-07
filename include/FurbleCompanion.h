@@ -28,6 +28,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   static constexpr const char *STATUS_UUID = "b57f4f60-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
+  static constexpr const char *CAMERAS_UUID = "b57f4f63-087b-4740-b71d-8262cf26ebbc";
   // 0x63 is reserved for the cameras characteristic by plans 50/51. Keep
   // authentication on its own derived UUID so clients cannot confuse the two.
   static constexpr const char *AUTH_UUID = "b57f4f6f-087b-4740-b71d-8262cf26ebbc";
@@ -38,6 +39,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   static constexpr uint8_t WIRE_VERSION = CompanionService::WIRE_VERSION;
   static constexpr uint8_t CAPABILITY_VERSION = CompanionService::CAPABILITY_VERSION;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = CompanionService::FEATURE_SETTINGS_V2;
+  static constexpr uint32_t FEATURE_CAMERAS = CompanionService::FEATURE_CAMERAS;
   static constexpr uint32_t PAIRING_WINDOW_MS = CompanionService::PAIRING_WINDOW_MS;
   static constexpr uint32_t MAX_BONDS = 15;
 
@@ -117,6 +119,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   NimBLECharacteristic *m_Status = nullptr;
   NimBLECharacteristic *m_Settings = nullptr;
   NimBLECharacteristic *m_Trigger = nullptr;
+  NimBLECharacteristic *m_Cameras = nullptr;
   NimBLECharacteristic *m_Auth = nullptr;
   NimBLECharacteristic *m_Capability = nullptr;
   NimBLECharacteristic *m_Firmware = nullptr;

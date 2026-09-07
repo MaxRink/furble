@@ -80,7 +80,7 @@ int runSimulator() {
   if (Sim::scenarioSettingIsTrue("autoconnect")) {
     CameraList::addFauxNY();
     auto camera = CameraList::last();
-    CameraList::save(camera.get());
+    CameraList::save(camera);
     camera->setActive(true);
   } else if (Sim::scenarioSettingIsTrue("saved_camera")) {
     // Seed a saved but inactive camera so the Connect and Delete list pages
@@ -89,7 +89,7 @@ int runSimulator() {
     // attempted at boot.
     CameraList::addFauxNY();
     auto camera = CameraList::last();
-    CameraList::save(camera.get());
+    CameraList::save(camera);
   }
 
   // Let capture scripts pick a theme without navigating the roller. The theme

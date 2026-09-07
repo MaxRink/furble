@@ -1,6 +1,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include <algorithm>
+
 #if defined(FURBLE_NO_DISPLAY)
 #include <M5Unified.h>
 #include <esp_timer.h>
@@ -27,6 +29,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
+#include "protocol/CameraListProtocol.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
@@ -76,7 +79,7 @@ uint16_t UI::getIntervalometerRemaining(void) {
 }  // namespace Furble
 #endif
 
-#if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
 namespace {
 
@@ -128,6 +131,42 @@ void connectCamera(int32_t index) {
   control.connectAll(Settings::load<Settings::RECONNECT>());
 }
 
+void connectSavedCamera(uint8_t cameraId) {
+  auto &control = Control::getInstance();
+  if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+      || (control.getTargetCount() != 0)) {
+    ESP_LOGW(LOG_TAG, "companion: connect request is busy");
+    return;
+  }
+
+  const auto saved = CameraList::savedSnapshot();
+  if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+    const auto found = std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
+      return CameraList::getCameraId(camera.get()) == cameraId;
+    });
+    if (found == saved.end()) {
+      ESP_LOGW(LOG_TAG, "companion: no saved camera id %u", static_cast<unsigned>(cameraId));
+      return;
+    }
+  }
+
+  CameraList::load();
+  if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+    for (size_t n = 0; n < CameraList::size(); n++) {
+      const auto camera = CameraList::get(n);
+      camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
+    }
+  }
+
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    auto camera = CameraList::get(n);
+    if (camera->isActive()) {
+      control.addActive(camera);
+    }
+  }
+  control.connectAll(Settings::load<Settings::RECONNECT>());
+}
+
 void scanCameras(void) {
   auto &scan = Scan::getInstance();
   CameraList::clear();
@@ -170,6 +209,10 @@ void UI::serviceRequests(void) {
     switch (item.request) {
       case Request::CONNECT:
         connectCamera(item.arg);
+        break;
+
+      case Request::CONNECT_SAVED:
+        connectSavedCamera(static_cast<uint8_t>(item.arg));
         break;
 
       case Request::DISCONNECT:
@@ -228,10 +271,8 @@ static void vUITask(void *param) {
   int64_t nextGPSService = esp_timer_get_time();
   while (true) {
     Platform::getInstance().update();
-#if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
-#endif
     Scan::getInstance().processPendingCallbacks();
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
@@ -313,7 +354,7 @@ void app_main() {
   Furble::GPS::init();
 #endif
 
-#if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_NO_DISPLAY)
   Furble::UI::init();
 #endif
 

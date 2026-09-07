@@ -173,7 +173,7 @@ bool Ricoh::_connect(void) {
 
   bool bondedBefore = NimBLEDevice::isBonded(m_Address);
   ESP_LOGI(LOG_TAG, "Ricoh bonded(before)=%s pairType=%s", bondedBefore ? "yes" : "no",
-           m_PairType == PairType::NEW ? "new" : "saved");
+           getPairType() == PairType::NEW ? "new" : "saved");
 
   ESP_LOGI(LOG_TAG, "Ricoh connecting");
   if (!m_Client->connect(m_Address)) {
@@ -190,7 +190,7 @@ bool Ricoh::_connect(void) {
     // the camera-side bond was removed, discard the stale local key so the
     // next attempt can perform numeric comparison. Saved reconnects retain
     // their bond across transient security failures.
-    if (bondedBefore && m_PairType == PairType::NEW) {
+    if (bondedBefore && getPairType() == PairType::NEW) {
       if (NimBLEDevice::deleteBond(m_Address)) {
         ESP_LOGI(LOG_TAG, "Ricoh stale local bond cleared for fresh pairing retry");
       }

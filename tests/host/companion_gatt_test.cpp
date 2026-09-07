@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 
+#include "CameraList.h"
 #include "Device.h"
 #include "FujifilmBasic.h"
 #include "FujifilmVirtualCamera.h"
@@ -29,6 +30,8 @@
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "NimBLEDevice.h"
+#include "advertisement_preferences_stub.h"
+#include "protocol/CameraListProtocol.h"
 #include "protocol/FujifilmProtocol.h"
 #include "protocol/ProvisionTLV.h"
 
@@ -38,6 +41,7 @@ constexpr const char *LOCATION_UUID = "b57f4f5e-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *STATUS_UUID = "b57f4f60-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
+constexpr const char *CAMERAS_UUID = "b57f4f63-087b-4740-b71d-8262cf26ebbc";
 constexpr const char *AUTH_UUID = "b57f4f6f-087b-4740-b71d-8262cf26ebbc";
 
 using Furble::CompanionService;
@@ -140,6 +144,10 @@ class MockCentral final: public Furble::CompanionTransport {
       m_Service->handleTrigger(value.data(), value.size());
       return true;
     }
+    if (std::strcmp(uuid, CAMERAS_UUID) == 0) {
+      m_Service->handleCameras(value.data(), value.size());
+      return true;
+    }
     if (std::strcmp(uuid, AUTH_UUID) == 0) {
       m_Service->handleAuth(value.data(), value.size());
       return true;
@@ -158,6 +166,8 @@ class MockCentral final: public Furble::CompanionTransport {
 
   void clearEvents(void) {
     m_Indications.clear();
+    m_CameraIndications.clear();
+    m_CameraNotifications.clear();
     m_AuthIndications.clear();
     m_LastError = 0;
     m_HaveStatus = false;
@@ -172,6 +182,10 @@ class MockCentral final: public Furble::CompanionTransport {
   uint16_t getMaxPayload(void) const override { return 244; }
 
   void notify(uint8_t charId, const uint8_t *data, size_t len) override {
+    if (charId == Furble::COMPANION_CHAR_CAMERAS && data != nullptr) {
+      m_CameraNotifications.emplace_back(data, data + len);
+      return;
+    }
     if (charId != Furble::COMPANION_CHAR_STATUS || data == nullptr || len != sizeof(m_Status)) {
       return;
     }
@@ -180,6 +194,13 @@ class MockCentral final: public Furble::CompanionTransport {
   }
 
   void indicate(uint8_t charId, const uint8_t *data, size_t len) override {
+    if (data == nullptr) {
+      return;
+    }
+    if (charId == Furble::COMPANION_CHAR_CAMERAS) {
+      m_CameraIndications.emplace_back(data, data + len);
+      return;
+    }
     if ((charId != Furble::COMPANION_CHAR_SETTINGS) && (charId != Furble::COMPANION_CHAR_AUTH)) {
       return;
     }
@@ -198,6 +219,13 @@ class MockCentral final: public Furble::CompanionTransport {
 
   const std::vector<std::vector<uint8_t>> &indications(void) const { return m_Indications; }
 
+  const std::vector<std::vector<uint8_t>> &cameraIndications(void) const {
+    return m_CameraIndications;
+  }
+
+  const std::vector<std::vector<uint8_t>> &cameraNotifications(void) const {
+    return m_CameraNotifications;
+  }
   const std::vector<std::vector<uint8_t>> &authIndications(void) const { return m_AuthIndications; }
 
   uint16_t lastError(void) const { return m_LastError; }
@@ -212,6 +240,8 @@ class MockCentral final: public Furble::CompanionTransport {
   bool m_HaveStatus = false;
   CompanionService::companion_status_t m_Status = {};
   std::vector<std::vector<uint8_t>> m_Indications;
+  std::vector<std::vector<uint8_t>> m_CameraIndications;
+  std::vector<std::vector<uint8_t>> m_CameraNotifications;
   std::vector<std::vector<uint8_t>> m_AuthIndications;
   uint16_t m_LastError = 0;
 };
@@ -286,6 +316,7 @@ void testAuthDisconnectRace(void) {
 
 void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
   std::cout << "test: companion password load failure denies privileged writes\n";
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
   Furble::Settings::setPasswordLoadResult(false);
   MockCentral central;
   CompanionService service(central);
@@ -671,6 +702,292 @@ void testCompanionGattFlow(void) {
   NimBLEDevice::resetMock();
 }
 
+// Cameras characteristic ----------------------------------------------------
+
+struct CameraRecord {
+  CompanionService::companion_camera_t head;
+  std::string name;
+};
+
+CameraRecord decodeCameraRecord(const std::vector<uint8_t> &bytes) {
+  CameraRecord record = {};
+  if (bytes.size() < sizeof(record.head)) {
+    return record;
+  }
+  std::memcpy(&record.head, bytes.data(), sizeof(record.head));
+  const size_t nameLength =
+      std::min<size_t>(record.head.name_len, bytes.size() - sizeof(record.head));
+  record.name.assign(reinterpret_cast<const char *>(bytes.data() + sizeof(record.head)),
+                     nameLength);
+  return record;
+}
+
+std::vector<Furble::Host::UIRequest> drainRequests(void) {
+  return Furble::Host::takeUIRequests();
+}
+
+void testCompanionCameras(void) {
+  std::cout << "test: companion cameras list, select, connect, disconnect and rate limit\n";
+  NimBLEDevice::resetMock();
+  Furble::Host::clearPreferences();
+  Furble::Host::setUIRequestsAccepted(true);
+  drainRequests();
+  Furble::Settings::setBool(Furble::Settings::MULTICONNECT, true);
+  Furble::Settings::setBool(Furble::Settings::TX_ADAPTIVE, false);
+  Furble::Device::init(ESP_PWR_LVL_P3);
+
+  FujifilmVirtualCamera::Config firstConfig;
+  firstConfig.name = "FUJIFILM X-T5";
+  firstConfig.address = NimBLEAddress(0x1122334455aaULL, 0);
+  firstConfig.token = {0x11, 0x22, 0x33, 0x44};
+  FujifilmVirtualCamera::Config secondConfig;
+  secondConfig.name = "FUJIFILM X-S20";
+  secondConfig.address = NimBLEAddress(0x1122334455bbULL, 0);
+  secondConfig.token = {0x55, 0x66, 0x77, 0x88};
+
+  FujifilmVirtualCamera firstPeer(firstConfig);
+  FujifilmVirtualCamera secondPeer(secondConfig);
+  auto firstCamera = makeCamera(firstPeer);
+  auto secondCamera = makeCamera(secondPeer);
+  Furble::CameraList::save(firstCamera);
+  Furble::CameraList::save(secondCamera);
+  const auto savedBeforeLoad = Furble::CameraList::savedSnapshot();
+  check(savedBeforeLoad.size() == 2, "saved cameras are visible before an explicit list load");
+  const uint8_t firstId = Furble::CameraList::getCameraId(savedBeforeLoad.at(0).get());
+  const uint8_t secondId = Furble::CameraList::getCameraId(savedBeforeLoad.at(1).get());
+
+  Furble::CameraList::clear();
+  Furble::CameraList::addFauxNY();
+  const auto savedAfterScan = Furble::CameraList::savedSnapshot();
+  check(savedAfterScan.size() == 2, "a transient scan result does not hide saved cameras");
+  check(Furble::CameraList::getCameraId(savedAfterScan.at(0).get()) == firstId
+            && Furble::CameraList::getCameraId(savedAfterScan.at(1).get()) == secondId,
+        "a transient scan does not change saved camera ids");
+  Furble::CameraList::load();
+
+  check(Furble::CameraList::size() == 2, "both saved cameras load back");
+  check(Furble::CameraList::get(0).get() == savedBeforeLoad.at(0).get(),
+        "load preserves the saved camera pointer identity");
+  check(Furble::CameraList::get(1).get() == savedBeforeLoad.at(1).get(),
+        "load preserves the second saved camera pointer identity");
+  check(firstId != 0 && secondId != 0, "every saved camera gets a nonzero id");
+  check(firstId != secondId, "saved camera ids are distinct");
+
+  MockCentral central;
+  CompanionService service(central);
+  central.attach(service);
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "camera password");
+  service.init();
+  central.connect();
+  central.setSecurity(true, true);
+
+  // Capability advertises the cameras feature bit.
+  const auto capability = CompanionService::getCapability();
+  check(capability.version == CompanionService::CAPABILITY_VERSION,
+        "capability record carries the capability version");
+  check(capability.wire_version == CompanionService::WIRE_VERSION,
+        "capability record carries the wire version");
+  check((capability.features & CompanionService::FEATURE_SETTINGS_V2) != 0,
+        "capability keeps the settings v2 feature bit");
+  check((capability.features & CompanionService::FEATURE_CAMERAS) != 0,
+        "capability advertises the cameras feature bit");
+
+  // List.
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_LIST, 0xff}),
+        "cameras UUID accepts a list request");
+  check(central.cameraIndications().size() == 3,
+        "list indicates one record per saved camera plus a terminator");
+  const auto listFirst = decodeCameraRecord(central.cameraIndications().at(0));
+  const auto listSecond = decodeCameraRecord(central.cameraIndications().at(1));
+  const auto listEnd = decodeCameraRecord(central.cameraIndications().at(2));
+  check(listFirst.name == firstConfig.name, "the first list record carries the camera name");
+  check(listFirst.head.camera_id == firstId, "the first list record carries the stable id");
+  check(listSecond.head.camera_id == secondId, "the second list record carries the stable id");
+  check((listFirst.head.flags & CompanionService::CAMERA_FLAG_SAVED) != 0,
+        "list records are marked saved");
+  check(listFirst.head.state == CompanionService::CAMERA_IDLE,
+        "an unconnected saved camera reports the idle state");
+  check(listFirst.head.rssi == CompanionService::CAMERA_RSSI_UNKNOWN,
+        "an unconnected saved camera reports an unknown rssi");
+  check(listEnd.head.camera_id == 0xff && listEnd.head.status == CompanionService::CAMERA_OK,
+        "the list terminates with the all-cameras id");
+
+  // LIST is read-only, but every camera mutation requires the configured
+  // password and must not reach the UI queue while this session is unauthenticated.
+  const auto checkUnauthenticatedCameraMutation = [&](uint8_t operation, const char *message) {
+    central.clearEvents();
+    drainRequests();
+    check(central.write(CAMERAS_UUID, {operation, firstId}), message);
+    check(central.cameraIndications().empty(),
+          "unauthenticated camera mutation has no camera response");
+    check(central.authIndications().size() == 1
+              && central.authIndications()[0].size() == CompanionService::AUTH_RESULT_SIZE
+              && central.authIndications()[0][2] == CompanionService::AUTH_RESULT_REJECTED,
+          "unauthenticated camera mutation is rejected on Auth");
+    check(drainRequests().empty(), "unauthenticated camera mutation does not queue UI work");
+  };
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_SELECT,
+                                     "unauthenticated camera select reaches the gate");
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_DESELECT,
+                                     "unauthenticated camera deselect reaches the gate");
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_CONNECT,
+                                     "unauthenticated camera connect reaches the gate");
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_DISCONNECT,
+                                     "unauthenticated camera disconnect reaches the gate");
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
+  service.reloadPassword();
+
+  // Select and deselect.
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_SELECT, firstId}),
+        "cameras UUID accepts a select request");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_OK,
+        "select is acknowledged");
+  check(Furble::CameraList::get(0)->isActive(), "select marks the camera as a connect target");
+  check(!Furble::CameraList::get(1)->isActive(), "select leaves the other camera alone");
+
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_DESELECT, firstId}),
+        "cameras UUID accepts a deselect request");
+  check(!Furble::CameraList::get(0)->isActive(), "deselect clears the connect target");
+
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_SELECT, 0x7e}),
+        "cameras UUID accepts a select for an unknown id");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_UNKNOWN_ID,
+        "selecting an unknown id is rejected as unknown");
+
+  Furble::Settings::setBool(Furble::Settings::MULTICONNECT, false);
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_SELECT, firstId}),
+        "cameras UUID accepts a select with multi-connect off");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_REJECTED,
+        "select is rejected while multi-connect is off");
+  Furble::Settings::setBool(Furble::Settings::MULTICONNECT, true);
+
+  // Connect routes through the UI request queue, never through a private path.
+  Furble::CameraList::clear();
+  Furble::CameraList::addFauxNY();
+  drainRequests();
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_CONNECT, secondId}),
+        "cameras UUID accepts a connect request");
+  auto requests = drainRequests();
+  check(requests.size() == 1, "connect queues exactly one UI request");
+  check(!requests.empty() && requests.at(0).request == Furble::UI::Request::CONNECT_SAVED,
+        "connect queues the UI saved-camera request");
+  check(!requests.empty() && requests.at(0).arg == secondId,
+        "connect passes the stable id of the requested camera");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_OK,
+        "connect is acknowledged");
+  Furble::CameraList::load();
+
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_CONNECT, 0xff}),
+        "cameras UUID accepts a connect-all request");
+  requests = drainRequests();
+  check(central.cameraIndications().size() == 1
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_REJECTED,
+        "connect-all with nothing selected is rejected");
+  check(requests.empty(), "a rejected connect queues no UI request");
+
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_SELECT, secondId}),
+        "select before connect-all");
+  central.clearEvents();
+  drainRequests();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_CONNECT, 0xff}),
+        "cameras UUID accepts a connect-all with a selection");
+  requests = drainRequests();
+  check(requests.size() == 1 && requests.at(0).request == Furble::UI::Request::CONNECT_SAVED
+            && requests.at(0).arg == 0xff,
+        "connect-all asks the UI task for the current selection by stable id");
+
+  // Disconnect.
+  central.clearEvents();
+  drainRequests();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_DISCONNECT, 0xff}),
+        "cameras UUID accepts a disconnect request");
+  requests = drainRequests();
+  check(requests.size() == 1 && requests.at(0).request == Furble::UI::Request::DISCONNECT,
+        "disconnect queues the UI disconnect request");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_OK,
+        "disconnect is acknowledged");
+
+  Furble::Host::setUIRequestsAccepted(false);
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_DISCONNECT, 0xff}),
+        "cameras UUID accepts a disconnect the UI cannot queue");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_BUSY,
+        "a full UI request queue answers busy");
+  Furble::Host::setUIRequestsAccepted(true);
+  drainRequests();
+
+  // Malformed requests.
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_LIST}),
+        "cameras UUID accepts a short request");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_REJECTED,
+        "a short request is rejected");
+  central.clearEvents();
+  check(central.write(CAMERAS_UUID, {0x55, 0xff}), "cameras UUID accepts an unknown op");
+  check(!central.cameraIndications().empty()
+            && decodeCameraRecord(central.cameraIndications().at(0)).head.status
+                   == CompanionService::CAMERA_REJECTED,
+        "an unknown op is rejected");
+
+  // Steady-state rate limit, driven by the mock clock rather than a sleep.
+  central.clearEvents();
+  service.notifyCameras(true);
+  check(central.cameraNotifications().size() == 2, "a forced batch notifies every camera");
+  central.clearEvents();
+  service.notifyCameras();
+  check(central.cameraNotifications().empty(),
+        "an unchanged batch inside the rate limit notifies nothing");
+  Furble::CameraList::get(0)->setActive(!Furble::CameraList::get(0)->isActive());
+  service.notifyCameras();
+  check(central.cameraNotifications().empty(),
+        "even a changed batch waits for the rate limit window");
+  furble_host_advance_time(1000 * 1000);
+  service.notifyCameras();
+  check(central.cameraNotifications().size() == 1,
+        "after the rate limit window only the changed camera is notified");
+  central.clearEvents();
+  furble_host_advance_time(1000 * 1000);
+  service.notifyCameras();
+  check(central.cameraNotifications().empty(),
+        "an unchanged batch after the window still notifies nothing");
+
+  // Ids survive a delete of another entry.
+  const uint8_t survivorId = secondId;
+  Furble::CameraList::remove(Furble::CameraList::get(0).get());
+  Furble::CameraList::load();
+  check(Furble::CameraList::size() == 1, "removing one camera leaves the other saved");
+  check(Furble::CameraList::getCameraId(Furble::CameraList::get(0).get()) == survivorId,
+        "a stable id survives the delete of an earlier entry");
+
+  service.deinit();
+  central.disconnect();
+  Furble::CameraList::clear();
+  Furble::Host::clearPreferences();
+  NimBLEDevice::resetMock();
+}
+
 }  // namespace
 
 int main(void) {
@@ -678,6 +995,7 @@ int main(void) {
   testPasswordLoadFailureDeniesPrivilegedWrites();
   testAuthDisconnectRace();
   testCompanionGattFlow();
+  testCompanionCameras();
   if (g_Failures != 0) {
     std::cerr << "companion mock-central tests: " << g_Failures << " FAILED\n";
     return 1;
