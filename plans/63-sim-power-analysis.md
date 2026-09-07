@@ -670,6 +670,12 @@ actual energy instead of being rounded independently with neighboring states.
 Each report also exposes the raw durations used by the energy components in
 `energy.accounting_inputs`; rounded residency fields are not used to derive
 the estimate.
+The paired `screen-off-30s` baseline is consequently `0.510703` mA: its raw
+inputs contain 30,010 ms at 80 MHz, 29,860 ms of light sleep, and 150 ms of
+non-light-sleep activity. Activity, sleep, and state objects are unchanged
+from the prior baseline, and no APB lock is held during the measurement
+window. This corrects simulator accounting only and is not a hardware
+measurement or a physical-parity claim.
 Model selection is fail-closed: `FURBLE_POWER_MODEL` is authoritative when
 set, required model entries must parse, and every valid report records the
 resolved source and SHA-256 digest. Missing, unreadable, incomplete, or
