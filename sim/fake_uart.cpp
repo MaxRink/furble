@@ -75,6 +75,7 @@ uint32_t fixSecond = [] {
 // a sentence routinely spans two reads; scenarios set this to prove the parser
 // path survives that.
 size_t fixChunk = 0;
+bool fixNoisePending = false;
 
 // When the burst is chunked, the chunks arrive over time the way bytes off a
 // real UART do, rather than all being drained inside one serviceSerial() call.
@@ -417,6 +418,12 @@ void queueGpsEvent(QueueHandle_t queue) {
       gpsNextEventMillis = Furble::Sim::clockMillis();
       return;
     }
+    if (fixNoisePending) {
+      // Unterminated line noise must be bounded by the production evidence
+      // parser and must not prevent the next '$' sentence from being seen.
+      gpsStream.insert(0, 128, 'x');
+      fixNoisePending = false;
+    }
     gpsQueue = queue;
     gpsOffset = 0;
     rxBytes.clear();
@@ -601,6 +608,11 @@ void furble_sim_uart_clear_writes(void) {
 void furble_sim_uart_set_fix_chunk(size_t bytes) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   fixChunk = bytes;
+}
+
+void furble_sim_uart_set_noise(bool enabled) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  fixNoisePending = enabled;
 }
 
 uint32_t furble_sim_uart_fix_second(void) {
