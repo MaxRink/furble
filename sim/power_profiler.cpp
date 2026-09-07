@@ -2,18 +2,25 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
+#include <cerrno>
 
 #include "clock.h"
 #include "driver.h"
@@ -24,8 +31,8 @@ namespace {
 constexpr int CPU_FREQ_LOCK = 0;
 constexpr int APB_FREQ_LOCK = 1;
 constexpr int NO_LIGHT_SLEEP_LOCK = 2;
-// Background task wakeups are host-thread scheduled. Keep report residency
-// values at one-second resolution so that race timing cannot move a baseline.
+// Report fields retain one-second presentation rounding for stable snapshots;
+// energy integration below always uses the raw virtual-clock durations.
 constexpr uint64_t REPORT_TIME_QUANTUM_MS = 1000;
 
 const char *const TIMER_NAMES[] = {
@@ -80,6 +87,13 @@ struct CurrentModel {
   double gps_standby = 0.5;
   double pmic = 0.05247;
   double peripheral = 0.0035;
+};
+
+struct ModelLoadResult {
+  CurrentModel model;
+  std::filesystem::path source;
+  std::string digest;
+  bool valid = false;
 };
 
 struct ProfilerState {
@@ -379,17 +393,17 @@ std::map<std::string, uint64_t> currentOwnerHistogram(const OwnerData &owner, ui
   return result;
 }
 
-double parseNumber(const std::string &value, double fallback) {
+bool parseNumber(const std::string &value, double &number) {
   const std::string text = trim(value);
   if (text.empty() || text == "null") {
-    return fallback;
+    return false;
   }
   char *end = nullptr;
-  const double number = std::strtod(text.c_str(), &end);
-  return (end == text.c_str()) ? fallback : number;
+  number = std::strtod(text.c_str(), &end);
+  return end != text.c_str() && *end == '\0' && std::isfinite(number) && number >= 0.0;
 }
 
-void assignModelValue(CurrentModel &model,
+bool assignModelValue(CurrentModel &model,
                       const std::string &anchor,
                       const std::string &entry,
                       double value) {
@@ -415,31 +429,129 @@ void assignModelValue(CurrentModel &model,
     model.gps_tracking = value;
   } else if (anchor == "gps_unit_v11" && entry == "standby_pcas12_module") {
     model.gps_standby = value;
+  } else {
+    return false;
   }
+  return true;
 }
 
-CurrentModel loadCurrentModel(void) {
-  CurrentModel model;
+std::string shellQuote(const std::string &value) {
+  std::string quoted = "'";
+  for (const char character : value) {
+    if (character == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted += character;
+    }
+  }
+  quoted += "'";
+  return quoted;
+}
+
+std::filesystem::path resolvedPath(const std::filesystem::path &path) {
+  std::error_code error;
+  const std::filesystem::path absolute = std::filesystem::absolute(path, error);
+  return error ? std::filesystem::path() : absolute.lexically_normal();
+}
+
+std::string digestPath(const std::filesystem::path &path) {
+  const std::string quoted_path = shellQuote(path.string());
+  for (const std::string command : {"sha256sum -- ", "shasum -a 256 "}) {
+    const std::string invocation = command + quoted_path;
+    FILE *pipe = popen(invocation.c_str(), "r");
+    if (pipe == nullptr) {
+      continue;
+    }
+    std::string output;
+    char buffer[128] = {};
+    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+      output += buffer;
+    }
+    const int status = pclose(pipe);
+    if (status != 0) {
+      continue;
+    }
+    const size_t separator = output.find_first_of(" \t\r\n");
+    const std::string digest = output.substr(0, separator);
+    if (digest.size() == 64
+        && std::all_of(digest.begin(), digest.end(),
+                       [](unsigned char character) { return std::isxdigit(character) != 0; })) {
+      return digest;
+    }
+  }
+  return {};
+}
+
+std::string digestBytes(const std::string &contents) {
+  std::error_code error;
+  const std::filesystem::path temporary_directory = std::filesystem::temp_directory_path(error);
+  if (error) {
+    return {};
+  }
+  std::string temporary = (temporary_directory / "furble-power-model-XXXXXX").string();
+  std::vector<char> temporary_name(temporary.begin(), temporary.end());
+  temporary_name.push_back('\0');
+  const int descriptor = mkstemp(temporary_name.data());
+  if (descriptor < 0) {
+    return {};
+  }
+
+  size_t offset = 0;
+  while (offset < contents.size()) {
+    const ssize_t written = write(descriptor, contents.data() + offset, contents.size() - offset);
+    if (written > 0) {
+      offset += static_cast<size_t>(written);
+    } else if (written < 0 && errno == EINTR) {
+      continue;
+    } else {
+      break;
+    }
+  }
+  close(descriptor);
+  const std::filesystem::path path(temporary_name.data());
+  const std::string digest = offset == contents.size() ? digestPath(path) : std::string();
+  unlink(temporary_name.data());
+  return digest;
+}
+
+ModelLoadResult loadCurrentModel(void) {
+  ModelLoadResult result;
   std::vector<std::filesystem::path> candidates;
   if (const char *configured = std::getenv("FURBLE_POWER_MODEL"); configured != nullptr) {
     candidates.emplace_back(configured);
+  } else {
+    candidates.emplace_back("tools/power-model/board-currents.yaml");
+    candidates.emplace_back("../tools/power-model/board-currents.yaml");
+    candidates.emplace_back("../../tools/power-model/board-currents.yaml");
+    candidates.emplace_back(std::filesystem::path(__FILE__).parent_path().parent_path()
+                            / "tools/power-model/board-currents.yaml");
   }
-  candidates.emplace_back("tools/power-model/board-currents.yaml");
-  candidates.emplace_back("../tools/power-model/board-currents.yaml");
-  candidates.emplace_back("../../tools/power-model/board-currents.yaml");
+  if (candidates.size() == 1) {
+    result.source = resolvedPath(candidates.front());
+  }
 
   std::ifstream file;
+  std::filesystem::path selected;
   for (const auto &candidate : candidates) {
     file.open(candidate);
     if (file) {
+      selected = candidate;
       break;
     }
     file.clear();
   }
   if (!file) {
-    return model;
+    return result;
   }
 
+  result.source = resolvedPath(selected);
+  if (result.source.empty()) {
+    return result;
+  }
+  std::set<std::string> seen_entries;
+  const std::string contents((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+  std::istringstream input(contents);
   std::string anchor;
   std::string pending_entry;
   bool in_boards = false;
@@ -447,7 +559,7 @@ CurrentModel loadCurrentModel(void) {
   std::string board_section;
   std::string board_entry;
   std::string line;
-  while (std::getline(file, line)) {
+  while (std::getline(input, line)) {
     const size_t comment = line.find('#');
     if (comment != std::string::npos) {
       line.resize(comment);
@@ -480,7 +592,21 @@ CurrentModel loadCurrentModel(void) {
       if (indent == 4 && value.empty()) {
         pending_entry = key;
       } else if (indent >= 6 && key == "value_ma" && !pending_entry.empty()) {
-        assignModelValue(model, anchor, pending_entry, parseNumber(value, 0));
+        double parsed = 0.0;
+        if (parseNumber(value, parsed)) {
+          if (assignModelValue(result.model, anchor, pending_entry, parsed)) {
+            if (!seen_entries.emplace(anchor + ":" + pending_entry).second) {
+              return result;
+            }
+          }
+        } else {
+          // Unknown YAML entries are allowed to evolve independently; a
+          // malformed value is fatal only when this loader actually uses it.
+          CurrentModel ignored;
+          if (assignModelValue(ignored, anchor, pending_entry, 0.0)) {
+            return result;
+          }
+        }
       }
     }
 
@@ -507,10 +633,39 @@ CurrentModel loadCurrentModel(void) {
     }
     if (in_s3 && board_section == "display" && board_entry == "backlight_full" && indent >= 8
         && key == "value_ma") {
-      model.display_backlight = parseNumber(value, model.display_backlight);
+      double parsed = 0.0;
+      if (!parseNumber(value, parsed)) {
+        return result;
+      }
+      result.model.display_backlight = parsed;
+      if (!seen_entries.emplace("m5stick-s3:display.backlight_full").second) {
+        return result;
+      }
     }
   }
-  return model;
+
+  static constexpr const char *REQUIRED_ENTRIES[] = {
+      "esp32s3_mcu:active_cpu_80mhz",
+      "esp32s3_mcu:active_cpu_160mhz",
+      "esp32s3_mcu:active_cpu_240mhz",
+      "esp32s3_mcu:light_sleep",
+      "esp32s3_radio:ble_tx_0dbm",
+      "esp32s3_radio:ble_connected_idle_floor",
+      "st7789_display:panel_on",
+      "st7789_display:panel_sleep_in",
+      "gps_unit_v11:module_acquisition_3v3",
+      "gps_unit_v11:module_tracking_3v3",
+      "gps_unit_v11:standby_pcas12_module",
+      "m5stick-s3:display.backlight_full",
+  };
+  for (const char *entry : REQUIRED_ENTRIES) {
+    if (seen_entries.count(entry) == 0) {
+      return result;
+    }
+  }
+  result.digest = digestBytes(contents);
+  result.valid = !result.digest.empty();
+  return result;
 }
 
 double perSecond(uint64_t value, uint64_t duration_ms) {
@@ -543,55 +698,69 @@ void writeReportLocked(const std::filesystem::path &path,
   integrateLocked(now);
   const uint64_t duration_ms = clockElapsed(now, state.window_start_ms);
   const uint64_t safe_duration_ms = std::max<uint64_t>(duration_ms, 1);
-  const CurrentModel model = loadCurrentModel();
+  const ModelLoadResult loaded_model = loadCurrentModel();
+  if (!loaded_model.valid) {
+    std::cerr << "Could not load a valid power model; report not written: " << loaded_model.source
+              << '\n';
+    requestExit(1);
+    return;
+  }
+  const CurrentModel &model = loaded_model.model;
 
-  const uint64_t display_on_ms = reportDuration(state.display_ms["on"]);
-  const uint64_t display_dim_ms = reportDuration(state.display_ms["dim"]);
-  const uint64_t display_off_ms = reportDuration(state.display_ms["off"]);
-  const uint64_t gps_acquiring_ms = reportDuration(state.gps_ms["acquiring"]);
-  const uint64_t gps_degraded_ms = reportDuration(state.gps_ms["degraded"]);
-  const uint64_t gps_tracking_ms = reportDuration(state.gps_ms["tracking"]);
-  const uint64_t gps_standby_ms = reportDuration(state.gps_ms["standby"]);
+  const uint64_t display_on_raw_ms = state.display_ms["on"];
+  const uint64_t display_dim_raw_ms = state.display_ms["dim"];
+  const uint64_t display_off_raw_ms = state.display_ms["off"];
+  const uint64_t display_on_ms = reportDuration(display_on_raw_ms);
+  const uint64_t display_dim_ms = reportDuration(display_dim_raw_ms);
+  const uint64_t display_off_ms = reportDuration(display_off_raw_ms);
+  const uint64_t gps_acquiring_raw_ms = state.gps_ms["acquiring"];
+  const uint64_t gps_degraded_raw_ms = state.gps_ms["degraded"];
+  const uint64_t gps_tracking_raw_ms = state.gps_ms["tracking"];
+  const uint64_t gps_standby_raw_ms = state.gps_ms["standby"];
+  const uint64_t gps_acquiring_ms = reportDuration(gps_acquiring_raw_ms);
+  const uint64_t gps_degraded_ms = reportDuration(gps_degraded_raw_ms);
+  const uint64_t gps_tracking_ms = reportDuration(gps_tracking_raw_ms);
+  const uint64_t gps_standby_ms = reportDuration(gps_standby_raw_ms);
   const std::map<int, uint64_t> frequencies = state.frequency_ms;
 
-  const uint64_t frequency_80_ms =
-      reportDuration(frequencies.count(80) > 0 ? frequencies.at(80) : 0);
-  const uint64_t frequency_160_ms =
-      reportDuration(frequencies.count(160) > 0 ? frequencies.at(160) : 0);
-  const uint64_t frequency_240_ms =
-      reportDuration(frequencies.count(240) > 0 ? frequencies.at(240) : 0);
-  const uint64_t light_sleep_ms = reportDuration(state.light_sleep_ms);
-  const uint64_t light_sleep_in_80 = std::min(frequency_80_ms, light_sleep_ms);
+  const uint64_t frequency_80_raw_ms = frequencies.count(80) > 0 ? frequencies.at(80) : 0;
+  const uint64_t frequency_160_raw_ms = frequencies.count(160) > 0 ? frequencies.at(160) : 0;
+  const uint64_t frequency_240_raw_ms = frequencies.count(240) > 0 ? frequencies.at(240) : 0;
+  const uint64_t frequency_80_ms = reportDuration(frequency_80_raw_ms);
+  const uint64_t frequency_160_ms = reportDuration(frequency_160_raw_ms);
+  const uint64_t frequency_240_ms = reportDuration(frequency_240_raw_ms);
+  const uint64_t light_sleep_raw_ms = state.light_sleep_ms;
+  const uint64_t light_sleep_ms = reportDuration(light_sleep_raw_ms);
+  const uint64_t light_sleep_in_80 = std::min(frequency_80_raw_ms, light_sleep_raw_ms);
 
-  const double mcu_ma = (static_cast<double>(light_sleep_in_80) * model.light_sleep
-                         + static_cast<double>(frequency_80_ms - light_sleep_in_80) * model.mcu_80
-                         + static_cast<double>(frequency_160_ms) * model.mcu_160
-                         + static_cast<double>(frequency_240_ms) * model.mcu_240)
-                        / safe_duration_ms;
-  const double display_ma =
-      (static_cast<double>(display_on_ms) * (model.display_panel_on + model.display_backlight)
-       + static_cast<double>(display_dim_ms)
-             * (model.display_panel_on + model.display_backlight * 32.0 / 255.0)
-       + static_cast<double>(display_off_ms) * model.display_panel_sleep)
+  const double mcu_ma =
+      (static_cast<double>(light_sleep_in_80) * model.light_sleep
+       + static_cast<double>(frequency_80_raw_ms - light_sleep_in_80) * model.mcu_80
+       + static_cast<double>(frequency_160_raw_ms) * model.mcu_160
+       + static_cast<double>(frequency_240_raw_ms) * model.mcu_240)
       / safe_duration_ms;
-  const uint64_t radio_connected_ms = reportDuration(state.radio_connected_ms);
-  const double radio_ma = (static_cast<double>(radio_connected_ms) * model.connected_idle
-                           + static_cast<double>([&]() {
-                               uint64_t count = 0;
-                               for (const auto &event : state.radio_events) {
-                                 count += event.second;
-                               }
-                               return count;
-                             }()) * model.radio_tx
-                                 * 2.0)
+  const double display_ma =
+      (static_cast<double>(display_on_raw_ms) * (model.display_panel_on + model.display_backlight)
+       + static_cast<double>(display_dim_raw_ms)
+             * (model.display_panel_on + model.display_backlight * 32.0 / 255.0)
+       + static_cast<double>(display_off_raw_ms) * model.display_panel_sleep)
+      / safe_duration_ms;
+  const uint64_t radio_connected_raw_ms = state.radio_connected_ms;
+  const uint64_t radio_connected_ms = reportDuration(radio_connected_raw_ms);
+  uint64_t radio_event_count = 0;
+  for (const auto &event : state.radio_events) {
+    radio_event_count += event.second;
+  }
+  const double radio_ma = (static_cast<double>(radio_connected_raw_ms) * model.connected_idle
+                           + static_cast<double>(radio_event_count) * model.radio_tx * 2.0)
                           / safe_duration_ms;
   // A degraded retry leaves the receiver rail powered but releases the CPU
   // sleep lock. Model its receiver draw as acquisition current and expose the
   // state separately so power regressions cannot disappear from the report.
   const double gps_ma =
-      (static_cast<double>(gps_acquiring_ms + gps_degraded_ms) * model.gps_acquisition
-       + static_cast<double>(gps_tracking_ms) * model.gps_tracking
-       + static_cast<double>(gps_standby_ms) * model.gps_standby)
+      (static_cast<double>(gps_acquiring_raw_ms + gps_degraded_raw_ms) * model.gps_acquisition
+       + static_cast<double>(gps_tracking_raw_ms) * model.gps_tracking
+       + static_cast<double>(gps_standby_raw_ms) * model.gps_standby)
       / safe_duration_ms;
   const double pmic_ma = model.pmic;
   const double peripheral_ma = model.peripheral;
@@ -608,7 +777,9 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "  \"schema_version\": 1,\n";
   output << "  \"scenario\": \"" << jsonEscape(scenario) << "\",\n";
   output << "  \"estimate_kind\": \"relative simulator estimate, not a hardware measurement\",\n";
-  output << "  \"model_source\": \"tools/power-model/board-currents.yaml\",\n";
+  output << "  \"model_source\": \"" << jsonEscape(loaded_model.source.string()) << "\",\n";
+  output << "  \"model_digest\": \"sha256:" << loaded_model.digest << "\",\n";
+  output << "  \"model_valid\": true,\n";
   output << "  \"board\": \"m5stick-s3\",\n";
   output << "  \"duration_ms\": " << duration_ms << ",\n";
   output << "  \"activity\": {\n";
@@ -805,7 +976,30 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "\n    },\n";
   output << "    \"estimated_mA\": ";
   writeDouble(output, estimated_ma);
-  output << "\n  },\n";
+  output << ",\n";
+  output << "    \"accounting_inputs\": {\n";
+  output << "      \"duration_ms\": " << duration_ms << ",\n";
+  output << "      \"mcu_ms\": {\n";
+  output << "        \"light_sleep_in_80\": " << light_sleep_in_80 << ",\n";
+  output << "        \"frequency_80\": " << frequency_80_raw_ms << ",\n";
+  output << "        \"frequency_160\": " << frequency_160_raw_ms << ",\n";
+  output << "        \"frequency_240\": " << frequency_240_raw_ms << "\n";
+  output << "      },\n";
+  output << "      \"display_ms\": {\n";
+  output << "        \"on\": " << display_on_raw_ms << ",\n";
+  output << "        \"dim\": " << display_dim_raw_ms << ",\n";
+  output << "        \"off\": " << display_off_raw_ms << "\n";
+  output << "      },\n";
+  output << "      \"radio_connected_ms\": " << radio_connected_raw_ms << ",\n";
+  output << "      \"radio_event_count\": " << radio_event_count << ",\n";
+  output << "      \"gps_ms\": {\n";
+  output << "        \"acquiring\": " << gps_acquiring_raw_ms << ",\n";
+  output << "        \"degraded\": " << gps_degraded_raw_ms << ",\n";
+  output << "        \"tracking\": " << gps_tracking_raw_ms << ",\n";
+  output << "        \"standby\": " << gps_standby_raw_ms << "\n";
+  output << "      }\n";
+  output << "    }\n";
+  output << "  },\n";
   output << "  \"estimated_mA\": ";
   writeDouble(output, estimated_ma);
   output << "\n}\n";

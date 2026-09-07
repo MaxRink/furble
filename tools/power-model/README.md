@@ -192,6 +192,20 @@ Backlights:
 
 ## Known model limitations
 
+### Report validity and duration accounting
+
+The profiler integrates the raw virtual-clock residency durations. The
+one-second quantization remains presentation-only, so short states are not
+silently turned into zero or one second of energy. A report identifies the
+selected model with its resolved `model_source`, `model_digest` (SHA-256), and
+`model_valid: true`. An explicitly selected missing, unreadable, incomplete,
+or malformed model is a hard error; consumed currents must also be finite,
+non-negative, and unique. The simulator requests exit and does not write a
+report. This prevents built-in defaults from being presented as the selected
+YAML model. The `energy.accounting_inputs` object exposes the exact raw
+durations and event count consumed by each component calculation, while the
+rounded state fields remain presentation data.
+
 Two of these matter whenever a scenario's subject is a periodic timer. Both are
 tracked in issue #285.
 
@@ -216,6 +230,29 @@ Until they are fixed, `compare.py` is a
 regression guard against a scenario getting worse, not a source of absolute
 numbers. Note also that it only fails on increases, so a baseline cannot catch
 a change that lowers the estimate, such as a timer period going up.
+
+### Remaining realism gates
+
+The changes above correct accounting and provenance only. They do not close
+the following physical or scheduler boundaries:
+
+- Scheduler wake transitions, timer callback work, queue waits, and the fixed
+  LVGL service cadence still need differential traces against the FreeRTOS
+  device; a host wake count is not CPU-time or wake-energy evidence.
+- BLE still needs production-stack traces with negotiated interval, PHY,
+  payload, retries, RX/TX airtime, and connection parameter changes. Generic
+  application events and the connected floor are not a radio measurement.
+- GPS still needs rail-on/off, cold versus warm start, UART activity, and
+  in-circuit `$PCAS12` standby measurements at one declared electrical
+  boundary. The module and whole-unit values in the table must not be mixed
+  into an absolute claim.
+- Peripheral, display-brightness, PMIC, and board-profile contributions remain
+  incomplete. IMU/speaker/motor/IR activity must be attributed to the actual
+  board rail before it is used to rank an optimization.
+
+Until those gates have captured raw traces and calibrated tolerances, power
+reports are relative simulator evidence only; they do not establish physical
+parity or a quantitative accuracy percentage.
 
 ## Numbers that could not be sourced (all tagged estimated)
 
