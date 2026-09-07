@@ -55,6 +55,7 @@ internal fun cameraResponseCompletes(
     cameraId: Int,
     record: FurbleProtocol.CameraRecord,
 ): Boolean {
+    if (record.cameraId != cameraId) return false
     if (operation == FurbleProtocol.CameraOperation.LIST) {
         return record.isTerminator || record.status != FurbleProtocol.CameraStatus.OK
     }

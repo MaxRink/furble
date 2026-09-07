@@ -66,6 +66,14 @@ class CameraCatalogTest {
         )
         assertEquals(
             false,
+            cameraResponseCompletes(
+                FurbleProtocol.CameraOperation.CONNECT,
+                7,
+                camera(8, "", 0, FurbleProtocol.CameraStatus.BUSY),
+            ),
+        )
+        assertEquals(
+            false,
             cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, 0xFF, live),
         )
         assertEquals(
