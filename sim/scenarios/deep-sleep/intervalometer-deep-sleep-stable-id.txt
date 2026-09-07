@@ -6,8 +6,8 @@ seed timed_wake true
 seed interval_count 2
 seed interval_shutter 30
 seed resume_fixture second_camera
-wait 5000
+assert-eventually-virtual 5000 control.state active
 assert control.target_camera FUJIFILM_X-S20
+assert-eventually-virtual 5000 ui.interval_state finished
 assert camera.shutter_presses 1
-assert ui.interval_state finished
 exit
