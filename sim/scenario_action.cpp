@@ -335,6 +335,14 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical page action");
       }
       return true;
+    case scenario_action_kind_t::CONSOLE:
+      if (!action.mode.empty() || action.index != 0
+          || !known(action.name, {"cameras", "connect", "scan", "pair", "delete",
+                                  "multi-select", "multi-deselect", "multi-clear", "interval",
+                                  "bulb", "display", "page", "back"})) {
+        return fail(error, "noncanonical console action");
+      }
+      return true;
     case scenario_action_kind_t::INVALID:
       return fail(error, "invalid action kind");
   }
