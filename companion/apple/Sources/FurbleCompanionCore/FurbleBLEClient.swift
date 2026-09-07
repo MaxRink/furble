@@ -527,7 +527,7 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
     case 1: return "unknown camera"
     case 2: return "request rejected"
     case 3: return "camera operation busy"
-    default: return "camera error (status)"
+    default: return "camera error \(status)"
     }
   }
 
