@@ -937,6 +937,7 @@ void UI::showCameraPairing(Camera *camera) {
 }
 
 void UI::pairingTimer(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("pairing_timer");
   auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
   if (ui->m_PairingDialog != nullptr) {
     auto camera = ui->m_PairingCamera.lock();
