@@ -42,6 +42,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {GPS_POWER,          {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
     {GPS_DUTY,           {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
     {GPS_ASSIST,         {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
+    {GPS_MOTION,         {GPS_MOTION, 66, "Motion Adaptive", "gps_motion", FURBLE_STR}        },
     {GPS_HOLD,           {GPS_HOLD, 67, "Fix Hold", "gps_hold", FURBLE_STR}                   },
     {GPS_EXTRAP,         {GPS_EXTRAP, 68, "Extrapolate", "gps_extrap", FURBLE_STR}            },
     {GPS_PLATFORM,       {GPS_PLATFORM, 69, "GPS Platform", "gps_plat", FURBLE_STR}           },
@@ -136,6 +137,7 @@ bool Settings::appliesImmediately(type_t type) {
     case GPS_HOLD:
     case GPS_EXTRAP:
     case GPS_PLATFORM:
+    case GPS_MOTION:
     case IR:
     case IR_PROTO:
     case FB_EVENTS:
@@ -244,6 +246,7 @@ bool Settings::isDangerous(type_t type) {
     case IMU_WAKE:
     case IMU_TRIG:
     case HW_MOTION:
+    case GPS_MOTION:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -603,6 +606,7 @@ void Settings::init(void) {
         case IMU_TRIG:
         case GPS_NMEA:
         case GPS_EXTRAP:
+        case GPS_MOTION:
         case MULTICONNECT:
         case RECONNECT:
         case TX_ADAPTIVE:

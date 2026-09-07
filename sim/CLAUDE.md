@@ -343,6 +343,9 @@ including empty strings and failed-save rollback.
   to assert that a repeated fake advertisement does not add a second row.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
+- `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
+  the shared source, then disarms and re-arms it through real MotionSource calls;
+  it asserts the gate changes without a GPS reset or setting toggle.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start

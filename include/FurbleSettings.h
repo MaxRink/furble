@@ -37,6 +37,7 @@ class Settings {
     GPS_HOLD,
     GPS_EXTRAP,
     GPS_PLATFORM,
+    GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -363,6 +364,10 @@ struct Settings::storage_type<Settings::GPS_EXTRAP> {
 template <>
 struct Settings::storage_type<Settings::GPS_PLATFORM> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_MOTION> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::INTERVAL> {

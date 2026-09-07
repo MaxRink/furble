@@ -93,9 +93,27 @@ LOW_COVERAGE_PERCENT = 30.0
 # catches any real regression.
 RATCHET_MARGIN = 1.0
 
+# Keep a useful tail of a failed simulator run without flooding the CI log.
+SCENARIO_OUTPUT_TAIL_BYTES = 64 * 1024
+
 
 class CoverageError(RuntimeError):
   """A coverage run could not be completed."""
+
+
+def scenario_output_tail(output: str | bytes | None) -> str:
+  """Return at most the last 64 KiB of simulator output.
+
+  A process killed by a signal often leaves the useful crash diagnostic at the
+  end of its output. Decode after trimming so a noisy run cannot grow the
+  coverage log without bound, and tolerate a partial UTF-8 sequence at the
+  boundary.
+  """
+
+  if output is None:
+    return ""
+  raw = output if isinstance(output, bytes) else output.encode("utf-8")
+  return raw[-SCENARIO_OUTPUT_TAIL_BYTES:].decode("utf-8", errors="replace")
 
 
 # ---------------------------------------------------------------------------
@@ -850,9 +868,9 @@ def incomplete_scenarios(results, timeout_s: float) -> list[str]:
   either hide a real regression behind an accidental gain or fail the floor for
   a reason no diff explains. Both outcomes fail the run instead.
 
-  `results` is an iterable of (label, code) pairs, where code is None for a
-  timeout kill and a negative number for a signal death, matching what
-  subprocess reports.
+  `results` is an iterable of (label, code[, output]) tuples, where code is
+  None for a timeout kill and a negative number for a signal death, matching
+  what subprocess reports.
 
   A scenario that exits with an ordinary non-zero status is deliberately not
   listed. It ran to completion and wrote a complete profile, so its measurement
@@ -860,7 +878,8 @@ def incomplete_scenarios(results, timeout_s: float) -> list[str]:
   """
 
   failures: list[str] = []
-  for label, code in results:
+  for result in results:
+    label, code = result[:2]
     if code is None:
       failures.append(
           f"{label}: timed out after {timeout_s:g} s, so it wrote no profile"
@@ -919,7 +938,7 @@ def measure_sim_board(
   if not jobs:
     raise CoverageError(f"the manifest selected no scenarios for {board_id}")
 
-  def run_scenario(indexed) -> tuple[str, int]:
+  def run_scenario(indexed) -> tuple[str, int | None, str]:
     index, (label, command) = indexed
     # Each run gets its own profile and its own simulated NVS file, so the
     # scenarios stay independent of each other and of run order.
@@ -931,16 +950,18 @@ def measure_sim_board(
     env["FURBLE_SIM_PREFS"] = str(state_dir / f"prefs-{index:04d}.bin")
     try:
       result = subprocess.run(
-          command, cwd=str(root), env=env, check=False, text=True,
+          command, cwd=str(root), env=env, check=False,
           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
           timeout=args.scenario_timeout,
       )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as error:
       # A wedged scenario must not hold the whole job until the runner's own
       # timeout kills it with no report at all. The killed process writes no
       # profile, so incomplete_scenarios() below fails the run by name.
-      return label, None
-    return label, result.returncode
+      return label, None, scenario_output_tail(error.output)
+    expected = 2 if "/invalid/" in label else 0
+    output = result.stdout if result.returncode != expected else None
+    return label, result.returncode, scenario_output_tail(output)
 
   print(
       f"Running {len(jobs)} {board_id} scenarios with "
@@ -961,16 +982,27 @@ def measure_sim_board(
       max_workers=args.scenario_jobs
   ) as pool:
     results = list(pool.map(run_scenario, enumerate(jobs)))
-  for label, code in results:
+  for label, code, output in results:
     if code is None:
-      continue
-    expected = 2 if "/invalid/" in label else 0
-    if code != expected:
+      failed = True
+    else:
+      expected = 2 if "/invalid/" in label else 0
+      failed = code != expected
+      if failed:
+        print(
+            f"note: {board_id} scenario {label} exited {code}, expected "
+            f"{expected}",
+            file=sys.stderr,
+        )
+    if failed and output:
       print(
-          f"note: {board_id} scenario {label} exited {code}, expected "
-          f"{expected}",
+          f"{board_id} scenario {label} output "
+          f"(last {SCENARIO_OUTPUT_TAIL_BYTES} bytes):",
           file=sys.stderr,
       )
+      sys.stderr.write(output)
+      if not output.endswith("\n"):
+        sys.stderr.write("\n")
   incomplete = incomplete_scenarios(results, args.scenario_timeout)
   if incomplete:
     raise CoverageError(
