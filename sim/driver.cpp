@@ -349,6 +349,9 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_stationary",
       "sd_gpx",
       "imu_trigger",
+      "ivl_sleep",
+      "timed_wake",
+      "timed_poweroff_fail", "timed_wake_write_fail",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -386,6 +389,20 @@ void validateSeed(const std::string &name, const std::string &value) {
   if (name == "battery_level") {
     if (parseUnsigned(value) > 100) {
       std::cerr << "Invalid battery_level: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "ivl_sleep_thr") {
+    if (parseUnsigned(value) > 999) {
+      std::cerr << "Invalid ivl_sleep_thr: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "resume_fixture") {
+    if (value != "invalid" && value != "stale" && value != "completed"
+        && value != "outofrange" && value != "mismatched" && value != "early"
+        && value != "late" && value != "wrong_camera" && value != "second_camera") {
+      std::cerr << "Invalid resume_fixture: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -1219,6 +1236,13 @@ std::string queryValue(const std::string &key) {
     if (sub == "connecting_camera") {
       return debug.connectingCamera;
     }
+    if (sub == "target_camera") {
+      const auto targets = control.getTargets();
+      if (targets.empty() || targets.front() == nullptr || targets.front()->getCamera() == nullptr) {
+        return "";
+      }
+      return targets.front()->getCamera()->getName();
+    }
   }
   // Track points the firmware queued for the SD writer. Fix hold deliberately
   // keeps the camera geotagged without recording anything, so a scenario proves
@@ -1737,12 +1761,16 @@ void applyScenarioSettings(void) {
       state.count = state.target;
     } else if (fixture->second == "outofrange") {
       state.count = state.target + 1;
+    } else if (fixture->second == "mismatched") {
+      state.target = state.interval.count.value + 1;
     } else if (fixture->second == "early") {
       state.wake_time += 5;
     } else if (fixture->second == "late") {
       state.wake_time -= 5;
     } else if (fixture->second == "wrong_camera") {
       state.camera_id = 254;
+    } else if (fixture->second == "second_camera") {
+      state.camera_id = 2;
     }
 
     Preferences prefs;

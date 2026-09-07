@@ -33,8 +33,12 @@ bool validResume(const UI::Intervalometer::resume_state_t &state) {
       || (state.camera_id == CameraListProtocol::INDEX_ID_ALL) || (state.target > 999)) {
     return false;
   }
-  return (state.interval.count.unit == SpinValue::UNIT_INF)
-         || ((state.target > 0) && (state.count < state.target));
+  if (state.interval.count.unit == SpinValue::UNIT_INF) {
+    return true;
+  }
+  return (state.interval.count.unit == SpinValue::UNIT_NIL)
+         && (state.target == state.interval.count.value) && (state.target > 0)
+         && (state.count < state.target);
 }
 }  // namespace
 
@@ -75,6 +79,10 @@ void UI::Intervalometer::loadResume(void) {
   const size_t length = prefs.get(RESUME_NVS_KEY, &state, sizeof(state));
   prefs.end();
 
+  // Consume the wake cause once, before any record or policy validation. A
+  // rejected record must not leave a stale marker for a later boot.
+  const bool timedWake = Platform::getInstance().consumeTimedWake();
+
   if ((length != sizeof(state)) || (state.magic != RESUME_MAGIC)
       || (state.version != RESUME_VERSION) || (state.length != sizeof(state))
       || !validResume(state)) {
@@ -87,7 +95,6 @@ void UI::Intervalometer::loadResume(void) {
     return;
   }
 
-  const bool timedWake = Platform::getInstance().consumeTimedWake();
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const bool clockValid = (now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH);
   const bool wakeTimeValid =

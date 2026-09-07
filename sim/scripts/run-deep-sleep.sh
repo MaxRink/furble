@@ -93,11 +93,14 @@ unset FURBLE_SIM_PRESERVE_PREFS
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-stale.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-completed.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-outofrange.txt"
+"$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-mismatched.txt"
+"$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-wrong-camera.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-wrong-wake.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-early.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-late.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-fallback.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-persistence-failure.txt"
+"$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-stable-id.txt"
 
 if [ "${FURBLE_SIM_UNSUPPORTED_BIN:-}" != "" ]; then
   "$FURBLE_SIM_UNSUPPORTED_BIN" \
