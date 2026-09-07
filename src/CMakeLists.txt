@@ -9,6 +9,9 @@ set(furble_sources
     FurbleFeedback.cpp
     FurbleGPS.cpp
     FurbleGPX.cpp
+    FurbleIMU.cpp
+    FurbleIMUMotionBMI270.cpp
+    FurbleIMUMotionMPU6886.cpp
     FurbleIR.cpp
     FurbleOTA.cpp
     FurbleOTAMQTT.cpp
@@ -53,9 +56,9 @@ endif()
 
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES ${furble_private_requires})
+                         PRIV_REQUIRES ${furble_private_requires} esp_hw_support)
 else()
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES ${furble_private_requires}
+                         PRIV_REQUIRES ${furble_private_requires} esp_hw_support
                          REQUIRES icons)
 endif()

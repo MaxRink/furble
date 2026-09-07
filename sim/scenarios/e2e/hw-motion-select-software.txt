@@ -1,0 +1,18 @@
+# Motion Engine set to Software forces the software backend even on a board
+# whose IMU has a hardware engine.
+#
+# The user's choice has to beat the probe, otherwise the setting is decorative.
+# Seed a BMI270 board, ask for Software, and confirm the software backend is
+# what armed.
+#
+# Teeth: make arm() ignore HW_MOTION_SOFTWARE and always run the probe first.
+# The backend reads bmi270-motion and the assert fails.
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+seed hw_motion 1
+wait 300
+assert setting.hw_motion 1
+assert ui.motion_backend software
+assert ui.motion_state moving
+exit

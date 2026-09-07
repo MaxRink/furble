@@ -257,9 +257,9 @@ The `clock.ms` query reports the current virtual millisecond clock.
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
-`text_size`, `auto_off`, `low_batt`, `fb_output`, `gps_assist` (0 off, 1
-position and time, 2 with ephemeris), `gps_platform` (0 do not send, 1 to 4 the
-dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
+`text_size`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
+(0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
+1 to 4 the dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -356,6 +356,11 @@ is never dead reckoned.
 
 `gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`,
 `write-error`, or `pause` before the GPS task starts.
+
+`imu_chip` selects `bmi270`, `mpu6886`, or `none` as the internal IMU the
+modelled board carries. The motion engines are chip specific, so this is what
+decides whether a hardware engine or the software fallback arms. The default is
+`none`.
 
 ### `action` commands
 
@@ -519,6 +524,11 @@ The complete `ui.*` query set is:
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
+| `ui.display` | Panel sleep state, `on` or `off`. |
+| `ui.motion_backend` | Armed motion backend name: `none`, `software`, `bmi270-motion` or `mpu6886-wom`. |
+| `ui.motion_state` | Motion source state: `inactive`, `moving` or `stationary`. |
+| `ui.motion_wake` | `yes` when the armed backend holds a light-sleep wake source, `no` when it polls. |
+| `ui.motion_interrupts` | Motion state transitions the armed backend has reported. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
 | `ui.text_size_options` | Numeric roller option count, or `unknown`. |
 | `ui.interval_state` | `idle`, `wait`, `shutter`, `delay`, `finished`, or `unknown`. |
@@ -615,6 +625,8 @@ The other namespaces are:
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
+- `setting.hw_motion`: the persisted motion engine choice, 0 auto, 1 software,
+  2 hardware.
 `ui.nav_layout` reports which navigation layout the running build rendered:
 `touch` for the touch grid, `buttons` for the physical-button layout. A scenario
 that means to measure a board's shipped layout asserts this first, so a lost

@@ -28,7 +28,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - The IMU setting is a persisted bool at wire id 46, defaults off, and applies
   on reboot because it controls `M5.begin()` capability discovery. IMU pages
   must be gated on both that setting and `M5.Imu.isEnabled()`; the Level timer
-  is started and stopped by page dispatch, not a widget-only callback.
+  is started and stopped by page dispatch, not a widget-only callback. The
+  motion activity callback is gated by the cached `IMU_WAKE` setting, so Wake
+  Gesture Off never resets display inactivity. The MPU6886 hardware wake path
+  remains uncertified until its clear-on-read race with M5Unified is measured.
 - `FurbleTimeKeeper`: owns one versioned CRC-protected wall-clock blob. Normal
   synchronization writes are limited to four per day and shutdown checkpoints
   without a backed RTC use a separate three-and-a-half-hour age budget. The

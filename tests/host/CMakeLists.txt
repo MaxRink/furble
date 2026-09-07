@@ -571,6 +571,23 @@ target_compile_definitions(text_size_policy_stickc_test PRIVATE FURBLE_M5STICKC)
 target_compile_options(text_size_policy_stickc_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                             -Wno-unused-parameter)
 
+# The BMI270 and MPU6886 motion engines are register programming against an I2C
+# bus. The simulator has no bus and models only what the engines mean, so the
+# wire side is pinned here instead: the two engine translation units are built
+# against a recording bus and a stub platform, and the test asserts the register
+# sequence and the feature word encoding against the datasheet and Bosch API
+# values cited in its header. The stub include directory is listed first so it
+# shadows the real FurblePlatform.h.
+add_executable(imu_motion_encoding_test
+               imu_motion_encoding_test.cpp
+               ${FURBLE_ROOT}/src/FurbleIMUMotionBMI270.cpp
+               ${FURBLE_ROOT}/src/FurbleIMUMotionMPU6886.cpp)
+target_include_directories(imu_motion_encoding_test PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/imu_stubs
+                           ${FURBLE_ROOT}/include)
+target_compile_options(imu_motion_encoding_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                        -Wno-unused-parameter)
+
 add_executable(stale_connect_test stale_connect_test.cpp)
 target_link_libraries(stale_connect_test PRIVATE furble_host_camera)
 target_compile_options(stale_connect_test PRIVATE -Wall -Wextra -Werror -Wno-format
@@ -1339,6 +1356,7 @@ add_executable(console_commands_test
                settings_nvs_stub.cpp
                ${FURBLE_ROOT}/src/FurbleConsole.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleIMU.cpp
                ${FURBLE_ROOT}/src/FurblePower.cpp
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
@@ -1425,6 +1443,7 @@ if(BUILD_TESTING)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
+  add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)

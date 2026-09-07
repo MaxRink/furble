@@ -1,0 +1,18 @@
+# Motion Engine set to Hardware arms the engine belonging to the board's chip.
+#
+# Backend selection is a probe, not a board table: each backend identifies its
+# own chip and refuses to arm on anything else. Seed a BMI270 board and confirm
+# the BMI270 engine is what armed, not the MPU6886 one that is probed after it.
+#
+# Teeth: swap the two factories in the probe list in MotionSource::arm(). The
+# MPU6886 factory returns nothing on a BMI270 board, so the order alone cannot
+# hide a wrong match, but a backend that stops checking its chip id arms here
+# and reads mpu6886-wom.
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+seed hw_motion 2
+wait 300
+assert setting.hw_motion 2
+assert ui.motion_backend bmi270-motion
+exit

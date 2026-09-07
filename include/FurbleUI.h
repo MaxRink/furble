@@ -7,10 +7,9 @@
 #include "scenario_action.h"
 #endif
 
-namespace Furble {
-/** Serializes M5.Imu transactions between UI timers and debug console probes. */
-extern std::mutex g_IMUMutex;
-}  // namespace Furble
+// g_IMUMutex is declared by FurbleIMU.h, the shared motion API, because the
+// motion engines take it too.
+#include "FurbleIMU.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 
@@ -89,6 +88,7 @@ class UI {
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
@@ -294,6 +294,9 @@ class UI {
     std::array<lv_obj_t *, 3> powerLocks;
     lv_obj_t *imuAccel;
     lv_obj_t *imuGyro;
+    lv_obj_t *imuBackend;
+    lv_obj_t *imuMotion;
+    lv_obj_t *imuInterrupts;
     float imuAccelValues[3];
     float imuGyroValues[3];
     bool imuAccelValid;
@@ -302,6 +305,10 @@ class UI {
     uint32_t imuGyroUpdates;
     /** True while the 'IMU live' page is open, gates I2C polling. */
     bool imuPageActive;
+    IMU::Backend imuBackendValue = IMU::Backend::NONE;
+    IMU::MotionState imuMotionValue = IMU::MotionState::MOVING;
+    uint32_t imuInterruptCount = 0;
+    bool imuMotionValuesValid = false;
   } diagnostics_t;
 
   typedef struct {
@@ -625,6 +632,8 @@ class UI {
   static constexpr const char *m_PowerStateStr = "Power state";
   static constexpr const char *m_BLEStr = "BLE";
   static constexpr const char *m_IMUDataStr = "IMU live";
+  static constexpr const char *m_MotionEngineStr = "Motion Engine";
+  static constexpr const char *m_MotionEngineOptions = "Auto\nSoftware\nHardware";
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
@@ -1040,6 +1049,12 @@ class UI {
   void addGPSDataMenu(const menu_t &parent);
 
   /** Add a GPS option page holding a single roller. */
+  menu_t &addOptionMenu(const menu_t &parent,
+                        const char *name,
+                        const char *options,
+                        uint32_t selected,
+                        lv_event_cb_t handler,
+                        void *userData);
   void addGPSOptionMenu(const menu_t &parent,
                         const char *name,
                         const char *options,

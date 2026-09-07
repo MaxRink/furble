@@ -38,6 +38,7 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleIMU.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -213,6 +214,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
@@ -340,6 +342,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPX_PERIOD:
@@ -501,6 +504,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
     } break;
 #endif
+    case Settings::HW_MOTION:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > Settings::HW_MOTION_HARDWARE)) {
+        return fail("expected 0-2 (auto, software, hardware)");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
     case Settings::IMU_WAKE:
     {
       char *end = nullptr;
@@ -1478,6 +1491,58 @@ const char *resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
+/**
+ * Report the motion source, and calibrate the software backend's threshold.
+ *
+ * `motion status` is the hardware gate's readout: which backend armed, whether
+ * it holds a wake source, and how many transitions it has seen. `motion scale`
+ * corrects a board whose accelerometer noise floor disagrees with the shipped
+ * threshold. The hardware engines threshold in the chip and ignore the scale.
+ */
+int cmdMotion(int argc, char **argv) {
+  auto &motion = IMU::MotionSource::getInstance();
+
+  if ((argc == 1) || (strcmp(argv[1], "status") == 0)) {
+    printf("backend: %s\n", motion.backendName());
+    printf("armed: %s\n", motion.isArmed() ? "yes" : "no");
+    printf("state: %s\n",
+           !motion.isArmed()
+               ? "inactive"
+               : (motion.state() == IMU::MotionState::STATIONARY ? "stationary" : "moving"));
+    printf("wake: %s\n", motion.usesInterrupt() ? "interrupt" : "polling");
+    // The hardware gate's readout. "pin" is the IMU interrupt line itself, which
+    // on the M5StickS3 is an internal PMIC net rather than an SoC pin, so it is
+    // read from the PMIC. "edges" counts polls at which the line was found
+    // asserted, from a latched flag: nothing here configures a GPIO interrupt,
+    // because an interrupt on the wake pin cancels the wake source.
+    auto &platform = Platform::getInstance();
+    printf("pin: %s\n", platform.motionWakeAsserted() ? "asserted" : "idle");
+    printf("edges: %lu\n", static_cast<unsigned long>(platform.motionWakeEdges()));
+    printf("interrupts: %lu\n", static_cast<unsigned long>(motion.interruptCount()));
+    printf("bus_retries: %lu\n", static_cast<unsigned long>(IMU::MotionSource::busRetries()));
+    printf("pmic_retries: %lu\n", static_cast<unsigned long>(platform.getM5PM1RetryCount()));
+    printf("scale: %.2f\n", static_cast<double>(IMU::MotionSource::getScale()));
+    printf("threshold: %.3f\n", static_cast<double>(IMU::MotionSource::threshold()));
+    return 0;
+  }
+
+  if ((strcmp(argv[1], "scale") == 0) && (argc <= 3)) {
+    if (argc == 3) {
+      char *end = nullptr;
+      const float value = strtof(argv[2], &end);
+      if ((end == argv[2]) || (*end != '\0') || !std::isfinite(value) || (value < 0.25f)
+          || (value > 4.0f)) {
+        return fail("expected 0.25-4.0");
+      }
+      IMU::MotionSource::setScale(value);
+    }
+    printf("scale: %.2f\n", static_cast<double>(IMU::MotionSource::getScale()));
+    return 0;
+  }
+
+  return fail("usage: motion status | scale [0.25-4.0]");
+}
+
 int cmdStatus(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -2287,6 +2352,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+    command("motion", "motion status | scale [0.25-4.0] (IMU motion source)", cmdMotion),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),

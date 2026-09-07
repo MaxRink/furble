@@ -92,6 +92,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
@@ -181,6 +182,13 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "text size setting is out of range";
+        return false;
+      }
+      if ((setting.type == Settings::HW_MOTION)
+          && (field.value[0] > Settings::HW_MOTION_HARDWARE)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "motion engine must be 0, 1 or 2";
         return false;
       }
       if ((setting.type == Settings::FB_OUTPUT) && (field.value[0] > 4)) {

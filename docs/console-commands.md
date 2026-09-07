@@ -40,6 +40,7 @@ About page and exposed through companion BLE Device Information.
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
+| `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
 | `ui` | `ui audit`, dump the current page layout. |
@@ -130,6 +131,37 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
   top of the per-sensor gain, so a cased or strapped device can be tuned without
   a reflash. It is runtime only and is not persisted: a tuning session is one
   USB session. Available on display builds.
+
+## motion
+
+- `motion status` reports the IMU motion source. It performs no NVS writes.
+
+  | Field | Meaning |
+  | :--- | :--- |
+  | `backend` | `none`, `software`, `bmi270-motion` or `mpu6886-wom`. |
+  | `armed` | Whether a backend is running. |
+  | `state` | `inactive`, `moving` or `stationary`. |
+  | `wake` | `interrupt` when a light-sleep wake source is held, `polling` otherwise. |
+  | `pin` | The IMU interrupt line: `asserted` or `idle`. |
+  | `edges` | Polls at which the line was found asserted since arming. |
+  | `interrupts` | Motion state transitions the backend has reported. |
+  | `bus_retries` | IMU bus transactions retried after a first failure. |
+  | `pmic_retries` | M5PM1 transactions retried after a first failure. |
+  | `scale` | The software backend's calibration multiplier. |
+  | `threshold` | The resulting slope threshold in g. |
+
+  On the M5StickS3 the BMI270 interrupt never reaches the SoC, so `pin` and
+  `edges` are read from the M5PM1: `pin` from the GPIO4 input level and `edges`
+  from the latched GPIO4 interrupt flag. `edges` counts polls at which the line
+  was asserted, not hardware edges, because a latched flag read once per second
+  cannot distinguish one assertion from a thousand. That is enough to tell a
+  line that never goes quiet from one that does, which is what it is for.
+
+- `motion scale [value]` reads or sets the software backend's calibration
+  multiplier, clamped to 0.25 through 4.0. Accelerometers differ in noise floor
+  between parts and a cased device damps differently from a bare board, so the
+  shipped threshold is a starting point. The hardware engines threshold inside
+  the chip and ignore this.
 
 ## shutter and focus
 
