@@ -58,6 +58,10 @@
 #include "console_doubles.h"
 #include "esp_console.h"
 
+// The console and NVS shims define separate ESP error enums.
+extern "C" void nvs_test_fail_set_on(size_t nth_future_call);
+extern "C" void nvs_test_fail_commit_on(size_t nth_future_call);
+
 const char *LOG_TAG = "furble-host-console";
 
 namespace {
@@ -101,10 +105,10 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",       "version", "status",   "imu",       "motion", "power",   "perf",
-    "gps",        "time",    "settings", "provision", "ui",     "cameras", "connect",
-    "disconnect", "shutter", "ir",       "focus",     "scan",   "bt",      "feedback",
-    "log",        "debug",   "flash",    "reboot",
+    "help",     "version",    "status",   "imu",       "motion",    "power", "perf",
+    "gps",      "time",       "settings", "companion", "provision", "ui",    "cameras",
+    "connect",  "disconnect", "shutter",  "ir",        "focus",     "scan",  "bt",
+    "feedback", "log",        "debug",    "flash",     "reboot",
 };
 
 }  // namespace
@@ -122,23 +126,24 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",    "expected stats or log",                                                "",         {"stats", "log"}                      },
-    {"perf",     "expected tasks, heap or lvgl",                                         "",         {"tasks", "heap", "lvgl"}             },
+    {"power",     "expected stats or log",                                               "",         {"stats", "log"}                      },
+    {"perf",      "expected tasks, heap or lvgl",                                        "",         {"tasks", "heap", "lvgl"}             },
     {"gps",
      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
      {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                         },
-    {"time",     "usage: time status | flush",                                           "",         {"status", "flush"}                   },
-    {"settings", "expected list, get or set",                                            " theme",   {"list", "get", "set"}                },
-    {"ui",       "usage: ui audit",                                                      "",         {"audit"}                             },
-    {"cameras",  "expected list or status",                                              "",         {"list", "status"}                    },
-    {"imu",      "usage: imu status",                                                    "",         {"status"}                            },
-    {"shutter",  "expected press, release or hold",                                      "",         {"press", "release", "hold"}          },
-    {"ir",       "usage: ir fire [protocol]",                                            "",         {"fire"}                              },
-    {"focus",    "expected press or release",                                            "",         {"press", "release"}                  },
-    {"scan",     "expected start, stop or list",                                         "",         {"start", "stop", "list"}             },
-    {"bt",       "expected scan, explore, pair or journal",                              "",         {"scan", "explore", "pair", "journal"}},
-    {"feedback", "usage: feedback test",                                                 " shutter", {"test"}                              },
-    {"flash",    "usage: flash prepare | cancel",                                        "",         {"prepare", "cancel"}                 },
+    {"time",      "usage: time status | flush",                                          "",         {"status", "flush"}                   },
+    {"settings",  "expected list, get or set",                                           " theme",   {"list", "get", "set"}                },
+    {"companion", "usage: companion password set <pw> | clear | status",                 " status",  {"password"}                          },
+    {"ui",        "usage: ui audit",                                                     "",         {"audit"}                             },
+    {"cameras",   "expected list or status",                                             "",         {"list", "status"}                    },
+    {"imu",       "usage: imu status",                                                   "",         {"status"}                            },
+    {"shutter",   "expected press, release or hold",                                     "",         {"press", "release", "hold"}          },
+    {"ir",        "usage: ir fire [protocol]",                                           "",         {"fire"}                              },
+    {"focus",     "expected press or release",                                           "",         {"press", "release"}                  },
+    {"scan",      "expected start, stop or list",                                        "",         {"start", "stop", "list"}             },
+    {"bt",        "expected scan, explore, pair or journal",                             "",         {"scan", "explore", "pair", "journal"}},
+    {"feedback",  "usage: feedback test",                                                " shutter", {"test"}                              },
+    {"flash",     "usage: flash prepare | cancel",                                       "",         {"prepare", "cancel"}                 },
     {"debug",
      "expected control, camera, ble, heap, tasks, power, gps, settings or all",          "",
      {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                      },
@@ -315,6 +320,7 @@ void testSettings(void) {
   checkContains(list.out, "theme: ", "settings list prints the theme string");
   checkContains(list.out, "gpx_period: ", "settings list prints the GPX period");
   checkContains(list.out, "display_mode: ", "settings list prints the display mode");
+  checkContains(list.out, "companion_pw: unset", "settings list reports password state only");
 
   const Result get = runDirect("settings get brightness");
   check(get.rc == 0, "settings get returns success");
@@ -323,6 +329,43 @@ void testSettings(void) {
   checkContains(get.out, "type: uint8", "settings get reports the storage type");
   checkContains(get.out, "applies: on reboot", "settings get reports when it applies");
   checkContains(get.out, "value: ", "settings get prints the value");
+
+  const Result secretGet = runDirect("settings get companion_pw");
+  check(secretGet.rc != 0, "generic settings get refuses the companion password");
+  checkContains(secretGet.out, "use companion password set, clear or status",
+                "generic settings get points to the safe password commands");
+  checkContains(runDirect("companion password status").out, "companion.password: unset",
+                "password status reports unset without revealing a value");
+  const size_t reloadsBeforePassword = ConsoleHost::misc().companionPasswordReloads;
+  check(runDirect("companion password set test-secret").rc == 0, "password set returns success");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "test-secret",
+        "password set persists the secret");
+  check(ConsoleHost::misc().companionPasswordReloads == reloadsBeforePassword + 1,
+        "password set reloads the live companion gate");
+  checkContains(runDirect("companion password status").out, "companion.password: set",
+                "password status reports set without revealing a value");
+  check(runDirect("companion password clear").rc == 0, "password clear returns success");
+  check(ConsoleHost::misc().companionPasswordReloads == reloadsBeforePassword + 2,
+        "password clear reloads the live companion gate");
+  checkContains(runDirect("companion password status").out, "companion.password: unset",
+                "password clear reports unset");
+
+  nvs_test_fail_set_on(1);
+  const Result failedSet = runDirect("companion password set rejected-secret");
+  check(failedSet.rc != 0 && !contains(failedSet.out, "rejected-secret"),
+        "failed password write reports failure without leaking the secret");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD).empty(),
+        "failed password write preserves the previous value");
+  check(runDirect("companion password set retained-secret").rc == 0,
+        "password storage recovers after a failed write");
+  nvs_test_fail_commit_on(1);
+  check(runDirect("companion password clear").rc != 0,
+        "failed password clear commit reports failure");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD)
+            == "retained-secret",
+        "failed clear preserves the saved password");
+  check(runDirect("companion password clear").rc == 0,
+        "password clear recovers after a failed commit");
 
   // The settings the console cannot render are still described, and say so
   // instead of printing something misleading.
@@ -1464,8 +1507,10 @@ void testProvision(void) {
   checkContains(applied.out,
                 "provision: decoded " + std::to_string(encoded.size()) + " bytes as hex",
                 "the blob is reported as hex with its length");
-  for (const char *field : {"wifi_ssid", "wifi_psk", "companion_password", "mqtt_uri",
-                            "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
+  // companion_password is no longer in this list: it now has a setting to land
+  // in, so the provisioner applies it instead of deferring it.
+  for (const char *field :
+       {"wifi_ssid", "wifi_psk", "mqtt_uri", "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
     checkContains(applied.out, std::string("provision: ") + field + " parsed (not applied",
                   std::string(field) + " is named as deferred");
   }
@@ -1473,8 +1518,10 @@ void testProvision(void) {
   check(!contains(applied.out, "furble\n"), "no deferred field value is printed");
   checkContains(applied.out, "provision: setting 1 (brightness) applied",
                 "an applied setting names its key");
-  checkContains(applied.out, "1 setting(s) applied, 7 field(s) deferred",
+  checkContains(applied.out, "2 setting(s) applied, 6 field(s) deferred",
                 "the summary counts applied and deferred fields");
+  check(!contains(applied.out, "companion_password parsed (not applied"),
+        "the companion password is no longer deferred");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 99,
         "the provisioned value reached the real Settings store");
 

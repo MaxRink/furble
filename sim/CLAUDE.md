@@ -126,6 +126,13 @@ a regression.
 
 ## Build entry points
 
+The simulator Preferences adapter is a checked file-backed NVS substitute:
+missing storage is an unset store, while empty, truncated, malformed, or
+unreadable storage is an error. Mutations commit through a temporary file and
+roll back the in-memory value when directory, write, close, or rename fails.
+The `actualPreferencesSim` host target and its CTest cases cover these states,
+including empty strings and failed-save rollback.
+
 - `sim/build.sh`: the verified direct-clang path on macOS. Its incremental
   check is `make -q` over the compiler depfile and first verifies that the
   depfile target exactly matches the current object path. A depfile from a

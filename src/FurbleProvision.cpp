@@ -1,6 +1,7 @@
 #include "FurbleProvision.h"
 #include "FurbleGPSHold.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include "FurbleSettings.h"
@@ -108,6 +109,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return ProvisionTLV::ValueType::STRING;
 
     case Settings::INTERVAL:
@@ -260,7 +262,7 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
   return true;
 }
 
-void saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type) {
+bool saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type) {
   switch (field.type) {
     case ProvisionTLV::ValueType::BOOL:
       Settings::save<bool>(type, field.value[0] != 0);
@@ -272,6 +274,9 @@ void saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
       Settings::save<uint32_t>(type, littleEndianU32(field.value));
       break;
     case ProvisionTLV::ValueType::STRING:
+      if (type == Settings::COMPANION_PASSWORD) {
+        return Settings::savePassword(std::string(field.value.begin(), field.value.end()));
+      }
       Settings::save<std::string>(type, std::string(field.value.begin(), field.value.end()));
       break;
     case ProvisionTLV::ValueType::BLOB:
@@ -282,6 +287,7 @@ void saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
       }
     } break;
   }
+  return true;
 }
 
 size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
@@ -293,7 +299,6 @@ size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
   size_t count = 0;
   count += bundle.wifiSsid.has_value() ? 1 : 0;
   count += bundle.wifiPsk.has_value() ? 1 : 0;
-  count += bundle.companionPassword.has_value() ? 1 : 0;
   count += bundle.mqttUri.has_value() ? 1 : 0;
   count += bundle.mqttUsername.has_value() ? 1 : 0;
   count += bundle.mqttPassword.has_value() ? 1 : 0;
@@ -313,6 +318,8 @@ const char *applyErrorString(ApplyError error) {
       return "bad setting";
     case ApplyError::UNSUPPORTED_SETTING:
       return "unsupported setting";
+    case ApplyError::STORAGE_FAILURE:
+      return "storage failure";
   }
   return "unknown apply error";
 }
@@ -322,6 +329,29 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
            const ApplyOptions &options) {
   report = {};
   report.deferredFields = deferredFieldCount(bundle);
+
+  // The dedicated password field and the generic wire-id 46 setting address
+  // the same NVS key. Reject an ambiguous bundle instead of allowing the
+  // order of two unrelated records to choose which secret wins.
+  if (bundle.companionPassword.has_value()) {
+    if ((bundle.companionPassword->empty())
+        || (bundle.companionPassword->size() > ProvisionTLV::MAX_COMPANION_PASSWORD_BYTES)
+        || (std::find(bundle.companionPassword->begin(), bundle.companionPassword->end(), 0)
+            != bundle.companionPassword->end())) {
+      report.error = ApplyError::BAD_SETTING;
+      report.failedSettingId = ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
+      report.message = "companion password is malformed";
+      return false;
+    }
+    for (const auto &field : bundle.settings) {
+      if (field.wireId == ProvisionTLV::COMPANION_PASSWORD_WIRE_ID) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
+        report.message = "companion password is specified twice";
+        return false;
+      }
+    }
+  }
 
   // Validate the complete batch before the first NVS write. Settings::save()
   // itself is void, so this preflight is what prevents a later bad record from
@@ -350,10 +380,29 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
       report.settingsApplied = 0;
       return false;
     }
-    saveSetting(field, setting->type);
+    if (!saveSetting(field, setting->type)) {
+      report.error = ApplyError::STORAGE_FAILURE;
+      report.failedSettingId = field.wireId;
+      report.message = "password persistence failed";
+      return false;
+    }
     report.settingsApplied++;
     if (options.onSettingApplied != nullptr) {
       options.onSettingApplied(field.wireId);
+    }
+  }
+
+  if (bundle.companionPassword.has_value()) {
+    if (!Settings::savePassword(
+            std::string(bundle.companionPassword->begin(), bundle.companionPassword->end()))) {
+      report.error = ApplyError::STORAGE_FAILURE;
+      report.failedSettingId = ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
+      report.message = "password persistence failed";
+      return false;
+    }
+    report.settingsApplied++;
+    if (options.onSettingApplied != nullptr) {
+      options.onSettingApplied(ProvisionTLV::COMPANION_PASSWORD_WIRE_ID);
     }
   }
 

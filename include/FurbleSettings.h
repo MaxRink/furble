@@ -54,6 +54,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    COMPANION_PASSWORD,
     CONN_SAVER,
     IR,
     IR_PROTO,
@@ -198,6 +199,11 @@ class Settings {
 
   /** Return true when an over-the-air write can affect the companion link. */
   static bool isDangerous(type_t type);
+
+  /** Load the companion password, distinguishing an unset key from NVS failure. */
+  static bool loadPassword(std::string &value);
+  /** Persist the companion password and report storage/commit failures. */
+  static bool savePassword(const std::string &value);
 
   /** Return true when the Battery Saver power profile is enabled. */
   static bool batterySaver(void);
@@ -426,6 +432,10 @@ struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
 template <>
 struct Settings::storage_type<Settings::COMPANION> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::COMPANION_PASSWORD> {
+  using type = std::string;
 };
 template <>
 struct Settings::storage_type<Settings::CONN_SAVER> {

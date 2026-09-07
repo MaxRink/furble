@@ -128,6 +128,7 @@ StorageKind storageKindFor(Settings::type_t type) {
       return StorageKind::U16;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return StorageKind::STRING;
     case Settings::INTERVAL:
     case Settings::MULTISELECT:
@@ -144,6 +145,9 @@ struct SettingCase {
   SettingValue default_value;
   SettingValue representative_value;
   StorageKind storage;
+  // A write-only setting never leaves the device, so the SD exporter and
+  // importer must both refuse it instead of round-tripping it.
+  bool sd_exportable = true;
 };
 
 int failures = 0;
@@ -252,6 +256,8 @@ std::vector<SettingCase> settingCases() {
       {Settings::SCAN_MODE,         "SCAN_MODE",         uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
       {Settings::SCAN_TIMEOUT,      "SCAN_TIMEOUT",      uint32_t {0},                                         uint32_t {120},              StorageKind::U32   },
       {Settings::COMPANION,         "COMPANION",         false,                                                true,                        StorageKind::BOOL  },
+      {Settings::COMPANION_PASSWORD, "COMPANION_PASSWORD", std::string {""},
+       std::string {"hunter2"},                                                                                                            StorageKind::STRING, false},
       {Settings::CONN_SAVER,        "CONN_SAVER",        false,                                                true,                        StorageKind::BOOL  },
       {Settings::IR,                "IR",                false,                                                true,                        StorageKind::BOOL  },
       {Settings::IR_PROTO,          "IR_PROTO",          uint8_t {0},                                          uint8_t {3},                 StorageKind::U8    },
@@ -317,6 +323,7 @@ ASSERT_STORAGE_TYPE(BULB, Furble::SpinValue::nvs_t);
 ASSERT_STORAGE_TYPE(SCAN_MODE, uint8_t);
 ASSERT_STORAGE_TYPE(SCAN_TIMEOUT, uint32_t);
 ASSERT_STORAGE_TYPE(COMPANION, bool);
+ASSERT_STORAGE_TYPE(COMPANION_PASSWORD, std::string);
 ASSERT_STORAGE_TYPE(CONN_SAVER, bool);
 ASSERT_STORAGE_TYPE(IR, bool);
 ASSERT_STORAGE_TYPE(IR_PROTO, uint8_t);
@@ -384,6 +391,7 @@ SettingValue loadValue(Settings::type_t type) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return Settings::load<std::string>(type);
 
     case Settings::TX_ADAPTIVE:
@@ -509,7 +517,13 @@ void testDefaults(const std::vector<SettingCase> &cases) {
 
   for (const auto &setting : cases) {
     checkValue(setting, loadValue(setting.type), setting.default_value, "default");
-    checkStoredType(setting, "default");
+    if (setting.type == Settings::COMPANION_PASSWORD) {
+      const auto &entry = Settings::get(setting.type);
+      check(nvs_test_value_type(entry.nvs_namespace, entry.key) == NVS_TEST_INVALID,
+            "password default stays absent rather than overwriting storage errors");
+    } else {
+      checkStoredType(setting, "default");
+    }
   }
 }
 
@@ -529,6 +543,13 @@ void testSdRoundTrips(const std::vector<SettingCase> &cases) {
 
     std::string serialized;
     const auto &table_entry = Settings::get(setting.type);
+    if (!setting.sd_exportable) {
+      check(!Furble::serializeSetting(table_entry, serialized),
+            std::string("SD serialize refuses write-only ") + setting.name);
+      check(!Furble::importSetting(table_entry, "hunter2"),
+            std::string("SD import refuses write-only ") + setting.name);
+      continue;
+    }
     check(Furble::serializeSetting(table_entry, serialized),
           std::string("SD serialize succeeded for ") + setting.name);
     check(!serialized.empty(), std::string("SD serialize produced a value for ") + setting.name);
@@ -564,6 +585,72 @@ void testUnknownAndAliasedKeysAreIgnored() {
         "unknown legacy key remains isolated in the mock store");
   check(nvs_test_value_type("furble", "brightness") == NVS_TEST_U8,
         "wrong-namespace key remains isolated in the mock store");
+}
+
+void testPasswordLoadBoundary() {
+  const auto &setting = Settings::get(Settings::COMPANION_PASSWORD);
+  std::string password = "sentinel";
+
+  nvs_test_reset();
+  Settings::init();
+  check(Settings::loadPassword(password), "missing companion password is a valid unset value");
+  check(password.empty(), "missing companion password loads as empty");
+
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "explicit empty companion password loads successfully");
+  check(password.empty(), "explicit empty companion password remains empty");
+
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "persisted password");
+  password.clear();
+  check(Settings::loadPassword(password), "saved companion password loads successfully");
+  check(password == "persisted password", "saved companion password is preserved");
+
+  nvs_test_reset();
+  Furble::Preferences preferences;
+  check(preferences.begin(setting.nvs_namespace, false),
+        "opened password namespace for type fault");
+  check(preferences.put<uint8_t>(setting.key, 7) == 1, "stored a wrong password NVS type");
+  preferences.end();
+  Settings::init();
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "wrong password NVS type is a load error");
+  check(password.empty(), "wrong password NVS type does not return a credential");
+  check(nvs_test_value_type(setting.nvs_namespace, setting.key) == NVS_TEST_U8,
+        "password type fault is not erased by Settings::init");
+
+  nvs_test_reset();
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "size-stage password");
+  nvs_test_fail_get_str_length_on(1);
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "password size-stage NVS error is reported");
+  check(password.empty(), "password size-stage error does not return a credential");
+
+  nvs_test_reset();
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "data-stage password");
+  nvs_test_fail_get_str_data_on(1);
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "password data-stage NVS error is reported");
+  check(password.empty(), "password data-stage error does not return a credential");
+
+  nvs_test_reset();
+  nvs_test_fail_set_on(1);
+  check(!Settings::savePassword("set failure"), "password set failure is reported");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "failed password set leaves an unset credential valid");
+  check(password.empty(), "failed password set leaves the credential unset");
+
+  Settings::savePassword("old password");
+  nvs_test_fail_commit_on(1);
+  check(!Settings::savePassword("commit failure"), "password commit failure is reported");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "failed password commit keeps a readable credential");
+  check(password == "old password", "failed password commit preserves the old credential");
+
+  check(Settings::savePassword(""), "empty password clear succeeds");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "cleared password remains a valid unset credential");
+  check(password.empty(), "empty password clear stores an empty credential");
 }
 
 // A remembered multi-connect entry is keyed on the camera's displayed name.
@@ -667,6 +754,7 @@ int main() {
   testDefaults(cases);
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
+  testPasswordLoadBoundary();
   testUnknownAndAliasedKeysAreIgnored();
   testMultiselectDiscriminatesLongNames();
   testMultiselectLegacyRecordUpgrades();

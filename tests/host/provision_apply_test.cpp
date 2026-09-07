@@ -17,6 +17,7 @@ namespace {
 using Furble::Provision::apply;
 using Furble::Provision::ApplyOptions;
 using Furble::Provision::ApplyReport;
+using Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
 using Furble::ProvisionTLV::ProvisionBundle;
 using Furble::ProvisionTLV::SettingValue;
 using Furble::ProvisionTLV::ValueType;
@@ -106,6 +107,7 @@ void testPreflightIsAtomic() {
   resetSettings();
 
   ProvisionBundle bundle;
+  bundle.companionPassword = std::vector<uint8_t> {'n', 'e', 'w'};
   bundle.settings = {
       {1,  ValueType::U8, {77}},
       {26, ValueType::U8, {6} }, // GPS duty only accepts 0, 5, 10, or 15.
@@ -122,6 +124,8 @@ void testPreflightIsAtomic() {
   check(appliedIds.empty(), "atomic failure emits no runtime reload callbacks");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 128,
         "atomic failure leaves the earlier setting unchanged");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD).empty(),
+        "atomic failure leaves the companion password unchanged");
 }
 
 void testValidatedApplyAndRuntimeHooks() {
@@ -135,6 +139,9 @@ void testValidatedApplyAndRuntimeHooks() {
       {69, ValueType::U8,     {4}                                               },
       {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
       {46, ValueType::BOOL,   {1}                                               },
+      {COMPANION_PASSWORD_WIRE_ID,
+       ValueType::STRING,
+       {'s', 'e', 't', '-', 'b', 'y', '-', 'i', 'd'}                                                    },
       {72, ValueType::U8,     {3}                                               },
       {73, ValueType::BOOL,   {1}                                               },
       {66, ValueType::BOOL,   {1}                                               },
@@ -146,7 +153,9 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, 72, 73, 66}),
+  check(appliedIds
+            == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, COMPANION_PASSWORD_WIRE_ID, 72, 73,
+                                      66}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -171,6 +180,81 @@ void testValidatedApplyAndRuntimeHooks() {
   // value is ever examined. This assertion is what catches that.
   check(Furble::Settings::load<bool>(Furble::Settings::GPS_MOTION),
         "validated motion adaptive setting is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "set-by-id",
+        "validated companion password setting is persisted");
+}
+
+void testDedicatedPasswordField() {
+  resetSettings();
+
+  ProvisionBundle bundle;
+  bundle.companionPassword = std::vector<uint8_t> {'d', 'e', 'd', 'i', 'c', 'a', 't', 'e', 'd'};
+  ApplyReport report;
+  ApplyOptions options;
+  options.onSettingApplied = recordApplied;
+  check(apply(bundle, report, options), "dedicated companion password applies");
+  check(report.settingsApplied == 1 && report.deferredFields == 0,
+        "dedicated companion password is counted as an applied setting");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "dedicated",
+        "dedicated companion password is persisted");
+  check(appliedIds == std::vector<uint8_t>({COMPANION_PASSWORD_WIRE_ID}),
+        "dedicated companion password invokes the wire-id callback");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {};
+  check(!apply(bundle, report), "empty dedicated companion password is rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "empty dedicated companion password reports wire id 47 without writing");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {'a', 0, 'b'};
+  check(!apply(bundle, report), "NUL-containing dedicated companion password is rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "malformed dedicated companion password reports wire id 47 without writing");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {'d', 'e', 'd', 'i', 'c', 'a', 't', 'e', 'd'};
+  bundle.settings = {
+      {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, {'o', 't', 'h', 'e', 'r'}}
+  };
+  check(!apply(bundle, report), "duplicate companion password sources are rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "duplicate password rejection happens before either source is written");
+}
+
+void testPasswordStorageFailures() {
+  for (bool dedicated : {false, true}) {
+    for (bool commitFailure : {false, true}) {
+      resetSettings();
+      check(Furble::Settings::savePassword("previous"), "seed the existing password");
+      ProvisionBundle bundle;
+      if (dedicated) {
+        bundle.companionPassword = std::vector<uint8_t> {'n', 'e', 'w'};
+      } else {
+        bundle.settings = {
+            {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, {'n', 'e', 'w'}}
+        };
+      }
+      if (commitFailure) {
+        nvs_test_fail_commit_on(1);
+      } else {
+        nvs_test_fail_set_on(1);
+      }
+      ApplyReport report;
+      ApplyOptions options;
+      options.onSettingApplied = recordApplied;
+      check(!apply(bundle, report, options) && !report.ok,
+            "password storage failure rejects either provisioning encoding");
+      check(report.error == Furble::Provision::ApplyError::STORAGE_FAILURE
+                && report.failedSettingId == COMPANION_PASSWORD_WIRE_ID,
+            "failed password write identifies storage failure and its wire id");
+      check(report.settingsApplied == 0 && appliedIds.empty(),
+            "failed password write is not counted or announced as applied");
+      std::string password;
+      check(Furble::Settings::loadPassword(password) && password == "previous",
+            "failed provisioning preserves the previous password");
+    }
+  }
 }
 
 void testDomainValidation() {
@@ -246,6 +330,8 @@ int main() {
   testMotionEngineProvisioning();
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
+  testDedicatedPasswordField();
+  testPasswordStorageFailures();
   testDomainValidation();
   testEverySettingHasASchemaRow();
 

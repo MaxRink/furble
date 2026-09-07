@@ -120,6 +120,7 @@ IRState &ir(void);
 struct MiscState {
   size_t feedbackReloads = 0;
   size_t companionReloads = 0;
+  size_t companionPasswordReloads = 0;
   bool sdSupported = true;
   size_t usbDriverInstalls = 0;
   size_t vfsUseDriverCalls = 0;
