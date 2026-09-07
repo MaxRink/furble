@@ -58,6 +58,8 @@ int main() {
       "expect valid-no-effect companion-reject",
       "console connect 0",
       "console delete -1",
+      "console display",
+      "console back",
   };
   for (const std::string &text : accepted) {
     if (!parses(text, &action)) {
@@ -93,6 +95,10 @@ int main() {
       "expect maybe page main",
       "expect unavailable",
       "console",
+      "console connect",
+      "console delete",
+      "console back 0",
+      "console display 0 trailing",
       "console connect trailing",
       "console unknown",
       "console connect 1 trailing",

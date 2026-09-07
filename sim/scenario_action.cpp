@@ -450,11 +450,26 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     if ((args.size() < 2) || (args.size() > 3)) {
       return fail(error, "console requires command and optional integer");
     }
+    const bool needsInteger = oneOf(args[1], {"connect", "scan", "pair", "delete",
+                                              "multi-select", "multi-deselect", "interval",
+                                              "bulb"});
+    const bool optionalInteger = oneOf(args[1], {"cameras", "display"});
+    if (needsInteger && args.size() != 3) {
+      return fail(error, "console command requires an integer");
+    }
+    if (!needsInteger && !optionalInteger && args.size() != 2) {
+      return fail(error, "console command takes no integer");
+    }
     action->kind = scenario_action_kind_t::CONSOLE;
     action->name = args[1];
-    if (args.size() == 3 && !parseSigned(args[2], std::numeric_limits<int32_t>::min(),
-                                          std::numeric_limits<int32_t>::max(), &action->integer)) {
-      return fail(error, "console integer is invalid");
+    action->integer = args[1] == "display" ? -1 : 0;
+    if (args.size() == 3) {
+      int64_t value = 0;
+      if (!parseSigned(args[2], std::numeric_limits<int32_t>::min(),
+                       std::numeric_limits<int32_t>::max(), &value)) {
+        return fail(error, "console integer is invalid");
+      }
+      action->integer = static_cast<int32_t>(value);
     }
     return accept();
   }
