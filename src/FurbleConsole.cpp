@@ -35,6 +35,7 @@
 #include "Camera.h"
 #include "FurbleBtDebug.h"
 #include "FurbleCompanion.h"
+#include "FurbleCompanionAuth.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
@@ -225,6 +226,7 @@ const char *settingType(Settings::type_t type) {
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -366,6 +368,12 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BUTTON_MODE:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
+    case Settings::COMPANION_PASSWORD:
+    {
+      std::string password;
+      const bool loaded = Settings::loadPassword(password);
+      printf("%s%s\n", prefix, loaded ? (password.empty() ? "unset" : "set") : "unavailable");
+    } break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
@@ -675,6 +683,9 @@ int cmdSettings(int argc, char **argv) {
   if (setting == nullptr) {
     return fail("no such setting");
   }
+  if (setting->type == Settings::COMPANION_PASSWORD) {
+    return fail("use companion password set, clear or status");
+  }
 
   if (!strcmp(argv[1], "get")) {
     printf("key: %s\n", setting->key);
@@ -693,6 +704,44 @@ int cmdSettings(int argc, char **argv) {
   }
 
   return fail("expected list, get or set");
+}
+
+int cmdCompanion(int argc, char **argv) {
+  if ((argc < 2) || strcasecmp(argv[1], "password")) {
+    return fail("usage: companion password set <pw> | clear | status");
+  }
+  if ((argc == 3) && !strcasecmp(argv[2], "status")) {
+    std::string password;
+    const bool loaded = Settings::loadPassword(password);
+    printf("companion.password: %s\n",
+           loaded ? (password.empty() ? "unset" : "set") : "unavailable");
+    return loaded ? 0 : 1;
+  }
+  if ((argc == 3) && !strcasecmp(argv[2], "clear")) {
+    const bool saved = Settings::savePassword(std::string {});
+    CompanionGatt::getInstance().reloadPassword();
+    std::string password;
+    if (!saved || !Settings::loadPassword(password) || !password.empty()) {
+      return fail("companion password storage failed");
+    }
+    printf("companion.password: unset\n");
+    return 0;
+  }
+  if ((argc == 4) && !strcasecmp(argv[2], "set")) {
+    const size_t length = strlen(argv[3]);
+    if ((length == 0) || (length > CompanionAuth::PASSWORD_MAX)) {
+      return fail("password must be 1-63 bytes; use clear to unset");
+    }
+    const bool saved = Settings::savePassword(argv[3]);
+    CompanionGatt::getInstance().reloadPassword();
+    std::string password;
+    if (!saved || !Settings::loadPassword(password) || password != argv[3]) {
+      return fail("companion password storage failed");
+    }
+    printf("companion.password: set\n");
+    return 0;
+  }
+  return fail("usage: companion password set <pw> | clear | status");
 }
 
 void printProvisionDeferred(const char *name) {
@@ -731,6 +780,9 @@ void reloadProvisionSetting(uint8_t wireId) {
       break;
     case Settings::COMPANION:
       CompanionGatt::getInstance().reloadSetting();
+      break;
+    case Settings::COMPANION_PASSWORD:
+      CompanionGatt::getInstance().reloadPassword();
       break;
     case Settings::IMU:
     case Settings::IMU_WAKE:
@@ -786,9 +838,6 @@ int cmdProvision(int argc, char **argv) {
   if (bundle.wifiPsk.has_value()) {
     printProvisionDeferred("wifi_psk");
   }
-  if (bundle.companionPassword.has_value()) {
-    printProvisionDeferred("companion_password");
-  }
   if (bundle.mqttUri.has_value()) {
     printProvisionDeferred("mqtt_uri");
   }
@@ -805,6 +854,10 @@ int cmdProvision(int argc, char **argv) {
     const auto *setting = Settings::getByWireId(field.wireId);
     printf("provision: setting %u (%s) applied\n", static_cast<unsigned>(field.wireId),
            (setting != nullptr) ? setting->key : "unknown");
+  }
+  if (bundle.companionPassword.has_value()) {
+    printf("provision: setting %u (companion_pw) applied\n",
+           static_cast<unsigned>(ProvisionTLV::COMPANION_PASSWORD_WIRE_ID));
   }
   if ((report.settingsApplied == 0) && (report.deferredFields == 0)) {
     printf("provision: no fields\n");
@@ -2282,6 +2335,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
+    command("companion", "companion password set <pw> | clear | status", cmdCompanion),
     command("provision", "provision <hex|base64 TLV blob>", cmdProvision),
     command("ui", "ui audit", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),

@@ -2,6 +2,8 @@ set(furble_sources
     FurbleBootScreen.cpp
     FurbleBtDebug.cpp
     FurbleCompanion.cpp
+    FurbleCompanionAuth.cpp
+    FurbleCompanionCrypto.cpp
     FurbleCompanionService.cpp
     FurbleConsole.cpp
     FurbleControl.cpp

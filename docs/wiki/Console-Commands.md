@@ -30,6 +30,7 @@ About page and exposed through companion BLE Device Information.
 | `gps` | GPS status and control, see below. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
+| `companion` | `password set <pw>`, `clear`, or `status`. |
 | `ui` | `ui audit`, dump the current page layout. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
@@ -56,6 +57,13 @@ no software-readable presence or negotiation signal.
 - `settings get <name>` prints the name, type, value, and when a change applies.
 - `settings set <name> <value>` saves a setting. Values are range checked and
   rejected when the board does not support the setting.
+
+
+The companion password is write-only. Use `companion password set <pw>` or
+`companion password clear`; `companion password status` prints only `set`,
+`unset`, or `unavailable`. The generic `settings get` and `settings set` paths
+reject `companion_pw`. A successful set or clear reloads the live companion
+session and revokes any authenticated connection.
 
 See the [Settings Reference](Settings-Reference) for every setting, its default,
 and when it applies.

@@ -126,6 +126,7 @@ StorageKind storageKindFor(Settings::type_t type) {
       return StorageKind::U16;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return StorageKind::STRING;
     case Settings::INTERVAL:
     case Settings::MULTISELECT:
@@ -142,6 +143,9 @@ struct SettingCase {
   SettingValue default_value;
   SettingValue representative_value;
   StorageKind storage;
+  // A write-only setting never leaves the device, so the SD exporter and
+  // importer must both refuse it instead of round-tripping it.
+  bool sd_exportable = true;
 };
 
 int failures = 0;
@@ -201,75 +205,77 @@ Furble::Settings::multiselect_t representativeMultiselect() {
 std::vector<SettingCase> settingCases() {
   using namespace Furble;
   return {
-      {Settings::BRIGHTNESS,        "BRIGHTNESS",        uint8_t {128},                                        uint8_t {77},                StorageKind::U8    },
-      {Settings::INACTIVITY,        "INACTIVITY",        uint8_t {0},                                          uint8_t {9},                 StorageKind::U8    },
-      {Settings::DISPLAY_OFF,       "DISPLAY_OFF",       uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
-      {Settings::THEME,             "THEME",             std::string {"Default"},                              std::string {"Dark"},
-       StorageKind::STRING                                                                                                                                     },
-      {Settings::TEXT_SIZE,         "TEXT_SIZE",         uint8_t {TextSizePolicy::DEFAULT},
-       uint8_t {TextSizePolicy::LARGE},                                                                                                     StorageKind::U8    },
-      {Settings::TX_POWER,          "TX_POWER",          uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
-      {Settings::TX_ADAPTIVE,       "TX_ADAPTIVE",       false,                                                true,                        StorageKind::BOOL  },
-      {Settings::GPS,               "GPS",               false,                                                true,                        StorageKind::BOOL  },
-      {Settings::IMU,               "IMU",               false,                                                true,                        StorageKind::BOOL  },
-      {Settings::IMU_WAKE,          "IMU_WAKE",          uint8_t {0},                                          uint8_t {3},                 StorageKind::U8    },
-      {Settings::IMU_TRIG,          "IMU_TRIG",          false,                                                true,                        StorageKind::BOOL  },
-      {Settings::GPS_BAUD,          "GPS_BAUD",          uint32_t {Settings::BAUD_9600},
-       uint32_t {Settings::BAUD_115200},                                                                                                    StorageKind::U32   },
-      {Settings::GPS_RATE,          "GPS_RATE",          uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
-      {Settings::GPS_NMEA,          "GPS_NMEA",          false,                                                true,                        StorageKind::BOOL  },
-      {Settings::GPS_CONSTEL,       "GPS_CONSTEL",       uint8_t {0},                                          uint8_t {7},                 StorageKind::U8    },
-      {Settings::GPS_POWER,         "GPS_POWER",         uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
-      {Settings::GPS_DUTY,          "GPS_DUTY",          uint8_t {0},                                          uint8_t {15},                StorageKind::U8    },
-      {Settings::GPS_ASSIST,        "GPS_ASSIST",        uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
-      {Settings::GPS_HOLD,          "GPS_HOLD",          uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
-      {Settings::GPS_EXTRAP,        "GPS_EXTRAP",        false,                                                true,                        StorageKind::BOOL  },
-      {Settings::GPS_PLATFORM,      "GPS_PLATFORM",      uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
-      {Settings::INTERVAL,          "INTERVAL",          defaultInterval(),                                    representativeInterval(),
-       StorageKind::BLOB                                                                                                                                       },
-      {Settings::MULTICONNECT,      "MULTICONNECT",      false,                                                true,                        StorageKind::BOOL  },
-      {Settings::MULTISELECT,       "MULTISELECT",       defaultMultiselect(),                                 representativeMultiselect(),
-       StorageKind::BLOB                                                                                                                                       },
-      {Settings::RECONNECT,         "RECONNECT",         false,                                                true,                        StorageKind::BOOL  },
-      {Settings::RECON_BACKOFF,     "RECON_BACKOFF",     false,                                                true,                        StorageKind::BOOL  },
-      {Settings::FAUXNY,            "FAUXNY",            false,                                                true,                        StorageKind::BOOL  },
+      {Settings::BRIGHTNESS, "BRIGHTNESS", uint8_t {128}, uint8_t {77}, StorageKind::U8},
+      {Settings::INACTIVITY, "INACTIVITY", uint8_t {0}, uint8_t {9}, StorageKind::U8},
+      {Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::THEME, "THEME", std::string {"Default"}, std::string {"Dark"},
+       StorageKind::STRING},
+      {Settings::TEXT_SIZE, "TEXT_SIZE", uint8_t {TextSizePolicy::DEFAULT},
+       uint8_t {TextSizePolicy::LARGE}, StorageKind::U8},
+      {Settings::TX_POWER, "TX_POWER", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::TX_ADAPTIVE, "TX_ADAPTIVE", false, true, StorageKind::BOOL},
+      {Settings::GPS, "GPS", false, true, StorageKind::BOOL},
+      {Settings::IMU, "IMU", false, true, StorageKind::BOOL},
+      {Settings::IMU_WAKE, "IMU_WAKE", uint8_t {0}, uint8_t {3}, StorageKind::U8},
+      {Settings::IMU_TRIG, "IMU_TRIG", false, true, StorageKind::BOOL},
+      {Settings::GPS_BAUD, "GPS_BAUD", uint32_t {Settings::BAUD_9600},
+       uint32_t {Settings::BAUD_115200}, StorageKind::U32},
+      {Settings::GPS_RATE, "GPS_RATE", uint8_t {0}, uint8_t {4}, StorageKind::U8},
+      {Settings::GPS_NMEA, "GPS_NMEA", false, true, StorageKind::BOOL},
+      {Settings::GPS_CONSTEL, "GPS_CONSTEL", uint8_t {0}, uint8_t {7}, StorageKind::U8},
+      {Settings::GPS_POWER, "GPS_POWER", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::GPS_DUTY, "GPS_DUTY", uint8_t {0}, uint8_t {15}, StorageKind::U8},
+      {Settings::GPS_ASSIST, "GPS_ASSIST", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::GPS_HOLD, "GPS_HOLD", uint8_t {0}, uint8_t {4}, StorageKind::U8},
+      {Settings::GPS_EXTRAP, "GPS_EXTRAP", false, true, StorageKind::BOOL},
+      {Settings::GPS_PLATFORM, "GPS_PLATFORM", uint8_t {0}, uint8_t {4}, StorageKind::U8},
+      {Settings::INTERVAL, "INTERVAL", defaultInterval(), representativeInterval(),
+       StorageKind::BLOB},
+      {Settings::MULTICONNECT, "MULTICONNECT", false, true, StorageKind::BOOL},
+      {Settings::MULTISELECT, "MULTISELECT", defaultMultiselect(), representativeMultiselect(),
+       StorageKind::BLOB},
+      {Settings::RECONNECT, "RECONNECT", false, true, StorageKind::BOOL},
+      {Settings::RECON_BACKOFF, "RECON_BACKOFF", false, true, StorageKind::BOOL},
+      {Settings::FAUXNY, "FAUXNY", false, true, StorageKind::BOOL},
       {Settings::TOUCH_CALIBRATION, "TOUCH_CALIBRATION", defaultCalibration(),
-       representativeCalibration(),                                                                                                         StorageKind::BLOB  },
-      {Settings::AUTOCONNECT,       "AUTOCONNECT",       false,                                                true,                        StorageKind::BOOL  },
-      {Settings::CPU_FREQ,          "CPU_FREQ",          uint8_t {Settings::CPU_FREQ_DEFAULT},                 uint8_t {240},
-       StorageKind::U8                                                                                                                                         },
-      {Settings::BATT_STYLE,        "BATT_STYLE",        uint8_t {Settings::BATT_STYLE_ICON},                  uint8_t {2},
-       StorageKind::U8                                                                                                                                         },
-      {Settings::SHOW_TITLE,        "SHOW_TITLE",        true,                                                 false,                       StorageKind::BOOL  },
-      {Settings::SLEEP_CONN,        "SLEEP_CONN",        false,                                                true,                        StorageKind::BOOL  },
-      {Settings::BULB,              "BULB",              SpinValue::nvs_t {30, SpinValue::UNIT_SEC},
-       SpinValue::nvs_t {42, SpinValue::UNIT_MIN},                                                                                          StorageKind::BLOB  },
-      {Settings::SCAN_MODE,         "SCAN_MODE",         uint8_t {0},                                          uint8_t {2},                 StorageKind::U8    },
-      {Settings::SCAN_TIMEOUT,      "SCAN_TIMEOUT",      uint32_t {0},                                         uint32_t {120},              StorageKind::U32   },
-      {Settings::COMPANION,         "COMPANION",         false,                                                true,                        StorageKind::BOOL  },
-      {Settings::CONN_SAVER,        "CONN_SAVER",        false,                                                true,                        StorageKind::BOOL  },
-      {Settings::IR,                "IR",                false,                                                true,                        StorageKind::BOOL  },
-      {Settings::IR_PROTO,          "IR_PROTO",          uint8_t {0},                                          uint8_t {3},                 StorageKind::U8    },
-      {Settings::FB_OUTPUT,         "FB_OUTPUT",         uint8_t {0},                                          uint8_t {4},                 StorageKind::U8    },
-      {Settings::FB_EVENTS,         "FB_EVENTS",         uint8_t {0x0f},                                       uint8_t {0xa5},              StorageKind::U8    },
-      {Settings::FB_VOLUME,         "FB_VOLUME",         uint8_t {64},                                         uint8_t {231},               StorageKind::U8    },
-      {Settings::PRESET_PICKER,     "PRESET_PICKER",     false,                                                true,                        StorageKind::BOOL  },
-      {Settings::BUTTON_MODE,       "BUTTON_MODE",       std::string {Settings::BUTTON_MODE_TWO_BUTTON_VALUE},
-       std::string {Settings::BUTTON_MODE_ONE_BUTTON_VALUE},                                                                                StorageKind::STRING},
-      {Settings::AUTO_OFF,          "AUTO_OFF",          uint8_t {0},                                          uint8_t {17},                StorageKind::U8    },
-      {Settings::LOW_BATT,          "LOW_BATT",          uint8_t {0},                                          uint8_t {23},                StorageKind::U8    },
-      {Settings::AUTO_OFF_CHARGING, "AUTO_OFF_CHARGING", false,                                                true,                        StorageKind::BOOL  },
-      {Settings::SD_GPX,            "SD_GPX",            false,                                                true,                        StorageKind::BOOL  },
-      {Settings::GPX_PERIOD,        "GPX_PERIOD",        uint16_t {Settings::GPX_PERIOD_DEFAULT},              uint16_t {30},
-       StorageKind::U16                                                                                                                                        },
-      {Settings::BOOT_SPLASH,       "BOOT_SPLASH",       true,                                                 false,                       StorageKind::BOOL  },
+       representativeCalibration(), StorageKind::BLOB},
+      {Settings::AUTOCONNECT, "AUTOCONNECT", false, true, StorageKind::BOOL},
+      {Settings::CPU_FREQ, "CPU_FREQ", uint8_t {Settings::CPU_FREQ_DEFAULT}, uint8_t {240},
+       StorageKind::U8},
+      {Settings::BATT_STYLE, "BATT_STYLE", uint8_t {Settings::BATT_STYLE_ICON}, uint8_t {2},
+       StorageKind::U8},
+      {Settings::SHOW_TITLE, "SHOW_TITLE", true, false, StorageKind::BOOL},
+      {Settings::SLEEP_CONN, "SLEEP_CONN", false, true, StorageKind::BOOL},
+      {Settings::BULB, "BULB", SpinValue::nvs_t {30, SpinValue::UNIT_SEC},
+       SpinValue::nvs_t {42, SpinValue::UNIT_MIN}, StorageKind::BLOB},
+      {Settings::SCAN_MODE, "SCAN_MODE", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::SCAN_TIMEOUT, "SCAN_TIMEOUT", uint32_t {0}, uint32_t {120}, StorageKind::U32},
+      {Settings::COMPANION, "COMPANION", false, true, StorageKind::BOOL},
+      {Settings::COMPANION_PASSWORD, "COMPANION_PASSWORD", std::string {""},
+       std::string {"hunter2"}, StorageKind::STRING, false},
+      {Settings::CONN_SAVER, "CONN_SAVER", false, true, StorageKind::BOOL},
+      {Settings::IR, "IR", false, true, StorageKind::BOOL},
+      {Settings::IR_PROTO, "IR_PROTO", uint8_t {0}, uint8_t {3}, StorageKind::U8},
+      {Settings::FB_OUTPUT, "FB_OUTPUT", uint8_t {0}, uint8_t {4}, StorageKind::U8},
+      {Settings::FB_EVENTS, "FB_EVENTS", uint8_t {0x0f}, uint8_t {0xa5}, StorageKind::U8},
+      {Settings::FB_VOLUME, "FB_VOLUME", uint8_t {64}, uint8_t {231}, StorageKind::U8},
+      {Settings::PRESET_PICKER, "PRESET_PICKER", false, true, StorageKind::BOOL},
+      {Settings::BUTTON_MODE, "BUTTON_MODE", std::string {Settings::BUTTON_MODE_TWO_BUTTON_VALUE},
+       std::string {Settings::BUTTON_MODE_ONE_BUTTON_VALUE}, StorageKind::STRING},
+      {Settings::AUTO_OFF, "AUTO_OFF", uint8_t {0}, uint8_t {17}, StorageKind::U8},
+      {Settings::LOW_BATT, "LOW_BATT", uint8_t {0}, uint8_t {23}, StorageKind::U8},
+      {Settings::AUTO_OFF_CHARGING, "AUTO_OFF_CHARGING", false, true, StorageKind::BOOL},
+      {Settings::SD_GPX, "SD_GPX", false, true, StorageKind::BOOL},
+      {Settings::GPX_PERIOD, "GPX_PERIOD", uint16_t {Settings::GPX_PERIOD_DEFAULT}, uint16_t {30},
+       StorageKind::U16},
+      {Settings::BOOT_SPLASH, "BOOT_SPLASH", true, false, StorageKind::BOOL},
 #if !defined(FURBLE_NO_DISPLAY)
-      {Settings::DISPLAY_MODE,      "DISPLAY_MODE",      uint8_t {Settings::GUI},                              uint8_t {Settings::CONSOLE},
-       StorageKind::U8                                                                                                                                         },
+      {Settings::DISPLAY_MODE, "DISPLAY_MODE", uint8_t {Settings::GUI}, uint8_t {Settings::CONSOLE},
+       StorageKind::U8},
 #endif
-      {Settings::BATTERY_SAVER,     "BATTERY_SAVER",     false,                                                true,                        StorageKind::BOOL  },
+      {Settings::BATTERY_SAVER, "BATTERY_SAVER", false, true, StorageKind::BOOL},
 #if defined(FURBLE_M5STICKS3)
-      {Settings::WATCHDOG,          "WATCHDOG",          true,                                                 false,                       StorageKind::BOOL  },
+      {Settings::WATCHDOG, "WATCHDOG", true, false, StorageKind::BOOL},
 #endif
   };
 }
@@ -311,6 +317,7 @@ ASSERT_STORAGE_TYPE(BULB, Furble::SpinValue::nvs_t);
 ASSERT_STORAGE_TYPE(SCAN_MODE, uint8_t);
 ASSERT_STORAGE_TYPE(SCAN_TIMEOUT, uint32_t);
 ASSERT_STORAGE_TYPE(COMPANION, bool);
+ASSERT_STORAGE_TYPE(COMPANION_PASSWORD, std::string);
 ASSERT_STORAGE_TYPE(CONN_SAVER, bool);
 ASSERT_STORAGE_TYPE(IR, bool);
 ASSERT_STORAGE_TYPE(IR_PROTO, uint8_t);
@@ -376,6 +383,7 @@ SettingValue loadValue(Settings::type_t type) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return Settings::load<std::string>(type);
 
     case Settings::TX_ADAPTIVE:
@@ -500,7 +508,13 @@ void testDefaults(const std::vector<SettingCase> &cases) {
 
   for (const auto &setting : cases) {
     checkValue(setting, loadValue(setting.type), setting.default_value, "default");
-    checkStoredType(setting, "default");
+    if (setting.type == Settings::COMPANION_PASSWORD) {
+      const auto &entry = Settings::get(setting.type);
+      check(nvs_test_value_type(entry.nvs_namespace, entry.key) == NVS_TEST_INVALID,
+            "password default stays absent rather than overwriting storage errors");
+    } else {
+      checkStoredType(setting, "default");
+    }
   }
 }
 
@@ -520,6 +534,13 @@ void testSdRoundTrips(const std::vector<SettingCase> &cases) {
 
     std::string serialized;
     const auto &table_entry = Settings::get(setting.type);
+    if (!setting.sd_exportable) {
+      check(!Furble::serializeSetting(table_entry, serialized),
+            std::string("SD serialize refuses write-only ") + setting.name);
+      check(!Furble::importSetting(table_entry, "hunter2"),
+            std::string("SD import refuses write-only ") + setting.name);
+      continue;
+    }
     check(Furble::serializeSetting(table_entry, serialized),
           std::string("SD serialize succeeded for ") + setting.name);
     check(!serialized.empty(), std::string("SD serialize produced a value for ") + setting.name);
@@ -555,6 +576,72 @@ void testUnknownAndAliasedKeysAreIgnored() {
         "unknown legacy key remains isolated in the mock store");
   check(nvs_test_value_type("furble", "brightness") == NVS_TEST_U8,
         "wrong-namespace key remains isolated in the mock store");
+}
+
+void testPasswordLoadBoundary() {
+  const auto &setting = Settings::get(Settings::COMPANION_PASSWORD);
+  std::string password = "sentinel";
+
+  nvs_test_reset();
+  Settings::init();
+  check(Settings::loadPassword(password), "missing companion password is a valid unset value");
+  check(password.empty(), "missing companion password loads as empty");
+
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "explicit empty companion password loads successfully");
+  check(password.empty(), "explicit empty companion password remains empty");
+
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "persisted password");
+  password.clear();
+  check(Settings::loadPassword(password), "saved companion password loads successfully");
+  check(password == "persisted password", "saved companion password is preserved");
+
+  nvs_test_reset();
+  Furble::Preferences preferences;
+  check(preferences.begin(setting.nvs_namespace, false),
+        "opened password namespace for type fault");
+  check(preferences.put<uint8_t>(setting.key, 7) == 1, "stored a wrong password NVS type");
+  preferences.end();
+  Settings::init();
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "wrong password NVS type is a load error");
+  check(password.empty(), "wrong password NVS type does not return a credential");
+  check(nvs_test_value_type(setting.nvs_namespace, setting.key) == NVS_TEST_U8,
+        "password type fault is not erased by Settings::init");
+
+  nvs_test_reset();
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "size-stage password");
+  nvs_test_fail_get_str_length_on(1);
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "password size-stage NVS error is reported");
+  check(password.empty(), "password size-stage error does not return a credential");
+
+  nvs_test_reset();
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "data-stage password");
+  nvs_test_fail_get_str_data_on(1);
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "password data-stage NVS error is reported");
+  check(password.empty(), "password data-stage error does not return a credential");
+
+  nvs_test_reset();
+  nvs_test_fail_set_on(1);
+  check(!Settings::savePassword("set failure"), "password set failure is reported");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "failed password set leaves an unset credential valid");
+  check(password.empty(), "failed password set leaves the credential unset");
+
+  Settings::savePassword("old password");
+  nvs_test_fail_commit_on(1);
+  check(!Settings::savePassword("commit failure"), "password commit failure is reported");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "failed password commit keeps a readable credential");
+  check(password == "old password", "failed password commit preserves the old credential");
+
+  check(Settings::savePassword(""), "empty password clear succeeds");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "cleared password remains a valid unset credential");
+  check(password.empty(), "empty password clear stores an empty credential");
 }
 
 // A remembered multi-connect entry is keyed on the camera's displayed name.
@@ -658,6 +745,7 @@ int main() {
   testDefaults(cases);
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
+  testPasswordLoadBoundary();
   testUnknownAndAliasedKeysAreIgnored();
   testMultiselectDiscriminatesLongNames();
   testMultiselectLegacyRecordUpgrades();

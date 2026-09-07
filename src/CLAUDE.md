@@ -84,6 +84,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   connect holds for the whole connect timeout. Companion connect requests carry
   stable saved camera ids and are resolved and busy-checked again on the UI
   task; transient scan indexes must never cross that queue boundary.
+- Companion credentials use the checked
+  `Settings::loadPassword()` path: missing is unset, storage errors deny access.
+  Never seed an empty password after an unsuccessful NVS existence check.
+  Password console commands verify persistence and reload the live gate.
+  The application gate rejects writes with a framed Auth result indication,
+  not a custom ATT return from NimBLE's void write callback.
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a

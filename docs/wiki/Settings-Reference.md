@@ -91,6 +91,12 @@ Submenu: `Settings` > `Features`.
 | Preset Picker | Off | On, Off | Restart | Adds the exposure preset stepper on the shutter page. |
 | Boot screen | On | On, Off | Next boot | The startup splash. Off restores the old plain boot. |
 
+The companion password is console/provisioning-only, not a menu item. Wire ID
+47 accepts 1 to 63 UTF-8 bytes. Use `companion password clear` to restore the
+default unset state, or `companion password status` to inspect set/unset without
+printing the secret. Changes revoke the live password authentication. An unset
+password needs no challenge; unreadable credentials deny privileged writes.
+
 ### Infrared
 
 Submenu: `Settings` > `Infrared`. The whole submenu is hidden unless the board

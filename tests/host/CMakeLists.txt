@@ -118,6 +118,16 @@ target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werro
                                                             -Wno-unused-parameter
                                                             -Wno-vla-extension)
 
+# Exercise the simulator's real file-backed Preferences adapter. Each CTest
+# case is a fresh process so load status and the process-local store are reset.
+add_executable(actualPreferencesSim
+               preferences_sim_test.cpp
+               ${FURBLE_ROOT}/sim/PreferencesSim.cpp)
+target_include_directories(actualPreferencesSim PRIVATE
+                           ${FURBLE_ROOT}/lib/preferences)
+target_compile_options(actualPreferencesSim PRIVATE -Wall -Wextra -Werror
+                                                     -Wno-unused-parameter)
+
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test
@@ -326,6 +336,16 @@ endif()
 # of the mock BLE library because the modules under test have no BLE or NVS
 # dependency. Each suite is standalone so a build or link break is isolated to
 # one module.
+
+# The companion password gate is transport-independent. Keep the production
+# state machine in this host target and inject the test HMAC and nonce seams.
+add_executable(companion_auth_test
+               companion_auth_test.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp)
+target_include_directories(companion_auth_test PRIVATE ${FURBLE_ROOT}/include
+                                                       ${CMAKE_CURRENT_SOURCE_DIR}/companion)
+target_compile_options(companion_auth_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
 
 add_executable(camera_list_protocol_test
                camera_list_protocol_test.cpp
@@ -1024,6 +1044,8 @@ add_executable(companion_gatt_test
                companion_gatt_test.cpp
                ${COMPANION_HOST_DIR}/companion_doubles.cpp
                advertisement_preferences_stub.cpp
+               ${COMPANION_HOST_DIR}/companion_hmac.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
@@ -1420,6 +1442,10 @@ if(BUILD_TESTING)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
+  foreach(preferences_case missing empty empty-string typeerror embedded-nul corruption failed-save)
+    add_test(NAME preferences-sim-${preferences_case}
+             COMMAND actualPreferencesSim ${preferences_case})
+  endforeach()
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME camera-regression COMMAND camera_regression_test)
@@ -1515,6 +1541,8 @@ if(BUILD_TESTING)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
   add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
+  add_test(NAME companion-auth
+           COMMAND companion_auth_test ${FURBLE_ROOT}/tests/protocol/golden/companion_auth.json)
 
   # Peer realism through the real Control (plan 154). Both carry their own
   # watchdog, the ctest timeout is the backstop for a wedged control task.

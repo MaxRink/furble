@@ -246,7 +246,8 @@ perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
 imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
-settings list | get | set           read and write every setting
+settings list | get | set           read and write non-secret settings
+companion password set | clear | status manage the companion password without revealing it
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection

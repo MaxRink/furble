@@ -29,6 +29,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   static constexpr const char *SETTINGS_UUID = "b57f4f61-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *TRIGGER_UUID = "b57f4f62-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *CAMERAS_UUID = "b57f4f63-087b-4740-b71d-8262cf26ebbc";
+  // 0x63 is reserved for the cameras characteristic by plans 50/51. Keep
+  // authentication on its own derived UUID so clients cannot confuse the two.
+  static constexpr const char *AUTH_UUID = "b57f4f6f-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *CAPABILITY_UUID = "b57f4f64-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *OTA_CONTROL_UUID = "b57f4f6d-087b-4740-b71d-8262cf26ebbc";
   static constexpr const char *OTA_DATA_UUID = "b57f4f6e-087b-4740-b71d-8262cf26ebbc";
@@ -56,6 +59,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
 
   /** Refresh the setting. A true value explicitly opens the pairing window. */
   void reloadSetting(bool pairingWindow = false);
+  void reloadPassword(void);
 
   bool isEnabled(void) const;
   bool hasPendingPairing(void) const;
@@ -80,6 +84,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   void notify(uint8_t charId, const uint8_t *data, size_t len) override;
   void indicate(uint8_t charId, const uint8_t *data, size_t len) override;
   void error(uint8_t charId, uint8_t attError) override;
+  void disconnect(void) override;
 
  private:
   CompanionGatt();
@@ -115,6 +120,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   NimBLECharacteristic *m_Settings = nullptr;
   NimBLECharacteristic *m_Trigger = nullptr;
   NimBLECharacteristic *m_Cameras = nullptr;
+  NimBLECharacteristic *m_Auth = nullptr;
   NimBLECharacteristic *m_Capability = nullptr;
   NimBLECharacteristic *m_Firmware = nullptr;
   NimBLECharacteristic *m_Manufacturer = nullptr;

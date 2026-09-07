@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <utility>
 
@@ -6,6 +7,7 @@
 // unique_ptr, and pulling <memory> in ahead of it makes the toolchain
 // instantiate the deleter too early.
 #include "Scan.h"
+#include <esp_random.h>
 
 #include "../include/FurbleCompanionService.h"
 #include "CameraList.h"
@@ -44,6 +46,14 @@ struct __attribute__((packed)) interval_wire_t {
 
 static_assert(sizeof(interval_wire_t) == 12, "companion interval wire must stay 12 bytes");
 
+bool generateNonce(uint8_t *nonce, size_t len) {
+  if (nonce == nullptr) {
+    return false;
+  }
+  esp_fill_random(nonce, len);
+  return true;
+}
+
 interval_wire_field_t packField(const SpinValue::nvs_t &nvs) {
   return {nvs.value, static_cast<uint8_t>(nvs.unit)};
 }
@@ -78,7 +88,8 @@ bool unpackInterval(const uint8_t *data, size_t length, interval_t &interval) {
 
 }  // namespace
 
-CompanionService::CompanionService(CompanionTransport &transport) : m_Transport {transport} {}
+CompanionService::CompanionService(CompanionTransport &transport)
+    : m_Transport {transport}, m_Auth {companionHmacSha256, generateNonce} {}
 
 uint64_t CompanionService::nowMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000;
@@ -118,13 +129,36 @@ void CompanionService::deinit(void) {
 }
 
 void CompanionService::onConnected(void) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  m_HaveLastStatus = false;
-  m_LastStatusNotificationMs = 0;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_HaveLastStatus = false;
+    m_LastStatusNotificationMs = 0;
+  }
+  std::string password;
+  const bool loaded = Settings::loadPassword(password);
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_Auth.setPassword(password, loaded);
+  m_Auth.onConnected();
 }
 
 void CompanionService::onDisconnected(void) {
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    m_Auth.onDisconnected();
+  }
   releaseHeldCommands();
+}
+
+void CompanionService::reloadPassword(void) {
+  std::string password;
+  const bool loaded = Settings::loadPassword(password);
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_Auth.setPassword(password, loaded);
+}
+
+bool CompanionService::isPasswordAuthenticated(void) const {
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  return m_Auth.isAuthenticated();
 }
 
 void CompanionService::beginPairing(uint32_t pin) {
@@ -249,6 +283,14 @@ void CompanionService::notifyStatus(bool force) {
 }
 
 void CompanionService::handleLocation(const uint8_t *data, size_t len) {
+  // A location write mutates the GPX track and the frames furble geotags, so
+  // it needs the bonded encrypted link the other writes need. It stays outside
+  // the password gate on purpose: the companion apps stream fixes as soon as
+  // the link is ready and only authenticate before settings and trigger, so a
+  // password gate here would drop fixes with no error the app can surface.
+  if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
+    return;
+  }
   if (data == nullptr || len < (offsetof(companion_fix_t, age_ms) + sizeof(uint32_t))) {
     ESP_LOGW(LOG_TAG, "Short companion location write");
     return;
@@ -520,6 +562,62 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
     default:
       indicateCameraStatus(CAMERA_REJECTED, cameraId);
       return;
+}
+
+void CompanionService::handleAuth(const uint8_t *data, size_t len) {
+  if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr) {
+    return;
+  }
+
+  std::array<uint8_t, CompanionAuth::NONCE_SIZE> nonce = {};
+  uint8_t wireResult = AUTH_RESULT_REJECTED;
+  bool challenge = false;
+  bool disconnect = false;
+  if ((len == 2) && (data[0] == AUTH_VERSION) && (data[1] == AUTH_OP_BEGIN)) {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    if (m_Auth.begin(nonce)) {
+      challenge = true;
+    } else {
+      wireResult = m_Auth.isDropped() ? AUTH_RESULT_DROPPED
+                                      : (m_Auth.isAuthenticated() ? AUTH_RESULT_NOT_REQUIRED
+                                                                  : AUTH_RESULT_REJECTED);
+    }
+  } else if ((len >= 2) && (data[0] == AUTH_VERSION) && (data[1] == AUTH_OP_PROOF)) {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    const CompanionAuth::response_t result =
+        m_Auth.respond(len == AUTH_PROOF_PACKET_SIZE ? data + 2 : nullptr,
+                       len == AUTH_PROOF_PACKET_SIZE ? CompanionAuth::RESPONSE_SIZE : 0);
+    wireResult =
+        result == CompanionAuth::response_t::AUTHENTICATED
+            ? AUTH_RESULT_AUTHENTICATED
+            : (result == CompanionAuth::response_t::DROPPED
+                   ? AUTH_RESULT_DROPPED
+                   : (result == CompanionAuth::response_t::NOT_REQUIRED ? AUTH_RESULT_NOT_REQUIRED
+                                                                        : AUTH_RESULT_REJECTED));
+    disconnect = result == CompanionAuth::response_t::DROPPED;
+  } else {
+    // Unknown versions, operations, and lengths consume the outstanding
+    // challenge as a failed proof. This prevents malformed retries from
+    // reusing one nonce indefinitely.
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    const CompanionAuth::response_t result = m_Auth.respond(nullptr, 0);
+    wireResult =
+        result == CompanionAuth::response_t::DROPPED ? AUTH_RESULT_DROPPED : AUTH_RESULT_REJECTED;
+    disconnect = result == CompanionAuth::response_t::DROPPED;
+  }
+
+  if (challenge) {
+    std::array<uint8_t, AUTH_CHALLENGE_SIZE> packet = {};
+    packet[0] = AUTH_VERSION;
+    packet[1] = AUTH_OP_BEGIN;
+    std::copy(nonce.begin(), nonce.end(), packet.begin() + 2);
+    m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
+  } else {
+    const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT, wireResult};
+    m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
+  }
+  if (disconnect) {
+    m_Transport.disconnect();
   }
 }
 
@@ -581,6 +679,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
       return SETTING_U32;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -670,6 +769,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       value.assign(v.begin(), v.end());
       return value.size() <= 255;
     }
+    case Settings::COMPANION_PASSWORD:
+      return false;
     case Settings::INTERVAL:
     {
       const interval_t v = Settings::load<interval_t>(type);
@@ -727,10 +828,24 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
     }
     case SETTING_STRING:
     {
+      if ((type == Settings::COMPANION_PASSWORD) && (length > COMPANION_PASSWORD_MAX)) {
+        return false;
+      }
+      if ((type == Settings::COMPANION_PASSWORD) && (length != 0)
+          && (std::memchr(value, '\0', length) != nullptr)) {
+        return false;
+      }
       const std::string v(reinterpret_cast<const char *>(value), length);
       if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
         return false;
+      }
+      if (type == Settings::COMPANION_PASSWORD) {
+        const bool saved = Settings::savePassword(v);
+        // Revoke authorization before acknowledging an attempted rotation,
+        // including a failed write. Invalid input never reaches persistence.
+        reloadPassword();
+        return saved;
       }
       Settings::save<std::string>(type, v);
       return true;
@@ -786,6 +901,10 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
   const uint8_t length = data[2];
   const bool lengthMatches = len == (static_cast<size_t>(3) + length);
   const Settings::setting_t *setting = Settings::getByWireId(id);
+
+  if ((op == 2) && !allowProtected(COMPANION_CHAR_SETTINGS)) {
+    return;
+  }
 
   if (!lengthMatches || ((op <= 1) && (length != 0)) || (op > 2)) {
     std::vector<uint8_t> response;
@@ -848,7 +967,11 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
   const bool saved = (type == SETTING_STRING || length == expected)
                      && saveSetting(setting->type, data + 3, length);
   std::vector<uint8_t> response;
-  appendResponse(response, saved ? SETTING_OK : SETTING_BAD_LENGTH, id, type, 0, {}, false);
+  appendResponse(response,
+                 saved ? SETTING_OK
+                       : (setting->type == Settings::COMPANION_PASSWORD ? SETTING_REJECTED
+                                                                        : SETTING_BAD_LENGTH),
+                 id, type, 0, {}, false);
   notifySettings(response);
 
   if (!saved) {
@@ -885,6 +1008,8 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
         m_SettingReloadCallback(false);
       }
       break;
+    case Settings::COMPANION_PASSWORD:
+      break;
     case Settings::IMU:
     case Settings::IMU_WAKE:
     case Settings::IMU_TRIG:
@@ -893,6 +1018,29 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     default:
       break;
   }
+}
+
+bool CompanionService::allowProtected(uint8_t) const {
+  bool allowed = false;
+  bool dropped = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    allowed = m_Auth.allowsProtected();
+    dropped = m_Auth.isDropped();
+  }
+  if (allowed) {
+    return true;
+  }
+  // NimBLE characteristic callbacks are void, so an application-level gate
+  // cannot return a custom ATT error from this callback. Tell the client on
+  // the Auth characteristic instead. CompanionGatt::error remains diagnostic.
+  const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT,
+                                                        AUTH_RESULT_REJECTED};
+  m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
+  if (dropped) {
+    m_Transport.disconnect();
+  }
+  return false;
 }
 
 bool CompanionService::allowTrigger(void) {
@@ -911,6 +1059,9 @@ bool CompanionService::allowTrigger(void) {
 void CompanionService::handleTrigger(const uint8_t *data, size_t len) {
   if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr
       || (len < 2)) {
+    return;
+  }
+  if (!allowProtected(COMPANION_CHAR_TRIGGER)) {
     return;
   }
   const uint8_t op = data[1];

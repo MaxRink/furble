@@ -31,6 +31,12 @@ protocol core.
 - `CameraList::m_Mutex` guards the connect list and the id map. Off-UI-task
   callers take `snapshot()` rather than iterating `size()` and `get()`, which
   race a concurrent `load()`.
+  advertisement matching and discovery.
+- `protocol/ProvisionTLV` mirrors the frozen settings wire ledger. Wire id 46
+  is the IMU enable switch and wire id 47 is the write-only companion
+  password. A bundle that names the password twice, once as a settings record
+  and once through the dedicated field tag, is rejected before anything is
+  written. The password is never echoed back on any surface.
 - `Scan` owns one stable NimBLE callback proxy. In the pinned
   esp-nimble-cpp 2.5.0 source (`NimBLEScan.cpp`, `stop()`), cancellation calls
   `ble_gap_disc_cancel()` and does not synthesize `onScanEnd`; Apache NimBLE's
