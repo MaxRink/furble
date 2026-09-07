@@ -1,5 +1,6 @@
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,6 +13,7 @@
 #include "Device.h"
 #include "DJIOsmo.h"
 #include "MockNimBLE.h"
+#include "Preferences.h"
 #include "advertisement_preferences_stub.h"
 #include "protocol/CameraListProtocol.h"
 
@@ -151,9 +153,33 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
 bool testDispatchAndDeduplication() {
   using Furble::Camera;
   Furble::Host::clearPreferences();
+
+  NimBLEAdvertisedDevice legacyAdvertisement;
+  legacyAdvertisement.setAddress(NimBLEAddress(0x102030405060ULL));
+  legacyAdvertisement.setName("DJI Osmo Action 4");
+  auto legacy = std::make_shared<Furble::DJIOsmo>(&legacyAdvertisement);
+  const std::string legacyKey = Furble::CameraListProtocol::addressKey(
+      static_cast<uint64_t>(legacyAdvertisement.getAddress()));
+  std::vector<uint8_t> legacyRecord(legacy->getSerialisedBytes(), 0);
+  CHECK(legacy->serialise(legacyRecord.data(), legacyRecord.size()));
+  std::array<uint8_t, Furble::CameraListProtocol::INDEX_LEGACY_ENTRY_BYTES> legacyIndex = {};
+  std::memcpy(legacyIndex.data(), legacyKey.c_str(), legacyKey.size());
+  const uint32_t legacyType = static_cast<uint32_t>(Camera::Type::DJI_OSMO);
+  std::memcpy(legacyIndex.data() + Furble::CameraListProtocol::INDEX_NAME_BYTES,
+              &legacyType, sizeof(legacyType));
+  Furble::Preferences seed;
+  CHECK(seed.begin("furble", false));
+  CHECK(seed.put(legacyKey.c_str(), legacyRecord.data(), legacyRecord.size())
+        == legacyRecord.size());
+  CHECK(seed.put("index", legacyIndex.data(), legacyIndex.size()) == legacyIndex.size());
+  seed.end();
+
   Furble::Host::failNextBegin();
   CHECK(Furble::CameraList::savedSnapshot().empty());
-  CHECK(Furble::CameraList::savedSnapshot().empty());
+  const auto recovered = Furble::CameraList::savedSnapshot();
+  CHECK(recovered.size() == 1);
+  CHECK(recovered.front()->getPairType() == Camera::PairType::SAVED);
+  CHECK(Furble::CameraList::getCameraId(recovered.front().get()) != 0);
 
   Furble::CameraList::clear();
   CHECK(!Furble::CameraList::match(nullptr));
@@ -199,19 +225,25 @@ bool testDispatchAndDeduplication() {
   CHECK(peer.firstRequest()[40] == 0x00);
   dji->disconnect();
 
-  // A failed index write must not replace the published saved catalog.
+  // A failed index write for a genuinely new camera must not publish it or
+  // transition its pairing lifecycle.
+  NimBLEAdvertisedDevice failedAdvertisement;
+  failedAdvertisement.setAddress(NimBLEAddress(0x334455667788ULL));
+  failedAdvertisement.setName("DJI Osmo Action 5 Pro");
+  auto failed = std::make_shared<Furble::DJIOsmo>(&failedAdvertisement);
   Furble::Host::failNextPutForKey("index");
-  Furble::CameraList::save(dji);
-  CHECK(Furble::CameraList::savedSnapshot().size() == 1);
+  Furble::CameraList::save(failed);
+  CHECK(failed->getPairType() == Camera::PairType::NEW);
+  CHECK(Furble::CameraList::savedSnapshot().size() == 2);
 
   // A failed index erase must retain both the catalog entry and its bond.
   const size_t bondsBeforeFailedRemove = NimBLEDevice::deleteBondCount();
   Furble::Host::failNextRemoveForKey("index");
   Furble::CameraList::remove(dji.get());
-  CHECK(Furble::CameraList::savedSnapshot().size() == 1);
+  CHECK(Furble::CameraList::savedSnapshot().size() == 2);
   CHECK(NimBLEDevice::deleteBondCount() == bondsBeforeFailedRemove);
   Furble::CameraList::remove(dji.get());
-  CHECK(Furble::CameraList::savedSnapshot().empty());
+  CHECK(Furble::CameraList::savedSnapshot().size() == 1);
   CHECK(NimBLEDevice::deleteBondCount() == bondsBeforeFailedRemove + 1);
 
   Furble::CameraList::clear();
