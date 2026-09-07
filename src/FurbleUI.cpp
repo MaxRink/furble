@@ -350,6 +350,18 @@ UI::UI(const interval_t &interval)
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
+#if defined(FURBLE_SIM)
+  // The regression scenario deliberately applies GPS settings before the
+  // shared motion source is armed, matching the headless boot ordering.
+  const bool gpsMotionPrearm = Sim::scenarioSettingIsTrue("gps_motion_prearm");
+#else
+  constexpr bool gpsMotionPrearm = false;
+#endif
+
+  if (gpsMotionPrearm) {
+    m_GPS.init();
+  }
+
   m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
   if (m_RequestQueue == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create the UI request queue.");
@@ -499,7 +511,9 @@ UI::UI(const interval_t &interval)
   m_Status.title = lv_win_add_title(m_Root, m_Title);
   m_Header = lv_win_get_header(m_Root);
 
-  m_GPS.init();
+  if (!gpsMotionPrearm) {
+    m_GPS.init();
+  }
   m_Status.gps = &m_GPS;
 
   // A zero-width flex-grow spacer between the title and the status icons pins
@@ -1813,6 +1827,22 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
         LV_EVENT_VALUE_CHANGED, this);
   }
 
+  if (setting == Settings::GPS_MOTION) {
+    m_Status.gpsWidgets.push_back(obj);
+    if (!imuEnabledForUI()) {
+      lv_obj_add_state(obj, LV_STATE_DISABLED);
+      lv_obj_add_state(sw, LV_STATE_DISABLED);
+    }
+
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+          status->gps->reloadMotionSetting();
+        },
+        LV_EVENT_VALUE_CHANGED, &m_Status);
+  }
+
   if (setting == Settings::SHOW_TITLE) {
     lv_obj_add_event_cb(
         sw,
@@ -2616,6 +2646,18 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     return;
   }
 
+  if (simpleAction && command == "motion.disarm") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    IMU::MotionSource::getInstance().disarm();
+    return;
+  }
+
+  if (simpleAction && command == "motion.arm") {
+    m_SimActionResult = IMU::MotionSource::getInstance().arm() ? sim_action_result_t::APPLIED
+                                                               : sim_action_result_t::UNAVAILABLE;
+    return;
+  }
+
   if (simpleAction && (command == "imu.accel.fail" || command == "imu.accel.recover")) {
     m_SimActionResult = sim_action_result_t::APPLIED;
     Furble::Sim::imuSetAccelAvailable(command == "imu.accel.recover");
@@ -2730,6 +2772,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     static const std::unordered_map<std::string, Settings::type_t> settings = {
         {"gps",           Settings::GPS          },
         {"gps_nmea",      Settings::GPS_NMEA     },
+        {"gps_motion",    Settings::GPS_MOTION   },
         {"autoconnect",   Settings::AUTOCONNECT  },
         {"reconnect",     Settings::RECONNECT    },
         {"multiconnect",  Settings::MULTICONNECT },
@@ -4477,6 +4520,23 @@ std::string UI::simQueryState(const char *key) {
       return "no";
     }
     return lv_obj_has_flag(entry->second.button, LV_OBJ_FLAG_HIDDEN) ? "no" : "yes";
+  }
+
+  // The Settings > GPS motion-adaptive row carries two gates: it hides with the
+  // rest of the GPS rows when the receiver is off, and it is disabled when the
+  // IMU is off. Reporting the row directly lets a scenario prove both gates on
+  // every panel without counting focus steps down a list whose length varies.
+  if (query == "gps_motion_row") {
+    const auto entry = g_simSettingSwitches.find(static_cast<int>(Settings::GPS_MOTION));
+    if ((entry == g_simSettingSwitches.end()) || (entry->second == nullptr)) {
+      return "absent";
+    }
+    lv_obj_t *sw = entry->second;
+    lv_obj_t *row = lv_obj_get_parent(sw);
+    if ((row != nullptr) && lv_obj_has_flag(row, LV_OBJ_FLAG_HIDDEN)) {
+      return "hidden";
+    }
+    return lv_obj_has_state(sw, LV_STATE_DISABLED) ? "disabled" : "enabled";
   }
 
   // The main menu Level entry sits outside m_Menu, so it gets its own probe.
@@ -6411,6 +6471,7 @@ void UI::addGPSMenu(const menu_t &parent) {
         Settings::save<Settings::GPS_ASSIST>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
         status->gps->reloadSetting();
       });
+  addSettingItem(menu.page, NULL, Settings::GPS_MOTION);
 
   const uint8_t savedHold = Settings::load<Settings::GPS_HOLD>();
   addGPSOptionMenu(menu, m_GPSHoldStr, m_GPSHoldOptions, savedHold <= GPS::HOLD_MAX ? savedHold : 0,

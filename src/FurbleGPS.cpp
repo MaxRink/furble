@@ -28,6 +28,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
+#include "FurbleUI.h"
 #include "Preferences.h"
 
 namespace {
@@ -73,6 +74,7 @@ bool validCoordinate(double value, double min, double max) {
 }  // namespace
 
 #if defined(FURBLE_SIM)
+#include "driver.h"
 #include "power_profiler.h"
 #define FURBLE_SIM_GPS_STATE(state) Furble::Sim::profilerSetGpsState(state)
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
@@ -1998,6 +2000,29 @@ void GPS::reloadSetting(void) {
   } else {
     disable();
   }
+
+  reloadMotionSetting();
+}
+
+/**
+ * Refresh only the motion detector gate.
+ *
+ * reloadSetting() restarts the receiver: enable() parks the GPS task, re-sets
+ * the UART baud, resets the parser, cycles the rail, re-enters ACQUIRING and
+ * marks the $PCAS configuration pending. GPS_MOTION owns none of that, so
+ * routing it through reloadSetting() would make an advisory detector toggle
+ * cost a re-acquisition, and on the v1.1 unit a rail cut costs a ~108 s cold
+ * start. Every GPS_MOTION write goes here instead. reloadSetting() still calls
+ * it, because turning the receiver off has to take the detector with it.
+ *
+ * Only atomics and NVS reads, so the console and companion tasks call it
+ * directly rather than through the UI request queue.
+ */
+void GPS::reloadMotionSetting(void) {
+  // Cache only the persisted preference and receiver gate. The source is armed
+  // later by the UI constructor, so caching isArmed() here would permanently
+  // disable motion after an early startup reload.
+  m_MotionEnabled.store(m_Enabled && Settings::load<Settings::GPS_MOTION>());
 }
 
 /** Refresh the cached GPX logging settings from NVS. */
@@ -2011,6 +2036,15 @@ void GPS::reloadLogSettings(void) {
 /** Is GPS enabled? */
 bool GPS::isEnabled(void) const {
   return m_Enabled;
+}
+
+bool GPS::isMotionEnabled(void) const {
+  return m_MotionEnabled.load() && IMU::MotionSource::getInstance().isArmed();
+}
+
+bool GPS::isStationary(void) const {
+  return isMotionEnabled()
+         && (IMU::MotionSource::getInstance().state() == IMU::MotionState::STATIONARY);
 }
 
 /** Start timer event to service/update GPS. */
@@ -2028,6 +2062,32 @@ void GPS::startService(void) {
       },
       SERVICE_MS, this);
 #endif
+}
+
+/**
+ * Log motion state transitions.
+ *
+ * IMU::MotionSource owns the detector: the same 60 s continuous-quiet hold and
+ * immediate exit this PR used to implement itself, shared by all three
+ * backends. Duplicating the hold here would stack two 60 s dwells and take 120 s
+ * to report stationary, so the policy is consumed rather than reimplemented.
+ *
+ * This runs on the existing 1 Hz GPS service timer. The source is polled from
+ * the UI housekeeping timer at the same 1 Hz, so a faster read could not see
+ * anything sooner, and plans/20 forbids a consumer adding an lv_timer of its
+ * own.
+ *
+ * ponytail: reading a 1 Hz source from a second unsynchronised 1 Hz timer adds
+ * up to one second of skew to a transition. Nothing consumes isStationary() in
+ * phase 1, so it costs nothing today. If PR15 needs the receiver to resume
+ * sooner, subscribe to MotionSource::addCallback() instead of polling here; the
+ * registry already reserves a slot for this consumer.
+ */
+void GPS::updateMotion(void) {
+  const bool stationary = isStationary();
+  if (m_MotionStationary.exchange(stationary) != stationary) {
+    ESP_LOGI(LOG_TAG, "GPS motion: %s", stationary ? "stationary" : "moving");
+  }
 }
 
 bool GPS::setExternalFix(const external_fix_t &fix) {
@@ -2090,6 +2150,8 @@ void GPS::clearExternalFix(void) {
 
 /** Send GPS data updates to the control task. */
 void GPS::update(void) {
+  updateMotion();
+
   const uint64_t now_ms = esp_timer_get_time() / 1000;
   const uint32_t now_tick = Platform::getInstance().tick();
 

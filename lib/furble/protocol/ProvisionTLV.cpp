@@ -58,6 +58,7 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {44,                         ValueType::BOOL,   1,  1                           },
     {46,                         ValueType::BOOL,   1,  1                           },
     {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, 1,  MAX_COMPANION_PASSWORD_BYTES},
+    {66,                         ValueType::BOOL,   1,  1                           },
     {67,                         ValueType::U8,     1,  1                           },
     {68,                         ValueType::BOOL,   1,  1                           },
     {69,                         ValueType::U8,     1,  1                           },

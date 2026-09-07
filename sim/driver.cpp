@@ -306,13 +306,29 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",           "gps_nmea",          "fauxny",
-      "autoconnect",   "reconnect",         "sleep_conn",
-      "boot_splash",   "connect_fail",      "no_touch",
-      "saved_camera",  "scan_start_probe",  "ble_saved",
-      "recon_backoff", "auto_off_charging", "imu",
-      "imu_sensor",    "liveness_check",    "ble_client_selfdelete",
-      "gps_extrap",    "gps_stationary",    "sd_gpx",
+      "gps",
+      "gps_nmea",
+      "gps_motion",
+      "gps_motion_prearm",
+      "fauxny",
+      "autoconnect",
+      "reconnect",
+      "sleep_conn",
+      "boot_splash",
+      "connect_fail",
+      "no_touch",
+      "saved_camera",
+      "scan_start_probe",
+      "ble_saved",
+      "recon_backoff",
+      "auto_off_charging",
+      "imu",
+      "imu_sensor",
+      "liveness_check",
+      "ble_client_selfdelete",
+      "gps_extrap",
+      "gps_stationary",
+      "sd_gpx",
       "imu_trigger",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
@@ -941,6 +957,7 @@ std::string settingBoolValue(const std::string &name) {
 #endif
       {"gps",               Settings::GPS              },
       {"gps_nmea",          Settings::GPS_NMEA         },
+      {"gps_motion",        Settings::GPS_MOTION       },
       {"gps_extrap",        Settings::GPS_EXTRAP       },
       {"sd_gpx",            Settings::SD_GPX           },
       {"ir",                Settings::IR               },
@@ -1292,6 +1309,14 @@ std::string queryValue(const std::string &key) {
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
     }
+    // The phase 1 detector state. "off" means the detector is not running at
+    // all, which is the default and the state a receiver policy must never see.
+    if (sub == "motion_state") {
+      if (!gps.isMotionEnabled()) {
+        return "off";
+      }
+      return gps.isStationary() ? "stationary" : "moving";
+    }
     if (sub == "degraded") {
       return gps.getCycleStatusSnapshot().degraded ? "1" : "0";
     }
@@ -1580,6 +1605,7 @@ void applyScenarioSettings(void) {
     furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
   }
   furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
+  saveBoolean("gps_motion", Settings::GPS_MOTION);
   saveBoolean("imu", Settings::IMU);
   saveBoolean("imu_trigger", Settings::IMU_TRIG);
   saveByte("imu_wake", Settings::IMU_WAKE);
