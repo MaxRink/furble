@@ -157,7 +157,6 @@ class UI {
     MULTI_CLEAR,        /**< arg: unused, empties the multi-connect selection */
     DISPLAY_BRIGHTNESS, /**< arg: -1 prints display status, else the brightness to apply */
     POWER_OFF,          /**< arg: unused */
-    POWER_RELOAD,       /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
