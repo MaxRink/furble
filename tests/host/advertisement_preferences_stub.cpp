@@ -16,6 +16,9 @@
 namespace {
 
 std::map<std::string, std::vector<uint8_t>> g_Store;
+size_t g_FailBeginCount = 0;
+std::string g_FailPutKey;
+std::string g_FailRemoveKey;
 
 }  // namespace
 
@@ -25,6 +28,18 @@ namespace Host {
 
 void clearPreferences(void) {
   g_Store.clear();
+}
+
+void failNextBegin(void) {
+  g_FailBeginCount++;
+}
+
+void failNextPutForKey(const char *key) {
+  g_FailPutKey = key == nullptr ? "" : key;
+}
+
+void failNextRemoveForKey(const char *key) {
+  g_FailRemoveKey = key == nullptr ? "" : key;
 }
 
 size_t preferencesKeyCount(void) {
@@ -37,6 +52,10 @@ Preferences::Preferences() : _handle(0), _started(false), _readOnly(false) {}
 Preferences::~Preferences() = default;
 
 bool Preferences::begin(const char *, bool readOnly, const char *) {
+  if (g_FailBeginCount != 0) {
+    g_FailBeginCount--;
+    return false;
+  }
   _started = true;
   _readOnly = readOnly;
   return true;
@@ -55,11 +74,19 @@ bool Preferences::remove(const char *key) {
   if (key == nullptr) {
     return false;
   }
+  if (!g_FailRemoveKey.empty() && g_FailRemoveKey == key) {
+    g_FailRemoveKey.clear();
+    return false;
+  }
   return g_Store.erase(key) > 0;
 }
 
 size_t Preferences::put(const char *key, const void *value, size_t bytes) {
   if ((key == nullptr) || ((value == nullptr) && (bytes != 0))) {
+    return 0;
+  }
+  if (!g_FailPutKey.empty() && g_FailPutKey == key) {
+    g_FailPutKey.clear();
     return 0;
   }
   const auto *data = static_cast<const uint8_t *>(value);

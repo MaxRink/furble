@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include <NimBLEAdvertisedDevice.h>
@@ -11,6 +12,8 @@
 #include "Device.h"
 #include "DJIOsmo.h"
 #include "MockNimBLE.h"
+#include "advertisement_preferences_stub.h"
+#include "protocol/CameraListProtocol.h"
 
 const char *LOG_TAG = "advertisement-dispatch";
 
@@ -147,6 +150,11 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
 
 bool testDispatchAndDeduplication() {
   using Furble::Camera;
+  Furble::Host::clearPreferences();
+  Furble::Host::failNextBegin();
+  CHECK(Furble::CameraList::savedSnapshot().empty());
+  CHECK(Furble::CameraList::savedSnapshot().empty());
+
   Furble::CameraList::clear();
   CHECK(!Furble::CameraList::match(nullptr));
   CHECK(Furble::CameraList::size() == 0);
@@ -169,6 +177,13 @@ bool testDispatchAndDeduplication() {
   auto dji = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
   CHECK(dji->getPairType() == Camera::PairType::NEW);
 
+  const std::string djiKey =
+      Furble::CameraListProtocol::addressKey(static_cast<uint64_t>(djiAdvertisement.getAddress()));
+  Furble::Host::failNextPutForKey(djiKey.c_str());
+  Furble::CameraList::save(dji);
+  CHECK(dji->getPairType() == Camera::PairType::NEW);
+  CHECK(Furble::CameraList::savedSnapshot().empty());
+
   DJIProtocolPeer peer(djiAdvertisement.getAddress());
   NimBLEDevice::setMockPeer(&peer);
   CHECK(dji->connect(ESP_PWR_LVL_P3, 1000));
@@ -183,6 +198,21 @@ bool testDispatchAndDeduplication() {
   CHECK(peer.firstRequest().size() == 51);
   CHECK(peer.firstRequest()[40] == 0x00);
   dji->disconnect();
+
+  // A failed index write must not replace the published saved catalog.
+  Furble::Host::failNextPutForKey("index");
+  Furble::CameraList::save(dji);
+  CHECK(Furble::CameraList::savedSnapshot().size() == 1);
+
+  // A failed index erase must retain both the catalog entry and its bond.
+  const size_t bondsBeforeFailedRemove = NimBLEDevice::deleteBondCount();
+  Furble::Host::failNextRemoveForKey("index");
+  Furble::CameraList::remove(dji.get());
+  CHECK(Furble::CameraList::savedSnapshot().size() == 1);
+  CHECK(NimBLEDevice::deleteBondCount() == bondsBeforeFailedRemove);
+  Furble::CameraList::remove(dji.get());
+  CHECK(Furble::CameraList::savedSnapshot().empty());
+  CHECK(NimBLEDevice::deleteBondCount() == bondsBeforeFailedRemove + 1);
 
   Furble::CameraList::clear();
   return true;

@@ -103,7 +103,7 @@ class CameraList {
   static void add_index(std::vector<index_entry_t> &index, index_entry_t &entry);
   static std::vector<std::shared_ptr<Furble::Camera>> deserialize(
       const std::vector<index_entry_t> &index);
-  static void ensureSavedLoaded(void);
+  static bool ensureSavedLoaded(void);
 
   /** Assign an unused id to every entry that has none. Requires m_Prefs open for writing. */
   static bool assignCameraIds(std::vector<index_entry_t> &index);

@@ -233,12 +233,15 @@ std::vector<std::shared_ptr<Furble::Camera>> CameraList::deserialize(
   return cameras;
 }
 
-void CameraList::ensureSavedLoaded(void) {
+bool CameraList::ensureSavedLoaded(void) {
   if (m_SavedInitialized) {
-    return;
+    return true;
   }
 
-  m_Prefs.begin(FURBLE_STR, false);
+  if (!m_Prefs.begin(FURBLE_STR, false)) {
+    ESP_LOGW(LOG_TAG, "Unable to open camera preferences");
+    return false;
+  }
   std::vector<index_entry_t> index = load_index();
   if (assignCameraIds(index)) {
     if (save_index(index)) {
@@ -246,14 +249,16 @@ void CameraList::ensureSavedLoaded(void) {
     } else {
       // Do not expose ids that were never persisted. Keep the old index as
       // the source of truth until a later transaction can migrate it.
-      index = load_index();
       ESP_LOGW(LOG_TAG, "Failed to persist migrated camera ids");
+      m_Prefs.end();
+      return false;
     }
   }
   publishCameraIds(index);
   m_SavedList = deserialize(index);
   m_Prefs.end();
   m_SavedInitialized = true;
+  return true;
 }
 
 void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
@@ -262,7 +267,9 @@ void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
   }
 
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
-  ensureSavedLoaded();
+  if (!ensureSavedLoaded()) {
+    return;
+  }
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     ESP_LOGW(LOG_TAG, "Unable to open camera preferences");
     return;
@@ -319,7 +326,9 @@ void CameraList::remove(Furble::Camera *camera) {
   }
 
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
-  ensureSavedLoaded();
+  if (!ensureSavedLoaded()) {
+    return;
+  }
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     ESP_LOGW(LOG_TAG, "Unable to open camera preferences");
     return;
@@ -373,8 +382,11 @@ void CameraList::remove(Furble::Camera *camera) {
 
   m_Prefs.end();
 
-  // delete bond whether needed or not
-  NimBLEDevice::deleteBond(camera->getAddress());
+  // Keep the bond when the catalog removal did not commit. A later retry must
+  // still be able to reconnect the saved camera.
+  if (indexPersisted) {
+    NimBLEDevice::deleteBond(camera->getAddress());
+  }
 }
 
 /**
@@ -386,14 +398,18 @@ void CameraList::remove(Furble::Camera *camera) {
  */
 void CameraList::load(void) {
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
-  ensureSavedLoaded();
+  if (!ensureSavedLoaded()) {
+    return;
+  }
   const std::lock_guard<std::mutex> lock(m_Mutex);
   m_ConnectList = m_SavedList;
 }
 
 size_t CameraList::getSaveCount(void) {
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
-  ensureSavedLoaded();
+  if (!ensureSavedLoaded()) {
+    return 0;
+  }
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_SavedList.size();
 }
@@ -425,7 +441,9 @@ std::vector<std::shared_ptr<Furble::Camera>> CameraList::snapshot(void) {
 
 std::vector<std::shared_ptr<Furble::Camera>> CameraList::savedSnapshot(void) {
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
-  ensureSavedLoaded();
+  if (!ensureSavedLoaded()) {
+    return {};
+  }
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_SavedList;
 }
