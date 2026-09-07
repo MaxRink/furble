@@ -83,23 +83,14 @@ action nav timer
 wait 150
 assert ui.page timer
 assert ui.row_text Count
-button b
-wait 100
-assert ui.row_text Delay
-button b
-wait 100
-assert ui.row_text Shutter
-button b
-wait 100
-assert ui.row_text Wait
-button b
+press up
 wait 100
 assert ui.row_text Deep_Sleep
 assert ui.focus_on_page yes
 assert ui.indicator_clearance clear
-button a
+press left
 wait 100
-button b
+press down
 wait 100
 assert ui.row_text Sleep_Threshold
 assert ui.focus_on_page yes
