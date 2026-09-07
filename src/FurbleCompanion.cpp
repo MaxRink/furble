@@ -37,6 +37,10 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
   }
 }
 
+void CompanionGatt::reloadPassword(void) {
+  m_Service.reloadPassword();
+}
+
 bool CompanionGatt::isEnabled(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_Enabled;
@@ -189,6 +193,7 @@ void CompanionGatt::disable(void) {
     m_Status = nullptr;
     m_Settings = nullptr;
     m_Trigger = nullptr;
+    m_Auth = nullptr;
     m_Capability = nullptr;
     m_Firmware = nullptr;
     m_Manufacturer = nullptr;
@@ -260,6 +265,11 @@ void CompanionGatt::createGatt(void) {
   m_Trigger = m_GattService->createCharacteristic(
       TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN, 4);
   m_Trigger->setCallbacks(this);
+
+  m_Auth = m_GattService->createCharacteristic(
+      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_AUTHEN,
+      CompanionService::AUTH_CHALLENGE_SIZE);
+  m_Auth->setCallbacks(this);
 
   // OTA is intentionally reserved only. The characteristics are deferred.
   m_DeviceInfoService = m_Server->createService("180A");
@@ -562,6 +572,8 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
   const NimBLEAttValue value = characteristic->getValue();
   if (characteristic == m_Location) {
     m_Service.handleLocation(value.data(), value.size());
+  } else if (characteristic == m_Auth) {
+    m_Service.handleAuth(value.data(), value.size());
   } else if (characteristic == m_Settings) {
     m_Service.handleSettings(value.data(), value.size());
   } else if (characteristic == m_Trigger) {
@@ -607,15 +619,33 @@ void CompanionGatt::notify(uint8_t charId, const uint8_t *data, size_t len) {
 }
 
 void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
-  if (charId != COMPANION_CHAR_SETTINGS || data == nullptr || m_Settings == nullptr
-      || !isConnected()) {
+  NimBLECharacteristic *characteristic = nullptr;
+  if (charId == COMPANION_CHAR_SETTINGS) {
+    characteristic = m_Settings;
+  } else if (charId == COMPANION_CHAR_AUTH) {
+    characteristic = m_Auth;
+  }
+  if (characteristic == nullptr || data == nullptr || !isConnected()) {
     return;
   }
-  m_Settings->indicate(data, len, m_CompanionConnHandle);
+  characteristic->indicate(data, len, m_CompanionConnHandle);
 }
 
 void CompanionGatt::error(uint8_t charId, uint8_t attError) {
   ESP_LOGW(LOG_TAG, "Companion transport error char 0x%02x ATT 0x%02x", charId, attError);
+}
+
+void CompanionGatt::disconnect(void) {
+  NimBLEServer *server = nullptr;
+  uint16_t handle = INVALID_CONN_HANDLE;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    server = m_Server;
+    handle = m_CompanionConnHandle;
+  }
+  if ((server != nullptr) && (handle != INVALID_CONN_HANDLE)) {
+    server->disconnect(handle);
+  }
 }
 
 }  // namespace Furble

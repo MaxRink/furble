@@ -30,7 +30,6 @@ class Settings {
     IMU,
     IMU_WAKE,
     IMU_TRIG,
-    HW_MOTION,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -57,6 +56,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    COMPANION_PASSWORD,
     CONN_SAVER,
     IR,
     IR_PROTO,
@@ -88,12 +88,6 @@ class Settings {
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
-  typedef enum {
-    HW_MOTION_AUTO = 0,
-    HW_MOTION_SOFTWARE = 1,
-    HW_MOTION_HARDWARE = 2,
-  } hw_motion_t;
-
   static void init(void) {}
 
   static const setting_t &get(type_t type);
@@ -101,6 +95,23 @@ class Settings {
   static const std::unordered_map<type_t, setting_t> &all(void);
   static bool appliesImmediately(type_t type);
   static bool isDangerous(type_t type);
+
+  static bool loadPassword(std::string &value) {
+    value = load<std::string>(COMPANION_PASSWORD);
+    return passwordLoadSucceeds();
+  }
+
+  static void setPasswordLoadResult(bool succeeds) { passwordLoadSucceeds() = succeeds; }
+
+  static bool savePassword(const std::string &value) {
+    if (!passwordSaveSucceeds()) {
+      return false;
+    }
+    save<std::string>(COMPANION_PASSWORD, value);
+    return true;
+  }
+
+  static void setPasswordSaveResult(bool succeeds) { passwordSaveSucceeds() = succeeds; }
 
   template <type_t S>
   struct storage_type;
@@ -132,6 +143,16 @@ class Settings {
   static void setU8(type_t type, uint8_t value) { save<uint8_t>(type, value); }
 
  private:
+  static bool &passwordLoadSucceeds(void) {
+    static bool succeeds = true;
+    return succeeds;
+  }
+
+  static bool &passwordSaveSucceeds(void) {
+    static bool succeeds = true;
+    return succeeds;
+  }
+
   template <typename T>
   static std::unordered_map<type_t, T> &typedValues(void) {
     static std::unordered_map<type_t, T> values;
@@ -169,6 +190,11 @@ struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::HW_MOTION> {
   using type = uint8_t;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::COMPANION_PASSWORD> {
+  using type = std::string;
 };
 
 #endif

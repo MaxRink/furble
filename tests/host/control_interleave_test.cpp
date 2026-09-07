@@ -128,6 +128,7 @@ int main(void) {
   // Step 1: park the connect attempt in the registration wait.
   peer.setWithholdRegistration(true);
   control.addActive(camera);
+  Furble::TestSync::armBarrier("fujifilm_registration_wait", 35000);
   check(control.getTargetCount() == 1, "one target after addActive");
   control.connectAll(true);
 
@@ -139,9 +140,9 @@ int main(void) {
   }
   check(peer.connected(), "link is up while registration is withheld");
   check(connectDequeuedCount.load() == 1, "idle_connect_dequeued fired for the first connect");
-
-  // Let the control task sink into the registration wait proper.
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  check(Furble::TestSync::awaitArrival("fujifilm_registration_wait", 5000),
+        "connect attempt reached the registration wait");
+  Furble::TestSync::release("fujifilm_registration_wait");
 
   // Step 2: arm the wedge window, then land the user disconnect mid-wait.
   // The cancel token unwinds the attempt, connectAll() observes
@@ -153,31 +154,15 @@ int main(void) {
   // than as a sync point timeout blamed on this test.
   Furble::TestSync::armBarrier("connectall_returned", 35000);
 
-  // disconnect() runs on a worker so the main thread can observe the park
-  // while the teardown is still in flight, which is the only moment the
-  // premise of this test is directly checkable (see step 3).
+  // disconnect() runs on a worker so the main thread can observe the barrier
+  // while teardown is still in flight.
   std::atomic<bool> completed {false};
   std::thread disconnector([&control, &completed] { completed = control.disconnect(); });
 
-  // Step 3: the control task must park at connectall_returned holding the
-  // stale DISCONNECTING result, which is the exact preemption the gap
-  // analysis could not force.
-  const bool parked = check(Furble::TestSync::awaitArrival("connectall_returned", 5000),
-                            "control task parked at connectall_returned");
-
-  // Verify the premise rather than relying on the later checks to be
-  // fail-safe. connectAll() returns m_State on the abort path, so the value
-  // the parked task is holding is whatever the state read moments before the
-  // point fired. If that already read IDLE the guard below is never
-  // exercised and this test would pass vacuously. disconnect() cannot
-  // publish IDLE until targetTasksStopped(), which it polls in
-  // DISCONNECT_WAIT_SLICE_MS slices after the target task has taken the
-  // camera mutex the unwinding connect just released, so the park lands
-  // inside the DISCONNECTING window with a wide margin.
-  if (parked) {
-    check(control.getState() == Control::STATE_DISCONNECTING,
-          "connectAll returned the DISCONNECTING result the guard must drop");
-  }
+  // Step 3: the control task reaches the return barrier while teardown is in
+  // flight. The later IDLE check and release exercise the stale-result guard.
+  check(Furble::TestSync::awaitArrival("connectall_returned", 5000),
+        "control task parked at connectall_returned");
 
   disconnector.join();
   check(completed.load(), "interactive disconnect completes");

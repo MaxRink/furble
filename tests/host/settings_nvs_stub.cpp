@@ -28,6 +28,10 @@ size_t commit_attempt_count = 0;
 size_t set_call_count = 0;
 size_t fail_set_at = 0;
 size_t fail_commit_at = 0;
+size_t get_str_length_call_count = 0;
+size_t get_str_data_call_count = 0;
+size_t fail_get_str_length_at = 0;
+size_t fail_get_str_data_at = 0;
 
 bool validKey(const char *key) {
   return key != nullptr && key[0] != '\0' && std::strlen(key) <= 15;
@@ -272,6 +276,12 @@ esp_err_t nvs_get_u64(nvs_handle_t h, const char *k, uint64_t *v) {
 }
 
 esp_err_t nvs_get_str(nvs_handle_t handle, const char *key, char *value, size_t *length) {
+  auto &call_count = value == nullptr ? get_str_length_call_count : get_str_data_call_count;
+  auto fail_at = value == nullptr ? fail_get_str_length_at : fail_get_str_data_at;
+  call_count++;
+  if (fail_at != 0 && call_count == fail_at) {
+    return ESP_FAIL;
+  }
   Value *entry = getValue(handle, key);
   if (entry == nullptr) {
     return ESP_ERR_NVS_NOT_FOUND;
@@ -347,6 +357,10 @@ void nvs_test_reset(void) {
   set_call_count = 0;
   fail_set_at = 0;
   fail_commit_at = 0;
+  get_str_length_call_count = 0;
+  get_str_data_call_count = 0;
+  fail_get_str_length_at = 0;
+  fail_get_str_data_at = 0;
 }
 
 nvs_test_value_type_t nvs_test_value_type(const char *name, const char *key) {
@@ -371,6 +385,14 @@ void nvs_test_fail_set_on(size_t nth_future_call) {
 
 void nvs_test_fail_commit_on(size_t nth_future_call) {
   fail_commit_at = commit_attempt_count + nth_future_call;
+}
+
+void nvs_test_fail_get_str_length_on(size_t nth_future_call) {
+  fail_get_str_length_at = get_str_length_call_count + nth_future_call;
+}
+
+void nvs_test_fail_get_str_data_on(size_t nth_future_call) {
+  fail_get_str_data_at = get_str_data_call_count + nth_future_call;
 }
 
 }  // extern "C"

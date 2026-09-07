@@ -102,7 +102,7 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
     "help",       "version", "status",   "imu",       "motion", "power",   "perf",
-    "gps",        "time",    "settings", "provision", "ui",     "cameras", "connect",
+    "gps",        "time",    "settings", "companion", "provision", "ui",     "cameras", "connect",
     "disconnect", "shutter", "ir",       "focus",     "scan",   "bt",      "feedback",
     "log",        "debug",   "flash",    "reboot",
 };

@@ -43,6 +43,7 @@ About page and exposed through companion BLE Device Information.
 | `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
+| `companion` | `password set <pw>`, `clear`, or `status`. |
 | `ui` | `ui audit`, dump the current page layout. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
@@ -71,6 +72,12 @@ no software-readable presence or negotiation signal.
 - `settings set <name> <value>` saves a setting. Values are range checked and
   rejected when the board does not support the setting, for example
   `SD_GPX` on a board with no SD card slot.
+
+The companion password is write-only. Use `companion password set <pw>` or
+`companion password clear`; `companion password status` prints only `set`,
+`unset`, or `unavailable`. The generic `settings get` and `settings set` paths
+reject `companion_pw`. A successful set or clear reloads the live companion
+session and revokes any authenticated connection.
 
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once. Settings the UI caches when it starts do not. `settings get`

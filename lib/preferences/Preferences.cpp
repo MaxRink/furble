@@ -172,20 +172,24 @@ size_t Preferences::put(const char *key, const bool value) {
 }
 
 size_t Preferences::put(const char *key, const char *value) {
+  return putString(key, value) ? strlen(value) : 0;
+}
+
+bool Preferences::putString(const char *key, const char *value) {
   if (!_started || !key || !value || _readOnly) {
-    return 0;
+    return false;
   }
   esp_err_t err = nvs_set_str(_handle, key, value);
   if (err) {
     ESP_LOGE(LOG_TAG, "nvs_set_str fail: %s %s", key, nvs_error(err));
-    return 0;
+    return false;
   }
   err = nvs_commit(_handle);
   if (err) {
     ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
+    return false;
   }
-  return strlen(value);
+  return true;
 }
 
 template <>
@@ -332,6 +336,32 @@ std::string Preferences::get(const char *key, const std::string defaultValue) {
     return std::string(defaultValue);
   }
   return std::string(buf);
+}
+
+Preferences::string_result_t Preferences::getString(const char *key, std::string &value) {
+  if (!_started || !key) {
+    return string_result_t::ERROR;
+  }
+
+  size_t len = 0;
+  esp_err_t err = nvs_get_str(_handle, key, nullptr, &len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return string_result_t::NOT_FOUND;
+  }
+  if (err != ESP_OK || len == 0) {
+    ESP_LOGE(LOG_TAG, "nvs_get_str len fail: %s %s", key, nvs_error(err));
+    return string_result_t::ERROR;
+  }
+
+  std::string loaded(len, '\0');
+  err = nvs_get_str(_handle, key, loaded.data(), &len);
+  if (err != ESP_OK || len == 0) {
+    ESP_LOGE(LOG_TAG, "nvs_get_str fail: %s %s", key, nvs_error(err));
+    return string_result_t::ERROR;
+  }
+  loaded.resize(len - 1);
+  value = loaded;
+  return string_result_t::OK;
 }
 
 size_t Preferences::getBytesLength(const char *key) {
