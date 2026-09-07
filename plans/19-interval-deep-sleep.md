@@ -324,8 +324,8 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   behavior. After the bounded retries a still-failed reconnect clears the resume
   state and leaves an error on screen.
 - PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
-  genuine deep-sleep wake that fails the first reconnect must show two spaced
-  retries in the serial log and then either recover or land on the resume error.
+  genuine deep-sleep wake that fails the first reconnect must show one spaced
+  retry in the serial log and then either recover or land on the resume error.
   Deep sleep only exercises on hardware, so this cannot be confirmed on host.
 - Timer layout coverage is capability-aware in both deterministic scenarios and
   the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
