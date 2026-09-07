@@ -49,8 +49,8 @@
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
-#include "FurbleSettings.h"
 #include "FurbleRequestState.h"
+#include "FurbleSettings.h"
 
 #include "protocol/ProvisionTLV.h"
 
@@ -131,17 +131,15 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help", "version", "status", "imu", "motion", "power", "perf", "gps", "time", "settings",
-    "companion", "provision", "ui", "cameras", "connect", "pair", "delete", "multiconnect",
-    "disconnect", "shutter", "interval", "bulb", "display", "ir", "focus", "scan", "bt",
-    "feedback", "log", "debug", "flash", "reboot",
+    "help",   "version",      "status",     "imu",       "motion",   "power",   "perf",    "gps",
+    "time",   "settings",     "companion",  "provision", "ui",       "cameras", "connect", "pair",
+    "delete", "multiconnect", "disconnect", "shutter",   "interval", "bulb",    "display", "ir",
+    "focus",  "scan",         "bt",         "feedback",  "log",      "debug",   "flash",   "reboot",
 };
 
 }  // namespace
 
-namespace {
-
-}  // namespace
+namespace {}  // namespace
 
 namespace {
 
@@ -156,30 +154,30 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",        "expected stats, log or off",                              "",         {"stats", "log", "off"}               },
-    {"perf",         "expected tasks, heap or lvgl",                            "",         {"tasks", "heap", "lvgl"}             },
+    {"power",        "expected stats, log or off",                                       "",         {"stats", "log", "off"}               },
+    {"perf",         "expected tasks, heap or lvgl",                                     "",         {"tasks", "heap", "lvgl"}             },
     {"gps",
      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}},
-    {"time",         "usage: time status | flush",                              "",         {"status", "flush"}                   },
-    {"settings",     "expected list, get or set",                               " theme",   {"list", "get", "set"}                },
-    {"ui",           "expected audit, page or back",                            "",         {"audit", "page", "back"}             },
-    {"cameras",      "expected list or status",                                 "",         {"list", "status"}                    },
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                         },
+    {"time",         "usage: time status | flush",                                       "",         {"status", "flush"}                   },
+    {"settings",     "expected list, get or set",                                        " theme",   {"list", "get", "set"}                },
+    {"ui",           "expected audit, page or back",                                     "",         {"audit", "page", "back"}             },
+    {"cameras",      "expected list or status",                                          "",         {"list", "status"}                    },
     {"multiconnect",
-     "expected list, select, deselect or clear",                                " 0",
-     {"list", "select", "deselect", "clear"}                                                                                      },
-    {"interval",     "expected start, stop or status",                          "",         {"start", "stop", "status"}           },
-    {"bulb",         "expected start, stop or status",                          "",         {"start", "stop", "status"}           },
-    {"display",      "expected status, mode or brightness",                     " gui",     {"status", "mode", "brightness"}      },
-    {"motion",       "usage: motion status | scale [0.25-4.0]",                 "",         {"status", "scale"}                  },
-    {"imu",          "usage: imu status",                                       "",         {"status"}                            },
-    {"shutter",      "expected press, release or hold",                         "",         {"press", "release", "hold"}          },
-    {"ir",           "usage: ir fire [protocol]",                               "",         {"fire"}                              },
-    {"focus",        "expected press or release",                               "",         {"press", "release"}                  },
-    {"scan",         "expected start, stop or list",                            "",         {"start", "stop", "list"}             },
-    {"bt",           "expected scan, explore, pair or journal",                 "",         {"scan", "explore", "pair", "journal"}},
-    {"feedback",     "usage: feedback test",                                    " shutter", {"test"}                              },
-    {"flash",        "usage: flash prepare | cancel",                           "",         {"prepare", "cancel"}                 },
+     "expected list, select, deselect or clear",                                         " 0",
+     {"list", "select", "deselect", "clear"}                                                                                               },
+    {"interval",     "expected start, stop or status",                                   "",         {"start", "stop", "status"}           },
+    {"bulb",         "expected start, stop or status",                                   "",         {"start", "stop", "status"}           },
+    {"display",      "expected status, mode or brightness",                              " gui",     {"status", "mode", "brightness"}      },
+    {"motion",       "usage: motion status | scale [0.25-4.0]",                          "",         {"status", "scale"}                   },
+    {"imu",          "usage: imu status",                                                "",         {"status"}                            },
+    {"shutter",      "expected press, release or hold",                                  "",         {"press", "release", "hold"}          },
+    {"ir",           "usage: ir fire [protocol]",                                        "",         {"fire"}                              },
+    {"focus",        "expected press or release",                                        "",         {"press", "release"}                  },
+    {"scan",         "expected start, stop or list",                                     "",         {"start", "stop", "list"}             },
+    {"bt",           "expected scan, explore, pair or journal",                          "",         {"scan", "explore", "pair", "journal"}},
+    {"feedback",     "usage: feedback test",                                             " shutter", {"test"}                              },
+    {"flash",        "usage: flash prepare | cancel",                                    "",         {"prepare", "cancel"}                 },
     {"debug",
      "expected control, camera, ble, heap, tasks, power, gps, settings or all",          "",
      {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                      },
@@ -1885,7 +1883,8 @@ void testWorkflowCommands(void) {
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DELETE
             && ConsoleHost::ui().requests.back().arg == 3,
         "delete queues the saved camera index");
-  checkContains(runDirect("delete all").out, "completed: delete all", "delete all reports completion");
+  checkContains(runDirect("delete all").out, "completed: delete all",
+                "delete all reports completion");
   check(ConsoleHost::ui().requests.back().arg == -1,
         "delete all queues the negative index the handler reads as a sweep");
 

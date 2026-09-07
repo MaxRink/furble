@@ -4,8 +4,8 @@
 #include <mutex>
 
 #if defined(FURBLE_CONSOLE)
-#include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 #include "FurbleRequestState.h"
 #endif
 
@@ -144,8 +144,8 @@ class UI {
     PERF,  /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
     AUDIT, /**< arg: unused */
 #endif
-    POWER_RELOAD, /**< arg: unused */
-    SD_RELOAD,    /**< arg: unused */
+    POWER_RELOAD,       /**< arg: unused */
+    SD_RELOAD,          /**< arg: unused */
     DELETE,             /**< arg: saved camera index, negative deletes every saved camera */
     PAIR,               /**< arg: scan result index, the Scan page row the console cannot click */
     MULTI_SELECT,       /**< arg: saved camera index to add to the multi-connect selection */

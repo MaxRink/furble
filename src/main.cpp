@@ -238,7 +238,8 @@ void UI::init(void) {
     vQueueDelete(g_HeadlessRequestQueue);
     g_HeadlessRequestQueue = nullptr;
   }
-  g_HeadlessRequestQueue = xQueueCreate(HEADLESS_REQUEST_QUEUE_LENGTH, sizeof(headless_request_t *));
+  g_HeadlessRequestQueue =
+      xQueueCreate(HEADLESS_REQUEST_QUEUE_LENGTH, sizeof(headless_request_t *));
   if (g_HeadlessRequestQueue == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create headless console request queue.");
     abort();
@@ -271,7 +272,7 @@ bool UI::sendRequest(Request request, int32_t arg) {
 
   auto *item = new (std::nothrow) headless_request_t {request, arg,
 #if defined(FURBLE_CONSOLE)
-                                   nullptr
+                                                      nullptr
 #endif
   };
   if (item == nullptr) {

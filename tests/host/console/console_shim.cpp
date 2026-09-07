@@ -70,10 +70,13 @@ struct FurbleHostBinarySemaphore {
 };
 
 std::atomic<bool> g_FailNextSemaphore {false};
-extern "C" void furbleHostFailNextSemaphore(void) { g_FailNextSemaphore.store(true); }
+extern "C" void furbleHostFailNextSemaphore(void) {
+  g_FailNextSemaphore.store(true);
+}
 
 SemaphoreHandle_t xSemaphoreCreateBinary(void) {
-  if (g_FailNextSemaphore.exchange(false)) return nullptr;
+  if (g_FailNextSemaphore.exchange(false))
+    return nullptr;
   return new FurbleHostBinarySemaphore();
 }
 
@@ -83,8 +86,8 @@ BaseType_t xSemaphoreTake(SemaphoreHandle_t handle, TickType_t ticks) {
     return pdFALSE;
   }
   std::unique_lock<std::mutex> lock(semaphore->mutex);
-  const bool ready = semaphore->cond.wait_for(
-      lock, std::chrono::milliseconds(ticks), [semaphore] { return semaphore->available; });
+  const bool ready = semaphore->cond.wait_for(lock, std::chrono::milliseconds(ticks),
+                                              [semaphore] { return semaphore->available; });
   if (!ready) {
     return pdFALSE;
   }

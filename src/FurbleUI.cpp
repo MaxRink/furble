@@ -5675,9 +5675,9 @@ bool UI::sendRequest(Request request, int32_t arg) {
 
   auto *item = new (std::nothrow) request_t {request, arg,
 #if defined(FURBLE_CONSOLE)
-                              nullptr
+                                             nullptr
 #endif
-                             };
+  };
   if (item == nullptr) {
     return false;
   }
@@ -5940,7 +5940,9 @@ void UI::serviceRequests(void) {
         // than the flag that was just set.
         const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
         const bool persisted = multiConnectSelectionHas(stored, item.arg);
-        m_ConsoleResult = !saved ? "persistence_failed" : (select && !persisted) ? "selection_full" : "ok";
+        m_ConsoleResult = !saved                   ? "persistence_failed"
+                          : (select && !persisted) ? "selection_full"
+                                                   : "ok";
         consolePrint("camera: %s\n", CameraList::get(item.arg)->getName().c_str());
         consolePrint("selected: %s\n", persisted ? "true" : "false");
         if (select && !persisted) {
