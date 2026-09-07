@@ -180,6 +180,7 @@ bool Settings::appliesImmediately(type_t type) {
     case COMPANION:
     case COMPANION_PASSWORD:
     case CONN_SAVER:
+    case IMU:
     case FB_OUTPUT:
     case PRESET_PICKER:
     case BUTTON_MODE:
