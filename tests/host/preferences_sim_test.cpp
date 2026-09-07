@@ -38,7 +38,10 @@ int run(const std::string &scenario) {
   const auto path = std::filesystem::temp_directory_path()
                     / ("furble-preferences-sim-" + std::to_string(getpid()));
   std::filesystem::remove_all(path);
-  const auto cleanup = [&] { std::filesystem::remove_all(path); };
+  const auto cleanup = [&] {
+    std::filesystem::remove_all(path);
+    std::filesystem::remove_all(path.string() + ".blocked");
+  };
 
   if (scenario == "missing") {
     const int result = checkResult(path, Result::NOT_FOUND);
@@ -74,6 +77,33 @@ int run(const std::string &scenario) {
     const int result = checkResult(path, Result::ERROR);
     cleanup();
     return result;
+  }
+  if (scenario == "embedded-nul") {
+    // A string with an embedded NUL must remain non-empty and byte-preserving.
+    std::string bytes(4, '\0');
+    bytes[0] = 1;
+    bytes.push_back(7);
+    bytes.append(3, '\0');
+    bytes.push_back(3);
+    bytes.append(3, '\0');
+    bytes.push_back(1);
+    bytes.append("1:value", 7);
+    bytes.push_back('\0');
+    bytes.push_back('x');
+    bytes.push_back('\0');
+    writeBytes(path, bytes);
+    setenv("FURBLE_SIM_PREFS", path.c_str(), 1);
+    Furble::Preferences preferences;
+    if (!preferences.begin("prefs", true)) {
+      cleanup();
+      return fail("begin failed");
+    }
+    std::string value;
+    const bool preserved = preferences.getString("value", value) == Result::OK
+                           && value.size() == 2 && value[0] == '\0' && value[1] == 'x';
+    preferences.end();
+    cleanup();
+    return preserved ? 0 : fail("embedded NUL was truncated");
   }
   if (scenario == "empty-string") {
     setenv("FURBLE_SIM_PREFS", path.c_str(), 1);

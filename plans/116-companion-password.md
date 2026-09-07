@@ -348,3 +348,5 @@ The host simulator now implements the shared `Preferences::putString` and
 restore the prior in-memory map on any failed save. The runnable
 `actualPreferencesSim` target covers missing, empty, empty-string,
 type-mismatch, corruption, and failed-save rollback cases.
+The string read is length-based, so embedded NUL bytes are preserved for the
+auth layer to reject rather than being converted into an empty password.

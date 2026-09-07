@@ -419,7 +419,8 @@ Preferences::string_result_t Preferences::getString(const char *key, std::string
       || found->second.bytes.back() != '\0') {
     return string_result_t::ERROR;
   }
-  value.assign(reinterpret_cast<const char *>(found->second.bytes.data()));
+  value.assign(reinterpret_cast<const char *>(found->second.bytes.data()),
+              found->second.bytes.size() - 1);
   return string_result_t::OK;
 }
 

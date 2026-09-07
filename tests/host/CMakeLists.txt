@@ -1416,7 +1416,7 @@ if(BUILD_TESTING)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
-  foreach(preferences_case missing empty empty-string typeerror corruption failed-save)
+  foreach(preferences_case missing empty empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})
   endforeach()
