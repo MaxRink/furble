@@ -55,8 +55,8 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
       // Answer the production handshake so connect() reaches the actual DJI
       // request write and can be checked below.
       if (m_Callback) {
-        const auto response = connectionResponse();
-        m_Callback(m_Remote, const_cast<uint8_t *>(response.data()), response.size(), false);
+        auto response = connectionResponse();
+        m_Callback(m_Remote, response.data(), response.size(), false);
       }
     }
     (void)client;
