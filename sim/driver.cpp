@@ -1764,7 +1764,10 @@ void applyScenarioSettings(void) {
     } else if (fixture->second == "mismatched") {
       state.target = state.interval.count.value + 1;
     } else if (fixture->second == "early") {
-      state.wake_time += 5;
+      // Leave enough wall-clock headroom for the virtual connection gate. The
+      // resume timer itself runs on virtual time, so a short wall deadline
+      // would make this regression depend on host scheduling latency.
+      state.wake_time += 30;
     } else if (fixture->second == "late") {
       state.wake_time -= 5;
     } else if (fixture->second == "wrong_camera") {

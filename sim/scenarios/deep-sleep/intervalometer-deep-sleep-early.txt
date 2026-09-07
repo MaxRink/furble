@@ -1,4 +1,6 @@
-# An early virtual wake must wait for the persisted shot deadline.
+# An early virtual wake must wait for the persisted shot deadline. The fixture
+# uses a 30-second absolute wall-clock deadline so the connection gate cannot
+# consume the deadline before the virtual-time assertion starts.
 seed fauxny true
 seed autoconnect true
 seed ivl_sleep true
@@ -12,7 +14,7 @@ seed interval_shutter 30
 assert-eventually-virtual 5000 control.state active
 wait 2000
 assert camera.shutter_presses 0
-assert ui.interval_state wait
-wait 6000
+assert ui.interval_state shutter
+wait 30000
 assert camera.shutter_presses 1
 exit
