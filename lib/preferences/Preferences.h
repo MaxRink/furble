@@ -35,6 +35,8 @@ class Preferences {
   size_t put(const char *key, const T value);
 
   size_t put(const char *key, const char *value);
+  /** Report set and commit failures, including when writing an empty string. */
+  bool putString(const char *key, const char *value);
   size_t put(const char *key, const void *value, size_t len);
 
   template <typename T>

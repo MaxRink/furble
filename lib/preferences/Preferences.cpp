@@ -172,20 +172,24 @@ size_t Preferences::put(const char *key, const bool value) {
 }
 
 size_t Preferences::put(const char *key, const char *value) {
+  return putString(key, value) ? strlen(value) : 0;
+}
+
+bool Preferences::putString(const char *key, const char *value) {
   if (!_started || !key || !value || _readOnly) {
-    return 0;
+    return false;
   }
   esp_err_t err = nvs_set_str(_handle, key, value);
   if (err) {
     ESP_LOGE(LOG_TAG, "nvs_set_str fail: %s %s", key, nvs_error(err));
-    return 0;
+    return false;
   }
   err = nvs_commit(_handle);
   if (err) {
     ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
+    return false;
   }
-  return strlen(value);
+  return true;
 }
 
 template <>

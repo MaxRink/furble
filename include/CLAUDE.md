@@ -30,6 +30,9 @@ Public headers for the app layer in src/, one header per module
   plans/116 for why.
   `Settings::loadPassword()` distinguishes unset credentials from NVS failures;
   pass its success flag to `CompanionAuth::setPassword()` so failures stay closed.
+  Password mutations use `Settings::savePassword()` to check both NVS set and
+  commit, including successful empty-string clears. Never acknowledge the
+  generic void settings writer as proof that a credential was persisted.
 
 ### Companion wire id reservations
 

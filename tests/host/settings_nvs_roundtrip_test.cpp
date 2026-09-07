@@ -623,6 +623,25 @@ void testPasswordLoadBoundary() {
   password = "sentinel";
   check(!Settings::loadPassword(password), "password data-stage NVS error is reported");
   check(password.empty(), "password data-stage error does not return a credential");
+
+  nvs_test_reset();
+  nvs_test_fail_set_on(1);
+  check(!Settings::savePassword("set failure"), "password set failure is reported");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "failed password set leaves an unset credential valid");
+  check(password.empty(), "failed password set leaves the credential unset");
+
+  Settings::savePassword("old password");
+  nvs_test_fail_commit_on(1);
+  check(!Settings::savePassword("commit failure"), "password commit failure is reported");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "failed password commit keeps a readable credential");
+  check(password == "old password", "failed password commit preserves the old credential");
+
+  check(Settings::savePassword(""), "empty password clear succeeds");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "cleared password remains a valid unset credential");
+  check(password.empty(), "empty password clear stores an empty credential");
 }
 
 // A remembered multi-connect entry is keyed on the camera's displayed name.

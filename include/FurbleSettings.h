@@ -194,6 +194,8 @@ class Settings {
 
   /** Load the companion password, distinguishing an unset key from NVS failure. */
   static bool loadPassword(std::string &value);
+  /** Persist the companion password and report storage/commit failures. */
+  static bool savePassword(const std::string &value);
 
   /** Return true when the Battery Saver power profile is enabled. */
   static bool batterySaver(void);

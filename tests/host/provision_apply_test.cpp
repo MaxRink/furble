@@ -152,6 +152,41 @@ void testDedicatedPasswordField() {
         "duplicate password rejection happens before either source is written");
 }
 
+void testPasswordStorageFailures() {
+  for (bool dedicated : {false, true}) {
+    for (bool commitFailure : {false, true}) {
+      resetSettings();
+      check(Furble::Settings::savePassword("previous"), "seed the existing password");
+      ProvisionBundle bundle;
+      if (dedicated) {
+        bundle.companionPassword = std::vector<uint8_t> {'n', 'e', 'w'};
+      } else {
+        bundle.settings = {
+            {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, {'n', 'e', 'w'}}
+        };
+      }
+      if (commitFailure) {
+        nvs_test_fail_commit_on(1);
+      } else {
+        nvs_test_fail_set_on(1);
+      }
+      ApplyReport report;
+      ApplyOptions options;
+      options.onSettingApplied = recordApplied;
+      check(!apply(bundle, report, options) && !report.ok,
+            "password storage failure rejects either provisioning encoding");
+      check(report.error == Furble::Provision::ApplyError::STORAGE_FAILURE
+                && report.failedSettingId == COMPANION_PASSWORD_WIRE_ID,
+            "failed password write identifies storage failure and its wire id");
+      check(report.settingsApplied == 0 && appliedIds.empty(),
+            "failed password write is not counted or announced as applied");
+      std::string password;
+      check(Furble::Settings::loadPassword(password) && password == "previous",
+            "failed provisioning preserves the previous password");
+    }
+  }
+}
+
 void testDomainValidation() {
   resetSettings();
 
@@ -225,6 +260,7 @@ int main() {
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
   testDedicatedPasswordField();
+  testPasswordStorageFailures();
   testDomainValidation();
   testEverySettingHasASchemaRow();
 

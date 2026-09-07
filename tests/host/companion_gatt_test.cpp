@@ -305,6 +305,25 @@ void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
         "password-load failure rejects the privileged write");
   service.deinit();
   Furble::Settings::setPasswordLoadResult(true);
+
+  MockCentral unsetCentral;
+  CompanionService unsetService(unsetCentral);
+  unsetCentral.attach(unsetService);
+  unsetService.init();
+  unsetCentral.connect();
+  unsetCentral.setSecurity(true, true);
+  Furble::Settings::setPasswordSaveResult(false);
+  unsetCentral.clearEvents();
+  check(unsetCentral.write(SETTINGS_UUID,
+                           {2, Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID, 3, 'n', 'e', 'w'}),
+        "failed initial password enable reaches the settings handler");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD).empty(),
+        "failed initial password enable leaves the credential unset");
+  check(unsetCentral.indications().size() == 1 && unsetCentral.indications()[0].size() == 4
+            && unsetCentral.indications()[0][0] == 4,
+        "failed initial password enable cannot report success");
+  unsetService.deinit();
+  Furble::Settings::setPasswordSaveResult(true);
 }
 
 void testCompanionGattFlow(void) {
@@ -482,6 +501,39 @@ void testCompanionGattFlow(void) {
       "correct HMAC authenticates the session");
   check(service.isPasswordAuthenticated(), "service reports the authenticated session");
 
+  const std::string oldPassword = "test companion";
+  const std::string failedRotation = "failed rotation";
+  std::vector<uint8_t> failedRotatePassword {2, Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID,
+                                             static_cast<uint8_t>(failedRotation.size())};
+  failedRotatePassword.insert(failedRotatePassword.end(), failedRotation.begin(),
+                              failedRotation.end());
+  Furble::Settings::setPasswordSaveResult(false);
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, failedRotatePassword),
+        "failed password rotation reaches the settings handler");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == oldPassword,
+        "failed password rotation preserves the previous credential");
+  check(!service.isPasswordAuthenticated(),
+        "failed password rotation revokes the authenticated session");
+  check(central.indications().size() == 1 && central.indications()[0].size() == 4
+            && central.indications()[0][0] == 4,
+        "failed password rotation returns a rejected setting response");
+  Furble::Settings::setPasswordSaveResult(true);
+
+  central.clearEvents();
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
+        "old password can request a fresh challenge after failed rotation");
+  const auto failedRotationNonce =
+      central.authIndications().empty()
+          ? std::vector<uint8_t> {}
+          : std::vector<uint8_t>(central.authIndications()[0].begin() + 2,
+                                 central.authIndications()[0].end());
+  check(central.write(AUTH_UUID, authResponse(oldPassword, failedRotationNonce)),
+        "old password re-authenticates after failed rotation");
+  check(service.isPasswordAuthenticated(),
+        "old password restores authentication after failed rotation");
+
   central.clearEvents();
   const std::vector<uint8_t> malformedPassword {
       2, Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID, 3, 'a', 0, 'b'};
@@ -491,8 +543,8 @@ void testCompanionGattFlow(void) {
       Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "test companion",
       "embedded NUL password is not persisted");
   check(central.indications().size() == 1 && central.indications()[0].size() == 4
-            && central.indications()[0][0] == 2,
-        "embedded NUL password is rejected with a bad-length response");
+            && central.indications()[0][0] == 4,
+        "embedded NUL password is rejected without changing the session");
 
   central.clearEvents();
   check(central.write(SETTINGS_UUID, {2, 1, 1, 87}),
@@ -530,6 +582,33 @@ void testCompanionGattFlow(void) {
   check(central.write(AUTH_UUID, authResponse(rotatedPassword, rotatedNonce)),
         "rotated password response reaches the companion service");
   check(service.isPasswordAuthenticated(), "rotated password authenticates the session");
+
+  Furble::Settings::setPasswordSaveResult(false);
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {2, Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID, 0}),
+        "failed password clear reaches the settings handler");
+  check(
+      Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == rotatedPassword,
+      "failed password clear preserves the rotated credential");
+  check(!service.isPasswordAuthenticated(),
+        "failed password clear revokes the authenticated session");
+  check(central.indications().size() == 1 && central.indications()[0].size() == 4
+            && central.indications()[0][0] == 4,
+        "failed password clear returns a rejected setting response");
+  Furble::Settings::setPasswordSaveResult(true);
+
+  central.clearEvents();
+  check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
+                                  Furble::CompanionService::AUTH_OP_BEGIN}),
+        "failed clear permits a new challenge with the unchanged password");
+  const auto clearFailureNonce =
+      central.authIndications().empty()
+          ? std::vector<uint8_t> {}
+          : std::vector<uint8_t>(central.authIndications()[0].begin() + 2,
+                                 central.authIndications()[0].end());
+  check(central.write(AUTH_UUID, authResponse(rotatedPassword, clearFailureNonce))
+            && service.isPasswordAuthenticated(),
+        "unchanged password restores authentication after failed clear");
 
   first.clearEvents();
   second.clearEvents();

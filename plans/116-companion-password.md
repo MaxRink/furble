@@ -182,6 +182,13 @@ The VM host auth, companion GATT, console and settings NVS tests pass (4/4),
 including read faults and failed password writes/commits. This is host evidence;
 the firmware build, exact-head CI and phone/S3 handshake remain separate gates.
 
+The write-side review also requires successful NVS set and commit results.
+Console, BLE and both provisioning password encodings now share the checked
+writer. BLE rejects failed writes instead of acknowledging an enabled password
+that was never saved, and revokes authentication after a persistence attempt.
+Provisioning reports a storage failure without counting the password as applied;
+earlier successful settings in that bundle are not rolled back.
+
 - **A gated Settings or Trigger write emits an Auth result indication
   `{01 02 02}`.** NimBLE characteristic callbacks are void, so they cannot
   return the application ATT error `0x80` claimed by the original draft.

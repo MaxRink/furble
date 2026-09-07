@@ -252,6 +252,12 @@ bool Settings::isDangerous(type_t type) {
   return false;
 }
 
+bool Settings::savePassword(const std::string &value) {
+  const auto &setting = get(COMPANION_PASSWORD);
+  Preferences prefs;
+  return prefs.begin(setting.nvs_namespace, false) && prefs.putString(setting.key, value.c_str());
+}
+
 bool Settings::loadPassword(std::string &value) {
   const auto &setting = get(COMPANION_PASSWORD);
   Preferences prefs;

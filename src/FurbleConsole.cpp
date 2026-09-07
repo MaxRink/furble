@@ -718,10 +718,10 @@ int cmdCompanion(int argc, char **argv) {
     return loaded ? 0 : 1;
   }
   if ((argc == 3) && !strcasecmp(argv[2], "clear")) {
-    Settings::save<std::string>(Settings::COMPANION_PASSWORD, std::string {});
+    const bool saved = Settings::savePassword(std::string {});
     CompanionGatt::getInstance().reloadPassword();
     std::string password;
-    if (!Settings::loadPassword(password) || !password.empty()) {
+    if (!saved || !Settings::loadPassword(password) || !password.empty()) {
       return fail("companion password storage failed");
     }
     printf("companion.password: unset\n");
@@ -732,10 +732,10 @@ int cmdCompanion(int argc, char **argv) {
     if ((length == 0) || (length > CompanionAuth::PASSWORD_MAX)) {
       return fail("password must be 1-63 bytes; use clear to unset");
     }
-    Settings::save<std::string>(Settings::COMPANION_PASSWORD, argv[3]);
+    const bool saved = Settings::savePassword(argv[3]);
     CompanionGatt::getInstance().reloadPassword();
     std::string password;
-    if (!Settings::loadPassword(password) || password != argv[3]) {
+    if (!saved || !Settings::loadPassword(password) || password != argv[3]) {
       return fail("companion password storage failed");
     }
     printf("companion.password: set\n");

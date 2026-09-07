@@ -103,6 +103,16 @@ class Settings {
 
   static void setPasswordLoadResult(bool succeeds) { passwordLoadSucceeds() = succeeds; }
 
+  static bool savePassword(const std::string &value) {
+    if (!passwordSaveSucceeds()) {
+      return false;
+    }
+    save<std::string>(COMPANION_PASSWORD, value);
+    return true;
+  }
+
+  static void setPasswordSaveResult(bool succeeds) { passwordSaveSucceeds() = succeeds; }
+
   template <type_t S>
   struct storage_type;
 
@@ -134,6 +144,11 @@ class Settings {
 
  private:
   static bool &passwordLoadSucceeds(void) {
+    static bool succeeds = true;
+    return succeeds;
+  }
+
+  static bool &passwordSaveSucceeds(void) {
     static bool succeeds = true;
     return succeeds;
   }

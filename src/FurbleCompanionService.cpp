@@ -585,6 +585,13 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
         return false;
       }
+      if (type == Settings::COMPANION_PASSWORD) {
+        const bool saved = Settings::savePassword(v);
+        // Revoke authorization before acknowledging an attempted rotation,
+        // including a failed write. Invalid input never reaches persistence.
+        reloadPassword();
+        return saved;
+      }
       Settings::save<std::string>(type, v);
       return true;
     }
@@ -704,14 +711,12 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
                                  : (type == SETTING_STRING ? length : sizeof(interval_wire_t)));
   const bool saved = (type == SETTING_STRING || length == expected)
                      && saveSetting(setting->type, data + 3, length);
-  // Revoke the current session before acknowledging a password rotation. This
-  // prevents the acknowledgement from racing a protected follow-up write that
-  // still carries the old session authorization.
-  if (saved && (setting->type == Settings::COMPANION_PASSWORD)) {
-    reloadPassword();
-  }
   std::vector<uint8_t> response;
-  appendResponse(response, saved ? SETTING_OK : SETTING_BAD_LENGTH, id, type, 0, {}, false);
+  appendResponse(response,
+                 saved ? SETTING_OK
+                       : (setting->type == Settings::COMPANION_PASSWORD ? SETTING_REJECTED
+                                                                        : SETTING_BAD_LENGTH),
+                 id, type, 0, {}, false);
   notifySettings(response);
 
   if (!saved) {
