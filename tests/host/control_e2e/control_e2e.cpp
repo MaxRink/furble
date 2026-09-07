@@ -456,8 +456,8 @@ bool scenarioTransientConnectRecovers() {
 }
 
 // The resume reconnect gets a radio/camera settle gap, while a normal bounded
-// connect keeps its immediate retry. One injected failure proves the recovery
-// took exactly the initial attempt plus its single bounded retry.
+// connect keeps its immediate retry. One injected failure makes the successful
+// recovery depend on its single bounded retry.
 bool scenarioScopedBoundedRetryGap() {
   freshEnvironment();
   auto &control = Control::getInstance();
