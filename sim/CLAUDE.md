@@ -121,17 +121,21 @@ The `actualPreferencesSim` host target and its CTest cases cover these states,
 including empty strings and failed-save rollback.
 
 - `sim/build.sh`: the verified direct-clang path on macOS. Its incremental
-  check is `make -q` over the compiler depfile, which compares whole-second
-  timestamps, so an edit landing in the same second as the object it should
-  invalidate is missed. Touch the file again or remove the object if a rebuild
-  looks like it skipped a change you just made. Run
+  check is `make -q` over the compiler depfile and first verifies that the
+  depfile target exactly matches the current object path. A depfile from a
+  different relative/absolute build-directory spelling is therefore a cache
+  miss. The prerequisite check compares whole-second timestamps, so an edit
+  landing in the same second as the object it should invalidate is missed.
+  Touch the file again or remove the object if a rebuild looks like it skipped
+  a change you just made. Run
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
   the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
   project-header edits rebuild only their dependents; `make -q` evaluates the
   depfile and the old source-only timestamp shortcut is not used.
 - `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
-  `include/FurbleGPS.h`, and proves GPS dependents rebuild while an unrelated
-  source stays cached. It requires the same dependency overrides as
+  `include/FurbleGPS.h`, proves a relative/absolute depfile target mismatch
+  rebuilds, and proves GPS dependents rebuild while an unrelated source stays
+  cached. It requires the same dependency overrides as
   `sim/build.sh`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
