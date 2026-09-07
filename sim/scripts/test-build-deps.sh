@@ -71,7 +71,10 @@ fi
 # answer for a different, nonexistent target.
 GPS_OBJECT="$TEST_ROOT/build/obj/src_FurbleGPS_cpp.o"
 GPS_DEPFILE="$GPS_OBJECT.d"
-sed -i '1s|^[^:]*:|sim/build-core/obj/src_FurbleGPS_cpp.o:|' "$GPS_DEPFILE"
+GPS_DEPFILE_REWRITTEN="$TEST_ROOT/gps.depfile"
+sed '1s|^[^:]*:|sim/build-core/obj/src_FurbleGPS_cpp.o:|' \
+  "$GPS_DEPFILE" >"$GPS_DEPFILE_REWRITTEN"
+mv "$GPS_DEPFILE_REWRITTEN" "$GPS_DEPFILE"
 run_build "$TEST_ROOT/path-mismatch-compile.log" "$TEST_ROOT/path-mismatch-build.log"
 case "$(grep -c '/src/FurbleGPS.cpp$' "$TEST_ROOT/path-mismatch-compile.log" || true)" in
   1) ;;
