@@ -1,6 +1,10 @@
 # sim/ (host SDL simulator)
 
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
+
+The `ui.console.<field>` query reads fields emitted by the real UI
+`consolePrint` path for simulator actions. It is query-only observability and
+does not enable `FURBLE_CONSOLE` or certify workflow completion semaphores.
 Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
 shipping sources are allowed only for observability, deterministic navigation,
 or orderly host exit, and firmware builds must compile the unchanged production

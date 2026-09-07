@@ -486,3 +486,10 @@ simulator target remains the production UI path with `FURBLE_SIM`,
 M5GFX, M5Unified, LVGL, NimBLE, peer, and TinyGPSPlus include roots from
 `sim/CMakeLists.txt`; run its actual SDL scenarios separately. Hardware UI,
 headless, and camera persistence gates remain pending.
+
+The real SDL scenario `sim/scenarios/bughunt/console-ui-workflow.txt` was then
+run successfully. It routes `action console back`, `delete 999`, `delete 0`,
+and `cameras 1` through the production UI queue. The `ui.console.<field>`
+query is simulator-only observability of `consolePrint`; it verified
+`no_saved_camera`, `ok`, `count: 1`, and `saved: 0`. This does not exercise the
+`FURBLE_CONSOLE` completion semaphore or claim hardware behavior.

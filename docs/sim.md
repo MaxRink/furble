@@ -932,3 +932,10 @@ exit
 The first line prints XFAIL and continues, the second prints XPASS
 (board-varies), and the process exits 0. A plain `xassert ui.page main` would
 print XPASS and exit 1 instead, because a closed gap must be promoted.
+# Simulator reference
+
+Console-shaped scenario actions such as `action console delete 0` are routed
+through the production UI request queue. The simulator exposes resulting
+`consolePrint` fields as `ui.console.<field>` for assertions. These fields are
+query-only observability; the SDL target does not define `FURBLE_CONSOLE`, so
+they do not certify firmware completion-semaphore behavior or hardware.
