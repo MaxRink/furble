@@ -23,6 +23,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private var characteristics: [CBUUID: CBCharacteristic] = [:]
   private var reconnectAttempt = 0
   private var authBeginPending = false
+  private var authExchange = CompanionAuthExchangeGate()
   private var triggerHold = TriggerHoldState()
 
   public init(credentialStore: FurbleCredentialStore = KeychainCredentialStore()) {
@@ -46,6 +47,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     }
     central.stopScan()
     authBeginPending = false
+    authExchange.reset()
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
@@ -186,6 +188,8 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     error = value
     phase = .failed(value)
     state = CompanionStateMachine()
+    authBeginPending = false
+    authExchange.reset()
   }
 
   private func isCurrent(_ peripheral: CBPeripheral) -> Bool {
@@ -208,8 +212,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     guard let peripheral else { fail(.authenticationUnavailable); return }
     authBeginPending = true
     if authCharacteristic.isNotifying {
-      authBeginPending = false
-      write(FurbleProtocol.authBegin(), to: authCharacteristic, type: .withResponse)
+      writeAuthBegin(to: authCharacteristic)
     } else {
       // Auth replies are indications. Subscribe before writing the begin
       // packet or the firmware's nonce can be lost between the two callbacks.
@@ -217,8 +220,18 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     }
   }
 
+  private func writeAuthBegin(to characteristic: CBCharacteristic) {
+    guard write(FurbleProtocol.authBegin(), to: characteristic, type: .withResponse) else {
+      fail(.authenticationUnavailable)
+      return
+    }
+    authBeginPending = false
+    guard authExchange.beginSent() else { fail(.malformedPacket); return }
+  }
+
   private func handleAuth(_ data: Data) {
     if let result = try? FurbleProtocol.decodeAuthResult(data) {
+      guard authExchange.resultReceived() else { fail(.malformedPacket); return }
       guard result == FurbleProtocol.authResultAuthenticated ||
         result == FurbleProtocol.authResultNotRequired else {
         _ = state.didAuthenticationRejected()
@@ -242,6 +255,10 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       fail(.malformedPacket)
       return
     }
+    guard authExchange.challengeReceived() else {
+      fail(.malformedPacket)
+      return
+    }
     guard let command = state.beginAuthentication(password: password, nonce: nonce),
       case .writeAuthentication(let proof) = command else {
       fail(.authenticationUnavailable)
@@ -251,7 +268,11 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       fail(.authenticationUnavailable)
       return
     }
-    write(packet, to: authCharacteristic, type: .withResponse)
+    guard write(packet, to: authCharacteristic, type: .withResponse),
+      authExchange.proofSent() else {
+      fail(.authenticationUnavailable)
+      return
+    }
   }
 
   private func subscribe(_ commands: [CompanionCommand]) {
@@ -327,6 +348,7 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
     cameras.removeAll()
     triggerHold = TriggerHoldState()
     authBeginPending = false
+    authExchange.reset()
     if central.state == .poweredOn { beginScan() }
   }
 
@@ -400,8 +422,7 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
     if error != nil { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.auth), authBeginPending {
       guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }
-      authBeginPending = false
-      write(FurbleProtocol.authBegin(), to: characteristic, type: .withResponse)
+      writeAuthBegin(to: characteristic)
     }
   }
 }

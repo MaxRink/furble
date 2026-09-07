@@ -15,6 +15,9 @@ XcodeGen release documented in the companion README.
 - HMAC-SHA256 challenge proof truncated to 16 bytes. Nonces are single-use,
   comparison is constant time, failures lock the session, and credentials are
   stored only through Keychain on Apple platforms.
+- Auth packets enforce plan 116's version/op framing and the begin, challenge,
+  proof, result sequence; an unsolicited or out-of-order indication fails the
+  connection instead of changing authentication state.
 - A platform-neutral BLE state machine that requires authenticated capability
   negotiation before status, settings, cameras or trigger operations become
   available. A missing Auth characteristic is an error, never a downgrade.

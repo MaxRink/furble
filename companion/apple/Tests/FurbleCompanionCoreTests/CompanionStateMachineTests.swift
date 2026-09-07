@@ -18,6 +18,24 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertFalse(gate.didCancel())
   }
 
+  func testAuthExchangeEnforcesBeginChallengeProofResultOrder() {
+    var gate = CompanionAuthExchangeGate()
+    XCTAssertFalse(gate.resultReceived())
+    XCTAssertTrue(gate.beginSent())
+    XCTAssertTrue(gate.challengeReceived())
+    XCTAssertFalse(gate.resultReceived())
+    XCTAssertTrue(gate.proofSent())
+    XCTAssertTrue(gate.resultReceived())
+    XCTAssertFalse(gate.resultReceived())
+  }
+
+  func testPasswordlessAuthResultStillRequiresBegin() {
+    var gate = CompanionAuthExchangeGate()
+    XCTAssertFalse(gate.resultReceived())
+    XCTAssertTrue(gate.beginSent())
+    XCTAssertTrue(gate.resultReceived())
+  }
+
   func testTerminalPhasesDoNotReconnectAfterDisconnect() {
     XCTAssertFalse(CompanionConnectionPhase.idle.shouldReconnectAfterDisconnect)
     XCTAssertFalse(CompanionConnectionPhase.failed(.authenticationFailed).shouldReconnectAfterDisconnect)

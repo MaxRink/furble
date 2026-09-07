@@ -14,6 +14,12 @@ records, strict length validation, the HMAC challenge state machine, Keychain
 credential storage, deterministic BLE connection state, and paired trigger
 press/release state.
 
+The Auth characteristic uses the plan 116 framing end to end: begin is
+`[1,0]`, the challenge is `[1,0,<16-byte nonce>]`, proof is
+`[1,1,<16-byte HMAC-SHA256 prefix>]`, and the result is
+`[1,2,<status>]`. The client accepts a challenge or result only in response to
+the begin/proof exchange it sent.
+
 The app refuses to enter `ready` when the Auth characteristic is missing. There
 is no insecure password or BLE-security downgrade. The firmware Auth
 characteristic from the follow-up companion security slice must land before a

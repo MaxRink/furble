@@ -61,6 +61,53 @@ public struct CompanionReconnectGate: Sendable {
   }
 }
 
+/// Keeps inbound AUTH indications tied to the begin/proof exchange that the
+/// client actually sent. Packet codecs validate bytes; this gate validates
+/// their order.
+public struct CompanionAuthExchangeGate: Sendable {
+  public enum State: Equatable, Sendable {
+    case idle
+    case awaitingResponse
+    case awaitingProof
+    case awaitingResult
+    case complete
+  }
+
+  public private(set) var state: State = .idle
+
+  public init() {}
+
+  @discardableResult
+  public mutating func beginSent() -> Bool {
+    guard state == .idle else { return false }
+    state = .awaitingResponse
+    return true
+  }
+
+  @discardableResult
+  public mutating func challengeReceived() -> Bool {
+    guard state == .awaitingResponse else { return false }
+    state = .awaitingProof
+    return true
+  }
+
+  @discardableResult
+  public mutating func proofSent() -> Bool {
+    guard state == .awaitingProof else { return false }
+    state = .awaitingResult
+    return true
+  }
+
+  @discardableResult
+  public mutating func resultReceived() -> Bool {
+    guard state == .awaitingResponse || state == .awaitingResult else { return false }
+    state = .complete
+    return true
+  }
+
+  public mutating func reset() { state = .idle }
+}
+
 public enum CompanionCommand: Equatable, Sendable {
   case scan
   case connect
