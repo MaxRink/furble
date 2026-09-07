@@ -54,19 +54,23 @@ class CameraCatalogTest {
         val terminator = camera(0xFF, "", 0)
         assertEquals(
             false,
-            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, live),
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, 7, live),
         )
         assertEquals(
             true,
-            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, acknowledgement),
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, 7, acknowledgement),
         )
         assertEquals(
             false,
-            cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, live),
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, 8, acknowledgement),
+        )
+        assertEquals(
+            false,
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, 0xFF, live),
         )
         assertEquals(
             true,
-            cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, terminator),
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, 0xFF, terminator),
         )
     }
 

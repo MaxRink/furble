@@ -52,13 +52,15 @@ internal fun classifyAuthPacket(value: ByteArray, challengePending: Boolean): Au
 
 internal fun cameraResponseCompletes(
     operation: Int,
+    cameraId: Int,
     record: FurbleProtocol.CameraRecord,
 ): Boolean {
     if (operation == FurbleProtocol.CameraOperation.LIST) {
         return record.isTerminator || record.status != FurbleProtocol.CameraStatus.OK
     }
     if (record.status != FurbleProtocol.CameraStatus.OK) return true
-    return record.cameraType == 0 && record.flags == 0 && record.progress == 0 &&
+    return record.cameraId == cameraId &&
+        record.cameraType == 0 && record.flags == 0 && record.progress == 0 &&
         record.rssi == FurbleProtocol.CAMERA_RSSI_UNKNOWN &&
         record.state == FurbleProtocol.CameraState.IDLE && record.name.isEmpty()
 }
@@ -539,21 +541,25 @@ class GattConnection(
             listener.onError("Bluetooth permission was revoked")
             false
         }
-        if (started && current is Operation.WriteCharacteristic &&
-            current.characteristic.uuid == FurbleProtocol.CAMERAS_UUID &&
-            current.waitForCallback
-        ) {
-            cameraRequests.inFlight?.let { request ->
-                if (request.operation == FurbleProtocol.CameraOperation.LIST) {
-                    listener.onCameraListStarted()
+        if (started) {
+            if (current is Operation.WriteCharacteristic &&
+                current.characteristic.uuid == FurbleProtocol.CAMERAS_UUID &&
+                current.waitForCallback
+            ) {
+                cameraRequests.inFlight?.let { request ->
+                    if (request.operation == FurbleProtocol.CameraOperation.LIST) {
+                        listener.onCameraListStarted()
+                    }
+                    armCameraResponseTimeout(request)
                 }
-                armCameraResponseTimeout(request)
             }
+            if (current is Operation.ReadCharacteristic ||
+                current is Operation.WriteDescriptor ||
+                current is Operation.WriteCharacteristic && current.waitForCallback
+            ) armOperationTimeout(current)
         }
         if (!started) {
             finishCurrent(false, "Android rejected the BLE operation")
-        } else if (current is Operation.WriteCharacteristic && current.waitForCallback) {
-            armOperationTimeout(current)
         } else if (current is Operation.WriteCharacteristic && !current.waitForCallback) {
             // Write-no-response has no reliable ATT completion callback.
             finishCurrent(true, null)
@@ -570,13 +576,17 @@ class GattConnection(
         ) {
             clearAuthSecrets()
         }
-        if (operation is Operation.WriteCharacteristic &&
+        val failedCameraWrite = operation is Operation.WriteCharacteristic &&
             operation.characteristic.uuid == FurbleProtocol.CAMERAS_UUID && !success
-        ) {
+        if (failedCameraWrite) {
             abortCameraRequests()
         }
         if (!success && failureMessage != null) listener.onError(failureMessage)
         if (operation is Operation.WriteDescriptor) operation.completion(success)
+        if (failedCameraWrite) {
+            closeInternal(notify = true)
+            return
+        }
         pump()
     }
 
@@ -625,7 +635,7 @@ class GattConnection(
                     closeInternal(notify = true)
                 } else {
                     val request = cameraRequests.inFlight
-                    if (request != null && cameraResponseCompletes(request.operation, record)) {
+                    if (request != null && cameraResponseCompletes(request.operation, request.cameraId, record)) {
                         completeCameraRequest()
                     }
                     listener.onCamera(record)
@@ -753,9 +763,9 @@ class GattConnection(
             val value = characteristic.value?.copyOf() ?: byteArrayOf()
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
-                if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value)
                 val operation = currentOperation
                 if (operation is Operation.ReadCharacteristic && operation.characteristic === characteristic) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value)
                     if (status != BluetoothGatt.GATT_SUCCESS && operation.optional) {
                         listener.onCapabilities(null)
                     }
@@ -776,9 +786,9 @@ class GattConnection(
         ) {
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
-                if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value.copyOf())
                 val operation = currentOperation
                 if (operation is Operation.ReadCharacteristic && operation.characteristic === characteristic) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value.copyOf())
                     if (status != BluetoothGatt.GATT_SUCCESS && operation.optional) {
                         listener.onCapabilities(null)
                     }
