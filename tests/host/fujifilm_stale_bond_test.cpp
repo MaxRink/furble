@@ -11,8 +11,8 @@
 //
 // The recovery therefore triggers on a run of consecutive security failures on
 // a camera that was bonded when the attempt started: delete the stale local
-// bond once, try one fresh in-link pairing (which works if the camera is
-// already in pairing mode), and otherwise flag the camera as needing a re-pair
+// bond once and flag the camera as needing a re-pair when the attempted
+// in-link pairing fails. Unpairing terminates the link in hardware and the mock,
 // so Control can stop the cycle instead of looping. The #232/#239 registration
 // gate still decides acceptance after the link is secured.
 
@@ -429,7 +429,7 @@ void testRotatingAddressFindsTheBondAndRecovers() {
 
   // The bench shapes, in order: rc=13 then rc=520, both after "Connected" and
   // "Securing". The third link-up finds the camera in its pairing screen and
-  // the fresh in-link pair goes through.
+  // the separate fresh pair goes through.
   peer.setSecureTimeouts(2);
 
   Furble::FujifilmSecure camera(&advertisement);
@@ -441,9 +441,8 @@ void testRotatingAddressFindsTheBondAndRecovers() {
   check(NimBLEDevice::deleteBondCount() == 1, "but it deletes the stale bond, exactly once");
   check(!NimBLEDevice::isBonded(identity), "and it is the identity bond that went");
   // rc=13 and rc=520 both take the link with them, so there is no live link
-  // left to pair on: the in-link fast path is for a camera that refuses the
-  // dead keys while staying connected, which is a different shape and has its
-  // own scenario above. Here the user gets the prompt.
+  // left to pair on. Unpairing also terminates a link that survived the refusal,
+  // so the user gets the prompt; the next connection performs fresh pairing.
   check(camera.needsRepair(), "and the user is asked to re-pair");
 
   // The third link-up. The bond is gone, the camera is in its pairing screen,

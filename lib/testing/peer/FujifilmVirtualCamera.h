@@ -224,8 +224,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   static constexpr uint32_t kSecureTimeoutAlways = UINT32_MAX;
   // Model a camera that deleted its pairing but is sitting in pairing mode: it
   // refuses the encryption while a bond exists (dead keys) and accepts a fresh
-  // pairing once the stale bond is gone, all on the same link. This is the
-  // in-link recovery the stale-bond path attempts before giving up.
+  // pairing once the stale bond is gone. Unpairing terminates the matching
+  // link in hardware and MockNimBLE, so recovery needs a separate connection.
   void setRefuseWhileBonded(bool refuse);
 
   // How many times the central has asked to establish security on this peer.
