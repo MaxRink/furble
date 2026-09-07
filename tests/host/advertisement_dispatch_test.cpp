@@ -235,6 +235,7 @@ bool testDispatchAndDeduplication() {
   Furble::CameraList::save(failed);
   CHECK(failed->getPairType() == Camera::PairType::NEW);
   CHECK(Furble::CameraList::savedSnapshot().size() == 2);
+  CHECK(Furble::CameraList::getCameraId(failed.get()) == 0);
 
   // A failed index erase must retain both the catalog entry and its bond.
   const size_t bondsBeforeFailedRemove = NimBLEDevice::deleteBondCount();
