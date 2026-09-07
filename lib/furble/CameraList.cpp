@@ -290,6 +290,7 @@ void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
         item = camera;
       }
     }
+    camera->markSaved();
   }
 
   m_Prefs.end();
