@@ -358,7 +358,6 @@ class CompanionRepository(
             }
             if (current.connection != ConnectionState.READY) return@post
             if (current.camerasLoading) return@post
-            if (!cameraCatalog.beginList()) return@post
             _state.update { it.copy(camerasLoading = true) }
             gattConnection?.requestCameras()
         }
@@ -623,6 +622,14 @@ class CompanionRepository(
                 override fun onCamera(record: FurbleProtocol.CameraRecord) {
                     if (gattConnection !== session) return
                     handleCameraRecord(record)
+                }
+
+                override fun onCameraListStarted() {
+                    if (gattConnection !== session) return
+                    if (!cameraCatalog.beginList()) {
+                        setError("A camera list request is already active")
+                        _state.update { it.copy(camerasLoading = false) }
+                    }
                 }
 
                 override fun onCameraAvailability(available: Boolean) {

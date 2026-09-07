@@ -101,7 +101,8 @@ internal class CameraCatalog {
             return CameraRecordDisposition.PENDING
         }
         if (record.cameraType == 0 && record.flags == 0 && record.progress == 0 &&
-            record.rssi == 0 && record.state == FurbleProtocol.CameraState.IDLE && record.name.isEmpty()
+            record.rssi == FurbleProtocol.CAMERA_RSSI_UNKNOWN &&
+                record.state == FurbleProtocol.CameraState.IDLE && record.name.isEmpty()
         ) return CameraRecordDisposition.IGNORED
         val existing = current.indexOfFirst { it.cameraId == record.cameraId }
         current = if (existing < 0) {

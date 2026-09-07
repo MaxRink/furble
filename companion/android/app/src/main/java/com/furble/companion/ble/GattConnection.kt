@@ -50,6 +50,19 @@ internal fun classifyAuthPacket(value: ByteArray, challengePending: Boolean): Au
     return AuthPacketAction.INVALID
 }
 
+internal fun cameraResponseCompletes(
+    operation: Int,
+    record: FurbleProtocol.CameraRecord,
+): Boolean {
+    if (operation == FurbleProtocol.CameraOperation.LIST) {
+        return record.isTerminator || record.status != FurbleProtocol.CameraStatus.OK
+    }
+    if (record.status != FurbleProtocol.CameraStatus.OK) return true
+    return record.cameraType == 0 && record.flags == 0 && record.progress == 0 &&
+        record.rssi == FurbleProtocol.CAMERA_RSSI_UNKNOWN &&
+        record.state == FurbleProtocol.CameraState.IDLE && record.name.isEmpty()
+}
+
 /**
  * One event-driven GATT session. Every ATT operation waits for its callback
  * before the next response-bearing operation starts.
@@ -67,6 +80,7 @@ class GattConnection(
         fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?)
         fun onSettings(response: FurbleProtocol.SettingsResponse)
         fun onCamera(record: FurbleProtocol.CameraRecord)
+        fun onCameraListStarted()
         fun onCameraAvailability(available: Boolean)
         fun onAuthAvailability(supported: Boolean)
         fun onAuthResult(result: Int)
@@ -182,7 +196,10 @@ class GattConnection(
     }
 
     private fun queueCameraRequest(request: CameraRequest) {
-        if (!isReady) return
+        if (!isReady) {
+            listener.onError("furble is not ready for camera operations")
+            return
+        }
         if (cameraCharacteristic == null) {
             listener.onError("furble camera characteristic is unavailable")
             return
@@ -205,7 +222,6 @@ class GattConnection(
             writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
             waitForCallback = true,
         )
-        armCameraResponseTimeout(request)
     }
 
     private fun armCameraResponseTimeout(request: CameraRequest) {
@@ -214,6 +230,7 @@ class GattConnection(
             if (cameraRequestInFlight != request) return@Runnable
             abortCameraRequests()
             listener.onError("furble camera operation timed out")
+            closeInternal(notify = true)
         }
         cameraResponseTimeout = timeout
         handler.postDelayed(timeout, CAMERA_RESPONSE_TIMEOUT_MS)
@@ -489,6 +506,17 @@ class GattConnection(
             listener.onError("Bluetooth permission was revoked")
             false
         }
+        if (started && current is Operation.WriteCharacteristic &&
+            current.characteristic.uuid == FurbleProtocol.CAMERAS_UUID &&
+            current.waitForCallback
+        ) {
+            cameraRequestInFlight?.let { request ->
+                if (request.operation == FurbleProtocol.CameraOperation.LIST) {
+                    listener.onCameraListStarted()
+                }
+                armCameraResponseTimeout(request)
+            }
+        }
         if (!started) {
             finishCurrent(false, "Android rejected the BLE operation")
         } else if (current is Operation.WriteCharacteristic && !current.waitForCallback) {
@@ -556,11 +584,11 @@ class GattConnection(
                     abortCameraRequests()
                     listener.onError("furble sent an invalid camera record")
                 } else {
-                    listener.onCamera(record)
                     val request = cameraRequestInFlight
-                    if (request != null && cameraResponseCompletes(request, record)) {
+                    if (request != null && cameraResponseCompletes(request.operation, record)) {
                         completeCameraRequest()
                     }
+                    listener.onCamera(record)
                 }
             }
             FurbleProtocol.AUTH_UUID -> dispatchAuth(value)
@@ -620,17 +648,6 @@ class GattConnection(
         )
         response.fill(0)
     }
-
-    private fun cameraResponseCompletes(request: CameraRequest, record: FurbleProtocol.CameraRecord): Boolean {
-        if (request.operation == FurbleProtocol.CameraOperation.LIST) {
-            return record.isTerminator || record.status != FurbleProtocol.CameraStatus.OK
-        }
-        if (record.status != FurbleProtocol.CameraStatus.OK) return true
-        return record.cameraId == request.cameraId || record.isStatusOnly()
-    }
-
-    private fun FurbleProtocol.CameraRecord.isStatusOnly(): Boolean =
-        cameraType == 0 && flags == 0 && progress == 0 && rssi == 0 && state == 0 && name.isEmpty()
 
     private fun clearAuthSecrets() {
         authPassword?.fill(0)

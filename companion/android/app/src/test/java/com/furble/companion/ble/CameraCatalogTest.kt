@@ -28,7 +28,9 @@ class CameraCatalogTest {
         val live = camera(7, "Fujifilm", FurbleProtocol.CameraFlag.SAVED)
         assertEquals(CameraRecordDisposition.UPDATED, catalog.accept(live))
 
-        val acknowledgement = camera(7, "", 0)
+        val acknowledgement = FurbleProtocol.parseCameraRecord(
+            byteArrayOf(0, 7, 0, 0, 0, 0x80.toByte(), FurbleProtocol.CameraState.IDLE.toByte(), 0),
+        )!!
         assertEquals(CameraRecordDisposition.IGNORED, catalog.accept(acknowledgement))
         assertEquals(live, catalog.records.single())
         assertEquals(CameraRecordDisposition.IGNORED, catalog.accept(camera(0xFF, "", 0)))
@@ -45,6 +47,29 @@ class CameraCatalogTest {
         assertTrue(catalog.beginList())
     }
 
+    @Test
+    fun responseCorrelationIgnoresUnsolicitedSameIdState() {
+        val live = camera(7, "Fujifilm", FurbleProtocol.CameraFlag.SAVED)
+        val acknowledgement = camera(7, "", 0)
+        val terminator = camera(0xFF, "", 0)
+        assertEquals(
+            false,
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, live),
+        )
+        assertEquals(
+            true,
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.CONNECT, acknowledgement),
+        )
+        assertEquals(
+            false,
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, live),
+        )
+        assertEquals(
+            true,
+            cameraResponseCompletes(FurbleProtocol.CameraOperation.LIST, terminator),
+        )
+    }
+
     private fun camera(id: Int, name: String, flags: Int, status: Int = FurbleProtocol.CameraStatus.OK) =
         FurbleProtocol.CameraRecord(
             status = status,
@@ -52,7 +77,7 @@ class CameraCatalogTest {
             cameraType = if (name.isEmpty()) 0 else 1,
             flags = flags,
             progress = 0,
-            rssi = if (name.isEmpty()) 0 else FurbleProtocol.CAMERA_RSSI_UNKNOWN,
+            rssi = FurbleProtocol.CAMERA_RSSI_UNKNOWN,
             state = FurbleProtocol.CameraState.IDLE,
             name = name,
         )
