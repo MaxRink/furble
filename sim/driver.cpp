@@ -406,6 +406,9 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "gps_uart_chunk") {
     parseUnsigned(value);
     return;
+  } else if (name == "gps_uart_noise") {
+    parseBool(value);
+    return;
   } else if (name == "gps_fix_date") {
     if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale"
         && value != "coldstart" && value != "badrmc" && value != "emptyrmc"
@@ -1567,6 +1570,7 @@ void applyScenarioSettings(void) {
   if (fixChunk != scenarioSettings.end()) {
     furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
   }
+  furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
   saveBoolean("imu", Settings::IMU);
   saveBoolean("imu_trigger", Settings::IMU_TRIG);
   saveByte("imu_wake", Settings::IMU_WAKE);

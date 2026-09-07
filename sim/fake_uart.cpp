@@ -25,6 +25,10 @@ uint32_t gpsNextEventMillis = 0;
 std::mutex gpsMutex;
 std::string uartMode = "ack";
 
+// gpsEventQueued/gpsNextEventMillis belong only to the canned NMEA burst;
+// rxBytes/rxEventQueued carry independent CASIC replies and must survive a
+// fixture change.
+
 constexpr uint8_t SYNC_0 = 0xBA;
 constexpr uint8_t SYNC_1 = 0xCE;
 
@@ -73,8 +77,10 @@ uint32_t fixSecond = [] {
 // Bytes served per read from the fix burst, 0 for the whole burst at once. A
 // real burst carrying GSA and GSV is larger than the driver's 256 byte read, so
 // a sentence routinely spans two reads; scenarios set this to prove the parser
-// path survives that.
+// path survives that. A fixture change restarts only this NMEA stream; CASIC
+// replies remain in rxBytes.
 size_t fixChunk = 0;
+bool fixNoisePending = false;
 
 // When the burst is chunked, the chunks arrive over time the way bytes off a
 // real UART do, rather than all being drained inside one serviceSerial() call.
@@ -417,6 +423,12 @@ void queueGpsEvent(QueueHandle_t queue) {
       gpsNextEventMillis = Furble::Sim::clockMillis();
       return;
     }
+    if (fixNoisePending) {
+      // Unterminated line noise must be bounded by the production evidence
+      // parser and must not prevent the next '$' sentence from being seen.
+      gpsStream.insert(0, 128, 'x');
+      fixNoisePending = false;
+    }
     gpsQueue = queue;
     gpsOffset = 0;
     rxBytes.clear();
@@ -603,6 +615,11 @@ void furble_sim_uart_set_fix_chunk(size_t bytes) {
   fixChunk = bytes;
 }
 
+void furble_sim_uart_set_noise(bool enabled) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  fixNoisePending = enabled;
+}
+
 uint32_t furble_sim_uart_fix_second(void) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   return fixSecond;
@@ -617,6 +634,9 @@ void furble_sim_uart_set_stationary(bool stationary) {
   fixDateAdvances = false;
   gpsStream.assign(gpsSentences(), sizeof(gpsData) - 1);
   gpsOffset = gpsStream.size();
+  gpsEventQueued = false;
+  fixChunkNext = Furble::Sim::clockMillis();
+  gpsNextEventMillis = Furble::Sim::clockMillis();
 }
 
 void furble_sim_uart_set_fix_date(const char *name) {
@@ -676,6 +696,11 @@ void furble_sim_uart_set_fix_date(const char *name) {
     gpsStream.assign(gpsData, sizeof(gpsData) - 1);
   }
   gpsOffset = gpsStream.size();
+  // Discard only the old NMEA burst. CASIC responses in rxBytes are a separate
+  // queue and remain available to the GPS task.
+  gpsEventQueued = false;
+  fixChunkNext = Furble::Sim::clockMillis();
+  gpsNextEventMillis = Furble::Sim::clockMillis();
 }
 
 void furble_sim_uart_set_receiver(uint32_t baud, bool present) {
