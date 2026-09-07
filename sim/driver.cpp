@@ -1241,7 +1241,16 @@ std::string queryValue(const std::string &key) {
       if (targets.empty() || targets.front() == nullptr || targets.front()->getCamera() == nullptr) {
         return "";
       }
-      return targets.front()->getCamera()->getName();
+      std::string name = targets.front()->getCamera()->getName();
+      // Assertions are whitespace-separated. Keep the existing target-camera
+      // observable assertable for vendor names such as "FUJIFILM X-S20", as
+      // row_text already does for rendered camera rows.
+      for (char &character : name) {
+        if (std::isspace(static_cast<unsigned char>(character))) {
+          character = '_';
+        }
+      }
+      return name;
     }
   }
   // Track points the firmware queued for the SD writer. Fix hold deliberately
