@@ -339,6 +339,11 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` build was run on the
   harvest machine at commit time and succeeded.
 - Hardware testing is pending.
+- Validation evidence on integrated head `d6f918f4`: the pre-existing full host
+  suite passed 107/107 in 183.4 s. The newly registered
+  `control-e2e-scoped-bounded-retry-gap` scenario passed separately, 1/1 in
+  3.34 s. No current-master SDL simulator build or scenario result is claimed
+  here.
 
 ## References
 
