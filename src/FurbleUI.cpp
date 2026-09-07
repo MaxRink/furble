@@ -2170,12 +2170,10 @@ void UI::updateMultiConnectButton(lv_obj_t *button) {
 
 void UI::reloadCameraList(void) {
   CameraList::load();
-#if defined(FURBLE_CONSOLE)
   // The list now holds saved cameras, so a console 'pair' index no longer
   // names anything. Every CameraList::load() in the UI goes through here so
   // that stays true without each caller having to remember it.
   m_ScanListLive = false;
-#endif
 }
 
 bool UI::multiConnectSelectionHas(const Settings::multiselect_t &selection, size_t index) {

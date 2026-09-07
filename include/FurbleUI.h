@@ -606,7 +606,6 @@ class UI {
   /** Drain the request queue, called on the UI task with m_Mutex held. */
   void serviceRequests(void);
 
-#if defined(FURBLE_CONSOLE) || defined(FURBLE_SIM)
   /**
    * The connectable list currently holds scan results, not saved cameras.
    *
@@ -631,7 +630,6 @@ class UI {
    * observe what a scenario's request answered without a console transport.
    */
   static void consolePrint(const char *format, ...) __attribute__((format(printf, 1, 2)));
-#endif
 
   static ConnectContext_t m_ConnectContext;
 
