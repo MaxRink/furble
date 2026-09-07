@@ -10428,10 +10428,24 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
     return true;
   }
 
-  // A short tap feeds the encoder key the read callback reports: the left and
-  // right buttons scroll the focus group, the OK button activates the focus.
-  lv_group_send_data(m_Group, inputKey(indev));
+  // A short tap must pass through LVGL's registered encoder read callback.
+  // Sending the key directly to the group bypasses focus navigation and the
+  // press/release handling used by editable widgets.
+  const auto read_cb = lv_indev_get_read_cb(indev);
+  lv_indev_set_read_cb(indev, simButtonRead);
+  m_SimButtonPressed = true;
+  lv_indev_read(indev);
+  m_SimButtonPressed = false;
+  lv_indev_read(indev);
+  lv_indev_set_read_cb(indev, read_cb);
   return true;
+}
+
+void UI::simButtonRead(lv_indev_t *drv, lv_indev_data_t *data) {
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED
+                                       : LV_INDEV_STATE_RELEASED;
 }
 #endif
 }  // namespace Furble
