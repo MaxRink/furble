@@ -99,7 +99,7 @@ class CameraList {
 
   static void fillSaveEntry(index_entry_t &entry, const Camera *camera);
   static std::vector<index_entry_t> load_index(void);
-  static void save_index(std::vector<index_entry_t> &index);
+  static bool save_index(std::vector<index_entry_t> &index);
   static void add_index(std::vector<index_entry_t> &index, index_entry_t &entry);
   static std::vector<std::shared_ptr<Furble::Camera>> deserialize(
       const std::vector<index_entry_t> &index);

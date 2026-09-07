@@ -103,7 +103,7 @@ uint8_t CameraList::getCameraId(const Furble::Camera *camera) {
   return (found == m_CameraIds.end()) ? CameraListProtocol::INDEX_ID_INVALID : found->second;
 }
 
-void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
+bool CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
   if (index.size() > 0) {
     std::vector<CameraListProtocol::IndexEntry> encoded;
     encoded.reserve(index.size());
@@ -116,11 +116,12 @@ void CameraList::save_index(std::vector<CameraList::index_entry_t> &index) {
     }
 
     std::vector<uint8_t> bytes;
-    if (CameraListProtocol::encodeIndex(encoded, bytes)) {
-      m_Prefs.put(FURBLE_PREF_INDEX, bytes.data(), bytes.size());
+    if (!CameraListProtocol::encodeIndex(encoded, bytes)) {
+      return false;
     }
+    return m_Prefs.put(FURBLE_PREF_INDEX, bytes.data(), bytes.size()) == bytes.size();
   } else {
-    m_Prefs.remove(FURBLE_PREF_INDEX);
+    return !m_Prefs.isKey(FURBLE_PREF_INDEX) || m_Prefs.remove(FURBLE_PREF_INDEX);
   }
 }
 
@@ -240,8 +241,14 @@ void CameraList::ensureSavedLoaded(void) {
   m_Prefs.begin(FURBLE_STR, false);
   std::vector<index_entry_t> index = load_index();
   if (assignCameraIds(index)) {
-    ESP_LOGI(LOG_TAG, "Migrated camera index to stable ids");
-    save_index(index);
+    if (save_index(index)) {
+      ESP_LOGI(LOG_TAG, "Migrated camera index to stable ids");
+    } else {
+      // Do not expose ids that were never persisted. Keep the old index as
+      // the source of truth until a later transaction can migrate it.
+      index = load_index();
+      ESP_LOGW(LOG_TAG, "Failed to persist migrated camera ids");
+    }
   }
   publishCameraIds(index);
   m_SavedList = deserialize(index);
@@ -256,7 +263,10 @@ void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
 
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
   ensureSavedLoaded();
-  m_Prefs.begin(FURBLE_STR, false);
+  if (!m_Prefs.begin(FURBLE_STR, false)) {
+    ESP_LOGW(LOG_TAG, "Unable to open camera preferences");
+    return;
+  }
   std::vector<index_entry_t> index = load_index();
 
   index_entry_t entry;
@@ -267,30 +277,37 @@ void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
 
   size_t dbytes = camera->getSerialisedBytes();
   std::vector<uint8_t> dbuffer(dbytes, 0);
-  if (camera->serialise(dbuffer.data(), dbytes)) {
-    // Store the entry and the index if serialisation succeeds
-    m_Prefs.put(entry.name, dbuffer.data(), dbytes);
+  const bool recordWritten = camera->serialise(dbuffer.data(), dbytes)
+                             && m_Prefs.put(entry.name, dbuffer.data(), dbytes) == dbytes;
+  if (recordWritten) {
+    // Publish the catalog only after both the record and index are complete.
     ESP_LOGI(LOG_TAG, "Saved %s", entry.name);
-    save_index(index);
-    ESP_LOGI(LOG_TAG, "Index entries: %d", index.size());
-    publishCameraIds(index);
+    if (save_index(index)) {
+      ESP_LOGI(LOG_TAG, "Index entries: %d", index.size());
+      publishCameraIds(index);
 
-    const auto address = CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
-    const std::lock_guard<std::mutex> lock(m_Mutex);
-    auto saved = std::find_if(m_SavedList.begin(), m_SavedList.end(), [&address](const auto &item) {
-      return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address;
-    });
-    if (saved == m_SavedList.end()) {
-      m_SavedList.push_back(camera);
-    } else {
-      *saved = camera;
-    }
-    for (auto &item : m_ConnectList) {
-      if (CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address) {
-        item = camera;
+      const auto address =
+          CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      auto saved = std::find_if(m_SavedList.begin(), m_SavedList.end(), [&address](const auto &item) {
+        return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address;
+      });
+      if (saved == m_SavedList.end()) {
+        m_SavedList.push_back(camera);
+      } else {
+        *saved = camera;
       }
+      for (auto &item : m_ConnectList) {
+        if (CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address) {
+          item = camera;
+        }
+      }
+      camera->markSaved();
+    } else {
+      ESP_LOGW(LOG_TAG, "Failed to persist camera index for %s", entry.name);
     }
-    camera->markSaved();
+  } else {
+    ESP_LOGW(LOG_TAG, "Failed to persist camera record for %s", entry.name);
   }
 
   m_Prefs.end();
@@ -303,26 +320,43 @@ void CameraList::remove(Furble::Camera *camera) {
 
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
   ensureSavedLoaded();
-  m_Prefs.begin(FURBLE_STR, false);
+  if (!m_Prefs.begin(FURBLE_STR, false)) {
+    ESP_LOGW(LOG_TAG, "Unable to open camera preferences");
+    return;
+  }
   std::vector<index_entry_t> index = load_index();
 
   index_entry_t entry;
   fillSaveEntry(entry, camera);
 
+  bool found = false;
   size_t i = 0;
   for (i = 0; i < index.size(); i++) {
     if (strcmp(index[i].name, entry.name) == 0) {
       ESP_LOGI(LOG_TAG, "Deleting: %s", entry.name);
       index.erase(index.begin() + i);
+      found = true;
       break;
     }
   }
 
-  m_Prefs.remove(entry.name);
-  save_index(index);
-  publishCameraIds(index);
+  bool indexPersisted = true;
+  bool recordRemoved = true;
+  if (found) {
+    // Commit the index first. If it fails, leave the record and in-memory
+    // catalog untouched so no uncommitted removal is advertised.
+    indexPersisted = save_index(index);
+    if (indexPersisted) {
+      // An orphaned record is harmless once the index no longer references it.
+      recordRemoved = m_Prefs.remove(entry.name);
+    }
+  } else {
+    // Clean up a possible orphan without changing the catalog.
+    m_Prefs.remove(entry.name);
+  }
 
-  {
+  if (found && indexPersisted) {
+    publishCameraIds(index);
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_SavedList.erase(
         std::remove_if(m_SavedList.begin(), m_SavedList.end(), [&entry](const auto &item) {
@@ -330,6 +364,11 @@ void CameraList::remove(Furble::Camera *camera) {
                  == entry.name;
         }),
         m_SavedList.end());
+    if (!recordRemoved) {
+      ESP_LOGW(LOG_TAG, "Removed camera %s from index; record cleanup failed", entry.name);
+    }
+  } else if (found) {
+    ESP_LOGW(LOG_TAG, "Failed to remove camera %s from preferences", entry.name);
   }
 
   m_Prefs.end();
