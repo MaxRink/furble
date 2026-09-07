@@ -70,7 +70,7 @@ int run(const std::string &scenario) {
     bytes.push_back(7);
     bytes.append(3, '\0');
     bytes.push_back(1);
-    bytes.append(4, '\0');
+    bytes.append(3, '\0');
     bytes.push_back(0);
     bytes.append("1:value", 7);
     bytes.push_back(42);
