@@ -338,3 +338,13 @@ cannot build or run this. Design only here; a Claude/hardware pass builds it.
 - Against a no-password furble: no prompt, trigger works immediately.
 - Note in the PR body that this is hardware-verified with a phone plus the S3,
   and that Codex could not touch it.
+
+## 116c - Simulator Preferences persistence seam
+
+The host simulator now implements the shared `Preferences::putString` and
+`getString` contract. Its file store distinguishes missing storage
+(`NOT_FOUND`) from empty, truncated, type-mismatched, or unreadable storage
+(`ERROR`). Atomic temporary-file writes use `std::filesystem` error codes and
+restore the prior in-memory map on any failed save. The runnable
+`actualPreferencesSim` target covers missing, empty, empty-string,
+type-mismatch, corruption, and failed-save rollback cases.

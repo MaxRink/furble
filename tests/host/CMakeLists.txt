@@ -118,6 +118,16 @@ target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werro
                                                             -Wno-unused-parameter
                                                             -Wno-vla-extension)
 
+# Exercise the simulator's real file-backed Preferences adapter. Each CTest
+# case is a fresh process so load status and the process-local store are reset.
+add_executable(actualPreferencesSim
+               preferences_sim_test.cpp
+               ${FURBLE_ROOT}/sim/PreferencesSim.cpp)
+target_include_directories(actualPreferencesSim PRIVATE
+                           ${FURBLE_ROOT}/lib/preferences)
+target_compile_options(actualPreferencesSim PRIVATE -Wall -Wextra -Werror
+                                                     -Wno-unused-parameter)
+
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test
@@ -1406,6 +1416,10 @@ if(BUILD_TESTING)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
+  foreach(preferences_case missing empty empty-string typeerror corruption failed-save)
+    add_test(NAME preferences-sim-${preferences_case}
+             COMMAND actualPreferencesSim ${preferences_case})
+  endforeach()
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME camera-regression COMMAND camera_regression_test)

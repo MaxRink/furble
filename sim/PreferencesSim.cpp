@@ -3,10 +3,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <mutex>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "Preferences.h"
@@ -22,6 +24,8 @@ struct Value {
 std::map<std::string, Value> values;
 std::mutex values_mutex;
 bool loaded = false;
+enum class LoadStatus { NOT_FOUND, OK, ERROR };
+LoadStatus load_status = LoadStatus::NOT_FOUND;
 
 std::string preferencesPath(void) {
   const char *path = std::getenv("FURBLE_SIM_PREFS");
@@ -34,9 +38,21 @@ void loadValues(void) {
   }
   loaded = true;
 
-  std::ifstream file(preferencesPath(), std::ios::binary);
+  const std::string path = preferencesPath();
+  std::ifstream file(path, std::ios::binary);
   uint32_t count = 0;
-  if (!file || !file.read(reinterpret_cast<char *>(&count), sizeof(count))) {
+  if (!file) {
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    load_status = (!error && !exists) ? LoadStatus::NOT_FOUND : LoadStatus::ERROR;
+    return;
+  }
+  if (!file.read(reinterpret_cast<char *>(&count), sizeof(count))) {
+    load_status = LoadStatus::ERROR;
+    return;
+  }
+  if (count > 10000) {
+    load_status = LoadStatus::ERROR;
     return;
   }
 
@@ -48,6 +64,12 @@ void loadValues(void) {
         || !file.read(reinterpret_cast<char *>(&value_size), sizeof(value_size))
         || !file.read(reinterpret_cast<char *>(&string_value), sizeof(string_value))) {
       values.clear();
+      load_status = LoadStatus::ERROR;
+      return;
+    }
+    if (key_size > 1024 || value_size > 16 * 1024 * 1024) {
+      values.clear();
+      load_status = LoadStatus::ERROR;
       return;
     }
 
@@ -59,25 +81,33 @@ void loadValues(void) {
         || (value_size > 0
             && !file.read(reinterpret_cast<char *>(value.bytes.data()), value_size))) {
       values.clear();
+      load_status = LoadStatus::ERROR;
       return;
     }
     values.emplace(std::move(key), std::move(value));
   }
+  load_status = LoadStatus::OK;
 }
 
-void saveValues(void) {
+bool saveValues(void) {
   const std::string path = preferencesPath();
   const size_t separator = path.find_last_of("/\\");
   if (separator != std::string::npos) {
     const std::string directory = path.substr(0, separator);
-    std::string command = "mkdir -p \"" + directory + "\"";
-    std::system(command.c_str());
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+      return false;
+    }
   }
 
   // Per process: the rename is only atomic against another writer if the
   // source it renames is this writer's own file.
   const std::string temporaryPath = path + ".tmp." + std::to_string(getpid());
   std::ofstream file(temporaryPath, std::ios::binary | std::ios::trunc);
+  if (!file) {
+    return false;
+  }
   const uint32_t count = static_cast<uint32_t>(values.size());
   file.write(reinterpret_cast<const char *>(&count), sizeof(count));
   for (const auto &entry : values) {
@@ -93,7 +123,19 @@ void saveValues(void) {
     }
   }
   file.close();
-  std::rename(temporaryPath.c_str(), path.c_str());
+  if (!file) {
+    std::error_code ignored;
+    std::filesystem::remove(temporaryPath, ignored);
+    return false;
+  }
+  std::error_code error;
+  std::filesystem::rename(temporaryPath, path, error);
+  if (error) {
+    std::error_code ignored;
+    std::filesystem::remove(temporaryPath, ignored);
+    return false;
+  }
+  return true;
 }
 
 std::string fullKey(uint32_t handle, const char *key) {
@@ -119,11 +161,29 @@ size_t putValue(uint32_t handle, const char *key, const T &value) {
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
+  if (load_status == LoadStatus::ERROR) {
+    return 0;
+  }
   Value stored;
   stored.bytes.resize(sizeof(T));
   std::memcpy(stored.bytes.data(), &value, sizeof(T));
-  values[fullKey(handle, key)] = std::move(stored);
-  saveValues();
+  const std::string name = fullKey(handle, key);
+  const auto previous = values.find(name);
+  const bool had_previous = previous != values.end();
+  Value old_value;
+  if (had_previous) {
+    old_value = previous->second;
+  }
+  values[name] = std::move(stored);
+  if (!saveValues()) {
+    if (had_previous) {
+      values[name] = std::move(old_value);
+    } else {
+      values.erase(name);
+    }
+    return 0;
+  }
+  load_status = LoadStatus::OK;
   return sizeof(T);
 }
 
@@ -176,6 +236,10 @@ bool Preferences::clear() {
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
+  if (load_status == LoadStatus::ERROR) {
+    return false;
+  }
+  const auto previous = values;
   const std::string prefix = std::to_string(_handle) + ":";
   for (auto it = values.begin(); it != values.end();) {
     if (it->first.compare(0, prefix.size(), prefix) == 0) {
@@ -184,7 +248,11 @@ bool Preferences::clear() {
       ++it;
     }
   }
-  saveValues();
+  if (!saveValues()) {
+    values = std::move(previous);
+    return false;
+  }
+  load_status = LoadStatus::OK;
   return true;
 }
 
@@ -194,8 +262,16 @@ bool Preferences::remove(const char *key) {
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
+  if (load_status == LoadStatus::ERROR) {
+    return false;
+  }
+  const auto previous = values;
   values.erase(fullKey(_handle, key));
-  saveValues();
+  if (!saveValues()) {
+    values = previous;
+    return false;
+  }
+  load_status = LoadStatus::OK;
   return true;
 }
 
@@ -225,17 +301,39 @@ size_t Preferences::put(const char *key, std::string value) {
 }
 
 size_t Preferences::put(const char *key, const char *value) {
+  return putString(key, value) ? std::strlen(value) : 0;
+}
+
+bool Preferences::putString(const char *key, const char *value) {
   if (!_started || _readOnly || key == nullptr || value == nullptr) {
-    return 0;
+    return false;
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
+  if (load_status == LoadStatus::ERROR) {
+    return false;
+  }
+  const std::string name = fullKey(_handle, key);
+  const auto previous = values.find(name);
+  const bool had_previous = previous != values.end();
+  Value old_value;
+  if (had_previous) {
+    old_value = previous->second;
+  }
   Value stored;
   stored.string_value = true;
   stored.bytes.assign(value, value + std::strlen(value) + 1);
-  values[fullKey(_handle, key)] = std::move(stored);
-  saveValues();
-  return std::strlen(value);
+  values[name] = std::move(stored);
+  if (!saveValues()) {
+    if (had_previous) {
+      values[name] = std::move(old_value);
+    } else {
+      values.erase(name);
+    }
+    return false;
+  }
+  load_status = LoadStatus::OK;
+  return true;
 }
 
 size_t Preferences::put(const char *key, const void *value, size_t len) {
@@ -244,11 +342,29 @@ size_t Preferences::put(const char *key, const void *value, size_t len) {
   }
   std::lock_guard<std::mutex> lock(values_mutex);
   loadValues();
+  if (load_status == LoadStatus::ERROR) {
+    return 0;
+  }
   Value stored;
   stored.bytes.resize(len);
   std::memcpy(stored.bytes.data(), value, len);
-  values[fullKey(_handle, key)] = std::move(stored);
-  saveValues();
+  const std::string name = fullKey(_handle, key);
+  const auto previous = values.find(name);
+  const bool had_previous = previous != values.end();
+  Value old_value;
+  if (had_previous) {
+    old_value = previous->second;
+  }
+  values[name] = std::move(stored);
+  if (!saveValues()) {
+    if (had_previous) {
+      values[name] = std::move(old_value);
+    } else {
+      values.erase(name);
+    }
+    return 0;
+  }
+  load_status = LoadStatus::OK;
   return len;
 }
 
@@ -284,6 +400,27 @@ std::string Preferences::get(const char *key, std::string defaultValue) {
     return defaultValue;
   }
   return std::string(reinterpret_cast<const char *>(found->second.bytes.data()));
+}
+
+Preferences::string_result_t Preferences::getString(const char *key, std::string &value) {
+  if (!_started || key == nullptr) {
+    return string_result_t::ERROR;
+  }
+  std::lock_guard<std::mutex> lock(values_mutex);
+  loadValues();
+  if (load_status == LoadStatus::ERROR) {
+    return string_result_t::ERROR;
+  }
+  const auto found = values.find(fullKey(_handle, key));
+  if (found == values.end()) {
+    return string_result_t::NOT_FOUND;
+  }
+  if (!found->second.string_value || found->second.bytes.empty()
+      || found->second.bytes.back() != '\0') {
+    return string_result_t::ERROR;
+  }
+  value.assign(reinterpret_cast<const char *>(found->second.bytes.data()));
+  return string_result_t::OK;
 }
 
 size_t Preferences::get(const char *key, void *buffer, size_t maxLen) {
