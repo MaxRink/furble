@@ -927,6 +927,10 @@ void CompanionGatt::reloadSetting(void) {
   ConsoleHost::misc().companionReloads++;
 }
 
+void CompanionGatt::reloadPassword(void) {
+  ConsoleHost::misc().companionPasswordReloads++;
+}
+
 SD &SD::getInstance(void) {
   static SD instance;
   return instance;
