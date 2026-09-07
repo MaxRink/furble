@@ -1,5 +1,19 @@
 # PR18 - Motion adaptive GPS
 
+## Current integration gate
+
+The implemented phase is advisory motion classification only. It changes no
+GPS rail, standby command or fix rate, and makes no measured power-saving claim.
+The hardware motion default remains Software.
+
+The real S3 simulator passed the pre-arm/disarm/re-arm and detector scenarios
+at `e8b0315f`, including unchanged receiver state and zero extra UART traffic.
+That revision restores every checked-password implementation and initialization
+guard from the authentication parent. The following current-master merge
+preserves those GPS/settings implementations and the catalogue's always-present
+UI request queue. Full CI on the final head remains required before merge;
+physical motion and camera behavior are not certified by these simulator runs.
+
 ## Goal
 
 Cut GPS power when the device is not moving. Use the IMU to detect a stationary
