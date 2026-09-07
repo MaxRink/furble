@@ -10,12 +10,12 @@ wait 200
 assert ui.page main
 action console delete 999
 wait 200
-assert console.result no_saved_camera
+assert ui.console.result no_saved_camera
 action console delete 0
 wait 200
-assert console.result ok
-assert console.count 1
+assert ui.console.result ok
+assert ui.console.count 1
 action console cameras 1
 wait 200
-assert console.saved 0
+assert ui.console.saved 0
 exit
