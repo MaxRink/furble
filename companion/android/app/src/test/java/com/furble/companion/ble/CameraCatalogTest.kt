@@ -70,6 +70,21 @@ class CameraCatalogTest {
         )
     }
 
+    @Test
+    fun cameraRequestQueuePumpsOnlyAfterThePreviousResponseCompletes() {
+        val queue = CameraRequestQueue()
+        val list = CameraRequest(FurbleProtocol.CameraOperation.LIST, 0xFF)
+        val connect = CameraRequest(FurbleProtocol.CameraOperation.CONNECT, 7)
+        queue.enqueue(list)
+        queue.enqueue(connect)
+
+        assertEquals(list, queue.startNext())
+        assertEquals(null, queue.startNext())
+        assertEquals(list, queue.complete())
+        assertEquals(connect, queue.startNext())
+        assertEquals(connect, queue.complete())
+    }
+
     private fun camera(id: Int, name: String, flags: Int, status: Int = FurbleProtocol.CameraStatus.OK) =
         FurbleProtocol.CameraRecord(
             status = status,
