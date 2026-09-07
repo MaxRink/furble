@@ -9,6 +9,13 @@ public enum CompanionConnectionPhase: Equatable, Sendable {
   case ready
   case reconnecting(attempt: Int)
   case failed(CompanionFailure)
+
+  public var shouldReconnectAfterDisconnect: Bool {
+    switch self {
+    case .idle, .failed: return false
+    default: return true
+    }
+  }
 }
 
 public enum CompanionFailure: Error, Equatable, Sendable {

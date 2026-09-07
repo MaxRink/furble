@@ -2,6 +2,12 @@ import XCTest
 @testable import FurbleCompanionCore
 
 final class CompanionStateMachineTests: XCTestCase {
+  func testTerminalPhasesDoNotReconnectAfterDisconnect() {
+    XCTAssertFalse(CompanionConnectionPhase.idle.shouldReconnectAfterDisconnect)
+    XCTAssertFalse(CompanionConnectionPhase.failed(.authenticationFailed).shouldReconnectAfterDisconnect)
+    XCTAssertTrue(CompanionConnectionPhase.ready.shouldReconnectAfterDisconnect)
+  }
+
   func testDiscoveryRejectsMissingAuthInsteadOfDowngrading() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)

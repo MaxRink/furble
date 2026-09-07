@@ -18,6 +18,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private lazy var central = CBCentralManager(delegate: self, queue: nil,
     options: [CBCentralManagerOptionRestoreIdentifierKey: "com.furble.companion.central"])
   private var peripheral: CBPeripheral?
+  private var cancelledPeripheralID: UUID?
   private var characteristics: [CBUUID: CBCharacteristic] = [:]
   private var reconnectAttempt = 0
   private var authBeginPending = false
@@ -35,6 +36,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   public func stop() {
+    cancelledPeripheralID = peripheral?.identifier
     if let peripheral { central.cancelPeripheralConnection(peripheral) }
     central.stopScan()
     authBeginPending = false
@@ -169,6 +171,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   private func fail(_ value: CompanionFailure) {
+    cancelledPeripheralID = peripheral?.identifier
     error = value
     phase = .failed(value)
     state = CompanionStateMachine()
@@ -278,12 +281,27 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   }
 
   public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    if cancelledPeripheralID == peripheral.identifier {
+      cancelledPeripheralID = nil
+      return
+    }
+    guard self.peripheral?.identifier == peripheral.identifier,
+      phase.shouldReconnectAfterDisconnect else { return }
+    self.peripheral = nil
     reconnectAttempt += 1
     phase = .reconnecting(attempt: reconnectAttempt)
     if central.state == .poweredOn { beginScan() }
   }
 
   public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    if cancelledPeripheralID == peripheral.identifier {
+      cancelledPeripheralID = nil
+      if self.peripheral?.identifier == peripheral.identifier { self.peripheral = nil }
+      return
+    }
+    guard self.peripheral?.identifier == peripheral.identifier,
+      phase.shouldReconnectAfterDisconnect else { return }
+    self.peripheral = nil
     state.didDisconnect()
     phase = state.phase
     reconnectAttempt += 1
