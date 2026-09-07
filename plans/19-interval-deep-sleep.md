@@ -348,8 +348,10 @@ Implemented on branch `feat/19-interval-deep-sleep`.
 The current-master CMake simulator build exposed forced C++ shim headers on
 generated C icon sources (`cstddef` unavailable to the C compiler). Restricting
 the four forced includes to C++ sources fixes that build boundary. Static
-review approved the change; the rebuilt simulator and deep-sleep scenarios
-remain pending.
+review approved the change. The current-master simulator at `6a87759e` then
+built successfully and `sim/scripts/run-deep-sleep.sh` passed with its fresh
+binary, including stable-camera-ID resume and the one-shot completion check.
+This is host simulator evidence, not physical timed-wake verification.
 
 ## References
 
