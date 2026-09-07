@@ -199,6 +199,7 @@ int runSimulator() {
   // callback argument alive until the simulator dispatcher has joined.
   Sim::quiesceRig();
   furble_sim_stop_all_tasks();
+  UI::shutdown();
   // The virtual peers are released only after every task has joined. The
   // control task, its per-target tasks and the virtual radio all hold pointers
   // into a peer, so freeing them while any of those still runs is a

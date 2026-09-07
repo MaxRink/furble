@@ -160,20 +160,23 @@ int sendRequest(UI::Request request, int32_t arg, const char *what) {
 }
 
 int sendWorkflowRequest(UI::Request request, int32_t arg, const char *what) {
-#if defined(FURBLE_SIM)
-  return sendRequest(request, arg, what);
-#else
-  UI::RequestResult completion {xTaskGetCurrentTaskHandle(), nullptr};
+  UI::RequestResult completion;
+  if (completion.state == nullptr) {
+    return fail("workflow request state unavailable");
+  }
   if (!UI::sendRequest(request, arg, &completion)) {
     return fail("ui request queue unavailable");
   }
-  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-  if (completion.token == nullptr) {
+  constexpr TickType_t WORKFLOW_TIMEOUT = pdMS_TO_TICKS(1000);
+  if (xSemaphoreTake(completion.state->done, WORKFLOW_TIMEOUT) != pdTRUE) {
+    printf("pending: %s\n", what);
+    return 1;
+  }
+  if (completion.state->token == nullptr) {
     return fail("ui request failed");
   }
   printf("completed: %s\n", what);
-  return strcmp(completion.token, "ok") == 0 ? 0 : 1;
-#endif
+  return strcmp(completion.state->token, "ok") == 0 ? 0 : 1;
 }
 
 /**

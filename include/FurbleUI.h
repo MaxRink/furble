@@ -5,6 +5,8 @@
 
 #if defined(FURBLE_CONSOLE)
 #include <freertos/task.h>
+#include <freertos/semphr.h>
+#include "FurbleRequestState.h"
 #endif
 
 #if defined(FURBLE_SIM)
@@ -14,6 +16,9 @@
 // g_IMUMutex is declared by FurbleIMU.h, the shared motion API, because the
 // motion engines take it too.
 #include "FurbleIMU.h"
+
+#if defined(FURBLE_CONSOLE)
+#endif
 
 #if defined(FURBLE_NO_DISPLAY)
 
@@ -59,15 +64,13 @@ class UI {
 
   /** Create the request queue used by the headless main loop. */
   static void init(void);
+  static void shutdown(void);
 
   /** Queue an operation for the headless main loop. */
   static bool sendRequest(Request request, int32_t arg);
 
 #if defined(FURBLE_CONSOLE)
-  struct RequestResult {
-    TaskHandle_t waiter;
-    const char *token;
-  };
+  using RequestResult = ::Furble::RequestResult;
   static bool sendRequest(Request request, int32_t arg, RequestResult *result);
 #endif
 
@@ -86,9 +89,7 @@ class UI {
 #include <functional>
 #endif
 #include <initializer_list>
-#if defined(FURBLE_SIM)
 #include <memory>
-#endif
 #include <mutex>
 #include <optional>
 #include <string>
@@ -172,11 +173,10 @@ class UI {
    */
   static bool sendRequest(Request request, int32_t arg);
 
+  static void shutdown(void);
+
 #if defined(FURBLE_CONSOLE)
-  struct RequestResult {
-    TaskHandle_t waiter;
-    const char *token;
-  };
+  using RequestResult = ::Furble::RequestResult;
   static bool sendRequest(Request request, int32_t arg, RequestResult *result);
 #endif
 
@@ -594,13 +594,15 @@ class UI {
     Request request;
     int32_t arg;
 #if defined(FURBLE_CONSOLE)
-    RequestResult *result;
+    RequestState *state;
 #endif
   } request_t;
 
   static constexpr UBaseType_t m_RequestQueueLength = 8;
 
   static QueueHandle_t m_RequestQueue;
+
+  static void drainRequests(void);
 
   /** Drain the request queue, called on the UI task with m_Mutex held. */
   void serviceRequests(void);
@@ -1349,7 +1351,7 @@ class UI {
   static void seedMultiConnectSelection(void);
 
   /** Save the current active camera selection. */
-  static void saveMultiConnectSelection(void);
+  static bool saveMultiConnectSelection(void);
 
   /** Rebuild the connected Cameras status rows, LVGL task only. */
   static void rebuildCamerasPage(menu_t &menu);

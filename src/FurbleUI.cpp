@@ -393,7 +393,12 @@ UI::UI(const interval_t &interval)
     m_GPS.init();
   }
 
-  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
+  if (m_RequestQueue != nullptr) {
+    drainRequests();
+    vQueueDelete(m_RequestQueue);
+    m_RequestQueue = nullptr;
+  }
+  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t *));
   if (m_RequestQueue == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create the UI request queue.");
     abort();
@@ -2201,7 +2206,7 @@ void UI::seedMultiConnectSelection(void) {
   }
 }
 
-void UI::saveMultiConnectSelection(void) {
+bool UI::saveMultiConnectSelection(void) {
   Settings::multiselect_t selection = {};
 
   for (size_t n = 0; n < CameraList::size(); n++) {
@@ -2216,8 +2221,16 @@ void UI::saveMultiConnectSelection(void) {
   // skip the NVS write when the remembered set is unchanged
   const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
   if (memcmp(&stored, &selection, sizeof(selection)) != 0) {
-    Settings::save<Settings::MULTISELECT>(selection);
+    const auto &setting = Settings::get(Settings::MULTISELECT);
+    Preferences prefs;
+    if (!prefs.begin(setting.nvs_namespace, false)
+        || prefs.put(setting.key, &selection, sizeof(selection)) != sizeof(selection)) {
+      prefs.end();
+      return false;
+    }
+    prefs.end();
   }
+  return true;
 }
 
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
@@ -5660,29 +5673,47 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
-  const request_t item = {request, arg,
+  auto *item = new (std::nothrow) request_t {request, arg,
 #if defined(FURBLE_CONSOLE)
-                          nullptr
+                              nullptr
 #endif
-  };
-
-  return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
+                             };
+  if (item == nullptr) {
+    return false;
+  }
+  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    return false;
+  }
+  return true;
 }
 
 #if defined(FURBLE_CONSOLE)
 bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
-  if (m_RequestQueue == NULL || result == nullptr) {
+  if (m_RequestQueue == NULL || result == nullptr || result->state == nullptr) {
     return false;
   }
-  const request_t item = {request, arg, result};
-  return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
+  result->state->retain();
+  auto *item = new (std::nothrow) request_t {request, arg, result->state};
+  if (item == nullptr) {
+    result->state->release();
+    return false;
+  }
+  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    result->state->release();
+    return false;
+  }
+  return true;
 }
 #endif
 
 void UI::serviceRequests(void) {
-  request_t item;
+  request_t *queued = nullptr;
 
-  while (xQueueReceive(m_RequestQueue, &item, 0) == pdTRUE) {
+  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+    std::unique_ptr<request_t> owned(queued);
+    request_t &item = *owned;
 #if defined(FURBLE_SIM)
     g_ConsoleFields.clear();
 #endif
@@ -5867,15 +5898,20 @@ void UI::serviceRequests(void) {
         }
 
         unsigned deleted = 0;
-        for (size_t n = 0; n < CameraList::size(); n++) {
+        bool persisted = true;
+        const auto snapshot = CameraList::savedSnapshot();
+        for (size_t n = 0; n < snapshot.size(); n++) {
           if ((item.arg >= 0) && (n != static_cast<size_t>(item.arg))) {
             continue;
           }
-          consolePrint("deleted: %s\n", CameraList::get(n)->getName().c_str());
-          CameraList::remove(CameraList::get(n).get());
-          deleted++;
+          if (CameraList::remove(snapshot[n].get())) {
+            consolePrint("deleted: %s\n", snapshot[n]->getName().c_str());
+            deleted++;
+          } else {
+            persisted = false;
+          }
         }
-        m_ConsoleResult = "ok";
+        m_ConsoleResult = persisted ? "ok" : "persistence_failed";
         consolePrint("count: %u\n", deleted);
         refreshDelete();
       } break;
@@ -5897,14 +5933,14 @@ void UI::serviceRequests(void) {
         const bool select = item.request == Request::MULTI_SELECT;
         seedMultiConnectSelection();
         CameraList::get(item.arg)->setActive(select);
-        saveMultiConnectSelection();
+        const bool saved = saveMultiConnectSelection();
 
         // saveMultiConnectSelection() stops at MULTISELECT_MAX names and drops
         // the rest silently, so report what the store actually holds rather
         // than the flag that was just set.
         const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
         const bool persisted = multiConnectSelectionHas(stored, item.arg);
-        m_ConsoleResult = (select && !persisted) ? "selection_full" : "ok";
+        m_ConsoleResult = !saved ? "persistence_failed" : (select && !persisted) ? "selection_full" : "ok";
         consolePrint("camera: %s\n", CameraList::get(item.arg)->getName().c_str());
         consolePrint("selected: %s\n", persisted ? "true" : "false");
         if (select && !persisted) {
@@ -5922,8 +5958,7 @@ void UI::serviceRequests(void) {
         for (size_t n = 0; n < CameraList::size(); n++) {
           CameraList::get(n)->setActive(false);
         }
-        saveMultiConnectSelection();
-        m_ConsoleResult = "ok";
+        m_ConsoleResult = saveMultiConnectSelection() ? "ok" : "persistence_failed";
         consolePrint("count: 0\n");
         break;
 
@@ -6162,12 +6197,37 @@ void UI::serviceRequests(void) {
       consolePrint("result: %s\n", m_ConsoleResult);
     }
 #if defined(FURBLE_CONSOLE)
-    if (item.result != nullptr) {
-      item.result->token = m_ConsoleResult;
-      xTaskNotifyGive(item.result->waiter);
+    if (item.state != nullptr) {
+      item.state->token = m_ConsoleResult;
+      xSemaphoreGive(item.state->done);
+      item.state->release();
     }
 #endif
+    queued = nullptr;
   }
+}
+
+void UI::drainRequests(void) {
+  request_t *queued = nullptr;
+  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+#if defined(FURBLE_CONSOLE)
+    if (queued->state != nullptr) {
+      queued->state->token = "cancelled";
+      xSemaphoreGive(queued->state->done);
+      queued->state->release();
+    }
+#endif
+    delete queued;
+  }
+}
+
+void UI::shutdown(void) {
+  if (m_RequestQueue == nullptr) {
+    return;
+  }
+  drainRequests();
+  vQueueDelete(m_RequestQueue);
+  m_RequestQueue = nullptr;
 }
 
 bool UI::beginPairing(size_t index, lv_event_t *e) {

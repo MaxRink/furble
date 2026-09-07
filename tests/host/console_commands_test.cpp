@@ -50,6 +50,7 @@
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleRequestState.h"
 
 #include "protocol/ProvisionTLV.h"
 
@@ -61,6 +62,7 @@
 // The console and NVS shims define separate ESP error enums.
 extern "C" void nvs_test_fail_set_on(size_t nth_future_call);
 extern "C" void nvs_test_fail_commit_on(size_t nth_future_call);
+extern "C" void furbleHostFailNextSemaphore(void);
 
 const char *LOG_TAG = "furble-host-console";
 
@@ -76,6 +78,27 @@ bool check(bool condition, const std::string &message) {
     g_Failures++;
   }
   return condition;
+}
+
+void testWorkflowCompletionState(void) {
+  Furble::RequestResult result;
+  check(result.state != nullptr, "shared workflow state allocates");
+  if (result.state == nullptr) return;
+  result.state->token = "ok";
+  check(xSemaphoreTake(result.state->done, pdMS_TO_TICKS(1)) == pdFALSE,
+        "workflow timeout does not fabricate completion");
+
+  Furble::RequestState *retained = result.state;
+  retained->retain();
+  result.state = nullptr;
+  check(xSemaphoreGive(retained->done) == pdTRUE
+            && xSemaphoreTake(retained->done, pdMS_TO_TICKS(20)) == pdTRUE,
+        "late completion remains owned after caller releases its state");
+  retained->release();
+
+  furbleHostFailNextSemaphore();
+  Furble::RequestResult unavailable;
+  check(unavailable.state == nullptr, "semaphore allocation failure is rejected");
 }
 
 bool contains(const std::string &haystack, const std::string &needle) {
@@ -110,6 +133,10 @@ const std::vector<std::string> EXPECTED_COMMANDS = {
     "disconnect", "shutter", "interval", "bulb", "display", "ir", "focus", "scan", "bt",
     "feedback", "log", "debug", "flash", "reboot",
 };
+
+}  // namespace
+
+namespace {
 
 }  // namespace
 
@@ -2004,6 +2031,7 @@ int main(void) {
   waitFor([] { return ConsoleHost::misc().usbDriverInstalls > 0; }, 2000);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+  testWorkflowCompletionState();
   testCommandTable();
   testSubcommandSets();
   testStatusAndVersion();
