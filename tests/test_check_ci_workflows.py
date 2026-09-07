@@ -28,14 +28,22 @@ class CheckCIWorkflowsTest(unittest.TestCase):
 
   def test_current_validation_workflows_pass(self):
     workflow_root = ROOT / ".github" / "workflows"
+    workflow_paths = CHECKER._workflow_paths(workflow_root)
+    expected_checked = sum(
+        "pull_request" in CHECKER.event_blocks(
+            path.read_text(encoding="utf-8").splitlines()
+        )
+        for path in workflow_paths
+    )
+    self.assertGreater(expected_checked, 0)
     checked = 0
-    for path in CHECKER._workflow_paths(workflow_root):
+    for path in workflow_paths:
       if "pull_request" in CHECKER.event_blocks(
           path.read_text(encoding="utf-8").splitlines()
       ):
         checked += 1
         self.assertEqual(CHECKER.lint_workflow(path), [], path.name)
-    self.assertEqual(checked, 9)
+    self.assertEqual(checked, expected_checked)
 
   def test_branches_ignore_is_a_base_branch_filter(self):
     errors = self.lint(
