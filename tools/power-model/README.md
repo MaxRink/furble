@@ -202,7 +202,9 @@ selected model with its resolved `model_source`, `model_digest` (SHA-256), and
 or malformed model is a hard error; consumed currents must also be finite,
 non-negative, and unique. The simulator requests exit and does not write a
 report. This prevents built-in defaults from being presented as the selected
-YAML model.
+YAML model. The `energy.accounting_inputs` object exposes the exact raw
+durations and event count consumed by each component calculation, while the
+rounded state fields remain presentation data.
 
 Two of these matter whenever a scenario's subject is a periodic timer. Both are
 tracked in issue #285.

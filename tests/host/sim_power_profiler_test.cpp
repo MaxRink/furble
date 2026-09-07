@@ -120,6 +120,8 @@ int main() {
   profilerWriteReport(path.c_str(), "short-duration-energy");
   if (!reportContains(path, "\"duration_ms\": 1")
       || !reportContains(path, "\"estimated_mA\": 41.295970")
+      || !reportContains(path, "\"accounting_inputs\": {\n      \"duration_ms\": 1")
+      || !reportContains(path, "\"light_sleep_in_80\": 1")
       || !reportContains(path, "\"model_valid\": true")
       || !reportContains(path, "\"model_digest\": \"sha256:")) {
     return 1;

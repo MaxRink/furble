@@ -747,15 +747,12 @@ void writeReportLocked(const std::filesystem::path &path,
       / safe_duration_ms;
   const uint64_t radio_connected_raw_ms = state.radio_connected_ms;
   const uint64_t radio_connected_ms = reportDuration(radio_connected_raw_ms);
+  uint64_t radio_event_count = 0;
+  for (const auto &event : state.radio_events) {
+    radio_event_count += event.second;
+  }
   const double radio_ma = (static_cast<double>(radio_connected_raw_ms) * model.connected_idle
-                           + static_cast<double>([&]() {
-                               uint64_t count = 0;
-                               for (const auto &event : state.radio_events) {
-                                 count += event.second;
-                               }
-                               return count;
-                             }()) * model.radio_tx
-                                 * 2.0)
+                           + static_cast<double>(radio_event_count) * model.radio_tx * 2.0)
                           / safe_duration_ms;
   // A degraded retry leaves the receiver rail powered but releases the CPU
   // sleep lock. Model its receiver draw as acquisition current and expose the
@@ -979,7 +976,30 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "\n    },\n";
   output << "    \"estimated_mA\": ";
   writeDouble(output, estimated_ma);
-  output << "\n  },\n";
+  output << ",\n";
+  output << "    \"accounting_inputs\": {\n";
+  output << "      \"duration_ms\": " << duration_ms << ",\n";
+  output << "      \"mcu_ms\": {\n";
+  output << "        \"light_sleep_in_80\": " << light_sleep_in_80 << ",\n";
+  output << "        \"frequency_80\": " << frequency_80_raw_ms << ",\n";
+  output << "        \"frequency_160\": " << frequency_160_raw_ms << ",\n";
+  output << "        \"frequency_240\": " << frequency_240_raw_ms << "\n";
+  output << "      },\n";
+  output << "      \"display_ms\": {\n";
+  output << "        \"on\": " << display_on_raw_ms << ",\n";
+  output << "        \"dim\": " << display_dim_raw_ms << ",\n";
+  output << "        \"off\": " << display_off_raw_ms << "\n";
+  output << "      },\n";
+  output << "      \"radio_connected_ms\": " << radio_connected_raw_ms << ",\n";
+  output << "      \"radio_event_count\": " << radio_event_count << ",\n";
+  output << "      \"gps_ms\": {\n";
+  output << "        \"acquiring\": " << gps_acquiring_raw_ms << ",\n";
+  output << "        \"degraded\": " << gps_degraded_raw_ms << ",\n";
+  output << "        \"tracking\": " << gps_tracking_raw_ms << ",\n";
+  output << "        \"standby\": " << gps_standby_raw_ms << "\n";
+  output << "      }\n";
+  output << "    }\n";
+  output << "  },\n";
   output << "  \"estimated_mA\": ";
   writeDouble(output, estimated_ma);
   output << "\n}\n";

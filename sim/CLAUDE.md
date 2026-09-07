@@ -80,7 +80,8 @@ boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
 
 The simulator power profiler is likewise only relative evidence. It integrates
-raw virtual-clock durations and records the selected model source and digest;
+raw virtual-clock durations, exposes the durations used by each energy
+component in `energy.accounting_inputs`, and records the selected model source and digest;
 missing or malformed selected input fails closed. That provenance fix does not
 close the outstanding power gates: scheduler/timer callback and queue-wake
 costs, peripheral and effective-brightness rails, negotiated BLE airtime, and

@@ -667,6 +667,9 @@ regenerate byte-for-byte against their committed baselines after the rebase.
 The profiler now integrates raw virtual-clock durations and rounds only the
 serialized residency fields. A one-millisecond state therefore contributes its
 actual energy instead of being rounded independently with neighboring states.
+Each report also exposes the raw durations used by the energy components in
+`energy.accounting_inputs`; rounded residency fields are not used to derive
+the estimate.
 Model selection is fail-closed: `FURBLE_POWER_MODEL` is authoritative when
 set, required model entries must parse, and every valid report records the
 resolved source and SHA-256 digest. Missing, unreadable, incomplete, or
