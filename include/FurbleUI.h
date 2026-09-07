@@ -529,8 +529,9 @@ class UI {
 
    private:
     resume_state_t m_Resume = {};
-    bool m_ResumePending = false;
+   bool m_ResumePending = false;
 
+    static bool validResume(const resume_state_t &state);
     void loadResume(void);
   };
 

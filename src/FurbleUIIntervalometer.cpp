@@ -21,7 +21,9 @@ SpinValue::nvs_t sleepThresholdNvs(void) {
   return {static_cast<uint16_t>(seconds), SpinValue::UNIT_SEC};
 }
 
-bool validResume(const UI::Intervalometer::resume_state_t &state) {
+}  // namespace
+
+bool UI::Intervalometer::validResume(const resume_state_t &state) {
   const auto validSpin = [](const SpinValue::nvs_t &value, bool allowInfinite) {
     const uint8_t unit = static_cast<uint8_t>(value.unit);
     return (value.value <= 999) && (unit <= SpinValue::UNIT_MIN)
@@ -40,7 +42,6 @@ bool validResume(const UI::Intervalometer::resume_state_t &state) {
          && (state.target == state.interval.count.value) && (state.target > 0)
          && (state.count < state.target);
 }
-}  // namespace
 
 UI::Intervalometer::Intervalometer(const interval_t &interval)
     : m_State {STATE_IDLE},
