@@ -151,8 +151,7 @@ int main(void) {
     liveClient->mockCompleteStalledTerminate(0x08);
   }
   const uint32_t reapStart = nowMs();
-  while (Furble::Host::timeoutPending(reapStart, nowMs(), 3000)
-         && (camera.use_count() != 1)) {
+  while (Furble::Host::timeoutPending(reapStart, nowMs(), 3000) && (camera.use_count() != 1)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   check(camera.use_count() == 1, "the completed stalled attempt is reaped before reconnect");
