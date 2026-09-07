@@ -32,6 +32,7 @@
 #include "FurbleControl.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "TestSyncController.h"
 #include "WrapSafeTime.h"
 
 const char *LOG_TAG = "furble-control-e2e";
@@ -198,12 +199,17 @@ bool scenarioEmptyTargetConnectStaysIdle() {
   auto &control = Control::getInstance();
 
   check(control.getTargetCount() == 0, "empty target baseline");
+  Furble::TestSync::reset();
+  Furble::TestSync::armBarrier("connectall_returned", 5000);
   control.connectAll(false);
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  check(Furble::TestSync::awaitArrival("connectall_returned", 1000),
+        "empty connect runs the control pass");
+  Furble::TestSync::release("connectall_returned");
 
-  check(control.getState() == Control::STATE_IDLE, "empty connect remains idle");
+  check(waitForState(Control::STATE_IDLE, 1000), "empty connect remains idle");
   check(control.getTargetCount() == 0, "empty connect leaves no targets");
   check(control.getConnectedTargetCount() == 0, "empty connect has no connected targets");
+  check(!Furble::TestSync::anyTimedOut(), "empty connect sync point did not time out");
   return g_Failures == 0;
 }
 
