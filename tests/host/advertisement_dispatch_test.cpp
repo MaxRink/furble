@@ -21,6 +21,7 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
   explicit DJIProtocolPeer(const NimBLEAddress &address) : m_Address(address) {}
 
   const std::vector<uint8_t> &firstRequest() const { return m_FirstRequest; }
+  void clearFirstRequest() { m_FirstRequest.clear(); }
 
   bool acceptConnection(NimBLEClient &, const NimBLEAddress &address) override {
     return address == m_Address;
@@ -167,11 +168,17 @@ bool testDispatchAndDeduplication() {
   djiAdvertisement.setName("DJI Osmo Action 5 Pro");
   auto dji = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
   CHECK(dji->getPairType() == Camera::PairType::NEW);
-  Furble::CameraList::save(dji);
-  CHECK(dji->getPairType() == Camera::PairType::SAVED);
 
   DJIProtocolPeer peer(djiAdvertisement.getAddress());
   NimBLEDevice::setMockPeer(&peer);
+  CHECK(dji->connect(ESP_PWR_LVL_P3, 1000));
+  CHECK(peer.firstRequest().size() == 51);
+  CHECK(peer.firstRequest()[40] == 0x01);
+  dji->disconnect();
+
+  Furble::CameraList::save(dji);
+  CHECK(dji->getPairType() == Camera::PairType::SAVED);
+  peer.clearFirstRequest();
   CHECK(dji->connect(ESP_PWR_LVL_P3, 1000));
   CHECK(peer.firstRequest().size() == 51);
   CHECK(peer.firstRequest()[40] == 0x00);
