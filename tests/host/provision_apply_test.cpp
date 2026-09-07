@@ -133,18 +133,18 @@ void testValidatedApplyAndRuntimeHooks() {
 
   ProvisionBundle bundle;
   bundle.settings = {
-      {1,  ValueType::U8,     {77}                                              },
-      {26, ValueType::U8,     {5}                                               },
-      {33, ValueType::U8,     {4}                                               },
-      {69, ValueType::U8,     {4}                                               },
-      {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
-      {46, ValueType::BOOL,   {1}                                               },
+      {1,                          ValueType::U8,     {77}                                              },
+      {26,                         ValueType::U8,     {5}                                               },
+      {33,                         ValueType::U8,     {4}                                               },
+      {69,                         ValueType::U8,     {4}                                               },
+      {27,                         ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
+      {46,                         ValueType::BOOL,   {1}                                               },
       {COMPANION_PASSWORD_WIRE_ID,
        ValueType::STRING,
        {'s', 'e', 't', '-', 'b', 'y', '-', 'i', 'd'}                                                    },
-      {72, ValueType::U8,     {3}                                               },
-      {73, ValueType::BOOL,   {1}                                               },
-      {66, ValueType::BOOL,   {1}                                               },
+      {72,                         ValueType::U8,     {3}                                               },
+      {73,                         ValueType::BOOL,   {1}                                               },
+      {66,                         ValueType::BOOL,   {1}                                               },
   };
   ApplyReport report;
   ApplyOptions options;
@@ -153,10 +153,10 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds
-            == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, COMPANION_PASSWORD_WIRE_ID, 72, 73,
-                                      66}),
-        "runtime callback follows successful write order");
+  check(
+      appliedIds
+          == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, COMPANION_PASSWORD_WIRE_ID, 72, 73, 66}),
+      "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_DUTY) == 5,
