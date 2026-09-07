@@ -366,6 +366,13 @@ Battery impact, on-board instrumentation only, no external meter:
 3. Run B: 60 minutes stationary with the hardware backend.
 4. Report both drain slopes. If B is not clearly better, do not merge.
 
+## GPS replay note
+
+The shared GPS replay gate requires a complete, checksum-valid RMC with a
+nonempty date field and parser commit at CR/LF. Its simulator fixture
+transition restarts only the canned NMEA burst bookkeeping; queued CASIC
+replies remain untouched. This is unrelated to IMU motion behavior.
+
 ## References
 
 All links checked.

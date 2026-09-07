@@ -1749,8 +1749,8 @@ void GPS::serviceEphemerisArm(void) {
   if (m_EphImplausible == 0) {
     // Nothing has committed since the arm. A date sequence change proves an
     // RMC arrived, even when the receiver corrected its clock on the same day.
-    // The empty pre-fix RMC also advances the sequence, but its unusable UTC is
-    // rejected below without consuming the arm.
+    // The empty pre-fix RMC retains the previous date and does not advance the
+    // sequence, so it cannot consume the arm.
     if (m_EphDateSequence == m_EphArmDateSequence) {
       // The arm stands until the next enable, which is the cold start case:
       // replaying a cache whose age cannot be established is the thing this is
@@ -1763,8 +1763,7 @@ void GPS::serviceEphemerisArm(void) {
     return;
   }
   if (reported <= 0) {
-    // A committed but unusable date, such as the all-zero one an empty RMC
-    // leaves on a parser that had none. Do not consume the arm date: a real one
+    // A committed but unusable date must not consume the arm: a real RMC date
     // still has to be able to answer.
     return;
   }
@@ -1776,9 +1775,9 @@ void GPS::serviceEphemerisArm(void) {
     // Not a verdict on its own. A cold-start AT6668 reports a coarse time
     // before it has decoded TOW, so a receiver clock behind the capture means
     // the receiver has not finished waking and it reports correctly seconds
-    // later. That is the tier 2 case, so wait for the next date rather than
-    // throwing the cache away on the first reading. Bounded, though: a receiver
-    // that keeps reporting behind the capture is wrong rather than waking.
+    // later. That is the tier 2 case, so wait for the next valid RMC reading
+    // rather than throwing the cache away on the first one. Bounded, though: a
+    // receiver that keeps reporting behind the capture is wrong rather than waking.
     m_EphImplausibleUtc = reported;
     if (++m_EphImplausible < EPH_IMPLAUSIBLE_MAX) {
       return;
@@ -2468,9 +2467,9 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   Console::gpsRaw(reinterpret_cast<const char *>(data), length);
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
-    // isUpdated() is a one-shot parser signal. Clear any prior batch before
-    // encoding this one so the evidence below cannot be inherited from an
-    // empty RMC in an earlier UART read.
+    // isUpdated() is a one-shot parser signal. Clear any prior parser update
+    // before encoding so evidence cannot be inherited from an empty RMC in an
+    // earlier UART read.
     if (m_GPS.date.isUpdated()) {
       (void)m_GPS.date.value();
     }
@@ -2514,7 +2513,7 @@ void GPS::noteEphemerisDate(const uint8_t *data, size_t length, bool dateUpdated
     }
     m_EphNmeaPartial.push_back(c);
     if (dateUpdated && !m_EphNmeaCommitPending && hasValidRmcDate(m_EphNmeaPartial)) {
-      // TinyGPS++ commits at '*HH', before the CR/LF that completes this line.
+      // Keep parser commit evidence until the CR/LF that completes this line.
       m_EphNmeaCommitPending = true;
     }
   }
