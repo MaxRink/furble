@@ -1500,6 +1500,18 @@ void preparePreferences(void) {
   if (scenarioName == "interactive") {
     return;
   }
+  // The deep-sleep runner deliberately supplies one flash image to two fresh
+  // processes. Keep this opt-in seam separate from ordinary scripted runs,
+  // which remain isolated per scenario and pid.
+  const char *fixedPath = std::getenv("FURBLE_SIM_DEEP_SLEEP_PREFS");
+  if (fixedPath != nullptr && fixedPath[0] != '\0') {
+    setenv("FURBLE_SIM_PREFS", fixedPath, 1);
+    const char *preserve = std::getenv("FURBLE_SIM_PRESERVE_PREFS");
+    if (preserve == nullptr || preserve[0] == '\0' || preserve[0] == '0') {
+      std::remove(fixedPath);
+    }
+    return;
+  }
   // A resumed boot after a `restart` step keeps the store it was handed: that
   // file is the flash NVS the reboot carries over, and the re-exec gave the
   // rebooted device a new process id.
