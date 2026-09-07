@@ -1,0 +1,10 @@
+# Route a console-shaped request through the production UI queue.
+seed fauxny true
+wait 300
+action nav settings
+wait 200
+assert ui.page settings
+action console back
+wait 200
+assert ui.page main
+exit
