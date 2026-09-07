@@ -965,8 +965,7 @@ bool GPS::hasValidRmcDate(const std::string &sentence) {
   };
   const int high = hex(sentence[star + 1]);
   const int low = hex(sentence[star + 2]);
-  if ((high < 0) || (low < 0)
-      || (checksum(sentence.substr(1, star - 1)) != ((high << 4) | low))) {
+  if ((high < 0) || (low < 0) || (checksum(sentence.substr(1, star - 1)) != ((high << 4) | low))) {
     return false;
   }
 
@@ -975,8 +974,8 @@ bool GPS::hasValidRmcDate(const std::string &sentence) {
     comma = sentence.find(',', comma + 1);
   }
   const size_t dateEnd = (comma == std::string::npos) ? comma : sentence.find(',', comma + 1);
-  if ((comma == std::string::npos) || (dateEnd == std::string::npos)
-      || (dateEnd == comma + 1) || (dateEnd - comma - 1 != 6)) {
+  if ((comma == std::string::npos) || (dateEnd == std::string::npos) || (dateEnd == comma + 1)
+      || (dateEnd - comma - 1 != 6)) {
     return false;
   }
   return std::all_of(sentence.begin() + comma + 1, sentence.begin() + dateEnd,
