@@ -168,8 +168,10 @@ bool Settings::appliesImmediately(type_t type) {
     case PRESET_PICKER:
     case BUTTON_MODE:
     // The IMU is brought up during Platform init, so a save takes effect on the
-    // next restart rather than immediately.
+    // next restart rather than immediately. The motion engine is chosen when
+    // the source is armed, which is also Platform init, so it follows the IMU.
     case IMU:
+    case HW_MOTION:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at
@@ -241,6 +243,7 @@ bool Settings::isDangerous(type_t type) {
     case IMU:
     case IMU_WAKE:
     case IMU_TRIG:
+    case HW_MOTION:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -615,6 +618,13 @@ void Settings::init(void) {
         // Default off keeps today's behaviour, the profile is strictly opt-in.
         case BATTERY_SAVER:
           save<bool>(setting.type, false);
+          break;
+        case HW_MOTION:
+          // Ships as Software, not Auto. Auto prefers the board's hardware
+          // engine, and that path is unproven on hardware, so the default must
+          // not select it. Auto becomes the default in a follow-up commit once
+          // the six-step gate in plans/20-imu-hw-motion.md passes on the S3.
+          save<uint8_t>(setting.type, HW_MOTION_SOFTWARE);
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);

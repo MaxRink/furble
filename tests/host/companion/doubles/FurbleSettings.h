@@ -30,6 +30,7 @@ class Settings {
     IMU,
     IMU_WAKE,
     IMU_TRIG,
+    HW_MOTION,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -87,6 +88,12 @@ class Settings {
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+
+  typedef enum {
+    HW_MOTION_AUTO = 0,
+    HW_MOTION_SOFTWARE = 1,
+    HW_MOTION_HARDWARE = 2,
+  } hw_motion_t;
 
   static void init(void) {}
 
