@@ -331,6 +331,8 @@ void GPS::enable(void) {
   m_EphPolled = false;
   m_EphPollActive = false;
   m_EphCapture = false;
+  m_EphNmeaPartial.clear();
+  m_EphNmeaCommitPending = false;
   m_EphReplayArmed = false;
   m_MonHwPending = false;
   {
@@ -939,6 +941,46 @@ uint8_t GPS::checksum(const std::string &payload) {
   }
 
   return sum;
+}
+
+bool GPS::hasValidRmcDate(const std::string &sentence) {
+  if ((sentence.rfind("$GPRMC,", 0) != 0) && (sentence.rfind("$GNRMC,", 0) != 0)) {
+    return false;
+  }
+  const size_t star = sentence.find('*');
+  if ((star == std::string::npos) || (star + 3 != sentence.size())) {
+    return false;
+  }
+  const auto hex = [](char c) {
+    if ((c >= '0') && (c <= '9')) {
+      return c - '0';
+    }
+    if ((c >= 'A') && (c <= 'F')) {
+      return c - 'A' + 10;
+    }
+    if ((c >= 'a') && (c <= 'f')) {
+      return c - 'a' + 10;
+    }
+    return -1;
+  };
+  const int high = hex(sentence[star + 1]);
+  const int low = hex(sentence[star + 2]);
+  if ((high < 0) || (low < 0)
+      || (checksum(sentence.substr(1, star - 1)) != ((high << 4) | low))) {
+    return false;
+  }
+
+  size_t comma = sentence.find(',');
+  for (int field = 0; (field < 8) && (comma != std::string::npos); ++field) {
+    comma = sentence.find(',', comma + 1);
+  }
+  const size_t dateEnd = (comma == std::string::npos) ? comma : sentence.find(',', comma + 1);
+  if ((comma == std::string::npos) || (dateEnd == std::string::npos)
+      || (dateEnd == comma + 1) || (dateEnd - comma - 1 != 6)) {
+    return false;
+  }
+  return std::all_of(sentence.begin() + comma + 1, sentence.begin() + dateEnd,
+                     [](char c) { return (c >= '0') && (c <= '9'); });
 }
 
 /** Frame the payload as an NMEA sentence and send it to the receiver. */
@@ -1675,7 +1717,7 @@ void GPS::armEphemerisReplay(void) {
   // as a couple of minutes old. Arm here, and commit in servicePoll once the
   // receiver has reported a UTC of its own.
   m_EphReplayArmed = true;
-  m_EphArmDate = receiverDate(getStatusSnapshot());
+  m_EphArmDateSequence = m_EphDateSequence;
   m_EphImplausible = 0;
   m_EphImplausibleUtc = 0;
   ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, waiting for receiver time");
@@ -1705,10 +1747,11 @@ void GPS::serviceEphemerisArm(void) {
   }
   const int64_t reported = receiverUtc(status);
   if (m_EphImplausible == 0) {
-    // Nothing has committed since the arm. Only a changed *date* proves an RMC
-    // carrying a real date field arrived: the empty pre-fix RMC re-commits the
-    // stale date while the time ticks on from GGA.
-    if (date == m_EphArmDate) {
+    // Nothing has committed since the arm. A date sequence change proves an
+    // RMC arrived, even when the receiver corrected its clock on the same day.
+    // The empty pre-fix RMC also advances the sequence, but its unusable UTC is
+    // rejected below without consuming the arm.
+    if (m_EphDateSequence == m_EphArmDateSequence) {
       // The arm stands until the next enable, which is the cold start case:
       // replaying a cache whose age cannot be established is the thing this is
       // here to prevent.
@@ -1736,7 +1779,6 @@ void GPS::serviceEphemerisArm(void) {
     // later. That is the tier 2 case, so wait for the next date rather than
     // throwing the cache away on the first reading. Bounded, though: a receiver
     // that keeps reporting behind the capture is wrong rather than waking.
-    m_EphArmDate = date;
     m_EphImplausibleUtc = reported;
     if (++m_EphImplausible < EPH_IMPLAUSIBLE_MAX) {
       return;
@@ -2426,9 +2468,56 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   Console::gpsRaw(reinterpret_cast<const char *>(data), length);
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
-    m_GPS.encode(reinterpret_cast<char *>(data), length);
+    // isUpdated() is a one-shot parser signal. Clear any prior batch before
+    // encoding this one so the evidence below cannot be inherited from an
+    // empty RMC in an earlier UART read.
+    if (m_GPS.date.isUpdated()) {
+      (void)m_GPS.date.value();
+    }
+    // Consume the one-shot parser signal per byte. This keeps a commit tied to
+    // the RMC that caused it instead of letting a later batch inherit it.
+    for (size_t i = 0; i < length; ++i) {
+      m_GPS.encode(reinterpret_cast<char *>(data + i), 1);
+      noteEphemerisDate(data + i, 1, m_GPS.date.isUpdated());
+      if (m_GPS.date.isUpdated()) {
+        (void)m_GPS.date.value();
+      }
+    }
   }
   captureSentences(reinterpret_cast<const char *>(data), length);
+}
+
+/** Record only a checksum-valid RMC with a nonempty date field. */
+void GPS::noteEphemerisDate(const uint8_t *data, size_t length, bool dateUpdated) {
+  for (size_t i = 0; i < length; ++i) {
+    const char c = static_cast<char>(data[i]);
+    if ((c == '\r') || (c == '\n')) {
+      if ((m_EphNmeaCommitPending || dateUpdated) && hasValidRmcDate(m_EphNmeaPartial)) {
+        m_EphDateSequence++;
+      }
+      m_EphNmeaPartial.clear();
+      m_EphNmeaCommitPending = false;
+      continue;
+    }
+    if (c == '$') {
+      // A new start before CR/LF invalidates the unfinished sentence. TinyGPS++
+      // also resets its parser at '$', so do not carry its commit evidence over.
+      m_EphNmeaPartial.clear();
+      m_EphNmeaPartial.push_back(c);
+      m_EphNmeaCommitPending = false;
+      continue;
+    }
+    if (m_EphNmeaPartial.size() >= SENTENCE_LEN) {
+      // Keep unterminated/noisy input bounded to the same maximum used by the
+      // raw NMEA page; the next '$' or CR/LF above recovers the parser.
+      continue;
+    }
+    m_EphNmeaPartial.push_back(c);
+    if (dateUpdated && !m_EphNmeaCommitPending && hasValidRmcDate(m_EphNmeaPartial)) {
+      // TinyGPS++ commits at '*HH', before the CR/LF that completes this line.
+      m_EphNmeaCommitPending = true;
+    }
+  }
 }
 
 void GPS::processSerial(const uint8_t *data, size_t length) {

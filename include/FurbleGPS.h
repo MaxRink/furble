@@ -441,6 +441,8 @@ class GPS {
   void servicePoll(void);
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
+  void noteEphemerisDate(const uint8_t *data, size_t length, bool dateUpdated);
+  static bool hasValidRmcDate(const std::string &sentence);
   void serviceBinary(const uint8_t *frame, size_t length);
   bool wiredFixIsFresh(const status_t &status) const;
 
@@ -673,22 +675,19 @@ class GPS {
   // Replay waits for the receiver's own clock before it commits, so arming and
   // sending are two steps.
   bool m_EphReplayArmed = false;
-  // The calendar date the parser held when replay was armed, packed as
-  // yyyymmdd, or 0 when it held none. The commit waits for a different one.
-  //
-  // A value, not an update count and not an age. TinyGPS++ only dispatches a
-  // term when it is non-empty, so the empty date field in the
-  // `$GNRMC,,V,,,,,,,,,,N` every receiver sends before its first fix never
-  // reaches setDate; date.commit() then re-commits the stale newDate and raises
-  // the update flag anyway. Any counter keyed on that flag, or on the sentence
-  // name in the raw bytes, counts a date the receiver never sent, and the arm
-  // window is exactly when those sentences arrive. The committed value does not
-  // move, so comparing values does not have that hole.
-  //
-  // Ages are no use either: TinyGPSPlus ages come from millis(), the same clock
-  // as Platform::tick() on the device but not in the simulator, and mixing the
-  // two makes every stale timestamp look fresh.
-  uint32_t m_EphArmDate = 0;
+  // Sequence of TinyGPS++ RMC date commits. It distinguishes a same-day valid
+  // date from the empty pre-fix RMC, whose commit carries no usable UTC even
+  // though TinyGPS++ raises isUpdated().
+  uint32_t m_EphDateSequence = 0;
+  // Sequence snapshot taken when replay was armed. A receiver can correct its
+  // clock by minutes while staying on the same UTC day.
+  uint32_t m_EphArmDateSequence = 0;
+  // NMEA bytes carried across UART reads while looking for a complete RMC. The
+  // buffer is bounded to SENTENCE_LEN; overlong or unterminated noise is dropped.
+  std::string m_EphNmeaPartial;
+  // Carry parser commit evidence until the corresponding CR/LF sentence
+  // terminator arrives, including when those bytes cross UART reads.
+  bool m_EphNmeaCommitPending = false;
   // The UTC of the last reading that came back implausible. Once a date has
   // committed after the arm the receiver is proven to be sending real dates, so
   // re-entry keys on the reported UTC from then on. Keying on the date again
