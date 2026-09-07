@@ -89,7 +89,7 @@ typedef struct {
   UI::Request request;
   int32_t arg;
 #if defined(FURBLE_CONSOLE)
-  std::shared_ptr<RequestState> state;
+  RequestState *state;
 #endif
 } headless_request_t;
 

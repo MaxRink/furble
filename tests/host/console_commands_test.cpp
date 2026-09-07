@@ -81,16 +81,19 @@ bool check(bool condition, const std::string &message) {
 }
 
 void testWorkflowCompletionState(void) {
-  Furble::RequestResult result;
-  check(result.state != nullptr, "shared workflow state allocates");
-  if (result.state == nullptr) return;
-  result.state->token = "ok";
-  check(xSemaphoreTake(result.state->done, pdMS_TO_TICKS(1)) == pdFALSE,
-        "workflow timeout does not fabricate completion");
-
-  Furble::RequestState *retained = result.state;
-  retained->retain();
-  result.state = nullptr;
+  Furble::RequestState *retained = nullptr;
+  {
+    Furble::RequestResult result;
+    check(result.state != nullptr, "shared workflow state allocates");
+    if (result.state == nullptr) {
+      return;
+    }
+    check(xSemaphoreTake(result.state->done, pdMS_TO_TICKS(1)) == pdFALSE,
+          "workflow timeout does not fabricate completion");
+    retained = result.state;
+    retained->retain();
+  }
+  retained->token = "ok";
   check(xSemaphoreGive(retained->done) == pdTRUE
             && xSemaphoreTake(retained->done, pdMS_TO_TICKS(20)) == pdTRUE,
         "late completion remains owned after caller releases its state");

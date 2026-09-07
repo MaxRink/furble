@@ -87,6 +87,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   connect holds for the whole connect timeout. Companion connect requests carry
   stable saved camera ids and are resolved and busy-checked again on the UI
   task; transient scan indexes must never cross that queue boundary.
+  Console completion envelopes use the same intrusive `RequestState*` ownership
+  in display and headless builds. Caller timeout does not release the queued
+  owner's reference; completion or queue draining does.
 - Companion credentials use the checked
   `Settings::loadPassword()` path: missing is unset, storage errors deny access.
   Never seed an empty password after an unsuccessful NVS existence check.

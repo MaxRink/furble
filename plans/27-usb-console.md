@@ -459,3 +459,21 @@ found: `appliesWhen` reports `immediately` for CPU_FREQ, but the console
 `Platform::setCPUMaxFreq`. Empirically a console-set 160 took effect at the
 next reboot (`pm: CPU_MAX: 160`). The label should say `on reboot` for the
 console path.
+
+## PR265 integration review, 2026-09-07
+
+Workflow commands remain queued through the production UI. Completion uses
+one shared intrusive state type for display and headless builds, with a
+bounded caller wait and independent queued ownership. A timeout reports an
+unknown pending outcome, not a guarantee that no operation occurred. Queue
+rejection, completion, and shutdown draining release their owned references.
+Delete-all walks a captured catalog snapshot and reports checked persistence
+failures rather than printing successful deletion unconditionally.
+
+Review found a remaining headless `shared_ptr` declaration mixed with this
+intrusive ownership and a regression that nulled the caller pointer without
+releasing it. Both are corrected: the headless envelope uses `RequestState*`,
+and the test destroys a nested caller before completing the retained request.
+The host harness uses the shared production completion type but a UI double;
+it does not certify the real UI queue or headless runtime. Exact-head host,
+simulator, and firmware validation remain pending.
