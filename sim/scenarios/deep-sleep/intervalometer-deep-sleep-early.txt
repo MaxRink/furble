@@ -1,0 +1,14 @@
+# An early virtual wake must wait for the persisted shot deadline.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture early
+seed interval_count 2
+seed interval_shutter 30
+wait 2000
+assert camera.shutter_presses 0
+assert ui.interval_state wait
+wait 6000
+assert camera.shutter_presses 1
+exit

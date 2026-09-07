@@ -168,21 +168,6 @@ struct SimResumeState {
 constexpr uint32_t kResumeMagic = 0x49564c31;
 constexpr uint16_t kResumeVersion = 2;
 
-struct SimResumeState {
-  uint32_t magic;
-  uint16_t version;
-  uint16_t length;
-  uint32_t count;
-  uint32_t target;
-  uint16_t camera_index;
-  uint16_t reserved;
-  int64_t wake_time;
-  interval_t interval;
-} __attribute__((packed));
-
-constexpr uint32_t kResumeMagic = 0x49564c31;
-constexpr uint16_t kResumeVersion = 1;
-
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
     return SDLK_UP;

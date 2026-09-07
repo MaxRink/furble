@@ -11,6 +11,10 @@ seed interval_wait 0
 wait 8000
 assert platform.timed_wake yes
 assert platform.wake_marker no
+assert ui.interval_remaining 1
+assert camera.shutter_presses 0
+wait 12000
 assert camera.shutter_presses 1
+assert ui.interval_remaining 0
 assert ui.interval_state finished
 exit

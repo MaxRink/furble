@@ -1,0 +1,12 @@
+# Counts beyond the finite target are invalid and must be cleared on boot.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture outofrange
+seed interval_count 2
+wait 5000
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state idle
+exit

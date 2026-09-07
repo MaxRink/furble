@@ -4474,6 +4474,9 @@ std::string UI::simQueryState(const char *key) {
     }
     return "unknown";
   }
+  if (query == "interval_remaining") {
+    return std::to_string(m_IntervalometerRemaining.load());
+  }
 
   // The bulb countdown is read from the label rendered by the real refresh
   // timer. This keeps the assertion tied to the visible UI rather than a test
