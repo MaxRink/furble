@@ -125,6 +125,7 @@ public struct CompanionStateMachine: Sendable {
       // be used as an authentication flag.
       requiresAuthentication = hasAuth
       guard requiresAuthentication else { return fail(.authenticationUnavailable) }
+      hasSettings = hasSettings && value.supportsSettings
       hasCameras = hasCameras && value.supportsCameras
       phase = .awaitingAuthentication
       return .beginAuthentication

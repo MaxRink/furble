@@ -19,6 +19,7 @@ public enum FurbleProtocol {
   public static let capabilityPacketSize = 6
   public static let authNonceSize = 16
   public static let authProofSize = 16
+  public static let authPasswordMaxBytes = 63
   public static let authChallengePacketSize = 2 + authNonceSize
   public static let authProofPacketSize = 2 + authProofSize
   public static let authResultPacketSize = 3
@@ -452,8 +453,9 @@ public struct FurbleAuthSession: Sendable {
     guard !password.isEmpty else { throw FurbleProtocol.Error.authenticationUnavailable }
     guard maxFailures > 0 else { throw FurbleProtocol.Error.invalidValue("maxFailures") }
     let bytes = Array(password.utf8)
-    guard bytes.count <= 63 else {
-      throw FurbleProtocol.Error.invalidValue("password exceeds 63 UTF-8 bytes")
+    guard bytes.count <= FurbleProtocol.authPasswordMaxBytes else {
+      throw FurbleProtocol.Error.invalidValue(
+        "password exceeds \(FurbleProtocol.authPasswordMaxBytes) UTF-8 bytes")
     }
     self.password = SecretBytes(bytes)
     self.maxFailures = maxFailures

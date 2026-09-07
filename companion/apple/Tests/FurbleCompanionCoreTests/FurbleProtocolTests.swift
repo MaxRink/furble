@@ -214,6 +214,14 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertThrowsError(try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15)))
   }
 
+  func testAuthDecodersRejectWrongVersionAndOperation() {
+    let nonce = Data(repeating: 9, count: FurbleProtocol.authNonceSize)
+    XCTAssertThrowsError(try FurbleProtocol.decodeAuthChallenge(Data([2, 0]) + nonce))
+    XCTAssertThrowsError(try FurbleProtocol.decodeAuthChallenge(Data([1, 1]) + nonce))
+    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([2, 2, 1])))
+    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([1, 1, 1])))
+  }
+
   func testAuthProofMatchesAndroidFirmwareGoldenVector() throws {
     #if canImport(CryptoKit)
     let nonce = Data((0..<16).map(UInt8.init))

@@ -65,7 +65,7 @@ final class CompanionStateMachineTests: XCTestCase {
     // characteristic is available for a privileged command.
     _ = machine.didReadCapability(Data([1, 2, 0, 0, 0, 0]))
     _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))
-    _ = machine.didAuthenticationAccepted()
+    XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus])
     XCTAssertThrowsError(try machine.privileged(.writeSettings(Data([0]))) )
     XCTAssertThrowsError(try machine.privileged(.writeCamera(Data([0, 0xff]))) )
     XCTAssertNoThrow(try machine.privileged(.writeTrigger(Data([1, 1]))) )

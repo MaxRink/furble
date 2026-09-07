@@ -50,7 +50,7 @@ public struct KeychainCredentialStore: FurbleCredentialStore, Sendable {
   }
 
   public func savePassword(_ password: String) throws {
-    guard !password.isEmpty, password.utf8.count <= 64 else {
+    guard !password.isEmpty, password.utf8.count <= FurbleProtocol.authPasswordMaxBytes else {
       throw CredentialStoreError.invalidPassword
     }
     #if canImport(Security)
