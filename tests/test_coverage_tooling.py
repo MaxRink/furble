@@ -6,13 +6,17 @@ synthetic lcov text and synthetic summaries, so no clang, llvm or built
 binaries are required.
 """
 from pathlib import Path
+from contextlib import redirect_stderr
 import importlib.util
 import inspect
+from io import StringIO
 import json
 import os
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("furble_coverage", ROOT / "tools/coverage.py")
@@ -466,6 +470,66 @@ class ScenarioOutcomeTest(unittest.TestCase):
     self.assertIn("one.txt", failures[0])
     self.assertIn("42.5 s", failures[0])
     self.assertIn("three.txt", failures[1])
+
+  def test_failed_scenario_output_keeps_only_the_bounded_tail(self):
+    output = "discarded prefix\n" + (
+        "x" * COVERAGE.SCENARIO_OUTPUT_TAIL_BYTES
+    ) + "\ncrash detail\n"
+    tail = COVERAGE.scenario_output_tail(output)
+    self.assertEqual(
+        len(tail.encode("utf-8")), COVERAGE.SCENARIO_OUTPUT_TAIL_BYTES
+    )
+    self.assertNotIn("discarded prefix", tail)
+    self.assertTrue(tail.endswith("crash detail\n"))
+
+  def test_measurement_reports_real_child_signal_timeout_and_invalid_bytes(self):
+    child_source = f"""#!{sys.executable}
+import os
+import signal
+import sys
+import time
+
+label = sys.argv[sys.argv.index("--script") + 1]
+if label.endswith("signal.txt"):
+  os.write(2, b"signal marker \\xff\\n")
+  os.kill(os.getpid(), signal.SIGTERM)
+elif label.endswith("timeout.txt"):
+  os.write(2, b"timeout marker \\xff\\n")
+  time.sleep(5)
+else:
+  os.write(2, b"invalid marker \\xff\\n")
+  sys.exit(2)
+"""
+    with tempfile.TemporaryDirectory() as directory:
+      child = Path(directory) / "sim-child.py"
+      child.write_text(child_source, encoding="utf-8")
+      child.chmod(0o755)
+      args = SimpleNamespace(
+          build_dir=Path(directory) / "build",
+          scenario_jobs=2,
+          scenario_timeout=1,
+      )
+      labels = [
+          "sim/scenarios/e2e/signal.txt",
+          "sim/scenarios/e2e/timeout.txt",
+          "sim/scenarios/invalid/expected.txt",
+      ]
+      stderr = StringIO()
+      with mock.patch.object(COVERAGE, "build_simulator", return_value=child), \
+          mock.patch.object(
+              COVERAGE,
+              "certified_scenarios",
+              side_effect=[labels, [], [], []],
+          ), redirect_stderr(stderr):
+        with self.assertRaises(COVERAGE.CoverageError):
+          COVERAGE.measure_sim_board(
+              args, Path(directory), COVERAGE.SIM_BOARDS[1], "llvm-cov", "llvm-profdata"
+          )
+      report = stderr.getvalue()
+      self.assertIn("signal marker", report)
+      self.assertIn("timeout marker", report)
+      self.assertIn("\ufffd", report)
+      self.assertNotIn("invalid marker", report)
 
   def test_the_board_measurement_raises_rather_than_noting_the_loss(self):
     """The classification above only helps if the caller acts on it.
