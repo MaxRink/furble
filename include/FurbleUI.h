@@ -4,8 +4,8 @@
 #include <mutex>
 
 #if defined(FURBLE_CONSOLE)
-#include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 #include "FurbleRequestState.h"
 #endif
 
@@ -247,7 +247,7 @@ class UI {
   /** Report an assertable UI state value for scripted end-to-end scenarios. */
   std::string simQueryState(const char *key);
 
-#if defined(FURBLE_SIM) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_SIM)
   /**
    * Report one answer line of the last serviced console request.
    *
@@ -606,7 +606,7 @@ class UI {
   /** Drain the request queue, called on the UI task with m_Mutex held. */
   void serviceRequests(void);
 
-#if defined(FURBLE_CONSOLE)
+#if defined(FURBLE_CONSOLE) || defined(FURBLE_SIM)
   /**
    * The connectable list currently holds scan results, not saved cameras.
    *

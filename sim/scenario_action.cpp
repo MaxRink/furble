@@ -438,6 +438,19 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     return accept();
   }
 
+  if (args[0] == "console") {
+    if ((args.size() < 2) || (args.size() > 3)) {
+      return fail(error, "console requires command and optional integer");
+    }
+    action->kind = scenario_action_kind_t::CONSOLE;
+    action->name = args[1];
+    if (args.size() == 3 && !parseSigned(args[2], std::numeric_limits<int32_t>::min(),
+                                          std::numeric_limits<int32_t>::max(), &action->integer)) {
+      return fail(error, "console integer is invalid");
+    }
+    return accept();
+  }
+
   if (args[0] == "battery") {
     if (args.size() != 5) {
       return fail(error, "battery requires level voltage current charging");
