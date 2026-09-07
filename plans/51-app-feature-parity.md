@@ -491,3 +491,7 @@ Verified on fork master at `916e831`:
   and 5
 - [50-companion-app-design.md](50-companion-app-design.md) sections 3.5, 3.6,
   7, 8 and 9
+The production GATT transport routes camera command indications and unsolicited
+camera notifications to the Cameras characteristic. Companion startup loads the
+saved camera catalog, and an empty catalog is reloaded before the Cameras
+subscription is announced so stable saved ids remain available after a scan.

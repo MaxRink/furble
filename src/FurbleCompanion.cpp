@@ -1,5 +1,6 @@
 #include <esp_timer.h>
 
+#include "CameraList.h"
 #include "Device.h"
 #include "Scan.h"
 
@@ -25,6 +26,7 @@ uint64_t CompanionGatt::nowMs(void) {
 
 void CompanionGatt::init(void) {
   if (Settings::load<Settings::COMPANION>()) {
+    CameraList::load();
     enable(false);
   }
 }
@@ -585,6 +587,9 @@ void CompanionGatt::onSubscribe(NimBLECharacteristic *characteristic,
     return;
   }
   if (characteristic == m_Cameras) {
+    if ((CameraList::size() == 0) && (CameraList::getSaveCount() != 0)) {
+      CameraList::load();
+    }
     m_Service.notifyCameras(true);
   } else {
     m_Service.notifyStatus(true);
@@ -611,6 +616,12 @@ uint16_t CompanionGatt::getMaxPayload(void) const {
 }
 
 void CompanionGatt::notify(uint8_t charId, const uint8_t *data, size_t len) {
+  if (charId == COMPANION_CHAR_CAMERAS && data != nullptr && m_Cameras != nullptr
+      && isConnected()) {
+    m_Cameras->setValue(data, len);
+    m_Cameras->notify(m_CompanionConnHandle);
+    return;
+  }
   if (charId != COMPANION_CHAR_STATUS || data == nullptr || m_Status == nullptr || !isConnected()) {
     return;
   }
@@ -619,6 +630,11 @@ void CompanionGatt::notify(uint8_t charId, const uint8_t *data, size_t len) {
 }
 
 void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
+  if (charId == COMPANION_CHAR_CAMERAS && data != nullptr && m_Cameras != nullptr
+      && isConnected()) {
+    m_Cameras->indicate(data, len, m_CompanionConnHandle);
+    return;
+  }
   if (charId != COMPANION_CHAR_SETTINGS || data == nullptr || m_Settings == nullptr
       || !isConnected()) {
     return;
