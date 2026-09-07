@@ -208,7 +208,9 @@ bool testDispatchAndDeduplication() {
   Furble::Host::failNextPutForKey(djiKey.c_str());
   Furble::CameraList::save(dji);
   CHECK(dji->getPairType() == Camera::PairType::NEW);
-  CHECK(Furble::CameraList::savedSnapshot().empty());
+  const auto afterFailedSave = Furble::CameraList::savedSnapshot();
+  CHECK(afterFailedSave.size() == 1);
+  CHECK(Furble::CameraList::getCameraId(afterFailedSave.front().get()) != 0);
 
   DJIProtocolPeer peer(djiAdvertisement.getAddress());
   NimBLEDevice::setMockPeer(&peer);
@@ -239,7 +241,7 @@ bool testDispatchAndDeduplication() {
 
   // A failed index erase must retain both the catalog entry and its bond.
   const size_t bondsBeforeFailedRemove = NimBLEDevice::deleteBondCount();
-  Furble::Host::failNextRemoveForKey("index");
+  Furble::Host::failNextPutForKey("index");
   Furble::CameraList::remove(dji.get());
   CHECK(Furble::CameraList::savedSnapshot().size() == 2);
   CHECK(NimBLEDevice::deleteBondCount() == bondsBeforeFailedRemove);

@@ -467,6 +467,11 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
 
   const uint8_t op = data[0];
   const uint8_t cameraId = data[1];
+  // Listing is read-only and remains available on an encrypted link. Every
+  // camera mutation is privileged, including selection and disconnect.
+  if ((op != CAMERA_OP_LIST) && !allowProtected(COMPANION_CHAR_CAMERAS)) {
+    return;
+  }
   const auto snapshots = getCameraSnapshots();
   const auto found = std::find_if(snapshots.begin(), snapshots.end(), [cameraId](const auto &item) {
     return item.record.camera_id == cameraId;

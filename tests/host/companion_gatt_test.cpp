@@ -321,6 +321,7 @@ void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
   MockCentral central;
   CompanionService service(central);
   central.attach(service);
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "camera password");
   service.init();
   central.connect();
   central.setSecurity(true, true);
@@ -812,6 +813,30 @@ void testCompanionCameras(void) {
         "an unconnected saved camera reports an unknown rssi");
   check(listEnd.head.camera_id == 0xff && listEnd.head.status == CompanionService::CAMERA_OK,
         "the list terminates with the all-cameras id");
+
+  // LIST is read-only, but every camera mutation requires the configured
+  // password and must not reach the UI queue while this session is unauthenticated.
+  const auto checkUnauthenticatedCameraMutation = [&](uint8_t operation, const char *message) {
+    central.clearEvents();
+    drainRequests();
+    check(central.write(CAMERAS_UUID, {operation, firstId}), message);
+    check(central.cameraIndications().empty(), "unauthenticated camera mutation has no camera response");
+    check(central.authIndications().size() == 1
+              && central.authIndications()[0].size() == CompanionService::AUTH_RESULT_SIZE
+              && central.authIndications()[0][2] == CompanionService::AUTH_RESULT_REJECTED,
+          "unauthenticated camera mutation is rejected on Auth");
+    check(drainRequests().empty(), "unauthenticated camera mutation does not queue UI work");
+  };
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_SELECT,
+                                     "unauthenticated camera select reaches the gate");
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_DESELECT,
+                                     "unauthenticated camera deselect reaches the gate");
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_CONNECT,
+                                     "unauthenticated camera connect reaches the gate");
+  checkUnauthenticatedCameraMutation(CompanionService::CAMERA_OP_DISCONNECT,
+                                     "unauthenticated camera disconnect reaches the gate");
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
+  service.reloadPassword();
 
   // Select and deselect.
   central.clearEvents();
