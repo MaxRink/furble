@@ -74,6 +74,7 @@ int run(const std::string &scenario) {
     bytes.push_back(0);
     bytes.append("1:value", 7);
     bytes.push_back(42);
+    writeBytes(path, bytes);
     const int result = checkResult(path, Result::ERROR);
     cleanup();
     return result;
