@@ -317,13 +317,12 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   were accepted. The UI keeps the resume record when the request succeeds and
   only clears it on a setup failure, so a returning boot can restore the run.
 - Resume reconnects through the existing connection path with bounded retries. The
-  resume drives `connectAll(false)`, so `Control::connectAll(void)` runs its
-  non-infinite branch: it retries while the session-local failure count is below
-  two and now waits
-  `CONNECT_RETRY_GAP_MS` (3 s) in interruptible slices before each retry. A wake
-  that misses the camera gets two spaced retries rather than hammering the radio
-  or failing on the first miss. After the bounded retries a still-failed reconnect
-  clears the resume state and leaves an error on screen.
+  resume drives `connectAll(false)` with a 3 s interruptible settle gap, so
+  `Control::connectAll(void)` runs its non-infinite branch with two total attempts:
+  one initial attempt and one retry while the session-local failure count is below
+  two. Ordinary bounded connects pass no gap and retain their immediate retry
+  behavior. After the bounded retries a still-failed reconnect clears the resume
+  state and leaves an error on screen.
 - PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
   genuine deep-sleep wake that fails the first reconnect must show two spaced
   retries in the serial log and then either recover or land on the resume error.

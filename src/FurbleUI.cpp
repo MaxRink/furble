@@ -5913,7 +5913,8 @@ void UI::doConnect(lv_event_t *e) {
   }
 
   const bool resume = m_ConnectContext.ui->m_Intervalometer.hasResume();
-  control.connectAll(resume ? false : Settings::load<Settings::RECONNECT>());
+  control.connectAll(resume ? false : Settings::load<Settings::RECONNECT>(),
+                    resume ? Control::RESUME_RETRY_GAP_MS : 0);
   // Mark the request before the timer can run: the control task publishes
   // STATE_CONNECT asynchronously, so the first tick may still see idle.
   m_ConnectContext.connectRequested = true;
