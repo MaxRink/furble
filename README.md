@@ -22,7 +22,7 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, plus an Android companion app
+- A host SDL simulator for the UI, plus Android and Apple companion apps
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
   under Settings > Sensors; the Level page appears while connected.
 - Software IMU gestures: configurable tap or shake display wake and an optional
