@@ -3,6 +3,8 @@ package com.furble.companion.protocol
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /** Wire contract copied from plans/50-companion-app-design.md. */
 object FurbleProtocol {
@@ -16,6 +18,23 @@ object FurbleProtocol {
     const val STATUS_PACKET_SIZE = 20
     const val TRIGGER_PACKET_SIZE = 4
     const val CAPABILITY_PACKET_SIZE = 6
+    const val AUTH_NONCE_SIZE = 16
+    const val AUTH_RESPONSE_SIZE = 16
+    const val AUTH_VERSION = 0x01
+    const val AUTH_OP_BEGIN = 0x00
+    const val AUTH_OP_PROOF = 0x01
+    const val AUTH_OP_RESULT = 0x02
+    const val AUTH_RESULT_AUTHENTICATED = 0x01
+    const val AUTH_RESULT_REJECTED = 0x02
+    const val AUTH_RESULT_DROPPED = 0x03
+    const val AUTH_RESULT_NOT_REQUIRED = 0x04
+    const val AUTH_ATT_ERROR = 0x80
+    const val AUTH_CHALLENGE_PACKET_SIZE = 2 + AUTH_NONCE_SIZE
+    const val AUTH_PROOF_PACKET_SIZE = 2 + AUTH_RESPONSE_SIZE
+    const val AUTH_RESULT_PACKET_SIZE = 3
+    const val COMPANION_PASSWORD_MAX = 63
+    // The firmware password setting is write-only and is never listed by the app.
+    const val COMPANION_PASSWORD_WIRE_ID = 47
 
     // The frozen firmware UUID base from include/FurbleCompanion.h. Only the
     // first 32-bit field changes per characteristic.
@@ -24,6 +43,7 @@ object FurbleProtocol {
     val STATUS_UUID: UUID = UUID.fromString("b57f4f60-087b-4740-b71d-8262cf26ebbc")
     val SETTINGS_UUID: UUID = UUID.fromString("b57f4f61-087b-4740-b71d-8262cf26ebbc")
     val TRIGGER_UUID: UUID = UUID.fromString("b57f4f62-087b-4740-b71d-8262cf26ebbc")
+    val AUTH_UUID: UUID = UUID.fromString("b57f4f6f-087b-4740-b71d-8262cf26ebbc")
     val CAPABILITY_UUID: UUID = UUID.fromString("b57f4f64-087b-4740-b71d-8262cf26ebbc")
 
     const val LOCATION_VALID: Int = 1 shl 0
@@ -324,6 +344,76 @@ object FurbleProtocol {
             .put(operation.toByte())
         if (operation == TriggerOperation.TIMED_SHUTTER) buffer.putShort(holdMs.toShort())
         return buffer.array()
+    }
+
+    /** Firmware sends version, operation, and the nonce in an indication. */
+    fun encodeAuthBegin(): ByteArray = byteArrayOf(AUTH_VERSION.toByte(), AUTH_OP_BEGIN.toByte())
+
+    fun encodeAuthResponse(passwordUtf8: ByteArray, nonce: ByteArray): ByteArray {
+        require(nonce.size == AUTH_NONCE_SIZE) { "AUTH nonce must be 16 bytes" }
+        require(passwordUtf8.size in 1..COMPANION_PASSWORD_MAX) {
+            "Companion password must be 1..$COMPANION_PASSWORD_MAX UTF-8 bytes"
+        }
+        val digest = hmacSha256(passwordUtf8, nonce)
+        return ByteBuffer.allocate(AUTH_PROOF_PACKET_SIZE)
+            .put(AUTH_VERSION.toByte())
+            .put(AUTH_OP_PROOF.toByte())
+            .put(digest, 0, AUTH_RESPONSE_SIZE)
+            .array().also {
+                digest.fill(0)
+            }
+    }
+
+    fun decodeAuthChallenge(packet: ByteArray): ByteArray {
+        require(packet.size == AUTH_CHALLENGE_PACKET_SIZE) { "Invalid AUTH challenge length" }
+        require(packet[0].toInt() and 0xff == AUTH_VERSION) { "Unsupported AUTH version" }
+        require(packet[1].toInt() and 0xff == AUTH_OP_BEGIN) { "Invalid AUTH challenge operation" }
+        return packet.copyOfRange(2, AUTH_CHALLENGE_PACKET_SIZE)
+    }
+
+    fun decodeAuthResult(packet: ByteArray): Int {
+        require(packet.size == AUTH_RESULT_PACKET_SIZE) { "Invalid AUTH result length" }
+        require(packet[0].toInt() and 0xff == AUTH_VERSION) { "Unsupported AUTH version" }
+        require(packet[1].toInt() and 0xff == AUTH_OP_RESULT) { "Invalid AUTH result operation" }
+        return packet[2].toInt() and 0xff
+    }
+
+    /** Public for host golden-vector tests. The returned digest is always 32 bytes. */
+    fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key, "HmacSHA256"))
+        return mac.doFinal(message)
+    }
+
+    fun authResultLabel(result: Int): String = when (result) {
+        AUTH_RESULT_AUTHENTICATED -> "Authenticated"
+        AUTH_RESULT_REJECTED -> "Password rejected"
+        AUTH_RESULT_DROPPED -> "Too many attempts; furble disconnected"
+        AUTH_RESULT_NOT_REQUIRED -> "Password not required"
+        else -> "Unknown authentication result ($result)"
+    }
+
+    fun truncateUtf8(value: String, maxBytes: Int = COMPANION_PASSWORD_MAX): String {
+        require(maxBytes >= 0)
+        var remaining = maxBytes
+        var offset = 0
+        while (offset < value.length) {
+            if (Character.isSurrogate(value[offset]) &&
+                (!Character.isHighSurrogate(value[offset]) || offset + 1 >= value.length ||
+                    !Character.isLowSurrogate(value[offset + 1]))
+            ) break
+            val codePoint = value.codePointAt(offset)
+            val encodedLength = when {
+                codePoint <= 0x7f -> 1
+                codePoint <= 0x7ff -> 2
+                codePoint <= 0xffff -> 3
+                else -> 4
+            }
+            if (encodedLength > remaining) break
+            remaining -= encodedLength
+            offset += Character.charCount(codePoint)
+        }
+        return value.substring(0, offset)
     }
 
     fun encodeSettingsListRequest(): ByteArray = encodeSettingsRequest(SettingsOperation.LIST, 0, byteArrayOf())
