@@ -164,6 +164,7 @@ bool Settings::appliesImmediately(type_t type) {
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
+    case COMPANION_PASSWORD:
     case CONN_SAVER:
     case FB_OUTPUT:
     case PRESET_PICKER:
@@ -194,6 +195,7 @@ bool Settings::isDangerous(type_t type) {
     case CPU_FREQ:
     case SLEEP_CONN:
     case COMPANION:
+    case COMPANION_PASSWORD:
     // Enabling the profile changes connection and sleep behaviour, the same
     // link-affecting class as the SLEEP_CONN it bundles.
     case BATTERY_SAVER:
@@ -255,6 +257,35 @@ bool Settings::isDangerous(type_t type) {
       return false;
   }
   return false;
+}
+
+bool Settings::savePassword(const std::string &value) {
+  const auto &setting = get(COMPANION_PASSWORD);
+  Preferences prefs;
+  return prefs.begin(setting.nvs_namespace, false) && prefs.putString(setting.key, value.c_str());
+}
+
+bool Settings::loadPassword(std::string &value) {
+  const auto &setting = get(COMPANION_PASSWORD);
+  Preferences prefs;
+  if (!prefs.begin(setting.nvs_namespace, true)) {
+    value.clear();
+    return false;
+  }
+
+  std::string loaded;
+  const auto result = prefs.getString(setting.key, loaded);
+  prefs.end();
+  if (result == Preferences::string_result_t::NOT_FOUND) {
+    value.clear();
+    return true;
+  }
+  if (result != Preferences::string_result_t::OK) {
+    value.clear();
+    return false;
+  }
+  value = loaded;
+  return true;
 }
 
 template <typename T>
@@ -484,6 +515,11 @@ void Settings::init(void) {
   // Set default values for all settings
   for (const auto &it : m_Setting) {
     auto &setting = it.second;
+    // Missing passwords already mean unset. Never turn a failed existence
+    // check into a write that clears an existing authentication gate.
+    if (setting.type == COMPANION_PASSWORD) {
+      continue;
+    }
     Preferences prefs;
     prefs.begin(setting.nvs_namespace, true);
     bool exists = prefs.isKey(setting.key);
@@ -510,6 +546,8 @@ void Settings::init(void) {
           break;
         case BUTTON_MODE:
           save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);
+          break;
+        case COMPANION_PASSWORD:
           break;
         case TX_POWER:
         case SCAN_MODE:
