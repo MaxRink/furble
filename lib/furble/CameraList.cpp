@@ -502,7 +502,6 @@ void CameraList::addFauxNY(void) {
   m_ConnectList.push_back(std::make_shared<Furble::FauxNY>());
 }
 
-}  // namespace Furble
 bool CameraList::isSaved(const Furble::Camera *camera) {
   if (camera == nullptr) {
     return false;
@@ -518,4 +517,6 @@ bool CameraList::isSaved(const Furble::Camera *camera) {
   }
   return false;
 }
-static_assert(static_cast<uint32_t>(Camera::Type::FUJIFILM_SECURE) == CameraListProtocol::ROTATING_ADDRESS_TYPE);
+static_assert(static_cast<uint32_t>(Camera::Type::FUJIFILM_SECURE)
+              == CameraListProtocol::ROTATING_ADDRESS_TYPE);
+}  // namespace Furble

@@ -399,6 +399,13 @@ bool testRicohBondPolicy() {
     NimBLEDevice::setMockPeer(&peer);
     const auto advertisement = peer.advertisement();
     NimBLEDevice::setBonded(true);
+    Furble::Ricoh markedSaved(&advertisement);
+    markedSaved.markSaved();
+    if (markedSaved.getPairType() != Furble::Camera::PairType::SAVED
+        || markedSaved.connect(ESP_PWR_LVL_P3, 1000) || NimBLEDevice::deleteBondCount() != 0u
+        || !NimBLEDevice::isBonded(advertisement.getAddress())) {
+      return false;
+    }
     Furble::Ricoh fresh(&advertisement);
     std::vector<uint8_t> data(fresh.getSerialisedBytes());
     if (!fresh.serialise(data.data(), data.size()))
