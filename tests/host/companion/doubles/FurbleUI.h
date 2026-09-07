@@ -11,13 +11,14 @@ class UI {
   /**
    * Mirror of the production request enum.
    *
-   * Only CONNECT and DISCONNECT are exercised here: they are the operations the
+   * Only camera connect/disconnect are exercised here: they are the operations the
    * companion cameras characteristic hands to the UI task. The double records
    * them and the test replays them through the real Control, which is what the
    * firmware request handler does.
    */
   enum class Request {
     CONNECT,
+    CONNECT_SAVED,
     DISCONNECT,
     SCAN,
     CAMERAS,

@@ -19,6 +19,7 @@ class UI {
  public:
   enum class Request {
     CONNECT,
+    CONNECT_SAVED,
     DISCONNECT,
     SCAN,
     CAMERAS,
