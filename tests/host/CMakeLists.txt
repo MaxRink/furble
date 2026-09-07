@@ -69,12 +69,58 @@ target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-for
                                                  -Wno-unused-parameter)
 target_compile_definitions(furble_host_camera
                            PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100 FURBLE_TEST_SYNC)
+target_compile_definitions(furble_host_camera PUBLIC FURBLE_HOST_TEST)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
 target_link_libraries(fujifilm_camera_test PRIVATE furble_host_camera)
 target_compile_options(fujifilm_camera_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
+
+add_executable(camera_pairing_test camera_pairing_test.cpp)
+target_link_libraries(camera_pairing_test PRIVATE furble_host_camera)
+target_compile_options(camera_pairing_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
+
+# Exercise the production security callbacks and the NimBLE injection boundary
+# against the Ricoh peer's blocking numeric-comparison handshake.
+add_executable(camera_pairing_peer_test
+               camera_pairing_peer_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(camera_pairing_peer_test PRIVATE furble_host_camera Threads::Threads)
+target_include_directories(camera_pairing_peer_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(camera_pairing_peer_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
+add_executable(camera_pairing_race_test
+               camera_pairing_race_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+target_include_directories(camera_pairing_race_test PRIVATE
+                           ${FURBLE_ROOT}/lib/furble
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR})
+target_compile_definitions(camera_pairing_race_test PRIVATE FURBLE_HOST_TEST
+                                                            FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(camera_pairing_race_test PRIVATE
+                       -fsanitize=address -g -O1
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_options(camera_pairing_race_test PRIVATE -fsanitize=address)
+target_link_libraries(camera_pairing_race_test PRIVATE Threads::Threads)
 
 add_executable(corpus_replay_test
                corpus_replay_test.cpp
@@ -1617,6 +1663,9 @@ target_link_libraries(console_commands_test PRIVATE Threads::Threads)
 
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
+  add_test(NAME camera-pairing COMMAND camera_pairing_test)
+  add_test(NAME camera-pairing-peer COMMAND camera_pairing_peer_test)
+  add_test(NAME camera-pairing-race COMMAND camera_pairing_race_test)
   add_test(NAME golden-capture-replay
            COMMAND corpus_replay_test
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
