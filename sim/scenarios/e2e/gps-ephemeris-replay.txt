@@ -16,13 +16,11 @@ seed gps_baud 9600
 seed gps_assist 2
 seed gps_fix_date modern
 seed gps_uart_mode ack
-# Serve the fix burst in 40 byte reads, so every RMC spans several of them. A
-# real burst carrying GSA and GSV exceeds the driver's 256 byte read the same
-# way, with the sentence name in one read and the date in the next, and
-# GPS::task services the parser and the ephemeris arm in the same iteration.
-# Counting sentence names in raw bytes cannot survive this; counting the
-# parser's own committed dates does.
-seed gps_uart_chunk 40
+# Serve one byte per read and prepend one unterminated noise burst. This keeps
+# CR and LF in separate reads and proves the committed-date evidence parser
+# recovers without growing its partial line forever.
+seed gps_uart_chunk 1
+seed gps_uart_noise true
 wait 300
 
 # Hold the GPS Data page open for the whole run. Its 1 Hz timer reads the
