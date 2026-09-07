@@ -731,6 +731,17 @@ bool UI::sendRequest(Request request, int32_t arg) {
   return true;
 }
 
+bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+  if (result == nullptr || result->state == nullptr || !sendRequest(request, arg)) {
+    return false;
+  }
+  // This double records routing and completes synchronously. Real UI queue
+  // ownership and operation outcomes require simulator/firmware validation.
+  result->state->token = "ok";
+  xSemaphoreGive(result->state->done);
+  return true;
+}
+
 Scan &Scan::getInstance(void) {
   static Scan instance;
   return instance;

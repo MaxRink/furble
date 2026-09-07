@@ -1865,7 +1865,7 @@ void testWorkflowCommands(void) {
   check(ConsoleHost::ui().requests.empty(), "a refused pair queues nothing for the UI task");
 
   const Result paired = runDirect("pair 1");
-  checkContains(paired.out, "queued: pair", "pair acknowledges like the other request verbs");
+  checkContains(paired.out, "completed: pair", "pair reports the double's completion");
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAIR
             && ConsoleHost::ui().requests.back().arg == 1,
@@ -1881,11 +1881,11 @@ void testWorkflowCommands(void) {
                 "delete rejects a non-numeric index");
   check(ConsoleHost::ui().requests.empty(), "a refused delete queues nothing");
 
-  checkContains(runDirect("delete 3").out, "queued: delete", "delete is queued");
+  checkContains(runDirect("delete 3").out, "completed: delete", "delete reports completion");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DELETE
             && ConsoleHost::ui().requests.back().arg == 3,
         "delete queues the saved camera index");
-  checkContains(runDirect("delete all").out, "queued: delete all", "delete all is queued");
+  checkContains(runDirect("delete all").out, "completed: delete all", "delete all reports completion");
   check(ConsoleHost::ui().requests.back().arg == -1,
         "delete all queues the negative index the handler reads as a sweep");
 
@@ -1908,13 +1908,13 @@ void testWorkflowCommands(void) {
                 "multiconnect select rejects a non-numeric index");
   check(ConsoleHost::ui().requests.empty(), "a refused multiconnect select queues nothing");
 
-  checkContains(runDirect("multiconnect select 2").out, "queued: multiconnect select",
-                "multiconnect select is queued");
+  checkContains(runDirect("multiconnect select 2").out, "completed: multiconnect select",
+                "multiconnect select reports completion");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_SELECT
             && ConsoleHost::ui().requests.back().arg == 2,
         "multiconnect select queues the saved camera index");
-  checkContains(runDirect("multiconnect deselect 2").out, "queued: multiconnect deselect",
-                "multiconnect deselect is queued");
+  checkContains(runDirect("multiconnect deselect 2").out, "completed: multiconnect deselect",
+                "multiconnect deselect reports completion");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_DESELECT,
         "multiconnect deselect queues the matching request");
 
@@ -1997,7 +1997,7 @@ void testWorkflowCommands(void) {
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAGE,
         "ui page asks the UI task for the current page name");
-  checkContains(runDirect("ui back").out, "queued: ui back", "ui back is queued");
+  checkContains(runDirect("ui back").out, "completed: ui back", "ui back reports completion");
   check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BACK,
         "ui back queues the header back button");
 
