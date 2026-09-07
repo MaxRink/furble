@@ -38,6 +38,13 @@ UndefinedBehaviorSanitizer. Run a seed directly:
 The CI job runs five fixed seeds plus two seed-pinned regression guards for the
 FujifilmBasic missing-shutter findings, both now fixed and passing.
 
+`control-interleave` parks the real registration wait and the real
+`connectall_returned` boundary, then verifies teardown reaches IDLE, no late
+DISCONNECTING republish occurs after release, and a follow-up connect remains
+commandable. It intentionally does not assert the transient state returned by
+`connectAll()`, because that value can be stale by the time another thread
+observes it.
+
 ## Wired Ethernet lifecycle
 
 `ethernet-transport` links the production `src/FurbleEthernet.cpp` against the

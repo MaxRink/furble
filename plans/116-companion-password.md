@@ -350,3 +350,9 @@ restore the prior in-memory map on any failed save. The runnable
 type-mismatch, corruption, and failed-save rollback cases.
 The string read is length-based, so embedded NUL bytes are preserved for the
 auth layer to reject rather than being converted into an empty password.
+
+The host `control-interleave` regression now synchronizes on the production
+Fujifilm registration wait instead of sleeping for 300 ms. Its assertions are
+limited to observable teardown IDLE, barrier release, no late republish, and a
+successful follow-up connect; the transient `connectAll()` return value is not
+treated as shared-state evidence.
