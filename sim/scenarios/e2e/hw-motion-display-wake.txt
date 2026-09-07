@@ -13,6 +13,7 @@ seed fauxny true
 seed imu true
 seed imu_chip bmi270
 seed hw_motion 2
+seed imu_wake 1
 seed inactivity 1
 seed display_off 1
 wait 300
@@ -28,6 +29,15 @@ assert ui.motion_state stationary
 
 # Pick it up. Motion alone brings the panel back, with no input event.
 action imu.accel 0 0 2
+advance 2000
+assert ui.motion_state moving
+assert ui.display on
+
+# A change of orientation at the same magnitude is still hardware motion. The
+# chip engines use per-axis slope, not the software backend's magnitude delta.
+advance 61000
+assert ui.motion_state stationary
+action imu.accel 2 0 0
 advance 2000
 assert ui.motion_state moving
 assert ui.display on

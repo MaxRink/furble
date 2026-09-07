@@ -11,6 +11,7 @@
 
 #include "FurbleIMU.h"
 
+#include <algorithm>
 #include <cmath>
 #include <mutex>
 
@@ -61,6 +62,7 @@ class VirtualMotionBackend final: public MotionBackend {
     m_QuietSince = 0;
     m_MotionSamples = 0;
     m_InterruptCount = 0;
+    m_HaveSample = false;
     m_UsesInterrupt = Platform::getInstance().armMotionWake();
     m_Armed = true;
     return true;
@@ -87,13 +89,24 @@ class VirtualMotionBackend final: public MotionBackend {
       return false;
     }
 
-    const float magnitude =
-        std::sqrt((accel[0] * accel[0]) + (accel[1] * accel[1]) + (accel[2] * accel[2]));
     const uint32_t now = nowMs();
 
-    // The chip thresholds are fixed in hardware, but the scale knob still
-    // applies here so a scenario can prove the calibration reaches both paths.
-    if (std::fabs(magnitude - 1.0f) >= (m_Threshold * MotionSource::getScale())) {
+    // Hardware engines compare per-axis sample-to-sample slope against a fixed
+    // chip threshold. The software calibration scale does not change hardware.
+    if (!m_HaveSample) {
+      m_LastAccel[0] = accel[0];
+      m_LastAccel[1] = accel[1];
+      m_LastAccel[2] = accel[2];
+      m_HaveSample = true;
+    }
+    const float slope = std::max(
+        std::fabs(accel[0] - m_LastAccel[0]),
+        std::max(std::fabs(accel[1] - m_LastAccel[1]), std::fabs(accel[2] - m_LastAccel[2])));
+    m_LastAccel[0] = accel[0];
+    m_LastAccel[1] = accel[1];
+    m_LastAccel[2] = accel[2];
+
+    if (slope >= m_Threshold) {
       m_QuietSince = 0;
       if (m_MotionSamples < MOTION_SAMPLES) {
         m_MotionSamples++;
@@ -141,6 +154,8 @@ class VirtualMotionBackend final: public MotionBackend {
   uint32_t m_MotionSamples = 0;
   uint32_t m_InterruptCount = 0;
   bool m_UsesInterrupt = false;
+  float m_LastAccel[3] = {};
+  bool m_HaveSample = false;
   bool m_Armed = false;
 };
 

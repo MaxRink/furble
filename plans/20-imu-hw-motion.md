@@ -19,17 +19,31 @@ Shipped on `feat/20-hw-motion`:
   wake source, with the M5PM1 GPIO4 to GPIO13 chain on the M5StickS3 and GPIO35
   on the StickC family.
 - The `HW_MOTION` setting, wire id 74, NVS key `hw_motion`, values Auto,
-  Software and Hardware, default Auto.
+  Software and Hardware, default Software.
 - A Motion Engine roller on the Sensors page and three motion rows on the IMU
   live diagnostics page.
 - Console `settings get hw_motion` and `settings set hw_motion`.
-- The consumer: motion counts as user activity, so picking the device up wakes
-  the panel.
+- The consumer: motion counts as user activity when Wake Gesture is enabled, so
+  picking the device up wakes the panel.
 - Simulator coverage: a virtual motion engine per chip, two new seeds, four new
-  queries, and nine certified scenarios.
+  queries, and ten certified scenarios.
 - Host coverage: `tests/host/imu_motion_encoding_test.cpp` pins the register
   sequence and the feature word encoding, and the console suite covers the new
   setting.
+
+### Current review corrections
+
+This plan was reviewed against `fd52a851` after the implementation commits.
+The following older PR prose is historical, not current behavior:
+
+- `HW_MOTION` defaults to Software. Auto remains selectable but is not the
+  shipped default until the hardware gate passes.
+- Motion Engine is on the existing Gestures page from PR45. The earlier
+  dedicated-page and future-PR45 wording below describes an obsolete draft.
+- This PR changes no sdkconfig file.
+- The MPU6886 `INT_STATUS` clear-on-read race with M5Unified remains open.
+  The virtual simulator backend and host register tests do not certify that
+  physical event path. The hardware gate must pass before calling it certified.
 
 ### What the first draft got wrong
 
@@ -140,7 +154,11 @@ without hardware.
    using the register as the source of truth means any open sensor page eats the
    motion events. The interrupt is now latched and the pin level is the primary
    signal, with the register read as the acknowledgement. Where no pin is wired
-   the register is all there is and the race remains; gate step 3 measures it.
+   the register is all there is and the race remains. Even with the StickC pin,
+   M5Unified can clear the status before this poll samples it. No safe
+   project-local hook closes that ordering without breaking the spirit level and
+   IMU page, so the MPU6886 hardware event path remains **UNCERTIFIED** until
+   gate step 3 passes.
 4. **`disarm()` did not restore what it repurposed.** `ACCEL_CONFIG2` and
    `SMPLRT_DIV` were left at the wake-on-motion values, so the spirit level would
    keep reading a 16-sample average at 50 Hz for the rest of the session.
@@ -390,8 +408,9 @@ so it stays small and stable:
   route through `GPS::reloadSetting()` or `GPS::enable()`, which the #65 review
   found reset the receiver.
 
-The panel consumer in this PR is the interim one. When #45 lands, re-point the
-callback at `IMU_WAKE` shake and drop the panel call if that subsumes it.
+PR45 is already in this base. The panel callback is therefore gated by its
+cached `IMU_WAKE` setting, matching `handleGesture()`: Wake Gesture Off does
+not reset display inactivity.
 
 ## Simulator coverage
 
@@ -427,7 +446,7 @@ sensor.
 
 ### Scenarios
 
-All nine are in `sim/scenarios/e2e/`, certified, board `m5stick-s3`. They test
+All ten are in `sim/scenarios/e2e/`, certified, board `m5stick-s3`. They test
 logic, not layout; the layout coverage is the board matrix below. Nothing goes
 in `sim/scenarios/` top level, because the power gate iterates that directory
 and demands a committed baseline per file.
@@ -459,15 +478,10 @@ Inline on the Sensors page overflowed the 135x240 panel by 45 px, which the
 button layout renders under the floating navigation indicators.
 `page-matrix`, `stick-notouch-layout-135` and `overflow-sweep` all caught it.
 
-Its own page, reached by one nav row on Sensors, fixed that until PR45 landed
-and added the Gestures entry. Sensors then held the IMU switch, the Gestures
-entry and the Restart button with no slack left, and one more row overflowed the
-135x240 non-touch layout by 1 px and put content under the indicators. One
-pixel, but the same class of defect. Softening those two assertions to fit a row
-would have degraded a geometry gate to accommodate this feature, which is the
-wrong direction, so the row went instead.
+The current layout uses PR45's existing Gestures page. Sensors keeps the IMU
+switch and Restart button without adding another navigation row.
 
-The roller now sits on PR45's IMU behaviour page next to Wake Gesture and
+The roller sits on PR45's IMU behaviour page next to Wake Gesture and
 Double-Tap Shutter, which costs Sensors nothing. That page is an intentional
 scroll page: master already runs it 67 px past the 135x240 panel at Large text,
 so `hw-motion-text-size.txt` asserts both scroll ends stay reachable there
@@ -492,8 +506,8 @@ intentional scroll page, so both text-size scenarios assert that the scroll ends
 stay reachable rather than a fit. A fit assertion there would be false.
 
 `ponytail:` the page is titled "Gestures" and a detection backend is not a
-gesture. Renaming it touches PR45's page identity, its simulator vocabularies
-and its scenarios, so it is a follow-up rather than a silent edit here.
+gesture. Renaming it touches the existing page identity, simulator vocabularies
+and scenarios, so it is a follow-up rather than a silent edit here.
 
 ### Four assertions that had no teeth
 
@@ -589,13 +603,13 @@ be narrowable to a backend without a rebuild.
 
 | Enum | Wire id | NVS key | Namespace | Type | Default | Notes |
 |---|---|---|---|---|---|---|
-| `HW_MOTION` | 74 | `hw_motion` | `FURBLE_STR` | `uint8_t` | 0 | 0 Auto, 1 Software, 2 Hardware. |
+| `HW_MOTION` | 74 | `hw_motion` | `FURBLE_STR` | `uint8_t` | 1 | 0 Auto, 1 Software, 2 Hardware. |
 
-Name string: `"Motion Engine"`. Auto preserves current behaviour on any board
-where the hardware path is not proven, because a chip backend that fails to arm
-falls back to software. Not immediate: the engine is chosen when the source is
-armed, which is at boot, so the Sensors page carries the existing Restart
-button. Not dangerous.
+Name string: `"Motion Engine"`. Software preserves current behaviour while the
+hardware path is not proven. Auto prefers the board's hardware engine and falls
+back to software when it cannot arm. Not immediate: the engine is chosen when
+the source is armed, which is at boot, so the Sensors page carries the existing
+Restart button. Not dangerous.
 
 Wire id 74 is the id issue #280 reserved for this setting. This PR claims no
 other id, and in particular it leaves `IMU` at 46.
@@ -745,7 +759,8 @@ Two outcomes:
 
 ### Light sleep integration
 
-All five sdkconfigs already have `CONFIG_PM_ENABLE=y` and
+No sdkconfig changes are required for this PR. The documented board sdkconfigs
+already have `CONFIG_PM_ENABLE=y` and
 `CONFIG_FREERTOS_USE_TICKLESS_IDLE=y`, and `Platform::setSleep()` calls
 `esp_pm_configure()` with `light_sleep_enable`. So automatic light sleep is the
 mechanism, not manual `esp_light_sleep_start()`.
@@ -798,7 +813,7 @@ its 50 Hz timer for that case. Do that as a follow up, not in this PR.
 
 Selection order at arm time:
 
-1. `IMU_HWMOT` forces a backend if set.
+1. `HW_MOTION` forces a backend if set.
 2. `M5.Imu.getType()` selects the chip specific backend.
 3. The backend reports whether its interrupt line is usable on this board.
 4. If not usable, fall back to hardware engine plus 1 Hz status polling.
@@ -809,17 +824,11 @@ reporting bad battery life must be able to say which path is active.
 
 ## Dependencies
 
-- PR #45 (`feat/17-imu-gestures`). Not a code dependency. Its `GestureDetector`
-  is a tap, shake and double tap classifier over accelerometer samples; this
-  PR's `IMU::MotionSource` is a moving and stationary source with hardware
-  backends. No shared file, no shared type, no call in either direction. What
-  they share is textual conflict on `FurbleSettings`, the Sensors menu, the
-  source lists and `plans/README.md`, and both branches originally added the
-  same golden `*-45.bin` files. Dropping the `IMU` renumber from this PR removes
-  the last of those. The base is `master` and this PR is not stacked. It lands
-  last of the backlog, so one more rebase is expected; at that rebase, reuse
-  #45's `tests/host/gesture_stubs/` rather than keeping `tests/host/imu_stubs/`
-  as a second copy.
+- PR #45 (`feat/17-imu-gestures`) is in this base. Its `GestureDetector` is a
+  tap, shake and double tap classifier over accelerometer samples; this PR's
+  `IMU::MotionSource` is a moving and stationary source with hardware backends.
+  The shared Sensors and Gestures UI is already resolved, and the motion
+  callback now honors the same `IMU_WAKE` setting.
 - PR16. Hard. The IMU has to be enabled.
 - PR17. Shares the sensor. Do not let both configure the chip at once.
 - PR18. Hard. This PR replaces its detector input and is pointless without its
@@ -861,7 +870,7 @@ pio run -e m5stick-c -e m5stick-c-plus -e m5stack-core -e m5stack-core2 -e m5sti
 ```
 
 Defaults regression: fresh NVS boot. `IMU` off, `GPS_MOTION` off,
-`IMU_HWMOT` auto. No engine armed, no interrupt handler installed, behaviour
+`HW_MOTION` Software. No engine armed, no interrupt handler installed, behaviour
 identical to master.
 
 Hardware verification first, on M5StickS3 over USB. Do this before writing the

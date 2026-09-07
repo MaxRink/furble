@@ -438,7 +438,11 @@ UI::UI(const interval_t &interval)
           if (state != IMU::MotionState::MOVING) {
             return;
           }
-          lv_display_trigger_activity(static_cast<UI *>(context)->m_Display);
+          auto *ui = static_cast<UI *>(context);
+          if ((ui->m_WakeGesture == 0) || (ui->m_Display == nullptr)) {
+            return;
+          }
+          lv_display_trigger_activity(ui->m_Display);
         },
         this);
     motion.arm();

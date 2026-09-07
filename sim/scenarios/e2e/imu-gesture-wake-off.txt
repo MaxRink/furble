@@ -16,6 +16,18 @@ wait 120
 assert ui.gesture_events 1
 assert ui.display_state off
 
+# MotionSource also must not reset inactivity while Wake Gesture is off. Hold
+# the sensor still through its quiet window, then move it long enough for the
+# one-second motion poll to see the transition.
+wait 61000
+assert ui.motion_state stationary
+action imu.accel 0 0 2
+wait 2000
+assert ui.motion_state moving
+assert ui.display_state off
+action imu.accel 0 0 1
+wait 1000
+
 wait 900
 action imu.accel 0 0 2.6
 wait 20
