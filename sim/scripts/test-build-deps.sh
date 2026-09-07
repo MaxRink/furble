@@ -65,6 +65,23 @@ if ! find "$TEST_ROOT/build/obj" -name '*_c.o.d' -print -quit | grep -q .; then
   exit 1
 fi
 
+# A prior invocation may have used a relative build directory, leaving a
+# relative target in the depfile while this invocation uses an absolute one.
+# That target mismatch must invalidate the object instead of making make -q
+# answer for a different, nonexistent target.
+GPS_OBJECT="$TEST_ROOT/build/obj/src_FurbleGPS_cpp.o"
+GPS_DEPFILE="$GPS_OBJECT.d"
+sed -i '1s|^[^:]*:|sim/build-core/obj/src_FurbleGPS_cpp.o:|' "$GPS_DEPFILE"
+run_build "$TEST_ROOT/path-mismatch-compile.log" "$TEST_ROOT/path-mismatch-build.log"
+case "$(grep -c '/src/FurbleGPS.cpp$' "$TEST_ROOT/path-mismatch-compile.log" || true)" in
+  1) ;;
+  *)
+    echo "expected FurbleGPS.cpp to rebuild after depfile target path changed" >&2
+    cat "$TEST_ROOT/path-mismatch-compile.log" >&2
+    exit 1
+    ;;
+esac
+
 # Ensure the header mtime is unambiguously newer than the just-built objects,
 # while the trap restores the original timestamp after the test.
 sleep 1

@@ -176,6 +176,13 @@ dependency_is_current() {
   # as a one-time cache miss so they are upgraded safely.
   grep -q '^[[:space:]]*@:$' "$depfile" || return 1
 
+  # A depfile from a different build-dir spelling can name the same source
+  # object relatively.  Asking make about the current absolute target would
+  # then find no matching rule and incorrectly report it current.  Treat any
+  # target mismatch (including make-escaped paths) as a conservative miss.
+  declared_target=$(sed -n '1s/:.*$//p' "$depfile")
+  [ "$declared_target" = "$object" ] || return 1
+
   # The compiler-generated file is a make rule containing the complete
   # project-header closure. BSD make and GNU make both implement -q, so this
   # checks the rule without duplicating make's escaping and path handling in
