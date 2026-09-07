@@ -36,6 +36,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun timedShutter(holdMs: Int) = repository.timedShutter(holdMs)
     fun releaseAllTriggers() = repository.releaseAllTriggers()
     fun clearError() = repository.clearError()
+    fun authenticate(password: String) = repository.authenticate(password)
+    fun forgetPassword() = repository.forgetPassword()
 
     override fun onCleared() {
         repository.releaseAllTriggers()

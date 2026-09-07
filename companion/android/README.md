@@ -26,6 +26,13 @@ characteristic (`b57f4f64-087b-4740-b71d-8262cf26ebbc`) reports capability
 version 1, wire version 2 and feature bit 0. Older firmware keeps Settings
 hidden.
 
+The AUTH characteristic is optional during discovery. Legacy companion
+firmware without AUTH remains usable for existing unprotected operations;
+the password UI and password-gated operations appear only when AUTH is
+present. Password protection therefore requires the PR166 firmware service
+implementation, while this app remains backward-compatible with older
+services.
+
 The location encoder keeps the named fields in the document's order. The
 declared `companion_fix_t` size is 42 bytes, but those packed fields add up to
 41 bytes. To preserve the declared size without moving `age_ms`, the app
@@ -51,6 +58,22 @@ is four packed little-endian `{uint16 value, uint8 unit}` parts.
 Settings list flag bit 0 is interpreted as restart required. Bit 1 marks the
 five link-affecting settings and opens a two-step confirmation before a write:
 COMPANION, TX_POWER, TX_ADAPTIVE, SLEEP_CONN and CPU_FREQ.
+
+The password gate uses the firmware AUTH characteristic
+`b57f4f6f-087b-4740-b71d-8262cf26ebbc`. The firmware stores the write-only
+password at settings wire ID 47, but the app never lists or writes that setting.
+The app subscribes to indications before
+declaring the GATT session ready. It writes `01 00`, receives `01 00` plus a
+16-byte nonce, then writes `01 01` plus the first 16 bytes of
+HMAC-SHA256(password UTF-8, nonce). A result indication is `01 02` plus one
+byte: `01` authenticated, `02` rejected, `03` dropped after
+three failures, or `04` not required. With no saved app credential, the app
+still sends `01 00` so empty-password firmware can return `04` not required.
+If that firmware instead returns a challenge, the app reports that a password
+is required and returns to the retryable unauthenticated state.
+A successful password is stored as
+AES-GCM ciphertext under a non-exportable Android Keystore key. App backup is
+disabled, and the password is never logged or sent as a setting value.
 
 ## Runtime behavior
 

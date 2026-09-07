@@ -66,6 +66,12 @@ class Camera: public NimBLEClientCallbacks {
     SAVED = 2,
   };
 
+  /** Return the lifecycle used by the next connection attempt. */
+  PairType getPairType(void) const;
+
+  /** Mark a scan-created camera saved after its record is persisted. */
+  void markSaved(void);
+
   enum class SecurityMode : uint8_t {
     SECURE_DISPLAY_YESNO = BLE_HS_IO_DISPLAY_YESNO,
     SECURE_KEYBOARD_DISPLAY = BLE_HS_IO_KEYBOARD_DISPLAY,
@@ -363,7 +369,7 @@ class Camera: public NimBLEClientCallbacks {
                      bool indicate = false,
                      bool response = true);
 
-  const PairType m_PairType;
+  std::atomic<PairType> m_PairType;
   NimBLEAddress m_Address = NimBLEAddress {};
   NimBLEClient *m_Client = nullptr;
   std::string m_Name;

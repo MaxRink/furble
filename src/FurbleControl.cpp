@@ -809,6 +809,26 @@ size_t Control::getTargetCount(void) const {
   return m_Targets.size();
 }
 
+bool Control::getTargetState(const Camera *camera, int8_t &rssi) const {
+  rssi = 0;
+  if (camera == nullptr) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  for (const auto &target : m_Targets) {
+    if (target->getCamera().get() != camera) {
+      continue;
+    }
+    if (target->m_HasRssi) {
+      rssi = static_cast<int8_t>(target->m_RssiAverage);
+    }
+    return true;
+  }
+
+  return false;
+}
+
 size_t Control::getConnectedTargetCount(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   size_t connected = 0;
