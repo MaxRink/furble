@@ -317,11 +317,11 @@ void testAuthDisconnectRace(void) {
 
 void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
   std::cout << "test: companion password load failure denies privileged writes\n";
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
   Furble::Settings::setPasswordLoadResult(false);
   MockCentral central;
   CompanionService service(central);
   central.attach(service);
-  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "camera password");
   service.init();
   central.connect();
   central.setSecurity(true, true);
@@ -778,6 +778,7 @@ void testCompanionCameras(void) {
   MockCentral central;
   CompanionService service(central);
   central.attach(service);
+  Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "camera password");
   service.init();
   central.connect();
   central.setSecurity(true, true);
