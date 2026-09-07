@@ -10,8 +10,8 @@
 
 #include "Camera.h"
 #include "CameraList.h"
-#include "Device.h"
 #include "DJIOsmo.h"
+#include "Device.h"
 #include "MockNimBLE.h"
 #include "Preferences.h"
 #include "advertisement_preferences_stub.h"
@@ -38,9 +38,7 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
     return service == serviceUuid()
            && (characteristic == notifyUuid() || characteristic == writeUuid());
   }
-  bool discoverCharacteristic(NimBLEClient &,
-                              const NimBLEUUID &,
-                              const NimBLEUUID &) override {
+  bool discoverCharacteristic(NimBLEClient &, const NimBLEUUID &, const NimBLEUUID &) override {
     return true;
   }
   bool canWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) const override {
@@ -54,8 +52,7 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
     if (service != serviceUuid() || characteristic != writeUuid()) {
       return false;
     }
-    if (m_FirstRequest.empty() && value.size() >= 15 && value[12] == 0x00
-        && value[13] == 0x19) {
+    if (m_FirstRequest.empty() && value.size() >= 15 && value[12] == 0x00 && value[13] == 0x19) {
       m_FirstRequest = value;
       // Answer the production handshake so connect() reaches the actual DJI
       // request write and can be checked below.
@@ -67,7 +64,9 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
     (void)client;
     return true;
   }
-  NimBLEAttValue read(NimBLEClient &, const NimBLEUUID &, const NimBLEUUID &) override { return {}; }
+  NimBLEAttValue read(NimBLEClient &, const NimBLEUUID &, const NimBLEUUID &) override {
+    return {};
+  }
   bool subscribe(NimBLEClient &,
                  const NimBLEUUID &service,
                  const NimBLEUUID &characteristic,
@@ -165,8 +164,8 @@ bool testDispatchAndDeduplication() {
   std::array<uint8_t, Furble::CameraListProtocol::INDEX_LEGACY_ENTRY_BYTES> legacyIndex = {};
   std::memcpy(legacyIndex.data(), legacyKey.c_str(), legacyKey.size());
   const uint32_t legacyType = static_cast<uint32_t>(Camera::Type::DJI_OSMO);
-  std::memcpy(legacyIndex.data() + Furble::CameraListProtocol::INDEX_NAME_BYTES,
-              &legacyType, sizeof(legacyType));
+  std::memcpy(legacyIndex.data() + Furble::CameraListProtocol::INDEX_NAME_BYTES, &legacyType,
+              sizeof(legacyType));
   Furble::Preferences seed;
   CHECK(seed.begin("furble", false));
   CHECK(seed.put(legacyKey.c_str(), legacyRecord.data(), legacyRecord.size())

@@ -201,8 +201,7 @@ class MockCentral final: public Furble::CompanionTransport {
       m_CameraIndications.emplace_back(data, data + len);
       return;
     }
-    if ((charId != Furble::COMPANION_CHAR_SETTINGS)
-        && (charId != Furble::COMPANION_CHAR_AUTH)) {
+    if ((charId != Furble::COMPANION_CHAR_SETTINGS) && (charId != Furble::COMPANION_CHAR_AUTH)) {
       return;
     }
     if (data == nullptr) {
@@ -760,8 +759,7 @@ void testCompanionCameras(void) {
   Furble::CameraList::clear();
   Furble::CameraList::addFauxNY();
   const auto savedAfterScan = Furble::CameraList::savedSnapshot();
-  check(savedAfterScan.size() == 2,
-        "a transient scan result does not hide saved cameras");
+  check(savedAfterScan.size() == 2, "a transient scan result does not hide saved cameras");
   check(Furble::CameraList::getCameraId(savedAfterScan.at(0).get()) == firstId
             && Furble::CameraList::getCameraId(savedAfterScan.at(1).get()) == secondId,
         "a transient scan does not change saved camera ids");
@@ -821,7 +819,8 @@ void testCompanionCameras(void) {
     central.clearEvents();
     drainRequests();
     check(central.write(CAMERAS_UUID, {operation, firstId}), message);
-    check(central.cameraIndications().empty(), "unauthenticated camera mutation has no camera response");
+    check(central.cameraIndications().empty(),
+          "unauthenticated camera mutation has no camera response");
     check(central.authIndications().size() == 1
               && central.authIndications()[0].size() == CompanionService::AUTH_RESULT_SIZE
               && central.authIndications()[0][2] == CompanionService::AUTH_RESULT_REJECTED,

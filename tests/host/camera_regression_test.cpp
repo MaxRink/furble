@@ -373,8 +373,7 @@ bool testRicohBondPolicy() {
     Furble::Ricoh markedSaved(&advertisement);
     markedSaved.markSaved();
     if (markedSaved.getPairType() != Furble::Camera::PairType::SAVED
-        || markedSaved.connect(ESP_PWR_LVL_P3, 1000)
-        || NimBLEDevice::deleteBondCount() != 0u
+        || markedSaved.connect(ESP_PWR_LVL_P3, 1000) || NimBLEDevice::deleteBondCount() != 0u
         || !NimBLEDevice::isBonded(advertisement.getAddress())) {
       return false;
     }

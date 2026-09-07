@@ -6,8 +6,8 @@
 // Scan.h leads: its CallbackProxy member is an incomplete type behind a
 // unique_ptr, and pulling <memory> in ahead of it makes the toolchain
 // instantiate the deleter too early.
-#include "Scan.h"
 #include <esp_random.h>
+#include "Scan.h"
 
 #include "../include/FurbleCompanionService.h"
 #include "CameraList.h"
@@ -567,6 +567,7 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
     default:
       indicateCameraStatus(CAMERA_REJECTED, cameraId);
       return;
+  }
 }
 
 void CompanionService::handleAuth(const uint8_t *data, size_t len) {

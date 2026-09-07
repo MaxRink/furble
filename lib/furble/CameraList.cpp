@@ -201,8 +201,8 @@ std::vector<std::shared_ptr<Furble::Camera>> CameraList::deserialize(
         ESP_LOGW(FURBLE_STR, "MobileDevice support has been removed.");
         break;
       case Camera::Type::FAUXNY:
-        cameras.push_back(std::make_shared<Furble::FauxNY>(
-            static_cast<const void *>(dbuffer.data()), dbytes));
+        cameras.push_back(
+            std::make_shared<Furble::FauxNY>(static_cast<const void *>(dbuffer.data()), dbytes));
         break;
       case Camera::Type::NIKON:
         cameras.push_back(
@@ -296,9 +296,11 @@ void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
       const auto address =
           CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
       const std::lock_guard<std::mutex> lock(m_Mutex);
-      auto saved = std::find_if(m_SavedList.begin(), m_SavedList.end(), [&address](const auto &item) {
-        return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address;
-      });
+      auto saved =
+          std::find_if(m_SavedList.begin(), m_SavedList.end(), [&address](const auto &item) {
+            return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress()))
+                   == address;
+          });
       if (saved == m_SavedList.end()) {
         m_SavedList.push_back(camera);
       } else {
@@ -367,12 +369,13 @@ void CameraList::remove(Furble::Camera *camera) {
   if (found && indexPersisted) {
     publishCameraIds(index);
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    m_SavedList.erase(
-        std::remove_if(m_SavedList.begin(), m_SavedList.end(), [&entry](const auto &item) {
-          return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress()))
-                 == entry.name;
-        }),
-        m_SavedList.end());
+    m_SavedList.erase(std::remove_if(m_SavedList.begin(), m_SavedList.end(),
+                                     [&entry](const auto &item) {
+                                       return CameraListProtocol::addressKey(
+                                                  static_cast<uint64_t>(item->getAddress()))
+                                              == entry.name;
+                                     }),
+                      m_SavedList.end());
     if (!recordRemoved) {
       ESP_LOGW(LOG_TAG, "Removed camera %s from index; record cleanup failed", entry.name);
     }

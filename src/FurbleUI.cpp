@@ -5078,12 +5078,12 @@ void UI::serviceRequests(void) {
         const uint8_t cameraId = static_cast<uint8_t>(item.arg);
         const auto saved = CameraList::savedSnapshot();
         if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
-          const auto found = std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
-            return CameraList::getCameraId(camera.get()) == cameraId;
-          });
+          const auto found =
+              std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
+                return CameraList::getCameraId(camera.get()) == cameraId;
+              });
           if (found == saved.end()) {
-            ESP_LOGW(LOG_TAG, "companion: no saved camera id %u",
-                     static_cast<unsigned>(cameraId));
+            ESP_LOGW(LOG_TAG, "companion: no saved camera id %u", static_cast<unsigned>(cameraId));
             break;
           }
         }
