@@ -161,6 +161,8 @@ including empty strings and failed-save rollback.
   expects the pre-fix binary to trip each exact target. This checks ordering
   only; it is not crash-causality evidence.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
+  Forced C++ platform shim includes apply only to C++ sources. Generated C
+  icon sources must compile as C without the C++ FreeRTOS header.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
 - The three modeled panels are the 80x160 `FURBLE_M5STICKC` /

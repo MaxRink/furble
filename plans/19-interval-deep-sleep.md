@@ -345,6 +345,12 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   3.34 s. No current-master SDL simulator build or scenario result is claimed
   here.
 
+The current-master CMake simulator build exposed forced C++ shim headers on
+generated C icon sources (`cstddef` unavailable to the C compiler). Restricting
+the four forced includes to C++ sources fixes that build boundary. Static
+review approved the change; the rebuilt simulator and deep-sleep scenarios
+remain pending.
+
 ## References
 
 All links checked.
