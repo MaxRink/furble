@@ -117,6 +117,14 @@ void journalRecord(const char *operation,
 
 Camera::Camera(Type type, PairType pairType) : m_PairType(pairType), m_Type(type) {}
 
+Camera::PairType Camera::getPairType(void) const {
+  return m_PairType.load(std::memory_order_acquire);
+}
+
+void Camera::markSaved(void) {
+  m_PairType.store(PairType::SAVED, std::memory_order_release);
+}
+
 Camera::~Camera() {
   m_Connected = false;
   m_Client = nullptr;

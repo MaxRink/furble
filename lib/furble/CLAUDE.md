@@ -17,6 +17,20 @@ protocol core.
   in NVS: never renumber or reuse existing ones (MOBILE_DEVICE is deprecated
   but its value stays reserved).
 - `CameraList` handles persistence of paired cameras, `Scan` handles
+  advertisement matching and discovery. `CameraList::savedSnapshot()` is the
+  lazy persisted catalog; `snapshot()` is transient scan/connect state. A load
+  copies saved shared pointers into the transient list instead of rebuilding
+  active objects. `CameraList::save()` marks the exact shared camera `SAVED`
+  only after its record is persisted, so vendor reconnect handshakes retain
+  their saved-camera behavior without losing Control ownership identity.
+- The saved index blob is versioned by an explicit four byte header. A v1 blob
+  has no header and no camera ids, so it still decodes and `load()` assigns and
+  persists ids once. Camera ids are the companion wire identity: 1 to 254, zero
+  means unassigned, `0xff` means all cameras, and the allocator walks forward
+  from a persisted counter so a delete does not hand an id straight back.
+- `CameraList::m_Mutex` guards the connect list and the id map. Off-UI-task
+  callers take `snapshot()` rather than iterating `size()` and `get()`, which
+  race a concurrent `load()`.
   advertisement matching and discovery.
 - `protocol/ProvisionTLV` mirrors the frozen settings wire ledger. Wire id 46
   is the IMU enable switch and wire id 47 is the write-only companion

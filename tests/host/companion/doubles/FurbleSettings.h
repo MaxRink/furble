@@ -200,6 +200,16 @@ struct Furble::Settings::storage_type<Furble::Settings::HW_MOTION> {
 };
 
 template <>
+struct Furble::Settings::storage_type<Furble::Settings::MULTICONNECT> {
+  using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::RECONNECT> {
+  using type = bool;
+};
+
+template <>
 struct Furble::Settings::storage_type<Furble::Settings::COMPANION_PASSWORD> {
   using type = std::string;
 };

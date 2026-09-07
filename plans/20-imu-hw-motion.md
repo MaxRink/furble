@@ -970,8 +970,3 @@ All links checked.
   and `CONFIG_FREERTOS_USE_TICKLESS_IDLE`, plus the `ESP_PM_NO_LIGHT_SLEEP` lock:
   https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/api-reference/system/power_management.html
 - StickS3 product page, confirms the BMI270: https://docs.m5stack.com/en/core/StickS3
-
-The shared GPS replay gate separately requires a complete, checksum-valid RMC
-with a nonempty date field and parser commit at CR/LF. Its simulator fixture
-transition restarts only the canned NMEA burst bookkeeping; queued CASIC
-replies remain untouched. This is unrelated to IMU motion behavior.

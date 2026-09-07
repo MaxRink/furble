@@ -204,6 +204,20 @@ class Control {
   debug_state_t getDebugState(void) const;
 #endif  // FURBLE_CONSOLE || FURBLE_SIM
 
+  /**
+   * Cached target state for one camera.
+   *
+   * Reads m_Mutex only, with no radio call and without touching the camera's
+   * own connect mutex, which a cold connect holds for the whole connect
+   * timeout. That makes it safe to poll from the companion service task.
+   *
+   * @param[in]  camera Camera to look up.
+   * @param[out] rssi   Last filtered connection rssi, or 0 when never sampled.
+   *                    Only sampled while adaptive transmit power is enabled.
+   * @return true if the camera is an active target.
+   */
+  bool getTargetState(const Camera *camera, int8_t &rssi) const;
+
   /** Retrieve the number of active camera targets. */
   size_t getTargetCount(void) const;
 
