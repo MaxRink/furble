@@ -4,6 +4,10 @@ Status: firmware settings parity v2, the Android settings editors and the
 firmware camera management phase are implemented. The app Cameras tab and the
 rig scenarios of phase 5 remain outstanding.
 
+Host validation note: companion_gatt_test compiles the Nikon Remote protocol
+source with warnings treated as errors. Its subscription callback does not use
+camera state, so it has no lambda capture.
+
 ## Implementation state, firmware camera management
 
 Delivered by the plan 51 firmware camera PR.
