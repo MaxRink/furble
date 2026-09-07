@@ -123,7 +123,7 @@ void saveRegisteredPeers(void) {
     }
   }
   for (size_t n = 0; n < CameraList::size(); n++) {
-    CameraList::save(CameraList::get(n).get());
+    CameraList::save(CameraList::get(n));
   }
   CameraList::clear();
 }

@@ -42,6 +42,7 @@ class UI {
    */
   enum class Request {
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    CONNECT_SAVED,   /**< arg: stable saved camera id, including 0xff for the selection */
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
     CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
@@ -116,6 +117,7 @@ class UI {
    */
   enum class Request {
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    CONNECT_SAVED,   /**< arg: stable saved camera id, including 0xff for the selection */
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
     CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */

@@ -46,6 +46,7 @@
 #include "FurbleTime.h"
 #include "FurbleUI.h"
 #include "interval.h"
+#include "protocol/CameraListProtocol.h"
 
 // Firmware builds define these from SOURCE_DATE_EPOCH in reproducible.py.
 // Keep the simulator independent from PlatformIO's pre-build scripts.
@@ -4834,7 +4835,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         // if from scan, save the connection
         if (ctx->menuName == m_ScanStr) {
           for (const auto &target : control.getTargets()) {
-            CameraList::save(target->getCamera().get());
+            CameraList::save(target->getCamera());
           }
           ctx->menuName = NULL;
         }
@@ -5064,6 +5065,39 @@ void UI::serviceRequests(void) {
         }
         doConnect(NULL);
         break;
+
+      case Request::CONNECT_SAVED:
+      {
+        auto &control = Control::getInstance();
+        if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+            || (control.getTargetCount() != 0)) {
+          ESP_LOGW(LOG_TAG, "companion: connect request is busy");
+          break;
+        }
+
+        const uint8_t cameraId = static_cast<uint8_t>(item.arg);
+        const auto saved = CameraList::savedSnapshot();
+        if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+          const auto found = std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
+            return CameraList::getCameraId(camera.get()) == cameraId;
+          });
+          if (found == saved.end()) {
+            ESP_LOGW(LOG_TAG, "companion: no saved camera id %u",
+                     static_cast<unsigned>(cameraId));
+            break;
+          }
+        }
+
+        CameraList::load();
+        if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            const auto camera = CameraList::get(n);
+            camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
+          }
+        }
+        doConnect(NULL);
+        break;
+      }
 
       case Request::DISCONNECT:
         doDisconnect();

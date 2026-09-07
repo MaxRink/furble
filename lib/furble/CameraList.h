@@ -18,9 +18,9 @@ class CameraList {
   CameraList();
   ~CameraList();
   /**
-   * Save camera to connection list.
+   * Save camera to the persisted catalog.
    */
-  static void save(const Furble::Camera *camera);
+  static void save(const std::shared_ptr<Furble::Camera> &camera);
 
   /**
    * Remove camera from connection list.
@@ -78,6 +78,9 @@ class CameraList {
    */
   static std::vector<std::shared_ptr<Furble::Camera>> snapshot(void);
 
+  /** Strong-reference copy of the persisted camera catalog. */
+  static std::vector<std::shared_ptr<Furble::Camera>> savedSnapshot(void);
+
   /**
    * Stable saved id for a camera.
    *
@@ -98,6 +101,9 @@ class CameraList {
   static std::vector<index_entry_t> load_index(void);
   static void save_index(std::vector<index_entry_t> &index);
   static void add_index(std::vector<index_entry_t> &index, index_entry_t &entry);
+  static std::vector<std::shared_ptr<Furble::Camera>> deserialize(
+      const std::vector<index_entry_t> &index);
+  static void ensureSavedLoaded(void);
 
   /** Assign an unused id to every entry that has none. Requires m_Prefs open for writing. */
   static bool assignCameraIds(std::vector<index_entry_t> &index);
@@ -113,11 +119,17 @@ class CameraList {
    */
   static std::vector<std::shared_ptr<Furble::Camera>> m_ConnectList;
 
-  /** Address key to stable saved id, republished on every load(). */
+  /** Persisted cameras. Scans never add to this catalog. */
+  static std::vector<std::shared_ptr<Furble::Camera>> m_SavedList;
+
+  /** Address key to stable saved id. */
   static std::map<std::string, uint8_t> m_CameraIds;
 
   /** Guards m_ConnectList and m_CameraIds. A leaf lock: no callbacks run under it. */
   static std::mutex m_Mutex;
+  /** Serializes complete Preferences transactions, including lazy loads. */
+  static std::mutex m_PersistenceMutex;
+  static bool m_SavedInitialized;
 
   static Preferences m_Prefs;
 };

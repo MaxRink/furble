@@ -287,7 +287,7 @@ std::vector<CompanionService::camera_snapshot_t> CompanionService::getCameraSnap
   const Control::state_t controlState = control.getState();
   const auto connecting = control.getConnectingCamera();
 
-  for (const auto &camera : CameraList::snapshot()) {
+  for (const auto &camera : CameraList::savedSnapshot()) {
     const uint8_t id = CameraList::getCameraId(camera.get());
     if (id == CameraListProtocol::INDEX_ID_INVALID) {
       // Scan results the user has not saved carry no stable id, so they have no
@@ -456,7 +456,7 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
       }
 
       const bool selected = (op == CAMERA_OP_SELECT);
-      for (const auto &camera : CameraList::snapshot()) {
+      for (const auto &camera : CameraList::savedSnapshot()) {
         const uint8_t id = CameraList::getCameraId(camera.get());
         if (id == CameraListProtocol::INDEX_ID_INVALID) {
           continue;
@@ -499,23 +499,7 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
         return;
       }
 
-      // Negative index means connect the current selection, which is what the
-      // on-device Connect item does. A concrete index replaces the selection,
-      // matching the console connect command.
-      int32_t index = -1;
-      if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
-        const auto cameras = CameraList::snapshot();
-        for (size_t n = 0; n < cameras.size(); n++) {
-          if (CameraList::getCameraId(cameras[n].get()) == cameraId) {
-            index = static_cast<int32_t>(n);
-            break;
-          }
-        }
-        if (index < 0) {
-          indicateCameraStatus(CAMERA_UNKNOWN_ID, cameraId);
-          return;
-        }
-      } else {
+      if (cameraId == CameraListProtocol::INDEX_ID_ALL) {
         const bool anySelected = std::any_of(
             snapshots.begin(), snapshots.end(),
             [](const auto &item) { return (item.record.flags & CAMERA_FLAG_SELECTED) != 0; });
@@ -525,7 +509,7 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
         }
       }
 
-      if (!UI::sendRequest(UI::Request::CONNECT, index)) {
+      if (!UI::sendRequest(UI::Request::CONNECT_SAVED, cameraId)) {
         indicateCameraStatus(CAMERA_BUSY, cameraId);
         return;
       }

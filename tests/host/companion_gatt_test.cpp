@@ -518,13 +518,28 @@ void testCompanionCameras(void) {
   FujifilmVirtualCamera secondPeer(secondConfig);
   auto firstCamera = makeCamera(firstPeer);
   auto secondCamera = makeCamera(secondPeer);
-  Furble::CameraList::save(firstCamera.get());
-  Furble::CameraList::save(secondCamera.get());
+  Furble::CameraList::save(firstCamera);
+  Furble::CameraList::save(secondCamera);
+  const auto savedBeforeLoad = Furble::CameraList::savedSnapshot();
+  check(savedBeforeLoad.size() == 2, "saved cameras are visible before an explicit list load");
+  const uint8_t firstId = Furble::CameraList::getCameraId(savedBeforeLoad.at(0).get());
+  const uint8_t secondId = Furble::CameraList::getCameraId(savedBeforeLoad.at(1).get());
+
+  Furble::CameraList::clear();
+  Furble::CameraList::addFauxNY();
+  const auto savedAfterScan = Furble::CameraList::savedSnapshot();
+  check(savedAfterScan.size() == 2,
+        "a transient scan result does not hide saved cameras");
+  check(Furble::CameraList::getCameraId(savedAfterScan.at(0).get()) == firstId
+            && Furble::CameraList::getCameraId(savedAfterScan.at(1).get()) == secondId,
+        "a transient scan does not change saved camera ids");
   Furble::CameraList::load();
 
   check(Furble::CameraList::size() == 2, "both saved cameras load back");
-  const uint8_t firstId = Furble::CameraList::getCameraId(Furble::CameraList::get(0).get());
-  const uint8_t secondId = Furble::CameraList::getCameraId(Furble::CameraList::get(1).get());
+  check(Furble::CameraList::get(0).get() == savedBeforeLoad.at(0).get(),
+        "load preserves the saved camera pointer identity");
+  check(Furble::CameraList::get(1).get() == savedBeforeLoad.at(1).get(),
+        "load preserves the second saved camera pointer identity");
   check(firstId != 0 && secondId != 0, "every saved camera gets a nonzero id");
   check(firstId != secondId, "saved camera ids are distinct");
 
@@ -602,20 +617,23 @@ void testCompanionCameras(void) {
   Furble::Settings::setBool(Furble::Settings::MULTICONNECT, true);
 
   // Connect routes through the UI request queue, never through a private path.
+  Furble::CameraList::clear();
+  Furble::CameraList::addFauxNY();
   drainRequests();
   central.clearEvents();
   check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_CONNECT, secondId}),
         "cameras UUID accepts a connect request");
   auto requests = drainRequests();
   check(requests.size() == 1, "connect queues exactly one UI request");
-  check(!requests.empty() && requests.at(0).request == Furble::UI::Request::CONNECT,
-        "connect queues the UI connect request");
-  check(!requests.empty() && requests.at(0).arg == 1,
-        "connect passes the saved camera index of the requested id");
+  check(!requests.empty() && requests.at(0).request == Furble::UI::Request::CONNECT_SAVED,
+        "connect queues the UI saved-camera request");
+  check(!requests.empty() && requests.at(0).arg == secondId,
+        "connect passes the stable id of the requested camera");
   check(!central.cameraIndications().empty()
             && decodeCameraRecord(central.cameraIndications().at(0)).head.status
                    == CompanionService::CAMERA_OK,
         "connect is acknowledged");
+  Furble::CameraList::load();
 
   central.clearEvents();
   check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_CONNECT, 0xff}),
@@ -634,8 +652,9 @@ void testCompanionCameras(void) {
   check(central.write(CAMERAS_UUID, {CompanionService::CAMERA_OP_CONNECT, 0xff}),
         "cameras UUID accepts a connect-all with a selection");
   requests = drainRequests();
-  check(requests.size() == 1 && requests.at(0).arg == -1,
-        "connect-all asks the UI task for the current selection");
+  check(requests.size() == 1 && requests.at(0).request == Furble::UI::Request::CONNECT_SAVED
+            && requests.at(0).arg == 0xff,
+        "connect-all asks the UI task for the current selection by stable id");
 
   // Disconnect.
   central.clearEvents();

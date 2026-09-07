@@ -81,7 +81,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   every build; only `PERF` and `AUDIT` stay behind `FURBLE_CONSOLE`. For the
   same reason the camera records read rssi from `Control::getTargetState()`,
   never `Camera::getRssi()`, which takes the camera connect mutex a cold
-  connect holds for the whole connect timeout.
+  connect holds for the whole connect timeout. Companion connect requests carry
+  stable saved camera ids and are resolved and busy-checked again on the UI
+  task; transient scan indexes must never cross that queue boundary.
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a

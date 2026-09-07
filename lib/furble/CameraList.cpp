@@ -26,8 +26,11 @@
 namespace Furble {
 
 std::vector<std::shared_ptr<Furble::Camera>> CameraList::m_ConnectList;
+std::vector<std::shared_ptr<Furble::Camera>> CameraList::m_SavedList;
 std::map<std::string, uint8_t> CameraList::m_CameraIds;
 std::mutex CameraList::m_Mutex;
+std::mutex CameraList::m_PersistenceMutex;
+bool CameraList::m_SavedInitialized = false;
 Preferences CameraList::m_Prefs;
 
 void CameraList::fillSaveEntry(index_entry_t &entry, const Camera *camera) {
@@ -168,12 +171,96 @@ void CameraList::add_index(std::vector<CameraList::index_entry_t> &index, index_
   }
 }
 
-void CameraList::save(const Furble::Camera *camera) {
+std::vector<std::shared_ptr<Furble::Camera>> CameraList::deserialize(
+    const std::vector<CameraList::index_entry_t> &index) {
+  std::vector<std::shared_ptr<Furble::Camera>> cameras;
+  cameras.reserve(index.size());
+  for (const auto &i : index) {
+    size_t dbytes = m_Prefs.getBytesLength(i.name);
+    if (dbytes == 0) {
+      continue;
+    }
+    std::vector<uint8_t> dbuffer(dbytes, 0);
+    m_Prefs.get(i.name, dbuffer.data(), dbytes);
+
+    switch (i.type) {
+      case Camera::Type::FUJIFILM_BASIC:
+        cameras.push_back(std::make_shared<Furble::FujifilmBasic>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::CANON_EOS_SMART:
+        cameras.push_back(std::make_shared<Furble::CanonEOSSmart>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::CANON_EOS_REMOTE:
+        cameras.push_back(std::make_shared<Furble::CanonEOSRemote>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::MOBILE_DEVICE:
+        ESP_LOGW(FURBLE_STR, "MobileDevice support has been removed.");
+        break;
+      case Camera::Type::FAUXNY:
+        cameras.push_back(std::make_shared<Furble::FauxNY>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::NIKON:
+        cameras.push_back(
+            std::make_shared<Furble::Nikon>(static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::SONY:
+        cameras.push_back(
+            std::make_shared<Furble::Sony>(static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::RICOH:
+        cameras.push_back(
+            std::make_shared<Furble::Ricoh>(static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::FUJIFILM_SECURE:
+        cameras.push_back(std::make_shared<Furble::FujifilmSecure>(
+            static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::PANASONIC_LUMIX:
+        cameras.push_back(
+            std::make_shared<Furble::Lumix>(static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+      case Camera::Type::DJI_OSMO:
+        cameras.push_back(
+            std::make_shared<Furble::DJIOsmo>(static_cast<const void *>(dbuffer.data()), dbytes));
+        break;
+    }
+  }
+  return cameras;
+}
+
+void CameraList::ensureSavedLoaded(void) {
+  if (m_SavedInitialized) {
+    return;
+  }
+
+  m_Prefs.begin(FURBLE_STR, false);
+  std::vector<index_entry_t> index = load_index();
+  if (assignCameraIds(index)) {
+    ESP_LOGI(LOG_TAG, "Migrated camera index to stable ids");
+    save_index(index);
+  }
+  publishCameraIds(index);
+  m_SavedList = deserialize(index);
+  m_Prefs.end();
+  m_SavedInitialized = true;
+}
+
+void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
+  if (camera == nullptr) {
+    return;
+  }
+
+  const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
+  ensureSavedLoaded();
   m_Prefs.begin(FURBLE_STR, false);
   std::vector<index_entry_t> index = load_index();
 
   index_entry_t entry;
-  fillSaveEntry(entry, camera);
+  fillSaveEntry(entry, camera.get());
 
   add_index(index, entry);
   assignCameraIds(index);
@@ -187,12 +274,34 @@ void CameraList::save(const Furble::Camera *camera) {
     save_index(index);
     ESP_LOGI(LOG_TAG, "Index entries: %d", index.size());
     publishCameraIds(index);
+
+    const auto address = CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()));
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    auto saved = std::find_if(m_SavedList.begin(), m_SavedList.end(), [&address](const auto &item) {
+      return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address;
+    });
+    if (saved == m_SavedList.end()) {
+      m_SavedList.push_back(camera);
+    } else {
+      *saved = camera;
+    }
+    for (auto &item : m_ConnectList) {
+      if (CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress())) == address) {
+        item = camera;
+      }
+    }
   }
 
   m_Prefs.end();
 }
 
 void CameraList::remove(Furble::Camera *camera) {
+  if (camera == nullptr) {
+    return;
+  }
+
+  const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
+  ensureSavedLoaded();
   m_Prefs.begin(FURBLE_STR, false);
   std::vector<index_entry_t> index = load_index();
 
@@ -212,6 +321,16 @@ void CameraList::remove(Furble::Camera *camera) {
   save_index(index);
   publishCameraIds(index);
 
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_SavedList.erase(
+        std::remove_if(m_SavedList.begin(), m_SavedList.end(), [&entry](const auto &item) {
+          return CameraListProtocol::addressKey(static_cast<uint64_t>(item->getAddress()))
+                 == entry.name;
+        }),
+        m_SavedList.end());
+  }
+
   m_Prefs.end();
 
   // delete bond whether needed or not
@@ -226,100 +345,17 @@ void CameraList::remove(Furble::Camera *camera) {
  * index with a known name and storing target devices in separate entries.
  */
 void CameraList::load(void) {
-  // Opened for writing: a v1 index is migrated to v2 here, which assigns and
-  // persists the stable camera ids exactly once.
-  m_Prefs.begin(FURBLE_STR, false);
-  std::vector<index_entry_t> index = load_index();
-  if (assignCameraIds(index)) {
-    ESP_LOGI(LOG_TAG, "Migrated camera index to stable ids");
-    save_index(index);
-  }
-  publishCameraIds(index);
-
+  const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
+  ensureSavedLoaded();
   const std::lock_guard<std::mutex> lock(m_Mutex);
-
-  // Carry the multi-connect selection across the rebuild. Every Camera object
-  // is replaced below, so without this any reload between selecting cameras and
-  // connecting silently drops the selection.
-  std::map<std::string, bool> selection;
-  for (const auto &camera : m_ConnectList) {
-    selection[CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress()))] =
-        camera->isActive();
-  }
-
-  m_ConnectList.clear();
-  for (const auto &i : index) {
-    size_t dbytes = m_Prefs.getBytesLength(i.name);
-    if (dbytes == 0) {
-      continue;
-    }
-    std::vector<uint8_t> dbuffer(dbytes, 0);
-    m_Prefs.get(i.name, dbuffer.data(), dbytes);
-
-    switch (i.type) {
-      case Camera::Type::FUJIFILM_BASIC:
-        m_ConnectList.push_back(std::make_shared<Furble::FujifilmBasic>(
-            static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::CANON_EOS_SMART:
-        m_ConnectList.push_back(std::make_shared<Furble::CanonEOSSmart>(
-            static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::CANON_EOS_REMOTE:
-        m_ConnectList.push_back(std::make_shared<Furble::CanonEOSRemote>(
-            static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::MOBILE_DEVICE:
-        ESP_LOGW(FURBLE_STR, "MobileDevice support has been removed.");
-        break;
-      case Camera::Type::FAUXNY:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::FauxNY>(static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::NIKON:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::Nikon>(static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::SONY:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::Sony>(static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::RICOH:
-        m_ConnectList.push_back(
-            std::make_shared<Furble::Ricoh>(static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::FUJIFILM_SECURE:
-        m_ConnectList.push_back(std::make_shared<Furble::FujifilmSecure>(
-            static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::PANASONIC_LUMIX:
-        m_ConnectList.push_back(
-            std::make_unique<Furble::Lumix>(static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-      case Camera::Type::DJI_OSMO:
-        m_ConnectList.push_back(
-            std::make_unique<Furble::DJIOsmo>(static_cast<const void *>(dbuffer.data()), dbytes));
-        break;
-    }
-  }
-
-  for (const auto &camera : m_ConnectList) {
-    const auto found =
-        selection.find(CameraListProtocol::addressKey(static_cast<uint64_t>(camera->getAddress())));
-    if ((found != selection.end()) && found->second) {
-      camera->setActive(true);
-    }
-  }
-
-  m_Prefs.end();
+  m_ConnectList = m_SavedList;
 }
 
 size_t CameraList::getSaveCount(void) {
-  m_Prefs.begin(FURBLE_STR, false);
-  auto index = load_index();
-  m_Prefs.end();
-
-  return index.size();
+  const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
+  ensureSavedLoaded();
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_SavedList.size();
 }
 
 size_t CameraList::size(void) {
@@ -345,6 +381,13 @@ std::shared_ptr<Furble::Camera> CameraList::get(size_t n) {
 std::vector<std::shared_ptr<Furble::Camera>> CameraList::snapshot(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_ConnectList;
+}
+
+std::vector<std::shared_ptr<Furble::Camera>> CameraList::savedSnapshot(void) {
+  const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
+  ensureSavedLoaded();
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_SavedList;
 }
 
 bool CameraList::match(const NimBLEAdvertisedDevice *pDevice) {

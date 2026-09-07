@@ -17,7 +17,10 @@ protocol core.
   in NVS: never renumber or reuse existing ones (MOBILE_DEVICE is deprecated
   but its value stays reserved).
 - `CameraList` handles persistence of paired cameras, `Scan` handles
-  advertisement matching and discovery.
+  advertisement matching and discovery. `CameraList::savedSnapshot()` is the
+  lazy persisted catalog; `snapshot()` is transient scan/connect state. A load
+  copies saved shared pointers into the transient list instead of rebuilding
+  active objects.
 - The saved index blob is versioned by an explicit four byte header. A v1 blob
   has no header and no camera ids, so it still decodes and `load()` assigns and
   persists ids once. Camera ids are the companion wire identity: 1 to 254, zero

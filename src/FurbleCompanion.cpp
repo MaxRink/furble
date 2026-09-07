@@ -26,7 +26,6 @@ uint64_t CompanionGatt::nowMs(void) {
 
 void CompanionGatt::init(void) {
   if (Settings::load<Settings::COMPANION>()) {
-    CameraList::load();
     enable(false);
   }
 }
@@ -587,9 +586,6 @@ void CompanionGatt::onSubscribe(NimBLECharacteristic *characteristic,
     return;
   }
   if (characteristic == m_Cameras) {
-    if ((CameraList::size() == 0) && (CameraList::getSaveCount() != 0)) {
-      CameraList::load();
-    }
     m_Service.notifyCameras(true);
   } else {
     m_Service.notifyStatus(true);

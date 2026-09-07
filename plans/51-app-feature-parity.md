@@ -22,15 +22,18 @@ Delivered by the plan 51 firmware camera PR.
   the same bytes the transport publishes.
 - The saved camera index carries a stable `camera_id`. The blob gained an
   explicit four byte v2 schema header, so a v1 blob still decodes and its
-  entries are assigned ids and rewritten on the next `CameraList::load()`. The
+  entries are assigned ids and rewritten on the first lazy catalog load. The
   allocator walks forward from a persisted counter, so deleting the highest id
   does not hand it straight back. Zero means unassigned and `0xff` means all
-  cameras.
+  cameras. The saved catalog is separate from transient scan results, so a
+  scan cannot hide saved rows from the companion.
 - Connect and disconnect go through `UI::sendRequest`, the same request queue
   the console uses, so the on-device screen follows the remote action and
-  `Control::disconnect()` never runs on the companion link. That queue is no
-  longer gated on `FURBLE_CONSOLE`; `PERF` and `AUDIT` stay gated because they
-  need console-only headers.
+  `Control::disconnect()` never runs on the companion link. Companion connect
+  requests carry the stable saved id, including `0xff` for the current
+  selection, and resolve it again on the UI task after rechecking scan and
+  control state. That queue is no longer gated on `FURBLE_CONSOLE`; `PERF` and
+  `AUDIT` stay gated because they need console-only headers.
 - Notifications reuse the status policy: the service task batches at 1 Hz,
   unchanged records are skipped, and a forced batch bypasses the window.
 
@@ -39,9 +42,9 @@ Delivered by the plan 51 firmware camera PR.
 - **Selection is not persisted.** Section 2.3 assumed a stored multi-connect
   set. Master keeps the selection in `Camera::setActive()` alone, so select and
   deselect drive exactly that, the same state the on-device Cameras page
-  edits. No new setting, no new wire id. `CameraList::load()` now carries the
-  selection across the list rebuild by address key, which also fixes the
-  console connect path silently dropping a selection.
+  edits. No new setting, no new wire id. `CameraList::load()` now copies the
+  already-loaded saved shared pointers into the transient connect list, so it
+  preserves selection and connection ownership without rebuilding objects.
 - **RSSI comes from Control's filtered sample.** `Camera::getRssi()` takes the
   camera connect mutex, which a cold connect holds for the whole connect
   timeout, so the companion task must never call it. `Control::getTargetState()`
@@ -492,6 +495,7 @@ Verified on fork master at `916e831`:
 - [50-companion-app-design.md](50-companion-app-design.md) sections 3.5, 3.6,
   7, 8 and 9
 The production GATT transport routes camera command indications and unsolicited
-camera notifications to the Cameras characteristic. Companion startup loads the
-saved camera catalog, and an empty catalog is reloaded before the Cameras
-subscription is announced so stable saved ids remain available after a scan.
+camera notifications to the Cameras characteristic. Companion startup and
+subscription no longer need to force a list reload:
+`CameraList::savedSnapshot()` lazily loads and migrates the saved catalog, while
+scans only replace the transient connect list.
