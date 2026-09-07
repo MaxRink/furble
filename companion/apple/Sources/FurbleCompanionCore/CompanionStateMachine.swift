@@ -28,7 +28,6 @@ public enum CompanionFailure: Error, Equatable, Sendable {
   case malformedPacket
   case payloadTooLarge
   case linkLost
-  case cameraListTimedOut
 }
 
 /// Serializes an explicit stop followed by a requested restart. CoreBluetooth
@@ -311,6 +310,7 @@ public struct CompanionStateMachine: Sendable {
         cameraEventsDuringList.removeAll()
         return true
       }
+      if camera.isOperationAcknowledgement { return true }
       if cameraListRecords != nil {
         cameraListRecords?[camera.cameraID] = camera
         cameraEventsDuringList[camera.cameraID] = camera
@@ -344,6 +344,7 @@ public struct CompanionStateMachine: Sendable {
     do {
       let camera = try FurbleProtocol.decodeCameraRecord(data)
       guard !camera.isTerminator else { return true }
+      guard !camera.isOperationAcknowledgement else { return true }
       if cameraListRecords != nil { cameraEventsDuringList[camera.cameraID] = camera }
       cameras.removeAll { $0.cameraID == camera.cameraID }
       cameras.append(camera)

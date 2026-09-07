@@ -115,6 +115,11 @@ private struct CamerasSection: View {
             .font(.footnote)
             .foregroundStyle(.red)
         }
+        if let cameraOperationError = client.cameraOperationError {
+          Text("Last camera request: \(cameraOperationError)")
+            .font(.footnote)
+            .foregroundStyle(.red)
+        }
         if client.cameras.isEmpty {
           Text(hasRequested ? "No saved cameras reported." : "Loading saved cameras...")
             .font(.footnote)
@@ -222,6 +227,8 @@ private func cameraErrorMessage(_ error: Error) -> String {
     return "Authentication failed; camera controls are unavailable."
   case .cameraListInProgress:
     return "Camera refresh already in progress."
+  case .cameraOperationInProgress:
+    return "Another camera request is already in progress."
   }
 }
 

@@ -174,6 +174,17 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertEqual(busy.operationStatusLabel, "camera operation busy")
   }
 
+  func testCameraAcknowledgementIsNotARealCatalogRecord() throws {
+    let acknowledgement = try FurbleProtocol.decodeCameraRecord(
+      Data([3, 7, 0, 0, 0, 0x80, 0, 0]))
+    XCTAssertTrue(acknowledgement.isOperationAcknowledgement)
+    XCTAssertEqual(acknowledgement.operationStatusLabel, "camera operation busy")
+
+    let record = try FurbleProtocol.decodeCameraRecord(
+      Data([0, 7, 1, 1, 0, 0xe0, 2, 3, 0x58, 0x2d, 0x54]))
+    XCTAssertFalse(record.isOperationAcknowledgement)
+  }
+
   func testHmacChallengeIsSingleUseAndLocksAfterFailures() throws {
     var auth = try FurbleAuthSession(password: "secret", maxFailures: 2)
     let nonce = Data((0..<16).map(UInt8.init))

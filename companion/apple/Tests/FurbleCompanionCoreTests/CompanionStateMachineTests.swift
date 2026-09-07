@@ -97,6 +97,9 @@ final class CompanionStateMachineTests: XCTestCase {
     let stale = Data([0, 1, 1, 1, 0, 0, 0, 1, 0x41])
     XCTAssertTrue(machine.didReceiveCamera(stale))
     XCTAssertEqual(machine.cameras.map(\.cameraID), [1])
+    let acknowledgement = Data([0, 1, 0, 0, 0, 0x80, 0, 0])
+    XCTAssertTrue(machine.didReceiveCameraEvent(acknowledgement))
+    XCTAssertEqual(machine.cameras.map(\.cameraID), [1])
 
     XCTAssertTrue(machine.beginCameraList())
     XCTAssertTrue(machine.cameraListPending)

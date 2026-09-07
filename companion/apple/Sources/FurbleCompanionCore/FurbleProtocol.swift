@@ -60,6 +60,7 @@ public enum FurbleProtocol {
     case authenticationUnavailable
     case payloadTooLarge
     case cameraListInProgress
+    case cameraOperationInProgress
   }
 
   public struct LocationFix: Equatable, Sendable {
@@ -199,6 +200,9 @@ public enum FurbleProtocol {
     public var isSaved: Bool { flags & 1 != 0 }
     public var isSelected: Bool { flags & 2 != 0 }
     public var isConnected: Bool { flags & 8 != 0 }
+    public var isOperationAcknowledgement: Bool {
+      cameraType == 0 && flags == 0 && progress == 0 && rssi == -128 && state == 0 && name.isEmpty
+    }
     public var typeLabel: String {
       switch cameraType {
       case 1: return "Fujifilm"
