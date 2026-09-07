@@ -370,8 +370,7 @@ public struct CompanionStateMachine: Sendable {
         cameraEventsDuringList[camera.cameraID] = camera
         return true
       }
-      cameras.removeAll { $0.cameraID == camera.cameraID }
-      cameras.append(camera)
+      upsertCamera(camera)
       return true
     } catch {
       lastError = .malformedPacket
@@ -402,13 +401,18 @@ public struct CompanionStateMachine: Sendable {
       guard !camera.isTerminator else { return true }
       guard !camera.isOperationAcknowledgement else { return true }
       if cameraListRecords != nil { cameraEventsDuringList[camera.cameraID] = camera }
-      cameras.removeAll { $0.cameraID == camera.cameraID }
-      cameras.append(camera)
+      upsertCamera(camera)
       return true
     } catch {
       lastError = .malformedPacket
       return false
     }
+  }
+
+  private mutating func upsertCamera(_ camera: FurbleProtocol.CameraRecord) {
+    cameras.removeAll { $0.cameraID == camera.cameraID }
+    cameras.append(camera)
+    cameras.sort { $0.cameraID < $1.cameraID }
   }
 
   public func privileged(_ command: CompanionCommand) throws -> CompanionCommand {
