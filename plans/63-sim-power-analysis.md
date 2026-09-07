@@ -661,3 +661,37 @@ regenerate byte-for-byte against their committed baselines after the rebase.
   whose `scenario` strings disagree. It prints
   `compare: scenario mismatch (report X vs baseline Y)` to stderr and returns
   2, so a misrouted report can no longer pass the gate.
+
+## Issue #285 follow-up (2026-09-07)
+
+The profiler now integrates raw virtual-clock durations and rounds only the
+serialized residency fields. A one-millisecond state therefore contributes its
+actual energy instead of being rounded independently with neighboring states.
+Model selection is fail-closed: `FURBLE_POWER_MODEL` is authoritative when
+set, required model entries must parse, and every valid report records the
+resolved source and SHA-256 digest. Missing, unreadable, incomplete, or
+malformed selected input requests simulator exit and produces no report.
+
+This is an accounting/provenance correction, not a hardware-certification
+milestone. The remaining gates are explicit:
+
+- scheduler: measure timer callback work, queue/task wake transitions, and the
+  fixed LVGL service cadence against FreeRTOS traces;
+- peripherals: attribute IMU, audio, motor, IR, display brightness, PMIC, and
+  board-specific rails rather than retaining a shared peripheral constant;
+- BLE: capture negotiated interval, PHY, payload, retries, and RX/TX airtime
+  through the production connection stack;
+- GPS: measure rail transitions, cold/warm acquisition, UART duty, and
+  in-circuit standby at one electrical boundary.
+
+Until those measurements and tolerances are recorded, simulator power output
+remains relative evidence. It must not be described as 100% physical parity or
+as a quantitative accuracy guarantee.
+
+### Validation boundary for this follow-up
+
+The bounded implementation was validated on the host only: GCC power targets
+built successfully, and the six simulator/GPS power CTest cases passed after
+the empty `FURBLE_POWER_MODEL` path was made fail-closed. This covers report
+accounting, model-input rejection, and host wiring; it is not an ESP32 build,
+hardware current capture, scheduler timing proof, or physical-parity result.

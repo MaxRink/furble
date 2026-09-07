@@ -1,6 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -64,6 +65,25 @@ bool reportContains(const std::filesystem::path &path, const std::string &text) 
          != std::string::npos;
 }
 
+std::string modelContents(void) {
+  const auto path = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+                    / "tools/power-model/board-currents.yaml";
+  std::ifstream input(path);
+  return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+
+bool replaceS3ModelValue(std::string &contents,
+                         const std::string &replacement,
+                         const std::string &needle = "value_ma: 40.2") {
+  const size_t anchor = contents.find("esp32s3_mcu: &esp32s3_mcu");
+  const size_t value = contents.find(needle, anchor);
+  if (anchor == std::string::npos || value == std::string::npos) {
+    return false;
+  }
+  contents.replace(value, needle.size(), replacement);
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -88,5 +108,103 @@ int main() {
   advanceClock(500);
   profilerWriteReport(path.c_str(), "clock-wrap-reset");
   const bool resetWindowIsMeasured = reportContains(path, "\"duration_ms\": 500");
-  return resetWindowIsMeasured && requestedExit.load() == -1 ? 0 : 1;
+  if (!resetWindowIsMeasured || requestedExit.load() != -1) {
+    return 1;
+  }
+  profilerPowerLockRelease(0, "cpu", "wrap-test");
+
+  // A sub-second window must retain its raw duration for energy arithmetic;
+  // only the presentation fields stay quantized for stable reports.
+  profilerResetWindow();
+  advanceClock(1);
+  profilerWriteReport(path.c_str(), "short-duration-energy");
+  if (!reportContains(path, "\"duration_ms\": 1")
+      || !reportContains(path, "\"estimated_mA\": 41.295970")
+      || !reportContains(path, "\"model_valid\": true")
+      || !reportContains(path, "\"model_digest\": \"sha256:")) {
+    return 1;
+  }
+
+  // A consumed current change must affect the duration-weighted estimate.
+  profilerPowerConfig(80, 40, true);
+  profilerPowerLockAcquire(0, "cpu", "model-test");
+  profilerResetWindow();
+  advanceClock(10);
+  const auto base_report = reportDirectory.path() / "base-model-report.json";
+  profilerWriteReport(base_report.c_str(), "base-model");
+  if (!reportContains(base_report, "\"estimated_mA\": 81.255970")) {
+    return 1;
+  }
+
+  const std::string complete_model = modelContents();
+  if (complete_model.empty()) {
+    return 1;
+  }
+  std::string changed_model = complete_model;
+  if (!replaceS3ModelValue(changed_model, "value_ma: 80.4")) {
+    return 1;
+  }
+  const auto changed_model_path = reportDirectory.path() / "changed-model.yaml";
+  std::ofstream(changed_model_path) << changed_model;
+  const auto changed_report = reportDirectory.path() / "changed-model-report.json";
+  setenv("FURBLE_POWER_MODEL", changed_model_path.c_str(), 1);
+  profilerWriteReport(changed_report.c_str(), "changed-model");
+  unsetenv("FURBLE_POWER_MODEL");
+  profilerPowerLockRelease(0, "cpu", "model-test");
+  if (!reportContains(changed_report, "\"estimated_mA\": 121.455970")) {
+    return 1;
+  }
+
+  auto expectRejected = [&](const std::filesystem::path &model, const std::filesystem::path &report,
+                            const std::string &scenario) {
+    setenv("FURBLE_POWER_MODEL", model.c_str(), 1);
+    profilerWriteReport(report.c_str(), scenario.c_str());
+    unsetenv("FURBLE_POWER_MODEL");
+    return !std::filesystem::exists(report);
+  };
+
+  // Malformed, negative, and duplicate consumed values must be rejected even
+  // when every other required model entry is present.
+  std::string malformed_model = complete_model;
+  if (!replaceS3ModelValue(malformed_model, "value_ma: not-a-number")) {
+    return 1;
+  }
+  const auto malformed_model_path = reportDirectory.path() / "malformed-model.yaml";
+  std::ofstream(malformed_model_path) << malformed_model;
+  if (!expectRejected(malformed_model_path, reportDirectory.path() / "malformed-report.json",
+                      "malformed-model")) {
+    return 1;
+  }
+
+  std::string negative_model = complete_model;
+  if (!replaceS3ModelValue(negative_model, "value_ma: -1.0")) {
+    return 1;
+  }
+  const auto negative_model_path = reportDirectory.path() / "negative-model.yaml";
+  std::ofstream(negative_model_path) << negative_model;
+  if (!expectRejected(negative_model_path, reportDirectory.path() / "negative-report.json",
+                      "negative-model")) {
+    return 1;
+  }
+
+  std::string duplicate_model = complete_model;
+  const size_t s3_anchor = duplicate_model.find("esp32s3_mcu: &esp32s3_mcu");
+  const size_t first_entry = duplicate_model.find("    active_cpu_80mhz:", s3_anchor);
+  if (s3_anchor == std::string::npos || first_entry == std::string::npos) {
+    return 1;
+  }
+  duplicate_model.insert(first_entry, "    active_cpu_80mhz:\n      value_ma: 40.2\n");
+  const auto duplicate_model_path = reportDirectory.path() / "duplicate-model.yaml";
+  std::ofstream(duplicate_model_path) << duplicate_model;
+  if (!expectRejected(duplicate_model_path, reportDirectory.path() / "duplicate-report.json",
+                      "duplicate-model")) {
+    return 1;
+  }
+
+  const auto missing_model = reportDirectory.path() / "missing-model.yaml";
+  const auto missing_report = reportDirectory.path() / "missing-report.json";
+  setenv("FURBLE_POWER_MODEL", missing_model.c_str(), 1);
+  profilerWriteReport(missing_report.c_str(), "missing-model");
+  unsetenv("FURBLE_POWER_MODEL");
+  return requestedExit.load() == 1 && !std::filesystem::exists(missing_report) ? 0 : 1;
 }

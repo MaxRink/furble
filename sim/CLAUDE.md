@@ -79,6 +79,16 @@ analog current, sensor noise, and unavailable peripherals are irreducible
 boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
 
+The simulator power profiler is likewise only relative evidence. It integrates
+raw virtual-clock durations and records the selected model source and digest;
+missing or malformed selected input fails closed. That provenance fix does not
+close the outstanding power gates: scheduler/timer callback and queue-wake
+costs, peripheral and effective-brightness rails, negotiated BLE airtime, and
+GPS rail/cold-start/UART/standby behavior all require differential traces on
+the corresponding hardware. Do not describe the power model as 100% physical
+parity or attach a quantitative accuracy claim until those measurements,
+electrical boundaries, and tolerances are recorded.
+
 Plan 159 defines camera peer certification. Virtual peers may import pinned
 behavior from common GitHub implementations and official documentation, but
 only exact capture-backed model and firmware fields can produce a certified
