@@ -318,8 +318,9 @@ answer sent from another, the two threads the device has:
 The test also covers the three cases the review found unguarded:
 
 - an expired request answered with Confirm injects a reject, not an accept;
-- a request raised with no handler registered, and one whose handler declines,
-  are both answered with NimBLE's default accept and complete the connection;
+- a request raised with no handler registered keeps NimBLE's default accept for
+  headless images, while a display handler that cannot queue the UI request
+  rejects it explicitly instead of authorizing an unseen code;
 - an answer recorded against a connection handle that is no longer the client's
   is never injected, and drops the link it cannot authorize. MockNimBLE now
   hands out a real, unique connection handle per link so that guard has
@@ -340,6 +341,21 @@ listed as surviving now fails at least one named assertion.
 Residual hardware-only check: a Ricoh camera producing a real numeric-comparison passkey, to confirm the code furble shows matches the camera and that Confirm and Cancel drive the real NimBLE passkey response and disconnect. The render, the layout at every panel width, the modal focus contract, and the shared-ownership use-after-free hardening are host-proven; hardware only confirms the real passkey exchange. This work is declared untested on the Ricoh BLE path pending Ricoh hardware.
 
 The camera state machine also rejects malformed or out-of-range callback codes, rejects a second request while one is visible so the code being confirmed cannot differ from the code displayed, and rejects an answer whose connection handle is stale. These guards remain hardware-pending for the real NimBLE callback exchange.
+
+## Integration state on c272
+
+The pairing commits are integrated on top of the c245 and c272 cancellation,
+recovery, and mutex fixes. The camera callback returns the UI queue result: a
+missing callback remains the headless NimBLE default, while a full or unavailable
+display queue answers the pending comparison with reject. Explicit Cancel and
+expiry use the same reject path and do not set the stale-bond repair verdict;
+that verdict remains owned by Fujifilm Secure's consecutive bonded-handshake
+failure logic. The UI request stores the camera pointer only as a queue payload,
+then resolves it against Control-owned shared pointers before dereferencing it.
+The pairing timer remains armed when another camera has a pending request, so
+closing one modal cannot orphan the next. The simulator action and query seams
+are included for the short camera scenarios; no build or runtime validation was
+run in this integration lane.
 
 ## Fuzz seed 3 on the 320x240 Core
 

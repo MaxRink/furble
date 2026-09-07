@@ -804,7 +804,26 @@ void UI::closePairingDialog(void) {
     lv_group_focus_obj(m_PairingPrevFocus);
   }
   m_PairingPrevFocus = nullptr;
-  stopPairingTimer();
+
+  // A second camera may have raised a request while this modal was visible.
+  // Keep polling until that request gets its own modal instead of orphaning it
+  // behind the first answer.
+  bool pending = false;
+  const auto connecting = Control::getInstance().getConnectingCamera();
+  if (connecting && connecting->hasPendingPairing()) {
+    pending = true;
+  }
+  if (!pending) {
+    for (const auto &camera : Control::getInstance().getTargetCameras()) {
+      if (camera && camera->hasPendingPairing()) {
+        pending = true;
+        break;
+      }
+    }
+  }
+  if (!pending) {
+    stopPairingTimer();
+  }
 }
 
 void UI::showCameraPairing(Camera *camera) {
@@ -865,11 +884,22 @@ void UI::showCameraPairing(Camera *camera) {
 
   lv_obj_t *code = lv_label_create(content);
   lv_label_set_text_fmt(code, "%06lu", static_cast<unsigned long>(owner->getPairingCode()));
+  lv_obj_set_style_text_font(code, m_Width < 100 ? &lv_font_montserrat_16 : &lv_font_montserrat_22,
+                             0);
   lv_obj_set_style_text_align(code, LV_TEXT_ALIGN_CENTER, 0);
+
+  const bool narrowFooter = m_Width < 200;
+  const auto fitFooterButton = [narrowFooter](lv_obj_t *button) {
+    if (narrowFooter) {
+      lv_obj_set_style_pad_hor(button, 3, 0);
+      lv_obj_set_style_text_font(button, &lv_font_montserrat_12, 0);
+    }
+  };
 
   lv_obj_t *accept = nullptr;
   if (confirm) {
     accept = lv_msgbox_add_footer_button(m_PairingDialog, m_Width < 100 ? "Yes" : "Confirm");
+    fitFooterButton(accept);
     addToInputGroup(m_Group, accept);
     lv_obj_add_event_cb(
         accept,
@@ -885,6 +915,7 @@ void UI::showCameraPairing(Camera *camera) {
   }
 
   lv_obj_t *cancel = lv_msgbox_add_footer_button(m_PairingDialog, m_Width < 100 ? "No" : "Cancel");
+  fitFooterButton(cancel);
   addToInputGroup(m_Group, cancel);
   lv_obj_add_event_cb(
       cancel,
@@ -897,6 +928,11 @@ void UI::showCameraPairing(Camera *camera) {
         ui->closePairingDialog();
       },
       LV_EVENT_CLICKED, this);
+  lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+  if (narrowFooter && footer != nullptr) {
+    lv_obj_set_style_pad_hor(footer, 2, 0);
+    lv_obj_set_style_pad_column(footer, 2, 0);
+  }
   lv_group_focus_obj(accept != nullptr ? accept : cancel);
 }
 
@@ -2758,6 +2794,36 @@ void UI::configureControl(ControlMode mode, bool set) {
 }
 
 #if defined(FURBLE_SIM)
+namespace {
+
+// Resolve a scenario pairing action to a camera Control owns. The shared_ptr
+// keeps the target alive while the production pairing callback is exercised.
+std::shared_ptr<Camera> simPairingCamera(bool pending) {
+  auto &control = Control::getInstance();
+  std::shared_ptr<Camera> first;
+  auto consider = [&](const std::shared_ptr<Camera> &camera) {
+    if (!camera) {
+      return false;
+    }
+    if (!first) {
+      first = camera;
+    }
+    return camera->hasPendingPairing() == pending;
+  };
+  const auto connecting = control.getConnectingCamera();
+  if (consider(connecting)) {
+    return connecting;
+  }
+  for (const auto &camera : control.getTargetCameras()) {
+    if (consider(camera)) {
+      return camera;
+    }
+  }
+  return first;
+}
+
+}  // namespace
+
 bool UI::simRunOnUi(std::function<void()> operation) {
   bool onUi = false;
   {
@@ -2931,6 +2997,53 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && command == "disconnect") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     doDisconnect();
+    return;
+  }
+
+  if (action.kind == Sim::scenario_action_kind_t::PAIRING_REQUEST) {
+    m_SimActionResult = sim_action_result_t::UNAVAILABLE;
+    auto camera = simPairingCamera(false);
+    if (!camera) {
+      return;
+    }
+    const Camera::PairingType type = action.mode == "display"
+                                         ? Camera::PairingType::PASSKEY_DISPLAY
+                                         : Camera::PairingType::NUMERIC_COMPARISON;
+    m_SimActionResult = camera->hostSetPairingRequest(type, action.index)
+                            ? sim_action_result_t::APPLIED
+                            : sim_action_result_t::VALID_NO_EFFECT;
+    startPairingTimer();
+    return;
+  }
+
+  if (simpleAction && (command == "camera-pair-accept" || command == "camera-pair-reject")) {
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
+    if ((m_PairingDialog == nullptr) || !lv_obj_is_valid(m_PairingDialog) || !m_PairingIsCamera) {
+      return;
+    }
+    lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+    const uint32_t buttons = footer == nullptr ? 0 : lv_obj_get_child_count(footer);
+    const bool accept = command == "camera-pair-accept";
+    if ((buttons == 0) || (accept && buttons < 2)) {
+      return;
+    }
+    lv_obj_t *button = lv_obj_get_child(footer, accept ? 0 : (buttons - 1));
+    if (button != nullptr) {
+      lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+      m_SimActionResult = sim_action_result_t::APPLIED;
+    }
+    return;
+  }
+
+  if (simpleAction && command == "camera-pair-expire") {
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
+    auto camera = simPairingCamera(true);
+    if (!camera) {
+      return;
+    }
+    m_SimActionResult = camera->hostExpirePairing() ? sim_action_result_t::APPLIED
+                                                    : sim_action_result_t::VALID_NO_EFFECT;
+    startPairingTimer();
     return;
   }
 
@@ -3666,6 +3779,57 @@ std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
+  }
+
+  if (query == "pairing_code" || query == "pairing_kind" || query == "pairing_overflow") {
+    const bool open = m_PairingDialog != nullptr && lv_obj_is_valid(m_PairingDialog);
+    if (!open || !m_PairingIsCamera) {
+      return query == "pairing_overflow" ? "no" : "none";
+    }
+    if (query == "pairing_kind") {
+      lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+      const uint32_t buttons = footer == nullptr ? 0 : lv_obj_get_child_count(footer);
+      return buttons >= 2 ? "confirm" : "display";
+    }
+    if (query == "pairing_overflow") {
+      lv_obj_update_layout(m_PairingDialog);
+      lv_area_t box;
+      lv_obj_get_coords(m_PairingDialog, &box);
+      bool overflow = box.x1 < 0 || box.y1 < 0 || box.x2 >= m_Width || box.y2 >= m_Height;
+      lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
+      if (content != nullptr) {
+        overflow = overflow || lv_obj_get_scroll_bottom(content) > 0
+                   || lv_obj_get_scroll_top(content) > 0;
+      }
+      return overflow ? "yes" : "no";
+    }
+    lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
+    if (content != nullptr) {
+      for (uint32_t i = 0; i < lv_obj_get_child_count(content); i++) {
+        lv_obj_t *child = lv_obj_get_child(content, i);
+        if (!lv_obj_check_type(child, &lv_label_class)) {
+          continue;
+        }
+        const char *text = lv_label_get_text(child);
+        if (text != nullptr && std::strlen(text) == 6
+            && std::strspn(text, "0123456789") == 6) {
+          return text;
+        }
+      }
+    }
+    return "none";
+  }
+
+  if (query == "pairing_pending") {
+    auto camera = simPairingCamera(true);
+    return camera && camera->hasPendingPairing() ? "yes" : "no";
+  }
+
+  if (query == "pairing_timer") {
+    if (m_PairingTimer == nullptr) {
+      return "none";
+    }
+    return lv_timer_get_paused(m_PairingTimer) ? "paused" : "running";
   }
 
   // Keep diagnostics assertions tied to the actual rendered labels. These

@@ -128,6 +128,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `simRunOnUi` request cannot retain stack references. Keep the explicit
   `page main` and `page menu` root routes, and reject scroll `INT32_MIN` because
   the signed value is negated for LVGL's int32 scroll delta.
+  Camera pairing actions use the production modal and answer path, and their
+  queries read the rendered code, modal kind, overflow, pending state, and
+  timer state. A second pending camera keeps the timer armed until its prompt
+  is shown.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:
