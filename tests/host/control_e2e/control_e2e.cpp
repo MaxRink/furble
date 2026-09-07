@@ -191,6 +191,22 @@ bool boundedDeadDisconnect(NimBLEClient *client) {
 
 // --- Scenarios -------------------------------------------------------------
 
+// A connect request with no selected cameras must remain idle instead of
+// treating the empty target set as an active connection.
+bool scenarioEmptyTargetConnectStaysIdle() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  check(control.getTargetCount() == 0, "empty target baseline");
+  control.connectAll(false);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  check(control.getState() == Control::STATE_IDLE, "empty connect remains idle");
+  check(control.getTargetCount() == 0, "empty connect leaves no targets");
+  check(control.getConnectedTargetCount() == 0, "empty connect has no connected targets");
+  return g_Failures == 0;
+}
+
 // A fresh connect reaches ACTIVE quickly, holds the sleep lock, and the
 // interactive disconnect completes promptly and leaves no leaked client.
 bool scenarioFreshConnect() {
@@ -1064,6 +1080,7 @@ bool scenarioRestartStalledPeerReclaim() {
 
 const std::map<std::string, std::function<bool()>> &scenarios() {
   static const std::map<std::string, std::function<bool()>> table = {
+      {"empty-target-connect-stays-idle",    scenarioEmptyTargetConnectStaysIdle  },
       {"fresh-connect",                    scenarioFreshConnect                },
       {"dead-camera-disconnect-no-freeze", scenarioDeadCameraDisconnectNoFreeze},
       {"connect-after-dead-disconnect",    scenarioConnectAfterDeadDisconnect  },
