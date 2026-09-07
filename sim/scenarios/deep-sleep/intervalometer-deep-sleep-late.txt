@@ -5,8 +5,15 @@ seed ivl_sleep true
 seed timed_wake true
 seed resume_fixture late
 seed interval_count 2
+seed interval_delay 1
 seed interval_shutter 30
 wait 5000
 assert camera.shutter_presses 1
-assert ui.interval_state delay
+# The remaining shot reaches the target during its release transition, so the
+# production state is terminal even while the release timer is still armed.
+assert ui.interval_state finished
+wait 2000
+# A completed resume must not schedule another shutter press.
+assert camera.shutter_presses 1
+assert ui.interval_state finished
 exit
