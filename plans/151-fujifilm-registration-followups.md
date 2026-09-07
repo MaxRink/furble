@@ -1066,3 +1066,30 @@ Hardware verification owed before merge, on the X100VI:
     `control.connect_in_progress: true`, `control.connecting: none`,
     zombies climbing, `task.control` at 0.0 percent CPU, and every later connect
     refused with "already connecting, ignoring duplicate connect".
+
+## Verified 2026-09-07 bench evidence
+
+The corrected firmware reported `dev+g37d38967`. A fresh-pair run reached
+Connected, completed shutter-service and characteristic discovery, and took a
+photo. A healthy saved reconnect reached `control.state: active` after an
+explicit disconnect and reconnect with zero zombies. These checks preceded
+camera-side unpair and the cancellation batch. No post-batch ACTIVE recovery
+was tested.
+
+The cancel stress log contains exactly 20 connect and 20 disconnect commands.
+Eight cycles logged scan cancellation and one logged ATT status 9 cancellation.
+Four intermediate snapshots showed `disconnecting`,
+`connect_in_progress: true`, and `connect_abort: true`; each later drained to
+idle with zero zombies. No terminal wedge was observed. The camera pairing
+screen required manual exit during the procedure.
+
+The `shutter hold 100` command requested 100 ms, but the press and release logs
+were about 1198 ms apart. The logs do not establish the cause, so this remains unresolved
+timing evidence and is not treated as a pass or failure. The stale-bond
+deletion path was not tested on hardware.
+
+The next hardware gate is intentionally short: three reconnect/disconnect
+cycles and one cancel during the security wait, with the manual pairing-screen
+exit performed as required. The existing 20-cycle log remains the broader
+stress evidence. The stale-bond, full recovery, and Already Saved gates above
+remain unverified and are not waived by the shorter cancellation procedure.
