@@ -492,10 +492,10 @@ import time
 label = sys.argv[sys.argv.index("--script") + 1]
 if label.endswith("signal.txt"):
   os.write(2, b"signal marker \\xff\\n")
-  os.kill(os.getpid(), signal.SIGABRT)
+  os.kill(os.getpid(), signal.SIGTERM)
 elif label.endswith("timeout.txt"):
   os.write(2, b"timeout marker \\xff\\n")
-  time.sleep(1)
+  time.sleep(5)
 else:
   os.write(2, b"invalid marker \\xff\\n")
   sys.exit(2)
@@ -506,8 +506,8 @@ else:
       child.chmod(0o755)
       args = SimpleNamespace(
           build_dir=Path(directory) / "build",
-          scenario_jobs=3,
-          scenario_timeout=0.05,
+          scenario_jobs=2,
+          scenario_timeout=1,
       )
       labels = [
           "sim/scenarios/e2e/signal.txt",
