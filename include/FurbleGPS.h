@@ -685,8 +685,8 @@ class GPS {
   // NMEA bytes carried across UART reads while looking for a complete RMC. The
   // buffer is bounded to SENTENCE_LEN; overlong or unterminated noise is dropped.
   std::string m_EphNmeaPartial;
-  // TinyGPS++ commits at the checksum before CR/LF. Carry that evidence until
-  // the corresponding sentence terminator arrives in a later UART read.
+  // Carry parser commit evidence until the corresponding CR/LF sentence
+  // terminator arrives, including when those bytes cross UART reads.
   bool m_EphNmeaCommitPending = false;
   // The UTC of the last reading that came back implausible. Once a date has
   // committed after the arm the receiver is proven to be sending real dates, so

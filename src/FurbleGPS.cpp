@@ -2474,8 +2474,15 @@ void GPS::processNmea(uint8_t *data, size_t length) {
     if (m_GPS.date.isUpdated()) {
       (void)m_GPS.date.value();
     }
-    m_GPS.encode(reinterpret_cast<char *>(data), length);
-    noteEphemerisDate(data, length, m_GPS.date.isUpdated());
+    // Consume the one-shot parser signal per byte. This keeps a commit tied to
+    // the RMC that caused it instead of letting a later batch inherit it.
+    for (size_t i = 0; i < length; ++i) {
+      m_GPS.encode(reinterpret_cast<char *>(data + i), 1);
+      noteEphemerisDate(data + i, 1, m_GPS.date.isUpdated());
+      if (m_GPS.date.isUpdated()) {
+        (void)m_GPS.date.value();
+      }
+    }
   }
   captureSentences(reinterpret_cast<const char *>(data), length);
 }
@@ -2485,7 +2492,7 @@ void GPS::noteEphemerisDate(const uint8_t *data, size_t length, bool dateUpdated
   for (size_t i = 0; i < length; ++i) {
     const char c = static_cast<char>(data[i]);
     if ((c == '\r') || (c == '\n')) {
-      if (m_EphNmeaCommitPending && hasValidRmcDate(m_EphNmeaPartial)) {
+      if ((m_EphNmeaCommitPending || dateUpdated) && hasValidRmcDate(m_EphNmeaPartial)) {
         m_EphDateSequence++;
       }
       m_EphNmeaPartial.clear();
