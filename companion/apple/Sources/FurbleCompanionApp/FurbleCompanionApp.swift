@@ -279,6 +279,7 @@ private extension CompanionConnectionPhase {
     case .awaitingAuthentication: return "Authenticating"
     case .ready: return "Ready"
     case .reconnecting(let attempt): return "Reconnecting, attempt \(attempt)"
+    case .failed(.cameraTransactionTimedOut): return "Camera request timed out; reconnecting is required"
     case .failed(let error): return "Failed: \(error)"
     }
   }

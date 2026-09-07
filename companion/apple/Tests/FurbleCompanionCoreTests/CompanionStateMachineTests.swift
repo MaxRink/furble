@@ -118,8 +118,41 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertEqual(machine.cameras.first?.rssi, -32)
 
     XCTAssertTrue(machine.beginCameraList())
+    let previousCatalog = machine.cameras
+    let failedTerminator = Data([2, 0xff, 0, 0, 0, 0x80, 0, 0])
+    XCTAssertTrue(machine.didReceiveCamera(failedTerminator))
+    XCTAssertFalse(machine.cameraListPending)
+    XCTAssertEqual(machine.cameraListError, 2)
+    XCTAssertEqual(machine.cameras, previousCatalog)
+
+    XCTAssertTrue(machine.beginCameraList())
     machine.didDisconnect()
     XCTAssertFalse(machine.cameraListPending)
+    XCTAssertNil(machine.cameraListError)
+  }
+
+  func testCameraTransactionSerializesAndClassifiesResponsesBeforeCatalog() throws {
+    var transaction = CompanionCameraTransaction()
+    XCTAssertTrue(transaction.begin(.list))
+    XCTAssertFalse(transaction.begin(.operation(.connect, id: 7)))
+
+    let specificAcknowledgement = try FurbleProtocol.decodeCameraRecord(
+      Data([0, 7, 0, 0, 0, 0x80, 0, 0]))
+    XCTAssertEqual(transaction.classify(specificAcknowledgement), .ignored)
+    let failedTerminator = try FurbleProtocol.decodeCameraRecord(
+      Data([2, 0xff, 0, 0, 0, 0x80, 0, 0]))
+    XCTAssertEqual(transaction.classify(failedTerminator), .listTerminator(status: 2))
+
+    transaction.finish()
+    XCTAssertTrue(transaction.begin(.operation(.connect, id: 7)))
+    XCTAssertEqual(transaction.classify(specificAcknowledgement),
+      .operationAcknowledgement(status: 0))
+    let liveRecord = try FurbleProtocol.decodeCameraRecord(
+      Data([0, 7, 1, 8, 100, 0xe0, 2, 1, 0x58]))
+    XCTAssertEqual(transaction.classify(liveRecord), .unsolicited)
+    transaction.cancel()
+    XCTAssertNil(transaction.kind)
+    XCTAssertTrue(transaction.begin(.list))
   }
 
   func testPasswordlessResultCompletesOnlyAfterFirmwareNotRequired() {

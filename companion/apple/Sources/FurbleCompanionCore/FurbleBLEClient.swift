@@ -8,11 +8,6 @@ import Combine
 /// platform-neutral core and can therefore be tested without a radio.
 @MainActor
 public final class FurbleBLEClient: NSObject, ObservableObject {
-  private enum CameraTransaction: Equatable {
-    case list
-    case operation(FurbleProtocol.CameraOperation, id: UInt8)
-  }
-
   @Published public private(set) var state = CompanionStateMachine()
   @Published public private(set) var phase = CompanionConnectionPhase.idle
   @Published public private(set) var status: FurbleProtocol.Status?
@@ -32,7 +27,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private var authExchange = CompanionAuthExchangeGate()
   private var triggerHold = TriggerHoldState()
   private var cameraListTimeout: DispatchWorkItem?
-  private var cameraTransaction: CameraTransaction?
+  private var cameraTransaction = CompanionCameraTransaction()
 
   public init(credentialStore: FurbleCredentialStore = KeychainCredentialStore()) {
     self.credentialStore = credentialStore
@@ -58,7 +53,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     authExchange.reset()
     cameraListTimeout?.cancel()
     cameraListTimeout = nil
-    cameraTransaction = nil
+    cameraTransaction.cancel()
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
@@ -150,15 +145,20 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
 
   public func requestCameras() throws {
     let data = FurbleProtocol.cameraListRequest()
-    if let cameraTransaction {
-      switch cameraTransaction {
+    if let kind = cameraTransaction.kind {
+      switch kind {
       case .list: throw FurbleProtocol.Error.cameraListInProgress
       case .operation: throw FurbleProtocol.Error.cameraOperationInProgress
       }
     }
     _ = try state.privileged(.writeCamera(data))
-    guard state.beginCameraList() else { throw FurbleProtocol.Error.cameraListInProgress }
-    cameraTransaction = .list
+    guard cameraTransaction.begin(.list) else {
+      throw FurbleProtocol.Error.cameraListInProgress
+    }
+    guard state.beginCameraList() else {
+      cameraTransaction.cancel()
+      throw FurbleProtocol.Error.cameraListInProgress
+    }
     cameraOperationError = nil
     do {
       try writeCameraPayload(data)
@@ -183,10 +183,12 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   private func sendCameraOperation(_ operation: FurbleProtocol.CameraOperation, id: UInt8) throws {
-    guard cameraTransaction == nil else { throw FurbleProtocol.Error.cameraOperationInProgress }
+    guard cameraTransaction.kind == nil else { throw FurbleProtocol.Error.cameraOperationInProgress }
     let data = FurbleProtocol.cameraRequest(operation, id: id)
     _ = try state.privileged(.writeCamera(data))
-    cameraTransaction = .operation(operation, id: id)
+    guard cameraTransaction.begin(.operation(operation, id: id)) else {
+      throw FurbleProtocol.Error.cameraOperationInProgress
+    }
     cameraOperationError = nil
     do {
       try writeCameraPayload(data)
@@ -209,16 +211,16 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private func cancelCameraTransaction() {
     cameraListTimeout?.cancel()
     cameraListTimeout = nil
-    cameraTransaction = nil
+    cameraTransaction.cancel()
     state.cancelCameraList()
   }
 
   private func scheduleCameraTransactionTimeout() {
     cameraListTimeout?.cancel()
     let timeout = DispatchWorkItem { [weak self] in
-      guard let self, self.cameraTransaction != nil else { return }
+      guard let self, self.cameraTransaction.kind != nil else { return }
       self.cancelCameraTransaction()
-      self.cameraOperationError = "Camera request timed out."
+      self.fail(.cameraTransactionTimedOut)
     }
     cameraListTimeout = timeout
     DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
@@ -246,7 +248,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private func fail(_ value: CompanionFailure) {
     cameraListTimeout?.cancel()
     cameraListTimeout = nil
-    cameraTransaction = nil
+    cameraTransaction.cancel()
     state.cancelCameraList()
     reconnectGate.beginStop(hasPeripheral: peripheral != nil)
     if let peripheral {
@@ -410,7 +412,7 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
     guard isCurrent(peripheral), phase.shouldReconnectAfterDisconnect else { return }
     cameraListTimeout?.cancel()
     cameraListTimeout = nil
-    cameraTransaction = nil
+    cameraTransaction.cancel()
     state.cancelCameraList()
     self.peripheral = nil
     state.didDisconnect()
@@ -489,40 +491,43 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
   }
 
   private func handleCameraData(_ data: Data) {
-    switch cameraTransaction {
-    case .list:
-      if let record = try? FurbleProtocol.decodeCameraRecord(data),
-        record.isOperationAcknowledgement, record.cameraID != 0xff {
-        return
-      }
+    guard let record = try? FurbleProtocol.decodeCameraRecord(data) else {
+      fail(.malformedPacket)
+      return
+    }
+    switch cameraTransaction.classify(record) {
+    case .listRecord, .listTerminator:
       guard state.didReceiveCamera(data) else { fail(.malformedPacket); return }
-      if !state.cameraListPending {
+      if let status = state.cameraListError {
+        cameraOperationError = "Camera list failed: \(cameraStatusLabel(status))."
         cameraListTimeout?.cancel()
         cameraListTimeout = nil
-        cameraTransaction = nil
-      }
-      cameras = state.cameras
-    case .operation(_, let id):
-      guard let record = try? FurbleProtocol.decodeCameraRecord(data) else {
-        fail(.malformedPacket)
-        return
-      }
-      if record.isOperationAcknowledgement {
-        guard record.cameraID == id else { return }
-        cameraOperationError = record.operationStatusLabel
+        cameraTransaction.finish()
+      } else if !state.cameraListPending {
         cameraListTimeout?.cancel()
         cameraListTimeout = nil
-        cameraTransaction = nil
-        return
+        cameraTransaction.finish()
       }
+      cameras = state.cameras
+    case .operationAcknowledgement:
+      cameraOperationError = record.operationStatusLabel
+      cameraListTimeout?.cancel()
+      cameraListTimeout = nil
+      cameraTransaction.finish()
+    case .unsolicited:
       guard state.didReceiveCameraEvent(data) else { fail(.malformedPacket); return }
       cameras = state.cameras
-    case nil:
-      if let record = try? FurbleProtocol.decodeCameraRecord(data), record.isOperationAcknowledgement {
-        return
-      }
-      guard state.didReceiveCameraEvent(data) else { fail(.malformedPacket); return }
-      cameras = state.cameras
+    case .ignored:
+      return
+    }
+  }
+
+  private func cameraStatusLabel(_ status: UInt8) -> String {
+    switch status {
+    case 1: return "unknown camera"
+    case 2: return "request rejected"
+    case 3: return "camera operation busy"
+    default: return "camera error (status)"
     }
   }
 
