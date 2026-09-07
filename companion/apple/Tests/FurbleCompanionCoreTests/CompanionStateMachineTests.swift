@@ -98,16 +98,25 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertTrue(machine.didReceiveCamera(stale))
     XCTAssertEqual(machine.cameras.map(\.cameraID), [1])
 
-    machine.beginCameraList()
+    XCTAssertTrue(machine.beginCameraList())
+    XCTAssertTrue(machine.cameraListPending)
+    XCTAssertFalse(machine.beginCameraList())
+    let interleaved = Data([0, 9, 1, 1, 100, 0xd0, 2, 1, 0x49])
+    XCTAssertTrue(machine.didReceiveCameraEvent(interleaved))
     let listed = Data([0, 2, 1, 1, 100, 0xf0, 2, 1, 0x42])
     let terminator = Data([0, 0xff, 0, 0, 0, 0, 0, 0])
     XCTAssertTrue(machine.didReceiveCamera(listed))
     XCTAssertTrue(machine.didReceiveCamera(terminator))
-    XCTAssertEqual(machine.cameras.map(\.cameraID), [2])
+    XCTAssertFalse(machine.cameraListPending)
+    XCTAssertEqual(machine.cameras.map(\.cameraID), [2, 9])
 
     let event = Data([0, 2, 1, 9, 100, 0xe0, 2, 1, 0x42])
     XCTAssertTrue(machine.didReceiveCamera(event))
     XCTAssertEqual(machine.cameras.first?.rssi, -32)
+
+    XCTAssertTrue(machine.beginCameraList())
+    machine.didDisconnect()
+    XCTAssertFalse(machine.cameraListPending)
   }
 
   func testPasswordlessResultCompletesOnlyAfterFirmwareNotRequired() {

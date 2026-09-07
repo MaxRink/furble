@@ -25,6 +25,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private var authBeginPending = false
   private var authExchange = CompanionAuthExchangeGate()
   private var triggerHold = TriggerHoldState()
+  private var cameraListTimeout: DispatchWorkItem?
 
   public init(credentialStore: FurbleCredentialStore = KeychainCredentialStore()) {
     self.credentialStore = credentialStore
@@ -48,6 +49,8 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     central.stopScan()
     authBeginPending = false
     authExchange.reset()
+    cameraListTimeout?.cancel()
+    cameraListTimeout = nil
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
@@ -139,9 +142,10 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   public func requestCameras() throws {
     let data = FurbleProtocol.cameraListRequest()
     _ = try state.privileged(.writeCamera(data))
-    state.beginCameraList()
+    guard state.beginCameraList() else { throw FurbleProtocol.Error.cameraListInProgress }
     do {
       try writeCameraRequest(data)
+      scheduleCameraListTimeout()
     } catch {
       state.cancelCameraList()
       throw error
@@ -176,6 +180,17 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     }
   }
 
+  private func scheduleCameraListTimeout() {
+    cameraListTimeout?.cancel()
+    let timeout = DispatchWorkItem { [weak self] in
+      guard let self, self.state.cameraListPending else { return }
+      self.state.cancelCameraList()
+      self.error = .cameraListTimedOut
+    }
+    cameraListTimeout = timeout
+    DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
+  }
+
   private func beginScan() {
     _ = state.start(bluetoothAvailable: true)
     phase = state.phase
@@ -196,6 +211,8 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   private func fail(_ value: CompanionFailure) {
+    cameraListTimeout?.cancel()
+    cameraListTimeout = nil
     reconnectGate.beginStop(hasPeripheral: peripheral != nil)
     if let peripheral {
       cancelledPeripheralID = peripheral.identifier
@@ -356,6 +373,8 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
       return
     }
     guard isCurrent(peripheral), phase.shouldReconnectAfterDisconnect else { return }
+    cameraListTimeout?.cancel()
+    cameraListTimeout = nil
     self.peripheral = nil
     state.didDisconnect()
     phase = state.phase
@@ -429,6 +448,10 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       self.status = status
     } else if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.cameras) {
       guard state.didReceiveCamera(data) else { fail(.malformedPacket); return }
+      if !state.cameraListPending {
+        cameraListTimeout?.cancel()
+        cameraListTimeout = nil
+      }
       cameras = state.cameras
     }
   }

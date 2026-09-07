@@ -220,6 +220,8 @@ private func cameraErrorMessage(_ error: Error) -> String {
     return "Invalid camera request: \(message)."
   case .authenticationFailed:
     return "Authentication failed; camera controls are unavailable."
+  case .cameraListInProgress:
+    return "Camera refresh already in progress."
   }
 }
 

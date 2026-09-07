@@ -59,6 +59,7 @@ public enum FurbleProtocol {
     case authenticationFailed
     case authenticationUnavailable
     case payloadTooLarge
+    case cameraListInProgress
   }
 
   public struct LocationFix: Equatable, Sendable {
