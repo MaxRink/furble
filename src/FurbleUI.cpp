@@ -3628,6 +3628,9 @@ lv_obj_t *simRowLabel(lv_obj_t *row) {
 
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
+  if (query.compare(0, 7, "console.") == 0) {
+    return simConsoleField(query.c_str() + 8);
+  }
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
   }

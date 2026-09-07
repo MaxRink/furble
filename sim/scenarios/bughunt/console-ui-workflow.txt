@@ -1,5 +1,6 @@
 # Route a console-shaped request through the production UI queue.
 seed fauxny true
+seed saved_camera true
 wait 300
 action nav settings
 wait 200
@@ -7,4 +8,14 @@ assert ui.page settings
 action console back
 wait 200
 assert ui.page main
+action console delete 999
+wait 200
+assert console.result no_saved_camera
+action console delete 0
+wait 200
+assert console.result ok
+assert console.count 1
+action console cameras 1
+wait 200
+assert console.saved 0
 exit
