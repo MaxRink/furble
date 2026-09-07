@@ -1675,7 +1675,7 @@ void GPS::armEphemerisReplay(void) {
   // as a couple of minutes old. Arm here, and commit in servicePoll once the
   // receiver has reported a UTC of its own.
   m_EphReplayArmed = true;
-  m_EphArmDate = receiverDate(getStatusSnapshot());
+  m_EphArmDateSequence = m_EphDateSequence;
   m_EphImplausible = 0;
   m_EphImplausibleUtc = 0;
   ESP_LOGI(LOG_TAG, "GPS ephemeris replay armed, waiting for receiver time");
@@ -1705,10 +1705,11 @@ void GPS::serviceEphemerisArm(void) {
   }
   const int64_t reported = receiverUtc(status);
   if (m_EphImplausible == 0) {
-    // Nothing has committed since the arm. Only a changed *date* proves an RMC
-    // carrying a real date field arrived: the empty pre-fix RMC re-commits the
-    // stale date while the time ticks on from GGA.
-    if (date == m_EphArmDate) {
+    // Nothing has committed since the arm. A date sequence change proves an
+    // RMC arrived, even when the receiver corrected its clock on the same day.
+    // The empty pre-fix RMC also advances the sequence, but its unusable UTC is
+    // rejected below without consuming the arm.
+    if (m_EphDateSequence == m_EphArmDateSequence) {
       // The arm stands until the next enable, which is the cold start case:
       // replaying a cache whose age cannot be established is the thing this is
       // here to prevent.
@@ -1736,7 +1737,6 @@ void GPS::serviceEphemerisArm(void) {
     // later. That is the tier 2 case, so wait for the next date rather than
     // throwing the cache away on the first reading. Bounded, though: a receiver
     // that keeps reporting behind the capture is wrong rather than waking.
-    m_EphArmDate = date;
     m_EphImplausibleUtc = reported;
     if (++m_EphImplausible < EPH_IMPLAUSIBLE_MAX) {
       return;
@@ -2427,6 +2427,9 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
     m_GPS.encode(reinterpret_cast<char *>(data), length);
+    if (m_GPS.date.isUpdated()) {
+      m_EphDateSequence++;
+    }
   }
   captureSentences(reinterpret_cast<const char *>(data), length);
 }
