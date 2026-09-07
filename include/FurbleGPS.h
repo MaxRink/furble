@@ -441,6 +441,7 @@ class GPS {
   void servicePoll(void);
   void processSerial(const uint8_t *data, size_t length);
   void processNmea(uint8_t *data, size_t length);
+  void noteEphemerisDate(const uint8_t *data, size_t length);
   void serviceBinary(const uint8_t *frame, size_t length);
   bool wiredFixIsFresh(const status_t &status) const;
 
@@ -680,6 +681,8 @@ class GPS {
   // Sequence snapshot taken when replay was armed. A receiver can correct its
   // clock by minutes while staying on the same UTC day.
   uint32_t m_EphArmDateSequence = 0;
+  // NMEA bytes carried across UART reads while looking for a complete RMC.
+  std::string m_EphNmeaPartial;
   // The UTC of the last reading that came back implausible. Once a date has
   // committed after the arm the receiver is proven to be sending real dates, so
   // re-entry keys on the reported UTC from then on. Keying on the date again

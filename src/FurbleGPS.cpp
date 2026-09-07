@@ -331,6 +331,7 @@ void GPS::enable(void) {
   m_EphPolled = false;
   m_EphPollActive = false;
   m_EphCapture = false;
+  m_EphNmeaPartial.clear();
   m_EphReplayArmed = false;
   m_MonHwPending = false;
   {
@@ -2427,11 +2428,65 @@ void GPS::processNmea(uint8_t *data, size_t length) {
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
     m_GPS.encode(reinterpret_cast<char *>(data), length);
-    if (m_GPS.date.isUpdated()) {
-      m_EphDateSequence++;
-    }
+    noteEphemerisDate(data, length);
   }
   captureSentences(reinterpret_cast<const char *>(data), length);
+}
+
+/** Record only a checksum-valid RMC with a nonempty date field. */
+void GPS::noteEphemerisDate(const uint8_t *data, size_t length) {
+  m_EphNmeaPartial.append(reinterpret_cast<const char *>(data), length);
+  bool validDateRmc = false;
+
+  size_t end = 0;
+  while ((end = m_EphNmeaPartial.find('\n')) != std::string::npos) {
+    std::string sentence = m_EphNmeaPartial.substr(0, end);
+    m_EphNmeaPartial.erase(0, end + 1);
+    if (!sentence.empty() && (sentence.back() == '\r')) {
+      sentence.pop_back();
+    }
+    if ((sentence.rfind("$GPRMC,", 0) != 0) && (sentence.rfind("$GNRMC,", 0) != 0)) {
+      continue;
+    }
+    const size_t star = sentence.find('*');
+    if ((star == std::string::npos) || (star + 3 != sentence.size())) {
+      continue;
+    }
+    const auto hex = [](char c) {
+      if ((c >= '0') && (c <= '9')) {
+        return c - '0';
+      }
+      if ((c >= 'A') && (c <= 'F')) {
+        return c - 'A' + 10;
+      }
+      if ((c >= 'a') && (c <= 'f')) {
+        return c - 'a' + 10;
+      }
+      return -1;
+    };
+    const int high = hex(sentence[star + 1]);
+    const int low = hex(sentence[star + 2]);
+    if ((high < 0) || (low < 0)
+        || (checksum(sentence.substr(1, star - 1)) != ((high << 4) | low))) {
+      continue;
+    }
+
+    size_t comma = sentence.find(',');
+    for (int field = 0; (field < 8) && (comma != std::string::npos); ++field) {
+      comma = sentence.find(',', comma + 1);
+    }
+    const size_t dateEnd = (comma == std::string::npos) ? comma : sentence.find(',', comma + 1);
+    if ((comma == std::string::npos) || (dateEnd == std::string::npos)
+        || (dateEnd == comma + 1) || (dateEnd - comma - 1 != 6)) {
+      continue;
+    }
+    validDateRmc = std::all_of(sentence.begin() + comma + 1, sentence.begin() + dateEnd,
+                               [](char c) { return (c >= '0') && (c <= '9'); });
+  }
+
+  if (validDateRmc && m_GPS.date.isUpdated()) {
+    m_EphDateSequence++;
+  }
 }
 
 void GPS::processSerial(const uint8_t *data, size_t length) {
