@@ -70,6 +70,8 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {72,                         ValueType::U8,     1,  1                           },
     {73,                         ValueType::BOOL,   1,  1                           },
     {74,                         ValueType::U8,     1,  1                           },
+    {75,                         ValueType::BOOL,   1,  1                           },
+    {76,                         ValueType::U32,    4,  4                           },
 };
 
 struct FieldSchema {

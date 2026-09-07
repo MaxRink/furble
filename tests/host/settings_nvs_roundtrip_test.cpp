@@ -542,6 +542,17 @@ void checkTableCoverage(const std::vector<SettingCase> &cases) {
   }
 }
 
+void testCatalogWireIdsAreUnique() {
+  std::set<uint8_t> exposedIds;
+  for (const auto &entry : Settings::all()) {
+    if (entry.second.wire_id == 0) {
+      continue;
+    }
+    check(exposedIds.insert(entry.second.wire_id).second,
+          std::string("duplicate exposed wire id for ") + entry.second.key);
+  }
+}
+
 void testDefaults(const std::vector<SettingCase> &cases) {
   nvs_test_reset();
   Settings::init();
@@ -801,6 +812,7 @@ void testMultiselectLegacyRecordUpgrades() {
 int main() {
   const auto cases = settingCases();
   checkTableCoverage(cases);
+  testCatalogWireIdsAreUnique();
   testDefaults(cases);
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);

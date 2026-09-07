@@ -91,8 +91,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {WIFI_PSK,           {WIFI_PSK, 53, "WiFi Passphrase", "wifi_psk", FURBLE_STR}            },
     {NTP,                {NTP, 54, "NTP", "ntp", FURBLE_STR}                                  },
     {NTP_SERVER,         {NTP_SERVER, 55, "NTP Server", "ntp_server", FURBLE_STR}             },
-    {IVL_SLEEP,          {IVL_SLEEP, 42, "Deep Sleep", "ivl_sleep", FURBLE_STR}                },
-    {IVL_SLEEP_THR,      {IVL_SLEEP_THR, 43, "Sleep Threshold", "ivl_sleep_thr", FURBLE_STR}   },
+    {IVL_SLEEP,          {IVL_SLEEP, 75, "Deep Sleep", "ivl_sleep", FURBLE_STR}                },
+    {IVL_SLEEP_THR,      {IVL_SLEEP_THR, 76, "Sleep Threshold", "ivl_sleep_thr", FURBLE_STR}   },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {

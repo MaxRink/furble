@@ -58,10 +58,10 @@ Verified anchors against the current tree.
 
 Name strings: `"Deep Sleep"` and `"Sleep Threshold"`.
 
-Wire ids: `IVL_SLEEP` uses 42 and `IVL_SLEEP_THR` uses 43. These were renumbered
-during the rebase onto the current ledger from the provisional 32 and 33, which
-now collide with the merged `IR_PROTO` (32) and `FB_OUTPUT` (33). They are free
-at the rebased base and are frozen for this slice.
+Wire ids: `IVL_SLEEP` uses 75 and `IVL_SLEEP_THR` uses 76. The earlier 42 and 43
+allocation was invalid: 42 remains reserved for timezone and 43 is the shipped
+`AUTO_OFF_CHARGING` setting. The new ids are after the current settings and the
+open WiFi/MQTT/schema reservations through 74.
 
 A `uint32_t` is used rather than a `uint16_t` because `Settings` already has
 `load<uint32_t>` and `save<uint32_t>` specialisations
