@@ -335,6 +335,19 @@ contract and answers a request raised on a live `Control` target, which is the
 case the `getTargetCameras()` walk in `cmdPair` exists for. It also pins the
 refusal of `pair yes` on a passkey-display prompt.
 
+Pairing lifetime mutation evidence from the restored c63 tree is recorded here
+as a host-only result. The negative control restored the unsafe ordering that
+called `client->disconnect()` after `NimBLEDevice::injectConfirmPasskey()`; it
+did not merely delete the new pre-injection disconnect. The ASAN
+`camera_pairing_race_test` then failed with a heap-use-after-free in
+`MockNimBLE.cpp:610`, reached from `Camera.cpp:275` (0.34 s,
+`/tmp/c63-pairing-mutation-test.log`). Restoring the exact `ac1b18d7` Camera
+implementation made all three focused pairing tests pass (1.11 s,
+`/tmp/c63-pairing-restored-test.log`). This validates the synchronous reject,
+self-delete regression at the production Camera boundary; it is not SDL,
+firmware, or physical-Ricoh evidence. Full SDL validation, firmware
+validation, and the Ricoh hardware exchange remain pending.
+
 Mutation checks: see the table in the PR discussion. Every mutation the review
 listed as surviving now fails at least one named assertion.
 
