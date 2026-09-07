@@ -356,3 +356,14 @@ Fujifilm registration wait instead of sleeping for 300 ms. Its assertions are
 limited to observable teardown IDLE, barrier release, no late republish, and a
 successful follow-up connect; the transient `connectAll()` return value is not
 treated as shared-state evidence.
+
+## 116b current implementation map
+
+The Android candidate is based on the approved firmware head `63266b7d`, not by
+replaying stale firmware commits from the old app branch. Its app-only source
+range is the Android tree from the 116b branch plus the framed-auth corrections
+in the candidate commit. The app uses the AUTH UUID
+`b57f4f6f-087b-4740-b71d-8262cf26ebbc`, password wire ID 47, and the framed
+`[version, operation, payload]` challenge protocol. The Android workflow remains
+the test-release path: Gradle tests and `assembleDebug`, with the debug APK
+uploaded as a CI artifact. No production signing configuration is included.
