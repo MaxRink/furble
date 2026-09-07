@@ -349,6 +349,18 @@ UI::UI(const interval_t &interval)
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
+#if defined(FURBLE_SIM)
+  // The regression scenario deliberately applies GPS settings before the
+  // shared motion source is armed, matching the headless boot ordering.
+  const bool gpsMotionPrearm = Sim::scenarioSettingIsTrue("gps_motion_prearm");
+#else
+  constexpr bool gpsMotionPrearm = false;
+#endif
+
+  if (gpsMotionPrearm) {
+    m_GPS.init();
+  }
+
 #if defined(FURBLE_CONSOLE)
   m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
   if (m_RequestQueue == NULL) {
@@ -500,7 +512,9 @@ UI::UI(const interval_t &interval)
   m_Status.title = lv_win_add_title(m_Root, m_Title);
   m_Header = lv_win_get_header(m_Root);
 
-  m_GPS.init();
+  if (!gpsMotionPrearm) {
+    m_GPS.init();
+  }
   m_Status.gps = &m_GPS;
 
   // A zero-width flex-grow spacer between the title and the status icons pins
@@ -2630,6 +2644,18 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && (command == "imu.enable" || command == "imu.disable")) {
     m_SimActionResult = sim_action_result_t::APPLIED;
     Furble::Sim::imuSetEnabled(command == "imu.enable");
+    return;
+  }
+
+  if (simpleAction && command == "motion.disarm") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    IMU::MotionSource::getInstance().disarm();
+    return;
+  }
+
+  if (simpleAction && command == "motion.arm") {
+    m_SimActionResult = IMU::MotionSource::getInstance().arm() ? sim_action_result_t::APPLIED
+                                                               : sim_action_result_t::UNAVAILABLE;
     return;
   }
 

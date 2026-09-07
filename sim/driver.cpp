@@ -309,6 +309,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps",
       "gps_nmea",
       "gps_motion",
+      "gps_motion_prearm",
       "fauxny",
       "autoconnect",
       "reconnect",

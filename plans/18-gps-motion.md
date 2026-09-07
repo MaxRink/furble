@@ -333,15 +333,18 @@ Simulator, all certified on the 80x160 M5StickC, the 135x240 M5StickS3 and the
 |---|---|
 | `e2e/gps-motion-detector.txt` | That the source armed at all, slow entry and immediate exit, and the phase 1 contract: `gps.state`, `gps.degraded`, `uart.count` and `power.no_light_sleep` all read the same on both sides of a transition. |
 | `e2e/gps-motion-setting.txt` | Default off, the real Settings > GPS switch turning the detector on and off, and the receiver still tracking 50 ms after each flip. The 50 ms is the point: the old code re-acquired and was back at tracking within a second, so a settled assertion could not see it. |
+| `e2e/gps-motion-prearm.txt` | GPS loads persisted `GPS_MOTION` before `MotionSource::arm()`, then source disarm/re-arm updates the motion gate and stationary verdict without a setting toggle, receiver reset or UART write. |
 | `bughunt/gps-motion-row.txt` | The row at Normal text size: renders, both scroll extents reachable, no indicator overlap, and it follows the GPS visibility gate. |
 | `bughunt/gps-motion-row-small.txt` | The same at Small. |
 | `bughunt/gps-motion-row-large.txt` | The same at Large. |
 | `bughunt/gps-motion-row-gates.txt` | IMU off: the row renders disabled, the source reads `inactive`, and the detector reports off even with the setting on. That pairing is the arm-once constraint made visible. |
 | `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`, `bughunt/core-notouch-layout.txt` | The row on the physical-button layout each board actually ships, with the indicator clearance assertions those files own. |
 
-New simulator seams: seed `gps_motion`, `action toggle gps_motion`, queries
-`gps.motion_state` and `ui.gps_motion_row`, and `setting.gps_motion`. All are
-documented in `docs/sim.md`.
+New simulator seams: seed `gps_motion`, the `gps_motion_prearm` startup
+regression, `action toggle gps_motion`, and the regression-only
+`motion.arm`/`motion.disarm` lifecycle actions. Queries `gps.motion_state` and
+`ui.gps_motion_row`, and `setting.gps_motion` are also covered. All are
+documented in `docs/sim.md` and `sim/CLAUDE.md`.
 
 `sim/scripts/ui-screenshots.txt` gained one `key down`: the new row sits above
 GPS Data and that screenshot route counts focus steps.

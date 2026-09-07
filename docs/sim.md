@@ -275,6 +275,8 @@ These boolean settings are applied before the UI is constructed:
 and `imu_trigger`. `auto_off_charging` opts into auto-off while charging, and
 `imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
 as well: the detector only runs when the receiver and the sensor are both on.
+`gps_motion_prearm` is a regression-only seed that loads GPS before the UI arms
+the shared motion source.
 The M5StickS3 model also accepts
 `watchdog`; other board models reject that seed because they cannot apply it.
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
@@ -401,6 +403,8 @@ action companion-accept
 action companion-reject
 action imu.enable
 action imu.disable
+action motion.arm
+action motion.disarm
 action imu.accel.fail
 action imu.accel.recover
 action imu.gyro.fail

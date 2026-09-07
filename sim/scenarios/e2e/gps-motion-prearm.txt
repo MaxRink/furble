@@ -1,0 +1,37 @@
+# GPS applies its persisted motion preference before the shared source is armed.
+# The source lifecycle then changes without a settings write or GPS reload.
+seed gps true
+seed gps_motion true
+seed gps_motion_prearm true
+seed gps_uart_mode ack
+seed imu true
+wait 400
+
+# The pre-arm reload must retain the preference, and the receiver must remain
+# tracking while the UI arms the source afterwards.
+assert setting.gps_motion 1
+assert gps.motion_state moving
+assert gps.state tracking
+assert uart.count 0
+
+# A source lifecycle change is not a GPS settings change. Both transitions
+# must update the public gate without resetting the receiver or toggling NVS.
+action motion.disarm
+wait 100
+assert gps.motion_state off
+assert gps.state tracking
+assert uart.count 0
+action motion.arm
+wait 100
+assert gps.motion_state moving
+assert gps.state tracking
+assert setting.gps_motion 1
+assert uart.count 0
+
+# The re-armed source still owns stationary semantics; no GPS reload is needed.
+action imu.accel 0 0 1
+wait 61000
+assert gps.motion_state stationary
+assert gps.state tracking
+assert uart.count 0
+exit
