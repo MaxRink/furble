@@ -477,3 +477,12 @@ and the test destroys a nested caller before completing the retained request.
 The host harness uses the shared production completion type but a UI double;
 it does not certify the real UI queue or headless runtime. Exact-head host,
 simulator, and firmware validation remain pending.
+
+The isolated c265 host validation subsequently completed 113/113 checks. This
+is console-command and shared-state evidence only: the console target links a
+UI double, so it does not certify the real UI queue or headless runtime. The
+simulator target remains the production UI path with `FURBLE_SIM`,
+`FURBLE_M5STICKS3`, `FURBLE_RIG`, SDL panel definitions, and the repository
+M5GFX, M5Unified, LVGL, NimBLE, peer, and TinyGPSPlus include roots from
+`sim/CMakeLists.txt`; run its actual SDL scenarios separately. Hardware UI,
+headless, and camera persistence gates remain pending.
