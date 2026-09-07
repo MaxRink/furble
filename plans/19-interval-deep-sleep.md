@@ -344,6 +344,9 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   `control-e2e-scoped-bounded-retry-gap` scenario passed separately, 1/1 in
   3.34 s. No current-master SDL simulator build or scenario result is claimed
   here.
+- Protocol corpus validation also passed at integrated head `6a877`: `make
+  -C tests/protocol CXX=clang++ BUILD=/tmp/c59-protocol -j2 test` completed
+  successfully; evidence is recorded in `/tmp/c59-protocol-test.log`.
 
 The current-master CMake simulator build exposed forced C++ shim headers on
 generated C icon sources (`cstddef` unavailable to the C compiler). Restricting
