@@ -219,6 +219,22 @@ jobs:
           FURBLE_SIM_M5GFX_BOARD: board_M5Stack
         run: sh sim/build.sh
 
+      # The intervalometer deep-sleep cycle needs two fresh simulator
+      # processes and persisted state between them. Run the production S3
+      # binary through the dedicated runner, and use the already-built
+      # M5StickC binary for its unsupported-board fixture. Keep all state in
+      # the job's temporary directory so this gate cannot inherit a prior run.
+      - name: Run intervalometer deep-sleep gate (M5StickS3)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+          FURBLE_SIM_UNSUPPORTED_BIN: ${{ github.workspace }}/sim/build-stickc/furble-sim
+          FURBLE_SIM_DEEP_SLEEP_PREFS: ${{ runner.temp }}/furble-deep-sleep-cycle.bin
+          FURBLE_SIM_DEEP_SLEEP_EVIDENCE: ${{ runner.temp }}/furble-deep-sleep-cycle.ready
+          FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT: 30
+        run: timeout -k 10 300 sh sim/scripts/run-deep-sleep.sh
+
       - name: Run certified bug-hunt scenarios on alternate boards
         env:
           SDL_VIDEODRIVER: dummy
