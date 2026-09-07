@@ -74,12 +74,14 @@ action scroll top
 wait 200
 assert ui.scroll_top 0
 
-# Timer settings list.
+# Timer settings list. The timed-wake rows make this physical-button layout
+# scroll on the 135x240 timed-wake board; timer-overflow-timed-wake owns that
+# capability-specific overflow contract.
 action page settings
 action nav timer
 wait 150
 assert ui.page timer
-assert ui.overflow no
+assert ui.overflow yes
 assert ui.indicator_clearance clear
 
 # Seven home rows: the Infrared entry appears once the IR switch is on.
