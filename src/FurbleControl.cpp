@@ -644,10 +644,13 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     m_ClearConnectCancel = false;
 
     for (const auto &target : m_ZombieTargets) {
-      target->getCamera()->cancelConnect();
+      const auto camera = target->getCamera();
+      camera->cancelConnect();
+      cancelling.push_back(camera);
     }
     if (m_ConnectCamera != nullptr) {
       m_ConnectCamera->cancelConnect();
+      cancelling.push_back(m_ConnectCamera);
     }
 
     // send disconnect

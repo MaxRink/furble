@@ -265,6 +265,35 @@ int main(void) {
   control.disconnect();
   waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, STALL_MS * 4);
 
+  // Leave the secure handshake in the drain set once, as a real stalled
+  // terminate does. The first disconnect sees a live target, but its abort is
+  // deliberately held by the mock controller. The second disconnect has only
+  // a zombie to visit, so clearing the token between them proves that the
+  // drained camera is still cancelled before the blocked NimBLE call is woken.
+  peer.setSecureConnectionStallMs(STALL_MS);
+  const uint32_t drainedEntries = peer.secureStallEntries();
+  control.addActive(camera);
+  control.connectAll(true);
+  check(waitFor([&]() { return peer.secureStallEntries() > drainedEntries; }, STALL_MS * 3),
+        "the drained-camera cycle reaches the blocking handshake");
+  NimBLEClient *stalledClient = NimBLEDevice::lastClient();
+  check(stalledClient != nullptr, "the drained-camera cycle has a live client");
+  if (stalledClient != nullptr) {
+    stalledClient->mockStallTerminate();
+  }
+  control.disconnect(100);
+  check(control.getTargetCount() == 0, "the stalled secure target moves to the drain");
+  check(control.teardownDraining(), "the stalled secure target is retained as a zombie");
+  camera->clearConnectCancel();
+  check(!camera->connectCancelled(), "the drained-camera test clears the prior cancel token");
+  control.disconnect(100);
+  check(camera->connectCancelled(), "a later disconnect cancels the drained secure attempt");
+  if (stalledClient != nullptr) {
+    stalledClient->mockCompleteStalledTerminate(0x08);
+  }
+  check(waitFor([&]() { return !control.teardownDraining(); }, STALL_MS * 3),
+        "the drained secure target reaps after its link finally ends");
+
   peer.setSecureConnectionStallMs(0);
   control.addActive(camera);
   check(control.getTargetCount() == 1, "the camera can be added again after the wedge");
