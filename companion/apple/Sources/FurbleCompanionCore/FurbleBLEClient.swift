@@ -19,6 +19,7 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     options: [CBCentralManagerOptionRestoreIdentifierKey: "com.furble.companion.central"])
   private var peripheral: CBPeripheral?
   private var cancelledPeripheralID: UUID?
+  private var reconnectGate = CompanionReconnectGate()
   private var characteristics: [CBUUID: CBCharacteristic] = [:]
   private var reconnectAttempt = 0
   private var authBeginPending = false
@@ -32,12 +33,17 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
 
   public func start() {
     guard central.state == .poweredOn else { return }
-    if state.phase == .idle || state.phase.isFailure { beginScan() }
+    guard state.phase == .idle || state.phase.isFailure else { return }
+    if reconnectGate.requestStart() { beginScan() }
   }
 
   public func stop() {
-    cancelledPeripheralID = peripheral?.identifier
-    if let peripheral { central.cancelPeripheralConnection(peripheral) }
+    reconnectGate.beginStop(hasPeripheral: peripheral != nil)
+    if let peripheral {
+      cancelledPeripheralID = peripheral.identifier
+      self.peripheral = nil
+      central.cancelPeripheralConnection(peripheral)
+    }
     central.stopScan()
     authBeginPending = false
     characteristics.removeAll()
@@ -171,11 +177,21 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   private func fail(_ value: CompanionFailure) {
-    cancelledPeripheralID = peripheral?.identifier
+    reconnectGate.beginStop(hasPeripheral: peripheral != nil)
+    if let peripheral {
+      cancelledPeripheralID = peripheral.identifier
+      self.peripheral = nil
+      central.cancelPeripheralConnection(peripheral)
+    }
     error = value
     phase = .failed(value)
     state = CompanionStateMachine()
-    if let peripheral { central.cancelPeripheralConnection(peripheral) }
+  }
+
+  private func isCurrent(_ peripheral: CBPeripheral) -> Bool {
+    guard !reconnectGate.isCancelling, cancelledPeripheralID == nil,
+      let current = self.peripheral else { return false }
+    return current.identifier == peripheral.identifier
   }
 
   private func characteristic(_ uuid: String) -> CBCharacteristic? {
@@ -260,12 +276,13 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
 
 extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   public func centralManagerDidUpdateState(_ central: CBCentralManager) {
-    if central.state == .poweredOn { beginScan() }
-    else if central.state != .unknown { fail(.bluetoothUnavailable) }
+    if central.state == .poweredOn { start() }
+    else if central.state != .unknown, !reconnectGate.isCancelling { fail(.bluetoothUnavailable) }
   }
 
   public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                      advertisementData: [String: Any], rssi RSSI: NSNumber) {
+    guard phase == .scanning, !reconnectGate.isCancelling else { return }
     self.peripheral = peripheral
     central.stopScan()
     _ = state.didFindPeripheral()
@@ -275,6 +292,7 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   }
 
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    guard isCurrent(peripheral), phase == .connecting else { return }
     _ = state.didConnect()
     phase = state.phase
     peripheral.discoverServices([CBUUID(string: FurbleProtocol.UUIDs.service)])
@@ -283,10 +301,10 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
     if cancelledPeripheralID == peripheral.identifier {
       cancelledPeripheralID = nil
+      if reconnectGate.didCancel() { beginScan() }
       return
     }
-    guard self.peripheral?.identifier == peripheral.identifier,
-      phase.shouldReconnectAfterDisconnect else { return }
+    guard isCurrent(peripheral), phase.shouldReconnectAfterDisconnect else { return }
     self.peripheral = nil
     reconnectAttempt += 1
     phase = .reconnecting(attempt: reconnectAttempt)
@@ -296,11 +314,10 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
     if cancelledPeripheralID == peripheral.identifier {
       cancelledPeripheralID = nil
-      if self.peripheral?.identifier == peripheral.identifier { self.peripheral = nil }
+      if reconnectGate.didCancel() { beginScan() }
       return
     }
-    guard self.peripheral?.identifier == peripheral.identifier,
-      phase.shouldReconnectAfterDisconnect else { return }
+    guard isCurrent(peripheral), phase.shouldReconnectAfterDisconnect else { return }
     self.peripheral = nil
     state.didDisconnect()
     phase = state.phase
@@ -314,6 +331,7 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   }
 
   public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+    guard !reconnectGate.isCancelling else { return }
     if let restored = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral],
       let restoredPeripheral = restored.first {
       peripheral = restoredPeripheral
@@ -324,6 +342,7 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
 
 extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
   public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+    guard isCurrent(peripheral), phase == .discovering else { return }
     guard error == nil, let service = peripheral.services?.first(where: {
       $0.uuid == CBUUID(string: FurbleProtocol.UUIDs.service)
     }) else { fail(.serviceMissing); return }
@@ -338,6 +357,7 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
 
   public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService,
                          error: Error?) {
+    guard isCurrent(peripheral), phase == .discovering else { return }
     guard error == nil else { fail(.requiredCharacteristicMissing("discovery")); return }
     characteristics = Dictionary(uniqueKeysWithValues: (service.characteristics ?? []).map { ($0.uuid, $0) })
     let command = state.didDiscover(
@@ -358,6 +378,7 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
   }
 
   public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+    guard isCurrent(peripheral) else { return }
     guard error == nil, let data = characteristic.value else { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.capability) {
       guard let command = state.didReadCapability(data) else { fail(state.lastError ?? .malformedPacket); return }
@@ -375,6 +396,7 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
 
   public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic,
                          error: Error?) {
+    guard isCurrent(peripheral) else { return }
     if error != nil { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.auth), authBeginPending {
       guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }

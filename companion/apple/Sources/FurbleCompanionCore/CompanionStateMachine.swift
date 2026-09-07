@@ -30,6 +30,37 @@ public enum CompanionFailure: Error, Equatable, Sendable {
   case linkLost
 }
 
+/// Serializes an explicit stop followed by a requested restart. CoreBluetooth
+/// can deliver callbacks from the canceled connection after stop returns.
+public struct CompanionReconnectGate: Sendable {
+  public private(set) var isCancelling = false
+  private var restartPending = false
+
+  public init() {}
+
+  public mutating func beginStop(hasPeripheral: Bool) {
+    restartPending = false
+    isCancelling = isCancelling || hasPeripheral
+  }
+
+  @discardableResult
+  public mutating func requestStart() -> Bool {
+    guard !isCancelling else {
+      restartPending = true
+      return false
+    }
+    return true
+  }
+
+  @discardableResult
+  public mutating func didCancel() -> Bool {
+    guard isCancelling else { return false }
+    isCancelling = false
+    defer { restartPending = false }
+    return restartPending
+  }
+}
+
 public enum CompanionCommand: Equatable, Sendable {
   case scan
   case connect

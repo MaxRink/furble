@@ -2,6 +2,22 @@ import XCTest
 @testable import FurbleCompanionCore
 
 final class CompanionStateMachineTests: XCTestCase {
+  func testRestartWaitsForCancellationAndResumesOnce() {
+    var gate = CompanionReconnectGate()
+    gate.beginStop(hasPeripheral: true)
+    XCTAssertFalse(gate.requestStart())
+    XCTAssertTrue(gate.isCancelling)
+    XCTAssertTrue(gate.didCancel())
+    XCTAssertFalse(gate.isCancelling)
+    XCTAssertFalse(gate.didCancel())
+  }
+
+  func testExplicitStopDoesNotScheduleRestart() {
+    var gate = CompanionReconnectGate()
+    gate.beginStop(hasPeripheral: true)
+    XCTAssertFalse(gate.didCancel())
+  }
+
   func testTerminalPhasesDoNotReconnectAfterDisconnect() {
     XCTAssertFalse(CompanionConnectionPhase.idle.shouldReconnectAfterDisconnect)
     XCTAssertFalse(CompanionConnectionPhase.failed(.authenticationFailed).shouldReconnectAfterDisconnect)
