@@ -2,6 +2,7 @@ package com.furble.companion.protocol
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -43,6 +44,7 @@ object FurbleProtocol {
     val STATUS_UUID: UUID = UUID.fromString("b57f4f60-087b-4740-b71d-8262cf26ebbc")
     val SETTINGS_UUID: UUID = UUID.fromString("b57f4f61-087b-4740-b71d-8262cf26ebbc")
     val TRIGGER_UUID: UUID = UUID.fromString("b57f4f62-087b-4740-b71d-8262cf26ebbc")
+    val CAMERAS_UUID: UUID = UUID.fromString("b57f4f63-087b-4740-b71d-8262cf26ebbc")
     val AUTH_UUID: UUID = UUID.fromString("b57f4f6f-087b-4740-b71d-8262cf26ebbc")
     val CAPABILITY_UUID: UUID = UUID.fromString("b57f4f64-087b-4740-b71d-8262cf26ebbc")
 
@@ -74,7 +76,43 @@ object FurbleProtocol {
 
     object CapabilityFeature {
         const val SETTINGS_V2 = 1 shl 0
+        const val CAMERAS = 1 shl 1
     }
+
+    object CameraOperation {
+        const val LIST = 0
+        const val CONNECT = 1
+        const val DISCONNECT = 2
+        const val SELECT = 3
+        const val DESELECT = 4
+    }
+
+    object CameraStatus {
+        const val OK = 0
+        const val UNKNOWN_ID = 1
+        const val REJECTED = 2
+        const val BUSY = 3
+    }
+
+    object CameraState {
+        const val IDLE = 0
+        const val CONNECTING = 1
+        const val CONNECTED = 2
+        const val RECONNECTING = 3
+        const val LOST = 4
+        const val DISCONNECTING = 5
+    }
+
+    object CameraFlag {
+        const val SAVED = 1 shl 0
+        const val SELECTED = 1 shl 1
+        const val TARGET = 1 shl 2
+        const val CONNECTED = 1 shl 3
+    }
+
+    const val CAMERA_RECORD_HEADER_SIZE = 8
+    const val CAMERA_NAME_MAX = 64
+    const val CAMERA_RSSI_UNKNOWN = -128
 
     object SettingFlag {
         const val NEEDS_RESTART = 1 shl 0
@@ -139,6 +177,36 @@ object FurbleProtocol {
             get() = version >= CAPABILITY_VERSION &&
                 wireVersion >= SETTINGS_CAPABILITY_WIRE_VERSION &&
                 features and CapabilityFeature.SETTINGS_V2.toLong() != 0L
+
+        val supportsCameras: Boolean
+            get() = version >= CAPABILITY_VERSION &&
+                features and CapabilityFeature.CAMERAS.toLong() != 0L
+    }
+
+    data class CameraRecord(
+        val status: Int,
+        val cameraId: Int,
+        val cameraType: Int,
+        val flags: Int,
+        val progress: Int,
+        val rssi: Int,
+        val state: Int,
+        val name: String,
+    ) {
+        val isTerminator: Boolean
+            get() = cameraId == 0xFF
+
+        val isSaved: Boolean
+            get() = flags and CameraFlag.SAVED != 0
+
+        val isSelected: Boolean
+            get() = flags and CameraFlag.SELECTED != 0
+
+        val isTarget: Boolean
+            get() = flags and CameraFlag.TARGET != 0
+
+        val isConnected: Boolean
+            get() = flags and CameraFlag.CONNECTED != 0
     }
 
     data class SettingsResponse(
@@ -330,6 +398,40 @@ object FurbleProtocol {
             version = buffer.get().u8(),
             wireVersion = buffer.get().u8(),
             features = buffer.int.toLong() and UINT32_MAX,
+        )
+    }
+
+    fun encodeCameraListRequest(): ByteArray = encodeCameraRequest(CameraOperation.LIST, 0xFF)
+
+    fun encodeCameraRequest(operation: Int, cameraId: Int): ByteArray {
+        require(operation in CameraOperation.LIST..CameraOperation.DESELECT) {
+            "Unknown camera operation: $operation"
+        }
+        require(cameraId in 0..0xFF) { "camera id must fit in uint8" }
+        return byteArrayOf(operation.toByte(), cameraId.toByte())
+    }
+
+    fun parseCameraRecord(bytes: ByteArray): CameraRecord? {
+        if (bytes.size < CAMERA_RECORD_HEADER_SIZE) return null
+        val nameLength = bytes[7].u8()
+        val nameEnd = CAMERA_RECORD_HEADER_SIZE + nameLength
+        if (nameLength > CAMERA_NAME_MAX || nameEnd > bytes.size) return null
+        val name = runCatching {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes, CAMERA_RECORD_HEADER_SIZE, nameLength))
+                .toString()
+        }.getOrNull() ?: return null
+        return CameraRecord(
+            status = bytes[0].u8(),
+            cameraId = bytes[1].u8(),
+            cameraType = bytes[2].u8(),
+            flags = bytes[3].u8(),
+            progress = bytes[4].u8(),
+            rssi = bytes[5].toInt(),
+            state = bytes[6].u8(),
+            name = name,
         )
     }
 

@@ -170,6 +170,50 @@ class FurbleProtocolTest {
         assertFalse(
             FurbleProtocol.CapabilitySnapshot(1, 1, 1).supportsSettings,
         )
+        assertFalse(FurbleProtocol.CapabilitySnapshot(1, 1, 1).supportsCameras)
+        assertTrue(FurbleProtocol.CapabilitySnapshot(1, 1, 3).supportsCameras)
+    }
+
+    @Test
+    fun cameraRequestsAndRecordsUseTheFrozenLayout() {
+        assertEquals(
+            "b57f4f63-087b-4740-b71d-8262cf26ebbc",
+            FurbleProtocol.CAMERAS_UUID.toString(),
+        )
+        assertArrayEquals(byteArrayOf(0, 0xFF.toByte()), FurbleProtocol.encodeCameraListRequest())
+        assertArrayEquals(
+            byteArrayOf(FurbleProtocol.CameraOperation.SELECT.toByte(), 7),
+            FurbleProtocol.encodeCameraRequest(FurbleProtocol.CameraOperation.SELECT, 7),
+        )
+        val record = FurbleProtocol.parseCameraRecord(
+            byteArrayOf(0, 7, 10, 0x0F, 75, 0x80.toByte(), FurbleProtocol.CameraState.CONNECTED.toByte(), 4) +
+                "A\u00e9".toByteArray(),
+        )
+        assertNotNull(record)
+        assertEquals(7, record?.cameraId)
+        assertEquals(10, record?.cameraType)
+        assertEquals(75, record?.progress)
+        assertEquals(-128, record?.rssi)
+        assertEquals("A\u00e9", record?.name)
+        assertTrue(record?.isSaved == true)
+        assertTrue(record?.isSelected == true)
+        assertTrue(record?.isTarget == true)
+        assertTrue(record?.isConnected == true)
+        assertTrue(FurbleProtocol.parseCameraRecord(byteArrayOf(0, 0xFF.toByte(), 0, 0, 0, 0x80.toByte(), 0, 0))?.isTerminator == true)
+    }
+
+    @Test
+    fun cameraRecordParserRejectsTruncationOversizeAndInvalidUtf8() {
+        assertEquals(null, FurbleProtocol.parseCameraRecord(ByteArray(7)))
+        assertEquals(null, FurbleProtocol.parseCameraRecord(byteArrayOf(0, 1, 1, 1, 1, 0, 0, 65)))
+        val tooLong = ByteArray(8 + FurbleProtocol.CAMERA_NAME_MAX + 1)
+        tooLong[1] = 1
+        tooLong[7] = (FurbleProtocol.CAMERA_NAME_MAX + 1).toByte()
+        assertEquals(null, FurbleProtocol.parseCameraRecord(tooLong))
+        assertEquals(
+            null,
+            FurbleProtocol.parseCameraRecord(byteArrayOf(0, 1, 1, 1, 1, 0, 0, 1, 0xFF.toByte())),
+        )
     }
 
     @Test

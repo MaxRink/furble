@@ -73,6 +73,8 @@ class CompanionRepository(
     private var gattConnection: GattConnection? = null
     private var pendingSettingId: Int? = null
     private val pendingSettingValues = mutableMapOf<Int, ByteArray>()
+    private var cameraListActive = false
+    private val pendingCameraRecords = mutableMapOf<Int, FurbleProtocol.CameraRecord>()
     private var pendingPassword: ByteArray? = null
     private var connectionGeneration = 0L
     private var pendingPasswordGeneration = 0L
@@ -347,6 +349,52 @@ class CompanionRepository(
         }
     }
 
+    fun requestCameras() {
+        handler.post {
+            val current = _state.value
+            if (!current.camerasSupported) return@post
+            if (!current.protectedReady()) {
+                setError("Authenticate with furble before reading cameras")
+                return@post
+            }
+            if (current.connection != ConnectionState.READY) return@post
+            cameraListActive = true
+            pendingCameraRecords.clear()
+            _state.update { it.copy(camerasLoading = true) }
+            gattConnection?.requestCameras()
+        }
+    }
+
+    fun setCameraSelected(cameraId: Int, selected: Boolean) {
+        requestCameraOperation(
+            if (selected) FurbleProtocol.CameraOperation.SELECT else FurbleProtocol.CameraOperation.DESELECT,
+            cameraId,
+        )
+    }
+
+    fun connectCamera(cameraId: Int) {
+        requestCameraOperation(FurbleProtocol.CameraOperation.CONNECT, cameraId)
+    }
+
+    fun disconnectCameras() {
+        requestCameraOperation(FurbleProtocol.CameraOperation.DISCONNECT, 0xFF)
+    }
+
+    private fun requestCameraOperation(operation: Int, cameraId: Int) {
+        handler.post {
+            val current = _state.value
+            if (!current.camerasSupported || current.connection != ConnectionState.READY) {
+                setError("Cameras are unavailable until a compatible furble is connected")
+                return@post
+            }
+            if (!current.protectedReady()) {
+                setError("Authenticate with furble before controlling cameras")
+                return@post
+            }
+            gattConnection?.setCamera(operation, cameraId)
+        }
+    }
+
     fun setBooleanSetting(record: FurbleProtocol.SettingRecord, value: Boolean) {
         requestSettingChange(record, byteArrayOf(if (value) 1 else 0))
     }
@@ -491,6 +539,8 @@ class CompanionRepository(
         connectionGeneration++
         pendingSettingId = null
         pendingSettingValues.clear()
+        cameraListActive = false
+        pendingCameraRecords.clear()
         pendingPassword?.fill(0)
         pendingPassword = null
         _state.update {
@@ -500,6 +550,10 @@ class CompanionRepository(
                 authSupported = false,
                 status = null,
                 capability = null,
+                cameraCharacteristicAvailable = false,
+                camerasSupported = false,
+                cameras = emptyList(),
+                camerasLoading = false,
                 settingsSupported = false,
                 settings = emptyList(),
                 settingsLoading = false,
@@ -546,15 +600,37 @@ class CompanionRepository(
                 override fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?) {
                     if (gattConnection !== session) return
                     val supportsSettings = capability?.supportsSettings == true
+                    val supportsCameras = capability?.supportsCameras == true &&
+                        _state.value.cameraCharacteristicAvailable
                     _state.update {
-                        it.copy(capability = capability, settingsSupported = supportsSettings)
+                        it.copy(
+                            capability = capability,
+                            settingsSupported = supportsSettings,
+                            camerasSupported = supportsCameras,
+                        )
                     }
                     if (supportsSettings && _state.value.protectedReady()) requestSettings()
+                    if (supportsCameras && _state.value.protectedReady()) requestCameras()
                 }
 
                 override fun onSettings(response: FurbleProtocol.SettingsResponse) {
                     if (gattConnection !== session) return
                     handleSettingsResponse(response)
+                }
+
+                override fun onCamera(record: FurbleProtocol.CameraRecord) {
+                    if (gattConnection !== session) return
+                    handleCameraRecord(record)
+                }
+
+                override fun onCameraAvailability(available: Boolean) {
+                    if (gattConnection !== session) return
+                    _state.update {
+                        it.copy(
+                            cameraCharacteristicAvailable = available,
+                            camerasSupported = available && it.capability?.supportsCameras == true,
+                        )
+                    }
                 }
 
                 override fun onAuthAvailability(supported: Boolean) {
@@ -575,6 +651,7 @@ class CompanionRepository(
                         FurbleProtocol.AUTH_RESULT_AUTHENTICATED -> {
                             _state.update { it.copy(auth = AuthState.AUTHENTICATED) }
                             if (_state.value.settingsSupported) requestSettings()
+                            if (_state.value.camerasSupported) requestCameras()
                             // The candidate is saved only after firmware accepts it.
                             pendingPassword?.takeIf { pendingPasswordGeneration == connectionGeneration }?.let {
                                 passwordStore.write(it)
@@ -587,6 +664,7 @@ class CompanionRepository(
                             pendingPassword?.fill(0)
                             pendingPassword = null
                             _state.update { it.copy(auth = AuthState.NOT_REQUIRED) }
+                            if (_state.value.camerasSupported) requestCameras()
                         }
                         FurbleProtocol.AUTH_RESULT_DROPPED -> {
                             triggerController.releaseAll()
@@ -614,6 +692,8 @@ class CompanionRepository(
                     gattConnection = null
                     pendingSettingId = null
                     pendingSettingValues.clear()
+                    cameraListActive = false
+                    pendingCameraRecords.clear()
                     pendingPassword?.fill(0)
                     pendingPassword = null
                     pendingPasswordGeneration = ++connectionGeneration
@@ -626,6 +706,10 @@ class CompanionRepository(
                             authSupported = false,
                             status = null,
                             capability = null,
+                            cameraCharacteristicAvailable = false,
+                            camerasSupported = false,
+                            cameras = emptyList(),
+                            camerasLoading = false,
                             settingsSupported = false,
                             settings = emptyList(),
                             settingsLoading = false,
@@ -685,6 +769,30 @@ class CompanionRepository(
         if (pendingSettingId == response.id) pendingSettingId = null
     }
 
+    private fun handleCameraRecord(record: FurbleProtocol.CameraRecord) {
+        if (record.isTerminator) {
+            val snapshot = pendingCameraRecords.values.sortedBy { it.cameraId }
+            pendingCameraRecords.clear()
+            cameraListActive = false
+            _state.update { it.copy(cameras = snapshot, camerasLoading = false) }
+            return
+        }
+        if (record.status != FurbleProtocol.CameraStatus.OK) {
+            setError("furble rejected camera ${record.cameraId}: status ${record.status}")
+            return
+        }
+        if (cameraListActive) {
+            pendingCameraRecords[record.cameraId] = record
+            return
+        }
+        _state.update { current ->
+            val existing = current.cameras.indexOfFirst { it.cameraId == record.cameraId }
+            val updated = current.cameras.toMutableList()
+            if (existing >= 0) updated[existing] = record else updated += record
+            current.copy(cameras = updated.sortedBy { it.cameraId })
+        }
+    }
+
     private fun onFixBatch(fixes: List<FurbleProtocol.LocationFix>) {
         if (!_state.value.locationEnabled || !permissions.fineLocation ||
             !devicePresent || !_state.value.association.associated ||
@@ -721,6 +829,10 @@ class CompanionRepository(
                 it.copy(
                     status = null,
                     capability = null,
+                    cameraCharacteristicAvailable = false,
+                    camerasSupported = false,
+                    cameras = emptyList(),
+                    camerasLoading = false,
                     settingsSupported = false,
                     settings = emptyList(),
                     settingsLoading = false,

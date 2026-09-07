@@ -66,6 +66,8 @@ class GattConnection(
         fun onStatus(snapshot: FurbleProtocol.StatusSnapshot)
         fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?)
         fun onSettings(response: FurbleProtocol.SettingsResponse)
+        fun onCamera(record: FurbleProtocol.CameraRecord)
+        fun onCameraAvailability(available: Boolean)
         fun onAuthAvailability(supported: Boolean)
         fun onAuthResult(result: Int)
         fun onDisconnected()
@@ -84,6 +86,7 @@ class GattConnection(
     private var statusCharacteristic: BluetoothGattCharacteristic? = null
     private var settingsCharacteristic: BluetoothGattCharacteristic? = null
     private var triggerCharacteristic: BluetoothGattCharacteristic? = null
+    private var cameraCharacteristic: BluetoothGattCharacteristic? = null
     private var authCharacteristic: BluetoothGattCharacteristic? = null
     private var capabilityCharacteristic: BluetoothGattCharacteristic? = null
     private var currentOperation: Operation? = null
@@ -157,6 +160,30 @@ class GattConnection(
             enqueueCharacteristicWrite(
                 uuid = FurbleProtocol.SETTINGS_UUID,
                 value = FurbleProtocol.encodeSettingsSet(id, value),
+                writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+                waitForCallback = true,
+            )
+        }
+    }
+
+    fun requestCameras() {
+        handler.post {
+            if (!isReady) return@post
+            enqueueCharacteristicWrite(
+                uuid = FurbleProtocol.CAMERAS_UUID,
+                value = FurbleProtocol.encodeCameraListRequest(),
+                writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+                waitForCallback = true,
+            )
+        }
+    }
+
+    fun setCamera(operation: Int, cameraId: Int) {
+        handler.post {
+            if (!isReady) return@post
+            enqueueCharacteristicWrite(
+                uuid = FurbleProtocol.CAMERAS_UUID,
+                value = FurbleProtocol.encodeCameraRequest(operation, cameraId),
                 writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
                 waitForCallback = true,
             )
@@ -245,6 +272,7 @@ class GattConnection(
         statusCharacteristic = service?.getCharacteristic(FurbleProtocol.STATUS_UUID)
         settingsCharacteristic = service?.getCharacteristic(FurbleProtocol.SETTINGS_UUID)
         triggerCharacteristic = service?.getCharacteristic(FurbleProtocol.TRIGGER_UUID)
+        cameraCharacteristic = service?.getCharacteristic(FurbleProtocol.CAMERAS_UUID)
         authCharacteristic = service?.getCharacteristic(FurbleProtocol.AUTH_UUID)
         capabilityCharacteristic = service?.getCharacteristic(FurbleProtocol.CAPABILITY_UUID)
         if (service == null || locationCharacteristic == null || statusCharacteristic == null ||
@@ -253,6 +281,7 @@ class GattConnection(
             fail("The furble companion service is missing a required characteristic")
             return
         }
+        listener.onCameraAvailability(cameraCharacteristic != null)
         listener.onAuthAvailability(authCharacteristic != null)
         if (!gatt.requestMtu(256)) {
             fail("The phone could not request the required BLE MTU")
@@ -300,7 +329,7 @@ class GattConnection(
                     return@enqueueDescriptorWrite
                 }
                 if (auth == null) {
-                    finishReady(capability)
+                    configureCameraNotifications(capability)
                     return@enqueueDescriptorWrite
                 }
                 if (authDescriptor == null) {
@@ -316,9 +345,36 @@ class GattConnection(
                         fail("furble AUTH indication setup failed; retry the connection")
                         return@enqueueDescriptorWrite
                     }
-                    finishReady(capability)
+                    configureCameraNotifications(capability)
                 }
             }
+        }
+    }
+
+    private fun configureCameraNotifications(capability: BluetoothGattCharacteristic?) {
+        val currentGatt = gatt ?: return
+        val camera = cameraCharacteristic
+        if (camera == null) {
+            finishReady(capability)
+            return
+        }
+        val descriptor = camera.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
+        if (descriptor == null) {
+            fail("furble camera notification descriptor is missing")
+            return
+        }
+        if (!currentGatt.setCharacteristicNotification(camera, true)) {
+            fail("Android could not enable furble camera notifications")
+            return
+        }
+        // The camera characteristic carries both indications (responses) and
+        // notifications (live state). NimBLE accepts both CCCD bits together.
+        enqueueDescriptorWrite(descriptor, byteArrayOf(0x03, 0x00)) {
+            if (!it) {
+                fail("furble camera notification setup failed; retry the connection")
+                return@enqueueDescriptorWrite
+            }
+            finishReady(capability)
         }
     }
 
@@ -425,6 +481,7 @@ class GattConnection(
         statusCharacteristic = null
         settingsCharacteristic = null
         triggerCharacteristic = null
+        cameraCharacteristic = null
         authCharacteristic = null
         capabilityCharacteristic = null
         clearAuthSecrets()
@@ -444,6 +501,11 @@ class GattConnection(
             FurbleProtocol.STATUS_UUID -> FurbleProtocol.decodeStatus(value)?.let(listener::onStatus)
             FurbleProtocol.CAPABILITY_UUID -> listener.onCapabilities(FurbleProtocol.parseCapability(value))
             FurbleProtocol.SETTINGS_UUID -> FurbleProtocol.parseSettingsResponse(value)?.let(listener::onSettings)
+            FurbleProtocol.CAMERAS_UUID -> {
+                val record = FurbleProtocol.parseCameraRecord(value)
+                if (record != null) listener.onCamera(record)
+                else listener.onError("furble sent an invalid camera record")
+            }
             FurbleProtocol.AUTH_UUID -> dispatchAuth(value)
         }
     }

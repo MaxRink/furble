@@ -452,7 +452,9 @@ the app PR that consumes it.
    restart and danger badges, confirm flow. Works against firmware 1; against
    older firmware it degrades to the current behavior.
 4. **App: cameras tab.** List, select, connect, disconnect, live state.
-   Hidden entirely when feature bit 1 or the characteristic is absent.
+   Hidden entirely when feature bit 1 or the characteristic is absent. The
+   Android implementation is recorded in
+   [176-android-camera-catalog.md](176-android-camera-catalog.md).
 5. **Rig: scenarios and corpus.** Plans/29 phase 1 golden payloads gain the
    cameras records, the capability read and the v2 settings flags. Phase 5
    gains three scenarios: full settings sweep (list, edit one of each type,

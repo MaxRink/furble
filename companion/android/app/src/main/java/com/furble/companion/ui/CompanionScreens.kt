@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -66,6 +67,7 @@ import kotlin.math.roundToInt
 
 private enum class CompanionScreen(val label: String, val icon: ImageVector) {
     STATUS("Status", Icons.Filled.Info),
+    CAMERAS("Cameras", Icons.Filled.List),
     SETTINGS("Settings", Icons.Filled.Settings),
     TRIGGER("Trigger", Icons.Filled.PlayArrow),
 }
@@ -143,10 +145,16 @@ private fun CompanionShell(
 ) {
     var selectedScreen by rememberSaveable { mutableStateOf(CompanionScreen.STATUS) }
     val visibleScreens = CompanionScreen.entries.filter { screen ->
-        screen != CompanionScreen.SETTINGS || state.settingsSupported && state.protectedReady()
+        when (screen) {
+            CompanionScreen.SETTINGS -> state.settingsSupported && state.protectedReady()
+            CompanionScreen.CAMERAS -> state.camerasSupported && state.protectedReady()
+            else -> true
+        }
     }
-    LaunchedEffect(state.settingsSupported, state.protectedReady()) {
-        if ((!state.settingsSupported || !state.protectedReady()) && selectedScreen == CompanionScreen.SETTINGS) {
+    LaunchedEffect(state.settingsSupported, state.camerasSupported, state.protectedReady()) {
+        if ((!state.settingsSupported || !state.protectedReady()) && selectedScreen == CompanionScreen.SETTINGS ||
+            (!state.camerasSupported || !state.protectedReady()) && selectedScreen == CompanionScreen.CAMERAS
+        ) {
             selectedScreen = CompanionScreen.STATUS
         }
     }
@@ -184,6 +192,13 @@ private fun CompanionShell(
                     onAuthenticate = viewModel::authenticate,
                     onForgetPassword = viewModel::forgetPassword,
                 )
+                CompanionScreen.CAMERAS -> CamerasScreen(
+                    state = state,
+                    onRefresh = viewModel::requestCameras,
+                    onSelect = viewModel::setCameraSelected,
+                    onConnect = viewModel::connectCamera,
+                    onDisconnect = viewModel::disconnectCameras,
+                )
                 CompanionScreen.SETTINGS -> SettingsScreen(
                     state = state,
                     onRefresh = viewModel::requestSettings,
@@ -202,6 +217,83 @@ private fun CompanionShell(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CamerasScreen(
+    state: CompanionUiState,
+    onRefresh: () -> Unit,
+    onSelect: (Int, Boolean) -> Unit,
+    onConnect: (Int) -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    val ready = state.connection == ConnectionState.READY && state.protectedReady()
+    val canDisconnect = state.cameras.any {
+        it.state in setOf(
+            FurbleProtocol.CameraState.CONNECTED,
+            FurbleProtocol.CameraState.CONNECTING,
+            FurbleProtocol.CameraState.RECONNECTING,
+            FurbleProtocol.CameraState.DISCONNECTING,
+        )
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text("Cameras", style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onConnect(0xFF) }, enabled = ready) {
+                        Text("Connect selected")
+                    }
+                    OutlinedButton(onClick = onDisconnect, enabled = ready && canDisconnect) {
+                        Text("Disconnect")
+                    }
+                    Button(onClick = onRefresh, enabled = ready) { Text("Refresh") }
+                }
+            }
+            Text("Saved cameras are identified by stable IDs. Select cameras for the device's multi-connect set.")
+        }
+        if (state.camerasLoading) item { Text("Reading cameras…") }
+        if (state.cameras.isEmpty() && !state.camerasLoading) {
+            item { Text("No saved cameras have been reported yet.") }
+        }
+        items(state.cameras, key = { it.cameraId }) { camera ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        camera.name.ifBlank { "Camera ${camera.cameraId}" },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text("ID ${camera.cameraId}, type ${camera.cameraType}, ${camera.state.cameraLabel()}")
+                    if (camera.state == FurbleProtocol.CameraState.CONNECTING ||
+                        camera.state == FurbleProtocol.CameraState.RECONNECTING
+                    ) {
+                        Text("Connection progress: ${camera.progress}%")
+                    }
+                    Text("RSSI: ${if (camera.rssi == FurbleProtocol.CAMERA_RSSI_UNKNOWN) "unknown" else "${camera.rssi} dBm"}")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Text("Selected")
+                            Switch(
+                                checked = camera.isSelected,
+                                onCheckedChange = { onSelect(camera.cameraId, it) },
+                                enabled = ready,
+                            )
+                        }
+                        Button(
+                            onClick = { onConnect(camera.cameraId) },
+                            enabled = ready && camera.state != FurbleProtocol.CameraState.CONNECTED &&
+                                camera.state != FurbleProtocol.CameraState.CONNECTING &&
+                                camera.state != FurbleProtocol.CameraState.RECONNECTING,
+                        ) { Text("Connect") }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(8.dp)) }
     }
 }
 
@@ -825,3 +917,13 @@ private fun Int.displayGpsSource(): String = when (this) {
 }
 
 private fun Int.remainingLabel(): String = if (this == 0xFFFF) "infinite shots" else "$this shots remaining"
+
+private fun Int.cameraLabel(): String = when (this) {
+    FurbleProtocol.CameraState.IDLE -> "Idle"
+    FurbleProtocol.CameraState.CONNECTING -> "Connecting"
+    FurbleProtocol.CameraState.CONNECTED -> "Connected"
+    FurbleProtocol.CameraState.RECONNECTING -> "Reconnecting"
+    FurbleProtocol.CameraState.LOST -> "Lost"
+    FurbleProtocol.CameraState.DISCONNECTING -> "Disconnecting"
+    else -> "State $this"
+}
