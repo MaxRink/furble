@@ -1,0 +1,67 @@
+# Pairing a camera that is already saved must be refused, not started, the
+# refusal must be dismissable, and its text must be readable on every panel.
+#
+# The saved index is keyed on the BLE address, and a Fujifilm Secure body
+# advertises a resolvable private address that changes with every pairing. A
+# second pairing therefore adds a second record for one camera instead of
+# replacing the first, and the saved reconnect picks whichever the index holds.
+#
+# The virtual radio advertises one Fujifilm peer and persists it through the
+# production CameraList::match and CameraList::save, so the scan row and the
+# saved record really are the same camera, matched by the production
+# CameraListProtocol::sameSavedIdentity rule.
+#
+# The row is activated with "action scan-row", which dispatches the row's own
+# click handler. Driving it through the focus is not reproducible: the row is
+# materialized on the UI task after the page has already focused its back
+# button, and a key press lands about half the time on a page busy draining
+# advertisements. That flake is why this scenario was de-certified for one
+# round; the action replaces it with the same production entry point.
+seed fauxny false
+seed ble_peers fuji
+seed ble_saved true
+wait 400
+
+home
+wait 200
+assert ui.page main
+assert ui.connect_error none
+
+# The saved camera turns up in the scan results.
+action nav scan
+wait 500
+assert ui.page scan
+assert-eventually 2000 camera.count 1
+
+# A row index past the end of the scan list is unavailable, not applied. The
+# malformed spellings are rejected before any thread starts; see the
+# action-scan-row-* fixtures in sim/scenarios/invalid.
+action expect unavailable scan-row 5
+assert ui.connect_error none
+assert control.state idle
+
+# Tapping its row must refuse instead of connecting.
+action scan-row 0
+wait 300
+assert ui.connect_error already_saved
+assert ui.modal_count 1
+assert control.state idle
+assert control.targets 0
+
+# This is the longest of the three messages, so it is the one most likely to be
+# clipped. On 80x160 it used to hide about two and a half lines while every
+# assertion above still passed.
+assert ui.modal_overflow no
+capture already-saved
+
+# And the box has to go away again. Its OK button joins the input group and
+# takes the focus, so the same activation works on touch and on the
+# physical-button layout.
+action select
+wait 300
+assert ui.connect_error none
+assert ui.modal_count 0
+assert control.state idle
+assert control.targets 0
+
+exit

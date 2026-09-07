@@ -167,6 +167,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [148-teardown-connect-cancel.md](148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
 | [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
 | [150-nimble-taskdata-race.md](150-nimble-taskdata-race.md) | Vendored esp-nimble-cpp fix for the task data release use-after-scope race |
+| [151-fujifilm-registration-followups.md](151-fujifilm-registration-followups.md) | Registration follow-ups: Secure stale-bond recovery, timeout define, geotag doc reconciliation |
 | [152-menu-focus-outline-dedup.md](152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |
 | [153-level-main-menu.md](153-level-main-menu.md) | Spirit level entry on the main menu, usable without a camera connection |
 | [154-host-flappy-peer-realism.md](154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |

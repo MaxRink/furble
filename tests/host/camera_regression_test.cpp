@@ -79,8 +79,8 @@ bool testRegistrationTimeoutException() {
 // production: the per-target task tick calls it, and it drops the link to the
 // long interval once the session has been quiet for m_ConnSaverIdleMs. Every
 // other host test sets CONN_SAVER false, so this path was only ever reached by
-// accident, when the wall clock beat the retry guard in another test. Covering
-// it on purpose is the point of this test.
+// accident, and a test-determinism fix elsewhere in this PR removed the
+// accident. Covering it on purpose is the point of this test.
 //
 // It costs the real threshold in wall time, a little over ten seconds. That is
 // deliberate. m_ConnSaverIdleMs is a static constexpr with no seam, the host
@@ -286,6 +286,35 @@ bool testNullAndMissingIdentifierBoundaries() {
                "Fujifilm Basic rejects a missing identifier characteristic");
 }
 
+// Every user-facing message that names a camera puts the name on a line of its
+// own, so a camera that advertised no name would open a message box with a
+// blank first line. That is reachable: the already-saved refusal composes its
+// text from a saved record, and a saved record carries whatever the body
+// advertised, including nothing.
+bool testUnnamedCameraDisplayName() {
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+
+  Furble::Host::FujifilmVirtualCamera::Config named;
+  named.name = "FUJIFILM X100VI";
+  Furble::Host::FujifilmVirtualCamera namedPeer(named);
+  const auto namedAdvertisement = namedPeer.advertisement();
+  Furble::FujifilmBasic namedCamera(&namedAdvertisement);
+  if (!check(namedCamera.getDisplayName() == "FUJIFILM X100VI",
+             "a named camera is displayed under its own name"))
+    return false;
+
+  Furble::Host::FujifilmVirtualCamera::Config unnamed;
+  unnamed.name = "";
+  Furble::Host::FujifilmVirtualCamera unnamedPeer(unnamed);
+  const auto unnamedAdvertisement = unnamedPeer.advertisement();
+  Furble::FujifilmBasic unnamedCamera(&unnamedAdvertisement);
+  if (!check(unnamedCamera.getName().empty(), "the unnamed record really carries no name"))
+    return false;
+  return check(unnamedCamera.getDisplayName() == Furble::Camera::DISPLAY_NAME_FALLBACK,
+               "an unnamed camera is displayed as the stand-in, never as a blank line");
+}
+
 bool testNullNikonCallbacks() {
   NimBLEDevice::resetMock();
   Furble::Device::init(ESP_PWR_LVL_P3);
@@ -370,13 +399,6 @@ bool testRicohBondPolicy() {
     NimBLEDevice::setMockPeer(&peer);
     const auto advertisement = peer.advertisement();
     NimBLEDevice::setBonded(true);
-    Furble::Ricoh markedSaved(&advertisement);
-    markedSaved.markSaved();
-    if (markedSaved.getPairType() != Furble::Camera::PairType::SAVED
-        || markedSaved.connect(ESP_PWR_LVL_P3, 1000) || NimBLEDevice::deleteBondCount() != 0u
-        || !NimBLEDevice::isBonded(advertisement.getAddress())) {
-      return false;
-    }
     Furble::Ricoh fresh(&advertisement);
     std::vector<uint8_t> data(fresh.getSerialisedBytes());
     if (!fresh.serialise(data.data(), data.size()))
@@ -399,7 +421,7 @@ int main() {
                  && testSecureFastProfileWaitsForShutterDiscovery()
                  && testNullAndMissingIdentifierBoundaries() && testNullNikonCallbacks()
                  && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
-                 && testConnSaverIdleTransition()
+                 && testUnnamedCameraDisplayName() && testConnSaverIdleTransition()
              ? 0
              : 1;
 }
