@@ -120,6 +120,7 @@ class GPS {
 
   bool isEnabled(void) const;
   void reloadSetting(void);
+  void reloadMotionSetting(void);
   void reloadLogSettings(void);
 
   status_t getStatusSnapshot(void) const;

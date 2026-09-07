@@ -28,6 +28,7 @@ using lv_obj_t = _lv_obj_t;
 
 #include "FurbleGPSHold.h"
 #include "FurbleGPSPowerCycle.h"
+#include "FurbleIMU.h"
 #include "FurblePower.h"
 #include "protocol/GpsCasic.h"
 
@@ -145,7 +146,20 @@ class GPS {
 
   void setIcon(lv_obj_t *icon);
   bool isEnabled(void) const;
+  /** True when the motion detector is running. */
+  bool isMotionEnabled(void) const;
+  /** True when the enabled software motion detector reports stationary. */
+  bool isStationary(void) const;
   void reloadSetting(void);
+
+  /**
+   * Refresh only the motion detector gate.
+   *
+   * Every GPS_MOTION write uses this instead of reloadSetting(). The detector
+   * is advisory and owns no receiver state, so flipping it must not cost a
+   * re-acquisition.
+   */
+  void reloadMotionSetting(void);
 
   /** Refresh the cached GPX logging settings from NVS. */
   void reloadLogSettings(void);
@@ -444,6 +458,7 @@ class GPS {
   void noteEphemerisDate(const uint8_t *data, size_t length, bool dateUpdated);
   static bool hasValidRmcDate(const std::string &sentence);
   void serviceBinary(const uint8_t *frame, size_t length);
+  void updateMotion(void);
   bool wiredFixIsFresh(const status_t &status) const;
 
   /** Re-initialise the burst-period acquisition state. Holds m_CycleMutex. */
@@ -549,6 +564,10 @@ class GPS {
 
   std::atomic<bool> m_Enabled = false;
   std::atomic<uint8_t> m_Fix {static_cast<uint8_t>(Fix::NONE)};
+  std::atomic<bool> m_MotionEnabled {false};
+  // Last state logged by updateMotion(), so a transition is logged once. The
+  // stationary verdict itself lives in IMU::MotionSource, not here.
+  std::atomic<bool> m_MotionStationary {false};
   std::atomic<uint8_t> m_Source {SOURCE_NONE};
   std::atomic<uint8_t> m_Satellites {0};
   std::atomic<uint32_t> m_HoldRemainingMs {0};

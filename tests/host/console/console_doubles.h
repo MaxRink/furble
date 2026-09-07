@@ -63,6 +63,7 @@ struct GPSState {
   bool binaryResult = true;
   bool aidResult = true;
   size_t reloadSettingCalls = 0;
+  size_t reloadMotionSettingCalls = 0;
   size_t reloadLogSettingsCalls = 0;
   size_t aidCalls = 0;
   std::vector<std::vector<uint8_t>> binaryFrames;
