@@ -2019,13 +2019,10 @@ void GPS::reloadSetting(void) {
  * directly rather than through the UI request queue.
  */
 void GPS::reloadMotionSetting(void) {
-  // isArmed() subsumes the IMU setting: the source is armed once, from the UI
-  // constructor, only when the persisted IMU capability is on and the sensor is
-  // present. Gating on it rather than on the setting means an IMU switched on
-  // without the restart the Sensors page asks for leaves the detector reporting
-  // off, instead of running against a source that reports MOVING forever.
-  m_MotionEnabled.store(m_Enabled && Settings::load<Settings::GPS_MOTION>()
-                        && IMU::MotionSource::getInstance().isArmed());
+  // Cache only the persisted preference and receiver gate. The source is armed
+  // later by the UI constructor, so caching isArmed() here would permanently
+  // disable motion after an early startup reload.
+  m_MotionEnabled.store(m_Enabled && Settings::load<Settings::GPS_MOTION>());
 }
 
 /** Refresh the cached GPX logging settings from NVS. */
@@ -2042,11 +2039,11 @@ bool GPS::isEnabled(void) const {
 }
 
 bool GPS::isMotionEnabled(void) const {
-  return m_MotionEnabled.load();
+  return m_MotionEnabled.load() && IMU::MotionSource::getInstance().isArmed();
 }
 
 bool GPS::isStationary(void) const {
-  return m_MotionEnabled.load()
+  return isMotionEnabled()
          && (IMU::MotionSource::getInstance().state() == IMU::MotionState::STATIONARY);
 }
 
