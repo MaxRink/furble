@@ -159,6 +159,23 @@ int sendRequest(UI::Request request, int32_t arg, const char *what) {
   return 0;
 }
 
+int sendWorkflowRequest(UI::Request request, int32_t arg, const char *what) {
+#if defined(FURBLE_SIM)
+  return sendRequest(request, arg, what);
+#else
+  UI::RequestResult completion {xTaskGetCurrentTaskHandle(), nullptr};
+  if (!UI::sendRequest(request, arg, &completion)) {
+    return fail("ui request queue unavailable");
+  }
+  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  if (completion.token == nullptr) {
+    return fail("ui request failed");
+  }
+  printf("completed: %s\n", what);
+  return strcmp(completion.token, "ok") == 0 ? 0 : 1;
+#endif
+}
+
 /**
  * Queue a request that prints from the UI task and wait for the output.
  *
@@ -911,7 +928,7 @@ int cmdUI(int argc, char **argv) {
   return fail("not supported in this build");
 #else
   if (back) {
-    return sendRequest(UI::Request::BACK, 0, "ui back");
+    return sendWorkflowRequest(UI::Request::BACK, 0, "ui back");
   }
 
   return sendPrintingRequest(audit ? UI::Request::AUDIT : UI::Request::PAGE, 0);
@@ -1826,12 +1843,7 @@ int cmdPair(int argc, char **argv) {
   // Only the UI task knows whether the connectable list currently holds scan
   // results, so the refusal for an index that names nothing is printed from
   // there. Wait for it, so a script reads the answer before the next prompt.
-  if (!UI::sendRequest(UI::Request::PAIR, index)) {
-    return fail("ui request queue unavailable");
-  }
-  printf("queued: pair\n");
-  vTaskDelay(pdMS_TO_TICKS(100));
-  return 0;
+  return sendWorkflowRequest(UI::Request::PAIR, index, "pair");
 #endif
 }
 
@@ -1841,7 +1853,7 @@ int cmdDelete(int argc, char **argv) {
   }
 
   if (!strcmp(argv[1], "all")) {
-    return sendRequest(UI::Request::DELETE, -1, "delete all");
+    return sendWorkflowRequest(UI::Request::DELETE, -1, "delete all");
   }
 
   int32_t index = 0;
@@ -1849,7 +1861,7 @@ int cmdDelete(int argc, char **argv) {
     return fail("expected a camera index from 'cameras list', or all");
   }
 
-  return sendRequest(UI::Request::DELETE, index, "delete");
+  return sendWorkflowRequest(UI::Request::DELETE, index, "delete");
 }
 
 int cmdMultiConnect(int argc, char **argv) {
@@ -1876,7 +1888,7 @@ int cmdMultiConnect(int argc, char **argv) {
     // Writing the empty set from here would leave the loaded active flags and
     // the drawn checkboxes set, and the next Connect press would serialise the
     // whole set straight back.
-    return sendPrintingRequest(UI::Request::MULTI_CLEAR, 0);
+    return sendWorkflowRequest(UI::Request::MULTI_CLEAR, 0, "multiconnect clear");
 #endif
   }
 
@@ -1899,8 +1911,8 @@ int cmdMultiConnect(int argc, char **argv) {
   // the camera list to resolve an index onto one.
   return fail("not supported in this build");
 #else
-  return sendRequest(select ? UI::Request::MULTI_SELECT : UI::Request::MULTI_DESELECT, index,
-                     select ? "multiconnect select" : "multiconnect deselect");
+  return sendWorkflowRequest(select ? UI::Request::MULTI_SELECT : UI::Request::MULTI_DESELECT,
+                             index, select ? "multiconnect select" : "multiconnect deselect");
 #endif
 }
 

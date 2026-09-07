@@ -5660,10 +5660,24 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
-  const request_t item = {request, arg};
+  const request_t item = {request, arg,
+#if defined(FURBLE_CONSOLE)
+                          nullptr
+#endif
+  };
 
   return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
 }
+
+#if defined(FURBLE_CONSOLE)
+bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+  if (m_RequestQueue == NULL || result == nullptr) {
+    return false;
+  }
+  const request_t item = {request, arg, result};
+  return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
+}
+#endif
 
 void UI::serviceRequests(void) {
   request_t item;
@@ -6147,6 +6161,12 @@ void UI::serviceRequests(void) {
     if (m_ConsoleResult != nullptr) {
       consolePrint("result: %s\n", m_ConsoleResult);
     }
+#if defined(FURBLE_CONSOLE)
+    if (item.result != nullptr) {
+      item.result->token = m_ConsoleResult;
+      xTaskNotifyGive(item.result->waiter);
+    }
+#endif
   }
 }
 

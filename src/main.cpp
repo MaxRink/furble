@@ -88,6 +88,9 @@ constexpr UBaseType_t HEADLESS_REQUEST_QUEUE_LENGTH = 8;
 typedef struct {
   UI::Request request;
   int32_t arg;
+#if defined(FURBLE_CONSOLE)
+  UI::RequestResult *result;
+#endif
 } headless_request_t;
 
 QueueHandle_t g_HeadlessRequestQueue = NULL;
@@ -224,9 +227,23 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
-  const headless_request_t item = {request, arg};
+  const headless_request_t item = {request, arg,
+#if defined(FURBLE_CONSOLE)
+                                   nullptr
+#endif
+  };
   return xQueueSend(g_HeadlessRequestQueue, &item, 0) == pdTRUE;
 }
+
+#if defined(FURBLE_CONSOLE)
+bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+  if (g_HeadlessRequestQueue == NULL || result == nullptr) {
+    return false;
+  }
+  const headless_request_t item = {request, arg, result};
+  return xQueueSend(g_HeadlessRequestQueue, &item, 0) == pdTRUE;
+}
+#endif
 
 void UI::serviceRequests(void) {
   headless_request_t item;
@@ -283,6 +300,12 @@ void UI::serviceRequests(void) {
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
     }
+#if defined(FURBLE_CONSOLE)
+    if (item.result != nullptr) {
+      item.result->token = nullptr;
+      xTaskNotifyGive(item.result->waiter);
+    }
+#endif
   }
 }
 }  // namespace Furble

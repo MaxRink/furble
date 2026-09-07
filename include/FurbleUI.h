@@ -3,6 +3,10 @@
 
 #include <mutex>
 
+#if defined(FURBLE_CONSOLE)
+#include <freertos/task.h>
+#endif
+
 #if defined(FURBLE_SIM)
 #include "scenario_action.h"
 #endif
@@ -58,6 +62,14 @@ class UI {
 
   /** Queue an operation for the headless main loop. */
   static bool sendRequest(Request request, int32_t arg);
+
+#if defined(FURBLE_CONSOLE)
+  struct RequestResult {
+    TaskHandle_t waiter;
+    const char *token;
+  };
+  static bool sendRequest(Request request, int32_t arg, RequestResult *result);
+#endif
 
   /** Drain queued console operations in the headless main loop. */
   static void serviceRequests(void);
@@ -159,6 +171,14 @@ class UI {
    * @return true if the request was queued.
    */
   static bool sendRequest(Request request, int32_t arg);
+
+#if defined(FURBLE_CONSOLE)
+  struct RequestResult {
+    TaskHandle_t waiter;
+    const char *token;
+  };
+  static bool sendRequest(Request request, int32_t arg, RequestResult *result);
+#endif
 
   /** Notify the UI task that a gesture-related setting changed elsewhere. */
   static void notifyGestureSettingsChanged(void);
@@ -573,6 +593,9 @@ class UI {
   typedef struct {
     Request request;
     int32_t arg;
+#if defined(FURBLE_CONSOLE)
+    RequestResult *result;
+#endif
   } request_t;
 
   static constexpr UBaseType_t m_RequestQueueLength = 8;
