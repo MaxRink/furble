@@ -217,8 +217,7 @@ Control::state_t Control::connectAll(void) {
     // An empty selection must not pass the vacuous allConnected() check below
     // and publish ACTIVE without connecting a camera.
     if (all.empty()) {
-      return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING
-                                                                 : STATE_IDLE;
+      return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING : STATE_IDLE;
     }
     m_ConnectInProgress = true;
   }

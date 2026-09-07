@@ -1086,7 +1086,7 @@ bool scenarioRestartStalledPeerReclaim() {
 
 const std::map<std::string, std::function<bool()>> &scenarios() {
   static const std::map<std::string, std::function<bool()>> table = {
-      {"empty-target-connect-stays-idle",    scenarioEmptyTargetConnectStaysIdle  },
+      {"empty-target-connect-stays-idle",  scenarioEmptyTargetConnectStaysIdle },
       {"fresh-connect",                    scenarioFreshConnect                },
       {"dead-camera-disconnect-no-freeze", scenarioDeadCameraDisconnectNoFreeze},
       {"connect-after-dead-disconnect",    scenarioConnectAfterDeadDisconnect  },
