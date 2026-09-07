@@ -83,6 +83,33 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertFalse(machine.supportsCameras)
   }
 
+  func testCameraListReplacesStaleCatalogAndKeepsLaterEvents() {
+    var machine = CompanionStateMachine()
+    _ = machine.start(bluetoothAvailable: true)
+    _ = machine.didFindPeripheral()
+    _ = machine.didConnect()
+    _ = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: true)
+    _ = machine.didReadCapability(Data([1, 2, 3, 0, 0, 0]))
+    _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))
+    _ = machine.didAuthenticationAccepted()
+
+    let stale = Data([0, 1, 1, 1, 0, 0, 0, 1, 0x41])
+    XCTAssertTrue(machine.didReceiveCamera(stale))
+    XCTAssertEqual(machine.cameras.map(\.cameraID), [1])
+
+    machine.beginCameraList()
+    let listed = Data([0, 2, 1, 1, 100, 0xf0, 2, 1, 0x42])
+    let terminator = Data([0, 0xff, 0, 0, 0, 0, 0, 0])
+    XCTAssertTrue(machine.didReceiveCamera(listed))
+    XCTAssertTrue(machine.didReceiveCamera(terminator))
+    XCTAssertEqual(machine.cameras.map(\.cameraID), [2])
+
+    let event = Data([0, 2, 1, 9, 100, 0xe0, 2, 1, 0x42])
+    XCTAssertTrue(machine.didReceiveCamera(event))
+    XCTAssertEqual(machine.cameras.first?.rssi, -32)
+  }
+
   func testPasswordlessResultCompletesOnlyAfterFirmwareNotRequired() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)

@@ -105,10 +105,10 @@ private struct CamerasSection: View {
         HStack {
           Button("Refresh cameras") { refresh() }
           Spacer()
-          Button("Connect all") { perform { try client.connectCamera() } }
+          Button("Connect selected") { perform { try client.connectCamera() } }
             .disabled(client.cameras.isEmpty || operationBusy)
           Button("Disconnect") { perform { try client.disconnectCameras() } }
-            .disabled(client.cameras.isEmpty || operationBusy)
+            .disabled(client.cameras.isEmpty)
         }
         if let actionError {
           Text(actionError)

@@ -65,6 +65,7 @@ Delivered by the plan 51 firmware camera PR.
   two cameras, connect, watch the live states and rssi, disconnect. Only
   Fujifilm cameras are available, so other vendors stay code review plus
   FauxNY.
+
 ## Implementation state, firmware settings parity v2
 
 - `Settings::appliesImmediately` is the shared source for console and companion
@@ -392,9 +393,9 @@ deliberately does not have:
 - With MULTICONNECT on, a checkbox per row bound to select and deselect. With
   it off, tapping a row connects that camera, matching the on-device
   single-connect flow.
-- One Connect all / Disconnect action pair, disabled in states where the
-  firmware would answer busy, so the button state mirrors the reject rule
-  instead of discovering it.
+- One Connect selected / Disconnect action pair, with Connect selected
+  disabled in states where the firmware would answer busy. Disconnect remains
+  available to cancel an in-flight connection operation.
 - The Settings tab replaces placeholder rows with the metadata table editors
   from section 1, grouped and searchable, with restart-required and dangerous
   badges driven by the flags bits.
@@ -453,14 +454,14 @@ the app PR that consumes it.
    restart and danger badges, confirm flow. Works against firmware 1; against
    older firmware it degrades to the current behavior.
 4. **App: cameras tab.** The Apple client now lists the stable camera catalog,
-   supports selection, connect-all and disconnect, and renders live state.
+   supports selection, connect-selected and disconnect, and renders live state.
    Android still needs the equivalent tab and repository flow.
    Hidden entirely when feature bit 1 or the characteristic is absent.
 5. **Rig: scenarios and corpus.** Plans/29 phase 1 golden payloads gain the
    cameras records, the capability read and the v2 settings flags. Phase 5
    gains three scenarios: full settings sweep (list, edit one of each type,
    verify persistence across simulated reboot), camera lifecycle with FauxNY
-   (list, select two, connect all, drop one, watch reconnect states, disconnect),
+   (list, select two, connect selected, drop one, watch reconnect states, disconnect),
    and version skew (rig peer pinned to wire version 1, assert the app hides
    the Cameras tab and downgrades flags handling).
 

@@ -143,6 +143,7 @@ public struct CompanionStateMachine: Sendable {
   private var hasTrigger = false
   private var hasAuth = false
   private var hasCameras = false
+  private var cameraListRecords: [UInt8: FurbleProtocol.CameraRecord]?
 
   public init() {}
 
@@ -162,6 +163,7 @@ public struct CompanionStateMachine: Sendable {
     hasTrigger = false
     hasAuth = false
     hasCameras = false
+    cameraListRecords = nil
     return .scan
   }
 
@@ -293,7 +295,16 @@ public struct CompanionStateMachine: Sendable {
     guard phase == .ready, hasCameras else { return false }
     do {
       let camera = try FurbleProtocol.decodeCameraRecord(data)
-      if camera.isTerminator { return true }
+      if camera.isTerminator {
+        guard let records = cameraListRecords else { return true }
+        cameras = records.keys.sorted().compactMap { records[$0] }
+        cameraListRecords = nil
+        return true
+      }
+      if cameraListRecords != nil {
+        cameraListRecords?[camera.cameraID] = camera
+        return true
+      }
       cameras.removeAll { $0.cameraID == camera.cameraID }
       cameras.append(camera)
       return true
@@ -301,6 +312,15 @@ public struct CompanionStateMachine: Sendable {
       lastError = .malformedPacket
       return false
     }
+  }
+
+  public mutating func beginCameraList() {
+    guard phase == .ready, supportsCameras else { return }
+    cameraListRecords = [:]
+  }
+
+  public mutating func cancelCameraList() {
+    cameraListRecords = nil
   }
 
   public func privileged(_ command: CompanionCommand) throws -> CompanionCommand {
@@ -335,6 +355,7 @@ public struct CompanionStateMachine: Sendable {
     hasTrigger = false
     hasAuth = false
     hasCameras = false
+    cameraListRecords = nil
   }
 
   public mutating func retry(attempt: Int) -> CompanionCommand? {

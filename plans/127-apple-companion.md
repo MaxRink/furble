@@ -29,7 +29,7 @@ XcodeGen release documented in the companion README.
   never starts location updates merely because a device is paired.
 - Shared SwiftUI iOS/macOS app source plus platform privacy usage strings.
 - Capability-gated Cameras section with stable camera IDs, selection toggles,
-  connect-all, disconnect, live state, RSSI, and firmware request errors.
+  connect-selected, disconnect, live state, RSSI, and firmware request errors.
 - Native iOS and macOS application and unit-test targets, Keychain access-group
   entitlements, Bluetooth restoration declarations, and unsigned CI build
   definitions.

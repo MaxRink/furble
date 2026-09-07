@@ -29,7 +29,7 @@ matching plans/51 and the firmware cameras slice.
 After authentication, the Cameras section is shown only when capability bit 1
 and the Cameras characteristic are present. It lists the saved camera catalog
 by stable ID, shows live connection state and RSSI, supports selection,
-connect-all and disconnect, and displays firmware request errors. Simulator
+connect-selected and disconnect, and displays firmware request errors. Simulator
 and unsigned builds do not prove that camera BLE operations work on hardware.
 
 Shutter and focus are hold controls. A touch sends one press packet and its
