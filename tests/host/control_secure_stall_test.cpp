@@ -286,8 +286,12 @@ int main(void) {
   check(control.teardownDraining(), "the stalled secure target is retained as a zombie");
   camera->clearConnectCancel();
   check(!camera->connectCancelled(), "the drained-camera test clears the prior cancel token");
+  const size_t beforeZombieTerminate =
+      stalledClient == nullptr ? 0 : stalledClient->mockDisconnectCount();
   control.disconnect(100);
   check(camera->connectCancelled(), "a later disconnect cancels the drained secure attempt");
+  check(stalledClient != nullptr && stalledClient->mockDisconnectCount() > beforeZombieTerminate,
+        "a later disconnect terminates the drained secure client");
   if (stalledClient != nullptr) {
     stalledClient->mockCompleteStalledTerminate(0x08);
   }
