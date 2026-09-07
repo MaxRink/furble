@@ -6,6 +6,7 @@
 
 #include "Camera.h"
 #include "CameraList.h"
+#include "DJIOsmo.h"
 
 const char *LOG_TAG = "advertisement-dispatch";
 
@@ -36,6 +37,14 @@ bool testDispatchAndDeduplication() {
   CHECK(Furble::CameraList::last()->getType() == Camera::Type::PANASONIC_LUMIX);
   CHECK(!Furble::CameraList::match(&device));
   CHECK(Furble::CameraList::size() == 1);
+
+  NimBLEAdvertisedDevice djiAdvertisement;
+  djiAdvertisement.setAddress(NimBLEAddress(0x223344556677ULL));
+  djiAdvertisement.setName("DJI Osmo Action 5 Pro");
+  auto dji = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
+  CHECK(dji->getPairType() == Camera::PairType::NEW);
+  Furble::CameraList::save(dji);
+  CHECK(dji->getPairType() == Camera::PairType::SAVED);
 
   Furble::CameraList::clear();
   return true;
