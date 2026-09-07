@@ -78,6 +78,7 @@ class GattConnection(
     private val handler = Handler(Looper.getMainLooper())
     private val authInputDispatcher = AuthInputDispatcher { task -> handler.post { task() } }
     private val operations = ArrayDeque<Operation>()
+    private val cameraRequests = ArrayDeque<CameraRequest>()
     private val callback = Callback()
 
     private var gatt: BluetoothGatt? = null
@@ -96,6 +97,8 @@ class GattConnection(
     private var authChallengePending = false
     private val authAttemptTracker = AuthAttemptTracker()
     private var authGeneration = 0L
+    private var cameraRequestInFlight: CameraRequest? = null
+    private var cameraResponseTimeout: Runnable? = null
 
     fun connect() {
         handler.post {
@@ -168,26 +171,66 @@ class GattConnection(
 
     fun requestCameras() {
         handler.post {
-            if (!isReady) return@post
-            enqueueCharacteristicWrite(
-                uuid = FurbleProtocol.CAMERAS_UUID,
-                value = FurbleProtocol.encodeCameraListRequest(),
-                writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
-                waitForCallback = true,
-            )
+            queueCameraRequest(CameraRequest(FurbleProtocol.CameraOperation.LIST, 0xFF))
         }
     }
 
     fun setCamera(operation: Int, cameraId: Int) {
         handler.post {
-            if (!isReady) return@post
-            enqueueCharacteristicWrite(
-                uuid = FurbleProtocol.CAMERAS_UUID,
-                value = FurbleProtocol.encodeCameraRequest(operation, cameraId),
-                writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
-                waitForCallback = true,
-            )
+            queueCameraRequest(CameraRequest(operation, cameraId))
         }
+    }
+
+    private fun queueCameraRequest(request: CameraRequest) {
+        if (!isReady) return
+        if (cameraCharacteristic == null) {
+            listener.onError("furble camera characteristic is unavailable")
+            return
+        }
+        cameraRequests.addLast(request)
+        pumpCameraRequest()
+    }
+
+    private fun pumpCameraRequest() {
+        if (cameraRequestInFlight != null || cameraRequests.isEmpty() || !isReady) return
+        val request = cameraRequests.removeFirst()
+        cameraRequestInFlight = request
+        enqueueCharacteristicWrite(
+            uuid = FurbleProtocol.CAMERAS_UUID,
+            value = if (request.operation == FurbleProtocol.CameraOperation.LIST) {
+                FurbleProtocol.encodeCameraListRequest()
+            } else {
+                FurbleProtocol.encodeCameraRequest(request.operation, request.cameraId)
+            },
+            writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+            waitForCallback = true,
+        )
+        armCameraResponseTimeout(request)
+    }
+
+    private fun armCameraResponseTimeout(request: CameraRequest) {
+        cameraResponseTimeout?.let(handler::removeCallbacks)
+        val timeout = Runnable {
+            if (cameraRequestInFlight != request) return@Runnable
+            abortCameraRequests()
+            listener.onError("furble camera operation timed out")
+        }
+        cameraResponseTimeout = timeout
+        handler.postDelayed(timeout, CAMERA_RESPONSE_TIMEOUT_MS)
+    }
+
+    private fun completeCameraRequest() {
+        cameraResponseTimeout?.let(handler::removeCallbacks)
+        cameraResponseTimeout = null
+        cameraRequestInFlight = null
+        pumpCameraRequest()
+    }
+
+    private fun abortCameraRequests() {
+        cameraResponseTimeout?.let(handler::removeCallbacks)
+        cameraResponseTimeout = null
+        cameraRequestInFlight = null
+        cameraRequests.clear()
     }
 
     fun sendTrigger(operation: Int, holdMs: Int = 0) {
@@ -462,6 +505,11 @@ class GattConnection(
         ) {
             clearAuthSecrets()
         }
+        if (operation is Operation.WriteCharacteristic &&
+            operation.characteristic.uuid == FurbleProtocol.CAMERAS_UUID && !success
+        ) {
+            abortCameraRequests()
+        }
         if (!success && failureMessage != null) listener.onError(failureMessage)
         if (operation is Operation.WriteDescriptor) operation.completion(success)
         pump()
@@ -474,6 +522,7 @@ class GattConnection(
 
     private fun closeInternal(notify: Boolean) {
         isReady = false
+        abortCameraRequests()
         operations.clear()
         currentOperation = null
         service = null
@@ -503,8 +552,16 @@ class GattConnection(
             FurbleProtocol.SETTINGS_UUID -> FurbleProtocol.parseSettingsResponse(value)?.let(listener::onSettings)
             FurbleProtocol.CAMERAS_UUID -> {
                 val record = FurbleProtocol.parseCameraRecord(value)
-                if (record != null) listener.onCamera(record)
-                else listener.onError("furble sent an invalid camera record")
+                if (record == null) {
+                    abortCameraRequests()
+                    listener.onError("furble sent an invalid camera record")
+                } else {
+                    listener.onCamera(record)
+                    val request = cameraRequestInFlight
+                    if (request != null && cameraResponseCompletes(request, record)) {
+                        completeCameraRequest()
+                    }
+                }
             }
             FurbleProtocol.AUTH_UUID -> dispatchAuth(value)
         }
@@ -564,6 +621,17 @@ class GattConnection(
         response.fill(0)
     }
 
+    private fun cameraResponseCompletes(request: CameraRequest, record: FurbleProtocol.CameraRecord): Boolean {
+        if (request.operation == FurbleProtocol.CameraOperation.LIST) {
+            return record.isTerminator || record.status != FurbleProtocol.CameraStatus.OK
+        }
+        if (record.status != FurbleProtocol.CameraStatus.OK) return true
+        return record.cameraId == request.cameraId || record.isStatusOnly()
+    }
+
+    private fun FurbleProtocol.CameraRecord.isStatusOnly(): Boolean =
+        cameraType == 0 && flags == 0 && progress == 0 && rssi == 0 && state == 0 && name.isEmpty()
+
     private fun clearAuthSecrets() {
         authPassword?.fill(0)
         authPassword = null
@@ -590,6 +658,8 @@ class GattConnection(
             val completion: (Boolean) -> Unit,
         ) : Operation
     }
+
+    private data class CameraRequest(val operation: Int, val cameraId: Int)
 
     private inner class Callback : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -729,6 +799,7 @@ class GattConnection(
     }
 
     private companion object {
+        const val CAMERA_RESPONSE_TIMEOUT_MS = 5000L
         val CLIENT_CHARACTERISTIC_CONFIGURATION_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }

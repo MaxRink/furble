@@ -251,7 +251,7 @@ private fun CamerasScreen(
                     OutlinedButton(onClick = onDisconnect, enabled = ready && canDisconnect) {
                         Text("Disconnect")
                     }
-                    Button(onClick = onRefresh, enabled = ready) { Text("Refresh") }
+                    Button(onClick = onRefresh, enabled = ready && !state.camerasLoading) { Text("Refresh") }
                 }
             }
             Text("Saved cameras are identified by stable IDs. Select cameras for the device's multi-connect set.")

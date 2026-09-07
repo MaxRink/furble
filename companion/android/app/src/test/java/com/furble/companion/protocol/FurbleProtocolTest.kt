@@ -187,14 +187,14 @@ class FurbleProtocolTest {
         )
         val record = FurbleProtocol.parseCameraRecord(
             byteArrayOf(0, 7, 10, 0x0F, 75, 0x80.toByte(), FurbleProtocol.CameraState.CONNECTED.toByte(), 4) +
-                "A\u00e9".toByteArray(),
+                "A\u00e9!".toByteArray(),
         )
         assertNotNull(record)
         assertEquals(7, record?.cameraId)
         assertEquals(10, record?.cameraType)
         assertEquals(75, record?.progress)
         assertEquals(-128, record?.rssi)
-        assertEquals("A\u00e9", record?.name)
+        assertEquals("A\u00e9!", record?.name)
         assertTrue(record?.isSaved == true)
         assertTrue(record?.isSelected == true)
         assertTrue(record?.isTarget == true)
@@ -206,6 +206,7 @@ class FurbleProtocolTest {
     fun cameraRecordParserRejectsTruncationOversizeAndInvalidUtf8() {
         assertEquals(null, FurbleProtocol.parseCameraRecord(ByteArray(7)))
         assertEquals(null, FurbleProtocol.parseCameraRecord(byteArrayOf(0, 1, 1, 1, 1, 0, 0, 65)))
+        assertEquals(null, FurbleProtocol.parseCameraRecord(byteArrayOf(0, 1, 1, 1, 1, 0, 0, 1, 65, 66)))
         val tooLong = ByteArray(8 + FurbleProtocol.CAMERA_NAME_MAX + 1)
         tooLong[1] = 1
         tooLong[7] = (FurbleProtocol.CAMERA_NAME_MAX + 1).toByte()

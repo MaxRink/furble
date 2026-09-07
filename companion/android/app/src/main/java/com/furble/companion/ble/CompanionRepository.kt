@@ -73,8 +73,7 @@ class CompanionRepository(
     private var gattConnection: GattConnection? = null
     private var pendingSettingId: Int? = null
     private val pendingSettingValues = mutableMapOf<Int, ByteArray>()
-    private var cameraListActive = false
-    private val pendingCameraRecords = mutableMapOf<Int, FurbleProtocol.CameraRecord>()
+    private val cameraCatalog = CameraCatalog()
     private var pendingPassword: ByteArray? = null
     private var connectionGeneration = 0L
     private var pendingPasswordGeneration = 0L
@@ -358,8 +357,8 @@ class CompanionRepository(
                 return@post
             }
             if (current.connection != ConnectionState.READY) return@post
-            cameraListActive = true
-            pendingCameraRecords.clear()
+            if (current.camerasLoading) return@post
+            if (!cameraCatalog.beginList()) return@post
             _state.update { it.copy(camerasLoading = true) }
             gattConnection?.requestCameras()
         }
@@ -385,6 +384,10 @@ class CompanionRepository(
             val current = _state.value
             if (!current.camerasSupported || current.connection != ConnectionState.READY) {
                 setError("Cameras are unavailable until a compatible furble is connected")
+                return@post
+            }
+            if (current.camerasLoading) {
+                setError("Wait for the camera list to finish loading")
                 return@post
             }
             if (!current.protectedReady()) {
@@ -539,8 +542,7 @@ class CompanionRepository(
         connectionGeneration++
         pendingSettingId = null
         pendingSettingValues.clear()
-        cameraListActive = false
-        pendingCameraRecords.clear()
+        cameraCatalog.clear()
         pendingPassword?.fill(0)
         pendingPassword = null
         _state.update {
@@ -692,8 +694,7 @@ class CompanionRepository(
                     gattConnection = null
                     pendingSettingId = null
                     pendingSettingValues.clear()
-                    cameraListActive = false
-                    pendingCameraRecords.clear()
+                    cameraCatalog.clear()
                     pendingPassword?.fill(0)
                     pendingPassword = null
                     pendingPasswordGeneration = ++connectionGeneration
@@ -720,11 +721,12 @@ class CompanionRepository(
 
                 override fun onError(message: String) {
                     if (gattConnection === session) {
+                        cameraCatalog.fail()
                         _state.update {
                             if (it.auth == AuthState.AUTHENTICATING) {
-                                it.copy(auth = AuthState.UNKNOWN, error = message)
+                                it.copy(auth = AuthState.UNKNOWN, camerasLoading = false, error = message)
                             } else {
-                                it.copy(error = message)
+                                it.copy(camerasLoading = false, error = message)
                             }
                         }
                     }
@@ -770,26 +772,16 @@ class CompanionRepository(
     }
 
     private fun handleCameraRecord(record: FurbleProtocol.CameraRecord) {
-        if (record.isTerminator) {
-            val snapshot = pendingCameraRecords.values.sortedBy { it.cameraId }
-            pendingCameraRecords.clear()
-            cameraListActive = false
-            _state.update { it.copy(cameras = snapshot, camerasLoading = false) }
-            return
-        }
-        if (record.status != FurbleProtocol.CameraStatus.OK) {
-            setError("furble rejected camera ${record.cameraId}: status ${record.status}")
-            return
-        }
-        if (cameraListActive) {
-            pendingCameraRecords[record.cameraId] = record
-            return
-        }
-        _state.update { current ->
-            val existing = current.cameras.indexOfFirst { it.cameraId == record.cameraId }
-            val updated = current.cameras.toMutableList()
-            if (existing >= 0) updated[existing] = record else updated += record
-            current.copy(cameras = updated.sortedBy { it.cameraId })
+        when (cameraCatalog.accept(record)) {
+            CameraRecordDisposition.REJECTED -> {
+                _state.update { it.copy(camerasLoading = false) }
+                setError("furble rejected camera ${record.cameraId}: status ${record.status}")
+            }
+            CameraRecordDisposition.SNAPSHOT ->
+                _state.update { it.copy(cameras = cameraCatalog.records, camerasLoading = false) }
+            CameraRecordDisposition.UPDATED ->
+                _state.update { it.copy(cameras = cameraCatalog.records) }
+            CameraRecordDisposition.IGNORED, CameraRecordDisposition.PENDING -> Unit
         }
     }
 

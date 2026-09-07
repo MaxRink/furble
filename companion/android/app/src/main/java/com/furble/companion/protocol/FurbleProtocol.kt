@@ -415,7 +415,7 @@ object FurbleProtocol {
         if (bytes.size < CAMERA_RECORD_HEADER_SIZE) return null
         val nameLength = bytes[7].u8()
         val nameEnd = CAMERA_RECORD_HEADER_SIZE + nameLength
-        if (nameLength > CAMERA_NAME_MAX || nameEnd > bytes.size) return null
+        if (nameLength > CAMERA_NAME_MAX || nameEnd != bytes.size) return null
         val name = runCatching {
             Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
