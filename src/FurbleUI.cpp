@@ -369,7 +369,7 @@ UI::UI(const interval_t &interval)
   }
 
   Camera::setPairingRequestCallback(
-      [](Camera *camera) { UI::sendRequest(Request::CAMERA_PAIRING, 0, camera); });
+      [](Camera *camera) { return UI::sendRequest(Request::CAMERA_PAIRING, 0, camera); });
 
   // The backlight PWM is clocked from the APB bus. DFS scaling the APB
   // frequency modulates the PWM and the whole screen flickers, so pin the
