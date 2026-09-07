@@ -145,12 +145,17 @@ int main(void) {
   // the peer finally reports link loss; otherwise the old client remains live
   // and the drain gate correctly rejects the follow-up connection.
   NimBLEClient *liveClient = NimBLEDevice::lastClient();
-  check(liveClient == client, "the drained attempt still owns its captured client");
-  if (liveClient == client) {
+  check((liveClient != nullptr) && (liveClient == client),
+        "the drained attempt still owns its captured client");
+  if ((liveClient != nullptr) && (liveClient == client)) {
     liveClient->mockCompleteStalledTerminate(0x08);
   }
-  check(waitFor([&]() { return camera.use_count() == 1; }, 3000),
-        "the completed stalled attempt is reaped before reconnect");
+  const uint32_t reapStart = nowMs();
+  while (Furble::Host::timeoutPending(reapStart, nowMs(), 3000)
+         && (camera.use_count() != 1)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  check(camera.use_count() == 1, "the completed stalled attempt is reaped before reconnect");
 
   // The drain gate must open again: the zombie's task stopped once the wait
   // aborted, so the drained target reaps and a follow-up connect goes through.
