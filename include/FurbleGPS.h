@@ -675,9 +675,8 @@ class GPS {
   // Replay waits for the receiver's own clock before it commits, so arming and
   // sending are two steps.
   bool m_EphReplayArmed = false;
-  // Sequence of TinyGPS++ RMC date commits. It distinguishes a same-day valid
-  // date from the empty pre-fix RMC, whose commit carries no usable UTC even
-  // though TinyGPS++ raises isUpdated().
+  // Sequence of complete, checksum-valid TinyGPS++ RMC dates with nonempty date
+  // fields. The empty pre-fix RMC retains the previous date and adds no entry.
   uint32_t m_EphDateSequence = 0;
   // Sequence snapshot taken when replay was armed. A receiver can correct its
   // clock by minutes while staying on the same UTC day.

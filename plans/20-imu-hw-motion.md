@@ -44,6 +44,10 @@ The following older PR prose is historical, not current behavior:
 - The MPU6886 `INT_STATUS` clear-on-read race with M5Unified remains open.
   The virtual simulator backend and host register tests do not certify that
   physical event path. The hardware gate must pass before calling it certified.
+- The shared GPS replay gate separately requires a complete, checksum-valid RMC
+  with a nonempty date field and parser commit at CR/LF. Its simulator fixture
+  transition restarts only the canned NMEA burst bookkeeping; queued CASIC
+  replies remain untouched. This is unrelated to IMU motion behavior.
 
 ### What the first draft got wrong
 
