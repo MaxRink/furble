@@ -126,6 +126,7 @@ size_t g_PasskeyEntryCount = 0;
 uint32_t g_LastPasskeyEntered = 0;
 std::atomic<NimBLEDevice::host_hook_t> g_GetConnHandleHook {nullptr};
 std::atomic<NimBLEDevice::host_hook_t> g_DisconnectCallbackHook {nullptr};
+std::atomic<NimBLEDevice::host_hook_t> g_ConfirmPasskeyHook {nullptr};
 std::atomic<bool> g_ClientUseAfterFree = false;
 // NimBLE's default display passkey, see NimBLEClient.cpp BLE_SM_IOACT_DISP.
 constexpr uint32_t DEFAULT_SECURITY_PASSKEY = 123456;
@@ -1201,6 +1202,10 @@ void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool accept) {
   if (peer != nullptr) {
     peer->onPasskeyConfirmed(accept);
   }
+  const NimBLEDevice::host_hook_t hook = g_ConfirmPasskeyHook.load();
+  if (hook != nullptr) {
+    hook();
+  }
 }
 
 void NimBLEDevice::setSecurityPasskey(uint32_t passkey) {
@@ -1291,6 +1296,10 @@ void NimBLEDevice::setDisconnectCallbackHook(host_hook_t hook) {
   g_DisconnectCallbackHook.store(hook);
 }
 
+void NimBLEDevice::setConfirmPasskeyHook(host_hook_t hook) {
+  g_ConfirmPasskeyHook.store(hook);
+}
+
 bool NimBLEDevice::clientUseAfterFreeDetected() {
   return g_ClientUseAfterFree.load();
 }
@@ -1364,6 +1373,7 @@ void NimBLEDevice::resetMock() {
   g_LastPasskeyEntered = 0;
   g_GetConnHandleHook.store(nullptr);
   g_DisconnectCallbackHook.store(nullptr);
+  g_ConfirmPasskeyHook.store(nullptr);
   g_ClientUseAfterFree.store(false);
   g_Initialised = false;
   g_Power = 0;

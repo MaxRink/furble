@@ -240,7 +240,6 @@ bool Camera::answerPairing(bool accept) {
   uint16_t handle = BLE_HS_CONN_HANDLE_NONE;
   NimBLEClient *client = nullptr;
   bool accepted = accept;
-  bool staleHandle = false;
 
   // Hold the pairing mutex through the client operation. NimBLE may invoke
   // onDisconnect synchronously from injectConfirmPasskey or disconnect, then
@@ -264,18 +263,26 @@ bool Camera::answerPairing(bool accept) {
   if (type == PairingType::NUMERIC_COMPARISON) {
     if ((client != nullptr) && (client->getConnHandle() == handle)) {
       NimBLEConnInfo connInfo = client->getConnInfo();
+      if (!accepted) {
+        // A rejected answer closes the link as part of cancellation. Do that
+        // before injecting the verdict: either operation may run onDisconnect
+        // and synchronously self-delete this client. The copied connInfo is
+        // all the injection needs, so there is no raw client dereference after
+        // injectConfirmPasskey.
+        client->disconnect();
+        client = nullptr;
+      }
       NimBLEDevice::injectConfirmPasskey(connInfo, accepted);
     } else if (client != nullptr) {
       // The request belongs to a connection that has already gone away or
       // been replaced. Never let an answer for that stale request authorize a
       // different link.
-      staleHandle = true;
       client->disconnect();
+      client = nullptr;
     }
-  }
-
-  if (!accepted && (client != nullptr) && !staleHandle) {
+  } else if (!accepted && (client != nullptr)) {
     client->disconnect();
+    client = nullptr;
   }
 
   return true;

@@ -24,6 +24,7 @@ std::condition_variable g_HookCondition;
 bool g_HandleEntered = false;
 bool g_ReleaseHandle = false;
 bool g_DisconnectEntered = false;
+bool g_ConfirmEntered = false;
 
 void getConnHandleHook() {
   std::unique_lock<std::mutex> lock(g_HookMutex);
@@ -42,6 +43,21 @@ void disconnectCallbackHook() {
   const std::lock_guard<std::mutex> lock(g_HookMutex);
   g_DisconnectEntered = true;
   g_HookCondition.notify_all();
+}
+
+void confirmPasskeyHook() {
+  {
+    const std::lock_guard<std::mutex> lock(g_HookMutex);
+    g_ConfirmEntered = true;
+  }
+  g_HookCondition.notify_all();
+
+  // The old answerPairing reject ordering dereferenced its captured client
+  // here, after injectConfirmPasskey returned. With deferred self-delete this
+  // models the NimBLE host freeing that client synchronously in the injection.
+  if (NimBLEClient *client = NimBLEDevice::lastClient(); client != nullptr) {
+    client->disconnect();
+  }
 }
 
 void waitFor(bool &value, const char *message) {
@@ -115,7 +131,11 @@ int main() {
     return 1;
   }
   camera.hostSetPairingRequest(Furble::Camera::PairingType::NUMERIC_COMPARISON, 314159);
-  if (!camera.answerPairing(false) || camera.isConnected()
+  g_ConfirmEntered = false;
+  NimBLEDevice::setConfirmPasskeyHook(confirmPasskeyHook);
+  const bool rejected = camera.answerPairing(false);
+  NimBLEDevice::setConfirmPasskeyHook(nullptr);
+  if (!rejected || !g_ConfirmEntered || camera.isConnected()
       || (NimBLEDevice::liveClientCount() != 0)) {
     std::cerr << "FAIL: synchronous pairing rejection tears down safely\n";
     return 1;

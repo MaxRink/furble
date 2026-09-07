@@ -623,6 +623,10 @@ class NimBLEDevice {
   using host_hook_t = void (*)();
   static void setGetConnHandleHook(host_hook_t hook);
   static void setDisconnectCallbackHook(host_hook_t hook);
+  // Invoke a deterministic hook after an injected passkey answer has reached
+  // the mock peer. The pairing lifetime regression uses it to model NimBLE
+  // completing a synchronous reject teardown before the injection returns.
+  static void setConfirmPasskeyHook(host_hook_t hook);
   static bool clientUseAfterFreeDetected();
 
   // Free every client queued for asynchronous reap by a link-loss drop under the
