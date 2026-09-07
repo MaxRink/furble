@@ -79,6 +79,17 @@ analog current, sensor noise, and unavailable peripherals are irreducible
 boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
 
+The simulator power profiler is likewise only relative evidence. It integrates
+raw virtual-clock durations, exposes the durations used by each energy
+component in `energy.accounting_inputs`, and records the selected model source and digest;
+missing or malformed selected input fails closed. That provenance fix does not
+close the outstanding power gates: scheduler/timer callback and queue-wake
+costs, peripheral and effective-brightness rails, negotiated BLE airtime, and
+GPS rail/cold-start/UART/standby behavior all require differential traces on
+the corresponding hardware. Do not describe the power model as 100% physical
+parity or attach a quantitative accuracy claim until those measurements,
+electrical boundaries, and tolerances are recorded.
+
 Plan 159 defines camera peer certification. Virtual peers may import pinned
 behavior from common GitHub implementations and official documentation, but
 only exact capture-backed model and firmware fields can produce a certified
@@ -114,17 +125,21 @@ a regression.
 ## Build entry points
 
 - `sim/build.sh`: the verified direct-clang path on macOS. Its incremental
-  check is `make -q` over the compiler depfile, which compares whole-second
-  timestamps, so an edit landing in the same second as the object it should
-  invalidate is missed. Touch the file again or remove the object if a rebuild
-  looks like it skipped a change you just made. Run
+  check is `make -q` over the compiler depfile and first verifies that the
+  depfile target exactly matches the current object path. A depfile from a
+  different relative/absolute build-directory spelling is therefore a cache
+  miss. The prerequisite check compares whole-second timestamps, so an edit
+  landing in the same second as the object it should invalidate is missed.
+  Touch the file again or remove the object if a rebuild looks like it skipped
+  a change you just made. Run
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
   the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
   project-header edits rebuild only their dependents; `make -q` evaluates the
   depfile and the old source-only timestamp shortcut is not used.
 - `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
-  `include/FurbleGPS.h`, and proves GPS dependents rebuild while an unrelated
-  source stays cached. It requires the same dependency overrides as
+  `include/FurbleGPS.h`, proves a relative/absolute depfile target mismatch
+  rebuilds, and proves GPS dependents rebuild while an unrelated source stays
+  cached. It requires the same dependency overrides as
   `sim/build.sh`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
@@ -626,9 +641,12 @@ a regression.
 - `emptyrmc` is worth understanding before writing anything that keys off
   TinyGPS++ update flags. The parser only dispatches a term when it is
   non-empty, so an empty date field never reaches `setDate`, yet `date.commit()`
-  still runs and raises `updated` against the previous value. A flag-counted
-  date therefore counts a date the receiver never sent, and that sentence is
-  exactly what is on the wire before a first fix. Compare committed values.
+  still runs against the previous value. The GPS replay seam therefore requires
+  a complete CR/LF-terminated, checksum-valid RMC with a nonempty six-digit date
+  field and consumes `isUpdated()` per encoded byte at the CR/LF completion; the
+  empty sentence adds no date evidence. `gps_uart_chunk 1` plus
+  `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
+  noise.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking
