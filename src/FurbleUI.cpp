@@ -2486,12 +2486,17 @@ void UI::addMainMenu(void) {
           const bool autoConnect = Settings::load<Settings::AUTOCONNECT>();
           if ((ui->m_MainCount == 1) && (resume || autoConnect)) {
             CameraList::load();
+            const auto savedCameras = CameraList::savedSnapshot();
             std::shared_ptr<Camera> camera;
 
             if (resume) {
-              const uint16_t index = ui->m_Intervalometer.resumeCameraIndex();
-              if ((index < CameraList::size()) && (index < saveCount)) {
-                camera = CameraList::get(index);
+              const uint8_t cameraId = ui->m_Intervalometer.resumeCameraId();
+              const auto found = std::find_if(
+                  savedCameras.begin(), savedCameras.end(), [cameraId](const auto &candidate) {
+                    return CameraList::getCameraId(candidate.get()) == cameraId;
+                  });
+              if (found != savedCameras.end()) {
+                camera = *found;
               } else {
                 ESP_LOGE(LOG_TAG, "Intervalometer resume camera is unavailable");
                 ui->m_Intervalometer.clearResume();
@@ -5459,7 +5464,6 @@ void UI::startIntervalometerResume(void) {
     return;
   }
 
-  m_Intervalometer.m_State = Intervalometer::STATE_SHUTTER_OPEN;
   lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_HIDDEN);
   lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_IntervalometerRunStr).page);
   lv_timer_resume(m_IntervalTimer);
@@ -5545,9 +5549,11 @@ void UI::intervalometer(lv_timer_t *timer) {
 
     case Intervalometer::STATE_WAIT:
       lv_label_set_text(interval->m_StateLabel, "WAIT");
-      next = interval->m_Wait.m_SpinValue.toMilliseconds();
+      next = interval->m_ResumeWaitMs > 0 ? interval->m_ResumeWaitMs
+                                          : interval->m_Wait.m_SpinValue.toMilliseconds();
       m_IntervalCountdownActive = next > 0;
       m_IntervalLastAnnouncedSecond = 0;
+      interval->m_ResumeWaitMs = 0;
       interval->m_State = Intervalometer::STATE_SHUTTER_OPEN;
       break;
 
@@ -5583,19 +5589,13 @@ void UI::intervalometer(lv_timer_t *timer) {
             && ((next / 1000) > Intervalometer::RESUME_WAKE_MARGIN_S)
             && (control.getTargetCount() == 1)) {
           auto camera = control.getTargets().front()->getCamera();
-          uint16_t camera_index = 0;
-          bool camera_found = false;
-          for (size_t n = 0; n < CameraList::size(); n++) {
-            if (CameraList::get(n) == camera) {
-              camera_index = static_cast<uint16_t>(n);
-              camera_found = true;
-              break;
-            }
-          }
+          const uint8_t camera_id = CameraList::getCameraId(camera.get());
+          const bool camera_found = (camera_id != CameraListProtocol::INDEX_ID_INVALID)
+                                    && (camera_id != CameraListProtocol::INDEX_ID_ALL);
 
           if (camera_found) {
             const uint32_t sleep_seconds = (next / 1000) - Intervalometer::RESUME_WAKE_MARGIN_S;
-            if (interval->saveResume(next, camera_index)) {
+            if (interval->saveResume(next, camera_id)) {
               const std::time_t wake_time =
                   std::time(nullptr) + static_cast<std::time_t>(sleep_seconds);
               std::tm wake_tm = {};

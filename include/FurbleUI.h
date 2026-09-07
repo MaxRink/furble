@@ -483,14 +483,14 @@ class UI {
       uint16_t length;
       uint32_t count;
       uint32_t target;
-      uint16_t camera_index;
-      uint16_t reserved;
+      uint8_t camera_id;
+      uint8_t reserved[3];
       int64_t wake_time;
       interval_t interval;
     } resume_state_t;
 
     static constexpr uint32_t RESUME_MAGIC = 0x49564c31;
-    static constexpr uint16_t RESUME_VERSION = 1;
+    static constexpr uint16_t RESUME_VERSION = 2;
     static constexpr const char *RESUME_NVS_KEY = "ivl_resume";
     static constexpr uint32_t RESUME_WAKE_MARGIN_S = 15;
 
@@ -508,9 +508,9 @@ class UI {
     void startNewRun(void);
     void clearResume(void);
     bool hasResume(void) const;
-    uint16_t resumeCameraIndex(void) const;
+    uint8_t resumeCameraId(void) const;
     bool startResume(void);
-    bool saveResume(uint32_t next_ms, uint16_t camera_index);
+    bool saveResume(uint32_t next_ms, uint8_t camera_id);
 
     state_t m_State;
     SettingSpinnerOwner m_SleepThresholdOwner;
@@ -521,6 +521,7 @@ class UI {
     Spinner m_SleepThreshold;
 
     uint32_t m_CountShots = 0;
+    uint32_t m_ResumeWaitMs = 0;
 
     lv_obj_t *m_StateLabel;
     lv_obj_t *m_CountLabel;

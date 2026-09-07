@@ -5,6 +5,7 @@
 
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "protocol/CameraListProtocol.h"
 
 namespace Furble {
 
@@ -20,15 +21,20 @@ SpinValue::nvs_t sleepThresholdNvs(void) {
   return {static_cast<uint16_t>(seconds), SpinValue::UNIT_SEC};
 }
 
-bool validInterval(const interval_t &interval) {
-  const auto validUnit = [](SpinValue::unit_t unit) {
-    return unit >= SpinValue::UNIT_NIL && unit <= SpinValue::UNIT_MIN;
+bool validResume(const UI::Intervalometer::resume_state_t &state) {
+  const auto validSpin = [](const SpinValue::nvs_t &value, bool allowInfinite) {
+    const uint8_t unit = static_cast<uint8_t>(value.unit);
+    return (value.value <= 999) && (unit <= SpinValue::UNIT_MIN)
+           && (allowInfinite || (unit != SpinValue::UNIT_INF));
   };
-
-  return validUnit(interval.count.unit) && validUnit(interval.delay.unit)
-         && validUnit(interval.shutter.unit) && validUnit(interval.wait.unit)
-         && ((interval.count.unit == SpinValue::UNIT_NIL)
-             || (interval.count.unit == SpinValue::UNIT_INF));
+  if (!validSpin(state.interval.count, true) || !validSpin(state.interval.delay, false)
+      || !validSpin(state.interval.shutter, false) || !validSpin(state.interval.wait, false)
+      || (state.camera_id == CameraListProtocol::INDEX_ID_INVALID)
+      || (state.camera_id == CameraListProtocol::INDEX_ID_ALL) || (state.target > 999)) {
+    return false;
+  }
+  return (state.interval.count.unit == SpinValue::UNIT_INF)
+         || ((state.target > 0) && (state.count < state.target));
 }
 }  // namespace
 
@@ -71,7 +77,8 @@ void UI::Intervalometer::loadResume(void) {
 
   if ((length != sizeof(state)) || (state.magic != RESUME_MAGIC)
       || (state.version != RESUME_VERSION) || (state.length != sizeof(state))
-      || !validInterval(state.interval)) {
+      || !validResume(state)) {
+    clearResume();
     return;
   }
 
@@ -116,14 +123,15 @@ void UI::Intervalometer::clearResume(void) {
   prefs.end();
   m_Resume = {};
   m_ResumePending = false;
+  m_ResumeWaitMs = 0;
 }
 
 bool UI::Intervalometer::hasResume(void) const {
   return m_ResumePending;
 }
 
-uint16_t UI::Intervalometer::resumeCameraIndex(void) const {
-  return m_Resume.camera_index;
+uint8_t UI::Intervalometer::resumeCameraId(void) const {
+  return m_Resume.camera_id;
 }
 
 void UI::Intervalometer::startNewRun(void) {
@@ -142,24 +150,32 @@ bool UI::Intervalometer::startResume(void) {
   m_Shutter.m_SpinValue = SpinValue(state.interval.shutter);
   m_Wait.m_SpinValue = SpinValue(state.interval.wait);
   m_CountShots = state.count;
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const int64_t remaining = state.wake_time - now;
+  m_ResumeWaitMs = (remaining > 0 && remaining <= (UINT32_MAX / 1000))
+                       ? static_cast<uint32_t>(remaining * 1000)
+                       : 0;
   clearResume();
+  m_ResumeWaitMs = (remaining > 0 && remaining <= (UINT32_MAX / 1000))
+                       ? static_cast<uint32_t>(remaining * 1000)
+                       : 0;
 
   m_Count.updateLabels();
   m_Delay.updateLabels();
   m_Shutter.updateLabels();
   m_Wait.updateLabels();
-  m_State = STATE_SHUTTER_OPEN;
+  m_State = (m_ResumeWaitMs > 0) ? STATE_WAIT : STATE_SHUTTER_OPEN;
   return true;
 }
 
-bool UI::Intervalometer::saveResume(uint32_t next_ms, uint16_t camera_index) {
+bool UI::Intervalometer::saveResume(uint32_t next_ms, uint8_t camera_id) {
   resume_state_t state = {};
   state.magic = RESUME_MAGIC;
   state.version = RESUME_VERSION;
   state.length = sizeof(state);
   state.count = m_CountShots;
   state.target = m_Count.m_SpinValue.m_Value;
-  state.camera_index = camera_index;
+  state.camera_id = camera_id;
   state.interval = {m_Count.m_SpinValue.toNVS(), m_Delay.m_SpinValue.toNVS(),
                     m_Shutter.m_SpinValue.toNVS(), m_Wait.m_SpinValue.toNVS()};
 
@@ -174,6 +190,9 @@ bool UI::Intervalometer::saveResume(uint32_t next_ms, uint16_t camera_index) {
   prefs.end();
   if (written != sizeof(state)) {
     ESP_LOGE(LOG_TAG, "Failed to save intervalometer resume state");
+    m_Resume = {};
+    m_ResumePending = false;
+    m_ResumeWaitMs = 0;
     return false;
   }
 
