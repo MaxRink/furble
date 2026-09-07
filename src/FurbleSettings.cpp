@@ -159,6 +159,10 @@ bool Settings::appliesImmediately(type_t type) {
     case WIFI:
     case NTP:
     case NTP_SERVER:
+    // The intervalometer reads these policies on each delay boundary, so a
+    // setting write affects the next shot without requiring a reboot.
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
@@ -184,10 +188,6 @@ bool Settings::appliesImmediately(type_t type) {
     // the source is armed, which is also Platform init, so it follows the IMU.
     case IMU:
     case HW_MOTION:
-    // The deep sleep settings are read when an intervalometer run starts, so a
-    // save takes effect on the next run rather than immediately.
-    case IVL_SLEEP:
-    case IVL_SLEEP_THR:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at

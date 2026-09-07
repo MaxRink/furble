@@ -89,6 +89,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::WIFI:
     case Settings::NTP:
+    case Settings::IVL_SLEEP:
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:
@@ -125,6 +126,7 @@ StorageKind storageKindFor(Settings::type_t type) {
       return StorageKind::U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return StorageKind::U32;
     case Settings::GPX_PERIOD:
       return StorageKind::U16;
@@ -350,6 +352,8 @@ ASSERT_STORAGE_TYPE(BUTTON_MODE, std::string);
 ASSERT_STORAGE_TYPE(AUTO_OFF, uint8_t);
 ASSERT_STORAGE_TYPE(LOW_BATT, uint8_t);
 ASSERT_STORAGE_TYPE(AUTO_OFF_CHARGING, bool);
+ASSERT_STORAGE_TYPE(IVL_SLEEP, bool);
+ASSERT_STORAGE_TYPE(IVL_SLEEP_THR, uint32_t);
 ASSERT_STORAGE_TYPE(SD_GPX, bool);
 ASSERT_STORAGE_TYPE(GPX_PERIOD, uint16_t);
 ASSERT_STORAGE_TYPE(BOOT_SPLASH, bool);
@@ -404,6 +408,7 @@ SettingValue loadValue(Settings::type_t type) {
 
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return Settings::load<uint32_t>(type);
 
     case Settings::GPX_PERIOD:
@@ -438,6 +443,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::WIFI:
     case Settings::NTP:
+    case Settings::IVL_SLEEP:
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:

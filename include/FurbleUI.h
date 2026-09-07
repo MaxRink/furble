@@ -70,6 +70,11 @@ class UI {
 #include <array>
 #include <atomic>
 #include <cstdint>
+#if defined(FURBLE_SIM)
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#endif
 #include <initializer_list>
 #if defined(FURBLE_SIM)
 #include <memory>

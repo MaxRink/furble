@@ -60,7 +60,11 @@ Platform &Platform::getInstance(void) {
       M5.Rtc.disableIRQ();
     }
 
-    switch (board) {
+    // The IMU keeps the M5Unified default axis order. The spirit level derives
+    // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
+    // That orientation is UNVERIFIED on all boards pending a hardware check.
+
+    switch (M5.getBoard()) {
       case m5::board_t::board_M5StickC:
       case m5::board_t::board_M5StickCPlus:
       case m5::board_t::board_M5Tough:
@@ -71,10 +75,14 @@ Platform &Platform::getInstance(void) {
     }
 
 #if defined(FURBLE_M5STICKS3)
-    if (instance.m5pm1Access([]() { return instance.m_M5PM1.begin(&M5.In_I2C); })) {
-      (void)instance.m5pm1Access([]() { return instance.m_M5PM1.setSingleResetDisable(true); });
-      (void)instance.m5pm1Access([]() { return instance.m_M5PM1.setDoubleOffDisable(true); });
-      (void)instance.m5pm1Access([]() { return instance.m_M5PM1.setDownloadLock(true); });
+    instance.m_M5PM1.begin(&M5.In_I2C);
+    instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
+    instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
+    // Never lock the only recovery path which works when the ESP32 is wedged.
+    // The PMIC setting is retained independently of an ESP32 reset, so this
+    // must be an explicit write followed by a readback on every boot.
+    if (!instance.unlockDownloadRecovery()) {
+      ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
     }
 #endif
 
@@ -111,26 +119,95 @@ void Platform::restart(void) {
 }
 
 #if defined(FURBLE_M5STICKS3)
+bool Platform::unlockDownloadRecovery(void) {
+  if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
+    ESP_LOGW(LOG_TAG, "Unable to unlock M5PM1 download recovery");
+    return false;
+  }
+
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    ESP_LOGW(LOG_TAG, "Unable to verify M5PM1 download recovery");
+    return false;
+  }
+
+  if (locked) {
+    ESP_LOGE(LOG_TAG, "M5PM1 rejected download recovery unlock");
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "M5PM1 long-press download recovery enabled");
+  return true;
+}
+
+bool Platform::prepareFlash(void) {
+  // A serial upload can spend longer than the normal PMIC watchdog window in
+  // ROM download mode. The caller must be a deliberate local console user;
+  // the regular runtime watchdog is restored on the next application boot.
+  if (!watchdogEnable(false)) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog disable failed before flash");
+    (void)watchdogEnable(true);
+    return false;
+  }
+  uint8_t watchdogCount = 1;
+  if (!m5pm1Access([this, &watchdogCount]() { return m_M5PM1.wdtGetCount(&watchdogCount); })
+      || watchdogCount != 0) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog did not verify disabled for flash");
+    (void)watchdogEnable(true);
+    return false;
+  }
+
+  if (!unlockDownloadRecovery()) {
+    if (!watchdogEnable(true)) {
+      ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after flash preparation error");
+    }
+    return false;
+  }
+
+  ESP_LOGW(LOG_TAG, "M5PM1 watchdog disabled for flash; upload now, or run 'flash cancel'");
+  return true;
+}
+
+bool Platform::downloadRecoveryUnlocked(void) {
+  bool locked = true;
+  if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
+    return false;
+  }
+  return !locked;
+}
+
+bool Platform::cancelFlashPreparation(void) {
+  if (!watchdogEnable(true)) {
+    ESP_LOGE(LOG_TAG, "M5PM1 watchdog restore failed after cancelled flash");
+    return false;
+  }
+  ESP_LOGI(LOG_TAG, "M5PM1 watchdog restored after cancelled flash");
+  return true;
+}
+
 bool Platform::watchdogEnable(bool enable) {
-  const bool wasEnabled = m_WatchdogEnabled;
-  const uint32_t lastFeed = m_WatchdogLastFeed;
+  m_WatchdogEnabled = false;
+  m_WatchdogLastFeed = tick();
 
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     ESP_LOGE(LOG_TAG, "Failed to set M5PM1 watchdog to %u seconds", static_cast<unsigned>(timeout));
-    m_WatchdogEnabled = wasEnabled;
-    m_WatchdogLastFeed = lastFeed;
     return false;
   }
 
-  m_WatchdogLastFeed = tick();
+  uint8_t count = enable ? 0 : 1;
+  if (!m5pm1Access([this, &count]() { return m_M5PM1.wdtGetCount(&count); })
+      || (enable ? count == 0 : count != 0)) {
+    ESP_LOGE(LOG_TAG, "Failed to verify M5PM1 watchdog %s", enable ? "armed" : "disabled");
+    return false;
+  }
+
   if (enable) {
     m_WatchdogEnabled = true;
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog armed for %u seconds", static_cast<unsigned>(PM1_TIMEOUT_S));
   } else {
     ESP_LOGI(LOG_TAG, "M5PM1 watchdog disabled");
   }
-
   return true;
 }
 
@@ -820,7 +897,7 @@ void Platform::update(void) {
   M5.update();
 #if defined(FURBLE_M5STICKS3)
   bool b = false;
-  if (m5pm1Access([this, &b]() { return m_M5PM1.btnGetState(&b); })) {
+  if (m_M5PM1.btnGetState(&b) == M5PM1_OK) {
     M5.BtnPWR.setRawState(tick(), b);
   }
   watchdogFeed();

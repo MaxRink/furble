@@ -258,6 +258,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
     case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
@@ -417,6 +418,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
     case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
@@ -645,6 +647,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
     case Settings::BATTERY_SAVER:
+    case Settings::AUTO_OFF_CHARGING:
     case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
