@@ -136,6 +136,7 @@ public struct CompanionStateMachine: Sendable {
   public private(set) var cameras: [FurbleProtocol.CameraRecord] = []
   public private(set) var lastError: CompanionFailure?
   public private(set) var requiresAuthentication = true
+  public var supportsCameras: Bool { hasCameras && capability?.supportsCameras == true }
   private var auth: FurbleAuthSession?
   private var hasStatus = false
   private var hasSettings = false

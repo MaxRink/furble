@@ -159,6 +159,21 @@ final class FurbleProtocolTests: XCTestCase {
     XCTAssertThrowsError(try FurbleProtocol.decodeCameraRecord(Data([0, 3, 1, 9, 100, 0, 2, 4, 0x46])))
   }
 
+  func testCameraRecordExposesStableSelectionAndStateLabels() throws {
+    let record = try FurbleProtocol.decodeCameraRecord(
+      Data([0, 3, 1, 3, 25, 0xf0, 1, 3, 0x46, 0x75, 0x6a]))
+    XCTAssertTrue(record.isSaved)
+    XCTAssertTrue(record.isSelected)
+    XCTAssertFalse(record.isConnected)
+    XCTAssertEqual(record.typeLabel, "Fujifilm")
+    XCTAssertEqual(record.connectionStateLabel, "connecting 25%")
+    XCTAssertNil(record.operationStatusLabel)
+
+    let busy = try FurbleProtocol.decodeCameraRecord(
+      Data([3, 3, 1, 8, 0, 0x80, 0, 3, 0x46, 0x75, 0x6a]))
+    XCTAssertEqual(busy.operationStatusLabel, "camera operation busy")
+  }
+
   func testHmacChallengeIsSingleUseAndLocksAfterFailures() throws {
     var auth = try FurbleAuthSession(password: "secret", maxFailures: 2)
     let nonce = Data((0..<16).map(UInt8.init))

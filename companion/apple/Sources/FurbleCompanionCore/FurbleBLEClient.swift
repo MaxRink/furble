@@ -137,18 +137,23 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   }
 
   public func requestCameras() throws {
-    let data = FurbleProtocol.cameraListRequest()
-    _ = try state.privileged(.writeCamera(data))
-    guard let characteristic = characteristic(FurbleProtocol.UUIDs.cameras) else {
-      throw FurbleProtocol.Error.malformed
-    }
-    guard write(data, to: characteristic, type: .withResponse) else {
-      throw FurbleProtocol.Error.payloadTooLarge
-    }
+    try writeCameraRequest(.list, id: 0xff)
   }
 
   public func setCamera(_ id: UInt8, selected: Bool) throws {
     let operation: FurbleProtocol.CameraOperation = selected ? .select : .deselect
+    try writeCameraRequest(operation, id: id)
+  }
+
+  public func connectCamera(_ id: UInt8 = 0xff) throws {
+    try writeCameraRequest(.connect, id: id)
+  }
+
+  public func disconnectCameras() throws {
+    try writeCameraRequest(.disconnect, id: 0xff)
+  }
+
+  private func writeCameraRequest(_ operation: FurbleProtocol.CameraOperation, id: UInt8) throws {
     let data = FurbleProtocol.cameraRequest(operation, id: id)
     _ = try state.privileged(.writeCamera(data))
     guard let characteristic = characteristic(FurbleProtocol.UUIDs.cameras) else {

@@ -64,6 +64,7 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertEqual(machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))?.isAuthWrite, true)
     XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus, .subscribeSettings, .subscribeCameras])
     XCTAssertEqual(machine.phase, .ready)
+    XCTAssertTrue(machine.supportsCameras)
     let status = Data([1, 85, 0x18, 0x10, 0, 0, 1, 0, 0, 0, 0, 0, 0xff, 0xff, 1, 0, 0, 0, 0, 0])
     XCTAssertTrue(machine.didReceiveStatus(status))
     XCTAssertEqual(machine.status?.batteryPercent, 85)
@@ -79,6 +80,7 @@ final class CompanionStateMachineTests: XCTestCase {
     XCTAssertEqual(machine.didReadCapability(Data([1, 2, 1, 0, 0, 0])), .beginAuthentication)
     _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 2, count: 16))
     XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus, .subscribeSettings])
+    XCTAssertFalse(machine.supportsCameras)
   }
 
   func testPasswordlessResultCompletesOnlyAfterFirmwareNotRequired() {
