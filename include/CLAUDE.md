@@ -28,6 +28,8 @@ Public headers for the app layer in src/, one header per module
   owed by the reserved OTA control and data ids. `handleLocation` is
   deliberately outside that gate and needs only an encrypted link; see
   plans/116 for why.
+  `Settings::loadPassword()` distinguishes unset credentials from NVS failures;
+  pass its success flag to `CompanionAuth::setPassword()` so failures stay closed.
 
 ### Companion wire id reservations
 

@@ -334,6 +334,32 @@ std::string Preferences::get(const char *key, const std::string defaultValue) {
   return std::string(buf);
 }
 
+Preferences::string_result_t Preferences::getString(const char *key, std::string &value) {
+  if (!_started || !key) {
+    return string_result_t::ERROR;
+  }
+
+  size_t len = 0;
+  esp_err_t err = nvs_get_str(_handle, key, nullptr, &len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return string_result_t::NOT_FOUND;
+  }
+  if (err != ESP_OK || len == 0) {
+    ESP_LOGE(LOG_TAG, "nvs_get_str len fail: %s %s", key, nvs_error(err));
+    return string_result_t::ERROR;
+  }
+
+  std::string loaded(len, '\0');
+  err = nvs_get_str(_handle, key, loaded.data(), &len);
+  if (err != ESP_OK || len == 0) {
+    ESP_LOGE(LOG_TAG, "nvs_get_str fail: %s %s", key, nvs_error(err));
+    return string_result_t::ERROR;
+  }
+  loaded.resize(len - 1);
+  value = loaded;
+  return string_result_t::OK;
+}
+
 size_t Preferences::getBytesLength(const char *key) {
   size_t len = 0;
   if (!_started || !key) {

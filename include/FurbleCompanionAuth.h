@@ -43,7 +43,7 @@ class CompanionAuth {
   ~CompanionAuth();
 
   /** Replace the connection password. Input length is measured in UTF-8 bytes. */
-  bool setPassword(const std::string &password);
+  bool setPassword(const std::string &password, bool loaded = true);
   void onConnected(void);
   void onDisconnected(void);
 

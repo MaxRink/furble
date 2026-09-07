@@ -192,6 +192,9 @@ class Settings {
   /** Return true when an over-the-air write can affect the companion link. */
   static bool isDangerous(type_t type);
 
+  /** Load the companion password, distinguishing an unset key from NVS failure. */
+  static bool loadPassword(std::string &value);
+
   /** Return true when the Battery Saver power profile is enabled. */
   static bool batterySaver(void);
 

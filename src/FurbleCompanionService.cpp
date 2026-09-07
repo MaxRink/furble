@@ -127,9 +127,10 @@ void CompanionService::onConnected(void) {
     m_HaveLastStatus = false;
     m_LastStatusNotificationMs = 0;
   }
-  const std::string password = Settings::load<std::string>(Settings::COMPANION_PASSWORD);
+  std::string password;
+  const bool loaded = Settings::loadPassword(password);
   const std::lock_guard<std::mutex> lock(m_AuthMutex);
-  m_Auth.setPassword(password);
+  m_Auth.setPassword(password, loaded);
   m_Auth.onConnected();
 }
 
@@ -142,9 +143,10 @@ void CompanionService::onDisconnected(void) {
 }
 
 void CompanionService::reloadPassword(void) {
-  const std::string password = Settings::load<std::string>(Settings::COMPANION_PASSWORD);
+  std::string password;
+  const bool loaded = Settings::loadPassword(password);
   const std::lock_guard<std::mutex> lock(m_AuthMutex);
-  m_Auth.setPassword(password);
+  m_Auth.setPassword(password, loaded);
 }
 
 bool CompanionService::isPasswordAuthenticated(void) const {
@@ -758,7 +760,7 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
   }
 }
 
-bool CompanionService::allowProtected(uint8_t charId) const {
+bool CompanionService::allowProtected(uint8_t) const {
   bool allowed = false;
   bool dropped = false;
   {
@@ -769,7 +771,12 @@ bool CompanionService::allowProtected(uint8_t charId) const {
   if (allowed) {
     return true;
   }
-  m_Transport.error(charId, AUTH_ATT_ERROR);
+  // NimBLE characteristic callbacks are void, so an application-level gate
+  // cannot return a custom ATT error from this callback. Tell the client on
+  // the Auth characteristic instead. CompanionGatt::error remains diagnostic.
+  const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT,
+                                                        AUTH_RESULT_REJECTED};
+  m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
   if (dropped) {
     m_Transport.disconnect();
   }

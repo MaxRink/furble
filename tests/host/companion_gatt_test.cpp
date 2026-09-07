@@ -284,6 +284,29 @@ void testAuthDisconnectRace(void) {
   Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
 }
 
+void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
+  std::cout << "test: companion password load failure denies privileged writes\n";
+  Furble::Settings::setPasswordLoadResult(false);
+  MockCentral central;
+  CompanionService service(central);
+  central.attach(service);
+  service.init();
+  central.connect();
+  central.setSecurity(true, true);
+  central.clearEvents();
+
+  check(central.write(SETTINGS_UUID, {2, 1, 1, 87}),
+        "password-load failure reaches the privileged settings gate");
+  check(!service.isPasswordAuthenticated(),
+        "password-load failure does not authenticate the companion session");
+  check(central.indications().empty() && central.authIndications().size() == 1
+            && central.authIndications()[0].size() == Furble::CompanionService::AUTH_RESULT_SIZE
+            && central.authIndications()[0][2] == Furble::CompanionService::AUTH_RESULT_REJECTED,
+        "password-load failure rejects the privileged write");
+  service.deinit();
+  Furble::Settings::setPasswordLoadResult(true);
+}
+
 void testCompanionGattFlow(void) {
   std::cout << "test: companion mock-central location/status/settings/trigger flow\n";
   NimBLEDevice::resetMock();
@@ -407,11 +430,11 @@ void testCompanionGattFlow(void) {
         "encrypted settings write routes through the password gate");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 12,
         "encrypted but unauthenticated settings cannot change FurbleSettings");
-  check(central.indications().empty()
-            && central.lastError()
-                   == (static_cast<uint16_t>(Furble::COMPANION_CHAR_SETTINGS) << 8
-                       | Furble::CompanionService::AUTH_ATT_ERROR),
-        "password gate rejects encrypted settings with an ATT auth error");
+  check(central.indications().empty() && central.authIndications().size() == 1
+            && central.authIndications()[0].size() == Furble::CompanionService::AUTH_RESULT_SIZE
+            && central.authIndications()[0][2] == Furble::CompanionService::AUTH_RESULT_REJECTED
+            && central.lastError() == 0,
+        "password gate reports a rejected write on the Auth characteristic");
 
   central.clearEvents();
   check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
@@ -526,10 +549,12 @@ void testCompanionGattFlow(void) {
         "new-session settings write reaches the password gate");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 87,
         "new-session unauthenticated settings cannot change FurbleSettings");
-  check(central.lastError()
-            == (static_cast<uint16_t>(Furble::COMPANION_CHAR_SETTINGS) << 8
-                | Furble::CompanionService::AUTH_ATT_ERROR),
-        "new-session settings are rejected with an ATT auth error");
+  check(central.authIndications().size() == 1
+            && central.authIndications()[0].size() == Furble::CompanionService::AUTH_RESULT_SIZE
+            && central.authIndications()[0][2] == Furble::CompanionService::AUTH_RESULT_REJECTED
+            && central.lastError() == 0,
+        "new-session settings report rejection on the Auth characteristic");
+  central.clearEvents();
   check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
                                   Furble::CompanionService::AUTH_OP_BEGIN}),
         "new session can request a fresh nonce after disconnect");
@@ -571,6 +596,7 @@ void testCompanionGattFlow(void) {
 
 int main(void) {
   FurbleHostTaskScope taskScope;
+  testPasswordLoadFailureDeniesPrivilegedWrites();
   testAuthDisconnectRace();
   testCompanionGattFlow();
   if (g_Failures != 0) {

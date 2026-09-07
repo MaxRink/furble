@@ -252,6 +252,29 @@ bool Settings::isDangerous(type_t type) {
   return false;
 }
 
+bool Settings::loadPassword(std::string &value) {
+  const auto &setting = get(COMPANION_PASSWORD);
+  Preferences prefs;
+  if (!prefs.begin(setting.nvs_namespace, true)) {
+    value.clear();
+    return false;
+  }
+
+  std::string loaded;
+  const auto result = prefs.getString(setting.key, loaded);
+  prefs.end();
+  if (result == Preferences::string_result_t::NOT_FOUND) {
+    value.clear();
+    return true;
+  }
+  if (result != Preferences::string_result_t::OK) {
+    value.clear();
+    return false;
+  }
+  value = loaded;
+  return true;
+}
+
 template <typename T>
 T Settings::loadValue(type_t type) {
   const auto &setting = get(type);
@@ -479,6 +502,11 @@ void Settings::init(void) {
   // Set default values for all settings
   for (const auto &it : m_Setting) {
     auto &setting = it.second;
+    // Missing passwords already mean unset. Never turn a failed existence
+    // check into a write that clears an existing authentication gate.
+    if (setting.type == COMPANION_PASSWORD) {
+      continue;
+    }
     Preferences prefs;
     prefs.begin(setting.nvs_namespace, true);
     bool exists = prefs.isKey(setting.key);
@@ -507,7 +535,6 @@ void Settings::init(void) {
           save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);
           break;
         case COMPANION_PASSWORD:
-          save<std::string>(setting.type, "");
           break;
         case TX_POWER:
         case SCAN_MODE:

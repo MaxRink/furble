@@ -69,7 +69,8 @@ In scope:
   `companion password clear`) and via the `plans/114` flasher provisioning TLV.
 - Rate limiting: after N consecutive auth failures on a connection, drop it and
   back off, so the password cannot be brute forced over BLE.
-- The password is never read back: `companion password` prints `set` or `unset`.
+- The password is never read back: `companion password status` prints only
+  `set`, `unset`, or `unavailable`.
 
 Out of scope:
 
@@ -142,7 +143,7 @@ Wire contract, matching the clients:
 | Proof packet | `01 01` then the 16 response bytes |
 | Result indication | `01 02` then the status |
 | Status codes | 1 authenticated, 2 rejected, 3 dropped, 4 not required |
-| ATT error on a gated write | `0x80` |
+| Gated write result | Auth indication `{01 02 02}` |
 | Failure limit | 3, then the link is dropped |
 
 Client sources this was read against:
@@ -173,6 +174,20 @@ Session lifecycle:
 
 ## Threat model decisions
 
+Review follow-up, 2026-09-07: startup no longer seeds the password through a
+fallible generic existence check. Missing credentials remain unset; wrong NVS
+types and either string-read failure deny privileged access. Console set and
+clear verify the saved value before reporting success and reload the live gate.
+The VM host auth, companion GATT, console and settings NVS tests pass (4/4),
+including read faults and failed password writes/commits. This is host evidence;
+the firmware build, exact-head CI and phone/S3 handshake remain separate gates.
+
+- **A gated Settings or Trigger write emits an Auth result indication
+  `{01 02 02}`.** NimBLE characteristic callbacks are void, so they cannot
+  return the application ATT error `0x80` claimed by the original draft.
+  `CompanionGatt::error` remains a diagnostic hook only. Clients must subscribe
+  to Auth and use this indication, or begin the challenge before their first
+  privileged write.
 - **`handleLocation` requires an encrypted, link-authenticated connection but
   not the password.** It had no check at all before this PR, which was the real
   bug. It stays outside the password gate because both companion apps stream

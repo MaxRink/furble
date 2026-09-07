@@ -13,10 +13,10 @@ CompanionAuth::~CompanionAuth() {
   secureZero(m_Nonce.data(), m_Nonce.size());
 }
 
-bool CompanionAuth::setPassword(const std::string &password) {
+bool CompanionAuth::setPassword(const std::string &password, bool loaded) {
   // std::string capacity cannot be wiped portably. Keep the secret in a fixed
   // 64-byte buffer so every byte is erased on replacement and destruction.
-  if ((password.size() > PASSWORD_MAX)
+  if (!loaded || (password.size() > PASSWORD_MAX)
       || (std::find(password.begin(), password.end(), '\0') != password.end())) {
     secureZero(m_Password.data(), m_Password.size());
     m_PasswordLen = 0;

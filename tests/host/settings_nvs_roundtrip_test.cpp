@@ -508,7 +508,13 @@ void testDefaults(const std::vector<SettingCase> &cases) {
 
   for (const auto &setting : cases) {
     checkValue(setting, loadValue(setting.type), setting.default_value, "default");
-    checkStoredType(setting, "default");
+    if (setting.type == Settings::COMPANION_PASSWORD) {
+      const auto &entry = Settings::get(setting.type);
+      check(nvs_test_value_type(entry.nvs_namespace, entry.key) == NVS_TEST_INVALID,
+            "password default stays absent rather than overwriting storage errors");
+    } else {
+      checkStoredType(setting, "default");
+    }
   }
 }
 
@@ -570,6 +576,53 @@ void testUnknownAndAliasedKeysAreIgnored() {
         "unknown legacy key remains isolated in the mock store");
   check(nvs_test_value_type("furble", "brightness") == NVS_TEST_U8,
         "wrong-namespace key remains isolated in the mock store");
+}
+
+void testPasswordLoadBoundary() {
+  const auto &setting = Settings::get(Settings::COMPANION_PASSWORD);
+  std::string password = "sentinel";
+
+  nvs_test_reset();
+  Settings::init();
+  check(Settings::loadPassword(password), "missing companion password is a valid unset value");
+  check(password.empty(), "missing companion password loads as empty");
+
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "");
+  password = "sentinel";
+  check(Settings::loadPassword(password), "explicit empty companion password loads successfully");
+  check(password.empty(), "explicit empty companion password remains empty");
+
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "persisted password");
+  password.clear();
+  check(Settings::loadPassword(password), "saved companion password loads successfully");
+  check(password == "persisted password", "saved companion password is preserved");
+
+  nvs_test_reset();
+  Furble::Preferences preferences;
+  check(preferences.begin(setting.nvs_namespace, false),
+        "opened password namespace for type fault");
+  check(preferences.put<uint8_t>(setting.key, 7) == 1, "stored a wrong password NVS type");
+  preferences.end();
+  Settings::init();
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "wrong password NVS type is a load error");
+  check(password.empty(), "wrong password NVS type does not return a credential");
+  check(nvs_test_value_type(setting.nvs_namespace, setting.key) == NVS_TEST_U8,
+        "password type fault is not erased by Settings::init");
+
+  nvs_test_reset();
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "size-stage password");
+  nvs_test_fail_get_str_length_on(1);
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "password size-stage NVS error is reported");
+  check(password.empty(), "password size-stage error does not return a credential");
+
+  nvs_test_reset();
+  Settings::save<std::string>(Settings::COMPANION_PASSWORD, "data-stage password");
+  nvs_test_fail_get_str_data_on(1);
+  password = "sentinel";
+  check(!Settings::loadPassword(password), "password data-stage NVS error is reported");
+  check(password.empty(), "password data-stage error does not return a credential");
 }
 
 // A remembered multi-connect entry is keyed on the camera's displayed name.
@@ -673,6 +726,7 @@ int main() {
   testDefaults(cases);
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
+  testPasswordLoadBoundary();
   testUnknownAndAliasedKeysAreIgnored();
   testMultiselectDiscriminatesLongNames();
   testMultiselectLegacyRecordUpgrades();

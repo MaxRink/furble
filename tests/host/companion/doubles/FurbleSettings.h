@@ -96,6 +96,13 @@ class Settings {
   static bool appliesImmediately(type_t type);
   static bool isDangerous(type_t type);
 
+  static bool loadPassword(std::string &value) {
+    value = load<std::string>(COMPANION_PASSWORD);
+    return passwordLoadSucceeds();
+  }
+
+  static void setPasswordLoadResult(bool succeeds) { passwordLoadSucceeds() = succeeds; }
+
   template <type_t S>
   struct storage_type;
 
@@ -126,6 +133,11 @@ class Settings {
   static void setU8(type_t type, uint8_t value) { save<uint8_t>(type, value); }
 
  private:
+  static bool &passwordLoadSucceeds(void) {
+    static bool succeeds = true;
+    return succeeds;
+  }
+
   template <typename T>
   static std::unordered_map<type_t, T> &typedValues(void) {
     static std::unordered_map<type_t, T> values;

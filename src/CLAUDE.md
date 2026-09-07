@@ -73,6 +73,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   across a transport virtual call because production GATT takes its own mutex.
   A zero-duration timed trigger releases inline because `handleTrigger()`
   already owns the service mutex.
+- Companion credentials use the checked
+  `Settings::loadPassword()` path: missing is unset, storage errors deny access.
+  Never seed an empty password after an unsuccessful NVS existence check.
+  Password console commands verify persistence and reload the live gate.
+  The application gate rejects writes with a framed Auth result indication,
+  not a custom ATT return from NimBLE's void write callback.
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a
