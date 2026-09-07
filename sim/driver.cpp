@@ -31,8 +31,8 @@
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
-#include "FurbleSD.h"
 #include "FurblePlatform.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
 
 #include "FurbleTypes.h"
@@ -351,7 +351,8 @@ void validateSeed(const std::string &name, const std::string &value) {
       "imu_trigger",
       "ivl_sleep",
       "timed_wake",
-      "timed_poweroff_fail", "timed_wake_write_fail",
+      "timed_poweroff_fail",
+      "timed_wake_write_fail",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -399,9 +400,9 @@ void validateSeed(const std::string &name, const std::string &value) {
     }
     return;
   } else if (name == "resume_fixture") {
-    if (value != "invalid" && value != "stale" && value != "completed"
-        && value != "outofrange" && value != "mismatched" && value != "early"
-        && value != "late" && value != "wrong_camera" && value != "second_camera") {
+    if (value != "invalid" && value != "stale" && value != "completed" && value != "outofrange"
+        && value != "mismatched" && value != "early" && value != "late" && value != "wrong_camera"
+        && value != "second_camera") {
       std::cerr << "Invalid resume_fixture: " << value << '\n';
       std::exit(2);
     }
@@ -983,12 +984,12 @@ const char *controlStateName(Control::state_t state) {
 // Report a boolean setting as "1" or "0" so scenarios can assert persistence.
 std::string settingBoolValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> booleans = {
-      {"fauxny",        Settings::FAUXNY       },
-      {"autoconnect",   Settings::AUTOCONNECT  },
-      {"reconnect",     Settings::RECONNECT    },
-      {"multiconnect",  Settings::MULTICONNECT },
-      {"companion",     Settings::COMPANION    },
-      {"ivl_sleep",     Settings::IVL_SLEEP     },
+      {"fauxny",            Settings::FAUXNY           },
+      {"autoconnect",       Settings::AUTOCONNECT      },
+      {"reconnect",         Settings::RECONNECT        },
+      {"multiconnect",      Settings::MULTICONNECT     },
+      {"companion",         Settings::COMPANION        },
+      {"ivl_sleep",         Settings::IVL_SLEEP        },
 #if defined(FURBLE_M5STICKS3)
       {"watchdog",          Settings::WATCHDOG         },
 #endif
@@ -1238,7 +1239,8 @@ std::string queryValue(const std::string &key) {
     }
     if (sub == "target_camera") {
       const auto targets = control.getTargets();
-      if (targets.empty() || targets.front() == nullptr || targets.front()->getCamera() == nullptr) {
+      if (targets.empty() || targets.front() == nullptr
+          || targets.front()->getCamera() == nullptr) {
         return "";
       }
       std::string name = targets.front()->getCamera()->getName();

@@ -1128,7 +1128,7 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"stale-session-reconnect",          scenarioStaleSessionReconnect       },
       {"false-connected-guard",            scenarioFalseConnectedGuard         },
       {"transient-connect-recovers",       scenarioTransientConnectRecovers    },
-      {"scoped-bounded-retry-gap",         scenarioScopedBoundedRetryGap      },
+      {"scoped-bounded-retry-gap",         scenarioScopedBoundedRetryGap       },
       {"client-pool-exhaustion",           scenarioClientPoolExhaustion        },
       {"multi-connect-fujifilm",           scenarioMultiConnectFujifilm        },
       {"reconnect-shutter-drop",           scenarioReconnectShutterDrop        },

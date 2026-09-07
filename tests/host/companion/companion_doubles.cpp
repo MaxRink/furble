@@ -57,7 +57,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::NTP_SERVER,         {Settings::NTP_SERVER, 55, "NTP Server", "ntp_server", "furble"}       },
     {Settings::IVL_SLEEP,          {Settings::IVL_SLEEP, 75, "Deep Sleep", "ivl_sleep", "furble"}         },
     {Settings::IVL_SLEEP_THR,
-     {Settings::IVL_SLEEP_THR, 76, "Sleep Threshold", "ivl_sleep_thr", "furble"}                         },
+     {Settings::IVL_SLEEP_THR, 76, "Sleep Threshold", "ivl_sleep_thr", "furble"}                          },
 };
 
 struct BatteryState {

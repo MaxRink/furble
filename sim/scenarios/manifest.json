@@ -552,6 +552,29 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/timer-overflow-no-timed-wake.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/timer-overflow-timed-wake.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/timer-page-large-text.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -589,6 +612,243 @@
       ],
       "expected_exit": 0,
       "certified": true
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-completed.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-disabled.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-early.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-fallback.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-invalid.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-late.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-mismatched.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-missing.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-outofrange.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-persistence-failure.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-resume.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-stable-id.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-stale.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-start.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-unsupported.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-wrong-camera.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-wrong-wake.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
     },
     {
       "path": "sim/scenarios/e2e/action-whitespace-aliases.txt",
