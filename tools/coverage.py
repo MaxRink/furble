@@ -557,6 +557,135 @@ def run(command, *, cwd=None, env=None, check=True, capture=False):
   return result
 
 
+def run_streamed(command, *, env=None) -> tuple[int, str]:
+  """Run a command, echo its output line by line, and return it as well.
+
+  ctest under --parallel takes minutes, so its progress has to stay live. The
+  output is also the only place ctest says why a test failed, and
+  crashed_host_tests() needs that, so keep a copy rather than swallowing it.
+  """
+
+  merged = dict(os.environ)
+  if env:
+    merged.update(env)
+  printable = " ".join(str(part) for part in command)
+  print(f"+ {printable}", flush=True)
+  process = subprocess.Popen(
+      [str(part) for part in command],
+      env=merged,
+      text=True,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+  )
+  lines: list[str] = []
+  assert process.stdout is not None
+  for line in process.stdout:
+    print(line, end="", flush=True)
+    lines.append(line)
+  return process.wait(), "".join(lines)
+
+
+# ctest ends a failing run with the block this matches:
+#
+#   The following tests FAILED:
+#            61 - console-commands (SEGFAULT)
+CTEST_FAILURE_HEADER = "The following tests FAILED:"
+CTEST_FAILURE_LINE = re.compile(r"^\s*\d+\s+-\s+(?P<name>\S+)\s+\((?P<reason>[^)]+)\)\s*$")
+
+# The one reason that means the test process ran to its own exit. Everything
+# else is a signal death, a timeout kill or a test that never started.
+CTEST_COMPLETED_REASON = "Failed"
+
+
+def crashed_host_tests(ctest_output: str) -> list[str]:
+  """Return the host tests that did not run to completion, named.
+
+  A test that exits non-zero flushed its profile on the way out, so the run is
+  a red suite with a sound measurement. A test killed by a signal or a timeout
+  did not: the profile runtime writes at exit, so a killed binary contributes
+  no profile or a truncated one, exactly the way a killed simulator scenario
+  does (see incomplete_scenarios()).
+
+  Either way the run fails, because ctest exiting non-zero already fails it.
+  What this adds is the name and the reason. Issue #275 was a segfault that
+  only appeared under instrumentation, roughly one coverage run in two, and the
+  run reported it as `command failed with exit 8` with no test named: the
+  crash was indistinguishable from an ordinary assertion failure in a suite of
+  93.
+  """
+
+  # ctest runs with --output-on-failure, so a failing test's own stdout is
+  # echoed into this text and can hold anything, the header line included. Match
+  # the header as a whole line, and take the last one: ctest prints the real
+  # block after every test has run, so nothing follows it but that block.
+  lines = ctest_output.splitlines()
+  header = None
+  for index, line in enumerate(lines):
+    if line.strip() == CTEST_FAILURE_HEADER:
+      header = index
+  if header is None:
+    return []
+
+  crashed: list[str] = []
+  for line in lines[header + 1:]:
+    match = CTEST_FAILURE_LINE.match(line)
+    if match is None:
+      continue
+    reason = match.group("reason").strip()
+    if reason == CTEST_COMPLETED_REASON:
+      continue
+    crashed.append(
+        f"{match.group('name')}: {reason}, so it wrote no usable profile"
+    )
+  return crashed
+
+
+def lost_test_profiles(profile_dir: Path, tests: list[str]) -> list[str]:
+  """Return the tests whose raw profile is missing or empty, named.
+
+  tests/host/CMakeLists.txt names every test's raw profile <test>.<pid>.profraw,
+  so this is a direct per-test check. It catches the failure llvm-profdata will
+  not: a 0 byte .profraw merges with exit 0 and simply contributes nothing. The
+  dot matters: bt-debug-journal is a hyphenated prefix of
+  bt-debug-journal-s3-psram, so a hyphen would let the longer name's profile
+  stand in for a shorter name that wrote nothing.
+
+  Issue #277: control_disconnect_test and control_reclaim_uaf_test ended in
+  std::_Exit(), which skips atexit and so skips __llvm_profile_write_file. Both
+  wrote an empty profile on every run, both measured nothing, and the report
+  looked perfectly healthy. A test that forks writes one profile per process,
+  so a test counts as lost only when every profile it wrote is empty.
+  """
+
+  lost: list[str] = []
+  for name in sorted(tests):
+    raws = list(profile_dir.glob(f"{name}.*.profraw"))
+    if not raws:
+      lost.append(f"{name}: wrote no raw profile")
+    elif all(raw.stat().st_size == 0 for raw in raws):
+      lost.append(f"{name}: wrote an empty raw profile")
+  return lost
+
+
+def ctest_manifest(build_dir: Path) -> dict:
+  """Return the test manifest ctest would run, as ctest itself reports it."""
+
+  result = run(
+      ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
+      capture=True,
+  )
+  return json.loads(result.stdout)
+
+
+def ctest_test_names(build_dir: Path) -> list[str]:
+  """Return the names of the tests ctest would run."""
+
+  return [
+      test["name"] for test in ctest_manifest(build_dir).get("tests", [])
+      if "name" in test
+  ]
+
+
 def export_lcov(llvm_cov: str, profdata: Path, binaries, root: Path) -> dict:
   """Export one lcov report per binary and union them.
 
@@ -612,11 +741,7 @@ def merge_profiles(llvm_profdata: str, profile_dir: Path, output: Path) -> None:
 def ctest_binaries(build_dir: Path) -> list[Path]:
   """Return the distinct test executables ctest would run."""
 
-  result = run(
-      ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
-      capture=True,
-  )
-  document = json.loads(result.stdout)
+  document = ctest_manifest(build_dir)
   binaries: list[Path] = []
   seen: set[str] = set()
   for test in document.get("tests", []):
@@ -639,21 +764,26 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
   profile_dir = args.build_dir / "profiles" / "host"
   if not args.skip_build:
     shutil.rmtree(profile_dir, ignore_errors=True)
-    run([
-        "cmake",
-        "-S",
-        str(root / "tests/host"),
-        "-B",
-        str(build_dir),
-        "-DFURBLE_COVERAGE=ON",
-        f"-DCMAKE_C_COMPILER={args.cc}",
-        f"-DCMAKE_CXX_COMPILER={args.cxx}",
-    ])
+  # Configure even when the build is skipped. FURBLE_PROFILE_DIR is what makes
+  # each test write a profile named after itself, and lost_test_profiles() below
+  # reads nothing else. Configuring builds nothing, it only refreshes the cache.
+  run([
+      "cmake",
+      "-S",
+      str(root / "tests/host"),
+      "-B",
+      str(build_dir),
+      "-DFURBLE_COVERAGE=ON",
+      f"-DFURBLE_PROFILE_DIR={profile_dir}",
+      f"-DCMAKE_C_COMPILER={args.cc}",
+      f"-DCMAKE_CXX_COMPILER={args.cxx}",
+  ])
+  if not args.skip_build:
     run([
         "cmake", "--build", str(build_dir), "--parallel", str(args.jobs)
     ])
   profile_dir.mkdir(parents=True, exist_ok=True)
-  run(
+  code, output = run_streamed(
       [
           "ctest",
           "--test-dir",
@@ -664,6 +794,21 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
       ],
       env={"LLVM_PROFILE_FILE": str(profile_dir / "host-%p-%m.profraw")},
   )
+  if code != 0:
+    crashed = crashed_host_tests(output)
+    detail = ""
+    if crashed:
+      detail = (
+          f"\n{len(crashed)} test(s) did not run to completion:\n- "
+          + "\n- ".join(crashed)
+      )
+    raise CoverageError(f"the host suite failed: ctest exited {code}{detail}")
+  lost = lost_test_profiles(profile_dir, ctest_test_names(build_dir))
+  if lost:
+    raise CoverageError(
+        f"{len(lost)} host test(s) measured nothing, so the report would be "
+        "silently short:\n- " + "\n- ".join(lost)
+    )
   profdata = args.build_dir / "host.profdata"
   merge_profiles(llvm_profdata, profile_dir, profdata)
   return export_lcov(llvm_cov, profdata, ctest_binaries(build_dir), root)

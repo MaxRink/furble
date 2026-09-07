@@ -1,0 +1,24 @@
+# A board with no hardware engine falls back to the software backend, even when
+# the user explicitly asked for Hardware.
+#
+# Asking for something the board cannot do must degrade, never disable motion
+# detection. Seed a board with no engine the firmware knows and confirm the
+# software backend armed and still reports state.
+#
+# Teeth: make arm() return false instead of falling back when no chip backend
+# arms. The backend reads none and the state assert fails too.
+seed fauxny true
+seed imu true
+seed imu_chip none
+seed hw_motion 2
+wait 300
+assert ui.motion_backend software
+assert ui.motion_state moving
+# The software backend polls. It never claims a wake source it does not have.
+assert ui.motion_wake no
+
+# The fallback is a real detector, not a stub: it still reaches stationary.
+action imu.accel 0 0 1
+advance 61000
+assert ui.motion_state stationary
+exit

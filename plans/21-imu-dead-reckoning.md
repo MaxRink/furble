@@ -345,6 +345,247 @@ Camera checks, Fujifilm only, the only hardware available:
 Battery impact: none expected. This PR adds no sensor polling and no extra BLE
 traffic. State that in the PR body rather than running a drain test.
 
+## Implementation state
+
+Implemented:
+
+- `GPS_HOLD`, key `gps_hold`, wire id 67, default `0`. A five-position roller:
+  off, 30 s, 2 min, 10 min, 60 min. While a wired or companion fix is lost, the
+  last one keeps reaching the camera for the selected window and then stops.
+- `GPS_EXTRAP`, key `gps_extrap`, wire id 68, default `false`. While a fix is
+  held, the position is projected along the last measured course and speed. The
+  switch is greyed out until fix hold is set, because it has nothing to project
+  without a held fix.
+- Both ids come from the reservation table in issue #280, which this PR adds to
+  `include/CLAUDE.md`. The golden corpus was regenerated for 67 and 68.
+- Both ids also need a row in `SETTING_SCHEMAS` in
+  `lib/furble/protocol/ProvisionTLV.cpp`, the dependency-free mirror of the
+  settings table. Without one, `schemaForSetting()` returns nullptr and a
+  provisioning bundle carrying the setting is rejected as
+  `UNSUPPORTED_SETTING` before any domain rule runs. Nothing in the settings
+  table knows the mirror exists, so `provision_apply_test`
+  `testEverySettingHasASchemaRow` now walks every nonzero wire id and requires a
+  row. Wire ids 43 (`AUTO_OFF_CHARGING`) and 46 (`IMU`) are already missing on
+  master; they are named as a known gap in that test rather than registered
+  here, because that changes the provisioning surface for settings this PR did
+  not add. This was review finding 8.
+- The hold and dead reckoning arithmetic lives in `include/FurbleGPSHold.h`,
+  free of FreeRTOS, LVGL, NVS and the camera headers, so the host test pins the
+  exact production behaviour. It follows the `include/FurbleGPSPowerCycle.h`
+  precedent. `GPS::update()` is now the state machine and nothing else.
+- A held fix advances its UTC. A camera stamps the photo with the time it is
+  handed, so a repeated timestamp would date every later photo to the moment the
+  fix was lost. newlib has no `timegm`, so the conversion is days-from-civil
+  plus `gmtime_r`.
+- The fix cache is anchored on when the receiver produced the fix, not on when
+  `update()` noticed it: `now_tick - status.time_age` for the wired path and
+  `now_tick - (external.age_ms + elapsed_ms)` for the companion. A fix is only
+  declared stale after the whole freshness window, so anchoring on `now_tick`
+  would silently drop up to 30 s from every held timestamp and from every
+  projected distance. This was review finding 1.
+- The longitude normalisation is a remainder, not a loop. Removing the pole
+  guard while testing turned the old `while` loops into a hang rather than a
+  wrong answer, because near a pole the longitude step is divided by a
+  vanishing cosine. A single `fmod` is bounded and is one line shorter.
+- Extrapolation requires a valid course and speed at 2 m/s or more, so a
+  stationary user is never moved. Two clocks drive it and they are not the same.
+  The distance is integrated from the fix time, because that is when the user
+  was last actually at that position. The horizon is measured from when the fix
+  was declared stale, because that is what "stop trusting the projection after
+  30 s" means; measuring the horizon from the fix time instead would exhaust it
+  during the freshness window and the feature would never project anything. Past
+  the horizon the projection freezes where it reached rather than being
+  abandoned, which keeps the geotag stream monotonic instead of jumping hundreds
+  of metres back to the measured point.
+- The hold window is measured from the moment the fix is declared stale, which
+  is `MAX_AGE_MS` after the receiver's last good reading. A 30 s hold can
+  therefore hand the camera a position up to a minute old. Starting the window
+  at the fix time instead would make the shortest setting expire before it ever
+  engaged, so it is documented in `docs/settings-and-controls.md` rather than
+  changed. The timestamp sent alongside counts the whole elapsed time, so the
+  camera is never told a held fix is fresher than it is.
+- The GPS Data page gained one row: `fix: live`, `fix: held, Ns left`, or
+  `fix: searching`. It is hidden while fix hold is off, so a default build
+  renders the page exactly as master does.
+- The status icon shows the searching glyph for a held fix, alongside the
+  existing companion and degraded cases.
+- `gps` on the console reports `fix_state`, `hold` and `hold_remaining`. The GPS
+  Data page is not reachable from a bench script, so without these the hold
+  state had no scriptable surface at all.
+
+Fixed while harvesting, each a real defect in the branch as it arrived:
+
+- The rebase left `src/FurbleConsole.cpp` with a duplicated `||` chain and
+  `src/FurbleGPS.cpp` with two accessors pasted inside the body of
+  `GPS::processSerial`. Neither compiled.
+- `printValue` was missing `GPS_HOLD`, so `settings get gps_hold` printed
+  `<unsupported type>`.
+- `appliesWhen` was missing `GPS_EXTRAP`, so it claimed a reboot was needed when
+  the console already queued a live reload.
+- `reloadProvisionSetting` was missing both, so a provisioned value only took
+  effect after a reboot.
+- A held fix was being written into the GPX track. The camera geotag wants the
+  last known position, but a track log is a record of where the user was, and an
+  hour of frozen or projected points is indistinguishable from measured ones.
+  Only a live fix is logged now. This also removes the `altitudeValid` question,
+  because a held point was carrying a false altitude flag. The host `SD` shim counts the points the firmware
+  queues, exposed as `gpx.points`, so the split is asserted rather than assumed.
+  This was review finding 3.
+- `clearExternalFix` left the cache intact, so tearing down the companion could
+  keep replaying its last position for up to an hour. The cache is now dropped,
+  through an atomic flag consumed by `update()`, because the cache belongs to
+  the `update()` caller and `clearExternalFix` runs on the companion task.
+- Six `-Werror=switch` sites had to gain both settings: `src/FurbleSD.cpp`
+  (serialize and import), `src/FurbleProvision.cpp` (runtime type and range
+  check), `src/FurbleSettings.cpp` (`appliesImmediately` and `isDangerous`), and
+  the host doubles. This is the "five places" trap from
+  `plans/95-engineering-lessons.md`, and there are more than five.
+
+Simulator work, and one shared fix it needed:
+
+- TinyGPSPlus ages every reading against a global `millis()`. Its non-Arduino
+  fallback reads the host wall clock, so a scenario that advanced an hour of
+  virtual time still saw a fix that had aged by the few seconds the run took,
+  and nothing that depends on fix age could be tested or reproduced at all.
+  `__AVR__` guards exactly one thing in `TinyGPS++.cpp`, that fallback, so the
+  simulator now builds that one translation unit with it defined and supplies
+  the virtual clock from `sim/clock.cpp`. This is what makes fix age, and
+  therefore fix hold, testable. It should also make the `gps.png` capture
+  reproducible, which `sim/CLAUDE.md` records as an exception; that claim is not
+  made here because it was not measured.
+- New seeds `gps_hold`, `gps_extrap` and `gps_stationary`. The last one selects
+  a second canned NMEA track at 0.412 knots, which is below the motion floor.
+- New query keys `ui.gps_fix_state` and `ui.gps_hold_remaining`, read back from
+  the rendered row, and `camera.geo_count`, `camera.geo_lat_e5`,
+  `camera.geo_lon_e5`, `camera.geo_utc_s`, which report the geotag that actually
+  reached the simulated camera through the production path. Fix hold exists so
+  those keep arriving after the fix is lost, so that is where the scenarios
+  assert rather than inferring from the page.
+- New `nav gps_hold` / `page gps_hold` route and `ui.page gps_hold` identity, so
+  the roller page joins `page-matrix.txt` and `overflow-sweep.txt`.
+
+Deviations:
+
+- No `GPS_MOTION` setting or motion source exists yet, from PR #65 or PR #48.
+  Stationary-aware hold is therefore inactive, and the reported speed is the
+  only evidence of motion available. No stationary state is guessed.
+- Companion-sourced live fixes keep the existing searching icon. A held fix uses
+  the same glyph, so the icon does not distinguish the two.
+- Requirement (c) asks for a byte-identical GPS Data page render against master.
+  That is not achievable as a PNG comparison: the page renders the TinyGPSPlus
+  fix age, and the capture was already documented as non-reproducible for that
+  reason. The virtual `millis()` fix above may have closed it, but it was not
+  measured. The equivalent used instead is a query-level comparison against a
+  simulator built from `fork/master` 6245a301 with the same script, covering
+  `ui.visible_objects` (10 on both), `ui.gps_speed`, `ui.gps_lat`, `ui.gps_lon`,
+  `ui.gps_satellites`, `ui.gps_fix`, `ui.gps_source` and `ui.overflow`. The
+  object count is the guard that catches the new row leaking into a default
+  build.
+
+## Simulator coverage
+
+Certified scenarios, all in `sim/scenarios/manifest.json`:
+
+| Scenario | Suite | Boards | Covers |
+| --- | --- | --- | --- |
+| `e2e/gps-hold-bound.txt` | e2e | s3 | (a) the bound, the advancing held UTC reaching the camera, the searching state |
+| `e2e/gps-hold-extrapolate.txt` | e2e | s3 | (b) the projection and its horizon cut-off |
+| `e2e/gps-hold-stationary.txt` | e2e | s3 | (b) a stationary track is never projected |
+| `e2e/gps-hold-default-off.txt` | e2e | s3 | (c) defaults off leaves the page and the camera stream unchanged |
+| `bughunt/gps-hold-rows-{small,normal,large}-{touch,buttons}.txt` | bughunt | all three | (d) both rows render on every panel, layout and text size |
+
+Console `settings get` and `settings set` for both settings, and the three new
+`gps` status lines, are covered by `tests/host/console_commands_test.cpp`, which
+drives the real console against the real settings store. That is (e); the
+console is not reachable from a simulator scenario.
+
+Every assertion has a recorded killing mutation. Each was applied, the scenario
+or test was run, and the named check failed:
+
+Observed values below are bounds, not literals. Staleness is detected on an
+update tick, so the measured freshness window is 30 to 31 s and every quantity
+derived from it moves by one service period between runs. Each mutation is
+recorded by the assertion that fires, which is a floor or a ceiling.
+
+| Mutation | Fails |
+| --- | --- |
+| `gpsHoldInBound` always true, the bound removed | `gps-hold-bound.txt` reports `held` where it must report `searching`, and `gps_hold_test` `testBoundIsInclusive` |
+| the held UTC frozen, `gpsAdvanceUtc` skipped | `gps-hold-bound.txt` at the `camera.geo_utc_s` floor of 45345, which reads the fix's own 45319 |
+| the held fix computed but never sent | `gps-hold-bound.txt`, same floor, same value |
+| the fix cache anchored on `now_tick` instead of the fix time | `gps-hold-bound.txt` and `gps-hold-extrapolate.txt`, both `camera.geo_utc_s` floors, and the first projected `camera.geo_lat_e5` floor |
+| a wire id with no `SETTING_SCHEMAS` row | `provision_apply_test` `testDomainValidation` reports a missing schema row instead of the setting's own rule, and `testEverySettingHasASchemaRow` names the id |
+| extrapolation never applied | `gps-hold-extrapolate.txt` at the first `camera.geo_lat_e5` floor of 4812050 |
+| the horizon clamp removed from `gpsExtrapolateElapsedMs` | `gps-hold-extrapolate.txt` at the frozen `camera.geo_lat_e5` ceiling of 4812375, and `gps_hold_test` `testHorizonFreezes` |
+| the two new schema rows removed from `SETTING_SCHEMAS` | `provision_apply_test`, four checks across the two tests |
+| the 2 m/s motion floor removed | `gps-hold-stationary.txt` at `camera.geo_lat_e5 4811730`, and `gps_hold_test` `testStationaryIsNotMoved` |
+| the `fix == Fix::LIVE` guard dropped, so held fixes reach GPX | `gps-hold-bound.txt` and `gps-hold-extrapolate.txt` at `gpx.points 1`, which climb into double figures |
+| the Extrapolate switch never greyed out | `gps-hold-default-off.txt` at `ui.gps_extrap_enabled no` |
+| the fix row rendered unconditionally | `gps-hold-default-off.txt` at `ui.gps_fix_state hidden` and `ui.visible_objects 10` |
+| `GPS_HOLD` defaulted to anything but 0 | `gps-hold-default-off.txt` at `ui.gps_fix_state hidden` |
+| either row given a fixed width instead of wrapping | the six `gps-hold-rows-*` files at `ui.overflow no` |
+| the Fix Hold page dropped from the `ui.page` identity map | the six `gps-hold-rows-*` files at `ui.page gps_hold` |
+| `gpsHoldRemainingMs` saturation removed | `gps_hold_test` `testRemainingSaturates` |
+| `localtime_r` instead of `gmtime_r` | `gps_hold_test` `testUtcRollovers`, outside UTC |
+| the days-from-civil leap year term dropped | `gps_hold_test` `testUtcRollovers` on 2024 and 2100 |
+| `gpsAdvanceUtc` input validation dropped | `gps_hold_test` `testUtcRejectsGarbage` |
+| sin and cos swapped in `gpsExtrapolate` | `gps_hold_test` `testCourseIntegration` |
+| the pole guard dropped | `gps_hold_test` `testPoleIsRejected` |
+| `printValue` left without `GPS_HOLD` | `console_commands_test`, `settings get gps_hold` prints `<unsupported type>` |
+| the `gps` status hold lines removed | `console_commands_test` at `fix_state: held` |
+
+Pre-existing findings, recorded rather than fixed here, both confirmed against a
+simulator built from `fork/master` 6245a301:
+
+- Floating navigation indicators overlap the GPS settings page on the 80x160
+  M5StickC at every text size, on master too. The 320x240 M5Stack Core never
+  overlaps.
+- Every GPS roller page (`gps_rate`, `gps_assist`, and now `gps_hold`) overlaps
+  the indicator on the 80x160 panel at every text size, and on the 135x240 panel
+  at the Large text size. All three share `addGPSOptionMenu`.
+
+Both are recorded as `xassert board-varies ui.indicator_clearance clear` in the
+button-layout row scenarios, so the panels that are correct today are guarded
+and the gap is on record. Promote them in the PR that fixes the shared roller
+layout.
+
+## Verification
+
+- `tests/host`, all 95 tests pass.
+- `tests/protocol` conformance passes with the regenerated corpus.
+- `tools/check_sim_scenarios.py` reports a complete manifest.
+- `sim/scripts/check-doc-tokens.sh` passes.
+- The certified e2e suite on the M5StickS3, and the certified bughunt suite on
+  all three panels, pass.
+- The seeded UI fuzzer passes on one panel.
+- clang-format 21 clean, no em-dashes, no sdkconfig changes.
+- `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug` builds in the
+  OrbStack VM.
+
+## Hardware gate
+
+None of this has been run. It is the gate the feature actually turns on, and
+steps 5, 6, 12, 13 and 14 are the ones that check the behaviours the simulator
+can only model. M5StickS3 with the GPS/BDS Unit v1.1 and the X100VI.
+
+1. Flash `m5stick-s3-debug`, attach the GPS/BDS Unit v1.1, open the USB console.
+2. `gps on`, then `gps` until `fix_state: live` and `source: uart`. Confirm `hold: 0` and `hold_remaining: 0`.
+3. `settings set gps_hold 2`, `settings get gps_hold` reads back 2, `gps` reports `hold: 120000`.
+4. Connect the X100VI, confirm a geotag write in the log (`updateGeoData`), and take a frame outdoors. Note the EXIF position and time from the card.
+5. Walk indoors or into a garage. Poll `gps` once a second and record the moment `fix_state` goes `live` to `held`. Measure it against the last NMEA sentence: this is finding 5, expect roughly 30 s of freshness before the hold clock even starts.
+6. While held, log `timesync_t` every 10 s from the geotag path and compare with a phone clock. This is finding 1. Expect the held stamp to run consistently late by the age the fix had when the hold engaged.
+7. Take a frame while held. Confirm the EXIF position is the last measured one and note how far the EXIF time is from the real time.
+8. Watch `hold_remaining` count down and confirm it reaches `fix_state: none` within a second or so of 120 s from the transition in step 5, and that the status icon goes to the disabled glyph.
+9. Take a frame after expiry. Confirm no new position is written and the camera link is otherwise unaffected.
+10. Walk back outside. Confirm `fix_state` returns to `live` on the first fresh fix, the icon returns to `my_location`, and the next frame carries a live position and a correct time.
+11. Repeat 4 to 10 with `settings set gps_hold 0`. Behaviour must be indistinguishable from master.
+12. With `SD_GPX` on, do one held run and pull the `.gpx`. Confirm the track has no points across the held window and resumes on the first live fix. This is the behaviour finding 3 says nothing tests.
+13. `settings set gps_hold 1`, `settings set gps_extrap on`. Cycle or drive a straight line at steady speed, cut the receiver, and log the projected track for 60 s. Record the error against the first real fix on restore at 10, 20 and 30 s, and confirm the position stops moving at the horizon. Plan 21 says to drop tier 3 if that error is worse than plain hold; that decision is still open.
+14. Open the GPS settings page with `gps_hold` at 0 and confirm the `Extrapolate` switch is both greyed and genuinely not togglable on the button layout, then set Fix Hold and confirm it becomes live without a reboot. This is finding 7.
+15. Battery: the body claims no impact. One 30 minute held run beside one 30 minute live run, comparing the runtime estimate, is enough to say that rather than reason it.
+
+Every other vendor is code review plus FauxNY, as usual. The change is vendor
+neutral: it feeds the same `Control::updateGPS` every vendor already consumes.
+
 ## References
 
 All links checked.

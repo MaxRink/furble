@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurbleGPSHold.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -202,6 +203,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_PLATFORM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::TEXT_SIZE:
@@ -212,6 +215,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -232,9 +237,13 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       value = Settings::load<std::string>(setting.type);
       return true;
 
+    case Settings::COMPANION_PASSWORD:
+      return false;
+
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -251,6 +260,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -353,9 +363,37 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::GPS_HOLD:
+      if (!parseUnsigned(text, GPS_HOLD_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::GPS_PLATFORM:
+      if (!parseUnsigned(text, 4, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::HW_MOTION:
+      if (!parseUnsigned(text, Settings::HW_MOTION_HARDWARE, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
       if (!parseUnsigned(text, UINT8_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::IMU_WAKE:
+      if (!parseUnsigned(text, 3, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -445,9 +483,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<std::string>(setting.type, text);
       return true;
 
+    case Settings::COMPANION_PASSWORD:
+      return false;
+
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -464,6 +506,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -515,7 +558,17 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::MULTISELECT:
     {
       Settings::multiselect_t selection = {};
-      if (!decodeSizedHex(text, &selection, sizeof(selection)) || !validMultiselect(selection)) {
+      if (!decodeSizedHex(text, &selection, sizeof(selection))) {
+        // A backup exported before MULTISELECT_NAME_MAX widened carries the old
+        // record size. It is still valid data, so widen it rather than failing
+        // the whole restore.
+        Settings::multiselect_legacy_t legacy = {};
+        if (!decodeSizedHex(text, &legacy, sizeof(legacy))) {
+          return false;
+        }
+        selection = Settings::multiselectFromLegacy(legacy);
+      }
+      if (!validMultiselect(selection)) {
         return false;
       }
       Settings::save<Settings::multiselect_t>(setting.type, selection);

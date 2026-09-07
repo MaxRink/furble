@@ -18,8 +18,13 @@ using Furble::CameraListProtocol::addressKey;
 using Furble::CameraListProtocol::decodeIndex;
 using Furble::CameraListProtocol::encodeIndex;
 using Furble::CameraListProtocol::INDEX_ENTRY_BYTES;
+using Furble::CameraListProtocol::INDEX_HEADER;
+using Furble::CameraListProtocol::INDEX_HEADER_BYTES;
+using Furble::CameraListProtocol::INDEX_ID_INVALID;
+using Furble::CameraListProtocol::INDEX_LEGACY_ENTRY_BYTES;
 using Furble::CameraListProtocol::INDEX_NAME_BYTES;
 using Furble::CameraListProtocol::IndexEntry;
+using Furble::CameraListProtocol::sameSavedIdentity;
 using Furble::CameraListProtocol::upsertIndex;
 
 namespace {
@@ -35,16 +40,31 @@ void check(bool condition, const char *message) {
 
 // Build an entry with a padded name and a type code. The name is copied into
 // the fixed width field the same way the production code stores it.
-IndexEntry makeEntry(const std::string &name, uint32_t type) {
+IndexEntry makeEntry(const std::string &name, uint32_t type, uint8_t camera_id = 0) {
   IndexEntry entry = {};
   std::memset(entry.name, 0, INDEX_NAME_BYTES);
   std::memcpy(entry.name, name.data(), std::min(name.size(), INDEX_NAME_BYTES));
   entry.type = type;
+  entry.camera_id = camera_id;
   return entry;
 }
 
 bool sameEntry(const IndexEntry &a, const IndexEntry &b) {
-  return std::memcmp(a.name, b.name, INDEX_NAME_BYTES) == 0 && a.type == b.type;
+  return std::memcmp(a.name, b.name, INDEX_NAME_BYTES) == 0 && a.type == b.type
+         && a.camera_id == b.camera_id;
+}
+
+// A v1 blob: bare records of name and little endian type, with no header.
+std::vector<uint8_t> encodeLegacy(const std::vector<IndexEntry> &entries) {
+  std::vector<uint8_t> bytes(entries.size() * INDEX_LEGACY_ENTRY_BYTES, 0x00);
+  for (size_t i = 0; i < entries.size(); i++) {
+    uint8_t *record = bytes.data() + i * INDEX_LEGACY_ENTRY_BYTES;
+    std::memcpy(record, entries[i].name, INDEX_NAME_BYTES);
+    for (size_t b = 0; b < sizeof(uint32_t); b++) {
+      record[INDEX_NAME_BYTES + b] = static_cast<uint8_t>(entries[i].type >> (8 * b));
+    }
+  }
+  return bytes;
 }
 
 void testAddressKey() {
@@ -58,14 +78,17 @@ void testAddressKey() {
 
 void testRoundTrip() {
   std::vector<IndexEntry> entries = {
-      makeEntry("fujifilm-x100", 0x00000003),
-      makeEntry("sony-a7", 0x11223344),
-      makeEntry("", 0),
+      makeEntry("fujifilm-x100", 0x00000003, 7),
+      makeEntry("sony-a7", 0x11223344, 42),
+      makeEntry("", 0, 254),
   };
 
   std::vector<uint8_t> bytes;
   check(encodeIndex(entries, bytes), "encodeIndex accepts a normal index");
-  check(bytes.size() == entries.size() * INDEX_ENTRY_BYTES, "encoded size matches the entry count");
+  check(bytes.size() == INDEX_HEADER_BYTES + entries.size() * INDEX_ENTRY_BYTES,
+        "encoded size matches the entry count plus the schema header");
+  check(std::memcmp(bytes.data(), INDEX_HEADER, INDEX_HEADER_BYTES) == 0,
+        "an encoded index opens with the v2 schema header");
 
   std::vector<IndexEntry> decoded;
   check(decodeIndex(bytes.data(), bytes.size(), decoded), "decodeIndex accepts its own output");
@@ -77,22 +100,29 @@ void testRoundTrip() {
 
 void testWireLayout() {
   // The type is stored little endian in the four bytes after the name.
-  std::vector<IndexEntry> entries = {makeEntry("cam", 0x04030201)};
+  std::vector<IndexEntry> entries = {makeEntry("cam", 0x04030201, 0x5a)};
   std::vector<uint8_t> bytes;
   check(encodeIndex(entries, bytes), "encodeIndex accepts a single entry");
-  check(bytes.size() == INDEX_ENTRY_BYTES, "single entry is one record wide");
-  check(bytes[INDEX_NAME_BYTES + 0] == 0x01, "type byte 0 is the least significant");
-  check(bytes[INDEX_NAME_BYTES + 1] == 0x02, "type byte 1 follows little endian order");
-  check(bytes[INDEX_NAME_BYTES + 2] == 0x03, "type byte 2 follows little endian order");
-  check(bytes[INDEX_NAME_BYTES + 3] == 0x04, "type byte 3 is the most significant");
-  check(std::memcmp(bytes.data(), "cam", 3) == 0, "the name is stored at the record start");
+  check(bytes.size() == INDEX_HEADER_BYTES + INDEX_ENTRY_BYTES,
+        "single entry is a header plus one record");
+  const uint8_t *record = bytes.data() + INDEX_HEADER_BYTES;
+  check(record[INDEX_NAME_BYTES + 0] == 0x01, "type byte 0 is the least significant");
+  check(record[INDEX_NAME_BYTES + 1] == 0x02, "type byte 1 follows little endian order");
+  check(record[INDEX_NAME_BYTES + 2] == 0x03, "type byte 2 follows little endian order");
+  check(record[INDEX_NAME_BYTES + 3] == 0x04, "type byte 3 is the most significant");
+  check(record[INDEX_NAME_BYTES + 4] == 0x5a, "the camera id trails the type");
+  check(std::memcmp(record, "cam", 3) == 0, "the name is stored at the record start");
 }
 
 void testEmpty() {
   std::vector<IndexEntry> entries;
   std::vector<uint8_t> bytes;
   check(encodeIndex(entries, bytes), "encodeIndex accepts an empty index");
-  check(bytes.empty(), "an empty index encodes to no bytes");
+  check(bytes.size() == INDEX_HEADER_BYTES, "an empty index encodes to the header alone");
+
+  std::vector<IndexEntry> empty;
+  check(decodeIndex(bytes.data(), bytes.size(), empty), "a header with no records decodes");
+  check(empty.empty(), "a header with no records decodes to no entries");
 
   std::vector<IndexEntry> decoded = {makeEntry("stale", 1)};
   check(decodeIndex(nullptr, 0, decoded), "decodeIndex accepts zero bytes with a null pointer");
@@ -114,6 +144,35 @@ void testRejects() {
         "decodeIndex rejects a null pointer with a nonzero length");
 }
 
+void testLegacyMigration() {
+  // A v1 blob has no header and no ids. It must still decode, with every id
+  // marked unassigned so CameraList allocates and persists one.
+  const std::vector<IndexEntry> entries = {
+      makeEntry("00AABBCC", 3),
+      makeEntry("00DDEEFF", 9),
+  };
+  const auto legacy = encodeLegacy(entries);
+
+  std::vector<IndexEntry> decoded;
+  check(decodeIndex(legacy.data(), legacy.size(), decoded), "decodeIndex accepts a v1 blob");
+  check(decoded.size() == entries.size(), "v1 decode preserves the entry count");
+  check(decoded[0].type == 3 && decoded[1].type == 9, "v1 decode preserves each type");
+  check(std::memcmp(decoded[0].name, "00AABBCC", 8) == 0, "v1 decode preserves each name");
+  check(decoded[0].camera_id == INDEX_ID_INVALID && decoded[1].camera_id == INDEX_ID_INVALID,
+        "v1 entries decode with no assigned id");
+
+  // A v1 blob whose length also divides by the v2 record size must still decode
+  // as v1, which is what the explicit header buys.
+  std::vector<IndexEntry> ambiguous(21, makeEntry("cam", 1));
+  const auto ambiguousBytes = encodeLegacy(ambiguous);
+  check(ambiguousBytes.size() % INDEX_ENTRY_BYTES == 0, "the ambiguous blob divides both ways");
+  std::vector<IndexEntry> ambiguousDecoded;
+  check(decodeIndex(ambiguousBytes.data(), ambiguousBytes.size(), ambiguousDecoded),
+        "an ambiguous length still decodes");
+  check(ambiguousDecoded.size() == ambiguous.size(),
+        "a headerless blob always decodes as v1 records");
+}
+
 void testUpsert() {
   std::vector<IndexEntry> index;
   upsertIndex(index, makeEntry("alpha", 1));
@@ -130,6 +189,67 @@ void testUpsert() {
   check(index.size() == 3, "a fresh name appends after replacements");
 }
 
+// The already-saved refusal. The saved index is keyed on the BLE address, which
+// cannot recognise a camera the user is pairing a second time: a Fujifilm
+// Secure body advertises a resolvable private address that changes with every
+// pairing, so the same camera comes back under a new key and the list gains a
+// second, useless record.
+void testSameSavedIdentity() {
+  constexpr uint32_t kSecure = 8;  // Camera::Type::FUJIFILM_SECURE
+  constexpr uint32_t kBasic = 1;   // Camera::Type::FUJIFILM_BASIC
+  const std::string name = "FUJIFILM X100VI";
+
+  check(sameSavedIdentity(kSecure, 0x112233445566ULL, name, kSecure, 0x112233445566ULL, name),
+        "the same address and type is the same camera");
+
+  // The signature case: the body re-paired under a new resolvable private
+  // address. Nothing but the advertised name survives, and it has to be enough.
+  check(sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, name, kSecure, 0x112233445566ULL, name),
+        "a moved address still matches on the advertised name");
+
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, name, kSecure, 0x112233445566ULL,
+                           "FUJIFILM X-T5"),
+        "a different camera at a different address does not match");
+
+  check(!sameSavedIdentity(kSecure, 0x112233445566ULL, name, kBasic, 0x112233445566ULL, name),
+        "a different vendor mode is a different saved camera");
+
+  // An unnamed advertisement carries no identity of its own, so it must never
+  // match on the empty string and lock the user out of pairing.
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, "", kSecure, 0x112233445566ULL, ""),
+        "an empty name never matches");
+  check(!sameSavedIdentity(kSecure, 0xAABBCCDDEEFFULL, "", kSecure, 0x112233445566ULL, name),
+        "an empty name does not match a real one");
+}
+
+// The name fallback exists only because a Fujifilm Secure body re-pairs under a
+// new resolvable private address. Every other vendor keeps a stable address, so
+// applying the fallback to them refuses a user who owns two bodies of the same
+// model: the advertised name is the bare model, the second body reads as
+// already saved, and there is no override. Multi-connect with two identical
+// bodies, which the saved list supports, would become unreachable.
+void testSecondBodyOfTheSameModelStaysPairable() {
+  constexpr uint32_t kSecure = 8;  // Camera::Type::FUJIFILM_SECURE
+  constexpr uint32_t kBasic = 1;   // Camera::Type::FUJIFILM_BASIC
+  constexpr uint32_t kSony = 7;    // Camera::Type::SONY
+  constexpr uint32_t kRicoh = 9;   // Camera::Type::RICOH
+
+  const uint64_t first = 0x112233445566ULL;
+  const uint64_t second = 0xAABBCCDDEEFFULL;
+
+  check(!sameSavedIdentity(kRicoh, second, "GR IV", kRicoh, first, "GR IV"),
+        "a second GR IV at its own address is a second camera, not the saved one");
+  check(!sameSavedIdentity(kBasic, second, "FUJIFILM X-T5", kBasic, first, "FUJIFILM X-T5"),
+        "a second X-T5 on the Basic protocol stays pairable");
+  check(!sameSavedIdentity(kSony, second, "ILCE-7M4", kSony, first, "ILCE-7M4"),
+        "a second Sony body of the same model stays pairable");
+
+  // The one vendor that does rotate its address keeps the fallback, so the
+  // re-pairing body is still recognised as the camera already saved.
+  check(sameSavedIdentity(kSecure, second, "FUJIFILM X100VI", kSecure, first, "FUJIFILM X100VI"),
+        "two Fujifilm Secure records with one name at two addresses are one camera");
+}
+
 }  // namespace
 
 int main() {
@@ -138,7 +258,10 @@ int main() {
   testWireLayout();
   testEmpty();
   testRejects();
+  testLegacyMigration();
   testUpsert();
+  testSameSavedIdentity();
+  testSecondBodyOfTheSameModelStaysPairable();
 
   if (g_failures > 0) {
     std::cerr << "camera list protocol tests: " << g_failures << " FAILED\n";

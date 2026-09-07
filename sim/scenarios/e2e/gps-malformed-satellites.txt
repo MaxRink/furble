@@ -1,0 +1,58 @@
+# Malformed receiver output must not reach the satellite table and must not take
+# the firmware down. The fixture mixes a sentence with a wrong checksum, a
+# truncated GSV, a GSA with four fields, a fragment with no checksum at all and
+# a run of raw bytes. None of it is a valid sentence, so the page must stay
+# empty and every later assertion must still be answerable.
+#
+# The binary side is driven at the same time: uart-mode malformed corrupts every
+# CASIC acknowledgement, and the UART driver error events are injected on top.
+seed gps true
+seed gps_baud 9600
+seed gps_sats malformed
+seed gps_uart_mode ack
+wait 300
+
+action nav gps_sats
+wait 3000
+assert ui.page gps_sats
+assert gps.sats_capture 1
+assert gps.sats_in_view 0
+assert gps.sats_used 0
+
+# Corrupt every binary acknowledgement while the page is open.
+uart-mode malformed
+wait 3000
+assert ui.page gps_sats
+assert gps.sats_in_view 0
+
+# Every UART driver error path, back to back, with the page still rendering.
+uart-event fifo
+uart-event buffer
+uart-event break
+uart-event parity
+uart-event frame
+uart-event pattern
+uart-event data
+wait 3000
+assert ui.page gps_sats
+assert gps.sats_in_view 0
+
+# A receiver that returns only one byte at a time, then one that fails writes.
+uart-mode partial
+wait 2000
+uart-mode write-error
+wait 2000
+assert ui.page gps_sats
+
+# Recovery: a clean receiver and a clean fixture must repopulate the page
+# without a restart, which proves nothing latched on the damaged input.
+uart-mode ack
+gps-sats default
+back
+wait 300
+action nav gps_sats
+wait 3000
+assert gps.sats_in_view 8
+assert gps.sats_used 4
+assert gps.receiver present
+exit

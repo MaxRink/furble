@@ -1,0 +1,39 @@
+# Defaults preserve master exactly. The IMU itself is on, both gesture settings
+# are at their defaults, so no detector is constructed and no accelerometer is
+# read. This is the machine-checked form of "off by default changes nothing".
+seed fauxny true
+seed imu true
+wait 400
+assert ui.gesture_timer no
+assert ui.gesture_period_ms 0
+assert ui.gesture_events 0
+
+action connect
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+
+# Every gesture pattern, with nothing enabled to act on it.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+action imu.accel 0 0 1.8
+wait 300
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_events 0
+assert ui.gesture_last none
+assert camera.shutter_presses 0
+assert camera.shutter_releases 0
+
+# No gesture timer means no extra per-tick work: the connected page must stay
+# as quiet as it is on master.
+action invalidate.reset
+wait 2000
+assert_max ui.invalidate_count 40
+exit

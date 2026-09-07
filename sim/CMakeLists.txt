@@ -73,12 +73,15 @@ set(FURBLE_SOURCES
     ${SIM_SOURCES}
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
+    "${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp"
+    "${FURBLE_ROOT}/tests/host/companion/companion_hmac.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleControl.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp"
+    "${FURBLE_ROOT}/src/FurbleIMU.cpp"
     "${FURBLE_ROOT}/src/FurblePower.cpp"
     "${FURBLE_ROOT}/src/FurbleProvision.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
@@ -87,6 +90,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
+    "${FURBLE_ROOT}/src/FurbleUIGesture.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
     "${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp"
     "${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp"
@@ -112,6 +116,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/CameraListProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/GpsCasic.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
     "${FURBLE_ROOT}/lib/testing/nimble/MockNimBLE.cpp"
     "${FURBLE_ROOT}/lib/testing/peer/FujifilmVirtualCamera.cpp"
@@ -187,3 +192,10 @@ set_target_properties(furble-sim PROPERTIES ENABLE_EXPORTS ON)
 if(APPLE)
   target_link_libraries(furble-sim PRIVATE "-framework Cocoa")
 endif()
+
+# TinyGPSPlus ages readings against a global millis(). Suppress its host
+# wall-clock fallback so sim/clock.cpp can supply the virtual one. __AVR__
+# guards nothing else in that file. Keep this in step with sim/build.sh.
+set_source_files_properties(
+    "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
+    PROPERTIES COMPILE_DEFINITIONS "__AVR__")

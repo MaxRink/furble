@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "protocol/GpsCasic.h"
+
 namespace Furble {
 
 class GPS {
@@ -60,6 +62,36 @@ class GPS {
     SOURCE_COMPANION,
   };
 
+  enum class Fix : uint8_t {
+    NONE,
+    HELD,
+    LIVE,
+  };
+
+  /** Receiver detection state, mirroring the firmware enum. */
+  enum class receiver_state_t : uint8_t {
+    UNKNOWN,
+    DETECTING,
+    PRESENT,
+    ABSENT,
+  };
+
+  /** Per satellite diagnostics parsed from GSV and GSA. */
+  typedef struct {
+    std::vector<Casic::Satellite> satellites;
+    Casic::DopInfo dop;
+    size_t in_view;
+    size_t used;
+  } satellite_report_t;
+
+  /** MON-HW interference snapshot. */
+  typedef struct {
+    Casic::MonHw hw;
+    bool have;
+    std::array<uint8_t, 60> raw;
+    size_t raw_length;
+  } monhw_report_t;
+
   struct receiver_status_t {
     const char *cycle_state;
     uint8_t power_policy;
@@ -81,6 +113,9 @@ class GPS {
   /** Supported standby intervals, in seconds. */
   static constexpr const std::array<uint8_t, 4> DUTY_SECONDS = {0, 5, 10, 15};
 
+  /** Highest valid fix hold setting. */
+  static constexpr const uint8_t HOLD_MAX = 4;
+
   static GPS &getInstance(void);
 
   bool isEnabled(void) const;
@@ -91,6 +126,18 @@ class GPS {
   cycle_status_t getCycleStatusSnapshot(void) const;
   receiver_status_t getReceiverStatus(void) const;
   source_t getSource(void) const;
+  Fix getFix(void) const;
+  uint32_t getHoldLimitMs(void) const;
+  uint32_t getHoldRemainingMs(void) const;
+  receiver_state_t getReceiverState(void) const;
+  uint32_t getDetectedBaud(void) const;
+
+  void setSatelliteCapture(bool capture);
+  bool satelliteCaptureEnabled(void) const;
+  satellite_report_t getSatelliteReport(void);
+
+  void pollMonHw(void);
+  monhw_report_t getMonHw(void);
 
   bool sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
   bool sendAidIni(void);
@@ -98,6 +145,7 @@ class GPS {
 
   static const char *configStateName(config_state_t state);
   static const char *sourceName(source_t source);
+  static const char *receiverStateName(receiver_state_t state);
 
  private:
   GPS() = default;

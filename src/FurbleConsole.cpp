@@ -3,6 +3,7 @@
 #if defined(FURBLE_CONSOLE)
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,15 +35,20 @@
 #include "Camera.h"
 #include "FurbleBtDebug.h"
 #include "FurbleCompanion.h"
+#include "FurbleCompanionAuth.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleIMU.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleProvision.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#if !defined(FURBLE_NO_DISPLAY)
+#include "FurbleUIGesture.h"
+#endif
 #include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -200,12 +206,16 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
@@ -218,12 +228,14 @@ const char *settingType(Settings::type_t type) {
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -233,6 +245,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
@@ -277,6 +290,9 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_EXTRAP:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -291,6 +307,8 @@ const char *appliesWhen(Settings::type_t type) {
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -317,12 +335,16 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPX_PERIOD:
@@ -349,10 +371,17 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BUTTON_MODE:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
+    case Settings::COMPANION_PASSWORD:
+    {
+      std::string password;
+      const bool loaded = Settings::loadPassword(password);
+      printf("%s%s\n", prefix, loaded ? (password.empty() ? "unset" : "set") : "unavailable");
+    } break;
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -363,6 +392,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
@@ -393,6 +423,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_CONSTEL:
     case Settings::GPS_POWER:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
@@ -410,6 +441,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       if ((setting.type == Settings::GPS_ASSIST) && (value > 2)) {
         return fail("expected 0, 1 or 2");
       }
+      if ((setting.type == Settings::GPS_PLATFORM) && (value > 4)) {
+        return fail("expected 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
+      }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
 
@@ -418,6 +452,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if ((end == text) || (value > Feedback::OUTPUT_SOUND_LIGHT)) {
+        return fail("expected 0-4");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::GPS_HOLD:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > GPS::HOLD_MAX)) {
         return fail("expected 0-4");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -468,6 +512,25 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
     } break;
 #endif
+    case Settings::HW_MOTION:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (value > Settings::HW_MOTION_HARDWARE)) {
+        return fail("expected 0-2 (auto, software, hardware)");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
+
+    case Settings::IMU_WAKE:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (*end != '\0') || (value > 3)) {
+        return fail("expected 0-3");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+    } break;
 
     case Settings::SCAN_TIMEOUT:
     {
@@ -481,10 +544,19 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::GPS_BAUD:
     {
-      char *end = nullptr;
-      unsigned long value = strtoul(text, &end, 0);
-      if ((value != Settings::BAUD_9600) && (value != Settings::BAUD_115200)) {
-        return fail("expected 9600 or 115200");
+      unsigned long value = 0;
+      if (!strcasecmp(text, "auto")) {
+        value = Settings::BAUD_AUTO;
+      } else {
+        char *end = nullptr;
+        value = strtoul(text, &end, 0);
+        // BAUD_AUTO is zero, so a non-numeric value would otherwise be stored
+        // as Auto instead of being rejected
+        if ((end == text) || (*end != '\0')
+            || ((value != Settings::BAUD_AUTO) && (value != Settings::BAUD_9600)
+                && (value != Settings::BAUD_115200))) {
+          return fail("expected auto, 0, 9600 or 115200");
+        }
       }
       Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
     } break;
@@ -508,6 +580,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::CONN_SAVER:
     case Settings::IR:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -518,6 +591,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::BOOT_SPLASH:
@@ -546,7 +620,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
   if ((setting.type == Settings::GPS) || (setting.type == Settings::GPS_BAUD)
       || (setting.type == Settings::GPS_POWER) || (setting.type == Settings::GPS_DUTY)
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
-      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)) {
+      || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
+      || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)
+      || (setting.type == Settings::GPS_PLATFORM)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
@@ -578,6 +654,10 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     UI::sendRequest(UI::Request::POWER_RELOAD, 0);
   }
 #endif
+  if ((setting.type == Settings::IMU) || (setting.type == Settings::IMU_WAKE)
+      || (setting.type == Settings::IMU_TRIG)) {
+    UI::notifyGestureSettingsChanged();
+  }
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -616,6 +696,9 @@ int cmdSettings(int argc, char **argv) {
   if (setting == nullptr) {
     return fail("no such setting");
   }
+  if (setting->type == Settings::COMPANION_PASSWORD) {
+    return fail("use companion password set, clear or status");
+  }
 
   if (!strcmp(argv[1], "get")) {
     printf("key: %s\n", setting->key);
@@ -634,6 +717,44 @@ int cmdSettings(int argc, char **argv) {
   }
 
   return fail("expected list, get or set");
+}
+
+int cmdCompanion(int argc, char **argv) {
+  if ((argc < 2) || strcasecmp(argv[1], "password")) {
+    return fail("usage: companion password set <pw> | clear | status");
+  }
+  if ((argc == 3) && !strcasecmp(argv[2], "status")) {
+    std::string password;
+    const bool loaded = Settings::loadPassword(password);
+    printf("companion.password: %s\n",
+           loaded ? (password.empty() ? "unset" : "set") : "unavailable");
+    return loaded ? 0 : 1;
+  }
+  if ((argc == 3) && !strcasecmp(argv[2], "clear")) {
+    const bool saved = Settings::savePassword(std::string {});
+    CompanionGatt::getInstance().reloadPassword();
+    std::string password;
+    if (!saved || !Settings::loadPassword(password) || !password.empty()) {
+      return fail("companion password storage failed");
+    }
+    printf("companion.password: unset\n");
+    return 0;
+  }
+  if ((argc == 4) && !strcasecmp(argv[2], "set")) {
+    const size_t length = strlen(argv[3]);
+    if ((length == 0) || (length > CompanionAuth::PASSWORD_MAX)) {
+      return fail("password must be 1-63 bytes; use clear to unset");
+    }
+    const bool saved = Settings::savePassword(argv[3]);
+    CompanionGatt::getInstance().reloadPassword();
+    std::string password;
+    if (!saved || !Settings::loadPassword(password) || password != argv[3]) {
+      return fail("companion password storage failed");
+    }
+    printf("companion.password: set\n");
+    return 0;
+  }
+  return fail("usage: companion password set <pw> | clear | status");
 }
 
 void printProvisionDeferred(const char *name) {
@@ -658,6 +779,9 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_EXTRAP:
+    case Settings::GPS_PLATFORM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
@@ -669,6 +793,14 @@ void reloadProvisionSetting(uint8_t wireId) {
       break;
     case Settings::COMPANION:
       CompanionGatt::getInstance().reloadSetting();
+      break;
+    case Settings::COMPANION_PASSWORD:
+      CompanionGatt::getInstance().reloadPassword();
+      break;
+    case Settings::IMU:
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
+      UI::notifyGestureSettingsChanged();
       break;
     default:
       break;
@@ -719,9 +851,6 @@ int cmdProvision(int argc, char **argv) {
   if (bundle.wifiPsk.has_value()) {
     printProvisionDeferred("wifi_psk");
   }
-  if (bundle.companionPassword.has_value()) {
-    printProvisionDeferred("companion_password");
-  }
   if (bundle.mqttUri.has_value()) {
     printProvisionDeferred("mqtt_uri");
   }
@@ -738,6 +867,10 @@ int cmdProvision(int argc, char **argv) {
     const auto *setting = Settings::getByWireId(field.wireId);
     printf("provision: setting %u (%s) applied\n", static_cast<unsigned>(field.wireId),
            (setting != nullptr) ? setting->key : "unknown");
+  }
+  if (bundle.companionPassword.has_value()) {
+    printf("provision: setting %u (companion_pw) applied\n",
+           static_cast<unsigned>(ProvisionTLV::COMPANION_PASSWORD_WIRE_ID));
   }
   if ((report.settingsApplied == 0) && (report.deferredFields == 0)) {
     printf("provision: no fields\n");
@@ -877,6 +1010,18 @@ const char *gpsPowerPolicyName(uint8_t policy) {
   return "unknown";
 }
 
+const char *gpsFixStateName(GPS::Fix fix) {
+  switch (fix) {
+    case GPS::Fix::LIVE:
+      return "live";
+    case GPS::Fix::HELD:
+      return "held";
+    case GPS::Fix::NONE:
+      return "none";
+  }
+  return "none";
+}
+
 int gpsStatus(void) {
   auto &gps = GPS::getInstance();
   const auto status = gps.getStatusSnapshot();
@@ -885,6 +1030,8 @@ int gpsStatus(void) {
   const auto receiver = gps.getReceiverStatus();
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
+  printf("receiver: %s\n", GPS::receiverStateName(gps.getReceiverState()));
+  printf("detected_baud: %lu\n", static_cast<unsigned long>(gps.getDetectedBaud()));
   printf("fix: %s\n", boolStr(status.fix));
   printf("satellites: %lu\n", status.satellites);
   printf("lat: %.5f\n", status.latitude);
@@ -913,6 +1060,10 @@ int gpsStatus(void) {
   }
   printf("assist: %u\n", static_cast<unsigned>(receiver.aid_mode));
   printf("assist_cache: %s\n", boolStr(receiver.aid_cache_valid));
+
+  printf("fix_state: %s\n", gpsFixStateName(gps.getFix()));
+  printf("hold: %lu\n", static_cast<unsigned long>(gps.getHoldLimitMs()));
+  printf("hold_remaining: %lu\n", static_cast<unsigned long>(gps.getHoldRemainingMs()));
 
   printf("raw: %s\n", boolStr(g_GPSRaw));
   return 0;
@@ -959,6 +1110,70 @@ int cmdTime(int argc, char **argv) {
   return 0;
 }
 
+int gpsSats(int argc, char **argv) {
+  auto &gps = GPS::getInstance();
+
+  if (argc >= 2) {
+    bool value = false;
+    if (!parseBool(argv[1], value)) {
+      return fail("usage: gps sats [on | off]");
+    }
+    gps.setSatelliteCapture(value);
+    printf("sats capture: %s\n", boolStr(value));
+    return 0;
+  }
+
+  const auto report = gps.getSatelliteReport();
+  printf("sats in view: %u\n", static_cast<unsigned>(report.in_view));
+  printf("sats used: %u\n", static_cast<unsigned>(report.used));
+  if (report.dop.valid) {
+    printf("fix type: %u\n", report.dop.fix_type);
+    printf("dop: pdop %.1f hdop %.1f vdop %.1f\n", report.dop.pdop, report.dop.hdop,
+           report.dop.vdop);
+  }
+  for (const auto &sat : report.satellites) {
+    printf("sat: sys=%u prn=%u elev=%u az=%u cn0=%u used=%s\n", sat.constellation, sat.prn,
+           sat.elevation, sat.azimuth, sat.snr, boolStr(sat.used));
+  }
+  if (report.satellites.empty()) {
+    printf("sats: none (enable with 'gps sats on')\n");
+  }
+  return 0;
+}
+
+int gpsPlatform(const char *text) {
+  char *end = nullptr;
+  const unsigned long value = strtoul(text, &end, 0);
+  if ((end == text) || (*end != '\0') || (value > 4)) {
+    return fail("usage: gps platform 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
+  }
+  Settings::save<Settings::GPS_PLATFORM>(static_cast<uint8_t>(value));
+  UI::sendRequest(UI::Request::GPS_RELOAD, 0);
+  printf("saved: gps_plat %lu\n", value);
+  printf("note: dyModel effect is unverified on this receiver, hardware-tuning-pending\n");
+  return 0;
+}
+
+int gpsMonHw(void) {
+  auto &gps = GPS::getInstance();
+  gps.pollMonHw();
+
+  const auto report = gps.getMonHw();
+  if (!report.have) {
+    printf("monhw: polled, no response yet, retry 'gps monhw'\n");
+    return 0;
+  }
+  printf("monhw: noise=%lu agc=%u antenna=%u jam=%u\n", static_cast<unsigned long>(report.hw.noise),
+         report.hw.agc, report.hw.antenna_status, report.hw.jam_indicator);
+  printf("monhw raw:");
+  for (size_t i = 0; i < report.raw_length; i++) {
+    printf(" %02X", report.raw[i]);
+  }
+  printf("\n");
+  printf("note: MON-HW layout is unverified, hardware-tuning-pending\n");
+  return 0;
+}
+
 int cmdGPS(int argc, char **argv) {
   if (argc < 2) {
     return gpsStatus();
@@ -999,6 +1214,21 @@ int cmdGPS(int argc, char **argv) {
     return gpsAid();
   }
 
+  if (!strcmp(argv[1], "sats")) {
+    return gpsSats(argc - 1, argv + 1);
+  }
+
+  if (!strcmp(argv[1], "platform")) {
+    if (argc < 3) {
+      return fail("usage: gps platform 0..4");
+    }
+    return gpsPlatform(argv[2]);
+  }
+
+  if (!strcmp(argv[1], "monhw")) {
+    return gpsMonHw();
+  }
+
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {
       return fail("usage: gps power on | off");
@@ -1006,7 +1236,7 @@ int cmdGPS(int argc, char **argv) {
     return sendRequest(UI::Request::GPS_POWER, value, value ? "gps power on" : "gps power off");
   }
 
-  return fail("expected on, off, raw, send, binary, config, aid or power");
+  return fail("expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power");
 }
 
 void cmdPowerStats(void) {
@@ -1314,6 +1544,58 @@ const char *resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
+/**
+ * Report the motion source, and calibrate the software backend's threshold.
+ *
+ * `motion status` is the hardware gate's readout: which backend armed, whether
+ * it holds a wake source, and how many transitions it has seen. `motion scale`
+ * corrects a board whose accelerometer noise floor disagrees with the shipped
+ * threshold. The hardware engines threshold in the chip and ignore the scale.
+ */
+int cmdMotion(int argc, char **argv) {
+  auto &motion = IMU::MotionSource::getInstance();
+
+  if ((argc == 1) || (strcmp(argv[1], "status") == 0)) {
+    printf("backend: %s\n", motion.backendName());
+    printf("armed: %s\n", motion.isArmed() ? "yes" : "no");
+    printf("state: %s\n",
+           !motion.isArmed()
+               ? "inactive"
+               : (motion.state() == IMU::MotionState::STATIONARY ? "stationary" : "moving"));
+    printf("wake: %s\n", motion.usesInterrupt() ? "interrupt" : "polling");
+    // The hardware gate's readout. "pin" is the IMU interrupt line itself, which
+    // on the M5StickS3 is an internal PMIC net rather than an SoC pin, so it is
+    // read from the PMIC. "edges" counts polls at which the line was found
+    // asserted, from a latched flag: nothing here configures a GPIO interrupt,
+    // because an interrupt on the wake pin cancels the wake source.
+    auto &platform = Platform::getInstance();
+    printf("pin: %s\n", platform.motionWakeAsserted() ? "asserted" : "idle");
+    printf("edges: %lu\n", static_cast<unsigned long>(platform.motionWakeEdges()));
+    printf("interrupts: %lu\n", static_cast<unsigned long>(motion.interruptCount()));
+    printf("bus_retries: %lu\n", static_cast<unsigned long>(IMU::MotionSource::busRetries()));
+    printf("pmic_retries: %lu\n", static_cast<unsigned long>(platform.getM5PM1RetryCount()));
+    printf("scale: %.2f\n", static_cast<double>(IMU::MotionSource::getScale()));
+    printf("threshold: %.3f\n", static_cast<double>(IMU::MotionSource::threshold()));
+    return 0;
+  }
+
+  if ((strcmp(argv[1], "scale") == 0) && (argc <= 3)) {
+    if (argc == 3) {
+      char *end = nullptr;
+      const float value = strtof(argv[2], &end);
+      if ((end == argv[2]) || (*end != '\0') || !std::isfinite(value) || (value < 0.25f)
+          || (value > 4.0f)) {
+        return fail("expected 0.25-4.0");
+      }
+      IMU::MotionSource::setScale(value);
+    }
+    printf("scale: %.2f\n", static_cast<double>(IMU::MotionSource::getScale()));
+    return 0;
+  }
+
+  return fail("usage: motion status | scale [0.25-4.0]");
+}
+
 int cmdStatus(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -1337,8 +1619,31 @@ int cmdStatus(int argc, char **argv) {
 }
 
 int cmdIMU(int argc, char **argv) {
+#if !defined(FURBLE_NO_DISPLAY)
+  // Gesture amplitude calibration. A real sensor in a real case never matches
+  // the paper thresholds, so this is the knob that tunes a board without a
+  // reflash. Runtime only: a tuning session is one USB session.
+  if ((argc == 2 || argc == 3) && strcmp(argv[1], "scale") == 0) {
+    if (argc == 3) {
+      char *end = nullptr;
+      const float value = strtof(argv[2], &end);
+      if ((end == argv[2]) || (*end != '\0') || !std::isfinite(value) || (value < 0.25f)
+          || (value > 4.0f)) {
+        return fail("expected 0.25-4.0");
+      }
+      GestureDetector::setScale(value);
+    }
+    printf("scale: %.2f\n", static_cast<double>(GestureDetector::getScale()));
+    return 0;
+  }
+#endif
+
   if (argc != 2 || strcmp(argv[1], "status") != 0) {
+#if defined(FURBLE_NO_DISPLAY)
     return fail("usage: imu status");
+#else
+    return fail("usage: imu status | scale [0.25-4.0]");
+#endif
   }
 
   const bool setting = Settings::load<bool>(Settings::IMU);
@@ -1875,6 +2180,8 @@ int debugControl(void) {
   printf("control.infinite_reconnect: %s\n", boolStr(s.infiniteReconnect));
   printf("control.reconnect_backoff: %s\n", boolStr(s.reconnectBackoff));
   printf("control.reconnect_attempt: %lu\n", static_cast<unsigned long>(s.reconnectAttempt));
+  printf("control.connect_fail_reason: %s\n",
+         s.connectFailReason.empty() ? "none" : s.connectFailReason.c_str());
   printf("control.adaptive_active: %s\n", boolStr(s.adaptiveActive));
   printf("control.power_level: %d\n", s.userPowerLevel);
   printf("control.adaptive_power_level: %d\n", s.adaptivePowerLevel);
@@ -2085,17 +2392,23 @@ constexpr esp_console_cmd_t command(const char *name,
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
+#if defined(FURBLE_NO_DISPLAY)
     command("imu", "imu status (diagnostic sensor probe)", cmdIMU),
+#else
+    command("imu", "imu status | scale [value] (sensor probe, gesture calibration)", cmdIMU),
+#endif
     command("power", "power stats | log <seconds> | log off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
-    command("gps", "gps [on|off|raw|send|binary|config|aid|power]", cmdGPS),
+    command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
+    command("companion", "companion password set <pw> | clear | status", cmdCompanion),
     command("provision", "provision <hex|base64 TLV blob>", cmdProvision),
     command("ui", "ui audit", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+    command("motion", "motion status | scale [0.25-4.0] (IMU motion source)", cmdMotion),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
     command("focus", "focus press | release", cmdFocus),

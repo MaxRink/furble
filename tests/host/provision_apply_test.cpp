@@ -1,19 +1,23 @@
 // Host coverage for the production provisioning apply path.
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "FurbleProvision.h"
 #include "FurbleSettings.h"
 #include "nvs.h"
+#include "protocol/ProvisionTLV.h"
 
 namespace {
 
 using Furble::Provision::apply;
 using Furble::Provision::ApplyOptions;
 using Furble::Provision::ApplyReport;
+using Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
 using Furble::ProvisionTLV::ProvisionBundle;
 using Furble::ProvisionTLV::SettingValue;
 using Furble::ProvisionTLV::ValueType;
@@ -38,10 +42,72 @@ void resetSettings() {
   Furble::Settings::init();
 }
 
+// A new wire id is not provisionable until it has a row in SETTING_SCHEMAS.
+// Without one the parser rejects UNKNOWN_SETTING_ID and the apply path reports
+// UNSUPPORTED_SETTING before any validation runs, so the setting is silently
+// unreachable over the companion link. Deleting the {74, U8, 1, 1} row fails
+// the first check below.
+void testMotionEngineProvisioning() {
+  resetSettings();
+
+  const auto *schema = Furble::ProvisionTLV::schemaForSetting(74);
+  check(schema != nullptr, "wire id 74 has a provisioning schema row");
+  if (schema != nullptr) {
+    check(schema->type == ValueType::U8, "the motion engine schema is U8");
+    check((schema->minLength == 1) && (schema->maxLength == 1),
+          "the motion engine schema is exactly one byte");
+  }
+
+  // The whole roller range provisions through the real validate path.
+  for (uint8_t value = 0; value <= 2; value++) {
+    resetSettings();
+    ProvisionBundle bundle;
+    bundle.settings = {
+        {74, ValueType::U8, {value}},
+    };
+    ApplyReport report;
+    ApplyOptions options;
+    options.onSettingApplied = recordApplied;
+    check(apply(bundle, report, options),
+          "motion engine value " + std::to_string(value) + " provisions");
+    check(report.settingsApplied == 1, "the motion engine apply reports one setting");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == value,
+          "the provisioned motion engine value reaches the store");
+  }
+
+  // Anything past Hardware is a domain error, not a silent clamp.
+  resetSettings();
+  ProvisionBundle outOfRange;
+  outOfRange.settings = {
+      {74, ValueType::U8, {3}},
+  };
+  ApplyReport report;
+  ApplyOptions options;
+  check(!apply(outOfRange, report, options), "motion engine value 3 is rejected");
+  check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
+        "an out-of-range motion engine reports BAD_SETTING");
+  check(report.failedSettingId == 74, "the rejection identifies wire id 74");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION)
+            == Furble::Settings::HW_MOTION_SOFTWARE,
+        "a rejected motion engine leaves the stored value alone");
+
+  // A wrong wire type is refused before the range check.
+  resetSettings();
+  ProvisionBundle wrongType;
+  wrongType.settings = {
+      {74, ValueType::BOOL, {1}},
+  };
+  ApplyReport typeReport;
+  check(!apply(wrongType, typeReport, options), "a BOOL motion engine field is rejected");
+  check(typeReport.error == Furble::Provision::ApplyError::UNSUPPORTED_SETTING,
+        "a wrong wire type reports UNSUPPORTED_SETTING");
+}
+
 void testPreflightIsAtomic() {
   resetSettings();
 
   ProvisionBundle bundle;
+  bundle.companionPassword = std::vector<uint8_t> {'n', 'e', 'w'};
   bundle.settings = {
       {1,  ValueType::U8, {77}},
       {26, ValueType::U8, {6} }, // GPS duty only accepts 0, 5, 10, or 15.
@@ -58,6 +124,8 @@ void testPreflightIsAtomic() {
   check(appliedIds.empty(), "atomic failure emits no runtime reload callbacks");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 128,
         "atomic failure leaves the earlier setting unchanged");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD).empty(),
+        "atomic failure leaves the companion password unchanged");
 }
 
 void testValidatedApplyAndRuntimeHooks() {
@@ -65,10 +133,17 @@ void testValidatedApplyAndRuntimeHooks() {
 
   ProvisionBundle bundle;
   bundle.settings = {
-      {1,  ValueType::U8,     {77}                                              },
-      {26, ValueType::U8,     {5}                                               },
-      {33, ValueType::U8,     {4}                                               },
-      {27, ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
+      {1,                          ValueType::U8,     {77}                                              },
+      {26,                         ValueType::U8,     {5}                                               },
+      {33,                         ValueType::U8,     {4}                                               },
+      {69,                         ValueType::U8,     {4}                                               },
+      {27,                         ValueType::STRING, {'o', 'n', 'e', '-', 'b', 'u', 't', 't', 'o', 'n'}},
+      {46,                         ValueType::BOOL,   {1}                                               },
+      {COMPANION_PASSWORD_WIRE_ID,
+       ValueType::STRING,
+       {'s', 'e', 't', '-', 'b', 'y', '-', 'i', 'd'}                                                    },
+      {72,                         ValueType::U8,     {3}                                               },
+      {73,                         ValueType::BOOL,   {1}                                               },
   };
   ApplyReport report;
   ApplyOptions options;
@@ -77,7 +152,8 @@ void testValidatedApplyAndRuntimeHooks() {
   check(apply(bundle, report, options), "valid settings apply successfully");
   check(report.ok && report.settingsApplied == bundle.settings.size(),
         "valid settings report every write");
-  check(appliedIds == std::vector<uint8_t>({1, 26, 33, 27}),
+  check(appliedIds
+            == std::vector<uint8_t>({1, 26, 33, 69, 27, 46, COMPANION_PASSWORD_WIRE_ID, 72, 73}),
         "runtime callback follows successful write order");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "validated uint8 setting is persisted");
@@ -85,35 +161,170 @@ void testValidatedApplyAndRuntimeHooks() {
         "validated GPS duty setting is persisted");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::FB_OUTPUT) == 4,
         "validated feedback output setting is persisted");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PLATFORM) == 4,
+        "validated GPS platform setting is persisted");
   check(Furble::Settings::load<std::string>(Furble::Settings::BUTTON_MODE)
             == Furble::Settings::BUTTON_MODE_ONE_BUTTON_VALUE,
         "validated button mode setting is persisted");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+        "validated IMU wake setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU), "validated IMU setting is persisted");
+  check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
+        "validated IMU trigger setting is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "set-by-id",
+        "validated companion password setting is persisted");
+}
+
+void testDedicatedPasswordField() {
+  resetSettings();
+
+  ProvisionBundle bundle;
+  bundle.companionPassword = std::vector<uint8_t> {'d', 'e', 'd', 'i', 'c', 'a', 't', 'e', 'd'};
+  ApplyReport report;
+  ApplyOptions options;
+  options.onSettingApplied = recordApplied;
+  check(apply(bundle, report, options), "dedicated companion password applies");
+  check(report.settingsApplied == 1 && report.deferredFields == 0,
+        "dedicated companion password is counted as an applied setting");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "dedicated",
+        "dedicated companion password is persisted");
+  check(appliedIds == std::vector<uint8_t>({COMPANION_PASSWORD_WIRE_ID}),
+        "dedicated companion password invokes the wire-id callback");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {};
+  check(!apply(bundle, report), "empty dedicated companion password is rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "empty dedicated companion password reports wire id 47 without writing");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {'a', 0, 'b'};
+  check(!apply(bundle, report), "NUL-containing dedicated companion password is rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "malformed dedicated companion password reports wire id 47 without writing");
+
+  resetSettings();
+  bundle.companionPassword = std::vector<uint8_t> {'d', 'e', 'd', 'i', 'c', 'a', 't', 'e', 'd'};
+  bundle.settings = {
+      {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, {'o', 't', 'h', 'e', 'r'}}
+  };
+  check(!apply(bundle, report), "duplicate companion password sources are rejected");
+  check(report.failedSettingId == COMPANION_PASSWORD_WIRE_ID && report.settingsApplied == 0,
+        "duplicate password rejection happens before either source is written");
+}
+
+void testPasswordStorageFailures() {
+  for (bool dedicated : {false, true}) {
+    for (bool commitFailure : {false, true}) {
+      resetSettings();
+      check(Furble::Settings::savePassword("previous"), "seed the existing password");
+      ProvisionBundle bundle;
+      if (dedicated) {
+        bundle.companionPassword = std::vector<uint8_t> {'n', 'e', 'w'};
+      } else {
+        bundle.settings = {
+            {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, {'n', 'e', 'w'}}
+        };
+      }
+      if (commitFailure) {
+        nvs_test_fail_commit_on(1);
+      } else {
+        nvs_test_fail_set_on(1);
+      }
+      ApplyReport report;
+      ApplyOptions options;
+      options.onSettingApplied = recordApplied;
+      check(!apply(bundle, report, options) && !report.ok,
+            "password storage failure rejects either provisioning encoding");
+      check(report.error == Furble::Provision::ApplyError::STORAGE_FAILURE
+                && report.failedSettingId == COMPANION_PASSWORD_WIRE_ID,
+            "failed password write identifies storage failure and its wire id");
+      check(report.settingsApplied == 0 && appliedIds.empty(),
+            "failed password write is not counted or announced as applied");
+      std::string password;
+      check(Furble::Settings::loadPassword(password) && password == "previous",
+            "failed provisioning preserves the previous password");
+    }
+  }
 }
 
 void testDomainValidation() {
   resetSettings();
 
-  for (const SettingValue &invalid : {
-           SettingValue {26, ValueType::U8,     {6}                 },
-           SettingValue {33, ValueType::U8,     {5}                 },
-           SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}},
-  }) {
+  // The expected message matters as much as the rejection. A setting id with no
+  // row in SETTING_SCHEMAS is also rejected, but as UNSUPPORTED_SETTING before
+  // the domain rule is ever reached, so asserting only "it failed" would pass
+  // for a setting the bundle can never carry at all.
+  const std::pair<SettingValue, const char *> cases[] = {
+      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15"         },
+      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range"         },
+      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"           },
+      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"        },
+      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"          },
+      {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"   },
+      {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4"},
+  };
+
+  for (const auto &entry : cases) {
     ProvisionBundle bundle;
-    bundle.settings = {invalid};
+    bundle.settings = {entry.first};
     ApplyReport report;
     check(!apply(bundle, report), "domain-invalid setting is rejected");
     check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
-          "domain-invalid setting reports BAD_SETTING");
+          std::string("setting ") + std::to_string(entry.first.wireId)
+              + " reports BAD_SETTING, not a missing schema row");
+    check(report.failedSettingId == entry.first.wireId, "the rejected setting id is reported");
+    check(report.message == entry.second,
+          std::string("setting ") + std::to_string(entry.first.wireId) + " names its own rule");
     check(report.settingsApplied == 0, "domain-invalid setting writes nothing");
+  }
+}
+
+// Every setting the companion can name by wire id needs a row in
+// SETTING_SCHEMAS, or schemaForSetting() returns nullptr and the whole bundle
+// is rejected as UNSUPPORTED_SETTING before any domain rule runs. That failure
+// is silent from the settings table's point of view: nothing in FurbleSettings
+// knows the mirror exists. Adding a setting and forgetting the row is therefore
+// the easy mistake, and this is the guard for it.
+//
+// The two ids below are already missing on master. Registering them changes the
+// provisioning surface for settings this test's PR did not add, so they are
+// named here as a known gap rather than quietly fixed. Do not extend this list
+// to cover a new setting: add the schema row instead.
+void testEverySettingHasASchemaRow() {
+  static constexpr uint8_t KNOWN_MISSING[] = {
+      43,  // AUTO_OFF_CHARGING
+  };
+
+  for (const auto &entry : Furble::Settings::all()) {
+    const uint8_t wireId = entry.second.wire_id;
+    if (wireId == 0) {
+      // Off-wire settings are deliberately unreachable by id.
+      continue;
+    }
+    const bool known = std::find(std::begin(KNOWN_MISSING), std::end(KNOWN_MISSING), wireId)
+                       != std::end(KNOWN_MISSING);
+    const bool registered = Furble::ProvisionTLV::schemaForSetting(wireId) != nullptr;
+    if (known) {
+      check(!registered, std::string("wire id ") + std::to_string(wireId)
+                             + " is still the known gap, drop it from KNOWN_MISSING if fixed");
+      continue;
+    }
+    check(registered, std::string("wire id ") + std::to_string(wireId) + " (" + entry.second.key
+                          + ") has a SETTING_SCHEMAS row");
   }
 }
 
 }  // namespace
 
 int main() {
+  testMotionEngineProvisioning();
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
+  testDedicatedPasswordField();
+  testPasswordStorageFailures();
   testDomainValidation();
+  testEverySettingHasASchemaRow();
 
   if (failures != 0) {
     std::cerr << "provision apply tests: " << failures << " FAILED\n";

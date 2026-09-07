@@ -38,6 +38,8 @@ struct UIRequest {
 struct UIState {
   std::vector<UIRequest> requests;
   bool queueAvailable = true;
+  // Gesture settings notify the UI task through a counter, not a request.
+  unsigned gestureNotifications = 0;
 };
 
 UIState &ui(void);
@@ -48,6 +50,15 @@ struct GPSState {
   Furble::GPS::cycle_status_t cycle = {};
   Furble::GPS::receiver_status_t receiver = {};
   Furble::GPS::source_t source = Furble::GPS::SOURCE_NONE;
+  Furble::GPS::Fix fix = Furble::GPS::Fix::NONE;
+  uint32_t holdLimitMs = 0;
+  uint32_t holdRemainingMs = 0;
+  Furble::GPS::receiver_state_t receiverState = Furble::GPS::receiver_state_t::UNKNOWN;
+  uint32_t detectedBaud = 0;
+  bool satCapture = false;
+  Furble::GPS::satellite_report_t satellites = {};
+  Furble::GPS::monhw_report_t monhw = {};
+  size_t monHwPolls = 0;
   std::vector<Furble::GPS::config_status_t> config;
   bool binaryResult = true;
   bool aidResult = true;
@@ -108,6 +119,7 @@ IRState &ir(void);
 struct MiscState {
   size_t feedbackReloads = 0;
   size_t companionReloads = 0;
+  size_t companionPasswordReloads = 0;
   bool sdSupported = true;
   size_t usbDriverInstalls = 0;
   size_t vfsUseDriverCalls = 0;
@@ -159,18 +171,6 @@ void feedBytes(const std::string &bytes);
 
 /** Wait until the transport has consumed every fed byte. */
 bool waitForInputDrained(int timeout_ms);
-
-/**
- * Park the console task so the process can exit safely.
- *
- * The console task is detached and loops forever, exactly as it does on
- * device. Returning from main() while it is blocked on the transport would let
- * the runtime destroy the globals it is waiting on. This wakes it at a known
- * point inside the transport read and leaves it sleeping there, touching
- * nothing else, for the rest of the process. Returns false if it did not park
- * within the timeout.
- */
-bool parkConsoleTask(int timeout_ms);
 
 /** Reset every recorded call and injected result to its default. */
 void resetDoubles(void);

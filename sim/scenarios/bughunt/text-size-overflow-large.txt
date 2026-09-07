@@ -39,6 +39,18 @@ wait 100
 assert ui.page display
 assert ui.overflow no
 action page settings
+action nav sensors
+wait 100
+# Sensors and the Gestures page. Large is the size where a compact page is
+# allowed to start scrolling, so record the state rather than pinning it; the
+# Small and Normal sweeps carry the fit and reachability assertions.
+print ui.page
+print ui.overflow
+action nav gestures
+wait 100
+print ui.page
+print ui.overflow
+action page settings
 action nav features
 wait 100
 print ui.page

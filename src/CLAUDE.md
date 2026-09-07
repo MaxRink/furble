@@ -18,10 +18,20 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSettings`: type-safe NVS settings via `Settings::load<KEY>()` /
   `Settings::save<KEY>()`, backed by lib/preferences. New settings need the
   enum entry, a `storage_type` specialization, and a default.
+- The remembered multi-connect set is keyed on the camera's displayed name, and
+  a vendor client may compose that name. Store and compare it only through
+  `Settings::multiselectAdd()` and `Settings::multiselectContains()`, which
+  compare the whole stored string. A prefix comparison ticks the wrong body of
+  the same model. `Settings::load<multiselect_t>()` widens a record written in
+  the pre-32-byte layout, so changing `MULTISELECT_NAME_MAX` again means adding
+  another legacy layout rather than dropping every saved selection.
 - The IMU setting is a persisted bool at wire id 46, defaults off, and applies
   on reboot because it controls `M5.begin()` capability discovery. IMU pages
   must be gated on both that setting and `M5.Imu.isEnabled()`; the Level timer
-  is started and stopped by page dispatch, not a widget-only callback.
+  is started and stopped by page dispatch, not a widget-only callback. The
+  motion activity callback is gated by the cached `IMU_WAKE` setting, so Wake
+  Gesture Off never resets display inactivity. The MPU6886 hardware wake path
+  remains uncertified until its clear-on-read race with M5Unified is measured.
 - `FurbleTimeKeeper`: owns one versioned CRC-protected wall-clock blob. Normal
   synchronization writes are limited to four per day and shutdown checkpoints
   without a backed RTC use a separate three-and-a-half-hour age budget. The
@@ -56,17 +66,37 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   decides `cfg.internal_spk`), only the event mask and volume reload live.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
-- Settings switch tables in `FurbleConsole` and `FurbleCompanion` must include
-  every new `Settings::type_t` case. The host
-  `settings_nvs_roundtrip_test` keeps an exhaustive storage-kind mirror so a
-  new enum value fails the host build until its table and switch handling are
-  updated.
-- `CompanionService::m_Mutex` serializes the status notification cache and all
+  Phase 2 adds `GPS_BAUD` Auto with the `Casic::Autobaud` ladder and a
+  no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
+  page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
+  parseable logic lives in `lib/furble/protocol/GpsCasic`.
+- `CompanionService::m_Mutex` serializes the status and camera notification
+  caches and all
   trigger rate and held-command state, including timer and disconnect release.
   Keep transport-triggered callbacks on that ownership rule, but never hold it
   across a transport virtual call because production GATT takes its own mutex.
   A zero-duration timed trigger releases inline because `handleTrigger()`
   already owns the service mutex.
+- The companion cameras characteristic never drives `Control` itself. Connect
+  and disconnect go through `UI::sendRequest`, the same request queue the
+  console uses, because `Control::disconnect()` waits for the teardown and the
+  on-device screen has to follow the remote action. That queue is compiled into
+  every build; only `PERF` and `AUDIT` stay behind `FURBLE_CONSOLE`. For the
+  same reason the camera records read rssi from `Control::getTargetState()`,
+  never `Camera::getRssi()`, which takes the camera connect mutex a cold
+  connect holds for the whole connect timeout. Companion connect requests carry
+  stable saved camera ids and are resolved and busy-checked again on the UI
+  task; transient scan indexes must never cross that queue boundary.
+- Companion credentials use the checked
+  `Settings::loadPassword()` path: missing is unset, storage errors deny access.
+  Never seed an empty password after an unsuccessful NVS existence check.
+  Password console commands verify persistence and reload the live gate.
+  The application gate rejects writes with a framed Auth result indication,
+  not a custom ATT return from NimBLE's void write callback.
+- Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
+  `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
+  enforces this with `-Werror=switch`, so build a debug env after adding a
+  setting.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic
@@ -75,6 +105,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
+  circular scroll on a row wider than the panel animates forever and
+  invalidates the row on every frame, which `ui.row_scrolling` and
+  `ui.invalidate_count` measure. A wrapped row is taller and fills its width, so
+  it reaches the indicators the Stick boards float over the page: any full width
+  row must keep `UI::floatingIndicatorReserve()` clear on the right, and
+  `ui.indicator_clearance` is the check.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

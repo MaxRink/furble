@@ -3,6 +3,8 @@
   "scenario": "screen-off-30s",
   "estimate_kind": "relative simulator estimate, not a hardware measurement",
   "model_source": "tools/power-model/board-currents.yaml",
+  "model_digest": "sha256:8941a84bb8a7345df76150450e51035e81b26a0ad8a09cad55f985a72198aaa6",
+  "model_valid": true,
   "board": "m5stick-s3",
   "duration_ms": 30010,
   "activity": {
@@ -145,14 +147,36 @@
   "energy": {
     "board": "m5stick-s3",
     "components_mA": {
-      "mcu": 0.239920,
+      "mcu": 0.439733,
       "radio": 0.000000,
-      "display": 0.014995,
+      "display": 0.015000,
       "gps": 0.000000,
       "pmic": 0.052470,
       "peripherals": 0.003500
     },
-    "estimated_mA": 0.310885
+    "estimated_mA": 0.510703,
+    "accounting_inputs": {
+      "duration_ms": 30010,
+      "mcu_ms": {
+        "light_sleep_in_80": 29860,
+        "frequency_80": 30010,
+        "frequency_160": 0,
+        "frequency_240": 0
+      },
+      "display_ms": {
+        "on": 0,
+        "dim": 0,
+        "off": 30010
+      },
+      "radio_connected_ms": 0,
+      "radio_event_count": 0,
+      "gps_ms": {
+        "acquiring": 0,
+        "degraded": 0,
+        "tracking": 0,
+        "standby": 0
+      }
+    }
   },
-  "estimated_mA": 0.310885
+  "estimated_mA": 0.510703
 }

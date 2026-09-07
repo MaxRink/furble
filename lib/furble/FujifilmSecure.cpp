@@ -6,6 +6,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <memory>
 
@@ -18,6 +20,14 @@ namespace Furble {
 
 const NimBLEUUID FujifilmSecure::SERVICE_UUID {0xa9d2b304, 0xe8d6, 0x4902, 0x8336352b772d7597};
 const NimBLEUUID FujifilmSecure::PRI_SVC_UUID {0x731893f9, 0x744e, 0x4899, 0xb7e3174106ff2b82};
+
+std::string FujifilmSecure::composeName(const std::string &advertisedName, const serial_t &serial) {
+  static_assert(SERIAL_LEN == FujifilmProtocol::SERIAL_BYTES,
+                "the stored serial must match the advertised serial");
+  std::array<uint8_t, FujifilmProtocol::SERIAL_BYTES> bytes;
+  std::copy(std::begin(serial.data), std::end(serial.data), bytes.begin());
+  return FujifilmProtocol::deviceName(advertisedName, bytes);
+}
 
 /**
  * Determine if the advertised BLE device is a Fujifilm secure camera.
@@ -42,6 +52,11 @@ FujifilmSecure::FujifilmSecure(const void *data, size_t len)
   m_Name = std::string(fujifilm->name);
   m_Address = NimBLEAddress(fujifilm->address, fujifilm->type);
   m_Serial = fujifilm->serial;
+  // Saved entries written before the serial reached the display name still
+  // carry the serial in NVS, so composing here upgrades them on load. The
+  // composition is idempotent, so an entry saved after this change is
+  // unaffected.
+  m_Name = composeName(m_Name, m_Serial);
   m_Queue = xQueueCreate(3, sizeof(bool));
 }
 
@@ -58,6 +73,11 @@ FujifilmSecure::FujifilmSecure(const NimBLEAdvertisedDevice *pDevice)
     std::memcpy(m_Serial.data, advertisement.serial.data(), advertisement.serial.size());
   }
   m_Queue = xQueueCreate(3, sizeof(bool));
+
+  ESP_LOGI(LOG_TAG, "Advertised name = %s", m_Name.c_str());
+  // Fujifilm advertises the bare model, so two bodies of the same model are
+  // indistinguishable in the scan list. Append the advertised serial.
+  m_Name = composeName(m_Name, m_Serial);
 
   ESP_LOGI(LOG_TAG, "Name = %s", m_Name.c_str());
   ESP_LOGI(LOG_TAG, "Address = %s", m_Address.toString().c_str());
@@ -134,7 +154,7 @@ bool FujifilmSecure::_connect(void) {
     return true;
   };
 
-  if (m_PairType == PairType::SAVED || m_Paired) {
+  if (getPairType() == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
     // need to scan for advertising camera
     auto &scan = Scan::getInstance();
@@ -172,6 +192,8 @@ bool FujifilmSecure::_connect(void) {
     }
   }
 
+  // Snapshot the bond before connecting so a security failure below can tell a
+  // stale bond apart from a first pairing.
   ESP_LOGI(LOG_TAG, "Connecting to %s", m_Address.toString().c_str());
   if (!m_Client->connect(m_Address))
     return false;
@@ -179,10 +201,104 @@ bool FujifilmSecure::_connect(void) {
   ESP_LOGI(LOG_TAG, "Connected");
   m_Progress += 5;
 
+  // Bond state is keyed on the identity address, and that is only known once
+  // the link is up, so the snapshot has to happen here rather than before the
+  // connect.
+  //
+  // A Fujifilm Secure body advertises a resolvable private address, and
+  // NimBLEDevice::isBonded() compares against the bond store's identity
+  // addresses (ble_store_util_bonded_peers). So isBonded(m_Address) answers
+  // false on every saved reconnect even when the bond is right there, which
+  // made the recovery below unreachable on exactly the camera it was written
+  // for: the 2026-09-05 bench looped eight times without logging a single
+  // "Security handshake failed (1 of 2)", because every attempt took the
+  // unbonded early return and cleared the run on the way in. Once the link is
+  // up the controller has resolved the RPA, so getConnInfo() carries the
+  // identity address; with no bond, and therefore no IRK to resolve with, it
+  // carries the advertised address and the unbonded path is still correct.
+  const NimBLEAddress bondAddress = m_Client->getConnInfo().getIdAddress();
+  if (bondAddress == NimBLEAddress {}) {
+    // No usable identity means the bond cannot be read, so the run resets and
+    // the recovery cannot fire this attempt. Say so rather than looking like a
+    // camera that was simply never bonded, which is what made the original
+    // defect so hard to see in the bench log.
+    ESP_LOGW(LOG_TAG, "No identity address on the live link; bond state unreadable this attempt");
+  }
+  const bool bondedBefore = NimBLEDevice::isBonded(bondAddress);
+  if (!bondedBefore) {
+    // Nothing stale to measure: this is a first pairing, or the recovery below
+    // already deleted the bond. Either way the failure run starts over.
+    clearSecureFailures();
+  }
+
   ESP_LOGI(LOG_TAG, "Securing");
   if (!m_Client->secureConnection()) {
-    return false;
+    // Stale-bond recovery. When the camera side deletes its pairing while
+    // furble keeps the local bond, encrypting with the dead keys can never
+    // succeed. The saved reconnect then wedges forever and the only way back
+    // to a working pairing is deleting the camera in the furble UI.
+    //
+    // The trigger is a run of consecutive security failures on a camera that
+    // was bonded when the attempt started. Two facts shape it.
+    //
+    // First, the failure shape carries no usable verdict. The 2026-09-02
+    // X100VI bench run (bench-logs/stale-bond-245-run2), taken after deleting
+    // furble's pairing on the camera only, produced no refusal at all: the
+    // link came up and the handshake then failed "rc=13 Operation timed out"
+    // after ~30 s or "rc=520 Connection Timeout" after ~5 s, over and over.
+    // Nor does link state separate them: rc=520 wakes the connect task with
+    // the disconnect event still queued, so m_Connected reads true for a link
+    // that is already dead. A trigger keyed on "still connected" therefore
+    // fires on a transient timeout and misses the real signature entirely.
+    //
+    // Second, one failure is not evidence. A single lost pairing PDU looks
+    // identical, so SECURE_FAILURE_LIMIT consecutive failures against the same
+    // keys is the bar. See that constant for why it is two.
+    //
+    // Only attempts that got the link up reach here at all: a connect that
+    // never completed proves nothing about the keys. An attempt that started
+    // unbonded is a first pairing, so there is nothing stale to delete.
+    if (!bondedBefore || connectCancelled()) {
+      return false;
+    }
+    const uint8_t failures = noteSecureFailure();
+    if (failures < SECURE_FAILURE_LIMIT) {
+      ESP_LOGW(LOG_TAG, "Security handshake failed (%u of %u); retrying before any bond change",
+               static_cast<unsigned>(failures), static_cast<unsigned>(SECURE_FAILURE_LIMIT));
+      return false;
+    }
+
+    ESP_LOGW(LOG_TAG,
+             "Security handshake failed %u times on a bonded camera; deleting the stale local bond",
+             static_cast<unsigned>(failures));
+    // The identity address again: deleting by the advertised RPA would leave
+    // the stale bond in the store.
+    NimBLEDevice::deleteBond(bondAddress);
+    clearSecureFailures();
+
+    // One fresh pairing attempt on this link before giving up. On NimBLE it
+    // always fails, because the deleteBond() above is ble_gap_unpair(), which
+    // terminates every connection to the peer before dropping the keys: there
+    // is no link left to pair on. It is kept because it costs one immediate
+    // failure, it is what produces the "Fresh pair failed" verdict below, and
+    // it recovers the session on any host whose unpair leaves the link up.
+    // m_Connected guards the m_Client deref: a security failure that dropped
+    // the link can free a self-deleting client (the #62 lifecycle rule).
+    if (!m_Connected || !m_Client->secureConnection()) {
+      // The camera is not in pairing mode. Retrying cannot conjure a pairing
+      // the user has to authorise on the camera, so tell Control to stop the
+      // cycle and prompt instead of looping on a bond neither side now holds.
+      ESP_LOGW(LOG_TAG, "Fresh pair failed; put the camera in pairing mode and reconnect");
+      setNeedsRepair();
+      return false;
+    }
+    // The registration gate below (#232/#239) still decides acceptance: a
+    // secure link alone never promotes to an active shutter target.
   }
+  // A completed handshake ends any run of failures against these keys. Without
+  // this a failure, a success and a second failure would read as two in a row
+  // and delete a healthy bond on what is really a single failure.
+  clearSecureFailures();
   if (!registrationAlive())
     return false;
   ESP_LOGI(LOG_TAG, "Secured!");
@@ -364,6 +480,11 @@ bool FujifilmSecure::serialise(void *buffer, size_t bytes) const {
   }
   nvs_t *x = static_cast<nvs_t *>(buffer);
   strncpy(x->name, m_Name.c_str(), MAX_NAME);
+  // strncpy writes no terminator when the name fills the field, and the saved
+  // constructor reads it back with std::string(). Terminate it here, as Lumix,
+  // Ricoh and DJIOsmo already do. This name is now longer than the advertised
+  // one, so the guard matters more than it did.
+  x->name[MAX_NAME - 1] = '\0';
   x->address = (uint64_t)m_Address;
   x->type = m_Address.getType();
   x->serial = m_Serial;

@@ -1,5 +1,7 @@
 #include "FurbleProvision.h"
+#include "FurbleGPSHold.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include "FurbleSettings.h"
@@ -49,6 +51,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::GPS:
     case Settings::IR:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
@@ -65,6 +68,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -79,6 +83,8 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -87,8 +93,10 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::HW_MOTION:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -100,6 +108,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return ProvisionTLV::ValueType::STRING;
 
     case Settings::INTERVAL:
@@ -147,16 +156,41 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
       }
       break;
     case ProvisionTLV::ValueType::U8:
+      if ((setting.type == Settings::GPS_HOLD) && (field.value[0] > GPS_HOLD_MAX)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "GPS fix hold must be 0 through 4";
+        return false;
+      }
       if ((setting.type == Settings::GPS_ASSIST) && (field.value[0] > 2)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "GPS assistance setting must be 0, 1 or 2";
         return false;
       }
+      if ((setting.type == Settings::IMU_WAKE) && (field.value[0] > 3)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "IMU wake gesture must be 0, 1, 2 or 3";
+        return false;
+      }
+      if ((setting.type == Settings::GPS_PLATFORM) && (field.value[0] > 4)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "GPS platform setting must be 0 through 4";
+        return false;
+      }
       if ((setting.type == Settings::TEXT_SIZE) && (field.value[0] > Settings::TEXT_SIZE_LARGE)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "text size setting is out of range";
+        return false;
+      }
+      if ((setting.type == Settings::HW_MOTION)
+          && (field.value[0] > Settings::HW_MOTION_HARDWARE)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "motion engine must be 0, 1 or 2";
         return false;
       }
       if ((setting.type == Settings::FB_OUTPUT) && (field.value[0] > 4)) {
@@ -185,11 +219,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
       break;
     case ProvisionTLV::ValueType::U32:
       if ((setting.type == Settings::GPS_BAUD)
+          && (littleEndianU32(field.value) != Settings::BAUD_AUTO)
           && (littleEndianU32(field.value) != Settings::BAUD_9600)
           && (littleEndianU32(field.value) != Settings::BAUD_115200)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
-        report.message = "GPS baud must be 9600 or 115200";
+        report.message = "GPS baud must be auto, 9600 or 115200";
         return false;
       }
       break;
@@ -226,7 +261,7 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
   return true;
 }
 
-void saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type) {
+bool saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type) {
   switch (field.type) {
     case ProvisionTLV::ValueType::BOOL:
       Settings::save<bool>(type, field.value[0] != 0);
@@ -238,6 +273,9 @@ void saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
       Settings::save<uint32_t>(type, littleEndianU32(field.value));
       break;
     case ProvisionTLV::ValueType::STRING:
+      if (type == Settings::COMPANION_PASSWORD) {
+        return Settings::savePassword(std::string(field.value.begin(), field.value.end()));
+      }
       Settings::save<std::string>(type, std::string(field.value.begin(), field.value.end()));
       break;
     case ProvisionTLV::ValueType::BLOB:
@@ -248,6 +286,7 @@ void saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
       }
     } break;
   }
+  return true;
 }
 
 size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
@@ -259,7 +298,6 @@ size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
   size_t count = 0;
   count += bundle.wifiSsid.has_value() ? 1 : 0;
   count += bundle.wifiPsk.has_value() ? 1 : 0;
-  count += bundle.companionPassword.has_value() ? 1 : 0;
   count += bundle.mqttUri.has_value() ? 1 : 0;
   count += bundle.mqttUsername.has_value() ? 1 : 0;
   count += bundle.mqttPassword.has_value() ? 1 : 0;
@@ -279,6 +317,8 @@ const char *applyErrorString(ApplyError error) {
       return "bad setting";
     case ApplyError::UNSUPPORTED_SETTING:
       return "unsupported setting";
+    case ApplyError::STORAGE_FAILURE:
+      return "storage failure";
   }
   return "unknown apply error";
 }
@@ -288,6 +328,29 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
            const ApplyOptions &options) {
   report = {};
   report.deferredFields = deferredFieldCount(bundle);
+
+  // The dedicated password field and the generic wire-id 46 setting address
+  // the same NVS key. Reject an ambiguous bundle instead of allowing the
+  // order of two unrelated records to choose which secret wins.
+  if (bundle.companionPassword.has_value()) {
+    if ((bundle.companionPassword->empty())
+        || (bundle.companionPassword->size() > ProvisionTLV::MAX_COMPANION_PASSWORD_BYTES)
+        || (std::find(bundle.companionPassword->begin(), bundle.companionPassword->end(), 0)
+            != bundle.companionPassword->end())) {
+      report.error = ApplyError::BAD_SETTING;
+      report.failedSettingId = ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
+      report.message = "companion password is malformed";
+      return false;
+    }
+    for (const auto &field : bundle.settings) {
+      if (field.wireId == ProvisionTLV::COMPANION_PASSWORD_WIRE_ID) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
+        report.message = "companion password is specified twice";
+        return false;
+      }
+    }
+  }
 
   // Validate the complete batch before the first NVS write. Settings::save()
   // itself is void, so this preflight is what prevents a later bad record from
@@ -316,10 +379,29 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
       report.settingsApplied = 0;
       return false;
     }
-    saveSetting(field, setting->type);
+    if (!saveSetting(field, setting->type)) {
+      report.error = ApplyError::STORAGE_FAILURE;
+      report.failedSettingId = field.wireId;
+      report.message = "password persistence failed";
+      return false;
+    }
     report.settingsApplied++;
     if (options.onSettingApplied != nullptr) {
       options.onSettingApplied(field.wireId);
+    }
+  }
+
+  if (bundle.companionPassword.has_value()) {
+    if (!Settings::savePassword(
+            std::string(bundle.companionPassword->begin(), bundle.companionPassword->end()))) {
+      report.error = ApplyError::STORAGE_FAILURE;
+      report.failedSettingId = ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
+      report.message = "password persistence failed";
+      return false;
+    }
+    report.settingsApplied++;
+    if (options.onSettingApplied != nullptr) {
+      options.onSettingApplied(ProvisionTLV::COMPANION_PASSWORD_WIRE_ID);
     }
   }
 

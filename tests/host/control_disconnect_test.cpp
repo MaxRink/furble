@@ -82,7 +82,9 @@ void ensureControlTask() {
     return;
   }
   started = true;
-  std::thread(control_task, &Furble::Control::getInstance()).detach();
+  // Through the shim, exactly as main() starts it on device: the shim owns the
+  // thread and furbleHostStopTasks() joins it before this process exits.
+  xTaskCreate(control_task, "control", 8192, &Furble::Control::getInstance(), 4, nullptr);
 }
 
 using Furble::Control;
@@ -326,6 +328,12 @@ bool testPeerSupervisionTimeoutIsCapped() {
 }  // namespace
 
 int main() {
+  // Stop and join every shim task before this scope ends, so no firmware task
+  // is still running when static destruction frees what it reads. The control
+  // task reaps the zombie drain on every 50 ms tick, so a thread left running
+  // past ~Control walks a freed vector.
+  FurbleHostTaskScope taskScope;
+
   testDeadCameraDisconnectReturnsPromptly();
   testCleanDisconnectLeavesIdle();
   testReconnectAfterDeadDisconnectIsPrompt();
@@ -338,10 +346,5 @@ int main() {
     std::cout << "control disconnect harness: FAIL (" << g_Failures << " checks)\n";
   }
 
-  // The control task runs for the whole process and is never joined. Flush and
-  // exit immediately so its detached thread is not torn down against destroyed
-  // singletons on return from main.
-  std::fflush(stdout);
-  std::fflush(stderr);
-  std::_Exit(status);
+  return status;
 }

@@ -1,0 +1,32 @@
+# Arming a hardware engine installs the light-sleep wake source and does not
+# hold the CPU awake.
+#
+# The point of a hardware engine is that the CPU sleeps between events instead
+# of polling the accelerometer. If arming took a NO_LIGHT_SLEEP lock, or spun a
+# timer that never idles, the engine would cost more than the software poll it
+# replaces.
+#
+# Teeth: make Platform::armMotionWake() return false. ui.motion_wake reads no
+# and the first assert fails. Taking a NO_LIGHT_SLEEP lock in arm() fails the
+# lock assert instead.
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+seed hw_motion 2
+wait 300
+assert ui.motion_backend bmi270-motion
+assert ui.motion_wake yes
+assert power.no_light_sleep 0
+
+# A resting device reaches stationary and stays eligible for light sleep.
+action imu.accel 0 0 1
+advance 61000
+assert ui.motion_state stationary
+assert power.no_light_sleep 0
+assert ui.motion_interrupts 1
+
+# The wake path reports the motion event that would have raised the interrupt.
+action imu.accel 0 0 2
+advance 2000
+assert ui.motion_interrupts 2
+exit

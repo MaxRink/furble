@@ -18,7 +18,60 @@ void writeLittleEndian32(std::array<uint8_t, GEOTAG_BYTES> &data, size_t offset,
   data[offset + 3] = static_cast<uint8_t>(value >> 24);
 }
 
+bool isSerialCharacter(uint8_t byte) {
+  return (byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'Z')
+         || (byte >= 'a' && byte <= 'z');
+}
+
 }  // namespace
+
+std::string formatSerial(const std::array<uint8_t, SERIAL_BYTES> &serial) {
+  bool text = true;
+  bool blank = true;
+  for (const uint8_t byte : serial) {
+    if (byte != 0x00) {
+      blank = false;
+    }
+    if (!isSerialCharacter(byte)) {
+      text = false;
+    }
+  }
+
+  if (blank) {
+    return std::string();
+  }
+
+  if (text) {
+    return std::string(serial.begin(), serial.end());
+  }
+
+  static const char digits[] = "0123456789ABCDEF";
+  std::string formatted;
+  formatted.reserve(SERIAL_BYTES * 2);
+  for (const uint8_t byte : serial) {
+    formatted.push_back(digits[byte >> 4]);
+    formatted.push_back(digits[byte & 0x0f]);
+  }
+  return formatted;
+}
+
+std::string deviceName(const std::string &advertisedName,
+                       const std::array<uint8_t, SERIAL_BYTES> &serial) {
+  const std::string suffix = formatSerial(serial);
+  if (suffix.empty()) {
+    return advertisedName;
+  }
+  if (advertisedName.empty()) {
+    return suffix;
+  }
+  if (advertisedName.size() >= suffix.size()
+      && advertisedName.compare(advertisedName.size() - suffix.size(), suffix.size(), suffix)
+             == 0) {
+    return advertisedName;
+  }
+
+  return advertisedName + " " + suffix;
+}
 
 bool isFujifilmAdvertisement(const uint8_t *data, size_t bytes) {
   if (data == nullptr || bytes < MANUFACTURER_HEADER_BYTES) {

@@ -77,6 +77,15 @@ action nav sensors
 wait 100
 assert ui.page sensors
 assert ui.overflow no
+action nav gestures
+wait 100
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 100
 action nav infrared
 wait 100
 assert ui.page infrared
@@ -114,6 +123,17 @@ action nav gps_assist
 wait 100
 assert ui.page gps_assist
 assert ui.overflow no
+action nav gps_hold
+wait 100
+assert ui.page gps_hold
+action nav gps_baud
+wait 100
+assert ui.page gps_baud
+assert ui.overflow no
+action nav gps_platform
+wait 100
+assert ui.page gps_platform
+assert ui.overflow no
 action nav gps_data
 wait 300
 assert ui.page gps_data
@@ -124,6 +144,13 @@ assert ui.scroll_top 0
 action nav nmea
 wait 300
 assert ui.page nmea
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+action nav gps_sats
+wait 300
+assert ui.page gps_sats
 action scroll bottom
 assert ui.scroll_bottom 0
 action scroll top

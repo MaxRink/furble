@@ -76,6 +76,60 @@ void dumpHandler(int) {
   dumpAcks.fetch_add(1, std::memory_order_release);
 }
 
+// Fatal-fault reporter. The stall watchdog covers a run that stops making
+// progress, but a SIGSEGV leaves only an exit status, which is exactly what
+// issue 283's one sighting on the restart re-exec left to work with. These two
+// pointers are all the handler reads, so it never takes a lock. Both are
+// written with literals or with a string that lives for the whole run.
+std::atomic<const char *> crashPhase {"start"};
+std::atomic<const char *> crashStep {nullptr};
+
+const char *signalName(int signal) {
+  switch (signal) {
+    case SIGSEGV:
+      return "SIGSEGV";
+    case SIGBUS:
+      return "SIGBUS";
+    case SIGILL:
+      return "SIGILL";
+    case SIGFPE:
+      return "SIGFPE";
+    default:
+      return "fatal signal";
+  }
+}
+
+void crashHandler(int signal) {
+  void *frames[MAX_FRAMES];
+  const int depth = backtrace(frames, MAX_FRAMES);
+  writeRaw("\nSIM CRASH: ");
+  writeRaw(signalName(signal));
+  writeRaw("\nSIM CRASH: scenario step: ");
+  const char *step = crashStep.load(std::memory_order_acquire);
+  writeRaw(step != nullptr && step[0] != 0 ? step : "none");
+  writeRaw("\nSIM CRASH: phase: ");
+  writeRaw(crashPhase.load(std::memory_order_acquire));
+  writeRaw("\nSIM CRASH: thread: ");
+  writeRaw(handlerThreadName != nullptr ? handlerThreadName : "unregistered");
+  writeRaw("\n");
+  backtrace_symbols_fd(frames, depth, STDERR_FILENO);
+  // SA_RESETHAND already restored the default disposition, so re-raising ends
+  // the process with the real fatal status a runner reports rather than a
+  // handled one it would read as a clean exit.
+  raise(signal);
+}
+
+void installCrashHandler(void) {
+  struct sigaction action {};
+  action.sa_handler = crashHandler;
+  sigemptyset(&action.sa_mask);
+  action.sa_flags = SA_RESETHAND | SA_NODEFER;
+  sigaction(SIGSEGV, &action, nullptr);
+  sigaction(SIGBUS, &action, nullptr);
+  sigaction(SIGILL, &action, nullptr);
+  sigaction(SIGFPE, &action, nullptr);
+}
+
 void installHandler(void) {
   struct sigaction action {};
   action.sa_handler = dumpHandler;
@@ -216,6 +270,9 @@ void watchdogUnregisterThread(void) {
 }
 
 void watchdogStart(void) {
+  // Ahead of the bound check: a run with the stall watchdog switched off still
+  // has to report a fatal fault.
+  installCrashHandler();
   const unsigned bound = boundSeconds();
   if (bound == 0) {
     return;
@@ -230,11 +287,16 @@ void watchdogStart(void) {
 }
 
 void watchdogPhase(const char *phase) {
+  crashPhase.store(phase == nullptr ? "unnamed" : phase, std::memory_order_release);
   {
     const std::lock_guard<std::mutex> lock(phaseMutex);
     phaseName = phase == nullptr ? "unnamed" : phase;
   }
   phaseCounter.fetch_add(1, std::memory_order_release);
+}
+
+void watchdogScenarioStep(const char *line) {
+  crashStep.store(line, std::memory_order_release);
 }
 
 void watchdogStop(void) {

@@ -176,6 +176,13 @@ dependency_is_current() {
   # as a one-time cache miss so they are upgraded safely.
   grep -q '^[[:space:]]*@:$' "$depfile" || return 1
 
+  # A depfile from a different build-dir spelling can name the same source
+  # object relatively.  Asking make about the current absolute target would
+  # then find no matching rule and incorrectly report it current.  Treat any
+  # target mismatch (including make-escaped paths) as a conservative miss.
+  declared_target=$(sed -n '1s/:.*$//p' "$depfile")
+  [ "$declared_target" = "$object" ] || return 1
+
   # The compiler-generated file is a make rule containing the complete
   # project-header closure. BSD make and GNU make both implement -q, so this
   # checks the rule without duplicating make's escaping and path handling in
@@ -216,7 +223,14 @@ compile_cpp() {
     return
   fi
   echo "[CXX] ${source#$ROOT/}"
-  "$CXX" $CXXFLAGS $(coverage_flags_for "$source") \
+  # TinyGPSPlus ages readings against a global millis(). Suppress its host
+  # wall-clock fallback so sim/clock.cpp can supply the virtual one, which is
+  # what makes fix age deterministic. __AVR__ guards nothing else in that file.
+  extra=""
+  case "$source" in
+    "$DEP_ROOT/TinyGPSPlus/"*) extra="-D__AVR__" ;;
+  esac
+  "$CXX" $CXXFLAGS $extra $(coverage_flags_for "$source") \
     -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
@@ -250,12 +264,15 @@ done
 for source in \
   "$ROOT/src/FurbleBootScreen.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
+  "$ROOT/src/FurbleCompanionAuth.cpp" \
+  "$ROOT/tests/host/companion/companion_hmac.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurbleOTAPartitionSink.cpp" \
   "$ROOT/src/FurbleOTAReplayStore.cpp" \
+  "$ROOT/src/FurbleIMU.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleProvision.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \
@@ -264,6 +281,7 @@ for source in \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
+  "$ROOT/src/FurbleUIGesture.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
   "$ROOT/lib/blowfish/Blowfish.cpp" \
   "$ROOT/lib/furble/BtDebugJournal.cpp" \
@@ -289,6 +307,7 @@ for source in \
   "$ROOT/lib/furble/protocol/AdvertisementProtocol.cpp" \
   "$ROOT/lib/furble/protocol/CameraListProtocol.cpp" \
   "$ROOT/lib/furble/protocol/FujifilmProtocol.cpp" \
+  "$ROOT/lib/furble/protocol/GpsCasic.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \
   "$ROOT/lib/testing/peer/FujifilmVirtualCamera.cpp" \

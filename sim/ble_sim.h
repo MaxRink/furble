@@ -86,6 +86,56 @@ void noteCameraCommand(int cmd);
  */
 bool bleSetWithholdRegistration(bool withhold);
 
+/**
+ * Hold every Fujifilm peer inside its security handshake for `ms` virtual ms.
+ *
+ * `NimBLEClient::secureConnection()` is the one wait inside a Fujifilm Secure
+ * connect that takes no cancel token, and `Camera::connect()` holds
+ * `Camera::m_Mutex` across it, so an attempt parked there is uncancellable and
+ * a target task's `Camera::disconnect()` blocks behind it. The virtual peers
+ * answered it in under a millisecond, so no scenario could cancel into a live
+ * connect at all. Seeded with `secure_stall_ms`.
+ */
+void bleSetSecureStallMs(uint32_t ms);
+
+/**
+ * Cap the NimBLE client pool the way the board's sdkconfig caps it.
+ *
+ * `CONFIG_BT_NIMBLE_MAX_CONNECTIONS` is 9 on every furble board. The mock pool
+ * is unlimited by default, so a client leaked per connect cycle is invisible
+ * here while on the device it ends the session for good: once the pool is out,
+ * `NimBLEDevice::createClient()` returns nullptr and every later connect fails
+ * until a reboot. Seeded with `ble_max_clients`; 0 keeps the pool unlimited.
+ */
+void bleSetMaxClients(size_t max);
+
+/**
+ * Model NimBLE's self-deleting client the way the controller does.
+ *
+ * `Camera::connect()` arms `setSelfDelete(true, true)` on a live session, so on
+ * the device the NimBLE host task frees the client when onDisconnect fires. The
+ * mock keeps that off by default, which means a simulator session leaves its
+ * client behind on every clean teardown. That is a mock artifact rather than a
+ * firmware leak, but it also means the simulator cannot tell the two apart, so
+ * a scenario that walks many connect cycles turns it on. Seeded with
+ * `ble_client_selfdelete`.
+ */
+void bleSetDeferredClientDelete(bool enabled);
+
+/**
+ * Did any Fujifilm peer's modelled handshake end on a link terminate rather
+ * than on its own deadline?
+ *
+ * This is the only breaker-proof way to tell an aborted cancel from one that
+ * merely outwaited the attempt. Virtual-time bounds cannot: the interactive
+ * teardown polls on the UI thread, so how many 20 ms ticks it burns is set by
+ * how long the host takes to let the connect task run, which is issue #279.
+ */
+bool bleSecureStallAborted(void);
+
+/** Number of live NimBLE clients the mock currently holds. */
+size_t bleLiveClientCount(void);
+
 /** Number of advertisements the virtual radio has delivered. */
 size_t bleAdvertisementCount(void);
 

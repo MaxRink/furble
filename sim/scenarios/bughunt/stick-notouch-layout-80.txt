@@ -53,7 +53,10 @@ action page settings
 action nav sensors
 wait 150
 assert ui.page sensors
-# WILL_FAIL: overflows by 10 px on this panel.
+# WILL_FAIL: overflows by 7 px on this panel. It was 10 px before the
+# gesture work folded the 'Restart to apply' caption into the button it
+# describes, so this page got closer to fitting, not further away. The
+# remaining gap is the button and switch row padding at this font size.
 print ui.scroll_bottom
 xassert ui.overflow no
 # WILL_FAIL: 1 widget renders under an indicator.

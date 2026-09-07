@@ -31,4 +31,30 @@ typedef uint32_t StackType_t;
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+/**
+ * Stop and join every shim-backed task before host static destruction.
+ *
+ * The console task and the control task are immortal on device: both loop
+ * forever and neither has an exit path. On the host the process does exit, and
+ * C++ static destruction then frees the objects those threads are still using.
+ * The control task calls Control::reapZombieTargets() on every 50 ms tick, so a
+ * thread left running past ~Control walks a freed vector.
+ *
+ * This sets a stop flag, wakes every blocking primitive a task can be parked
+ * in, and joins the threads. It is the same contract the control end-to-end
+ * harness uses. Call it, or let FurbleHostTaskScope call it, before main()
+ * returns.
+ */
+void furbleHostStopTasks(void);
+
+/** Scope guard that runs furbleHostStopTasks() on every exit path. */
+class FurbleHostTaskScope {
+ public:
+  FurbleHostTaskScope() = default;
+  ~FurbleHostTaskScope() { furbleHostStopTasks(); }
+
+  FurbleHostTaskScope(const FurbleHostTaskScope &) = delete;
+  FurbleHostTaskScope &operator=(const FurbleHostTaskScope &) = delete;
+};
+
 #endif

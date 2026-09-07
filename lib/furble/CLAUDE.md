@@ -17,7 +17,26 @@ protocol core.
   in NVS: never renumber or reuse existing ones (MOBILE_DEVICE is deprecated
   but its value stays reserved).
 - `CameraList` handles persistence of paired cameras, `Scan` handles
+  advertisement matching and discovery. `CameraList::savedSnapshot()` is the
+  lazy persisted catalog; `snapshot()` is transient scan/connect state. A load
+  copies saved shared pointers into the transient list instead of rebuilding
+  active objects. `CameraList::save()` marks the exact shared camera `SAVED`
+  only after its record is persisted, so vendor reconnect handshakes retain
+  their saved-camera behavior without losing Control ownership identity.
+- The saved index blob is versioned by an explicit four byte header. A v1 blob
+  has no header and no camera ids, so it still decodes and `load()` assigns and
+  persists ids once. Camera ids are the companion wire identity: 1 to 254, zero
+  means unassigned, `0xff` means all cameras, and the allocator walks forward
+  from a persisted counter so a delete does not hand an id straight back.
+- `CameraList::m_Mutex` guards the connect list and the id map. Off-UI-task
+  callers take `snapshot()` rather than iterating `size()` and `get()`, which
+  race a concurrent `load()`.
   advertisement matching and discovery.
+- `protocol/ProvisionTLV` mirrors the frozen settings wire ledger. Wire id 46
+  is the IMU enable switch and wire id 47 is the write-only companion
+  password. A bundle that names the password twice, once as a settings record
+  and once through the dedicated field tag, is rejected before anything is
+  written. The password is never echoed back on any surface.
 - `Scan` owns one stable NimBLE callback proxy. In the pinned
   esp-nimble-cpp 2.5.0 source (`NimBLEScan.cpp`, `stop()`), cancellation calls
   `ble_gap_disc_cancel()` and does not synthesize `onScanEnd`; Apache NimBLE's
@@ -64,6 +83,28 @@ protocol core.
   flag and advance a per-connect callback generation before every Basic or
   Secure attempt, and keep active promotion behind a bounded wait that aborts
   on link loss or Control cancellation.
+- A Fujifilm Secure body advertises only the bare model in the BLE local name
+  ("X100VI"); the longer label on the camera's own Bluetooth screen is never on
+  the air. The displayed name is therefore the advertised model plus the
+  advertised five byte serial, composed by
+  `FujifilmProtocol::deviceName()`. Both constructors compose it, so a saved
+  entry gains the serial on load without any change to the stored record: the
+  serial was always in `nvs_t`. Keep the composition idempotent. Do not do this
+  for Basic, whose manufacturer data carries a rotating pairing token rather
+  than a stable serial. Name derivation must never change matcher acceptance.
+- Bond store lookups take the identity address, never the advertised one. A
+  Secure body advertises a resolvable private address that rotates, so
+  `NimBLEDevice::isBonded()` and `deleteBond()` keyed on it miss the bond every
+  time: the stale keys survive and the recovery loops. Read
+  `m_Client->getConnInfo().getIdAddress()` off the live link, which is the
+  address NimBLE resolved through the IRK and the address the bond is filed
+  under. That means the snapshot has to happen after `connect()`, not before.
+- `NimBLEDevice::deleteBond()` is `ble_gap_unpair()`, which calls
+  `ble_gap_terminate_with_conn()` for every connection to that peer before it
+  drops the keys. Unpairing therefore ends the live link. Nothing that needs the
+  link may run after it: Fujifilm Secure's in-link fresh pair is kept only
+  because it costs one immediate failure and produces the "Fresh pair failed"
+  verdict that raises the re-pair prompt, never because it can recover here.
 - Ricoh fresh pairing treats a bonded-address security failure as a stale local
   bond: delete that bond and return failure so the next bounded control retry
   can perform numeric comparison. Saved reconnect failures preserve the bond;
@@ -91,3 +132,15 @@ protocol core.
 - The Fujifilm X100VI Secure golden GATT handshake (STATUS values, identity
   write, registration-accept notifications, shutter sequence) is recorded in
   `plans/95-engineering-lessons.md`. Cite it instead of re-capturing.
+- `protocol/` is the portable core: pure wire-format code with no BLE, NVS,
+  app-layer, RTOS or UI dependency. `tools/check_portability_inventory.py`
+  enforces that by keyword, comments included, and
+  `tools/portable_core_manifest.txt` must list every file here. Adding a file
+  means adding it to that manifest and keeping the platform names out of its
+  prose.
+- `GpsCasic` (`Furble::Casic`) lives here even though it is not a camera codec:
+  binary checksum and framing, the autobaud ladder, the GSV/GSA satellite
+  parser, ephemeris cache framing and freshness, and the MON-HW decode. GPS is
+  a furble feature rather than an ESP one, so a Nordic port carries it, and the
+  file already satisfies the portable contract unchanged. It is used by
+  `src/FurbleGPS`, by no camera, and is covered by the `gps-casic` host test.

@@ -19,6 +19,7 @@
 // PMIC platform).
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -56,6 +57,10 @@
 #include "Scan.h"
 #include "console_doubles.h"
 #include "esp_console.h"
+
+// The console and NVS shims define separate ESP error enums.
+extern "C" void nvs_test_fail_set_on(size_t nth_future_call);
+extern "C" void nvs_test_fail_commit_on(size_t nth_future_call);
 
 const char *LOG_TAG = "furble-host-console";
 
@@ -100,9 +105,10 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",     "version",   "status", "imu",      "power",   "perf",       "gps",     "time",
-    "settings", "provision", "ui",     "cameras",  "connect", "disconnect", "shutter", "ir",
-    "focus",    "scan",      "bt",     "feedback", "log",     "debug",      "flash",   "reboot",
+    "help",     "version",    "status",   "imu",       "motion",    "power", "perf",
+    "gps",      "time",       "settings", "companion", "provision", "ui",    "cameras",
+    "connect",  "disconnect", "shutter",  "ir",        "focus",     "scan",  "bt",
+    "feedback", "log",        "debug",    "flash",     "reboot",
 };
 
 }  // namespace
@@ -120,26 +126,27 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",    "expected stats or log",                                       "",         {"stats", "log"}                      },
-    {"perf",     "expected tasks, heap or lvgl",                                "",         {"tasks", "heap", "lvgl"}             },
+    {"power",     "expected stats or log",                                               "",         {"stats", "log"}                      },
+    {"perf",      "expected tasks, heap or lvgl",                                        "",         {"tasks", "heap", "lvgl"}             },
     {"gps",
-     "expected on, off, raw, send, binary, config, aid or power",               "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "power"}                                                             },
-    {"time",     "usage: time status | flush",                                  "",         {"status", "flush"}                   },
-    {"settings", "expected list, get or set",                                   " theme",   {"list", "get", "set"}                },
-    {"ui",       "usage: ui audit",                                             "",         {"audit"}                             },
-    {"cameras",  "expected list or status",                                     "",         {"list", "status"}                    },
-    {"imu",      "usage: imu status",                                           "",         {"status"}                            },
-    {"shutter",  "expected press, release or hold",                             "",         {"press", "release", "hold"}          },
-    {"ir",       "usage: ir fire [protocol]",                                   "",         {"fire"}                              },
-    {"focus",    "expected press or release",                                   "",         {"press", "release"}                  },
-    {"scan",     "expected start, stop or list",                                "",         {"start", "stop", "list"}             },
-    {"bt",       "expected scan, explore, pair or journal",                     "",         {"scan", "explore", "pair", "journal"}},
-    {"feedback", "usage: feedback test",                                        " shutter", {"test"}                              },
-    {"flash",    "usage: flash prepare | cancel",                               "",         {"prepare", "cancel"}                 },
+     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                         },
+    {"time",      "usage: time status | flush",                                          "",         {"status", "flush"}                   },
+    {"settings",  "expected list, get or set",                                           " theme",   {"list", "get", "set"}                },
+    {"companion", "usage: companion password set <pw> | clear | status",                 " status",  {"password"}                          },
+    {"ui",        "usage: ui audit",                                                     "",         {"audit"}                             },
+    {"cameras",   "expected list or status",                                             "",         {"list", "status"}                    },
+    {"imu",       "usage: imu status",                                                   "",         {"status"}                            },
+    {"shutter",   "expected press, release or hold",                                     "",         {"press", "release", "hold"}          },
+    {"ir",        "usage: ir fire [protocol]",                                           "",         {"fire"}                              },
+    {"focus",     "expected press or release",                                           "",         {"press", "release"}                  },
+    {"scan",      "expected start, stop or list",                                        "",         {"start", "stop", "list"}             },
+    {"bt",        "expected scan, explore, pair or journal",                             "",         {"scan", "explore", "pair", "journal"}},
+    {"feedback",  "usage: feedback test",                                                " shutter", {"test"}                              },
+    {"flash",     "usage: flash prepare | cancel",                                       "",         {"prepare", "cancel"}                 },
     {"debug",
-     "expected control, camera, ble, heap, tasks, power, gps, settings or all", "",
-     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                             },
+     "expected control, camera, ble, heap, tasks, power, gps, settings or all",          "",
+     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                      },
 };
 
 size_t expectedSubcommandCount(void) {
@@ -313,6 +320,7 @@ void testSettings(void) {
   checkContains(list.out, "theme: ", "settings list prints the theme string");
   checkContains(list.out, "gpx_period: ", "settings list prints the GPX period");
   checkContains(list.out, "display_mode: ", "settings list prints the display mode");
+  checkContains(list.out, "companion_pw: unset", "settings list reports password state only");
 
   const Result get = runDirect("settings get brightness");
   check(get.rc == 0, "settings get returns success");
@@ -321,6 +329,43 @@ void testSettings(void) {
   checkContains(get.out, "type: uint8", "settings get reports the storage type");
   checkContains(get.out, "applies: on reboot", "settings get reports when it applies");
   checkContains(get.out, "value: ", "settings get prints the value");
+
+  const Result secretGet = runDirect("settings get companion_pw");
+  check(secretGet.rc != 0, "generic settings get refuses the companion password");
+  checkContains(secretGet.out, "use companion password set, clear or status",
+                "generic settings get points to the safe password commands");
+  checkContains(runDirect("companion password status").out, "companion.password: unset",
+                "password status reports unset without revealing a value");
+  const size_t reloadsBeforePassword = ConsoleHost::misc().companionPasswordReloads;
+  check(runDirect("companion password set test-secret").rc == 0, "password set returns success");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "test-secret",
+        "password set persists the secret");
+  check(ConsoleHost::misc().companionPasswordReloads == reloadsBeforePassword + 1,
+        "password set reloads the live companion gate");
+  checkContains(runDirect("companion password status").out, "companion.password: set",
+                "password status reports set without revealing a value");
+  check(runDirect("companion password clear").rc == 0, "password clear returns success");
+  check(ConsoleHost::misc().companionPasswordReloads == reloadsBeforePassword + 2,
+        "password clear reloads the live companion gate");
+  checkContains(runDirect("companion password status").out, "companion.password: unset",
+                "password clear reports unset");
+
+  nvs_test_fail_set_on(1);
+  const Result failedSet = runDirect("companion password set rejected-secret");
+  check(failedSet.rc != 0 && !contains(failedSet.out, "rejected-secret"),
+        "failed password write reports failure without leaking the secret");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD).empty(),
+        "failed password write preserves the previous value");
+  check(runDirect("companion password set retained-secret").rc == 0,
+        "password storage recovers after a failed write");
+  nvs_test_fail_commit_on(1);
+  check(runDirect("companion password clear").rc != 0,
+        "failed password clear commit reports failure");
+  check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD)
+            == "retained-secret",
+        "failed clear preserves the saved password");
+  check(runDirect("companion password clear").rc == 0,
+        "password clear recovers after a failed commit");
 
   // The settings the console cannot render are still described, and say so
   // instead of printing something misleading.
@@ -355,9 +400,99 @@ void testSettings(void) {
                 "a uint16 setting saves");
   checkContains(runDirect("settings get gpx_period").out, "value: 30", "the uint16 reads back");
 
+  // The two gesture settings. Both apply immediately and both must notify the
+  // UI task, which owns the 50 Hz poll timer, without touching LVGL from here.
+  {
+    const unsigned before = ConsoleHost::ui().gestureNotifications;
+    const Result wake = runDirect("settings get imu_wake");
+    check(wake.rc == 0, "settings get imu_wake returns success");
+    checkContains(wake.out, "name: Wake Gesture", "imu_wake names the setting");
+    checkContains(wake.out, "type: uint8", "imu_wake reports uint8");
+    checkContains(wake.out, "applies: immediately", "imu_wake applies immediately");
+    checkContains(runDirect("settings set imu_wake 3").out, "saved: imu_wake",
+                  "imu_wake saves in range");
+    checkContains(runDirect("settings get imu_wake").out, "value: 3", "imu_wake reads back");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+          "imu_wake reached the real Settings store");
+
+    const Result bad = runDirect("settings set imu_wake 4");
+    check(bad.rc != 0, "imu_wake rejects an out-of-range mode");
+    checkContains(bad.out, "expected 0-3", "imu_wake names its range");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+          "a rejected imu_wake leaves the stored value alone");
+
+    const Result trig = runDirect("settings get imu_trigger");
+    checkContains(trig.out, "name: Double-Tap Shutter", "imu_trigger names the setting");
+    checkContains(trig.out, "type: bool", "imu_trigger reports bool");
+    checkContains(trig.out, "applies: immediately", "imu_trigger applies immediately");
+    checkContains(runDirect("settings set imu_trigger on").out, "saved: imu_trigger",
+                  "imu_trigger saves");
+    checkContains(runDirect("settings get imu_trigger").out, "value: true",
+                  "imu_trigger reads back true");
+    check(ConsoleHost::ui().gestureNotifications > before,
+          "a gesture setting write notifies the UI task");
+  }
+
+  // The gesture amplitude calibration knob. Runtime only, clamped at both ends.
+  {
+    checkContains(runDirect("imu scale").out, "scale: 1.00", "imu scale defaults to 1.0");
+    checkContains(runDirect("imu scale 2.5").out, "scale: 2.50", "imu scale accepts a value");
+    checkContains(runDirect("imu scale").out, "scale: 2.50", "imu scale reads back");
+    const Result low = runDirect("imu scale 0.1");
+    check(low.rc != 0, "imu scale rejects a value below the range");
+    checkContains(low.out, "expected 0.25-4.0", "imu scale names its range");
+    check(runDirect("imu scale 9").rc != 0, "imu scale rejects a value above the range");
+    check(runDirect("imu scale nope").rc != 0, "imu scale rejects a non-number");
+    checkContains(runDirect("imu scale").out, "scale: 2.50",
+                  "a rejected imu scale leaves the live value alone");
+    runDirect("imu scale 1.0");
+  }
+
   checkContains(runDirect("settings set scan_timeout 45").out, "saved: scan_timeout",
                 "a uint32 setting saves");
   checkContains(runDirect("settings get scan_timeout").out, "value: 45", "the uint32 reads back");
+
+  // Fix hold and extrapolation. The hold is the only uint8 with its own range
+  // parser, and both of them have to reach the GPS reload, because a hold the
+  // user set from the console that only took effect after a reboot would look
+  // like the feature simply not working.
+  checkContains(runDirect("settings get gps_hold").out, "type: uint8",
+                "the fix hold setting is a uint8");
+  checkContains(runDirect("settings get gps_hold").out, "applies: immediately",
+                "the fix hold setting applies at once");
+  // It renders its number rather than declining to. printValue is a separate
+  // switch from settingType, so a setting can be typed and still unprintable.
+  checkContains(runDirect("settings get gps_hold").out, "value: 0",
+                "fix hold defaults to off and prints it");
+  checkContains(runDirect("settings set gps_hold 4").out, "saved: gps_hold",
+                "the fix hold setting saves");
+  checkContains(runDirect("settings get gps_hold").out, "value: 4",
+                "the saved fix hold reads back");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_HOLD) == 4,
+        "the fix hold value reached the real Settings store");
+
+  const Result badHold = runDirect("settings set gps_hold 5");
+  check(badHold.rc != 0, "a fix hold value past the last option fails");
+  checkContains(badHold.out, "expected 0-4", "the fix hold range error names the range");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_HOLD) == 4,
+        "a rejected fix hold value does not overwrite the saved one");
+
+  checkContains(runDirect("settings get gps_extrap").out, "type: bool",
+                "the extrapolate setting is a bool");
+  checkContains(runDirect("settings get gps_extrap").out, "applies: immediately",
+                "the extrapolate setting applies at once");
+  checkContains(runDirect("settings get gps_extrap").out, "value: false",
+                "extrapolation defaults to off");
+  checkContains(runDirect("settings set gps_extrap on").out, "saved: gps_extrap",
+                "the extrapolate setting saves");
+  checkContains(runDirect("settings get gps_extrap").out, "value: true",
+                "the saved extrapolate setting reads back");
+
+  const size_t beforeHoldReload = ConsoleHost::ui().requests.size();
+  runDirect("settings set gps_hold 1");
+  runDirect("settings set gps_extrap off");
+  check(ConsoleHost::ui().requests.size() >= beforeHoldReload + 2,
+        "both fix hold settings queue a GPS reload");
 
   checkContains(runDirect("settings set button_mode one-button").out, "saved: button_mode",
                 "the button mode saves");
@@ -386,6 +521,75 @@ void testSettings(void) {
   check(noValue.rc != 0, "settings set with no value fails");
   checkContains(noValue.out, "missing value", "settings set names the missing value");
 
+  // The motion engine is an enum with three values, so both ends of the range
+  // matter: the console must take 0 through 2 and refuse anything above.
+  checkContains(list.out, "hw_motion: ", "settings list prints hw_motion");
+  const Result motionGet = runDirect("settings get hw_motion");
+  check(motionGet.rc == 0, "settings get hw_motion returns success");
+  checkContains(motionGet.out, "key: hw_motion", "settings get names the motion engine key");
+  checkContains(motionGet.out, "name: Motion Engine", "settings get names the motion engine");
+  checkContains(motionGet.out, "type: uint8", "settings get reports the motion engine type");
+  checkContains(motionGet.out, "applies: on reboot",
+                "the motion engine is chosen when the source arms, so it needs a restart");
+  checkContains(motionGet.out, "value: 1",
+                "the motion engine ships as Software, so the unproven hardware path is "
+                "never what a user gets by default");
+
+  const Result motionSet = runDirect("settings set hw_motion 2");
+  check(motionSet.rc == 0, "settings set hw_motion returns success");
+  checkContains(motionSet.out, "saved: hw_motion", "settings set confirms the motion engine save");
+  checkContains(runDirect("settings get hw_motion").out, "value: 2",
+                "the saved motion engine reads back");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == 2,
+        "the motion engine value reached the real Settings store");
+
+  const Result motionBad = runDirect("settings set hw_motion 3");
+  check(motionBad.rc != 0, "settings set rejects a motion engine value above Hardware");
+  checkContains(motionBad.out, "expected 0-2", "the motion engine error names the range");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == 2,
+        "a rejected motion engine write leaves the stored value alone");
+
+  // The motion source: the hardware gate's readout, and the calibration knob
+  // for a board whose accelerometer noise floor disagrees with the shipped
+  // threshold. PR65's motion-adaptive GPS consumes the same source, so the
+  // knob has to be stable and clamped.
+  const Result motionStatus = runDirect("motion status");
+  check(motionStatus.rc == 0, "motion status returns success");
+  checkContains(motionStatus.out, "backend: none", "an unarmed source reports no backend");
+  checkContains(motionStatus.out, "armed: no", "an unarmed source says so");
+  checkContains(motionStatus.out, "state: inactive", "an unarmed source has no motion state");
+  checkContains(motionStatus.out, "wake: polling", "an unarmed source claims no wake source");
+  // The hardware gate reads all of this over USB. Steps 1, 2 and 6 have no
+  // other observable: a one-second poll cannot count edges, and the retry was
+  // previously only visible through an ESP_LOGD that release builds compile out.
+  checkContains(motionStatus.out, "pin: ", "motion status reports the interrupt line");
+  checkContains(motionStatus.out, "edges: ", "motion status reports the wake edge count");
+  checkContains(motionStatus.out, "bus_retries: ", "motion status reports IMU bus retries");
+  checkContains(motionStatus.out, "pmic_retries: ", "motion status reports PMIC retries");
+  checkContains(motionStatus.out, "scale: 1.00", "the scale defaults to one");
+  checkContains(motionStatus.out, "threshold: 0.200", "the shipped threshold is 0.20 g");
+
+  const Result scaleSet = runDirect("motion scale 2.0");
+  check(scaleSet.rc == 0, "motion scale accepts a value in range");
+  checkContains(scaleSet.out, "scale: 2.00", "the new scale reads back");
+  checkContains(runDirect("motion status").out, "threshold: 0.400",
+                "the scale multiplies the software threshold");
+
+  for (const char *bad : {"motion scale 0", "motion scale 5", "motion scale -1", "motion scale abc",
+                          "motion scale 1.0.0"}) {
+    const Result rejected = runDirect(bad);
+    check(rejected.rc != 0, std::string("motion scale rejects: ") + bad);
+  }
+  checkContains(runDirect("motion status").out, "scale: 2.00",
+                "a rejected scale leaves the previous value alone");
+
+  check(runDirect("motion bogus").rc != 0, "motion rejects an unknown subcommand");
+  checkContains(runDirect("motion bogus").out, "usage: motion status | scale",
+                "the motion error names the usage");
+
+  // Leave the calibration where the rest of the suite expects it.
+  runDirect("motion scale 1.0");
+
   const Result badRange = runDirect("settings set brightness 999");
   check(badRange.rc != 0, "an out of range value fails");
   checkContains(badRange.out, "expected 0-255", "the range error names the range");
@@ -394,9 +598,53 @@ void testSettings(void) {
   check(badBool.rc != 0, "a bad boolean fails");
   checkContains(badBool.out, "expected on or off", "the boolean error names the values");
 
-  const Result badBaud = runDirect("settings set gps_baud 4800");
-  check(badBaud.rc != 0, "an unsupported baud fails");
-  checkContains(badBaud.out, "expected 9600 or 115200", "the baud error names the values");
+  // The GPS baud parser takes the two fixed rates and both spellings of the
+  // autobaud ladder. Each save is proved by seeding a different value first.
+  const struct {
+    const char *text;
+    uint32_t stored;
+  } BAUDS[] = {
+      {"auto",   0     },
+      {"AUTO",   0     },
+      {"0",      0     },
+      {"9600",   9600  },
+      {"115200", 115200},
+  };
+  for (const auto &entry : BAUDS) {
+    const std::string what = std::string("settings set gps_baud ") + entry.text;
+    runDirect(entry.stored == 9600 ? "settings set gps_baud 115200" : "settings set gps_baud 9600");
+    const Result baud = runDirect(what);
+    check(baud.rc == 0, what + " returns success");
+    checkContains(baud.out, "saved: gps_baud", what + " confirms the save");
+    check(Furble::Settings::load<uint32_t>(Furble::Settings::GPS_BAUD) == entry.stored,
+          what + " stored " + std::to_string(entry.stored));
+  }
+
+  // Everything else is refused, and the refused write leaves the store alone.
+  for (const char *bad : {"4800", "abc", ""}) {
+    const std::string what = std::string("settings set gps_baud ") + bad;
+    runDirect("settings set gps_baud 9600");
+    const Result baud = runDirect(what);
+    check(baud.rc != 0, what + " fails");
+    check(Furble::Settings::load<uint32_t>(Furble::Settings::GPS_BAUD) == 9600,
+          what + " left the stored baud alone");
+  }
+  checkContains(runDirect("settings set gps_baud 4800").out, "expected auto, 0, 9600 or 115200",
+                "the baud error names the values");
+  checkContains(runDirect("settings set gps_baud").out, "missing value",
+                "an empty baud names the missing value");
+
+  // The dynamic platform model, saved from settings as well as from gps.
+  checkContains(runDirect("settings set gps_plat 3").out, "saved: gps_plat",
+                "the platform model saves");
+  checkContains(runDirect("settings get gps_plat").out, "value: 3",
+                "the platform model reads back");
+  const Result badPlatform = runDirect("settings set gps_plat 5");
+  check(badPlatform.rc != 0, "a platform model above 4 fails");
+  checkContains(badPlatform.out, "expected 0 (off), 1 portable, 2 stationary, 3 pedestrian",
+                "the platform error names the models");
+  checkContains(runDirect("settings get gps_plat").out, "value: 3",
+                "a refused platform model leaves the store alone");
 
   const Result badDuty = runDirect("settings set gps_duty 7");
   check(badDuty.rc != 0, "an unsupported duty interval fails");
@@ -465,6 +713,7 @@ void testGPS(void) {
   // The degraded flag and retry count live here too, in one snapshot, so the
   // console cannot report a fresh cycle state beside a stale retry count.
   gps.source = Furble::GPS::SOURCE_UART;
+  gps.fix = Furble::GPS::Fix::LIVE;
   gps.receiver = {"degraded", Furble::GPS::POWER_STANDBY, 10, 1000, 42000, true, 1, true, true, 3};
 
   const Result status = runDirect("gps");
@@ -487,6 +736,26 @@ void testGPS(void) {
   checkContains(status.out, "assist: 1", "gps status reports the assisted start mode");
   checkContains(status.out, "assist_cache: true", "gps status reports the assist cache state");
   checkContains(status.out, "raw: false", "gps status reports the NMEA mirror");
+  // The fix hold state. "fix: true" above is the receiver's own fix flag, which
+  // says nothing about whether the position being sent to the camera is live or
+  // held, and the GPS Data page is not reachable from a bench script.
+  checkContains(status.out, "fix_state: live", "gps status reports a live fix");
+  checkContains(status.out, "hold: 0", "gps status reports the fix hold bound");
+  checkContains(status.out, "hold_remaining: 0", "gps status reports no held time");
+
+  gps.fix = Furble::GPS::Fix::HELD;
+  gps.holdLimitMs = 30000;
+  gps.holdRemainingMs = 12000;
+  const Result held = runDirect("gps");
+  checkContains(held.out, "fix_state: held", "gps status reports a held fix");
+  checkContains(held.out, "hold: 30000", "gps status reports the configured bound");
+  checkContains(held.out, "hold_remaining: 12000", "gps status reports the time left");
+
+  gps.fix = Furble::GPS::Fix::NONE;
+  gps.holdRemainingMs = 0;
+  checkContains(runDirect("gps").out, "fix_state: none",
+                "gps status reports a lost fix once the hold expires");
+  gps.holdLimitMs = 0;
 
   // A receiver that has said nothing has no age, and "none" must not read as a
   // zero second age.
@@ -594,6 +863,142 @@ void testGPS(void) {
 
   checkContains(runDirect("gps raw").out, "usage: gps raw on | off", "gps raw needs an argument");
   checkContains(runDirect("gps send").out, "usage: gps send", "gps send needs a body");
+
+  const Result bogus = runDirect("gps bogus");
+  check(bogus.rc != 0, "an unknown gps subcommand fails");
+  checkContains(bogus.out,
+                "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",
+                "an unknown gps subcommand lists the accepted ones");
+}
+
+// Test 5b. Receiver detection, satellite detail, the platform model and the
+// MON-HW poll. These four surfaces are what a bench script reads when a
+// receiver stays silent, so each is asserted from the printed line outward.
+void testGPSDiagnostics(void) {
+  std::cerr << "test: the gps receiver, satellite, platform and monhw diagnostics\n";
+  ConsoleHost::resetDoubles();
+
+  auto &gps = ConsoleHost::gps();
+
+  // Detection state. A host script has to tell a receiver that answered from
+  // one that was never probed, so every state prints its own name.
+  const struct {
+    Furble::GPS::receiver_state_t state;
+    const char *name;
+  } RECEIVER_STATES[] = {
+      {Furble::GPS::receiver_state_t::UNKNOWN,   "unknown"  },
+      {Furble::GPS::receiver_state_t::DETECTING, "detecting"},
+      {Furble::GPS::receiver_state_t::PRESENT,   "present"  },
+      {Furble::GPS::receiver_state_t::ABSENT,    "absent"   },
+  };
+  for (const auto &entry : RECEIVER_STATES) {
+    gps.receiverState = entry.state;
+    const Result status = runDirect("gps");
+    check(status.rc == 0, std::string("gps status runs in the ") + entry.name + " state");
+    checkContains(status.out, std::string("receiver: ") + entry.name,
+                  std::string("gps status reports the ") + entry.name + " receiver state");
+  }
+
+  // The detected baud is zero until the ladder locks one, and zero must not
+  // read as a configured rate.
+  gps.detectedBaud = 0;
+  checkContains(runDirect("gps").out, "detected_baud: 0", "an unlocked baud reports as zero");
+  gps.detectedBaud = 115200;
+  checkContains(runDirect("gps").out, "detected_baud: 115200", "a locked baud reports itself");
+
+  // Satellite capture is off by default, and the empty report names the
+  // command that starts it instead of printing an empty table.
+  const Result empty = runDirect("gps sats");
+  check(empty.rc == 0, "gps sats returns success with an empty report");
+  checkContains(empty.out, "sats in view: 0", "an empty report prints a zero in view count");
+  checkContains(empty.out, "sats used: 0", "an empty report prints a zero used count");
+  checkContains(empty.out, "sats: none (enable with 'gps sats on')",
+                "an empty report names the command that starts capture");
+
+  const Result satsOn = runDirect("gps sats on");
+  check(satsOn.rc == 0, "gps sats on returns success");
+  checkContains(satsOn.out, "sats capture: true", "gps sats on reports the new capture state");
+  check(gps.satCapture, "gps sats on reached the receiver");
+
+  const Result satsOff = runDirect("gps sats off");
+  check(satsOff.rc == 0, "gps sats off returns success");
+  checkContains(satsOff.out, "sats capture: false", "gps sats off reports the new capture state");
+  check(!gps.satCapture, "gps sats off reached the receiver");
+
+  const Result satsBad = runDirect("gps sats garbage");
+  check(satsBad.rc != 0, "a bad capture argument fails");
+  checkContains(satsBad.out, "usage: gps sats [on | off]",
+                "a bad capture argument prints the usage");
+
+  // A populated report prints the counts, the DOP line and one line per
+  // satellite, tracked or not.
+  gps.satellites.in_view = 2;
+  gps.satellites.used = 1;
+  gps.satellites.dop = {2.5f, 1.2f, 2.0f, 3, true};
+  gps.satellites.satellites = {
+      {5,  Furble::Casic::CONSTELLATION_GPS,    45, 120, 38, true,  true },
+      {12, Furble::Casic::CONSTELLATION_BEIDOU, 10, 300, 0,  false, false},
+  };
+  const Result report = runDirect("gps sats");
+  check(report.rc == 0, "gps sats returns success with a populated report");
+  checkContains(report.out, "sats in view: 2", "the report prints the in view count");
+  checkContains(report.out, "sats used: 1", "the report prints the used count");
+  checkContains(report.out, "fix type: 3", "the report prints the fix type");
+  checkContains(report.out, "dop: pdop 2.5 hdop 1.2 vdop 2.0", "the report prints the DOP line");
+  checkContains(report.out, "sat: sys=1 prn=5 elev=45 az=120 cn0=38 used=true",
+                "the report prints a tracked satellite");
+  checkContains(report.out, "sat: sys=4 prn=12 elev=10 az=300 cn0=0 used=false",
+                "the report prints an untracked satellite");
+  check(!contains(report.out, "sats: none"),
+        "a populated report drops the hint that starts capture");
+
+  // The dynamic platform model. Every accepted value saves, and everything
+  // else is refused without touching the store.
+  const Result noModel = runDirect("gps platform");
+  check(noModel.rc != 0, "gps platform with no argument fails");
+  checkContains(noModel.out, "usage: gps platform 0..4", "gps platform prints its usage");
+
+  for (unsigned model = 0; model <= 4; model++) {
+    const std::string what = "gps platform " + std::to_string(model);
+    const Result platform = runDirect(what);
+    check(platform.rc == 0, what + " returns success");
+    checkContains(platform.out, "saved: gps_plat " + std::to_string(model),
+                  what + " confirms the save");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PLATFORM) == model,
+          what + " reached the real Settings store");
+  }
+
+  for (const char *bad : {"5", "-1", "abc", "2x"}) {
+    const std::string what = std::string("gps platform ") + bad;
+    const Result platform = runDirect(what);
+    check(platform.rc != 0, what + " fails");
+    checkContains(platform.out, "usage: gps platform 0 (off), 1 portable",
+                  what + " prints the accepted models");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PLATFORM) == 4,
+          what + " left the saved model alone");
+  }
+
+  // MON-HW. The poll is asynchronous, so the first call has nothing to print
+  // and says so instead of printing a zeroed snapshot.
+  const Result pending = runDirect("gps monhw");
+  check(pending.rc == 0, "gps monhw returns success before a response");
+  checkContains(pending.out, "monhw: polled, no response yet, retry 'gps monhw'",
+                "an unanswered poll says so");
+  check(gps.monHwPolls == 1, "gps monhw queued a poll");
+
+  gps.monhw.have = true;
+  gps.monhw.hw = {1234, 56, 2, 7, true};
+  gps.monhw.raw = {};
+  gps.monhw.raw[0] = 0xBA;
+  gps.monhw.raw[1] = 0xCE;
+  gps.monhw.raw[2] = 0x0A;
+  gps.monhw.raw_length = 3;
+  const Result monhw = runDirect("gps monhw");
+  check(monhw.rc == 0, "gps monhw returns success with a response");
+  checkContains(monhw.out, "monhw: noise=1234 agc=56 antenna=2 jam=7",
+                "a decoded snapshot prints its fields");
+  checkContains(monhw.out, "monhw raw: BA CE 0A", "a decoded snapshot prints its raw bytes");
+  check(gps.monHwPolls == 2, "every gps monhw queues a fresh poll");
 }
 
 // Test 6. Time, power and performance reporting.
@@ -1067,8 +1472,10 @@ void testProvision(void) {
   checkContains(applied.out,
                 "provision: decoded " + std::to_string(encoded.size()) + " bytes as hex",
                 "the blob is reported as hex with its length");
-  for (const char *field : {"wifi_ssid", "wifi_psk", "companion_password", "mqtt_uri",
-                            "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
+  // companion_password is no longer in this list: it now has a setting to land
+  // in, so the provisioner applies it instead of deferring it.
+  for (const char *field :
+       {"wifi_ssid", "wifi_psk", "mqtt_uri", "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
     checkContains(applied.out, std::string("provision: ") + field + " parsed (not applied",
                   std::string(field) + " is named as deferred");
   }
@@ -1076,10 +1483,48 @@ void testProvision(void) {
   check(!contains(applied.out, "furble\n"), "no deferred field value is printed");
   checkContains(applied.out, "provision: setting 1 (brightness) applied",
                 "an applied setting names its key");
-  checkContains(applied.out, "1 setting(s) applied, 7 field(s) deferred",
+  checkContains(applied.out, "2 setting(s) applied, 6 field(s) deferred",
                 "the summary counts applied and deferred fields");
+  check(!contains(applied.out, "companion_password parsed (not applied"),
+        "the companion password is no longer deferred");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 99,
         "the provisioned value reached the real Settings store");
+
+  // The gesture settings apply immediately, so a provision write must start the
+  // 50 Hz timer rather than waiting for the next boot. reloadProvisionSetting()
+  // is the only writer that reaches the UI here: deleting its IMU cases makes
+  // this fail.
+  {
+    Furble::ProvisionTLV::ProvisionBundle gestures;
+    Furble::ProvisionTLV::SettingValue wake;
+    wake.wireId = 72;
+    wake.type = Furble::ProvisionTLV::ValueType::U8;
+    wake.value = {3};
+    gestures.settings.push_back(wake);
+    Furble::ProvisionTLV::SettingValue trigger;
+    trigger.wireId = 73;
+    trigger.type = Furble::ProvisionTLV::ValueType::BOOL;
+    trigger.value = {1};
+    gestures.settings.push_back(trigger);
+
+    std::vector<uint8_t> gestureBytes;
+    if (check(Furble::ProvisionTLV::encode(gestures, gestureBytes), "the gesture blob encodes")) {
+      std::string gestureHex;
+      for (const uint8_t byte : gestureBytes) {
+        gestureHex.push_back(HEX[byte >> 4]);
+        gestureHex.push_back(HEX[byte & 0x0f]);
+      }
+      const unsigned before = ConsoleHost::ui().gestureNotifications;
+      const Result gestureRun = runDirect("provision " + gestureHex);
+      check(gestureRun.rc == 0, "the gesture blob applies");
+      check(Furble::Settings::load<uint8_t>(Furble::Settings::IMU_WAKE) == 3,
+            "a provisioned imu_wake reaches the real Settings store");
+      check(Furble::Settings::load<bool>(Furble::Settings::IMU_TRIG),
+            "a provisioned imu_trigger reaches the real Settings store");
+      check(ConsoleHost::ui().gestureNotifications >= before + 2,
+            "a provisioned gesture setting notifies the UI task");
+    }
+  }
 
   // An empty bundle is valid and reports that it carried nothing.
   Furble::ProvisionTLV::ProvisionBundle empty;
@@ -1188,7 +1633,9 @@ void testDebugWithLiveCamera(void) {
   static bool controlStarted = false;
   if (!controlStarted) {
     controlStarted = true;
-    std::thread(control_task, &Furble::Control::getInstance()).detach();
+    // Through the shim, exactly as main() starts it on device: the shim owns
+    // the thread and furbleHostStopTasks() joins it before this process exits.
+    xTaskCreate(control_task, "control", 8192, &Furble::Control::getInstance(), 4, nullptr);
   }
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -1291,9 +1738,38 @@ void testDebugWithLiveCamera(void) {
 
   NimBLEDevice::resetMock();
 }
+
+// Set by the task the shim must refuse to start once shutdown has begun.
+std::atomic<bool> g_LateTaskRan {false};
+
+// Test 15. The host-harness task lifetime contract itself. furbleHostStopTasks()
+// copies the task list before it joins, so a task created after that copy is
+// never joined and outlives main() exactly as a detached task did. The shim has
+// to refuse it. This test runs last because it stops every shim task: the
+// console task is joined here, so nothing after it can drive a command.
+void testTaskCreationAfterShutdownIsRejected(void) {
+  std::cerr << "test: the shim refuses a task created after shutdown has begun\n";
+
+  furbleHostStopTasks();
+
+  g_LateTaskRan = false;
+  const BaseType_t created =
+      xTaskCreate([](void *) { g_LateTaskRan = true; }, "late", 2048, nullptr, 1, nullptr);
+  check(created == pdFAIL, "xTaskCreate is refused once shutdown has begun");
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  check(!g_LateTaskRan.load(), "the refused task never ran");
+}
 }  // namespace
 
 int main(void) {
+  // Stop and join every shim task before this scope ends, so no firmware task
+  // is still running when static destruction frees what it reads. The control
+  // task reaps the zombie drain on every 50 ms tick, and the drain still holds
+  // the target the last disconnect handed it, so a thread left running past
+  // ~Control walks a freed vector.
+  FurbleHostTaskScope taskScope;
+
   // Every command prints to stdout, so the suite reads its assertions back out
   // of a captured stdout. The file lives in the build tree, and carries the
   // process id so two concurrent runs never share one.
@@ -1314,6 +1790,7 @@ int main(void) {
   testStatusAndVersion();
   testSettings();
   testGPS();
+  testGPSDiagnostics();
   testTimePowerPerf();
   testBt();
   testBoundaryCommands();
@@ -1324,10 +1801,8 @@ int main(void) {
   testConsoleTaskTransport();
   testDebugWithLiveCamera();
 
-  // The console task is detached and loops forever, exactly as it does on
-  // device. Park it before returning, otherwise the runtime destroys the
-  // globals it is still blocked on and the process segfaults on its way out.
-  check(ConsoleHost::parkConsoleTask(5000), "the console task parks for shutdown");
+  // Last: it stops and joins every shim task.
+  testTaskCreationAfterShutdownIsRejected();
 
   std::cerr << (g_Failures == 0 ? "PASS" : "FAIL") << ": " << (g_Checks - g_Failures) << "/"
             << g_Checks << " checks\n";

@@ -7,10 +7,9 @@
 #include "scenario_action.h"
 #endif
 
-namespace Furble {
-/** Serializes M5.Imu transactions between UI timers and debug console probes. */
-extern std::mutex g_IMUMutex;
-}  // namespace Furble
+// g_IMUMutex is declared by FurbleIMU.h, the shared motion API, because the
+// motion engines take it too.
+#include "FurbleIMU.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 
@@ -30,11 +29,19 @@ class UI {
   static bool isBatteryCharging(void);
   static uint8_t getIntervalometerState(void);
   static uint16_t getIntervalometerRemaining(void);
+  // Settings writes may notify the UI from shared console code. Headless
+  // builds have no UI task, so the notification is intentionally a no-op.
+  static void notifyGestureSettingsChanged(void) {}
 
-#if defined(FURBLE_CONSOLE)
-  /** Operations the console asks the headless loop to carry out. */
+  /**
+   * Operations the console and the companion service ask the headless loop to
+   * carry out. Not gated on FURBLE_CONSOLE: the companion cameras
+   * characteristic drives connect and disconnect through the same queue in
+   * every build.
+   */
   enum class Request {
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    CONNECT_SAVED,   /**< arg: stable saved camera id, including 0xff for the selection */
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
     CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
@@ -53,7 +60,6 @@ class UI {
 
   /** Drain queued console operations in the headless main loop. */
   static void serviceRequests(void);
-#endif
 };
 }  // namespace Furble
 
@@ -78,6 +84,7 @@ class UI {
 #include <utility>
 #endif
 #include <unordered_map>
+#include <vector>
 
 #include <lvgl.h>
 
@@ -85,9 +92,11 @@ class UI {
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleUIGesture.h"
 #include "interval.h"
 
 namespace Furble {
@@ -100,10 +109,15 @@ class UI {
    */
   enum class ControlMode { MENU, SHUTTER, SLIDER, PRESET, REVERT };
 
-#if defined(FURBLE_CONSOLE)
-  /** Operations the console asks the UI task to carry out on its behalf. */
+  /**
+   * Operations the console and the companion service ask the UI task to carry
+   * out on their behalf. Not gated on FURBLE_CONSOLE: the companion cameras
+   * characteristic drives connect and disconnect through the same queue in
+   * every build.
+   */
   enum class Request {
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
+    CONNECT_SAVED,   /**< arg: stable saved camera id, including 0xff for the selection */
     DISCONNECT,      /**< arg: unused */
     SCAN,            /**< arg: non-zero to start, zero to stop */
     CAMERAS,         /**< arg: non-zero to reload the saved cameras before printing */
@@ -112,10 +126,12 @@ class UI {
     IR_RELOAD,       /**< arg: unused */
     FEEDBACK_RELOAD, /**< arg: unused */
     FEEDBACK_TEST,   /**< arg: Feedback::event_t value, bypasses the event mask */
-    PERF,            /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
-    AUDIT,           /**< arg: unused */
-    POWER_RELOAD,    /**< arg: unused */
-    SD_RELOAD,       /**< arg: unused */
+#if defined(FURBLE_CONSOLE)
+    PERF,  /**< arg: -1 prints LVGL stats, otherwise toggles the overlay */
+    AUDIT, /**< arg: unused */
+#endif
+    POWER_RELOAD, /**< arg: unused */
+    SD_RELOAD,    /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
 #endif
@@ -130,7 +146,9 @@ class UI {
    * @return true if the request was queued.
    */
   static bool sendRequest(Request request, int32_t arg);
-#endif
+
+  /** Notify the UI task that a gesture-related setting changed elsewhere. */
+  static void notifyGestureSettingsChanged(void);
 
   UI(const interval_t &interval);
 
@@ -259,6 +277,7 @@ class UI {
     lv_obj_t *batteryCurrent;
     lv_obj_t *batteryCharging;
     lv_obj_t *batteryRuntime;
+    lv_obj_t *gpsExtrapolate;
     /** Widgets which are only useful while GPS is enabled. */
     std::vector<lv_obj_t *> gpsWidgets;
     bool screenLocked;
@@ -285,6 +304,9 @@ class UI {
     std::array<lv_obj_t *, 3> powerLocks;
     lv_obj_t *imuAccel;
     lv_obj_t *imuGyro;
+    lv_obj_t *imuBackend;
+    lv_obj_t *imuMotion;
+    lv_obj_t *imuInterrupts;
     float imuAccelValues[3];
     float imuGyroValues[3];
     bool imuAccelValid;
@@ -293,6 +315,10 @@ class UI {
     uint32_t imuGyroUpdates;
     /** True while the 'IMU live' page is open, gates I2C polling. */
     bool imuPageActive;
+    IMU::Backend imuBackendValue = IMU::Backend::NONE;
+    IMU::MotionState imuMotionValue = IMU::MotionState::MOVING;
+    uint32_t imuInterruptCount = 0;
+    bool imuMotionValuesValid = false;
   } diagnostics_t;
 
   typedef struct {
@@ -359,6 +385,7 @@ class UI {
    * only read the rendered text back.
    */
   typedef struct {
+    lv_obj_t *fix;
     lv_obj_t *source;
     lv_obj_t *cycle;
   } gps_data_t;
@@ -371,6 +398,13 @@ class UI {
     lv_obj_t *sentences;
     std::string configText;
   } nmea_t;
+
+  /** Labels on the satellite detail page. */
+  typedef struct {
+    lv_obj_t *summary;
+    lv_obj_t *table;
+    std::string tableText;
+  } satellites_t;
 
   class Intervalometer: public SpinnerOwner {
    public:
@@ -512,7 +546,6 @@ class UI {
 
   static std::mutex m_Mutex;
 
-#if defined(FURBLE_CONSOLE)
   typedef struct {
     Request request;
     int32_t arg;
@@ -522,9 +555,8 @@ class UI {
 
   static QueueHandle_t m_RequestQueue;
 
-  /** Drain the console request queue, called on the UI task with m_Mutex held. */
+  /** Drain the request queue, called on the UI task with m_Mutex held. */
   void serviceRequests(void);
-#endif
 
   static ConnectContext_t m_ConnectContext;
 
@@ -579,6 +611,9 @@ class UI {
   static constexpr const char *m_TextSizeStr = "Text size";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_SensorsStr = "Sensors";
+  static constexpr const char *m_GesturesStr = "Gestures";
+  static constexpr const char *m_WakeGestureStr = "Wake Gesture";
+  static constexpr const char *m_WakeGestureOptions = "Off\nTap\nShake\nBoth";
   static constexpr const char *m_GPSStr = "GPS";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
@@ -605,6 +640,8 @@ class UI {
   static constexpr const char *m_PowerStateStr = "Power state";
   static constexpr const char *m_BLEStr = "BLE";
   static constexpr const char *m_IMUDataStr = "IMU live";
+  static constexpr const char *m_MotionEngineStr = "Motion Engine";
+  static constexpr const char *m_MotionEngineOptions = "Auto\nSoftware\nHardware";
 
   // settings->bluetooth
   static constexpr const char *m_TransmitPowerStr = "TX Power";
@@ -639,12 +676,16 @@ class UI {
 
   // settings->gps
   static constexpr const char *m_GPSDataStr = "GPS Data";
+  static constexpr const char *m_GPSBaudStr = "GPS Baud";
   static constexpr const char *m_GPSRateStr = "Update rate";
   static constexpr const char *m_GPSSentencesStr = "Sentences";
   static constexpr const char *m_GPSConstellationStr = "Constellation";
   static constexpr const char *m_GPSPowerStr = "Power saving";
   static constexpr const char *m_GPSAssistStr = "Assisted start";
+  static constexpr const char *m_GPSHoldStr = "Fix Hold";
+  static constexpr const char *m_GPSPlatformStr = "Platform";
   static constexpr const char *m_GPSNMEAStr = "Raw NMEA";
+  static constexpr const char *m_GPSSatStr = "Satellites";
 
   // settings->gps rollers
   static constexpr const char *m_GPSRateOptions = "Default\n1000 ms\n500 ms\n200 ms\n100 ms";
@@ -653,7 +694,12 @@ class UI {
       "Default\nGPS\nBDS\nGPS+BDS\nGLONASS\nGPS+GLO\nBDS+GLO\nAll";
   static constexpr const char *m_GPSPowerOptions = "Always on\nStandby (PCAS12)\nRail cycling";
   static constexpr const char *m_GPSDutyOptions = "No standby\n5 s\n10 s\n15 s";
-  static constexpr const char *m_GPSAssistOptions = "Off\nPosition and time";
+  static constexpr const char *m_GPSHoldOptions = "Off\n30 s\n2 min\n10 min\n60 min";
+  static constexpr const char *m_GPSAssistOptions =
+      "Off\nPosition and time\nPosition, time and ephemeris";
+  static constexpr const char *m_GPSBaudOptions = "Auto\n9600\n115200";
+  static constexpr const char *m_GPSPlatformOptions =
+      "Do not send\nPortable\nStationary\nPedestrian\nVehicle";
 
   // settings->intervalometer
   static constexpr const char *m_IntervalCountStr = "Count";
@@ -691,6 +737,7 @@ class UI {
   static std::atomic<uint16_t> m_IntervalometerRemaining;
   static bool m_IntervalCountdownActive;
   static uint8_t m_IntervalLastAnnouncedSecond;
+  static std::atomic<uint32_t> m_GestureSettingsGeneration;
 
   static lv_timer_t *m_BulbTimer;
   static lv_timer_t *m_BulbPageRefresh;
@@ -698,12 +745,19 @@ class UI {
 
   lv_timer_t *m_IntervalTimer;
   lv_timer_t *m_InactivityTimer;
+  // 50 Hz. Fast enough for a tap edge, and the UI task already runs at 5 ms
+  // so this changes the work per tick, not the task's wake rate.
+  static constexpr uint32_t GESTURE_POLL_MS = 20;
+  lv_timer_t *m_GestureTimer = nullptr;
+  lv_timer_t *m_GestureShutterTimer = nullptr;
   lv_timer_t *m_IconTimer;
   lv_timer_t *m_BatteryTimer;
   lv_timer_t *m_DiagnosticsTimer;
   lv_timer_t *m_CompanionPairingTimer = nullptr;
   lv_obj_t *m_CompanionPairingDialog = nullptr;
   lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
+  lv_obj_t *m_ConnectErrorDialog = nullptr;
+  lv_obj_t *m_ConnectErrorPrevFocus = nullptr;
   lv_obj_t *m_StorageMessageBox = nullptr;
   bool m_StorageImport = false;
   lv_obj_t *m_StorageMenuMain = nullptr;
@@ -780,6 +834,8 @@ class UI {
   level_t m_Level = {};
   nmea_t m_NMEA;
   lv_timer_t *m_NMEATimer = nullptr;
+  satellites_t m_Satellites = {};
+  lv_timer_t *m_SatTimer = nullptr;
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
   bool m_ButtonModeFocusPressed = false;
@@ -858,6 +914,16 @@ class UI {
   /** Focused object before the warning stole the focus, restored on close. */
   lv_obj_t *m_LowBatteryPrevFocus = nullptr;
   bool m_PoweringOff = false;
+  uint8_t m_WakeGesture = 0;
+  bool m_DoubleTapShutter = false;
+  uint32_t m_GestureSettingsSeen = 0;
+  GestureDetector m_GestureDetector;
+#if defined(FURBLE_SIM)
+  uint32_t m_GestureEvents = 0;
+  uint32_t m_GestureShutterSends = 0;
+  const char *m_GestureLast = "none";
+#endif
+  std::vector<lv_obj_t *> m_IMUGestureWidgets;
 
   static menu_t m_MainMenu;
 
@@ -925,6 +991,9 @@ class UI {
   /** Set the icon symbol in the root window header. */
   void setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol);
 
+  /** Pixels to keep clear on the right of a full width menu row. */
+  static int32_t floatingIndicatorReserve(void);
+
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
                                const lv_image_dsc_t *icon,
@@ -934,7 +1003,7 @@ class UI {
                                const int32_t row_pos = 0);
 
   /** Add a menu switch item. */
-  void addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
+  lv_obj_t *addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
 
   /** Add camera menu item. */
   static lv_obj_t *addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode);
@@ -983,10 +1052,19 @@ class UI {
   /** Add the 'Sensors' menu entry. */
   void addSensorsMenu(const menu_t &parent);
 
+  /** Add the gesture page: wake roller, shutter switch, false-trigger warning. */
+  void addGesturesMenu(const menu_t &parent);
+
   /** Add 'GPS Data' page. */
   void addGPSDataMenu(const menu_t &parent);
 
   /** Add a GPS option page holding a single roller. */
+  menu_t &addOptionMenu(const menu_t &parent,
+                        const char *name,
+                        const char *options,
+                        uint32_t selected,
+                        lv_event_cb_t handler,
+                        void *userData);
   void addGPSOptionMenu(const menu_t &parent,
                         const char *name,
                         const char *options,
@@ -995,6 +1073,9 @@ class UI {
 
   /** Add the raw NMEA and satellite debug page. */
   void addGPSNMEAMenu(const menu_t &parent);
+
+  /** Add the per satellite signal detail page. */
+  void addGPSSatMenu(const menu_t &parent);
 
   /** Show or hide the widgets which need GPS enabled. */
   static void showGPSWidgets(status_t *status, bool show);
@@ -1117,6 +1198,30 @@ class UI {
   /** Show or hide pages which need the IMU enabled. */
   static void showIMUWidgets(bool show);
 
+  /** Show or disable gesture settings which need the IMU enabled. */
+  void showIMUGestureWidgets(bool show);
+
+  /** Create or remove the gesture timer after a setting change. */
+  void updateGestureTimer(void);
+
+  /** Poll the accelerometer and handle one detected gesture. */
+  void pollGesture(void);
+
+  /** Handle a gesture reported by the detector. */
+  void handleGesture(GestureDetector::gesture_t gesture);
+
+  /** Wake the display and reset the LVGL inactivity counter. */
+  void wakeDisplayFromGesture(void);
+
+  /** Return whether the inactivity path currently considers the display idle. */
+  bool displayIsInactive(void) const;
+
+  /** Return whether the current page can accept an IMU shutter trigger. */
+  bool canTriggerGesture(void) const;
+
+  /** Send a short shutter command pair for a double tap. */
+  void fireGestureShutter(void);
+
   /** Describe the last reset reason. */
   static const char *getResetReason(void);
 
@@ -1178,9 +1283,15 @@ class UI {
 
   /** Clamp a level circle diameter to the panel content for the given size. */
   static int32_t levelDiameter(int32_t width, int32_t height);
+  /** Gesture poll timer handler. */
+  static void gestureUpdate(lv_timer_t *timer);
+
+  /** Gesture shutter release timer handler. */
+  static void gestureShutterRelease(lv_timer_t *timer);
 
   /** Stop the raw NMEA timer and capture. */
   static void gpsNMEAStop(lv_event_t *e);
+  static void gpsSatStop(lv_event_t *e);
 
   /** Handle connection request. */
   static void doConnect(lv_event_t *e);
@@ -1254,6 +1365,30 @@ class UI {
 
   /** Close the pairing prompt and restore the focus captured before it opened. */
   void closeCompanionPairingDialog(void);
+
+  /**
+   * Show a connect failure the user has to dismiss.
+   *
+   * A failed connect used to drop straight back to the menu with nothing but a
+   * log line, so the user could not tell a camera that was out of range from
+   * one that had dropped its pairing. The box stays up until it is dismissed,
+   * which is what the 2026-09-02 bench session asked for.
+   */
+  void showConnectError(const char *title, const char *text);
+
+  /**
+   * Start pairing the scan result at this index, or refuse it.
+   *
+   * The single entry point for "the user asked to pair this scan result": the
+   * Scan page row tap, and the console pair verb once PR #265 lands, so the
+   * already-saved refusal applies to both without either duplicating it.
+   *
+   * @return true if a connect was started.
+   */
+  static bool beginPairing(size_t index, lv_event_t *e);
+
+  /** Close the connect error box and restore the focus captured before it opened. */
+  void closeConnectErrorDialog(void);
 
   /** Handle shutter event. */
   static void handleShutter(lv_event_t *e);

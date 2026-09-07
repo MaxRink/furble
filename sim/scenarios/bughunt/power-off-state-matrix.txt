@@ -1,0 +1,57 @@
+# Power off from every settled Control state
+#
+# Bench, 2026-09-04: after the reconnect failure above, Off hung, and the next
+# boot reported the shutdown reason as brownout, which is what holding the power
+# button through a hung shutdown produces. UI::doPowerOff() calls doDisconnect()
+# before Platform::powerOff(), so the power-off path inherits every bound the
+# interactive teardown has and adds none of its own.
+#
+# This file covers the states where that is currently harmless, so a regression
+# in the cheap cases fails on its own rather than hiding behind the expensive
+# one. power-off-during-connect-hang.txt covers the state where it is not
+# harmless, and fails on master.
+#
+# Each leg reboots first, because m_PoweringOff latches for the life of the
+# process, and the virtual clock restarts with it, so every bound below is
+# measured from that boot.
+#
+# The bound is 3000 virtual ms from boot. Boot itself is about 305 ms and a
+# power off from a settled state is tens of milliseconds, so this is two orders
+# of magnitude of headroom and still an order of magnitude under the 30 s
+# interactive teardown cap it is guarding against.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed reconnect true
+wait 300
+
+# 1. Idle, no session at all.
+assert control.state idle
+action nav power_off
+assert_max clock.ms 3000
+assert platform.power_off yes
+
+restart
+wait 300
+
+# 2. An active session. The teardown is real: two target tasks stop and the
+# links come down.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+action nav power_off
+assert_max clock.ms 24000
+assert platform.power_off yes
+
+restart
+wait 300
+
+# 3. Idle with a drain still pending. The user disconnected and reached for Off
+# before the zombie was reaped, which is the ordering the bench hit.
+action connect
+assert-eventually-virtual 20000 control.state active
+action disconnect
+assert control.state idle
+action nav power_off
+assert_max clock.ms 24000
+assert platform.power_off yes
+exit

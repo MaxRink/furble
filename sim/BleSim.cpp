@@ -67,10 +67,16 @@ VirtualPeer *peerForAddressLocked(const NimBLEAddress &address) {
   return nullptr;
 }
 
-void addFujifilm(uint64_t address, const std::string &name, uint32_t flappyFailAttempts) {
+void addFujifilm(uint64_t address,
+                 const std::string &name,
+                 uint32_t flappyFailAttempts,
+                 bool secure = false) {
   Host::FujifilmVirtualCamera::Config config;
   config.name = name;
   config.address = NimBLEAddress(address, 0);
+  // A Basic body advertises a rotating pairing token; a Secure body advertises
+  // its serial, which is what the displayed name is composed from.
+  config.secure = secure;
   auto peer = std::make_unique<VirtualPeer>();
   peer->name = name;
   peer->address = config.address;
@@ -82,6 +88,29 @@ void addFujifilm(uint64_t address, const std::string &name, uint32_t flappyFailA
   }
   peer->advertisement = peer->fujifilm->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  peers.push_back(std::move(peer));
+}
+
+// The 2026-09-02 X100VI stale-bond signature. furble still holds the local
+// bond, the camera deleted its side of the pairing, and it is not in pairing
+// mode, so every attempt gets the link up and the encryption handshake then
+// times out and takes the link with it. This is the peer the reconnect loop ran
+// against forever on the bench.
+void addFujifilmSecureStale(uint64_t address, const std::string &name) {
+  Host::FujifilmVirtualCamera::Config config;
+  config.name = name;
+  config.address = NimBLEAddress(address, 0);
+  config.secure = true;
+  auto peer = std::make_unique<VirtualPeer>();
+  peer->name = name;
+  peer->address = config.address;
+  peer->fujifilm = std::make_unique<Host::FujifilmVirtualCamera>(config);
+  peer->fujifilm->setSecureTimeouts(Host::FujifilmVirtualCamera::kSecureTimeoutAlways);
+  peer->advertisement = peer->fujifilm->advertisement();
+  NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  // The half that makes it a stale bond rather than a first pairing: the
+  // central still has keys for a camera that has forgotten them.
+  NimBLEDevice::setBonded(true);
   peers.push_back(std::move(peer));
 }
 
@@ -117,7 +146,7 @@ void saveRegisteredPeers(void) {
     }
   }
   for (size_t n = 0; n < CameraList::size(); n++) {
-    CameraList::save(CameraList::get(n).get());
+    CameraList::save(CameraList::get(n));
   }
   CameraList::clear();
 }
@@ -162,8 +191,9 @@ void radioTask(void *) {
 }  // namespace
 
 bool bleTopologyIsValid(const std::string &topology) {
-  return topology == "none" || topology == "fuji" || topology == "fuji-pair"
-         || topology == "fuji-ricoh-flappy";
+  return topology == "none" || topology == "fuji" || topology == "fuji-secure"
+         || topology == "fuji-pair" || topology == "fuji-ricoh-flappy"
+         || topology == "fuji-secure-stale";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -172,9 +202,13 @@ void bleStartPeers(const std::string &topology) {
     const std::lock_guard<std::mutex> lock(peersMutex);
     if (topology == "fuji") {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
+    } else if (topology == "fuji-secure") {
+      addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0, /*secure=*/true);
     } else if (topology == "fuji-pair") {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addFujifilm(FUJIFILM_B_ADDRESS, "FUJIFILM X-S20", 0);
+    } else if (topology == "fuji-secure-stale") {
+      addFujifilmSecureStale(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI");
     } else if (topology == "fuji-ricoh-flappy") {
       // The 2026-08-28 pairing: one healthy camera plus a GR IV in BLE
       // standby that fails the security handshake the way a supervision
@@ -199,6 +233,45 @@ void bleStartPeers(const std::string &topology) {
 
 void bleSaveRegisteredPeers(void) {
   saveRegisteredPeers();
+}
+
+void bleSetMaxClients(size_t max) {
+  NimBLEDevice::setMaxClients(max);
+}
+
+void bleSetDeferredClientDelete(bool enabled) {
+  NimBLEDevice::setDeferredClientDelete(enabled);
+}
+
+bool bleSecureStallAborted(void) {
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  for (const auto &peer : peers) {
+    if (peer->fujifilm != nullptr && peer->fujifilm->secureStallWasAborted()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+size_t bleLiveClientCount(void) {
+  return NimBLEDevice::liveClientCount();
+}
+
+void bleSetSecureStallMs(uint32_t ms) {
+  // Run the stall on the virtual clock. The host suite keeps the wall clock,
+  // where a real second is the point; here a real second would be dead time and
+  // would not be deterministic. vTaskDelay parks the calling task on the plan
+  // 158 scheduler, so the control task really is unavailable for the duration
+  // while it still holds Camera::m_Mutex, which is the whole shape being
+  // modelled.
+  Host::setPeerStallFunction([](uint32_t slice) { vTaskDelay(pdMS_TO_TICKS(slice)); });
+
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  for (const auto &peer : peers) {
+    if (peer->fujifilm != nullptr) {
+      peer->fujifilm->setSecureConnectionStallMs(ms);
+    }
+  }
 }
 
 void bleStopPeers(void) {

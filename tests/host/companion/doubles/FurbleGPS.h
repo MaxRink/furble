@@ -41,6 +41,9 @@ class GPS {
   // a companion write, allowing the test to observe real camera geodata.
   void update(void);
 
+  /** Highest valid fix hold setting, mirroring the production constant. */
+  static constexpr const uint8_t HOLD_MAX = 4;
+
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
   external_fix_t getExternalFix(void) const;

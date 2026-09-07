@@ -1,6 +1,10 @@
 #include <esp_bt.h>
 #include <nvs_flash.h>
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
 #include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -19,59 +23,67 @@ static_assert(TextSizePolicy::LARGE == Settings::TEXT_SIZE_LARGE,
               "text size policy Large must match the enum");
 
 const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Setting = {
-    {BRIGHTNESS,        {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
-    {INACTIVITY,        {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
-    {DISPLAY_OFF,       {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
-    {THEME,             {THEME, 3, "Theme", "theme", "M5ez"}                                 },
-    {TEXT_SIZE,         {TEXT_SIZE, 40, "Text size", "text_size", FURBLE_STR}                },
-    {TX_POWER,          {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
-    {TX_ADAPTIVE,       {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
-    {GPS,               {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
-    {IMU,               {IMU, 46, "IMU", "imu", FURBLE_STR}                                  },
-    {GPS_BAUD,          {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
-    {GPS_RATE,          {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
-    {GPS_NMEA,          {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
-    {GPS_CONSTEL,       {GPS_CONSTEL, 15, "GPS Constellation", "gps_constel", FURBLE_STR}    },
-    {GPS_POWER,         {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
-    {GPS_DUTY,          {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
-    {GPS_ASSIST,        {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
-    {INTERVAL,          {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
-    {MULTICONNECT,      {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
-    {MULTISELECT,       {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
-    {RECONNECT,         {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
-    {RECON_BACKOFF,     {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
-    {FAUXNY,            {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
-    {TOUCH_CALIBRATION, {TOUCH_CALIBRATION, 0, "Touch Calibration", "t_calib", FURBLE_STR}   },
-    {AUTOCONNECT,       {AUTOCONNECT, 11, "Auto-Connect", "autoconnect", FURBLE_STR}         },
-    {COMPANION,         {COMPANION, 12, "Companion", "companion", FURBLE_STR}                },
-    {CPU_FREQ,          {CPU_FREQ, 17, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
-    {BATT_STYLE,        {BATT_STYLE, 18, "Battery Style", "batt_style", FURBLE_STR}          },
-    {SHOW_TITLE,        {SHOW_TITLE, 19, "Show Title", "show_title", FURBLE_STR}             },
-    {SLEEP_CONN,        {SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", FURBLE_STR}  },
-    {BULB,              {BULB, 0, "Bulb", "bulb", FURBLE_STR}                                },
-    {SCAN_MODE,         {SCAN_MODE, 21, "Scan Mode", "scan_mode", FURBLE_STR}                },
-    {SCAN_TIMEOUT,      {SCAN_TIMEOUT, 22, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
-    {CONN_SAVER,        {CONN_SAVER, 29, "Connection power save", "conn_saver", FURBLE_STR}  },
-    {IR,                {IR, 31, "Infrared", "ir", FURBLE_STR}                               },
-    {IR_PROTO,          {IR_PROTO, 32, "IR Protocol", "ir_proto", FURBLE_STR}                },
-    {FB_OUTPUT,         {FB_OUTPUT, 33, "Feedback", "fb_output", FURBLE_STR}                 },
-    {FB_EVENTS,         {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
-    {FB_VOLUME,         {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
-    {PRESET_PICKER,     {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
-    {BUTTON_MODE,       {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
-    {AUTO_OFF,          {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
-    {LOW_BATT,          {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
+    {BRIGHTNESS,         {BRIGHTNESS, 1, "Brightness", "brightness", "M5ez"}                  },
+    {INACTIVITY,         {INACTIVITY, 2, "Inactivity", "inactivity", "M5ez"}                  },
+    {DISPLAY_OFF,        {DISPLAY_OFF, 24, "Screen off", "display_off", FURBLE_STR}           },
+    {THEME,              {THEME, 3, "Theme", "theme", "M5ez"}                                 },
+    {TEXT_SIZE,          {TEXT_SIZE, 40, "Text size", "text_size", FURBLE_STR}                },
+    {TX_POWER,           {TX_POWER, 4, "TX Power", "tx_power", FURBLE_STR}                    },
+    {TX_ADAPTIVE,        {TX_ADAPTIVE, 28, "Adaptive", "tx_adaptive", FURBLE_STR}             },
+    {GPS,                {GPS, 5, "GPS", "gps", FURBLE_STR}                                   },
+    {IMU,                {IMU, 46, "IMU", "imu", FURBLE_STR}                                  },
+    {IMU_WAKE,           {IMU_WAKE, 72, "Wake Gesture", "imu_wake", FURBLE_STR}               },
+    {IMU_TRIG,           {IMU_TRIG, 73, "Double-Tap Shutter", "imu_trigger", FURBLE_STR}      },
+    {HW_MOTION,          {HW_MOTION, 74, "Motion Engine", "hw_motion", FURBLE_STR}            },
+    {GPS_BAUD,           {GPS_BAUD, 6, "GPS Baud", "gps_baud", FURBLE_STR}                    },
+    {GPS_RATE,           {GPS_RATE, 13, "GPS Rate", "gps_rate", FURBLE_STR}                   },
+    {GPS_NMEA,           {GPS_NMEA, 14, "GPS Sentences", "gps_nmea", FURBLE_STR}              },
+    {GPS_CONSTEL,        {GPS_CONSTEL, 15, "GPS Constellation", "gps_constel", FURBLE_STR}    },
+    {GPS_POWER,          {GPS_POWER, 25, "GPS Power", "gps_power", FURBLE_STR}                },
+    {GPS_DUTY,           {GPS_DUTY, 26, "GPS Duty", "gps_duty", FURBLE_STR}                   },
+    {GPS_ASSIST,         {GPS_ASSIST, 41, "GPS Assistance", "gps_assist", FURBLE_STR}         },
+    {GPS_HOLD,           {GPS_HOLD, 67, "Fix Hold", "gps_hold", FURBLE_STR}                   },
+    {GPS_EXTRAP,         {GPS_EXTRAP, 68, "Extrapolate", "gps_extrap", FURBLE_STR}            },
+    {GPS_PLATFORM,       {GPS_PLATFORM, 69, "GPS Platform", "gps_plat", FURBLE_STR}           },
+    {INTERVAL,           {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
+    {MULTICONNECT,       {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
+    {MULTISELECT,        {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
+    {RECONNECT,          {RECONNECT, 9, "Infinite-ReConnect", "reconnect", FURBLE_STR}        },
+    {RECON_BACKOFF,      {RECON_BACKOFF, 16, "Reconnect Backoff", "recon_backoff", FURBLE_STR}},
+    {FAUXNY,             {FAUXNY, 10, "FauxNY", "fauxNY", FURBLE_STR}                         },
+    {TOUCH_CALIBRATION,  {TOUCH_CALIBRATION, 0, "Touch Calibration", "t_calib", FURBLE_STR}   },
+    {AUTOCONNECT,        {AUTOCONNECT, 11, "Auto-Connect", "autoconnect", FURBLE_STR}         },
+    {COMPANION,          {COMPANION, 12, "Companion", "companion", FURBLE_STR}                },
+    {COMPANION_PASSWORD,
+     {COMPANION_PASSWORD, 47, "Companion password", "companion_pw", FURBLE_STR}               },
+    {CPU_FREQ,           {CPU_FREQ, 17, "CPU Speed", "cpu_freq", FURBLE_STR}                  },
+    {BATT_STYLE,         {BATT_STYLE, 18, "Battery Style", "batt_style", FURBLE_STR}          },
+    {SHOW_TITLE,         {SHOW_TITLE, 19, "Show Title", "show_title", FURBLE_STR}             },
+    {SLEEP_CONN,         {SLEEP_CONN, 20, "Sleep while connected", "sleep_conn", FURBLE_STR}  },
+    {BULB,               {BULB, 0, "Bulb", "bulb", FURBLE_STR}                                },
+    {SCAN_MODE,          {SCAN_MODE, 21, "Scan Mode", "scan_mode", FURBLE_STR}                },
+    {SCAN_TIMEOUT,       {SCAN_TIMEOUT, 22, "Scan Timeout", "scan_timeout", FURBLE_STR}       },
+    {CONN_SAVER,         {CONN_SAVER, 29, "Connection power save", "conn_saver", FURBLE_STR}  },
+    {IR,                 {IR, 31, "Infrared", "ir", FURBLE_STR}                               },
+    {IR_PROTO,           {IR_PROTO, 32, "IR Protocol", "ir_proto", FURBLE_STR}                },
+    {FB_OUTPUT,          {FB_OUTPUT, 33, "Feedback", "fb_output", FURBLE_STR}                 },
+    {FB_EVENTS,          {FB_EVENTS, 34, "Feedback Events", "fb_events", FURBLE_STR}          },
+    {FB_VOLUME,          {FB_VOLUME, 35, "Volume", "fb_volume", FURBLE_STR}                   },
+    {PRESET_PICKER,      {PRESET_PICKER, 30, "Preset Picker", "preset_picker", FURBLE_STR}    },
+    {BUTTON_MODE,        {BUTTON_MODE, 27, "Button Mode", "button_mode", FURBLE_STR}          },
+    {AUTO_OFF,           {AUTO_OFF, 37, "Auto off", "auto_off", FURBLE_STR}                   },
+    {LOW_BATT,           {LOW_BATT, 38, "Low battery", "low_batt", FURBLE_STR}                },
     {AUTO_OFF_CHARGING,
-     {AUTO_OFF_CHARGING, 43, "Auto off while charging", "autooff_charge", FURBLE_STR}        },
-    {SD_GPX,            {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
-    {GPX_PERIOD,        {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
-    {BOOT_SPLASH,       {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
+     {AUTO_OFF_CHARGING, 43, "Auto off while charging", "autooff_charge", FURBLE_STR}         },
+    {SD_GPX,             {SD_GPX, 39, "GPX Logging", "sd_gpx", FURBLE_STR}                    },
+    {GPX_PERIOD,         {GPX_PERIOD, 0, "GPX Interval", "gpx_period", FURBLE_STR}            },
+    {BOOT_SPLASH,        {BOOT_SPLASH, 44, "Boot screen", "boot_splash", FURBLE_STR}          },
 #if !defined(FURBLE_NO_DISPLAY)
-    {DISPLAY_MODE,      {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
+    {DISPLAY_MODE,       {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
-    {BATTERY_SAVER,     {BATTERY_SAVER, 0, "Battery Saver", "batt_saver", FURBLE_STR}        },
+    {BATTERY_SAVER,      {BATTERY_SAVER, 0, "Battery Saver", "batt_saver", FURBLE_STR}        },
 #if defined(FURBLE_M5STICKS3)
-    {WATCHDOG,          {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
+    {WATCHDOG,           {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
 };
 
@@ -121,6 +133,9 @@ bool Settings::appliesImmediately(type_t type) {
     case GPS_POWER:
     case GPS_DUTY:
     case GPS_ASSIST:
+    case GPS_HOLD:
+    case GPS_EXTRAP:
+    case GPS_PLATFORM:
     case IR:
     case IR_PROTO:
     case FB_EVENTS:
@@ -130,6 +145,8 @@ bool Settings::appliesImmediately(type_t type) {
     case AUTO_OFF_CHARGING:
     case SD_GPX:
     case GPX_PERIOD:
+    case IMU_WAKE:
+    case IMU_TRIG:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
@@ -145,13 +162,16 @@ bool Settings::appliesImmediately(type_t type) {
     case SHOW_TITLE:
     case BULB:
     case COMPANION:
+    case COMPANION_PASSWORD:
     case CONN_SAVER:
     case FB_OUTPUT:
     case PRESET_PICKER:
     case BUTTON_MODE:
     // The IMU is brought up during Platform init, so a save takes effect on the
-    // next restart rather than immediately.
+    // next restart rather than immediately. The motion engine is chosen when
+    // the source is armed, which is also Platform init, so it follows the IMU.
     case IMU:
+    case HW_MOTION:
     // The boot screen is only read at startup, so a save takes effect next boot.
     case BOOT_SPLASH:
     // The profile is applied through the effective accessors, which are read at
@@ -173,6 +193,7 @@ bool Settings::isDangerous(type_t type) {
     case CPU_FREQ:
     case SLEEP_CONN:
     case COMPANION:
+    case COMPANION_PASSWORD:
     // Enabling the profile changes connection and sleep behaviour, the same
     // link-affecting class as the SLEEP_CONN it bundles.
     case BATTERY_SAVER:
@@ -191,6 +212,9 @@ bool Settings::isDangerous(type_t type) {
     case GPS_POWER:
     case GPS_DUTY:
     case GPS_ASSIST:
+    case GPS_HOLD:
+    case GPS_EXTRAP:
+    case GPS_PLATFORM:
     case INTERVAL:
     case MULTICONNECT:
     case RECONNECT:
@@ -217,6 +241,9 @@ bool Settings::isDangerous(type_t type) {
     case SD_GPX:
     case GPX_PERIOD:
     case IMU:
+    case IMU_WAKE:
+    case IMU_TRIG:
+    case HW_MOTION:
     case BOOT_SPLASH:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -227,6 +254,35 @@ bool Settings::isDangerous(type_t type) {
       return false;
   }
   return false;
+}
+
+bool Settings::savePassword(const std::string &value) {
+  const auto &setting = get(COMPANION_PASSWORD);
+  Preferences prefs;
+  return prefs.begin(setting.nvs_namespace, false) && prefs.putString(setting.key, value.c_str());
+}
+
+bool Settings::loadPassword(std::string &value) {
+  const auto &setting = get(COMPANION_PASSWORD);
+  Preferences prefs;
+  if (!prefs.begin(setting.nvs_namespace, true)) {
+    value.clear();
+    return false;
+  }
+
+  std::string loaded;
+  const auto result = prefs.getString(setting.key, loaded);
+  prefs.end();
+  if (result == Preferences::string_result_t::NOT_FOUND) {
+    value.clear();
+    return true;
+  }
+  if (result != Preferences::string_result_t::OK) {
+    value.clear();
+    return false;
+  }
+  value = loaded;
+  return true;
 }
 
 template <typename T>
@@ -398,7 +454,14 @@ Settings::multiselect_t Settings::load<Settings::multiselect_t>(type_t type) {
   prefs.begin(setting.nvs_namespace, true);
   size_t len = prefs.get(setting.key, &selection, sizeof(selection));
   if (len != sizeof(selection)) {
+    // A record written before MULTISELECT_NAME_MAX widened is still valid
+    // data. Read it back in its own layout and widen it, so a remembered set
+    // survives the upgrade instead of being silently dropped.
     selection = {};
+    multiselect_legacy_t legacy = {};
+    if (prefs.get(setting.key, &legacy, sizeof(legacy)) == sizeof(legacy)) {
+      selection = multiselectFromLegacy(legacy);
+    }
   }
   prefs.end();
 
@@ -449,6 +512,11 @@ void Settings::init(void) {
   // Set default values for all settings
   for (const auto &it : m_Setting) {
     auto &setting = it.second;
+    // Missing passwords already mean unset. Never turn a failed existence
+    // check into a write that clears an existing authentication gate.
+    if (setting.type == COMPANION_PASSWORD) {
+      continue;
+    }
     Preferences prefs;
     prefs.begin(setting.nvs_namespace, true);
     bool exists = prefs.isKey(setting.key);
@@ -476,6 +544,8 @@ void Settings::init(void) {
         case BUTTON_MODE:
           save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);
           break;
+        case COMPANION_PASSWORD:
+          break;
         case TX_POWER:
         case SCAN_MODE:
         case GPS_RATE:
@@ -483,9 +553,12 @@ void Settings::init(void) {
         case GPS_POWER:
         case GPS_DUTY:
         case GPS_ASSIST:
+        case GPS_PLATFORM:
         case IR_PROTO:
         case AUTO_OFF:
         case LOW_BATT:
+        case GPS_HOLD:
+        case IMU_WAKE:
           save<uint8_t>(setting.type, 0);
           break;
         case AUTO_OFF_CHARGING:
@@ -527,7 +600,9 @@ void Settings::init(void) {
         } break;
         case GPS:
         case IMU:
+        case IMU_TRIG:
         case GPS_NMEA:
+        case GPS_EXTRAP:
         case MULTICONNECT:
         case RECONNECT:
         case TX_ADAPTIVE:
@@ -543,6 +618,13 @@ void Settings::init(void) {
         // Default off keeps today's behaviour, the profile is strictly opt-in.
         case BATTERY_SAVER:
           save<bool>(setting.type, false);
+          break;
+        case HW_MOTION:
+          // Ships as Software, not Auto. Auto prefers the board's hardware
+          // engine, and that path is unproven on hardware, so the default must
+          // not select it. Auto becomes the default in a follow-up commit once
+          // the six-step gate in plans/20-imu-hw-motion.md passes on the S3.
+          save<uint8_t>(setting.type, HW_MOTION_SOFTWARE);
           break;
         case GPS_BAUD:
           save<uint32_t>(setting.type, BAUD_9600);
@@ -585,6 +667,52 @@ void Settings::init(void) {
 
 bool Settings::batterySaver(void) {
   return load<BATTERY_SAVER>();
+}
+
+bool Settings::multiselectAdd(multiselect_t &selection, const char *name) {
+  if ((name == nullptr) || (selection.count >= MULTISELECT_MAX)) {
+    return false;
+  }
+  // A name that does not fit would be stored truncated, and a truncated entry
+  // compares equal to a different camera whose whole name is that prefix. Refuse
+  // it, so the set forgets one body rather than ticking another one.
+  if (strlen(name) >= MULTISELECT_NAME_MAX) {
+    return false;
+  }
+
+  snprintf(selection.name[selection.count], MULTISELECT_NAME_MAX, "%s", name);
+  selection.count++;
+  return true;
+}
+
+bool Settings::multiselectContains(const multiselect_t &selection, const char *name) {
+  if (name == nullptr) {
+    return false;
+  }
+
+  const size_t count = std::min<size_t>(selection.count, MULTISELECT_MAX);
+  for (size_t i = 0; i < count; i++) {
+    // A stored slot from a corrupt record need not be terminated, so bound the
+    // read before comparing it as a string.
+    if (strnlen(selection.name[i], MULTISELECT_NAME_MAX) >= MULTISELECT_NAME_MAX) {
+      continue;
+    }
+    if (strcmp(selection.name[i], name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Settings::multiselect_t Settings::multiselectFromLegacy(const multiselect_legacy_t &legacy) {
+  multiselect_t selection = {};
+
+  selection.count = static_cast<uint8_t>(std::min<size_t>(legacy.count, MULTISELECT_MAX));
+  for (size_t i = 0; i < MULTISELECT_MAX; i++) {
+    memcpy(selection.name[i], legacy.name[i], MULTISELECT_NAME_LEGACY_MAX);
+    selection.name[i][MULTISELECT_NAME_LEGACY_MAX - 1] = '\0';
+  }
+  return selection;
 }
 
 bool Settings::sleepConnEffective(void) {

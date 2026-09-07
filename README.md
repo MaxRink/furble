@@ -22,9 +22,15 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, plus an Android companion app
+- A host SDL simulator for the UI, plus Android and Apple companion apps
+- Companion camera management: list saved cameras, select Multi-Connect targets,
+  and connect or disconnect them from the phone
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
   under Settings > Sensors; the Level page appears while connected.
+- Software IMU gestures: configurable tap or shake display wake and an optional
+  debounced double-tap shutter trigger, under Settings > Sensors > Gestures.
+  Both are off by default and are simulator-tested through the same
+  accelerometer seam the firmware reads.
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or
@@ -42,6 +48,17 @@ cameras. furble now supports:
 
 The remote uses the camera's native Bluetooth Low Energy interface thus additional
 adapters are not required.
+
+### Companion camera management
+
+The companion BLE service exposes the Cameras characteristic at
+`b57f4f63-087b-4740-b71d-8262cf26ebbc`. A companion can list the saved camera
+catalog, select or deselect stable camera IDs for Multi-Connect, and request a
+connect or disconnect. Camera state records include saved, selected,
+active-target, and connected flags, progress, RSSI while connected, state, and
+the camera name. A scan remains separate from the saved catalog, and a connect
+request is reported busy while scanning or another connect is in flight. See
+[the companion reference](docs/companion.md) for the packet layout.
 
 furble is developed on ESP32 devices as a PlatformIO project.
 
@@ -227,9 +244,10 @@ status                              state, targets, uptime, heap, battery, reset
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
-imu status                         read-only IMU type/read diagnostic
+imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
-settings list | get | set           read and write every setting
+settings list | get | set           read and write non-secret settings
+companion password set | clear | status manage the companion password without revealing it
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection
@@ -345,23 +363,39 @@ See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
 must also be configured to request location data.
 
-The default baud rate for the GPS unit is 9600.
-The new v1.1 unit runs at a higher baud rate and must be configured under
-`Settings->GPS->GPS baud 115200` for correct operation.
+The default GPS baud is 9600, preserving existing installations. The v1.1
+AT6668 unit is expected to use 115200. Select `Auto` to probe 115200, 9600,
+38400, 57600, 19200, and 4800, or select a fixed rate under
+`Settings->GPS->GPS Baud`. Auto declares a receiver only after two checksummed
+NMEA sentences; if none arrive it reports `absent`, drops the external rail,
+and retries once after 60 seconds. A live AT6668 lock has not yet been recorded
+on hardware.
 
 The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
 - `Sentences` (cut the receiver down to the sentences `furble` actually reads)
 - `Constellation` (which satellite systems the receiver listens to)
+- `Fix Hold` (keep sending the last fix for up to an hour after the receiver
+  loses it, so a tunnel or a doorway does not cost a run of geotags)
+- `Extrapolate` (while a fix is held, project it along the last course and
+  speed, experimental)
+- `Power saving` (always on, PCAS12 standby, or experimental rail cycling)
+- `Assisted start` (position/time, with optional cached ephemeris replay)
+- `Platform` (portable, stationary, pedestrian, or vehicle dynamic model)
 
-Each of these defaults to `Default`, which leaves the receiver on its own
-settings and behaves exactly as before.
-A change is sent to the receiver when GPS is enabled, and the receiver goes
-back to its own defaults the next time it is powered off.
+Update rate, Sentences, and Constellation default to `Default`, which leaves
+those receiver settings alone. Power saving defaults to Always on, Assisted
+start is Off, and Platform defaults to Do not send. A change is sent to the
+receiver when GPS is enabled, and the receiver goes back to its own defaults
+the next time it is powered off.
 
-`Settings->GPS->Raw NMEA` shows the sentences arriving from the receiver along
-with the fix state and error counts.
-It is the place to look to confirm the receiver accepted a change.
+`Settings->GPS->GPS Data` shows fix age, satellites, speed, coordinates,
+altitude, and UTC time. `Raw NMEA` shows received sentences, fix/error
+counters, binary configuration status, and a Hot restart button. `Satellites`
+enables the extra GSV/GSA parser and shows per-satellite C/N0, used flags, and
+PDOP/HDOP/VDOP. `gps platform` and MON-HW diagnostics are intentionally marked
+hardware-tuning-pending; the receiver's response and the effect of its dynamic
+model have not been verified on an AT6668 unit.
 
 ### Intervalometer/Timer
 

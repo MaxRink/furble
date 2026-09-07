@@ -153,6 +153,16 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical battery action");
       }
       return true;
+    case scenario_action_kind_t::SCAN_ROW:
+      if (!action.name.empty() || !action.mode.empty() || action.integer != 0
+          || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
+          || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
+          || action.values[2] != 0.0F
+          || action.index > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+        return fail(error, "noncanonical scan-row action");
+      }
+      return true;
+
     case scenario_action_kind_t::DROP:
       if (!action.name.empty() || !action.mode.empty() || action.integer != 0
           || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
@@ -161,6 +171,14 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
           || (action.index != std::numeric_limits<uint32_t>::max()
               && action.index > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))) {
         return fail(error, "noncanonical drop action");
+      }
+      return true;
+    case scenario_action_kind_t::SECURE_STALL:
+      if (!action.name.empty() || !action.mode.empty() || action.integer != 0
+          || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
+          || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
+          || action.values[2] != 0.0F || action.index > SECURE_STALL_MAX_MS) {
+        return fail(error, "noncanonical secure stall action");
       }
       return true;
     case scenario_action_kind_t::IMU_VECTOR:
@@ -198,15 +216,20 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "display",
                                   "features",
                                   "sensors",
+                                  "gestures",
                                   "infrared",
                                   "gps_rate",
                                   "gps_sentences",
                                   "gps_constellation",
                                   "gps_power",
                                   "gps_assist",
+                                  "gps_hold",
+                                  "gps_baud",
+                                  "gps_platform",
                                   "gps",
                                   "gps_data",
                                   "nmea",
+                                  "gps_sats",
                                   "timer",
                                   "theme",
                                   "text_size",
@@ -281,9 +304,13 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "gps_constellation",
                                   "gps_power",
                                   "gps_assist",
+                                  "gps_hold",
+                                  "gps_baud",
+                                  "gps_platform",
                                   "gps",
                                   "gps_data",
                                   "nmea",
+                                  "gps_sats",
                                   "theme",
                                   "text_size",
                                   "bluetooth",
@@ -428,6 +455,40 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     return accept();
   }
 
+  if (args[0] == "ble-secure-stall") {
+    if (args.size() != 2) {
+      return fail(error, "ble-secure-stall requires a duration in milliseconds");
+    }
+    uint64_t stall = 0;
+    if (!parseUnsigned(args[1], SECURE_STALL_MAX_MS, &stall)) {
+      return fail(error, "ble-secure-stall duration is out of range");
+    }
+    action->kind = scenario_action_kind_t::SECURE_STALL;
+    action->index = static_cast<uint32_t>(stall);
+    return accept();
+  }
+
+  if (args[0] == "scan-row") {
+    // Activate a scan result row by index, dispatching the row's own click
+    // handler. A scan row is materialized by the UI task when an advertisement
+    // drains, after the page has already focused its back button, and no key or
+    // button verb moves the focus onto it reliably: measured at about half the
+    // presses on a page busy draining results. This is the deterministic entry
+    // the pairing refusal needs, and it runs the production handler rather than
+    // a simulator shortcut.
+    if (args.size() != 2) {
+      return fail(error, "scan-row requires exactly one row index");
+    }
+    uint64_t index = 0;
+    if (!parseUnsigned(args[1], static_cast<uint64_t>(std::numeric_limits<int32_t>::max()),
+                       &index)) {
+      return fail(error, "scan-row index is out of range");
+    }
+    action->kind = scenario_action_kind_t::SCAN_ROW;
+    action->index = static_cast<uint32_t>(index);
+    return accept();
+  }
+
   if (args[0] == "drop") {
     if (args.size() > 2) {
       return fail(error, "drop accepts an optional target index");
@@ -490,15 +551,20 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "display",
       "features",
       "sensors",
+      "gestures",
       "infrared",
       "gps_rate",
       "gps_sentences",
       "gps_constellation",
       "gps_power",
       "gps_assist",
+      "gps_hold",
+      "gps_baud",
+      "gps_platform",
       "gps",
       "gps_data",
       "nmea",
+      "gps_sats",
       "timer",
       "theme",
       "text_size",
@@ -586,9 +652,13 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
         "gps_constellation",
         "gps_power",
         "gps_assist",
+        "gps_hold",
+        "gps_baud",
+        "gps_platform",
         "gps",
         "gps_data",
         "nmea",
+        "gps_sats",
         "theme",
         "text_size",
         "bluetooth",

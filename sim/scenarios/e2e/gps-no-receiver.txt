@@ -1,0 +1,66 @@
+# Nothing on the Grove port. The ladder walks all six rates, finds no receiver,
+# drops the external rail, releases the power lock and idles. The GPS Data page
+# has to say so: the power cycle state reads "disabled" for an absent receiver,
+# which is exactly what a switched off GPS reads as, so the detection state is
+# what the row must report instead.
+#
+# Six ladder steps at Casic::Autobaud::STEP_MS is about 7.2 s of virtual time,
+# so the bound below is a generous multiple and not a timing assertion.
+seed gps true
+seed gps_baud auto
+seed gps_receiver none
+seed gps_uart_mode ack
+wait 300
+action nav gps_data
+wait 300
+assert ui.page gps_data
+
+# While the ladder probes, the page reports detection rather than a cycle state.
+assert-eventually-virtual 3000 gps.receiver detecting
+# the page timer is 1 Hz, so give it a tick before reading the rendered row
+wait 1500
+assert-eventually 5000 ui.gps_cycle detecting
+assert gps.baud 0
+
+# Nothing answers, so the ladder gives up.
+assert-eventually-virtual 20000 gps.receiver absent
+assert gps.baud 0
+wait 1500
+assert-eventually 5000 ui.gps_cycle absent
+assert ui.gps_source none
+assert ui.gps_link_age n/a
+assert ui.overflow no
+
+# An absent receiver must not pin the S3 sleep lock, which is the drain plan 98b
+# removed for the degraded state.
+assert power.no_light_sleep 0
+
+# Raw NMEA carries the same state plus the baud, and it is the only page that
+# carries it on the 80x160 panel.
+back
+wait 300
+action nav nmea
+wait 1500
+assert ui.page nmea
+# Raw NMEA is an intentional-scroll page, so both extents must be reachable.
+action scroll bottom
+wait 300
+action scroll top
+wait 300
+
+# The one retry after 60 s must fire. Plug a receiver in while furble is idle
+# and the retry has to find it, so the absent state is recoverable without a
+# power cycle rather than terminal.
+back
+wait 300
+action nav gps_data
+wait 300
+gps-receiver 9600
+wait 30000
+assert-eventually-virtual 50000 gps.receiver present
+assert gps.baud 9600
+wait 3000
+assert-eventually 8000 gps.satellites 8
+wait 1500
+assert-eventually 5000 ui.gps_source uart
+exit

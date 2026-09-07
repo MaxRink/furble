@@ -40,8 +40,10 @@ About page and exposed through companion BLE Device Information.
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
+| `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
+| `companion` | `password set <pw>`, `clear`, or `status`. |
 | `ui` | `ui audit`, dump the current page layout. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
@@ -58,6 +60,26 @@ About page and exposed through companion BLE Device Information.
 | `reboot` | Restart the device. |
 | `help` | List every command. |
 
+### Pairing a camera that is already saved
+
+Pairing is refused when the selected scan result is a camera the saved list
+already holds. The device shows an "Already saved" box that has to be
+dismissed, and no connect is started. The refusal lives in
+`UI::beginPairing()`, the single entry point for "the user asked to pair this
+scan result", so the Scan page row gets it without the check being written
+twice. There is no console pairing verb on this build: PR #265 adds
+`pair <scan-index>` and routes it through the same `UI::beginPairing()`, which
+is why it inherits the refusal with no duplicated logic.
+
+The check is identity, not the saved index key. The index is keyed on the BLE
+address, and a Fujifilm Secure body advertises a resolvable private address
+that changes with every pairing, so a second pairing would add a second record
+for one camera instead of replacing the first. `sameSavedIdentity()` matches on
+the vendor type plus the address, and for Fujifilm Secure only, falls back to
+the advertised name. Every other vendor keeps a stable address, so a second
+body of the same model is still pairable. To pair a saved camera again, delete
+it first with the Delete page.
+
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has
@@ -71,6 +93,12 @@ no software-readable presence or negotiation signal.
   rejected when the board does not support the setting, for example
   `SD_GPX` on a board with no SD card slot.
 
+The companion password is write-only. Use `companion password set <pw>` or
+`companion password clear`; `companion password status` prints only `set`,
+`unset`, or `unavailable`. The generic `settings get` and `settings set` paths
+reject `companion_pw`. A successful set or clear reloads the live companion
+session and revokes any authenticated connection.
+
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once. Settings the UI caches when it starts do not. `settings get`
 reports which of the two a setting is: immediately, on next connect, or on
@@ -81,19 +109,31 @@ every setting, its default, and when it applies.
 
 - `gps` with no argument prints enabled, fix, satellites, lat, lon, alt, age,
   date, time, and error counts, then the receiver state behind them:
+  `receiver` (`detecting`, `present` or `absent`), `baud` (the baud the
+  autobaud ladder locked, or the configured fixed baud, 0 when none),
   `degraded` and `retries` for the power cycle health, `source` (`uart`,
   `companion` or `none`), `cycle` (the power cycle state), `policy`
   (`always_on`, `standby` or `rail_cycle`), `duty` (standby seconds), `rate`
   (configured fix interval in ms, 0 for the receiver default), `sentence_age`
   (ms since the receiver last spoke, or `none` if it never has), `assist` (the
-  assisted start mode) and `assist_cache`. The GPS Data page shows a two row
-  summary of the same state; this is where all of it is readable.
+  assisted start mode) and `assist_cache`. It then reports the fix hold state:
+  `fix_state` (`live`, `held` or `none`), `hold` (the configured bound in ms,
+  0 when fix hold is off) and `hold_remaining` (ms left on a held fix). The GPS
+  Data page shows a two row summary of the same state; this is where all of it
+  is readable.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
 - `gps send <body>` sends a raw sentence, for example `gps send PCAS12,10`.
 - `gps binary <class hex> <id hex> [payload bytes]` sends a CASIC binary frame.
 - `gps config` lists the binary configuration status.
 - `gps aid` sends an assisted-start (AID-INI) hint.
+- `gps sats [on | off]` enables or disables GSV/GSA capture; `gps sats` prints
+  in-view/used counts, DOP, and each decoded satellite.
+- `gps platform 0..4` saves the dynamic model (`0` do not send, `1` portable,
+  `2` stationary, `3` pedestrian, `4` vehicle) and reloads the receiver. The
+  dyModel/PCAS11 effect is hardware-tuning-pending.
+- `gps monhw` polls the CASIC MON-HW snapshot and prints the raw response. Its
+  field layout is hardware-tuning-pending.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
 
 ## time
@@ -113,6 +153,42 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 - `imu status` performs a read-only probe: it reports the persisted opt-in,
   detected IMU type, update result, and independent accelerometer/gyroscope
   reads with values. It performs no NVS writes and does not access LVGL.
+- `imu scale` prints the gesture amplitude calibration scale and
+  `imu scale <0.25-4.0>` sets it. It multiplies the tap and shake thresholds on
+  top of the per-sensor gain, so a cased or strapped device can be tuned without
+  a reflash. It is runtime only and is not persisted: a tuning session is one
+  USB session. Available on display builds.
+
+## motion
+
+- `motion status` reports the IMU motion source. It performs no NVS writes.
+
+  | Field | Meaning |
+  | :--- | :--- |
+  | `backend` | `none`, `software`, `bmi270-motion` or `mpu6886-wom`. |
+  | `armed` | Whether a backend is running. |
+  | `state` | `inactive`, `moving` or `stationary`. |
+  | `wake` | `interrupt` when a light-sleep wake source is held, `polling` otherwise. |
+  | `pin` | The IMU interrupt line: `asserted` or `idle`. |
+  | `edges` | Polls at which the line was found asserted since arming. |
+  | `interrupts` | Motion state transitions the backend has reported. |
+  | `bus_retries` | IMU bus transactions retried after a first failure. |
+  | `pmic_retries` | M5PM1 transactions retried after a first failure. |
+  | `scale` | The software backend's calibration multiplier. |
+  | `threshold` | The resulting slope threshold in g. |
+
+  On the M5StickS3 the BMI270 interrupt never reaches the SoC, so `pin` and
+  `edges` are read from the M5PM1: `pin` from the GPIO4 input level and `edges`
+  from the latched GPIO4 interrupt flag. `edges` counts polls at which the line
+  was asserted, not hardware edges, because a latched flag read once per second
+  cannot distinguish one assertion from a thousand. That is enough to tell a
+  line that never goes quiet from one that does, which is what it is for.
+
+- `motion scale [value]` reads or sets the software backend's calibration
+  multiplier, clamped to 0.25 through 4.0. Accelerometers differ in noise floor
+  between parts and a cased device damps differently from a bare board, so the
+  shipped threshold is a starting point. The hardware engines threshold inside
+  the chip and ignore this.
 
 ## shutter and focus
 

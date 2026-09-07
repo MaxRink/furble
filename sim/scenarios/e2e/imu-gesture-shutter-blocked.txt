@@ -1,0 +1,49 @@
+# Each guard that must block a gesture shutter, reached in isolation so no other
+# guard can mask it. ui.gesture_shutter_sends counts what the gesture path
+# queued: the camera counters cannot see a command that was never sent, and an
+# intervalometer run dominates them. A blocked gesture is still detected, so a
+# passing run can never be a dead detector.
+seed fauxny true
+seed imu true
+seed imu_trigger true
+wait 400
+assert ui.connected no
+
+# Disconnected, on the main menu.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_last double_tap
+assert ui.gesture_shutter_sends 0
+
+action connect
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+
+# On the Remote shutter page but with the link dropped. The page check passes
+# here, so this isolates the control-state guard.
+action page shutter
+wait 200
+assert ui.page shutter
+action drop
+wait 500
+assert ui.page shutter
+assert ui.link_alert yes
+wait 900
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_last double_tap
+assert ui.gesture_shutter_sends 0
+exit

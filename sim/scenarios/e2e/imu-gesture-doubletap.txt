@@ -1,0 +1,47 @@
+# Double-tap window boundaries with no camera attached, so the detector is
+# measured on its own rather than through the shutter guards.
+seed imu true
+seed imu_wake 0
+seed imu_trigger true
+wait 400
+assert ui.gesture_timer yes
+assert ui.gesture_events 0
+
+# Two released impulses about 120 ms apart are one double tap, not two taps.
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 100
+assert ui.gesture_events 1
+assert ui.gesture_last double_tap
+
+# A second impulse closer than the 80 ms minimum is not a double tap. The lone
+# tap resolves as a wake tap once the 400 ms window expires.
+wait 900
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 20
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 600
+assert ui.gesture_events 2
+assert ui.gesture_last tap
+
+# A second impulse past the 400 ms maximum is never a double tap either.
+wait 900
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 600
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 600
+assert ui.gesture_last tap
+exit

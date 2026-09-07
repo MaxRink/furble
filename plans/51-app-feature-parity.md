@@ -1,7 +1,70 @@
 # 51 - Companion app feature parity
 
-Status: firmware settings parity v2 and the Android settings editors are
-implemented. The camera phase remains design only.
+Status: firmware settings parity v2, the Android settings editors and the
+firmware camera management phase are implemented. The app Cameras tab and the
+rig scenarios of phase 5 remain outstanding.
+
+Host validation note: companion_gatt_test compiles the Nikon Remote protocol
+source with warnings treated as errors. Its subscription callback does not use
+camera state, so it has no lambda capture.
+
+## Implementation state, firmware camera management
+
+Delivered by the plan 51 firmware camera PR.
+
+- Cameras characteristic `b57f4f63-087b-4740-b71d-8262cf26ebbc`, write plus
+  indicate plus notify, on the existing companion service. Requests are the
+  two byte `{op, camera_id}` form from section 2.2. Records are the eight byte
+  head plus the name, indicated for command responses and list records,
+  notified for unsolicited state events.
+- The capability characteristic now advertises feature bit 1 alongside bit 0.
+  `CompanionService::getCapability()` owns the record so the host suite asserts
+  the same bytes the transport publishes.
+- The saved camera index carries a stable `camera_id`. The blob gained an
+  explicit four byte v2 schema header, so a v1 blob still decodes and its
+  entries are assigned ids and rewritten on the first lazy catalog load. The
+  allocator walks forward from a persisted counter, so deleting the highest id
+  does not hand it straight back. Zero means unassigned and `0xff` means all
+  cameras. The saved catalog is separate from transient scan results, so a
+  scan cannot hide saved rows from the companion.
+- Connect and disconnect go through `UI::sendRequest`, the same request queue
+  the console uses, so the on-device screen follows the remote action and
+  `Control::disconnect()` never runs on the companion link. Companion connect
+  requests carry the stable saved id, including `0xff` for the current
+  selection, and resolve it again on the UI task after rechecking scan and
+  control state. That queue is no longer gated on `FURBLE_CONSOLE`; `PERF` and
+  `AUDIT` stay gated because they need console-only headers.
+- Notifications reuse the status policy: the service task batches at 1 Hz,
+  unchanged records are skipped, and a forced batch bypasses the window.
+
+### Deviations from the design
+
+- **Selection is not persisted.** Section 2.3 assumed a stored multi-connect
+  set. Master keeps the selection in `Camera::setActive()` alone, so select and
+  deselect drive exactly that, the same state the on-device Cameras page
+  edits. No new setting, no new wire id. `CameraList::load()` now copies the
+  already-loaded saved shared pointers into the transient connect list, so it
+  preserves selection and connection ownership without rebuilding objects.
+- **RSSI comes from Control's filtered sample.** `Camera::getRssi()` takes the
+  camera connect mutex, which a cold connect holds for the whole connect
+  timeout, so the companion task must never call it. `Control::getTargetState()`
+  reads the cached average under the control mutex with no radio call. That
+  sample is only taken while adaptive transmit power is enabled, so `rssi` is
+  `-128` (unknown) otherwise.
+- **Disconnect is all targets.** `Control` still has no per-target addressing.
+  The wire carries the id, so adding it later is not a wire change.
+- **No sim scenario.** The companion service is only instantiated in the sim
+  under `FURBLE_RIG`, and the connect and disconnect paths are the existing
+  console request path, which the sim already covers. The host mock-central
+  suite covers list, select, deselect, connect, disconnect, the rate limit and
+  the capability record.
+
+### Owed after merge
+
+- On-device bench with the companion app on the M5StickS3: pair, list, select
+  two cameras, connect, watch the live states and rssi, disconnect. Only
+  Fujifilm cameras are available, so other vendors stay code review plus
+  FauxNY.
 
 ## Implementation state, firmware settings parity v2
 
@@ -382,8 +445,9 @@ the app PR that consumes it.
 1. **Firmware: settings parity v2.** `Settings::appliesImmediately` shared
    with the console, flags bits 0 and 1, GPS reload hooks for the $PCAS
    settings, capability characteristic with feature bit 0. No new UI.
-2. **Firmware: camera management.** `camera_id` in the CameraList index with
-   migration, the cameras characteristic, wire state mapping, feature bit 1.
+2. **Firmware: camera management.** Done. `camera_id` in the CameraList index
+   with migration, the cameras characteristic, wire state mapping, feature
+   bit 1.
 3. **App: settings editors.** Metadata table, typed editors, INTERVAL editor,
    restart and danger badges, confirm flow. Works against firmware 1; against
    older firmware it degrades to the current behavior.
@@ -430,3 +494,8 @@ Verified on fork master at `916e831`:
   and 5
 - [50-companion-app-design.md](50-companion-app-design.md) sections 3.5, 3.6,
   7, 8 and 9
+The production GATT transport routes camera command indications and unsolicited
+camera notifications to the Cameras characteristic. Companion startup and
+subscription no longer need to force a list reload:
+`CameraList::savedSnapshot()` lazily loads and migrates the saved catalog, while
+scans only replace the transient connect list.

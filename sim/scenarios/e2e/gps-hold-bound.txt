@@ -1,0 +1,100 @@
+# Fix hold has to keep the camera geotagged for exactly as long as the user
+# asked for, and then stop. Without the bound a camera would keep stamping
+# photos with a position the user left an hour ago.
+#
+# The receiver streams its canned fix, then goes quiet. The fix stays fresh for
+# its 30 s window first, then the hold takes over: the cached position keeps
+# reaching the camera, but its UTC advances, because a camera stamps the photo
+# with whatever time it is handed. At the 30 s bound the hold ends, the page
+# reports searching, and nothing more reaches the camera.
+#
+# The canned fix is stamped 12:35:19, which is 45319 seconds into the day. The
+# first held sample is already past 45350 because the freshness window counts:
+# the fix was produced 30 s before furble declared it stale, and the held clock
+# is anchored on when the receiver produced it, not on when update() noticed.
+#
+# Nothing is written to the track log throughout. A held fix is not a measured
+# position, and an hour of them would be indistinguishable from real track data.
+#
+# Killing mutations, all confirmed to fail this file:
+#   - drop the hold bound (gpsHoldInBound always true): the page still reports
+#     held rather than searching, and the final camera.geo_utc_s runs past 45390.
+#   - freeze the held UTC (skip gpsAdvanceUtc): camera.geo_utc_s stays 45319.
+#   - hold the fix but never send it: camera.geo_utc_s stays 45319.
+#   - anchor the fix cache on now_tick instead of the fix time: the first held
+#     camera.geo_utc_s is 45325, under the 45345 floor.
+#   - log held fixes to GPX (drop the fix == Fix::LIVE guard): gpx.points climbs.
+seed fauxny true
+seed autoconnect true
+seed gps true
+seed sd_gpx true
+seed gps_hold 1
+seed gps_uart_mode ack
+wait 4000
+action nav gps_data
+wait 2000
+assert ui.page gps_data
+assert ui.gps_fix_state live
+assert camera.geo_lat_e5 4811730
+assert camera.geo_utc_s 45319
+assert gpx.points 1
+
+# The receiver goes quiet. The fix stays fresh for its 30 s window first.
+uart-mode pause
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state held
+# Six seconds into a 30 s window. The exact tick the hold starts on moves by a
+# GPS service period between builds, so samples inside the window are bounded
+# rather than pinned. The bound itself is checked below, where the arithmetic is
+# clamped and exact.
+assert_min ui.gps_hold_remaining 20
+assert_max ui.gps_hold_remaining 28
+# The position is the last measured one, extrapolation is off here.
+assert camera.geo_lat_e5 4811730
+# Held UTC advance has reached the camera, and it carries the freshness window.
+# A frozen clock reads 45319; anchoring on now_tick instead of the fix time
+# reads 45325.
+assert_min camera.geo_utc_s 45345
+assert_max camera.geo_utc_s 45360
+
+# Run out the bound.
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state held
+# The last moment inside the window. The bound is inclusive, so the fix is still
+# being sent here with at most a second left on it.
+assert_max ui.gps_hold_remaining 2
+assert_min camera.geo_utc_s 45372
+assert_max camera.geo_utc_s 45385
+
+# Past the bound nothing more may reach the camera, and the page says so.
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state searching
+assert gps.source none
+# Sixty more seconds have passed. An unbounded hold would have pushed this past
+# 45440; the bound stopped the stream where the window ended.
+assert_max camera.geo_utc_s 45385
+# Not one held fix reached the track log.
+assert gpx.points 1
+assert ui.overflow no
+exit

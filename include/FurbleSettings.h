@@ -24,6 +24,9 @@ class Settings {
     TX_ADAPTIVE,
     GPS,
     IMU,
+    IMU_WAKE,
+    IMU_TRIG,
+    HW_MOTION,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -31,6 +34,9 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_HOLD,
+    GPS_EXTRAP,
+    GPS_PLATFORM,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -47,6 +53,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    COMPANION_PASSWORD,
     CONN_SAVER,
     IR,
     IR_PROTO,
@@ -102,12 +109,27 @@ class Settings {
   } calibration_t;
 
   static constexpr size_t MULTISELECT_MAX = 8;
-  static constexpr size_t MULTISELECT_NAME_MAX = 16;
+  // A remembered entry is the camera's displayed name, and a vendor client may
+  // compose that name rather than show the bare advertised one. A Fujifilm
+  // Secure body renders "MODEL SERIAL", and the serial falls back to ten hex
+  // characters when it is not printable text. Sixteen bytes truncated that, and
+  // a truncated name cannot tell two bodies of one model apart. Thirty-two
+  // holds a twenty-one character model, a space, and the ten character
+  // fallback.
+  static constexpr size_t MULTISELECT_NAME_MAX = 32;
+  /** The field width used before composed vendor names needed the extra room. */
+  static constexpr size_t MULTISELECT_NAME_LEGACY_MAX = 16;
 
   typedef struct {
     char name[MULTISELECT_MAX][MULTISELECT_NAME_MAX];
     uint8_t count;
   } multiselect_t;
+
+  /** The record layout written before MULTISELECT_NAME_MAX widened. */
+  typedef struct {
+    char name[MULTISELECT_MAX][MULTISELECT_NAME_LEGACY_MAX];
+    uint8_t count;
+  } multiselect_legacy_t;
 
   typedef struct {
     type_t type;
@@ -136,7 +158,14 @@ class Settings {
     BUTTON_MODE_TWO_BUTTON = 0,
     BUTTON_MODE_ONE_BUTTON = 1,
   } button_mode_t;
+  /** Motion engine selection. */
+  typedef enum {
+    HW_MOTION_AUTO = 0,
+    HW_MOTION_SOFTWARE = 1,
+    HW_MOTION_HARDWARE = 2,
+  } hw_motion_t;
 
+  static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
@@ -170,8 +199,36 @@ class Settings {
   /** Return true when an over-the-air write can affect the companion link. */
   static bool isDangerous(type_t type);
 
+  /** Load the companion password, distinguishing an unset key from NVS failure. */
+  static bool loadPassword(std::string &value);
+  /** Persist the companion password and report storage/commit failures. */
+  static bool savePassword(const std::string &value);
+
   /** Return true when the Battery Saver power profile is enabled. */
   static bool batterySaver(void);
+
+  /**
+   * Remember one camera name in a multi-connect selection.
+   *
+   * Returns false when the set is full, the name is missing, or the name does
+   * not fit the field. A truncated entry would compare equal to a different
+   * camera whose whole name is that prefix, so a name that does not fit is
+   * refused rather than shortened: the set forgets one body instead of ticking
+   * another one.
+   */
+  static bool multiselectAdd(multiselect_t &selection, const char *name);
+
+  /**
+   * Return true when a camera name is in a remembered multi-connect set.
+   *
+   * The comparison is over the whole stored string. A prefix comparison would
+   * tick a different body whose displayed name agrees only up to the compared
+   * length, which composed "model serial" names make reachable.
+   */
+  static bool multiselectContains(const multiselect_t &selection, const char *name);
+
+  /** Widen a record written in the layout that preceded MULTISELECT_NAME_MAX. */
+  static multiselect_t multiselectFromLegacy(const multiselect_legacy_t &legacy);
 
   // Effective power-setting accessors. When Battery Saver is on, each returns
   // the battery-optimal value from the bundle, otherwise the user's stored
@@ -256,6 +313,18 @@ struct Settings::storage_type<Settings::IMU> {
   using type = bool;
 };
 template <>
+struct Settings::storage_type<Settings::IMU_WAKE> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::IMU_TRIG> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::HW_MOTION> {
+  using type = uint8_t;
+};
+template <>
 struct Settings::storage_type<Settings::GPS_BAUD> {
   using type = uint32_t;
 };
@@ -281,6 +350,18 @@ struct Settings::storage_type<Settings::GPS_DUTY> {
 };
 template <>
 struct Settings::storage_type<Settings::GPS_ASSIST> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_HOLD> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_EXTRAP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_PLATFORM> {
   using type = uint8_t;
 };
 template <>
@@ -346,6 +427,10 @@ struct Settings::storage_type<Settings::SCAN_TIMEOUT> {
 template <>
 struct Settings::storage_type<Settings::COMPANION> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::COMPANION_PASSWORD> {
+  using type = std::string;
 };
 template <>
 struct Settings::storage_type<Settings::CONN_SAVER> {

@@ -1,14 +1,23 @@
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <utility>
 
+// Scan.h leads: its CallbackProxy member is an incomplete type behind a
+// unique_ptr, and pulling <memory> in ahead of it makes the toolchain
+// instantiate the deleter too early.
+#include <esp_random.h>
+#include "Scan.h"
+
 #include "../include/FurbleCompanionService.h"
+#include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "protocol/CameraListProtocol.h"
 
 namespace Furble {
 
@@ -36,6 +45,14 @@ struct __attribute__((packed)) interval_wire_t {
 };
 
 static_assert(sizeof(interval_wire_t) == 12, "companion interval wire must stay 12 bytes");
+
+bool generateNonce(uint8_t *nonce, size_t len) {
+  if (nonce == nullptr) {
+    return false;
+  }
+  esp_fill_random(nonce, len);
+  return true;
+}
 
 interval_wire_field_t packField(const SpinValue::nvs_t &nvs) {
   return {nvs.value, static_cast<uint8_t>(nvs.unit)};
@@ -71,7 +88,8 @@ bool unpackInterval(const uint8_t *data, size_t length, interval_t &interval) {
 
 }  // namespace
 
-CompanionService::CompanionService(CompanionTransport &transport) : m_Transport {transport} {}
+CompanionService::CompanionService(CompanionTransport &transport)
+    : m_Transport {transport}, m_Auth {companionHmacSha256, generateNonce} {}
 
 uint64_t CompanionService::nowMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000;
@@ -111,13 +129,36 @@ void CompanionService::deinit(void) {
 }
 
 void CompanionService::onConnected(void) {
-  const std::lock_guard<std::mutex> lock(m_Mutex);
-  m_HaveLastStatus = false;
-  m_LastStatusNotificationMs = 0;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_HaveLastStatus = false;
+    m_LastStatusNotificationMs = 0;
+  }
+  std::string password;
+  const bool loaded = Settings::loadPassword(password);
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_Auth.setPassword(password, loaded);
+  m_Auth.onConnected();
 }
 
 void CompanionService::onDisconnected(void) {
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    m_Auth.onDisconnected();
+  }
   releaseHeldCommands();
+}
+
+void CompanionService::reloadPassword(void) {
+  std::string password;
+  const bool loaded = Settings::loadPassword(password);
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_Auth.setPassword(password, loaded);
+}
+
+bool CompanionService::isPasswordAuthenticated(void) const {
+  const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  return m_Auth.isAuthenticated();
 }
 
 void CompanionService::beginPairing(uint32_t pin) {
@@ -205,6 +246,10 @@ CompanionService::companion_status_t CompanionService::getStatus(void) const {
   return status;
 }
 
+CompanionService::companion_capability_t CompanionService::getCapability(void) {
+  return {CAPABILITY_VERSION, WIRE_VERSION, FEATURE_SETTINGS_V2 | FEATURE_CAMERAS};
+}
+
 void CompanionService::notifyStatus(bool force) {
   if (!m_Transport.isConnected()) {
     return;
@@ -238,6 +283,14 @@ void CompanionService::notifyStatus(bool force) {
 }
 
 void CompanionService::handleLocation(const uint8_t *data, size_t len) {
+  // A location write mutates the GPX track and the frames furble geotags, so
+  // it needs the bonded encrypted link the other writes need. It stays outside
+  // the password gate on purpose: the companion apps stream fixes as soon as
+  // the link is ready and only authenticate before settings and trigger, so a
+  // password gate here would drop fixes with no error the app can surface.
+  if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
+    return;
+  }
   if (data == nullptr || len < (offsetof(companion_fix_t, age_ms) + sizeof(uint32_t))) {
     ESP_LOGW(LOG_TAG, "Short companion location write");
     return;
@@ -267,10 +320,318 @@ void CompanionService::handleLocation(const uint8_t *data, size_t len) {
   GPS::getInstance().setExternalFix(fix);
 }
 
+// Cameras ------------------------------------------------------------------
+
+std::vector<CompanionService::camera_snapshot_t> CompanionService::getCameraSnapshots(void) {
+  std::vector<camera_snapshot_t> snapshots;
+
+  auto &control = Control::getInstance();
+  const Control::state_t controlState = control.getState();
+  const auto connecting = control.getConnectingCamera();
+
+  for (const auto &camera : CameraList::savedSnapshot()) {
+    const uint8_t id = CameraList::getCameraId(camera.get());
+    if (id == CameraListProtocol::INDEX_ID_INVALID) {
+      // Scan results the user has not saved carry no stable id, so they have no
+      // wire identity and the companion never sees them.
+      continue;
+    }
+
+    int8_t rssi = 0;
+    const bool target = control.getTargetState(camera.get(), rssi);
+    const bool connected = camera->isConnected();
+
+    uint8_t state = CAMERA_IDLE;
+    if (!target) {
+      state = CAMERA_IDLE;
+    } else if (controlState == Control::STATE_DISCONNECTING) {
+      state = CAMERA_DISCONNECTING;
+    } else if (connected) {
+      state = CAMERA_CONNECTED;
+    } else if (controlState == Control::STATE_CONNECT_FAILED) {
+      state = CAMERA_LOST;
+    } else if (controlState == Control::STATE_ACTIVE) {
+      // The session is up but this link is down, which is the plans/25
+      // reconnecting row.
+      state = CAMERA_RECONNECTING;
+    } else if ((controlState == Control::STATE_CONNECT)
+               || (controlState == Control::STATE_CONNECTING)) {
+      state = CAMERA_CONNECTING;
+    }
+
+    uint8_t flags = CAMERA_FLAG_SAVED;
+    if (camera->isActive()) {
+      flags |= CAMERA_FLAG_SELECTED;
+    }
+    if (target) {
+      flags |= CAMERA_FLAG_TARGET;
+    }
+    if (connected) {
+      flags |= CAMERA_FLAG_CONNECTED;
+    }
+
+    camera_snapshot_t snapshot = {};
+    snapshot.record.status = CAMERA_OK;
+    snapshot.record.camera_id = id;
+    snapshot.record.cam_type = static_cast<uint8_t>(camera->getType());
+    snapshot.record.flags = flags;
+    snapshot.record.progress = camera->getConnectProgress();
+    // Only Control's filtered sample is used. Camera::getRssi() takes the
+    // camera connect mutex, which a cold connect holds for the whole connect
+    // timeout, so it must never be called from the companion task.
+    snapshot.record.rssi = (connected && (rssi != 0)) ? rssi : CAMERA_RSSI_UNKNOWN;
+    snapshot.record.state = state;
+    snapshot.name = camera->getName();
+    if (snapshot.name.size() > CAMERA_NAME_MAX) {
+      snapshot.name.resize(CAMERA_NAME_MAX);
+    }
+    snapshot.record.name_len = static_cast<uint8_t>(snapshot.name.size());
+
+    snapshots.push_back(std::move(snapshot));
+  }
+
+  return snapshots;
+}
+
+std::vector<uint8_t> CompanionService::encodeCameraRecord(const camera_snapshot_t &snapshot) {
+  std::vector<uint8_t> record(sizeof(companion_camera_t) + snapshot.name.size(), 0x00);
+  std::memcpy(record.data(), &snapshot.record, sizeof(companion_camera_t));
+  std::memcpy(record.data() + sizeof(companion_camera_t), snapshot.name.data(),
+              snapshot.name.size());
+  return record;
+}
+
+void CompanionService::indicateCameraStatus(uint8_t status, uint8_t cameraId) {
+  camera_snapshot_t snapshot = {};
+  snapshot.record.status = status;
+  snapshot.record.camera_id = cameraId;
+  snapshot.record.rssi = CAMERA_RSSI_UNKNOWN;
+
+  const auto record = encodeCameraRecord(snapshot);
+  m_Transport.indicate(COMPANION_CHAR_CAMERAS, record.data(), record.size());
+}
+
+void CompanionService::notifyCameras(bool force) {
+  if (!m_Transport.isConnected() || !m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
+    return;
+  }
+
+  const auto snapshots = getCameraSnapshots();
+  const uint64_t now = nowMs();
+
+  std::vector<camera_snapshot_t> changed;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    const bool rateAllowed =
+        !m_HaveLastCameras || ((now - m_LastCameraNotificationMs) >= CAMERA_NOTIFY_INTERVAL_MS);
+    if (!force && !rateAllowed) {
+      return;
+    }
+
+    for (const auto &snapshot : snapshots) {
+      const auto previous =
+          std::find_if(m_LastCameras.begin(), m_LastCameras.end(), [&snapshot](const auto &item) {
+            return item.record.camera_id == snapshot.record.camera_id;
+          });
+      const bool same =
+          (previous != m_LastCameras.end())
+          && (std::memcmp(&previous->record, &snapshot.record, sizeof(companion_camera_t)) == 0)
+          && (previous->name == snapshot.name);
+      if (force || !m_HaveLastCameras || !same) {
+        changed.push_back(snapshot);
+      }
+    }
+
+    // Publish the cache before entering the transport, exactly as notifyStatus
+    // does: a callback may re-enter and must see the new baseline.
+    m_LastCameras = snapshots;
+    m_HaveLastCameras = true;
+    m_LastCameraNotificationMs = now;
+  }
+
+  for (const auto &snapshot : changed) {
+    const auto record = encodeCameraRecord(snapshot);
+    m_Transport.notify(COMPANION_CHAR_CAMERAS, record.data(), record.size());
+  }
+}
+
+void CompanionService::handleCameras(const uint8_t *data, size_t len) {
+  if ((data == nullptr) || !m_Transport.isEncrypted() || !m_Transport.isAuthenticated()) {
+    return;
+  }
+
+  if (len != CAMERA_REQUEST_BYTES) {
+    indicateCameraStatus(CAMERA_REJECTED, CameraListProtocol::INDEX_ID_ALL);
+    return;
+  }
+
+  const uint8_t op = data[0];
+  const uint8_t cameraId = data[1];
+  // Listing is read-only and remains available on an encrypted link. Every
+  // camera mutation is privileged, including selection and disconnect.
+  if ((op != CAMERA_OP_LIST) && !allowProtected(COMPANION_CHAR_CAMERAS)) {
+    return;
+  }
+  const auto snapshots = getCameraSnapshots();
+  const auto found = std::find_if(snapshots.begin(), snapshots.end(), [cameraId](const auto &item) {
+    return item.record.camera_id == cameraId;
+  });
+  const bool known = (cameraId == CameraListProtocol::INDEX_ID_ALL) || (found != snapshots.end());
+
+  switch (op) {
+    case CAMERA_OP_LIST:
+    {
+      for (const auto &snapshot : snapshots) {
+        const auto record = encodeCameraRecord(snapshot);
+        m_Transport.indicate(COMPANION_CHAR_CAMERAS, record.data(), record.size());
+      }
+      // The terminator mirrors the settings list terminator.
+      indicateCameraStatus(CAMERA_OK, CameraListProtocol::INDEX_ID_ALL);
+      return;
+    }
+
+    case CAMERA_OP_SELECT:
+    case CAMERA_OP_DESELECT:
+    {
+      if (!known) {
+        indicateCameraStatus(CAMERA_UNKNOWN_ID, cameraId);
+        return;
+      }
+      if (!Settings::load<Settings::MULTICONNECT>()) {
+        indicateCameraStatus(CAMERA_REJECTED, cameraId);
+        return;
+      }
+
+      const bool selected = (op == CAMERA_OP_SELECT);
+      for (const auto &camera : CameraList::savedSnapshot()) {
+        const uint8_t id = CameraList::getCameraId(camera.get());
+        if (id == CameraListProtocol::INDEX_ID_INVALID) {
+          continue;
+        }
+        if ((cameraId == CameraListProtocol::INDEX_ID_ALL) || (id == cameraId)) {
+          camera->setActive(selected);
+        }
+      }
+
+      indicateCameraStatus(CAMERA_OK, cameraId);
+      notifyCameras(true);
+      return;
+    }
+
+    case CAMERA_OP_DISCONNECT:
+    {
+      // Control has no per-target addressing, so v1 disconnects every target.
+      // The wire already carries the id, so adding it later is not a wire
+      // change. The request runs on the UI task: Control::disconnect() waits
+      // for the teardown and must never block the companion link.
+      if (!UI::sendRequest(UI::Request::DISCONNECT, 0)) {
+        indicateCameraStatus(CAMERA_BUSY, CameraListProtocol::INDEX_ID_ALL);
+        return;
+      }
+      indicateCameraStatus(CAMERA_OK, CameraListProtocol::INDEX_ID_ALL);
+      return;
+    }
+
+    case CAMERA_OP_CONNECT:
+    {
+      if (!known) {
+        indicateCameraStatus(CAMERA_UNKNOWN_ID, cameraId);
+        return;
+      }
+
+      auto &control = Control::getInstance();
+      if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+          || (control.getTargetCount() != 0)) {
+        indicateCameraStatus(CAMERA_BUSY, cameraId);
+        return;
+      }
+
+      if (cameraId == CameraListProtocol::INDEX_ID_ALL) {
+        const bool anySelected = std::any_of(
+            snapshots.begin(), snapshots.end(),
+            [](const auto &item) { return (item.record.flags & CAMERA_FLAG_SELECTED) != 0; });
+        if (!anySelected) {
+          indicateCameraStatus(CAMERA_REJECTED, cameraId);
+          return;
+        }
+      }
+
+      if (!UI::sendRequest(UI::Request::CONNECT_SAVED, cameraId)) {
+        indicateCameraStatus(CAMERA_BUSY, cameraId);
+        return;
+      }
+      indicateCameraStatus(CAMERA_OK, cameraId);
+      return;
+    }
+
+    default:
+      indicateCameraStatus(CAMERA_REJECTED, cameraId);
+      return;
+  }
+}
+
+void CompanionService::handleAuth(const uint8_t *data, size_t len) {
+  if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr) {
+    return;
+  }
+
+  std::array<uint8_t, CompanionAuth::NONCE_SIZE> nonce = {};
+  uint8_t wireResult = AUTH_RESULT_REJECTED;
+  bool challenge = false;
+  bool disconnect = false;
+  if ((len == 2) && (data[0] == AUTH_VERSION) && (data[1] == AUTH_OP_BEGIN)) {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    if (m_Auth.begin(nonce)) {
+      challenge = true;
+    } else {
+      wireResult = m_Auth.isDropped() ? AUTH_RESULT_DROPPED
+                                      : (m_Auth.isAuthenticated() ? AUTH_RESULT_NOT_REQUIRED
+                                                                  : AUTH_RESULT_REJECTED);
+    }
+  } else if ((len >= 2) && (data[0] == AUTH_VERSION) && (data[1] == AUTH_OP_PROOF)) {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    const CompanionAuth::response_t result =
+        m_Auth.respond(len == AUTH_PROOF_PACKET_SIZE ? data + 2 : nullptr,
+                       len == AUTH_PROOF_PACKET_SIZE ? CompanionAuth::RESPONSE_SIZE : 0);
+    wireResult =
+        result == CompanionAuth::response_t::AUTHENTICATED
+            ? AUTH_RESULT_AUTHENTICATED
+            : (result == CompanionAuth::response_t::DROPPED
+                   ? AUTH_RESULT_DROPPED
+                   : (result == CompanionAuth::response_t::NOT_REQUIRED ? AUTH_RESULT_NOT_REQUIRED
+                                                                        : AUTH_RESULT_REJECTED));
+    disconnect = result == CompanionAuth::response_t::DROPPED;
+  } else {
+    // Unknown versions, operations, and lengths consume the outstanding
+    // challenge as a failed proof. This prevents malformed retries from
+    // reusing one nonce indefinitely.
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    const CompanionAuth::response_t result = m_Auth.respond(nullptr, 0);
+    wireResult =
+        result == CompanionAuth::response_t::DROPPED ? AUTH_RESULT_DROPPED : AUTH_RESULT_REJECTED;
+    disconnect = result == CompanionAuth::response_t::DROPPED;
+  }
+
+  if (challenge) {
+    std::array<uint8_t, AUTH_CHALLENGE_SIZE> packet = {};
+    packet[0] = AUTH_VERSION;
+    packet[1] = AUTH_OP_BEGIN;
+    std::copy(nonce.begin(), nonce.end(), packet.begin() + 2);
+    m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
+  } else {
+    const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT, wireResult};
+    m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
+  }
+  if (disconnect) {
+    m_Transport.disconnect();
+  }
+}
+
 CompanionService::setting_type_t CompanionService::settingType(Settings::type_t type) {
   switch (type) {
     case Settings::GPS:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
@@ -291,6 +652,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::GPS_EXTRAP:
       return SETTING_BOOL;
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
@@ -301,6 +663,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -314,12 +677,16 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::GPS_HOLD:
+    case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
       return SETTING_U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
       return SETTING_U32;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::COMPANION_PASSWORD:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -336,6 +703,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
   switch (type) {
     case Settings::GPS:
     case Settings::IMU:
+    case Settings::IMU_TRIG:
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::PRESET_PICKER:
@@ -356,6 +724,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::GPS_EXTRAP:
     {
       const bool v = Settings::load<bool>(type);
       value.assign(reinterpret_cast<const uint8_t *>(&v),
@@ -371,6 +740,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -384,6 +754,9 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::GPS_HOLD:
+    case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
     {
       const uint8_t v = Settings::load<uint8_t>(type);
       value.assign(1, v);
@@ -404,6 +777,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       value.assign(v.begin(), v.end());
       return value.size() <= 255;
     }
+    case Settings::COMPANION_PASSWORD:
+      return false;
     case Settings::INTERVAL:
     {
       const interval_t v = Settings::load<interval_t>(type);
@@ -431,10 +806,19 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       Settings::save<bool>(type, value[0] != 0);
       return true;
     case SETTING_U8:
-      if (length != 1) {
+      if ((length != 1) || ((type == Settings::IMU_WAKE) && (value[0] > 3))) {
         return false;
       }
       if ((type == Settings::GPS_ASSIST) && (value[0] > 2)) {
+        return false;
+      }
+      if ((type == Settings::HW_MOTION) && (value[0] > Settings::HW_MOTION_HARDWARE)) {
+        return false;
+      }
+      if ((type == Settings::GPS_HOLD) && (value[0] > GPS::HOLD_MAX)) {
+        return false;
+      }
+      if ((type == Settings::GPS_PLATFORM) && (value[0] > 4)) {
         return false;
       }
       Settings::save<uint8_t>(type, value[0]);
@@ -446,15 +830,33 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
       }
       uint32_t v;
       std::memcpy(&v, value, sizeof(v));
+      if ((type == Settings::GPS_BAUD) && (v != Settings::BAUD_AUTO) && (v != Settings::BAUD_9600)
+          && (v != Settings::BAUD_115200)) {
+        return false;
+      }
       Settings::save<uint32_t>(type, v);
       return true;
     }
     case SETTING_STRING:
     {
+      if ((type == Settings::COMPANION_PASSWORD) && (length > COMPANION_PASSWORD_MAX)) {
+        return false;
+      }
+      if ((type == Settings::COMPANION_PASSWORD) && (length != 0)
+          && (std::memchr(value, '\0', length) != nullptr)) {
+        return false;
+      }
       const std::string v(reinterpret_cast<const char *>(value), length);
       if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
         return false;
+      }
+      if (type == Settings::COMPANION_PASSWORD) {
+        const bool saved = Settings::savePassword(v);
+        // Revoke authorization before acknowledging an attempted rotation,
+        // including a failed write. Invalid input never reaches persistence.
+        reloadPassword();
+        return saved;
       }
       Settings::save<std::string>(type, v);
       return true;
@@ -510,6 +912,10 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
   const uint8_t length = data[2];
   const bool lengthMatches = len == (static_cast<size_t>(3) + length);
   const Settings::setting_t *setting = Settings::getByWireId(id);
+
+  if ((op == 2) && !allowProtected(COMPANION_CHAR_SETTINGS)) {
+    return;
+  }
 
   if (!lengthMatches || ((op <= 1) && (length != 0)) || (op > 2)) {
     std::vector<uint8_t> response;
@@ -572,7 +978,11 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
   const bool saved = (type == SETTING_STRING || length == expected)
                      && saveSetting(setting->type, data + 3, length);
   std::vector<uint8_t> response;
-  appendResponse(response, saved ? SETTING_OK : SETTING_BAD_LENGTH, id, type, 0, {}, false);
+  appendResponse(response,
+                 saved ? SETTING_OK
+                       : (setting->type == Settings::COMPANION_PASSWORD ? SETTING_REJECTED
+                                                                        : SETTING_BAD_LENGTH),
+                 id, type, 0, {}, false);
   notifySettings(response);
 
   if (!saved) {
@@ -588,6 +998,9 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_EXTRAP:
+    case Settings::GPS_PLATFORM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
@@ -606,9 +1019,39 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
         m_SettingReloadCallback(false);
       }
       break;
+    case Settings::COMPANION_PASSWORD:
+      break;
+    case Settings::IMU:
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
+      UI::notifyGestureSettingsChanged();
+      break;
     default:
       break;
   }
+}
+
+bool CompanionService::allowProtected(uint8_t) const {
+  bool allowed = false;
+  bool dropped = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    allowed = m_Auth.allowsProtected();
+    dropped = m_Auth.isDropped();
+  }
+  if (allowed) {
+    return true;
+  }
+  // NimBLE characteristic callbacks are void, so an application-level gate
+  // cannot return a custom ATT error from this callback. Tell the client on
+  // the Auth characteristic instead. CompanionGatt::error remains diagnostic.
+  const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT,
+                                                        AUTH_RESULT_REJECTED};
+  m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
+  if (dropped) {
+    m_Transport.disconnect();
+  }
+  return false;
 }
 
 bool CompanionService::allowTrigger(void) {
@@ -627,6 +1070,9 @@ bool CompanionService::allowTrigger(void) {
 void CompanionService::handleTrigger(const uint8_t *data, size_t len) {
   if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr
       || (len < 2)) {
+    return;
+  }
+  if (!allowProtected(COMPANION_CHAR_TRIGGER)) {
     return;
   }
   const uint8_t op = data[1];

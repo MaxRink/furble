@@ -74,7 +74,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | Doc | Content |
 |---|---|
 | [20-imu-hw-motion.md](20-imu-hw-motion.md) | Hardware motion detection via IMU engines |
-| [21-imu-dead-reckoning.md](21-imu-dead-reckoning.md) | GPS position hold when fix is lost |
+| [21-imu-dead-reckoning.md](21-imu-dead-reckoning.md) | GPS position hold when fix is lost, bounded hold and extrapolation implemented |
 | [22-ir-remote-trigger.md](22-ir-remote-trigger.md) | IR shutter trigger (Nikon, Sony, Canon protocols) |
 | [23-feedback-outputs.md](23-feedback-outputs.md) | Beep, LED, vibration feedback |
 | [24-sd-gpx-logging.md](24-sd-gpx-logging.md) | SD card GPX logging and settings backup |
@@ -167,6 +167,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [148-teardown-connect-cancel.md](148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
 | [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
 | [150-nimble-taskdata-race.md](150-nimble-taskdata-race.md) | Vendored esp-nimble-cpp fix for the task data release use-after-scope race |
+| [151-fujifilm-registration-followups.md](151-fujifilm-registration-followups.md) | Registration follow-ups: Secure stale-bond recovery, timeout define, geotag doc reconciliation |
 | [152-menu-focus-outline-dedup.md](152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |
 | [153-level-main-menu.md](153-level-main-menu.md) | Spirit level entry on the main menu, usable without a camera connection |
 | [154-host-flappy-peer-realism.md](154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
@@ -182,8 +183,13 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [164-gps-status-detail.md](164-gps-status-detail.md) | Receiver fix source, sentence age and power cycle state on the GPS Data page, the whole receiver status struct in the console, on a new GPS receiver status accessor |
 | [165-sim-no-touch-layout.md](165-sim-no-touch-layout.md) | Certified per-board simulator coverage of the physical-button layout all three modeled boards ship, plus an indicator-clearance query and the layout gaps it exposes |
 | [166-sim-teardown-livelock.md](166-sim-teardown-livelock.md) | Simulator boot livelock and teardown disconnect timeout: the M5GFX step-exec false positive, UI-thread scheduler fairness, a host wall-clock stall watchdog with thread dumps, and wall-clock bounds on every scenario |
+| [167-fujifilm-device-name.md](167-fujifilm-device-name.md) | Fujifilm Secure cameras show the advertised model plus the advertised serial, since the longer camera-menu name is never advertised |
 | [169-flaky-host-tests.md](169-flaky-host-tests.md) | Three flaky host tests made deterministic: real scheduler waits instead of spin budgets, a registration sync point instead of sleeps, the aborted-connect republish wedge, and a coverage run that fails on a scenario that never finished |
 | [170-control-zombie-connect-cancel.md](170-control-zombie-connect-cancel.md) | Vendor connect waits honour the plan 148 cancel contract, the interactive teardown cap is logged and honours its bound, and a draining camera is never handed a fresh target that clears its cancel token |
+| [171-console-coverage-crash.md](171-console-coverage-crash.md) | The console suite exits while the control task is still running: stop and join every shim task before static destruction, and a coverage run that names a host test it lost |
+| [172-sim-cancel-sweep.md](172-sim-cancel-sweep.md) | Simulator reproduction of the 2026-09-04 cancel wedge and a certified cancel sweep: a virtual peer that models the blocking Fujifilm Secure handshake, and cancels at fixed offsets across the connect window for every peer topology and connect entry, each checked against one settle invariant, plus the bench power-off hang and a NimBLE client-pool guard the simulator never had |
+| [173-sim-scheduler-visibility.md](173-sim-scheduler-visibility.md) | Scheduler-visible host mutex so virtual time stops tracking host load and the cancel bounds come back, one preferences store per simulated device, and a fatal-fault reporter that names the scenario line |
+| [174-coverage-empty-profiles.md](174-coverage-empty-profiles.md) | Two host suites that measured nothing under coverage: the control shim adopts the stop-and-join task contract so both exit through main(), a coverage run fails naming a test whose raw profile is empty or missing, the console shim refuses a task created after shutdown, and the ctest summary header is anchored so a failing test cannot fabricate a crash report |
 
 ## Design documents
 
@@ -206,16 +212,24 @@ review and the FauxNY test camera, and are marked as untested in each PR.
  ## Wire ids
 
 The frozen setting wire_id ledger lives in
-[50-companion-app-design.md](50-companion-app-design.md). Current integrated
-allocations run through 46 (`IMU`). Wire id 42 is reserved for the
+[50-companion-app-design.md](50-companion-app-design.md), and the reservation
+table for the ids claimed by open PRs lives in `include/CLAUDE.md`. Current
+integrated allocations run through 46 (`IMU`). Fix hold and extrapolation hold
+67 and 68, and plan 32 phase 2 holds 69 to 71. Wire id 42 is reserved for the
 timezone setting planned by the time-policy work. Id 43 is allocated to the
 charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
 source and the fetched/open persistent-time and WiFi charging branches; those
 refs do not expose 43. Off-wire
 id 0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`,
-and `BATTERY_SAVER`. Wire id 45 is reserved for the companion-password
-contract. Stacked branches with provisional ids must renumber at
+and `BATTERY_SAVER`. Wire id 47 is reserved for the companion-password
+contract. Wire ids 69 to 71 are reserved for plan 32; phase 2 uses 69 for
+`GPS_PLATFORM`. Stacked branches with provisional ids must renumber at
 rebase; ids only freeze when a PR merges.
+
+The complete reservation table, covering master and every open PR head, lives
+in [include/CLAUDE.md](../include/CLAUDE.md) and was assigned in issue #280.
+This branch claims 72 (`IMU_WAKE`) and 73 (`IMU_TRIG`); a shipped id such as
+46 (`IMU`) never moves, because it is a companion client contract.
 
 ## Dependencies
 

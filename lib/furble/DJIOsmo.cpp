@@ -281,9 +281,9 @@ bool DJIOsmo::sendConnectionRequest(void) {
   }
   memcpy(payload.data() + 5, bluetoothMac, sizeof(bluetoothMac));
 
-  payload[26] = m_PairType == PairType::NEW ? 1 : 0;
+  payload[26] = getPairType() == PairType::NEW ? 1 : 0;
   const uint16_t verifyData =
-      m_PairType == PairType::NEW ? static_cast<uint16_t>(esp_random() % 10000U) : 0;
+      getPairType() == PairType::NEW ? static_cast<uint16_t>(esp_random() % 10000U) : 0;
   writeLE16(payload.data() + 27, verifyData);
   ESP_LOGI(LOG_TAG, "DJI Osmo protocol request verify_mode=%u verify_data=%u", payload[26],
            verifyData);

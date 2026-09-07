@@ -20,6 +20,28 @@ class FauxNY: public Camera {
   void focusPress(void) override;
   void focusRelease(void) override;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override;
+
+#if defined(FURBLE_SIM)
+  /**
+   * The geotag the simulated camera last received.
+   *
+   * The whole point of fix hold is that a camera keeps getting geotags after
+   * the receiver loses its fix, so a scenario has to be able to assert what
+   * actually arrived at the far end of the production GPS to camera path, not
+   * just what the GPS page rendered. Observability only, the send path itself
+   * is unchanged.
+   */
+  typedef struct {
+    uint32_t count;
+    double latitude;
+    double longitude;
+    unsigned int hour;
+    unsigned int minute;
+    unsigned int second;
+  } geo_record_t;
+
+  static geo_record_t getGeoRecord(void);
+#endif
   size_t getSerialisedBytes(void) const override;
   bool serialise(void *buffer, size_t bytes) const override;
 
