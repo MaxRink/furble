@@ -633,9 +633,12 @@ including empty strings and failed-save rollback.
 - `emptyrmc` is worth understanding before writing anything that keys off
   TinyGPS++ update flags. The parser only dispatches a term when it is
   non-empty, so an empty date field never reaches `setDate`, yet `date.commit()`
-  still runs and raises `updated` against the previous value. A flag-counted
-  date therefore counts a date the receiver never sent, and that sentence is
-  exactly what is on the wire before a first fix. Compare committed values.
+  still runs against the previous value. The GPS replay seam therefore requires
+  a complete CR/LF-terminated, checksum-valid RMC with a nonempty six-digit date
+  field and consumes `isUpdated()` per encoded byte at the CR/LF completion; the
+  empty sentence adds no date evidence. `gps_uart_chunk 1` plus
+  `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
+  noise.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking
