@@ -1,10 +1,10 @@
+#include <unistd.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <unistd.h>
 
 #include "Preferences.h"
 
@@ -100,8 +100,8 @@ int run(const std::string &scenario) {
       return fail("begin failed");
     }
     std::string value;
-    const bool preserved = preferences.getString("value", value) == Result::OK
-                           && value.size() == 2 && value[0] == '\0' && value[1] == 'x';
+    const bool preserved = preferences.getString("value", value) == Result::OK && value.size() == 2
+                           && value[0] == '\0' && value[1] == 'x';
     preferences.end();
     cleanup();
     return preserved ? 0 : fail("embedded NUL was truncated");
@@ -131,8 +131,7 @@ int run(const std::string &scenario) {
     setenv("FURBLE_SIM_PREFS", blocked.c_str(), 1);
     const bool failed = !preferences.putString("value", "new");
     std::string value;
-    const bool rolled_back = preferences.getString("value", value) == Result::OK
-                             && value == "old";
+    const bool rolled_back = preferences.getString("value", value) == Result::OK && value == "old";
     preferences.end();
     cleanup();
     return failed && rolled_back ? 0 : fail("failed save did not roll back");
