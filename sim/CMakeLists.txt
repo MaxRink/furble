@@ -180,10 +180,10 @@ target_compile_options(
     -Wall
     -Wextra
     -Wno-unused-parameter
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_log.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_system.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_heap_caps.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/freertos/FreeRTOS.h")
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_log.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_system.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_heap_caps.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/freertos/FreeRTOS.h>")
 target_link_libraries(furble-sim PRIVATE lvgl SDL2::SDL2)
 # Export the executable's symbols so the stall watchdog's backtraces name
 # functions instead of raw addresses. Matches -rdynamic in sim/build.sh.
