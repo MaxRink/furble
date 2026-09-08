@@ -138,6 +138,13 @@ class NimBLEMockPeer {
 
   virtual bool acceptConnection(NimBLEClient &client, const NimBLEAddress &address) = 0;
   virtual void disconnect(NimBLEClient &client, int reason) = 0;
+  // Complete a disconnect after the client has finished its callback and any
+  // self-delete. The real NimBLE host releases a waiter only after the
+  // disconnect event has finished all client-side cleanup. Peers that park a
+  // blocking operation use this hook for the final wake; the default keeps
+  // existing peers unchanged.
+  virtual void disconnectComplete() {}
+
   virtual bool hasService(const NimBLEUUID &service) const = 0;
   virtual bool hasCharacteristic(const NimBLEUUID &service,
                                  const NimBLEUUID &characteristic) const = 0;
@@ -362,10 +369,11 @@ class NimBLEClient {
   // false (keep alive) when still connected, true (free now) otherwise.
   //
   // mockCompleteStalledTerminate() resolves the stalled terminate at last (the
-  // supervision timeout): it fires onDisconnect through whatever callbacks the
-  // client currently holds (the default no-op set if the owner detached) and
-  // then frees a client that was marked for deferred deletion. Used to drive the
-  // late-callback window a reclaim must not leave pointing at a freed owner.
+  // supervision timeout): it tears down the peer, fires onDisconnect through
+  // whatever callbacks the client currently holds, frees a client marked for
+  // deferred deletion, and only then releases any blocked peer waiter. Used to
+  // drive the late-callback window a reclaim must not leave pointing at a freed
+  // owner.
   void mockStallTerminate();
   // Number of terminate calls accepted while this client was connected.
   size_t mockDisconnectCount() const;

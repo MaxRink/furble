@@ -18,6 +18,41 @@ The X100VI bench ran PR 245 firmware `dev+g37d38967`, not this integration.
 Its 20 cancellations ended idle with zero zombies, but four intermediate
 snapshots were still disconnecting. Pairing, shutter and healthy reconnect
 checks preceded that batch; no post-batch ACTIVE recovery was tested.
+
+### Mock delayed-disconnect ordering, 2026-09-08
+
+The preserved c63 ASan reproduction (`~/b/c63-secure-asan-repeat-2.log`) found
+another interleaving in the host mock: `mockCompleteStalledTerminate()` woke the
+Fujifilm secure wait from `FujifilmVirtualCamera::disconnect()` before the mock
+client cleared `m_Peer`, dispatched `onDisconnect` and completed deferred client
+cleanup. The secure caller could therefore return while the completion thread
+still wrote the client or peer state. The old c63 checkout used for the negative
+binary remains separate; this candidate is based on c63
+`d3e7333965cf331364c825baf11e385c0b3b84a9`.
+
+The ordering is now explicit in the mock peer contract. `disconnect()` performs
+peer teardown only; `NimBLEClient` finishes its callback and any self-delete;
+then `disconnectComplete()` releases a parked peer waiter. Fujifilm implements
+that final hook for its secure condition variable, and the wrapper peer forwards
+it. All mock client disconnect entry points use the same finalization point,
+including normal, asynchronous, spontaneous-drop and stalled-terminate paths.
+No production `Camera` or c90 cancellation-retirement code changed.
+
+The hardware reference is esp-nimble-cpp 2.5.0 at upstream commit
+`e26b502297396401c166083ed66ebf5498c805a8`: the `NimBLEClient` disconnect handler
+dispatches `onDisconnect` and clears its state around `NimBLEClient.cpp:1150-1154`,
+and releases the blocked task only after the remaining disconnect work around
+line 1465. `NimBLEDevice.cpp:355-382` likewise defers `deleteClient()` for
+CONNECTED or DISCONNECTING clients. The mock follows this event ordering rather
+than adding ownership or lifetime guarantees that real NimBLE does not provide.
+
+`tests/host/mock_disconnect_order_test.cpp` uses a condition-variable callback
+barrier, not a sleeps-only race. It holds `onDisconnect` open and proves the
+blocked secure call cannot return until callback completion and peer cleanup.
+The executable is wired as `mock_disconnect_order_test` and the CTest name is
+`mock-disconnect-order`. Build and run it with the host CTest configuration
+after root serial validation. This candidate has not been built or tested in
+this lane.
 These results do not certify this PR's re-arm path or other camera vendors.
 
 For the next physical check, use three short cycles plus one security-wait

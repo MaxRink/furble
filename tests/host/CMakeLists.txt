@@ -1412,6 +1412,22 @@ target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
 target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
 
+# Deterministic ordering guard for a stalled secureConnection() waiter. The
+# callback barrier makes the old early-wake ordering fail without a sleeps-only
+# race: the blocked call must remain parked until callback and peer cleanup are
+# complete.
+add_executable(mock_disconnect_order_test
+               mock_disconnect_order_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp)
+target_include_directories(mock_disconnect_order_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR})
+target_compile_options(mock_disconnect_order_test PRIVATE -Wall -Wextra -Werror
+                       -Wno-unused-parameter)
+target_link_libraries(mock_disconnect_order_test PRIVATE Threads::Threads)
+
 # Stale-bond recovery through the REAL Control reconnect loop (plan 151). Uses
 # the production Scan so the SAVED reconnect path (scan, then connect, then
 # secure) is exercised exactly as the bench drives it.
@@ -1795,6 +1811,7 @@ if(BUILD_TESTING)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
   add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
+  add_test(NAME mock-disconnect-order COMMAND mock_disconnect_order_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
   add_test(NAME companion-auth
            COMMAND companion_auth_test ${FURBLE_ROOT}/tests/protocol/golden/companion_auth.json)

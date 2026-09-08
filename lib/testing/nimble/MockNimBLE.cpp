@@ -519,8 +519,9 @@ void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_conne
   if (delete_on_disconnect && m_LinkDeadEventPending) {
     m_LinkDeadEventPending = false;
     const int reason = m_LinkDeadReason;
-    if (m_Peer != nullptr) {
-      m_Peer->disconnect(*this, reason);
+    NimBLEMockPeer *peer = m_Peer;
+    if (peer != nullptr) {
+      peer->disconnect(*this, reason);
       m_Peer = nullptr;
     }
     m_Connected = false;
@@ -529,6 +530,9 @@ void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_conne
       m_Callbacks->onDisconnect(this, reason);
     }
     eraseClient(this);
+    if (peer != nullptr) {
+      peer->disconnectComplete();
+    }
     return;
   }
 }
@@ -620,8 +624,9 @@ void NimBLEClient::disconnect() {
   if (m_LinkDeadEventPending) {
     m_LinkDeadEventPending = false;
     const int reason = m_LinkDeadReason;
-    if (m_Peer != nullptr) {
-      m_Peer->disconnect(*this, reason);
+    NimBLEMockPeer *peer = m_Peer;
+    if (peer != nullptr) {
+      peer->disconnect(*this, reason);
       m_Peer = nullptr;
     }
     m_Connected = false;
@@ -633,6 +638,9 @@ void NimBLEClient::disconnect() {
     if (selfDelete) {
       eraseClient(this);
     }
+    if (peer != nullptr) {
+      peer->disconnectComplete();
+    }
     return;
   }
 
@@ -643,8 +651,9 @@ void NimBLEClient::disconnect() {
     return;
   }
 
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, 0);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, 0);
   }
 
   // In the real stack ble_gap_terminate can complete the link teardown before
@@ -675,6 +684,9 @@ void NimBLEClient::disconnect() {
   if (selfDelete) {
     eraseClient(this);
   }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
+  }
 }
 
 size_t NimBLEClient::mockDisconnectCount() const {
@@ -687,11 +699,16 @@ bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
   }
 
   m_DisconnectEventPending = false;
+  NimBLEMockPeer *peer = m_Peer;
+  m_Peer = nullptr;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
   }
   if (g_DeferredDelete && m_DeleteOnDisconnect) {
     eraseClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
   return true;
 }
@@ -709,8 +726,10 @@ bool NimBLEClient::isConnected() const {
 }
 
 void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, reason);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, reason);
+    m_Peer = nullptr;
   }
   m_Connected = false;
   m_Handle = BLE_HS_CONN_HANDLE_NONE;
@@ -728,13 +747,18 @@ void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
     const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
     g_PendingReap.push_back(this);
   }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
+  }
 }
 
 void NimBLEClient::mockDropLinkSelfDelete(int reason) {
   // Sever the peer link and clear the connected flag, as a supervision-timeout or
   // peer power-cycle does mid-handshake.
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, reason);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, reason);
+    m_Peer = nullptr;
   }
   m_Connected = false;
   m_Handle = BLE_HS_CONN_HANDLE_NONE;
@@ -757,6 +781,9 @@ void NimBLEClient::mockDropLinkSelfDelete(int reason) {
     // it owns. Nothing may touch this object, or a characteristic reached through
     // it, after this returns.
     eraseClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
 }
 
@@ -784,12 +811,14 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
   // The supervision timeout finally resolves the stalled terminate. NimBLE fires
   // onDisconnect through whatever callbacks the client currently holds (the
   // default no-op set if the owner detached in reclaimClient), then self-deletes
-  // a client that was marked for deferred deletion.
+  // a client that was marked for deferred deletion. Only after all of that does
+  // the peer release a secureConnection() waiter.
   m_StuckTerminate = false;
   m_Connected = false;
   m_Handle = BLE_HS_CONN_HANDLE_NONE;
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, reason);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, reason);
     m_Peer = nullptr;
   }
   if (m_Callbacks != nullptr) {
@@ -799,6 +828,9 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
     // Not connected now, so this frees the client synchronously. Nothing touches
     // this object afterwards.
     NimBLEDevice::deleteClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
 }
 
