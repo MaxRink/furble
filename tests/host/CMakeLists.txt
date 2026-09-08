@@ -1091,7 +1091,7 @@ add_executable(control_zombie_cancel_test
                control_zombie_cancel_test.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/testsync/TestSyncController.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -1102,7 +1102,7 @@ target_include_directories(control_zombie_cancel_test
                                   ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${CONTROL_E2E_DIR}/doubles
                                   ${CONTROL_E2E_DIR}
-                                  ${CONTROL_TESTSYNC_DIR}
+                                  ${CMAKE_CURRENT_SOURCE_DIR}/testsync
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
                                   ${HOST_NIMBLE_DIR}
