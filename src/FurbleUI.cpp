@@ -3541,7 +3541,9 @@ uint32_t UI::countIndicatorOverlaps(void) {
 namespace {
 
 /**
- * The label carrying a menu row's text, or nullptr.
+ * The label carrying a menu row's text, or nullptr. Encoder focus can sit on
+ * a row's switch or roller instead of the row container, so accept one parent
+ * hop for those value widgets.
  *
  * addMenuItem() builds a row as a container whose first label child holds the
  * text. A multi-connect row is a checkbox and carries its own text instead.
@@ -3550,11 +3552,17 @@ lv_obj_t *simRowLabel(lv_obj_t *row) {
   if (row == nullptr || !lv_obj_is_valid(row)) {
     return nullptr;
   }
-  for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
-    lv_obj_t *child = lv_obj_get_child(row, i);
-    if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
-      return child;
+  for (uint8_t level = 0; (level < 2) && (row != nullptr); level++) {
+    if (lv_obj_check_type(row, &lv_label_class)) {
+      return row;
     }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
+      lv_obj_t *child = lv_obj_get_child(row, i);
+      if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
+        return child;
+      }
+    }
+    row = lv_obj_get_parent(row);
   }
   return nullptr;
 }
