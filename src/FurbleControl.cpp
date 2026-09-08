@@ -522,6 +522,17 @@ std::vector<Control::Target *> Control::getTargets(void) {
   return targets;
 }
 
+std::vector<std::shared_ptr<Camera>> Control::getTargetCameras(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  std::vector<std::shared_ptr<Camera>> cameras;
+  cameras.reserve(m_Targets.size());
+  for (const auto &target : m_Targets) {
+    cameras.push_back(target->getCamera());
+  }
+  return cameras;
+}
+
 void Control::connectAll(bool infiniteReconnect) {
   {
     // A new user connect cycle re-arms every target camera, but not here.
