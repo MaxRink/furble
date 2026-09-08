@@ -38,6 +38,9 @@ bool scenarioSettingIs(const char *name, const char *value);
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
 
+/** Request a simulator reboot through the platform restart seam. */
+void requestRestart(void);
+
 /** Request failure shutdown, upgrading an earlier success result if needed. */
 void requestFailureExit(void);
 

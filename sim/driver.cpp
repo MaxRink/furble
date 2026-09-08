@@ -122,9 +122,12 @@ bool simulatedPowerOff = false;
 // while the NVS-backed preferences file persists exactly as flash does. The
 // resumed process skips the steps already executed via FURBLE_SIM_RESTART_STEP
 // and skips the fresh-scenario preferences wipe, so scripted state written
-// before the restart is what the rebooted app boots from. The step itself only
-// requests the orderly shutdown that plan 158 built for `exit`; main() runs the
-// re-exec after every task has joined and the panel has closed.
+// before the restart is what the rebooted app boots from. A production UI
+// restart records the active script continuation in the same way as the DSL
+// step; interactive runs have no script continuation and simply re-exec.
+// The request only asks for the orderly shutdown that plan 158 built for
+// `exit`; main() runs the re-exec after every task has joined and the panel has
+// closed.
 //
 // restartPending is its own shutdown request rather than a requestExit(0) call:
 // requestExit() is first-wins, so pinning zero here would swallow every failure
@@ -1998,6 +2001,7 @@ void configure(int argc, char **argv) {
   if (fuzz) {
     scenarioName = "fuzz";
     fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
+    resumedBoot = fuzzResumedBoot();
     return;
   }
 
@@ -2068,6 +2072,11 @@ void driverTick(void) {
     return;
   }
   Step &step = steps[stepIndex];
+  // UI restart callbacks run while a scripted step is being dispatched. Record
+  // the continuation before the callback can request the reboot. This covers
+  // synchronous `btn` injection and a keyboard press whose release advances
+  // stepIndex on a later driver tick.
+  restartStepIndex = stepIndex + 1;
   // Name this line in the crash report if the step faults (issue 283). The
   // steps vector is fixed after parsing, so the pointer stays valid.
   watchdogScenarioStep(step.source.c_str());
@@ -2266,7 +2275,7 @@ void driverTick(void) {
       // Advance past this step so a tick racing the shutdown cannot run it
       // twice. The resumed process takes its index from the environment.
       ++stepIndex;
-      restartPending.store(true);
+      requestRestart();
       return;
     }
 
@@ -2469,6 +2478,17 @@ void requestExit(int result) {
   requestedExit.compare_exchange_strong(unset, result);
 }
 
+void requestRestart(void) {
+  // The active scripted step normally seeded restartStepIndex before invoking
+  // its UI handler. Keep this fallback for a boot-time callback, but never
+  // invent a script continuation for interactive or fuzz runs.
+  if (!fuzzActive() && scenarioName != "interactive" && restartStepIndex == 0
+      && stepIndex < steps.size()) {
+    restartStepIndex = stepIndex + 1;
+  }
+  restartPending.store(true);
+}
+
 void requestFailureExit(void) {
   int result = requestedExit.load();
   while (result == -1 || result == 0) {
@@ -2495,17 +2515,24 @@ void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
   const size_t next = restartStepIndex;
-  if (next == 0) {
-    std::cerr << "restart requested without a continuation step\n";
+  const bool scripted = !fuzzActive() && scenarioName != "interactive";
+  if (scripted && (next == 0 || next >= steps.size())) {
+    std::cerr << "restart requested without a valid continuation step\n";
+    std::_Exit(1);
+  }
+  if (fuzzActive() && !fuzzSaveRestart()) {
+    std::cerr << "restart failed: could not save fuzz checkpoint\n";
     std::_Exit(1);
   }
   // This runs on the main thread after the simulator thread has joined and the
   // SDL panel has closed. Keep the process-wide environment mutation out of
   // the driver thread, where SDL can read it concurrently during its loop.
-  const std::string nextValue = std::to_string(next);
-  if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
-    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
-    std::_Exit(1);
+  if (scripted) {
+    const std::string nextValue = std::to_string(next);
+    if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
+      std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+      std::_Exit(1);
+    }
   }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);

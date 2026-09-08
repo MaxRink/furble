@@ -1,5 +1,5 @@
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 
 #include <fstream>
 
@@ -119,12 +119,12 @@ void Platform::update(void) {
 }
 
 void Platform::restart(void) {
-  // The host simulator has no reset vector; ending the process is the closest
-  // equivalent for scripted runs.
+  // Route every simulated reboot through the same orderly shutdown as the
+  // scripted restart verb. The main thread re-execs after all tasks join.
   if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {
-    std::fprintf(stderr, "SIM Platform::restart requestExit(0)\n");
+    std::fprintf(stderr, "SIM Platform::restart requestRestart()\n");
   }
-  Sim::requestExit(0);
+  Sim::requestRestart();
 }
 
 bool Platform::powerOff(void) {
