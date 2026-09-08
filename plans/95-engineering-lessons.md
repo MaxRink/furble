@@ -152,6 +152,11 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   - STATUS read returns `16552300`. furble responds `16552320`.
   - Identity write is the ASCII string `furble-<id>`.
   - Two registration-accept notifications arrive as `0100` on service
-    `4c0020fe`, on characteristics `f9150137` and `ad06c7b7`.
+    `4c0020fe`, on characteristics `f9150137` and `ad06c7b7`. The dedicated
+    `f9150137` (CHR_NOT1) confirmation fires on a fresh registration only. A
+    saved reconnect skips it and goes straight to the periodic `0100` geotag
+    request on `ad06c7b7` (GEOTAG_UPDATE) every 10 s, which is implicit
+    acceptance: the camera only requests geotag data from a client it has
+    accepted (PR #239, hardware trace 2026-08-28).
   - The shutter characteristic is `7fcf49c6`. The press-and-release sequence is
     `0100`, `0200`, `0100`, `0000`.

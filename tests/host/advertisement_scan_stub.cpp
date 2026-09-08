@@ -1,5 +1,23 @@
 #include "Scan.h"
 
+#include "advertisement_scan_stub.h"
+
+namespace {
+
+const NimBLEAdvertisedDevice *g_Advertisement = nullptr;
+
+}  // namespace
+
+namespace Furble {
+namespace Host {
+
+void setScanAdvertisement(const NimBLEAdvertisedDevice *advertisement) {
+  g_Advertisement = advertisement;
+}
+
+}  // namespace Host
+}  // namespace Furble
+
 namespace Furble {
 
 class Scan::CallbackProxy {};
@@ -26,7 +44,13 @@ bool Scan::start(std::function<void(void *)> result,
   m_ScanResultPrivateData = privateData;
   return true;
 }
-bool Scan::start(NimBLEScanCallbacks *, uint32_t, bool) {
+bool Scan::start(NimBLEScanCallbacks *callbacks, uint32_t, bool) {
+  // The vendor scan callback runs on the scanning task on device. Delivering it
+  // inline is enough here: the caller pushes the match onto its own queue and
+  // then reads that queue, so the ordering the connect path depends on holds.
+  if ((callbacks != nullptr) && (g_Advertisement != nullptr)) {
+    callbacks->onResult(g_Advertisement);
+  }
   return true;
 }
 void Scan::stop(void) {}

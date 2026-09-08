@@ -91,6 +91,29 @@ void addFujifilm(uint64_t address,
   peers.push_back(std::move(peer));
 }
 
+// The 2026-09-02 X100VI stale-bond signature. furble still holds the local
+// bond, the camera deleted its side of the pairing, and it is not in pairing
+// mode, so every attempt gets the link up and the encryption handshake then
+// times out and takes the link with it. This is the peer the reconnect loop ran
+// against forever on the bench.
+void addFujifilmSecureStale(uint64_t address, const std::string &name) {
+  Host::FujifilmVirtualCamera::Config config;
+  config.name = name;
+  config.address = NimBLEAddress(address, 0);
+  config.secure = true;
+  auto peer = std::make_unique<VirtualPeer>();
+  peer->name = name;
+  peer->address = config.address;
+  peer->fujifilm = std::make_unique<Host::FujifilmVirtualCamera>(config);
+  peer->fujifilm->setSecureTimeouts(Host::FujifilmVirtualCamera::kSecureTimeoutAlways);
+  peer->advertisement = peer->fujifilm->advertisement();
+  NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  // The half that makes it a stale bond rather than a first pairing: the
+  // central still has keys for a camera that has forgotten them.
+  NimBLEDevice::setBonded(true);
+  peers.push_back(std::move(peer));
+}
+
 void addRicoh(uint64_t address, const std::string &name, uint32_t flappyFailAttempts) {
   Host::RicohVirtualCamera::Config config;
   config.name = name;
@@ -169,7 +192,8 @@ void radioTask(void *) {
 
 bool bleTopologyIsValid(const std::string &topology) {
   return topology == "none" || topology == "fuji" || topology == "fuji-secure"
-         || topology == "fuji-pair" || topology == "fuji-ricoh-flappy";
+         || topology == "fuji-pair" || topology == "fuji-ricoh-flappy"
+         || topology == "fuji-secure-stale";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -183,6 +207,8 @@ void bleStartPeers(const std::string &topology) {
     } else if (topology == "fuji-pair") {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addFujifilm(FUJIFILM_B_ADDRESS, "FUJIFILM X-S20", 0);
+    } else if (topology == "fuji-secure-stale") {
+      addFujifilmSecureStale(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI");
     } else if (topology == "fuji-ricoh-flappy") {
       // The 2026-08-28 pairing: one healthy camera plus a GR IV in BLE
       // standby that fails the security handshake the way a supervision

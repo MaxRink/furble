@@ -198,6 +198,10 @@ class Control {
     uint8_t rssiStrongSamples;
     uint8_t rssiWeakSamples;
     std::string connectingCamera;
+    // Empty for every ordinary failure. Non-empty only when the cycle stopped
+    // for a reason retrying cannot fix, so the bench can assert the re-pair
+    // outcome over the console instead of reading logs.
+    std::string connectFailReason;
   };
 
   /** Capture the control state snapshot under m_Mutex. */
@@ -205,17 +209,19 @@ class Control {
 #endif  // FURBLE_CONSOLE || FURBLE_SIM
 
   /**
-   * Cached target state for one camera.
+   * Why the last connect cycle ended in STATE_CONNECT_FAILED.
    *
-   * Reads m_Mutex only, with no radio call and without touching the camera's
-   * own connect mutex, which a cold connect holds for the whole connect
-   * timeout. That makes it safe to poll from the companion service task.
+   * Empty unless the failure has an explanation worth putting in front of the
+   * user. Today the only such failure is a camera that no longer holds our
+   * pairing: retrying is futile, so the cycle stops and the UI shows this text
+   * instead of the reconnect spinner. Cleared when a new connect cycle starts.
    *
-   * @param[in]  camera Camera to look up.
-   * @param[out] rssi   Last filtered connection rssi, or 0 when never sampled.
-   *                    Only sampled while adaptive transmit power is enabled.
-   * @return true if the camera is an active target.
+   * Returns a copy taken under m_Mutex so the caller never reads a string the
+   * control task is rewriting.
    */
+  std::string getConnectFailReason(void) const;
+
+  /** Cached target state and filtered RSSI for one camera. */
   bool getTargetState(const Camera *camera, int8_t &rssi) const;
 
   /** Retrieve the number of active camera targets. */
@@ -382,6 +388,9 @@ class Control {
   // budget in connectAll(). A member rather than a function-local static so a
   // reboot clears it with the rest of the session state.
   uint32_t m_ConnectFailCount = 0;
+  // User-facing explanation for a STATE_CONNECT_FAILED that retrying cannot
+  // fix. Empty for every ordinary failure. Guarded by m_Mutex.
+  std::string m_ConnectFailReason;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   state_t m_State = STATE_IDLE;

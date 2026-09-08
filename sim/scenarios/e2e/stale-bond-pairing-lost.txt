@@ -1,0 +1,42 @@
+# The 2026-09-02 X100VI bench failure, end to end through the production
+# Control, Camera and UI.
+#
+# furble keeps a local bond for a camera that deleted its side of the pairing.
+# Every saved reconnect gets the link up and then times out in the encryption
+# handshake, so before this fix the cycle retried forever and the only way back
+# to a pairing was deleting the camera in the UI. The stale-bond recovery must
+# delete the dead bond, stop the cycle, and put up a "Pairing lost" box the user
+# can dismiss.
+seed fauxny false
+seed ble_peers fuji-secure-stale
+seed ble_saved true
+seed reconnect true
+wait 400
+
+assert ui.connect_error none
+action connect
+
+# Two consecutive handshake failures are the trigger, so the outcome takes more
+# than one attempt. It must still arrive: the whole point is that the cycle ends.
+assert-eventually-virtual 60000 ui.connect_error pairing_lost
+assert ui.modal_count 1
+# The box has to be readable, not merely present. ui.connect_error reads the
+# title out of the widget tree, which says nothing about where it was drawn: the
+# first version of this box was LV_SIZE_CONTENT and rendered wider and taller
+# than the panel, with the instruction cut off at both edges and the OK button
+# off the bottom, and every assertion above still passed.
+assert ui.modal_overflow no
+assert-eventually-virtual 5000 control.state idle
+assert ui.modal_overflow no
+
+# The box stays until the user clears it, and clearing it really works. This is
+# the half the bench reported as being unable to cancel.
+capture pairing-lost
+action select
+wait 300
+assert ui.connect_error none
+assert ui.modal_count 0
+assert control.state idle
+assert control.targets 0
+
+exit
