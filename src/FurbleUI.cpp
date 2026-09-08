@@ -3542,8 +3542,8 @@ namespace {
 
 /**
  * The label carrying a menu row's text, or nullptr. Encoder focus can sit on
- * a row's switch or roller instead of the row container, so accept one parent
- * hop for those value widgets.
+ * a row's switch or roller instead of the row container, so normalize those
+ * widgets to their immediate parent first.
  *
  * addMenuItem() builds a row as a container whose first label child holds the
  * text. A multi-connect row is a checkbox and carries its own text instead.
@@ -3552,17 +3552,20 @@ lv_obj_t *simRowLabel(lv_obj_t *row) {
   if (row == nullptr || !lv_obj_is_valid(row)) {
     return nullptr;
   }
-  for (uint8_t level = 0; (level < 2) && (row != nullptr); level++) {
-    if (lv_obj_check_type(row, &lv_label_class)) {
-      return row;
-    }
-    for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
-      lv_obj_t *child = lv_obj_get_child(row, i);
-      if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
-        return child;
-      }
-    }
+  if (lv_obj_check_type(row, &lv_switch_class) || lv_obj_check_type(row, &lv_roller_class)) {
     row = lv_obj_get_parent(row);
+    if (row == nullptr || !lv_obj_is_valid(row)) {
+      return nullptr;
+    }
+  }
+  if (lv_obj_check_type(row, &lv_label_class)) {
+    return row;
+  }
+  for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
+    lv_obj_t *child = lv_obj_get_child(row, i);
+    if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
+      return child;
+    }
   }
   return nullptr;
 }
@@ -4220,6 +4223,59 @@ std::string UI::simQueryState(const char *key) {
       }
     }
     return "no";
+  }
+
+  // Whether the focused widget and its row label are fully visible within the
+  // current page and every clipping ancestor. This keeps button navigation
+  // assertions tied to the rendered focus target, including switch rows whose
+  // label is a sibling of the focused widget.
+  if (query == "focus_visible") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (page == nullptr || focused == nullptr || !lv_obj_is_valid(focused)) {
+      return "no";
+    }
+    lv_obj_update_layout(page);
+    lv_obj_t *label = simRowLabel(focused);
+    if (label == nullptr || !lv_obj_is_valid(label)) {
+      return "no";
+    }
+
+    lv_area_t clip;
+    lv_obj_get_coords(page, &clip);
+    const auto constrainToPage = [&](lv_obj_t *object) {
+      bool reachedPage = false;
+      for (lv_obj_t *ancestor = object; ancestor != nullptr;
+           ancestor = lv_obj_get_parent(ancestor)) {
+        if (!lv_obj_is_valid(ancestor) || lv_obj_has_flag(ancestor, LV_OBJ_FLAG_HIDDEN)) {
+          return false;
+        }
+        lv_area_t area;
+        lv_obj_get_coords(ancestor, &area);
+        clip.x1 = std::max(clip.x1, area.x1);
+        clip.y1 = std::max(clip.y1, area.y1);
+        clip.x2 = std::min(clip.x2, area.x2);
+        clip.y2 = std::min(clip.y2, area.y2);
+        if (ancestor == page) {
+          reachedPage = true;
+          break;
+        }
+      }
+      return reachedPage;
+    };
+    if (!constrainToPage(focused) || !constrainToPage(label)) {
+      return "no";
+    }
+
+    lv_area_t focusedArea;
+    lv_area_t labelArea;
+    lv_obj_get_coords(focused, &focusedArea);
+    lv_obj_get_coords(label, &labelArea);
+    const auto fullyInside = [&](const lv_area_t &area) {
+      return area.x1 >= clip.x1 && area.y1 >= clip.y1 && area.x2 <= clip.x2
+             && area.y2 <= clip.y2;
+    };
+    return fullyInside(focusedArea) && fullyInside(labelArea) ? "yes" : "no";
   }
 
   // Text carried by the focused menu row. A camera list row renders the name
