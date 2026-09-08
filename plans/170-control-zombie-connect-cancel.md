@@ -325,14 +325,6 @@ old-head integration mismatch, not current-head validation. Master `ad9bc513`
 supplies the early `STATE_IDLE` return; this merged checkout has not been
 rerun and retains no new test-pass claim.
 
-### Integration checkpoint
-
-The pre-merge c63 head `31fa6ca5` predates the master empty-selection policy.
-Root's serialized host session `~/b/c63-current-host-test.log` therefore had
-one old-head failure in `control-zombie-cancel`, at the empty-connect phase
-where the merged test expects the session to remain idle. This was an
-old-head integration mismatch, not current-head validation. Master `ad9bc513`
-supplies the early `STATE_IDLE` return; this merged checkout has not been
 
 ## Not covered, and why
 
