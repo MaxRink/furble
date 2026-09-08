@@ -119,6 +119,13 @@ attempt to infer changed paths without a pull request or push comparison base.
   per-file minimums in `tests/coverage_floor.json`. A change that raises
   coverage should raise the floor in the same commit with
   `python3 tools/coverage.py --ratchet`. See `docs/coverage.md`.
+- The Apple workflow runs unsigned iOS simulator and macOS tests. After the
+  macOS tests pass, it uploads `furble-companion-macos-debug-unsigned`, which
+  contains the unsigned Debug app, a SHA-256 checksum, and source/Xcode
+  provenance. This is a testing artifact, not a signed release or installer.
+- Release tags beginning with `companion-test-` are reserved for companion
+  testing and are excluded from the firmware release workflow. Other release
+  tags retain the existing firmware build and publication path.
 
 ## Style
 
