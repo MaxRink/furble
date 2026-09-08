@@ -274,3 +274,33 @@ appeared in 400 post-fix runs.
 - **Concurrent runs of one scenario are isolated, not synchronised.** Two
   simulators now have their own flash. They still share a capture directory and
   a report directory, which no scenario asserts on today.
+
+### Environment ordering follow-up, 2026-09-08
+
+The per-run `FURBLE_SIM_PREFS` path is now prepared on the main thread after
+argument and scenario configuration, before SDL setup or the simulator thread
+starts. This keeps the `setenv` and preference-file cleanup out of the interval
+where SDL may read process environment state while bringing up or pumping the
+panel. A `restart` step records its continuation index without changing the
+environment; `main()` sets `FURBLE_SIM_RESTART_STEP` in `restartProcess()` only
+after the simulator thread has joined and the SDL panel has closed. The resumed
+boot still consumes and unsets that variable, and the existing
+`restart-persist.txt` and `restart-post-failure.txt` fixtures remain the focused
+behavioral checks for persistence and failure precedence.
+
+The Linux ordering check in `sim/scripts/run-env-order.sh` compiles an
+`LD_PRELOAD` interposer that rejects environment mutation after SDL reports
+initialization. It runs a fresh smoke boot and `restart-persist.txt` against
+the current binary, then expects the pre-fix binary to fail with the guard's
+status. This is a deterministic ordering regression, not evidence that the
+environment race caused an unrelated crash.
+
+Root validation recorded the CMake configure and simulator build as passing at
+`/home/a92615428/b/sim-environ-config.log` and
+`/home/a92615428/b/sim-environ-build.log`, using the CMake-header fix at
+`d646267f`. The guard wrapper passed both current positive legs and both exact
+target negative legs, recorded in
+`/home/a92615428/b/sim-environ-guard.log`. The negative executable was the
+available production-UI simulator `249650a5`, not an exact `8a94` build, so the
+negative result is evidence for the old mutation locations in that binary only.
+Neither the build nor the guard run establishes SIGSEGV causality.
