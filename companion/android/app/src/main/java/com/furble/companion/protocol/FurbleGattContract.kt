@@ -16,6 +16,7 @@ object FurbleGattContract {
     const val STATUS_PROPERTIES = PROPERTY_READ or PROPERTY_NOTIFY
     const val SETTINGS_PROPERTIES = PROPERTY_WRITE or PROPERTY_INDICATE
     const val TRIGGER_PROPERTIES = PROPERTY_WRITE
+    const val CAMERAS_PROPERTIES = PROPERTY_WRITE or PROPERTY_NOTIFY or PROPERTY_INDICATE
     const val CAPABILITY_PROPERTIES = PROPERTY_READ
 
     // Firmware security declarations: *_ENC requires encryption and *_AUTHEN
@@ -25,6 +26,7 @@ object FurbleGattContract {
     const val STATUS_REQUIRES_ENCRYPTION = true
     const val SETTINGS_REQUIRES_AUTHENTICATION = true
     const val TRIGGER_REQUIRES_AUTHENTICATION = true
+    const val CAMERAS_REQUIRES_AUTHENTICATION = true
     const val CAPABILITY_REQUIRES_ENCRYPTION = true
 
     fun supports(actualProperties: Int, requiredProperties: Int): Boolean =

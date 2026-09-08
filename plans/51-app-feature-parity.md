@@ -1,8 +1,8 @@
 # 51 - Companion app feature parity
 
-Status: firmware settings parity v2, the Android settings editors and the
-firmware camera management phase are implemented. The app Cameras tab and the
-rig scenarios of phase 5 remain outstanding.
+Status: firmware settings parity v2, Android settings editors, and firmware
+camera management are implemented. The Apple Cameras tab is implemented;
+Android camera integration and the rig scenarios of phase 5 remain outstanding.
 
 Host validation note: companion_gatt_test compiles the Nikon Remote protocol
 source with warnings treated as errors. Its subscription callback does not use
@@ -74,8 +74,8 @@ Delivered by the plan 51 firmware camera PR.
   bit 0 as the inverse of `appliesImmediately`. Bit 1 marks `COMPANION`,
   `TX_POWER`, `TX_ADAPTIVE` (wire ID 28), `SLEEP_CONN` and `CPU_FREQ`.
 - The capability characteristic is `b57f4f64-087b-4740-b71d-8262cf26ebbc`.
-  Its capability version is 1, its wire version is 2, and it advertises only
-  feature bit 0 for settings v2. The Cameras characteristic is not included.
+  Its capability version is 1, its wire version is 2, and it advertises feature
+  bit 0 for settings v2 and feature bit 1 for cameras.
 - GPS, GPS baud, GPS rate, GPS sentence filtering and GPS constellation writes
   reload the receiver through the existing GPS path.
 - A companion disable written over the companion link waits one second before
@@ -108,8 +108,9 @@ The Android settings portion is implemented. The app now:
 
 This Android change consumes the firmware capability and settings parity
 contract described in sections 1 and 4, which the stacked settings parity v2
-firmware change below implements. The camera phase in section 5 is still
-pending.
+firmware change below implements. The Apple client now consumes the camera
+capability and camera record contract. Android camera integration and the rig
+scenarios in section 5 are still pending.
 
 The companion app from [50-companion-app-design.md](50-companion-app-design.md)
 shipped with status, trigger, location push and a first settings editor. The
@@ -129,12 +130,13 @@ transport, it is protocol surface:
 - The settings characteristic already carries every exposed setting, but the
   app renders `"Setting $id"` placeholders and can only edit bools and bytes
   (`companion/android/.../protocol/FurbleProtocol.kt:117-121`).
-- There is no way to see saved cameras, pick multi-connect targets, or connect
-  and disconnect from the phone at all. The status packet carries only two
-  aggregate counters, `camera_total` and `camera_connected`
+- The Android app still cannot see saved cameras, pick multi-connect targets, or
+  connect and disconnect from the phone. The Apple app now exposes those
+  operations through its Cameras section. The status packet still carries
+  only two aggregate counters, `camera_total` and `camera_connected`
   (`include/FurbleCompanion.h:69-70`).
-- There is no capability signal. The app cannot tell a firmware that speaks the
-  new protocol from one that does not, except by poking it.
+- The capability signal now lets both companion clients gate newer settings
+  and camera operations. Android still needs to consume the camera bit.
 
 Parity for managing connections and settings makes the phone a full second
 interface, which is what section 1.3 of plan 50 promised.
@@ -391,9 +393,9 @@ deliberately does not have:
 - With MULTICONNECT on, a checkbox per row bound to select and deselect. With
   it off, tapping a row connects that camera, matching the on-device
   single-connect flow.
-- One Connect all / Disconnect action pair, disabled in states where the
-  firmware would answer busy, so the button state mirrors the reject rule
-  instead of discovering it.
+- One Connect selected / Disconnect action pair, with Connect selected
+  disabled in states where the firmware would answer busy. Disconnect remains
+  available to cancel an in-flight connection operation.
 - The Settings tab replaces placeholder rows with the metadata table editors
   from section 1, grouped and searchable, with restart-required and dangerous
   badges driven by the flags bits.
@@ -451,13 +453,18 @@ the app PR that consumes it.
 3. **App: settings editors.** Metadata table, typed editors, INTERVAL editor,
    restart and danger badges, confirm flow. Works against firmware 1; against
    older firmware it degrades to the current behavior.
-4. **App: cameras tab.** List, select, connect, disconnect, live state.
-   Hidden entirely when feature bit 1 or the characteristic is absent.
+4. **App: cameras tabs.** Both companion clients now consume the stable camera
+   catalog. The Apple client lists the catalog, supports selection,
+   connect-selected and disconnect, and renders live state. The Android
+   implementation is recorded in
+   [176-android-camera-catalog.md](176-android-camera-catalog.md).
+   Both tabs are hidden entirely when feature bit 1 or the characteristic is
+   absent.
 5. **Rig: scenarios and corpus.** Plans/29 phase 1 golden payloads gain the
    cameras records, the capability read and the v2 settings flags. Phase 5
    gains three scenarios: full settings sweep (list, edit one of each type,
    verify persistence across simulated reboot), camera lifecycle with FauxNY
-   (list, select two, connect all, drop one, watch reconnect states, disconnect),
+   (list, select two, connect selected, drop one, watch reconnect states, disconnect),
    and version skew (rig peer pinned to wire version 1, assert the app hides
    the Cameras tab and downgrades flags handling).
 

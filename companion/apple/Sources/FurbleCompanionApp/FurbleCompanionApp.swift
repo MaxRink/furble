@@ -56,6 +56,9 @@ private struct ContentView: View {
             Text("Waiting for an authenticated furble link")
           }
         }
+        if client.state.supportsCameras {
+          CamerasSection(client: client)
+        }
         Section("Phone GPS") {
           Toggle("Send location fixes", isOn: Binding(
             get: { location.enabled },
@@ -81,6 +84,151 @@ private struct ContentView: View {
       .navigationTitle("furble companion")
       .onDisappear { try? client.releaseAllTriggers() }
     }
+  }
+}
+
+private struct CamerasSection: View {
+  @ObservedObject var client: FurbleBLEClient
+  @State private var actionError: String?
+  @State private var hasRequested = false
+
+  private var operationBusy: Bool {
+    client.cameras.contains { $0.state == 1 || $0.state == 3 || $0.state == 5 }
+  }
+
+  var body: some View {
+    Section("Cameras") {
+      if client.phase != .ready {
+        Text("Available after an authenticated connection.")
+          .font(.footnote)
+      } else {
+        HStack {
+          Button("Refresh cameras") { refresh() }
+          Spacer()
+          Button("Connect selected") { perform { try client.connectCamera() } }
+            .disabled(client.cameras.isEmpty || operationBusy)
+          Button("Disconnect") { perform { try client.disconnectCameras() } }
+            .disabled(client.cameras.isEmpty)
+        }
+        if let actionError {
+          Text(actionError)
+            .font(.footnote)
+            .foregroundStyle(.red)
+        }
+        if let cameraOperationError = client.cameraOperationError {
+          Text("Last camera request: \(cameraOperationError)")
+            .font(.footnote)
+            .foregroundStyle(.red)
+        }
+        if client.cameras.isEmpty {
+          Text(hasRequested ? "No saved cameras reported." : "Loading saved cameras...")
+            .font(.footnote)
+        } else {
+          ForEach(client.cameras, id: \.cameraID) { camera in
+            CameraRow(
+              camera: camera,
+              onConnect: { perform { try client.connectCamera(camera.cameraID) } },
+              onSelectionChanged: { selected in
+                perform { try client.setCamera(camera.cameraID, selected: selected) }
+              })
+          }
+        }
+      }
+    }
+    .onAppear { refreshIfReady() }
+    .onChange(of: client.phase) { phase in
+      if phase == .ready { refreshIfReady() }
+    }
+  }
+
+  private func refreshIfReady() {
+    guard client.phase == .ready, client.state.supportsCameras else { return }
+    refresh()
+  }
+
+  private func refresh() {
+    perform {
+      try client.requestCameras()
+      hasRequested = true
+    }
+  }
+
+  private func perform(_ action: () throws -> Void) {
+    do {
+      try action()
+      actionError = nil
+    } catch {
+      actionError = cameraErrorMessage(error)
+    }
+  }
+}
+
+private struct CameraRow: View {
+  let camera: FurbleProtocol.CameraRecord
+  let onConnect: () -> Void
+  let onSelectionChanged: (Bool) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Image(systemName: "camera")
+          .accessibilityHidden(true)
+        VStack(alignment: .leading) {
+          Text(camera.name.isEmpty ? "Camera \(camera.cameraID)" : camera.name)
+            .font(.headline)
+          Text(camera.typeLabel)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button("Connect", action: onConnect)
+          .disabled(camera.isConnected || camera.state == 1 || camera.state == 3 || camera.state == 5)
+      }
+      HStack {
+        Text(camera.connectionStateLabel)
+        if camera.isConnected, camera.rssi != -128 {
+          Text("\(camera.rssi) dBm")
+        }
+        Spacer()
+        Toggle("Selected", isOn: Binding(
+          get: { camera.isSelected },
+          set: onSelectionChanged))
+        .labelsHidden()
+        .accessibilityLabel("Select \(camera.name)")
+      }
+      if let status = camera.operationStatusLabel {
+        Text("Last request: \(status)")
+          .font(.footnote)
+          .foregroundStyle(.red)
+      }
+    }
+    .padding(.vertical, 4)
+  }
+}
+
+private func cameraErrorMessage(_ error: Error) -> String {
+  guard let error = error as? FurbleProtocol.Error else {
+    return "Camera request failed: \(error.localizedDescription)"
+  }
+  switch error {
+  case .authenticationRequired:
+    return "Authenticate before using camera controls."
+  case .authenticationUnavailable:
+    return "Camera controls are unavailable on this firmware."
+  case .payloadTooLarge:
+    return "The camera request is too large for this BLE link."
+  case .malformed:
+    return "The camera request could not be encoded."
+  case .unsupportedVersion(let version):
+    return "Unsupported camera protocol version \(version)."
+  case .invalidValue(let message):
+    return "Invalid camera request: \(message)."
+  case .authenticationFailed:
+    return "Authentication failed; camera controls are unavailable."
+  case .cameraListInProgress:
+    return "Camera refresh already in progress."
+  case .cameraOperationInProgress:
+    return "Another camera request is already in progress."
   }
 }
 
@@ -131,6 +279,7 @@ private extension CompanionConnectionPhase {
     case .awaitingAuthentication: return "Authenticating"
     case .ready: return "Ready"
     case .reconnecting(let attempt): return "Reconnecting, attempt \(attempt)"
+    case .failed(.cameraTransactionTimedOut): return "Camera request timed out; reconnecting is required"
     case .failed(let error): return "Failed: \(error)"
     }
   }

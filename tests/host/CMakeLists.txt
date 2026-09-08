@@ -938,16 +938,19 @@ target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
 # real-thread FreeRTOS shim provides the task and queue primitives. The freertos
 # shim header is force-included so FurbleControl.h sees the queue and task types.
 set(CONTROL_E2E_DIR ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e)
+set(CONTROL_TESTSYNC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/testsync)
 add_executable(control_e2e_test
                ${CONTROL_E2E_DIR}/control_e2e.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp)
 target_include_directories(control_e2e_test
                            BEFORE PRIVATE
                                   ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${CONTROL_E2E_DIR}/doubles
                                   ${CONTROL_E2E_DIR}
+                                  ${CONTROL_TESTSYNC_DIR}
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
                                   ${HOST_NIMBLE_DIR}
@@ -955,7 +958,7 @@ target_include_directories(control_e2e_test
 # FURBLE_HOST_CONTROL_TEST compiles Control::resetForTest(), the host-only
 # restart seam (plan 156). Firmware builds never define it, so the reset does
 # not exist on device.
-target_compile_definitions(control_e2e_test PRIVATE FURBLE_HOST_CONTROL_TEST)
+target_compile_definitions(control_e2e_test PRIVATE FURBLE_HOST_CONTROL_TEST FURBLE_TEST_SYNC)
 target_compile_options(control_e2e_test PRIVATE -Wall -Wextra -Wno-format -Wno-unused-parameter
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_e2e_test PRIVATE furble_host_camera)
@@ -975,6 +978,7 @@ add_executable(control_e2e_asan_test
                ${CONTROL_E2E_DIR}/control_e2e.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
@@ -989,6 +993,7 @@ target_include_directories(control_e2e_asan_test
                                   ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${CONTROL_E2E_DIR}/doubles
                                   ${CONTROL_E2E_DIR}
+                                  ${CONTROL_TESTSYNC_DIR}
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
                                   ${HOST_NIMBLE_DIR}
@@ -996,6 +1001,7 @@ target_include_directories(control_e2e_asan_test
                                   ${HOST_CORPUS_DIR})
 target_compile_definitions(control_e2e_asan_test
                            PRIVATE FURBLE_HOST_CONTROL_TEST
+                                   FURBLE_TEST_SYNC
                                    FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
 target_compile_options(control_e2e_asan_test PRIVATE -Wall -Wextra -Wno-format
                        -Wno-unused-parameter
@@ -1091,7 +1097,7 @@ add_executable(control_zombie_cancel_test
                control_zombie_cancel_test.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${CMAKE_CURRENT_SOURCE_DIR}/testsync/TestSyncController.cpp
+               ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -1102,7 +1108,7 @@ target_include_directories(control_zombie_cancel_test
                                   ${CMAKE_CURRENT_SOURCE_DIR}
                                   ${CONTROL_E2E_DIR}/doubles
                                   ${CONTROL_E2E_DIR}
-                                  ${CMAKE_CURRENT_SOURCE_DIR}/testsync
+                                  ${CONTROL_TESTSYNC_DIR}
                                   ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble
                                   ${HOST_NIMBLE_DIR}
@@ -1804,6 +1810,7 @@ if(BUILD_TESTING)
   # machine end to end against the mock peer and is registered individually so a
   # failure names the scenario.
   foreach(scenario
+          empty-target-connect-stays-idle
           fresh-connect
           dead-camera-disconnect-no-freeze
           connect-after-dead-disconnect

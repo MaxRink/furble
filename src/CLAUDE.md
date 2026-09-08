@@ -11,6 +11,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   root traps section. Keep critical sections short and delay-free. Restart
   entry points use `Platform::restart()` so camera disconnects, the bounded
   wait, and the S3 watchdog shutdown stay together.
+  An empty connect target set returns idle, never active. A concurrent cancel
+  still takes precedence and returns disconnecting.
 - Adaptive Bluetooth power sampling stays in the control task and uses the
   weakest connected camera because NimBLE connection power is global. NVS
   reads, RSSI reads and radio calls run with the Control mutex released,

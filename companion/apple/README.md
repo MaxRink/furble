@@ -22,9 +22,15 @@ the begin/proof exchange it sent.
 
 The app refuses to enter `ready` when the Auth characteristic is missing. There
 is no insecure password or BLE-security downgrade. The firmware Auth
-characteristic from the follow-up companion security slice must land before a
-physical Apple link can be used. Capability bit 1 is reserved for the cameras
-characteristic, matching plans/51 and the firmware cameras slice.
+characteristic and plan 116 framing are required before a physical Apple link
+can be used. Capability bit 1 is reserved for the cameras characteristic,
+matching plans/51 and the firmware cameras slice.
+
+After authentication, the Cameras section is shown only when capability bit 1
+and the Cameras characteristic are present. It lists the saved camera catalog
+by stable ID, shows live connection state and RSSI, supports selection,
+connect-selected and disconnect, and displays firmware request errors. Simulator
+and unsigned builds do not prove that camera BLE operations work on hardware.
 
 Shutter and focus are hold controls. A touch sends one press packet and its
 matching release packet when the touch ends or the view disappears. The
@@ -83,6 +89,11 @@ xcodebuild -project FurbleCompanion.xcodeproj -scheme FurbleCompanion-macOS \
   -sdk macosx -configuration Debug CODE_SIGNING_ALLOWED=NO \
   build-for-testing
 ```
+
+The Apple workflow also uploads `furble-companion-macos-debug-unsigned` after
+the macOS tests pass. It contains a zip of the unsigned Debug app, a SHA-256
+checksum, and source/Xcode provenance. This artifact is for CI companion
+testing only. It is not signed, notarized, or suitable for release.
 
 The iOS and macOS entitlements declare the shared Keychain access group
 `$(AppIdentifierPrefix)com.furble.companion.shared`. A signed distribution must

@@ -59,6 +59,8 @@ public enum FurbleProtocol {
     case authenticationFailed
     case authenticationUnavailable
     case payloadTooLarge
+    case cameraListInProgress
+    case cameraOperationInProgress
   }
 
   public struct LocationFix: Equatable, Sendable {
@@ -195,6 +197,50 @@ public enum FurbleProtocol {
     public let state: UInt8
     public let name: String
     public var isTerminator: Bool { cameraID == 0xff }
+    public var isSaved: Bool { flags & 1 != 0 }
+    public var isSelected: Bool { flags & 2 != 0 }
+    public var isConnected: Bool { flags & 8 != 0 }
+    public var isOperationAcknowledgement: Bool {
+      cameraType == 0 && flags == 0 && progress == 0 && rssi == -128 && state == 0 && name.isEmpty
+    }
+    public var typeLabel: String {
+      switch cameraType {
+      case 1: return "Fujifilm"
+      case 2: return "Canon EOS Smart"
+      case 3: return "Canon EOS Remote"
+      case 4: return "Mobile device"
+      case 5: return "FauxNY"
+      case 6: return "Nikon"
+      case 7: return "Sony"
+      case 8: return "Fujifilm Secure"
+      case 9: return "Ricoh"
+      case 10: return "Panasonic Lumix"
+      case 11: return "DJI Osmo"
+      default: return "Camera type \(cameraType)"
+      }
+    }
+
+    public var connectionStateLabel: String {
+      switch state {
+      case 0: return "idle"
+      case 1: return "connecting \(progress)%"
+      case 2: return "connected"
+      case 3: return "reconnecting \(progress)%"
+      case 4: return "lost"
+      case 5: return "disconnecting"
+      default: return "unknown state \(state)"
+      }
+    }
+
+    public var operationStatusLabel: String? {
+      switch status {
+      case 0: return nil
+      case 1: return "unknown camera"
+      case 2: return "request rejected"
+      case 3: return "camera operation busy"
+      default: return "camera error \(status)"
+      }
+    }
   }
 
   public enum CameraOperation: UInt8, Sendable {
