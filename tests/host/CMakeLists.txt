@@ -189,6 +189,24 @@ target_include_directories(webui_security_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(webui_security_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME webui-security COMMAND webui_security_test)
 
+add_executable(webui_handler_test
+               webui_handler_test.cpp
+               webui/webui_platform_stubs.cpp
+               mqtt/cJSON.cpp
+               companion/companion_hmac.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+               ${FURBLE_ROOT}/src/FurbleWebUI.cpp)
+target_include_directories(webui_handler_test
+                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/webui
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/mqtt
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/companion
+                                   ${FURBLE_ROOT}/include)
+target_compile_definitions(webui_handler_test
+                           PRIVATE FURBLE_MQTT=1 FURBLE_WEBUI=1 FURBLE_WEBUI_HOST_TEST=1)
+target_compile_options(webui_handler_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(webui_handler_test PRIVATE Threads::Threads)
+add_test(NAME webui-handler COMMAND webui_handler_test)
+
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
 # Compile and call the real CameraList dispatch path with the host NimBLE
