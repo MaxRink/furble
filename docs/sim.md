@@ -776,6 +776,9 @@ whatever the production stack does after a fault is what the scenario observes.
   keeps the `FURBLE_SIM_PREFS` store it inherited rather than wiping a fresh
   one, so the reboot reads the flash the previous boot wrote. It lives exactly
   one boot; a value outside the script's step range fails the run with status 2.
+  `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
+  `LD_PRELOAD` interposer. That check establishes environment ordering only; it
+  does not establish that an environment race caused a SIGSEGV.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the

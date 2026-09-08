@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 
-#include <dlfcn.h>
 #include <SDL2/SDL.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,9 +52,9 @@ static void reject_after_sdl(const char *operation, const char *name) {
 
 __attribute__((constructor)) static void initialize_guard(void) {
   guard_target = getenv("FURBLE_SIM_ENV_GUARD_TARGET");
-  if (guard_target == NULL ||
-      (strcmp(guard_target, "FURBLE_SIM_PREFS") != 0 &&
-       strcmp(guard_target, "FURBLE_SIM_RESTART_STEP") != 0)) {
+  if (guard_target == NULL
+      || (strcmp(guard_target, "FURBLE_SIM_PREFS") != 0
+          && strcmp(guard_target, "FURBLE_SIM_RESTART_STEP") != 0)) {
     fprintf(stderr, "sim env guard: invalid FURBLE_SIM_ENV_GUARD_TARGET\n");
     _exit(127);
   }

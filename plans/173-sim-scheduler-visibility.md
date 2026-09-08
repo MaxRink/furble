@@ -294,3 +294,13 @@ initialization. It runs a fresh smoke boot and `restart-persist.txt` against
 the current binary, then expects the pre-fix binary to fail with the guard's
 status. This is a deterministic ordering regression, not evidence that the
 environment race caused an unrelated crash.
+
+Root validation recorded the CMake configure and simulator build as passing at
+`/home/a92615428/b/sim-environ-config.log` and
+`/home/a92615428/b/sim-environ-build.log`, using the CMake-header fix at
+`d646267f`. The guard wrapper passed both current positive legs and both exact
+target negative legs, recorded in
+`/home/a92615428/b/sim-environ-guard.log`. The negative executable was the
+available production-UI simulator `249650a5`, not an exact `8a94` build, so the
+negative result is evidence for the old mutation locations in that binary only.
+Neither the build nor the guard run establishes SIGSEGV causality.
