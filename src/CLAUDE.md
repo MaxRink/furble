@@ -51,8 +51,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `NO_LIGHT_SLEEP` during backoff, ignores late UART lock reacquisition, and
   reacquires only after moving to the time-bounded acquisition probe. Keep the
   host policy and simulator power-accounting tests aligned with these states.
-  Under `FURBLE_SIM`, the fresh-fix push counter is observability only; it lets
-  GPS scenarios distinguish a newly accepted UART fix from a cached source.
+  Under `FURBLE_SIM`, fresh-fix parser and push counters are observability only;
+  they let GPS scenarios distinguish a newly accepted UART fix from a cached
+  source without asserting a timing-sensitive cycle-state snapshot.
   The service mutex covers each task pass and settings reset. Before waiting
   for it, settings transitions must set the enable gate false and send the
   private front-of-queue wake event so an idle UART receive releases the mutex.

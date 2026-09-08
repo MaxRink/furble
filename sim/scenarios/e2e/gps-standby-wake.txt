@@ -9,21 +9,22 @@ wait 5000
 assert gps.source uart
 assert gps.state standby
 assert uart.last $PCAS12,5*1B
+assert-eventually-virtual 1000 gps.fresh_fixes_parsed 1
 assert-eventually-virtual 1000 gps.fresh_fixes_pushed 1
 assert-eventually-virtual 1000 uart.count 1
 wait 5000
 # A second PCAS12 can only follow a new accepted and pushed UART fix: the
 # production update path raises the duty request only for a new fix sequence.
+assert-eventually-virtual 2000 gps.fresh_fixes_parsed 2
 assert-eventually-virtual 2000 gps.fresh_fixes_pushed 2
 assert-eventually-virtual 2000 uart.count 2
 assert gps.source uart
-assert gps.state standby
 assert uart.last $PCAS12,5*1B
 # One wake fix followed by receiver silence must not manufacture another fix or
 # another duty command from the cached UART source.
 uart-mode pause
 wait 6000
+assert gps.fresh_fixes_parsed 2
 assert gps.fresh_fixes_pushed 2
 assert uart.count 2
-assert gps.state standby
 exit
