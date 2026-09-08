@@ -9,6 +9,11 @@ The current master branch does not contain the Tier B mock from the plan. This
 directory carries the small compatible seam needed to build Tier C standalone.
 When Tier B lands, the virtual peer API is the boundary to preserve.
 
+The provisioning apply test covers dedicated MQTT fields through the real
+checked settings path: valid URI, credentials, and base topic persist, while
+NUL and wildcard-invalid values reject before any write. Builds without MQTT
+support retain those fields as explicitly deferred.
+
 Build and run:
 
 ```sh

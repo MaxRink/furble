@@ -48,6 +48,7 @@ About page and exposed through companion BLE Device Information.
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
 | `disconnect` | Disconnect all cameras. |
+| `mqtt` | `status`, `connect`, `disconnect`, or `discovery clear`; MQTT broker control. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `focus` | `press` or `release`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
