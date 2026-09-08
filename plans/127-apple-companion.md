@@ -33,6 +33,10 @@ XcodeGen release documented in the companion README.
 - Native iOS and macOS application and unit-test targets, Keychain access-group
   entitlements, Bluetooth restoration declarations, and unsigned CI build
   definitions.
+- The Apple workflow gives the macOS test an explicit DerivedData path and,
+  after successful tests, uploads an unsigned Debug app with a SHA-256
+  checksum and source/Xcode provenance. It is a testing artifact, not a
+  signed release.
 
 ## Follow-up gates
 
@@ -46,6 +50,9 @@ XcodeGen release documented in the companion README.
   and matching unit-test targets around the shared Swift package. CI builds and
   tests both platforms on a pinned macOS/Xcode image. Real iPhone/Mac
   Bluetooth tests still require hardware and a signed build.
+- The uploaded macOS app is an unsigned CI test artifact. Its source SHA and
+  pinned Xcode version are recorded beside the archive; this does not claim
+  signing, notarization, installation, or release support.
 - The platform targets declare the shared Keychain access-group entitlement.
   The shared client deliberately does not enable background location unless
   the user opts in.

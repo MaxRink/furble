@@ -60,9 +60,40 @@ jobs:
           -scheme FurbleCompanion-macOS
           -destination 'platform=macOS'
           -configuration Debug
+          -derivedDataPath "$RUNNER_TEMP/FurbleCompanion-macOS-DerivedData"
           CODE_SIGNING_ALLOWED=NO
           CODE_SIGNING_REQUIRED=NO
           test
+      - name: Package unsigned macOS Debug app
+        if: success()
+        working-directory: companion/apple
+        run: |
+          app="$RUNNER_TEMP/FurbleCompanion-macOS-DerivedData/Build/Products/Debug/FurbleCompanion.app"
+          zip="$RUNNER_TEMP/FurbleCompanion-macOS-Debug-unsigned.zip"
+          test -d "$app"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          (
+            cd "$RUNNER_TEMP"
+            shasum -a 256 "$(basename "$zip")" \
+              > "$(basename "$zip").sha256"
+          )
+          {
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "xcode_version=$XCODE_VERSION"
+            echo "configuration=Debug"
+            echo "signing=unsigned"
+          } > "$RUNNER_TEMP/FurbleCompanion-macOS-Debug-unsigned.provenance"
+      - name: Upload unsigned macOS Debug app
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: furble-companion-macos-debug-unsigned
+          path: |
+            ${{ runner.temp }}/FurbleCompanion-macOS-Debug-unsigned.zip
+            ${{ runner.temp }}/FurbleCompanion-macOS-Debug-unsigned.zip.sha256
+            ${{ runner.temp }}/FurbleCompanion-macOS-Debug-unsigned.provenance
+          if-no-files-found: error
+          retention-days: 30
 
   swift-package:
     runs-on: macos-14

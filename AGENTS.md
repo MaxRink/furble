@@ -18,6 +18,8 @@ claim against the code, not against a plan doc.
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
+The Apple workflow's macOS app artifact is unsigned and test-only; it is
+uploaded only after the macOS tests pass and includes checksum/provenance files.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 `python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
 Firmware line coverage is measured by `tools/coverage.py` and gated against

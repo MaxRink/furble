@@ -90,6 +90,11 @@ xcodebuild -project FurbleCompanion.xcodeproj -scheme FurbleCompanion-macOS \
   build-for-testing
 ```
 
+The Apple workflow also uploads `furble-companion-macos-debug-unsigned` after
+the macOS tests pass. It contains a zip of the unsigned Debug app, a SHA-256
+checksum, and source/Xcode provenance. This artifact is for CI companion
+testing only. It is not signed, notarized, or suitable for release.
+
 The iOS and macOS entitlements declare the shared Keychain access group
 `$(AppIdentifierPrefix)com.furble.companion.shared`. A signed distribution must
 use a real Apple team whose provisioning profiles contain that group. The app
