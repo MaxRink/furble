@@ -113,6 +113,79 @@ void testRandomVector() {
   }
 }
 
+void requireStateEqual(const Furble::Sim::FuzzMachine::State &left,
+                       const Furble::Sim::FuzzMachine::State &right,
+                       const char *message) {
+  require(left.phase == right.phase && left.settleNext == right.settleNext &&
+              left.maxSteps == right.maxSteps &&
+              left.escapeCadence == right.escapeCadence &&
+              left.stepCount == right.stepCount &&
+              left.settleRemaining == right.settleRemaining &&
+              left.attempted == right.attempted &&
+              left.observedDelta == right.observedDelta &&
+              left.noObservedDelta == right.noObservedDelta &&
+              left.settled == right.settled &&
+              left.timerStopChecks == right.timerStopChecks &&
+              left.finishing == right.finishing &&
+              left.interruptedByRestart == right.interruptedByRestart &&
+              left.applyStarted == right.applyStarted,
+          message);
+}
+
+void testCheckpointRoundTrip() {
+  Furble::Sim::FuzzMachine machine(3, 7);
+  applyAndCheck(machine, 0, true, true);
+  const auto saved = machine.checkpoint();
+
+  Furble::Sim::FuzzMachine restored(99, 1);
+  require(restored.restore(saved), "canonical checkpoint restores");
+  requireStateEqual(saved, restored.checkpoint(), "checkpoint round-trips exactly");
+  require(restored.beginApply(), "restored machine resumes Apply");
+  restored.eventApplied(0);
+  restored.checkComplete(false, false);
+  require(restored.settled() == 2, "restored machine continues settled events");
+}
+
+void testCheckpointValidation() {
+  Furble::Sim::FuzzMachine machine(3);
+  const auto saved = machine.checkpoint();
+
+  auto invalid = saved;
+  invalid.phase = static_cast<uint32_t>(Furble::Sim::FuzzPhase::SETTLE);
+  require(!machine.restore(invalid), "restore rejects stale settle phase");
+  requireStateEqual(saved, machine.checkpoint(), "invalid restore leaves state unchanged");
+
+  invalid = saved;
+  invalid.attempted = 1;
+  invalid.interruptedByRestart = 1;
+  require(!machine.restore(invalid), "restore rejects inconsistent attempt counters");
+}
+
+void testInterruptedRestart() {
+  Furble::Sim::FuzzMachine beforeApply(3);
+  require(beforeApply.beginApply(), "an event can begin before interruption");
+  require(beforeApply.interruptForRestart(), "restart interrupts dispatched Apply");
+  require(beforeApply.attempted() == 1, "interruption consumes one attempt");
+  require(beforeApply.interruptedByRestart() == 1, "interruption count is recorded");
+  require(beforeApply.settled() == 0 && beforeApply.observedDelta() == 0 &&
+              beforeApply.noObservedDelta() == 0,
+          "interruption does not record settled observations");
+  require(beforeApply.phase() == Furble::Sim::FuzzPhase::APPLY,
+          "non-final interruption resumes fresh Apply");
+  require(!beforeApply.interruptForRestart(), "the same interruption cannot be consumed twice");
+
+  Furble::Sim::FuzzMachine duringSettle(1);
+  require(duringSettle.beginApply(), "settle interruption event begins");
+  duringSettle.eventApplied(2);
+  require(duringSettle.interruptForRestart(), "restart interrupts an in-flight settle");
+  require(duringSettle.attempted() == 1 && duringSettle.interruptedByRestart() == 1,
+          "settle interruption does not double-count the attempt");
+  require(duringSettle.settled() == 0, "settle interruption remains unsettled");
+  require(duringSettle.phase() == Furble::Sim::FuzzPhase::ESCAPE &&
+              duringSettle.finishing(),
+          "final interruption enters finishing Escape");
+}
+
 }  // namespace
 
 int main() {
@@ -120,6 +193,9 @@ int main() {
   testEscapeTraces();
   testCounters();
   testRandomVector();
+  testCheckpointRoundTrip();
+  testCheckpointValidation();
+  testInterruptedRestart();
   if (failures != 0) {
     return 1;
   }
