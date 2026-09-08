@@ -525,8 +525,10 @@ bool scenarioMultiConnectFujifilm() {
 
   first.clearEvents();
   second.clearEvents();
-  control.sendCommand(Control::CMD_SHUTTER_PRESS);
-  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  const auto wholePress = control.sendCameraCommand(Control::CMD_SHUTTER_PRESS);
+  const auto wholeRelease = control.sendCameraCommand(Control::CMD_SHUTTER_RELEASE);
+  check(wholePress.any && wholePress.all, "press reaches every connected target");
+  check(wholeRelease.any && wholeRelease.all, "release reaches every connected target");
   // Fujifilm sends a command and parameter write for each press/release. Four
   // writes on each peer proves the trigger reached both, not only the aggregate.
   check(waitForShutterWrites(first, 4, 2000), "first Fujifilm peer receives the shutter");
@@ -547,8 +549,12 @@ bool scenarioMultiConnectFujifilm() {
 
   first.clearEvents();
   second.clearEvents();
-  control.sendCommand(Control::CMD_SHUTTER_PRESS);
-  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  const auto partialPress = control.sendCameraCommand(Control::CMD_SHUTTER_PRESS);
+  const auto partialRelease = control.sendCameraCommand(Control::CMD_SHUTTER_RELEASE);
+  check(partialPress.any && !partialPress.all,
+        "press reports partial delivery while one target reconnects");
+  check(partialRelease.any && !partialRelease.all,
+        "release reports partial delivery while one target reconnects");
   check(waitForShutterWrites(first, 4, 2000), "the live survivor still receives the shutter");
   check(shutterWriteCount(second) == 0, "the dropped peer receives no down-time shutter");
 

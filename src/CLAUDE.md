@@ -108,6 +108,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active.
+- `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
+  password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
+  settings stay on `Provision::apply`, and held releases remain owned until the
+  Control queue accepts them or the camera session ends.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
   circular scroll on a row wider than the panel animates forever and

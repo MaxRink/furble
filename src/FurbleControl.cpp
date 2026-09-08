@@ -460,25 +460,36 @@ BaseType_t Control::sendCommand(cmd_t cmd) {
     case CMD_SHUTTER_RELEASE:
     case CMD_FOCUS_PRESS:
     case CMD_FOCUS_RELEASE:
-    {
-      const std::lock_guard<std::mutex> lock(m_Mutex);
-      BaseType_t delivered = pdFALSE;
-      for (const auto &target : m_Targets) {
-        if (target->getCamera()->isConnected()) {
-          target->sendCommand(cmd);
-          delivered = pdTRUE;
-        } else {
-          ESP_LOGD(LOG_TAG, "Dropped camera command %d for '%s': link not active.",
-                   static_cast<int>(cmd), target->getCamera()->getName().c_str());
-        }
-      }
-      return delivered;
-    }
+      return sendCameraCommand(cmd).any ? pdTRUE : pdFALSE;
     default:
       break;
   }
 
   return xQueueSend(m_Queue, &cmd, 0);
+}
+
+Control::command_delivery_t Control::sendCameraCommand(cmd_t cmd) {
+  if ((cmd != CMD_SHUTTER_PRESS) && (cmd != CMD_SHUTTER_RELEASE) && (cmd != CMD_FOCUS_PRESS)
+      && (cmd != CMD_FOCUS_RELEASE)) {
+    return {false, false};
+  }
+  command_delivery_t delivery = {false, true};
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  for (const auto &target : m_Targets) {
+    if (target->getCamera()->isConnected()) {
+      const bool queued = target->sendCommand(cmd) == pdTRUE;
+      delivery.any = queued || delivery.any;
+      delivery.all = queued && delivery.all;
+    } else {
+      delivery.all = false;
+      ESP_LOGD(LOG_TAG, "Dropped camera command %d for '%s': link not active.",
+               static_cast<int>(cmd), target->getCamera()->getName().c_str());
+    }
+  }
+  if (!delivery.any) {
+    delivery.all = false;
+  }
+  return delivery;
 }
 
 BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {

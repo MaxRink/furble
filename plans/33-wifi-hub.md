@@ -1065,46 +1065,69 @@ Attached StickS3, a Mosquitto broker on the LAN, and a Home Assistant instance.
 
 ---
 
-# PR33d: REST API and WebUI, deferred
+# PR33d: authenticated REST API and WebUI
 
-Not proposed. #248 asks for all three of WebUI, MQTT and REST. This documents
-why only MQTT is being built.
+Status: implementation successor to PR #90 on the current WiFi and MQTT stack.
+The earlier unauthenticated HTTP implementation is not reused.
 
-**The maintainer picked MQTT.** He said so in
-[#248 comment 3843927598](https://github.com/gkoh/furble/issues/248#issuecomment-3843927598):
-MQTT is a good first target and he will likely start there. Building a WebUI
-first would be building against his stated order.
+The WebUI is compiled only into the existing 8 MB and 16 MB network hub
+profiles. It is off by default and requires all three of these conditions:
 
-**A WebUI is a second UI to maintain.** furble's UI is one 2136 line file,
-`src/FurbleUI.cpp`. Every feature in this roadmap that adds a setting adds a
-switch to it. A WebUI means every one of those features gains a second widget,
-in a second language, with a second layout, that has to agree with the first.
-The intervalometer alone is a three roller spinner plus a unit selector
-(`include/FurbleSpinValue.h`, `src/FurbleUIIntervalometer.cpp`). Reimplementing
-that in HTML is not a small job and keeping it in agreement forever is a larger
-one. This is the UI element explosion argument and it is decisive.
+- WiFi or Ethernet has an address.
+- `WEB_UI` wire id 62 is enabled.
+- A non-empty companion password was loaded successfully.
 
-**A WebUI costs flash that is already spoken for.** An HTTP server, mDNS and an
-embedded asset bundle land in the same image that has to fit an OTA slot. See
-`plans/34-ota-partitions.md`, which sizes app slots at 1700K against a current
-binary of roughly 1.01 MB. WiFi, lwIP, MQTT and TLS already claim most of the
-difference.
+The server uses ESP-IDF `esp_https_server`. On first enable it generates a
+unique P-256 private key and self-signed certificate with the pinned mbedTLS,
+then persists both in NVS. Generation or persistence failure leaves the socket
+closed. The certificate fingerprint is logged on every start so the first-use
+browser exception can be checked over USB. The companion password remains the
+single application credential and is provisioned or rotated only through the
+existing USB console and provisioning paths.
 
-**REST has no free authentication story.** MQTT gets a broker, and the broker
-already holds credentials, access control and TLS. A REST endpoint on the device
-has to solve all three itself, on a device with no clock at boot and no way to
-rotate a secret. The bad version is an unauthenticated HTTP endpoint that fires
-the shutter, on a studio network, for anyone.
+The private key has the same at-rest protection as the other NVS credentials.
+NVS encryption provisioning remains a measured release gate where resistance
+to physical flash extraction is required.
 
-**MQTT covers the stated use case.** #249's use case is a Home Assistant
-dashboard. Home Assistant speaks MQTT natively with autodiscovery, so PR33c
-delivers it with zero integration code. A REST API would need a custom Home
-Assistant integration, which is exactly what #248 says MQTT avoids.
+HTTP Basic is used only inside TLS. Password verification reuses
+`CompanionAuth` and its HMAC-SHA256 constant-time comparison. Three failed
+requests block authentication for 30 seconds. API requests also require their
+browser Origin to match the HTTPS Host. Mutations require `application/json`,
+request bodies are bounded, and socket timeouts are bounded.
 
-Revisit when all of these hold: PR33c has shipped and the topic set has been
-stable through at least one release, someone asks for REST for a use case MQTT
-genuinely cannot serve, and the OTA app slot has more than 400 KB of measured
-headroom.
+The API serves status, saved camera state, stable-id connect/disconnect,
+shutter and focus press/release, timed shutter hold, and the shared settings
+catalog. Camera enumeration reuses the companion snapshot path. Camera
+connect/disconnect goes through `UI::sendRequest`, preserving UI-task ownership.
+Settings writes go through `Provision::apply`, preserving the production type,
+range, network-string and storage validation. WiFi passphrases, MQTT passwords,
+MQTT URIs and the companion password are never returned. The companion password
+is not writable from the WebUI because changing the active HTTP credential is a
+USB/provisioning recovery operation.
+
+Held controls are released when the server stops. If the Control queue is full,
+the release remains owned and is retried until accepted or the camera session
+ends. API responses say `accepted` or `saved`; they do not claim a camera has
+completed an asynchronous connect or shutter operation.
+
+Host coverage checks content type, same-origin and strict numeric ingress.
+The shared Control E2E exercises full and partial per-target command delivery.
+Before merge, an ESP-IDF integration or real-source host harness must also
+exercise an authenticated handler through these sequences:
+
+1. timed hold, manual release, then plain press before the old deadline;
+2. failed release enqueue followed by a rejected new hold until retry succeeds;
+3. a 1 ms hold with expiry notification delivered immediately;
+4. server shutdown racing an already-running authenticated press handler;
+5. bad Basic credentials, cross-origin JSON, non-JSON mutation and body timeout;
+6. queue saturation while one target reconnects, proving release ownership is
+   retained until every session target accepts it or the session is removed.
+
+The lightweight host policy test does not claim those production handler,
+timer or shutdown paths.
+Firmware builds, browser acceptance, first-use fingerprint comparison, radio
+coexistence, shutter timing and image signing remain release gates. This work
+does not claim hardware parity from host coverage.
 
 ---
 

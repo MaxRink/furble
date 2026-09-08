@@ -115,6 +115,14 @@ class Control {
    */
   BaseType_t sendCommand(cmd_t cmd);
 
+  struct command_delivery_t {
+    bool any;
+    bool all;
+  };
+
+  /** Send a camera command and report partial per-target queue delivery. */
+  command_delivery_t sendCameraCommand(cmd_t cmd);
+
   /**
    * Update GPS and timesync values.
    */

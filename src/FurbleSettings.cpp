@@ -87,6 +87,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {MQTT_BASE,          {MQTT_BASE, 60, "MQTT Base", "mqtt_base", FURBLE_STR}                },
     {MQTT_HA,            {MQTT_HA, 61, "MQTT Home Assistant", "mqtt_ha", FURBLE_STR}          },
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    {WEB_UI,            {WEB_UI, 62, "WebUI", "web_ui", FURBLE_STR}                              },
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
     {DISPLAY_MODE,       {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },
 #endif
@@ -172,6 +175,9 @@ bool Settings::appliesImmediately(type_t type) {
     case MQTT_PASS:
     case MQTT_BASE:
     case MQTT_HA:
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case WEB_UI:
 #endif
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -281,6 +287,9 @@ bool Settings::isDangerous(type_t type) {
     case MQTT_PASS:
     case MQTT_BASE:
     case MQTT_HA:
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case WEB_UI:
 #endif
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
@@ -702,6 +711,11 @@ void Settings::init(void) {
           break;
         case MQTT_BASE:
           save<std::string>(setting.type, "furble");
+          break;
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+        case WEB_UI:
+          save<bool>(setting.type, false);
           break;
 #endif
 #if !defined(FURBLE_NO_DISPLAY)

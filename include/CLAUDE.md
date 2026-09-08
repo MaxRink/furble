@@ -105,3 +105,5 @@ the reservations only after checking every open PR head.
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
+- `FurbleWebUI.h` owns the HTTPS supervisor and release-retry state. The pure
+  ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage.

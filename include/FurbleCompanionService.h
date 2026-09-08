@@ -161,6 +161,20 @@ class CompanionService {
     uint8_t name_len;
   } companion_camera_t;
 
+  enum setting_type_t : uint8_t {
+    SETTING_BOOL,
+    SETTING_U8,
+    SETTING_U32,
+    SETTING_STRING,
+    SETTING_BLOB,
+  };
+
+  /** Camera state sampled through the production CameraList and Control owners. */
+  struct camera_snapshot_t {
+    companion_camera_t record;
+    std::string name;
+  };
+
   static_assert(sizeof(companion_fix_t) == 42, "companion fix wire size changed");
   static_assert(sizeof(companion_status_t) == 20, "companion status wire size changed");
   static_assert(sizeof(companion_capability_t) == 6, "companion capability wire size changed");
@@ -198,6 +212,9 @@ class CompanionService {
   companion_status_t getStatus(void) const;
   /** Capability record served by the read-only capability characteristic. */
   static companion_capability_t getCapability(void);
+  static std::vector<camera_snapshot_t> getCameraSnapshots(void);
+  static setting_type_t settingType(Settings::type_t type);
+  static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
   void releaseHeldCommands(void);
 
  private:
@@ -215,14 +232,6 @@ class CompanionService {
   /** Steady-state camera notification rate limit, matching the status packet. */
   static constexpr uint64_t CAMERA_NOTIFY_INTERVAL_MS = 1000;
 
-  enum setting_type_t : uint8_t {
-    SETTING_BOOL,
-    SETTING_U8,
-    SETTING_U32,
-    SETTING_STRING,
-    SETTING_BLOB,
-  };
-
   enum setting_status_t : uint8_t {
     SETTING_OK,
     SETTING_UNKNOWN_ID,
@@ -231,24 +240,15 @@ class CompanionService {
     SETTING_REJECTED,
   };
 
-  /** Camera record plus the name, as sampled from CameraList and Control. */
-  struct camera_snapshot_t {
-    companion_camera_t record;
-    std::string name;
-  };
-
   static uint64_t nowMs(void);
   bool allowProtected(uint8_t charId) const;
   bool allowTrigger(void);
   void notifySettings(const std::vector<uint8_t> &value);
   static void timedShutter(void *param);
 
-  static std::vector<camera_snapshot_t> getCameraSnapshots(void);
   static std::vector<uint8_t> encodeCameraRecord(const camera_snapshot_t &snapshot);
   void indicateCameraStatus(uint8_t status, uint8_t cameraId);
 
-  static setting_type_t settingType(Settings::type_t type);
-  static bool settingValue(Settings::type_t type, std::vector<uint8_t> &value);
   bool saveSetting(Settings::type_t type, const uint8_t *value, uint8_t length);
   static void appendResponse(std::vector<uint8_t> &response,
                              setting_status_t status,

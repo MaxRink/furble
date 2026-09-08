@@ -82,6 +82,9 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::MQTT:
     case Settings::MQTT_HA:
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+#endif
       return ProvisionTLV::ValueType::BOOL;
 
     case Settings::BRIGHTNESS:
