@@ -4241,41 +4241,37 @@ std::string UI::simQueryState(const char *key) {
       return "no";
     }
 
-    lv_area_t clip;
-    lv_obj_get_coords(page, &clip);
-    const auto constrainToPage = [&](lv_obj_t *object) {
+    const auto fullyVisibleInPage = [&](lv_obj_t *object) {
+      lv_area_t clip;
+      lv_obj_get_coords(page, &clip);
       bool reachedPage = false;
       for (lv_obj_t *ancestor = object; ancestor != nullptr;
            ancestor = lv_obj_get_parent(ancestor)) {
         if (!lv_obj_is_valid(ancestor) || lv_obj_has_flag(ancestor, LV_OBJ_FLAG_HIDDEN)) {
           return false;
         }
-        lv_area_t area;
-        lv_obj_get_coords(ancestor, &area);
-        clip.x1 = std::max(clip.x1, area.x1);
-        clip.y1 = std::max(clip.y1, area.y1);
-        clip.x2 = std::min(clip.x2, area.x2);
-        clip.y2 = std::min(clip.y2, area.y2);
+        if (ancestor != object && ancestor != page
+            && !lv_obj_has_flag(ancestor, LV_OBJ_FLAG_OVERFLOW_VISIBLE)) {
+          lv_area_t area;
+          lv_obj_get_coords(ancestor, &area);
+          clip.x1 = std::max(clip.x1, area.x1);
+          clip.y1 = std::max(clip.y1, area.y1);
+          clip.x2 = std::min(clip.x2, area.x2);
+          clip.y2 = std::min(clip.y2, area.y2);
+        }
         if (ancestor == page) {
           reachedPage = true;
-          break;
         }
       }
-      return reachedPage;
+      if (!reachedPage) {
+        return false;
+      }
+      lv_area_t objectArea;
+      lv_obj_get_coords(object, &objectArea);
+      return objectArea.x1 >= clip.x1 && objectArea.y1 >= clip.y1
+             && objectArea.x2 <= clip.x2 && objectArea.y2 <= clip.y2;
     };
-    if (!constrainToPage(focused) || !constrainToPage(label)) {
-      return "no";
-    }
-
-    lv_area_t focusedArea;
-    lv_area_t labelArea;
-    lv_obj_get_coords(focused, &focusedArea);
-    lv_obj_get_coords(label, &labelArea);
-    const auto fullyInside = [&](const lv_area_t &area) {
-      return area.x1 >= clip.x1 && area.y1 >= clip.y1 && area.x2 <= clip.x2
-             && area.y2 <= clip.y2;
-    };
-    return fullyInside(focusedArea) && fullyInside(labelArea) ? "yes" : "no";
+    return fullyVisibleInPage(focused) && fullyVisibleInPage(label) ? "yes" : "no";
   }
 
   // Text carried by the focused menu row. A camera list row renders the name
