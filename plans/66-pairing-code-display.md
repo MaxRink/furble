@@ -395,3 +395,9 @@ replacement pin is offered here either. The gap stays where #270 left it.
 review. It is a pre-existing host scheduler flake, unrelated to pairing, and is
 not fixed here. It is recorded so a future ambiguous mutation run is not blamed
 on this change.
+
+Fresh c63 host validation completed 116/116 checks in 191.34 seconds, with
+configuration, build, and test evidence in `~/b/c63h-{config,build,test}.log`.
+This is host callback/peer evidence. The current SDL rerun is not represented
+as passing here; historical layout observations must not be used as current
+SDL or hardware evidence.

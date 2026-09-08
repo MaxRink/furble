@@ -1,6 +1,9 @@
 # sim/ (host SDL simulator)
 
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
+
+CMake force-includes ESP and FreeRTOS shims only for C++ translation units;
+C sources must compile without C++-only shim declarations.
 Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
 shipping sources are allowed only for observability, deterministic navigation,
 or orderly host exit, and firmware builds must compile the unchanged production
