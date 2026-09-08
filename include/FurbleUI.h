@@ -1376,6 +1376,15 @@ class UI {
   /** Intervalometer timer handler. */
   static void intervalometer(lv_timer_t *timer);
 
+  /** Poll for a pending companion numeric-comparison request. */
+  static void companionPairingTimer(lv_timer_t *timer);
+
+  /** Start the companion pairing prompt timer. */
+  void startCompanionPairingTimer(void);
+
+  /** Stop the companion pairing prompt timer. */
+  void stopCompanionPairingTimer(void);
+
   /** Poll for a pending companion or camera pairing request. */
   static void pairingTimer(lv_timer_t *timer);
 
