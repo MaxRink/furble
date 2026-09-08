@@ -384,3 +384,17 @@ All links checked.
 - StickS3 product page: https://docs.m5stack.com/en/core/StickS3
 - ESP-IDF sleep modes, wake sources and RTC memory retention:
   https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32/api-reference/system/sleep_modes.html
+## September 8 physical-button validation
+
+The simulator now sends short board-button taps through the registered LVGL
+encoder. The 135x240 no-touch scenario checks each timer row, then waits up to
+500 virtual milliseconds for LVGL's bounded focus-scroll animation. It requires
+the complete focused control and label to be visible and clear of indicators.
+The existing unrelated expected failures remain unchanged.
+
+The full scenario passed on code `268e7b89`; build and runtime logs are
+`/home/a92615428/b/c59-label-wrap-build.log` and
+`/home/a92615428/b/c59-label-wrap-test.log`. The fresh-process deep-sleep runner
+passed on `69c89f7e`, before the final label-only wrapping change, with evidence
+in `/home/a92615428/b/c59-final-deep-cycle.log`. These are SDL results, not
+physical button debounce, PMIC wake, current, or camera validation.

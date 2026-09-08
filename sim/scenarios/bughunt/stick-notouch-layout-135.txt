@@ -83,17 +83,30 @@ action nav timer
 wait 150
 assert ui.page timer
 assert ui.row_text Count
-press up
+button b
+wait 100
+assert ui.row_text Delay
+button b
+wait 100
+assert ui.row_text Shutter
+button b
+wait 100
+assert ui.row_text Wait
+button b
 wait 100
 assert ui.row_text Deep_Sleep
 assert ui.focus_on_page yes
+# LVGL bounds automatic focus scrolling at 200-400 ms. Keep UI ticks running
+# until that animation settles before requiring the whole control and label.
+assert-eventually-virtual 500 ui.focus_visible yes
 assert ui.indicator_clearance clear
-press left
+button a
 wait 100
-press down
+button b
 wait 100
 assert ui.row_text Sleep_Threshold
 assert ui.focus_on_page yes
+assert-eventually-virtual 500 ui.focus_visible yes
 assert ui.indicator_clearance clear
 assert ui.overflow yes
 button pwr hold
