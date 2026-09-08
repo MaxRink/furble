@@ -1,5 +1,31 @@
 # 170 - uncancellable connect attempts and the draining camera
 
+## Current integration and evidence, 2026-09-07
+
+Integrated PR 245 and master `8a94d2cb` at `14c96ee0`. All 113 host tests pass.
+The shared abort vector now retains live, drained, and in-flight cameras, and
+radio termination remains outside the Control mutex.
+
+Removing both drained/in-flight vector additions makes `control-secure-stall`
+fail at "a later disconnect terminates the drained secure client". Restoring
+the exact source makes the test pass. No mutation remains in the worktree.
+The stalled-controller mock now withholds peer disconnect notification until
+the asynchronous termination event completes. The teardown fixture explicitly
+completes that event and checks ownership drains before reconnecting; its
+original pre-completion cancellation bounds remain unchanged.
+
+The X100VI bench ran PR 245 firmware `dev+g37d38967`, not this integration.
+Its 20 cancellations ended idle with zero zombies, but four intermediate
+snapshots were still disconnecting. Pairing, shutter and healthy reconnect
+checks preceded that batch; no post-batch ACTIVE recovery was tested.
+These results do not certify this PR's re-arm path or other camera vendors.
+
+For the next physical check, use three short cycles plus one security-wait
+cancel, then verify a fresh active shutter session. The camera pairing screen
+requires manual exit. After camera-side unpair, open that screen so the camera
+advertises. This short procedure replaces the repeated five-cycle hardware
+sequence below, not its required recovery assertions.
+
 ## Motivation
 
 Issue 271. Two firmware gaps in the reconnect-cancel deadlock family recorded
