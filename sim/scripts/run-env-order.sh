@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Guard the simulator's process-wide environment mutations while SDL is live.
-# The current binary must pass both a fresh boot and a resumed boot. The old
-# binary is required separately and must trip the guard at its old mutation
+# Guard each Furble environment mutation while SDL is live. The current binary
+# must pass both a fresh boot and a resumed boot. The old binary is required
+# separately and must trip the exact target-specific guard at its old mutation
 # sites, so this check cannot pass by merely never observing the interposer.
 
 set -eu
@@ -41,16 +41,22 @@ trap 'rm -rf "$guard_dir"' EXIT HUP INT TERM
   $(pkg-config --libs sdl2) -ldl
 
 run_guarded() {
+  target=$1
+  shift
   env -u FURBLE_SIM_PREFS -u FURBLE_SIM_RESTART_STEP -u FURBLE_SIM_FIX_SECOND \
+    FURBLE_SIM_ENV_GUARD_TARGET="$target" \
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
     LD_PRELOAD="$guard_dir/env_mutation_guard.so" "$@"
 }
 
-run_guarded "$BIN" --script "$ROOT/sim/scripts/smoke.txt"
-run_guarded "$BIN" --script "$ROOT/sim/scenarios/e2e/restart-persist.txt"
+run_guarded FURBLE_SIM_PREFS "$BIN" --script "$ROOT/sim/scripts/smoke.txt"
+run_guarded FURBLE_SIM_RESTART_STEP "$BIN" --script "$ROOT/sim/scenarios/e2e/restart-persist.txt"
 
-for scenario in "$ROOT/sim/scripts/smoke.txt" "$ROOT/sim/scenarios/e2e/restart-persist.txt"; do
-  if run_guarded "$OLD_BIN" --script "$scenario"; then
+expect_old_guard() {
+  target=$1
+  scenario=$2
+  log="$guard_dir/old-${target}.log"
+  if run_guarded "$target" "$OLD_BIN" --script "$scenario" >"$log" 2>&1; then
     echo "old simulator unexpectedly passed env guard: $scenario" >&2
     exit 1
   else
@@ -60,6 +66,15 @@ for scenario in "$ROOT/sim/scripts/smoke.txt" "$ROOT/sim/scenarios/e2e/restart-p
     echo "old simulator failed without the expected env guard status: $status" >&2
     exit 1
   fi
-done
+  expected="sim env guard: setenv(${target}) after SDL initialization"
+  if ! grep -F -x "$expected" "$log" >/dev/null 2>&1; then
+    echo "old simulator did not report the exact guarded variable: $target" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+}
+
+expect_old_guard FURBLE_SIM_PREFS "$ROOT/sim/scripts/smoke.txt"
+expect_old_guard FURBLE_SIM_RESTART_STEP "$ROOT/sim/scenarios/e2e/restart-persist.txt"
 
 echo "environment ordering guard passed for current and rejected the old simulator."

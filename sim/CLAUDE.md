@@ -155,10 +155,11 @@ including empty strings and failed-save rollback.
   cached. It requires the same dependency overrides as
   `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
-  interposer that rejects `setenv` and `unsetenv` after SDL initialization,
+  interposer that resolves libc functions before simulator threads start and
+  rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
   then runs the fresh and restart scenarios against the current binary and
-  expects the pre-fix binary to trip the guard. This checks ordering only; it
-  is not crash-causality evidence.
+  expects the pre-fix binary to trip each exact target. This checks ordering
+  only; it is not crash-causality evidence.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
