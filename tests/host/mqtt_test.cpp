@@ -222,16 +222,14 @@ int main(void) {
 
   require(host_mqtt::hasRetained("homeassistant/device/furble_hub-42/config"),
           "hub discovery was not retained");
-  require(
-      host_mqtt::hasRetained("homeassistant/device/furble_hub-42_" + camera_id + "/config"),
-      "camera discovery was not retained");
+  require(host_mqtt::hasRetained("homeassistant/device/furble_hub-42_" + camera_id + "/config"),
+          "camera discovery was not retained");
   mqtt.clearDiscovery();
   ownerStep(mqtt);
   require(!host_mqtt::hasRetained("homeassistant/device/furble_hub-42/config"),
           "empty retained hub discovery did not delete the broker record");
-  require(
-      !host_mqtt::hasRetained("homeassistant/device/furble_hub-42_" + camera_id + "/config"),
-      "empty retained camera discovery did not delete the broker record");
+  require(!host_mqtt::hasRetained("homeassistant/device/furble_hub-42_" + camera_id + "/config"),
+          "empty retained camera discovery did not delete the broker record");
 
   host_mqtt::deliver(root_topic + "/cmd/connect", camera_id);
   ownerStep(mqtt);
@@ -319,9 +317,8 @@ int main(void) {
 
   host_mqtt::deliver(root_topic + "/cmd/shutter", "");
   ownerStep(mqtt);
-  require(
-      latestPublishedTopic(root_topic + "/state/error").payload == "unknown shutter command",
-      "empty shutter command was not rejected");
+  require(latestPublishedTopic(root_topic + "/state/error").payload == "unknown shutter command",
+          "empty shutter command was not rejected");
 
   host_mqtt::deliver(root_topic + "/cmd/shutter", "hold 60001");
   ownerStep(mqtt);
@@ -341,9 +338,8 @@ int main(void) {
   ownerStep(mqtt);
   require(Control::commands().size() == gated_command_count,
           "command reached Control while it was not active");
-  require(
-      latestPublishedTopic(root_topic + "/state/error").payload == "shutter press rejected",
-      "inactive Control state was not rejected");
+  require(latestPublishedTopic(root_topic + "/state/error").payload == "shutter press rejected",
+          "inactive Control state was not rejected");
   Control::setState(Control::STATE_ACTIVE);
 
   const size_t retained_command_count = Control::commands().size();
