@@ -28,6 +28,7 @@ public enum CompanionFailure: Error, Equatable, Sendable {
   case malformedPacket
   case payloadTooLarge
   case linkLost
+  case cameraTransactionTimedOut
 }
 
 /// Serializes an explicit stop followed by a requested restart. CoreBluetooth
@@ -126,6 +127,50 @@ public enum CompanionCommand: Equatable, Sendable {
   case disconnect
 }
 
+public struct CompanionCameraTransaction: Equatable, Sendable {
+  public enum Kind: Equatable, Sendable {
+    case list
+    case operation(FurbleProtocol.CameraOperation, id: UInt8)
+  }
+
+  public enum Inbound: Equatable, Sendable {
+    case listRecord
+    case listTerminator(status: UInt8)
+    case operationAcknowledgement(status: UInt8)
+    case unsolicited
+    case ignored
+  }
+
+  public private(set) var kind: Kind?
+
+  public init() {}
+
+  @discardableResult
+  public mutating func begin(_ kind: Kind) -> Bool {
+    guard self.kind == nil else { return false }
+    self.kind = kind
+    return true
+  }
+
+  public mutating func finish() { kind = nil }
+  public mutating func cancel() { kind = nil }
+
+  public func classify(_ record: FurbleProtocol.CameraRecord) -> Inbound {
+    switch kind {
+    case .list:
+      if record.isTerminator { return .listTerminator(status: record.status) }
+      return record.isOperationAcknowledgement ? .ignored : .listRecord
+    case .operation(_, let id):
+      if record.isOperationAcknowledgement {
+        return record.cameraID == id ? .operationAcknowledgement(status: record.status) : .ignored
+      }
+      return .unsolicited
+    case nil:
+      return record.isOperationAcknowledgement ? .ignored : .unsolicited
+    }
+  }
+}
+
 /// BLE callbacks are translated into this deterministic state machine. It has
 /// no CoreBluetooth dependency, so reconnect and security behavior are tested
 /// on the host without a radio or a UI.
@@ -135,13 +180,18 @@ public struct CompanionStateMachine: Sendable {
   public private(set) var status: FurbleProtocol.Status?
   public private(set) var cameras: [FurbleProtocol.CameraRecord] = []
   public private(set) var lastError: CompanionFailure?
+  public private(set) var cameraListError: UInt8?
   public private(set) var requiresAuthentication = true
+  public var supportsCameras: Bool { hasCameras && capability?.supportsCameras == true }
+  public var cameraListPending: Bool { cameraListRecords != nil }
   private var auth: FurbleAuthSession?
   private var hasStatus = false
   private var hasSettings = false
   private var hasTrigger = false
   private var hasAuth = false
   private var hasCameras = false
+  private var cameraListRecords: [UInt8: FurbleProtocol.CameraRecord]?
+  private var cameraEventsDuringList: [UInt8: FurbleProtocol.CameraRecord] = [:]
 
   public init() {}
 
@@ -154,6 +204,7 @@ public struct CompanionStateMachine: Sendable {
     capability = nil
     status = nil
     cameras = []
+    cameraListError = nil
     auth = nil
     requiresAuthentication = true
     hasStatus = false
@@ -161,6 +212,8 @@ public struct CompanionStateMachine: Sendable {
     hasTrigger = false
     hasAuth = false
     hasCameras = false
+    cameraListRecords = nil
+    cameraEventsDuringList.removeAll()
     return .scan
   }
 
@@ -292,14 +345,74 @@ public struct CompanionStateMachine: Sendable {
     guard phase == .ready, hasCameras else { return false }
     do {
       let camera = try FurbleProtocol.decodeCameraRecord(data)
-      if camera.isTerminator { return true }
-      cameras.removeAll { $0.cameraID == camera.cameraID }
-      cameras.append(camera)
+      if camera.isTerminator {
+        guard let records = cameraListRecords else { return true }
+        guard camera.status == 0 else {
+          cameraListRecords = nil
+          cameraEventsDuringList.removeAll()
+          cameraListError = camera.status
+          return true
+        }
+        var merged = records.keys.sorted().compactMap { records[$0] }
+        for event in cameraEventsDuringList.values {
+          merged.removeAll { $0.cameraID == event.cameraID }
+          merged.append(event)
+        }
+        cameras = merged.sorted { $0.cameraID < $1.cameraID }
+        cameraListRecords = nil
+        cameraEventsDuringList.removeAll()
+        cameraListError = nil
+        return true
+      }
+      if camera.isOperationAcknowledgement { return true }
+      if cameraListRecords != nil {
+        cameraListRecords?[camera.cameraID] = camera
+        cameraEventsDuringList[camera.cameraID] = camera
+        return true
+      }
+      upsertCamera(camera)
       return true
     } catch {
       lastError = .malformedPacket
       return false
     }
+  }
+
+  @discardableResult
+  public mutating func beginCameraList() -> Bool {
+    guard phase == .ready, supportsCameras else { return false }
+    guard cameraListRecords == nil else { return false }
+    cameraListRecords = [:]
+    cameraEventsDuringList.removeAll()
+    cameraListError = nil
+    return true
+  }
+
+  public mutating func cancelCameraList() {
+    cameraListRecords = nil
+    cameraEventsDuringList.removeAll()
+    cameraListError = nil
+  }
+
+  public mutating func didReceiveCameraEvent(_ data: Data) -> Bool {
+    guard phase == .ready, hasCameras else { return false }
+    do {
+      let camera = try FurbleProtocol.decodeCameraRecord(data)
+      guard !camera.isTerminator else { return true }
+      guard !camera.isOperationAcknowledgement else { return true }
+      if cameraListRecords != nil { cameraEventsDuringList[camera.cameraID] = camera }
+      upsertCamera(camera)
+      return true
+    } catch {
+      lastError = .malformedPacket
+      return false
+    }
+  }
+
+  private mutating func upsertCamera(_ camera: FurbleProtocol.CameraRecord) {
+    cameras.removeAll { $0.cameraID == camera.cameraID }
+    cameras.append(camera)
+    cameras.sort { $0.cameraID < $1.cameraID }
   }
 
   public func privileged(_ command: CompanionCommand) throws -> CompanionCommand {
@@ -334,6 +447,9 @@ public struct CompanionStateMachine: Sendable {
     hasTrigger = false
     hasAuth = false
     hasCameras = false
+    cameraListRecords = nil
+    cameraEventsDuringList.removeAll()
+    cameraListError = nil
   }
 
   public mutating func retry(attempt: Int) -> CompanionCommand? {

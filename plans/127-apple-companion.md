@@ -1,7 +1,8 @@
 # 127 - Apple companion foundation
 
 Status: implementation slice. Shared Swift protocol, auth gate, native iOS and
-macOS target definition, and host tests are present under `companion/apple`.
+macOS target definition, host tests, and the capability-gated Cameras tab are
+present under `companion/apple`.
 The Xcode project is generated reproducibly from `project.yml` with the pinned
 XcodeGen release documented in the companion README.
 
@@ -27,17 +28,20 @@ XcodeGen release documented in the companion README.
 - Opt-in Core Location bridge that emits UTC fixes with age and accuracy, and
   never starts location updates merely because a device is paired.
 - Shared SwiftUI iOS/macOS app source plus platform privacy usage strings.
+- Capability-gated Cameras section with stable camera IDs, selection toggles,
+  connect-selected, disconnect, live state, RSSI, and firmware request errors.
 - Native iOS and macOS application and unit-test targets, Keychain access-group
   entitlements, Bluetooth restoration declarations, and unsigned CI build
   definitions.
 
 ## Follow-up gates
 
-- Firmware must expose the Auth characteristic with the challenge format from
-  plan 116 before a physical Apple app can connect. Capability bit 1 is the
-  cameras feature from plan 51, not an authentication flag.
+- A physical Apple app connection requires firmware exposing the Auth
+  characteristic with the challenge format from plan 116. Capability bit 1 is
+  the cameras feature from plan 51, not an authentication flag.
 - Firmware must expose the cameras characteristic from plan 51 before camera
-  rows are shown. The current client capability-gates it.
+  rows are shown. The current client capability-gates it and reports when the
+  feature is unavailable.
 - The generated project has one unsigned iOS target, one unsigned macOS target,
   and matching unit-test targets around the shared Swift package. CI builds and
   tests both platforms on a pinned macOS/Xcode image. Real iPhone/Mac
