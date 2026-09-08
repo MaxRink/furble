@@ -7997,6 +7997,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
     lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve,
                                LV_PART_MAIN);
+    lv_obj_set_width(m_Intervalometer.m_SleepThreshold.m_Label, LV_PCT(100));
+    lv_label_set_long_mode(m_Intervalometer.m_SleepThreshold.m_Label, LV_LABEL_LONG_WRAP);
   }
 
   if (!Platform::getInstance().canTimedWake()) {

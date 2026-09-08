@@ -336,6 +336,8 @@ Implemented on branch `feat/19-interval-deep-sleep`.
 - On Stick layouts the Deep Sleep switch and threshold rows reserve the
   existing floating indicator column. The reservation is scoped to these
   timed-wake rows, not a page-wide PR273 layout import.
+- The threshold name is width-constrained and wraps within that reservation
+  when its value occupies a second line.
 - Spinner menu rows request scroll-on-focus, so the threshold row revealed by
   Deep Sleep is brought fully into the encoder viewport.
 - The base tree has no GPS motion-policy hook, so no separate GPS policy change was

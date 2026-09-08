@@ -117,6 +117,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   row and the timed-wake switch and threshold rows must keep
   `UI::floatingIndicatorReserve()` clear on the right, and
   `ui.indicator_clearance` is the check.
+  The timed-wake threshold label uses the same width-constrained wrapping
+  pattern as other rows when its value wraps below the name.
   Spinner menu rows must also set `LV_OBJ_FLAG_SCROLL_ON_FOCUS` so a revealed
   timed-wake threshold remains visible to encoder navigation.
   Scan advertisements are copied by `Scan` and drained on this task before
