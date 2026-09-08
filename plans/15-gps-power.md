@@ -159,6 +159,12 @@ Rebase notes:
   it does not infer freshness from `location.age()`. `gps-duty-no-fix.txt` keeps
   a quality-0 burst from arming standby, while the existing ephemeris-stale
   scenario retains the bad-RMC checksum coverage.
+- Root validation of `7945d925` passed the build and six GPS scenarios:
+  `gps-standby-wake`, `gps-duty-no-fix`, `gps-concurrent-pages`,
+  `gps-ephemeris-replay`, `gps-ephemeris-stale`, and `gps-ephemeris-invalid`.
+  The retained baseline binary failed the second-fresh-fix assertion, while the
+  fixed-run logs are recorded as `~/b/c265-fixed-*.log` and the negative proof as
+  `~/b/c265-gps-wire-negative.log`.
 - The GPS task now uses these states: `ACQUIRING` holds the lock while the first
   burst is found, `MEASURING` learns an unknown interval for five seconds,
   `BURST` holds the lock while NMEA data is received, `WAITING` releases the
