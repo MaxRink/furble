@@ -333,9 +333,9 @@ Implemented on branch `feat/19-interval-deep-sleep`.
   rows and must still fit, while compact interactive pages always require no
   overflow. The simulator exposes `platform.timed_wake` so each scenario first
   proves it is exercising the intended capability class.
-- On Stick layouts the Deep Sleep switch row reserves the existing floating
-  indicator column. The reservation is scoped to this timed-wake row, not a
-  page-wide PR273 layout import.
+- On Stick layouts the Deep Sleep switch and threshold rows reserve the
+  existing floating indicator column. The reservation is scoped to these
+  timed-wake rows, not a page-wide PR273 layout import.
 - Spinner menu rows request scroll-on-focus, so the threshold row revealed by
   Deep Sleep is brought fully into the encoder viewport.
 - The base tree has no GPS motion-policy hook, so no separate GPS policy change was

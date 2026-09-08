@@ -7991,6 +7991,13 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   addSpinnerPage(menu, m_IntervalWaitStr, m_Intervalometer.m_Wait);
   lv_obj_t *sleepRow = addSettingItem(menu.page, NULL, Settings::IVL_SLEEP);
   addSpinnerPage(menu, m_IntervalSleepThresholdStr, m_Intervalometer.m_SleepThreshold);
+  // The threshold row is revealed beside the floating right indicator on Stick
+  // layouts. Keep its name and value inside the reserved column; without this,
+  // the wrapped value leaves the long row label under the indicator.
+  if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+    lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve,
+                               LV_PART_MAIN);
+  }
 
   if (!Platform::getInstance().canTimedWake()) {
     lv_obj_add_flag(lv_obj_get_parent(sleepRow), LV_OBJ_FLAG_HIDDEN);

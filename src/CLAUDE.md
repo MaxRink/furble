@@ -114,8 +114,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   invalidates the row on every frame, which `ui.row_scrolling` and
   `ui.invalidate_count` measure. A wrapped row is taller and fills its width, so
   it reaches the indicators the Stick boards float over the page: any full width
-  row and the timed-wake switch row must keep `UI::floatingIndicatorReserve()`
-  clear on the right, and
+  row and the timed-wake switch and threshold rows must keep
+  `UI::floatingIndicatorReserve()` clear on the right, and
   `ui.indicator_clearance` is the check.
   Spinner menu rows must also set `LV_OBJ_FLAG_SCROLL_ON_FOCUS` so a revealed
   timed-wake threshold remains visible to encoder navigation.
