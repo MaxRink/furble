@@ -162,11 +162,17 @@ for seed in $SEEDS $XFAIL; do
     status=1
     continue
   fi
+  summary_valid=1
   if ! validate_summary "$output_file" "$seed" "$STEPS"; then
+    summary_valid=0
     status=1
   fi
   rm -f "$output_file"
-  if is_xfail "$seed"; then
+  if [ "$summary_valid" -eq 0 ]; then
+    # A missing or malformed report is a protocol failure, never an expected
+    # finding. Do not let it look like PASS or XFAIL.
+    echo "FAIL fuzz seed $seed (missing or invalid summary)"
+  elif is_xfail "$seed"; then
     if [ "$rc" -ne 0 ]; then
       echo "XFAIL fuzz seed $seed (expected finding, exit $rc)"
     else
@@ -194,23 +200,40 @@ if [ -n "$REPEAT_SEED" ]; then
   echo "=== determinism replay seed $REPEAT_SEED ($STEPS steps) ==="
   first=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-a.XXXXXX") || exit 1
   second=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-b.XXXXXX") || exit 1
+  replay_valid=1
+  replay_failed=0
   for output in "$first" "$second"; do
-    "$TIMEOUT" -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$REPEAT_SEED" \
-      --fuzz-steps "$STEPS" >"$output" 2>&1
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-      echo "determinism replay seed $REPEAT_SEED exited $rc" >&2
+    if "$TIMEOUT" -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$REPEAT_SEED" \
+        --fuzz-steps "$STEPS" >"$output" 2>&1; then
+      replay_rc=0
+    else
+      replay_rc=$?
+    fi
+    if [ "$replay_rc" -ne 0 ]; then
+      echo "determinism replay seed $REPEAT_SEED exited $replay_rc" >&2
+      replay_failed=1
+      status=1
+    fi
+    if ! validate_summary "$output" "$REPEAT_SEED" "$STEPS"; then
+      replay_valid=0
       status=1
     fi
     grep '^FUZZ ' "$output" \
       | sed -e 's/observed_delta=[0-9]*/observed_delta=X/g' \
         -e 's/no_observed_delta=[0-9]*/no_observed_delta=X/g' >"$output.fuzz"
   done
-  if diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
+  if [ "$replay_failed" -eq 0 ] && [ "$replay_valid" -eq 1 ] \
+      && diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
     echo "PASS determinism replay seed $REPEAT_SEED"
   else
-    echo "FAIL determinism replay seed $REPEAT_SEED (fuzz report lines diverged)"
-    diff -u "$first.fuzz" "$second.fuzz" | head -40
+    if [ "$replay_valid" -eq 0 ]; then
+      echo "FAIL determinism replay seed $REPEAT_SEED (missing or invalid summary)"
+    elif [ "$replay_failed" -ne 0 ]; then
+      echo "FAIL determinism replay seed $REPEAT_SEED (simulator exited non-zero)"
+    else
+      echo "FAIL determinism replay seed $REPEAT_SEED (fuzz report lines diverged)"
+      diff -u "$first.fuzz" "$second.fuzz" | head -40
+    fi
     status=1
   fi
   rm -f "$first" "$second" "$first.fuzz" "$second.fuzz"
