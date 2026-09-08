@@ -171,6 +171,7 @@ class UI {
  public:
   enum class Request { CONNECT_SAVED, DISCONNECT };
   static bool sendRequest(Request, int32_t) { return true; }
+  static void notifyGestureSettingsChanged() {}
 };
 
 class Device {
