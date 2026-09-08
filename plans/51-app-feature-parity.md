@@ -453,10 +453,13 @@ the app PR that consumes it.
 3. **App: settings editors.** Metadata table, typed editors, INTERVAL editor,
    restart and danger badges, confirm flow. Works against firmware 1; against
    older firmware it degrades to the current behavior.
-4. **App: cameras tab.** The Apple client now lists the stable camera catalog,
-   supports selection, connect-selected and disconnect, and renders live state.
-   Android still needs the equivalent tab and repository flow.
-   Hidden entirely when feature bit 1 or the characteristic is absent.
+4. **App: cameras tabs.** Both companion clients now consume the stable camera
+   catalog. The Apple client lists the catalog, supports selection,
+   connect-selected and disconnect, and renders live state. The Android
+   implementation is recorded in
+   [176-android-camera-catalog.md](176-android-camera-catalog.md).
+   Both tabs are hidden entirely when feature bit 1 or the characteristic is
+   absent.
 5. **Rig: scenarios and corpus.** Plans/29 phase 1 golden payloads gain the
    cameras records, the capability read and the v2 settings flags. Phase 5
    gains three scenarios: full settings sweep (list, edit one of each type,

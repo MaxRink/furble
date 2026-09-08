@@ -50,6 +50,46 @@ internal fun classifyAuthPacket(value: ByteArray, challengePending: Boolean): Au
     return AuthPacketAction.INVALID
 }
 
+internal fun cameraResponseCompletes(
+    operation: Int,
+    cameraId: Int,
+    record: FurbleProtocol.CameraRecord,
+): Boolean {
+    if (record.cameraId != cameraId) return false
+    if (operation == FurbleProtocol.CameraOperation.LIST) {
+        return record.isTerminator || record.status != FurbleProtocol.CameraStatus.OK
+    }
+    if (record.status != FurbleProtocol.CameraStatus.OK) return true
+    return record.cameraId == cameraId &&
+        record.cameraType == 0 && record.flags == 0 && record.progress == 0 &&
+        record.rssi == FurbleProtocol.CAMERA_RSSI_UNKNOWN &&
+        record.state == FurbleProtocol.CameraState.IDLE && record.name.isEmpty()
+}
+
+internal data class CameraRequest(val operation: Int, val cameraId: Int)
+
+internal class CameraRequestQueue {
+    private val pending = ArrayDeque<CameraRequest>()
+    var inFlight: CameraRequest? = null
+        private set
+
+    fun enqueue(request: CameraRequest) {
+        pending.addLast(request)
+    }
+
+    fun startNext(): CameraRequest? {
+        if (inFlight != null || pending.isEmpty()) return null
+        return pending.removeFirst().also { inFlight = it }
+    }
+
+    fun complete(): CameraRequest? = inFlight.also { inFlight = null }
+
+    fun clear() {
+        pending.clear()
+        inFlight = null
+    }
+}
+
 /**
  * One event-driven GATT session. Every ATT operation waits for its callback
  * before the next response-bearing operation starts.
@@ -66,6 +106,9 @@ class GattConnection(
         fun onStatus(snapshot: FurbleProtocol.StatusSnapshot)
         fun onCapabilities(capability: FurbleProtocol.CapabilitySnapshot?)
         fun onSettings(response: FurbleProtocol.SettingsResponse)
+        fun onCamera(record: FurbleProtocol.CameraRecord)
+        fun onCameraListStarted()
+        fun onCameraAvailability(available: Boolean)
         fun onAuthAvailability(supported: Boolean)
         fun onAuthResult(result: Int)
         fun onDisconnected()
@@ -76,6 +119,7 @@ class GattConnection(
     private val handler = Handler(Looper.getMainLooper())
     private val authInputDispatcher = AuthInputDispatcher { task -> handler.post { task() } }
     private val operations = ArrayDeque<Operation>()
+    private val cameraRequests = CameraRequestQueue()
     private val callback = Callback()
 
     private var gatt: BluetoothGatt? = null
@@ -84,6 +128,7 @@ class GattConnection(
     private var statusCharacteristic: BluetoothGattCharacteristic? = null
     private var settingsCharacteristic: BluetoothGattCharacteristic? = null
     private var triggerCharacteristic: BluetoothGattCharacteristic? = null
+    private var cameraCharacteristic: BluetoothGattCharacteristic? = null
     private var authCharacteristic: BluetoothGattCharacteristic? = null
     private var capabilityCharacteristic: BluetoothGattCharacteristic? = null
     private var currentOperation: Operation? = null
@@ -93,6 +138,8 @@ class GattConnection(
     private var authChallengePending = false
     private val authAttemptTracker = AuthAttemptTracker()
     private var authGeneration = 0L
+    private var cameraResponseTimeout: Runnable? = null
+    private var operationTimeout: Runnable? = null
 
     fun connect() {
         handler.post {
@@ -161,6 +208,82 @@ class GattConnection(
                 waitForCallback = true,
             )
         }
+    }
+
+    fun requestCameras() {
+        handler.post {
+            queueCameraRequest(CameraRequest(FurbleProtocol.CameraOperation.LIST, 0xFF))
+        }
+    }
+
+    fun setCamera(operation: Int, cameraId: Int) {
+        handler.post {
+            queueCameraRequest(CameraRequest(operation, cameraId))
+        }
+    }
+
+    private fun queueCameraRequest(request: CameraRequest) {
+        if (!isReady) {
+            listener.onError("furble is not ready for camera operations")
+            return
+        }
+        if (cameraCharacteristic == null) {
+            listener.onError("furble camera characteristic is unavailable")
+            return
+        }
+        cameraRequests.enqueue(request)
+        pumpCameraRequest()
+    }
+
+    private fun pumpCameraRequest() {
+        if (!isReady) return
+        val request = cameraRequests.startNext() ?: return
+        enqueueCharacteristicWrite(
+            uuid = FurbleProtocol.CAMERAS_UUID,
+            value = if (request.operation == FurbleProtocol.CameraOperation.LIST) {
+                FurbleProtocol.encodeCameraListRequest()
+            } else {
+                FurbleProtocol.encodeCameraRequest(request.operation, request.cameraId)
+            },
+            writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+            waitForCallback = true,
+        )
+    }
+
+    private fun armCameraResponseTimeout(request: CameraRequest) {
+        cameraResponseTimeout?.let(handler::removeCallbacks)
+        val timeout = Runnable {
+            if (cameraRequests.inFlight != request) return@Runnable
+            abortCameraRequests()
+            listener.onError("furble camera operation timed out")
+            closeInternal(notify = true)
+        }
+        cameraResponseTimeout = timeout
+        handler.postDelayed(timeout, CAMERA_RESPONSE_TIMEOUT_MS)
+    }
+
+    private fun armOperationTimeout(operation: Operation) {
+        operationTimeout?.let(handler::removeCallbacks)
+        val timeout = Runnable {
+            if (currentOperation !== operation) return@Runnable
+            abortCameraRequests()
+            listener.onError("furble ATT operation timed out")
+            closeInternal(notify = true)
+        }
+        operationTimeout = timeout
+        handler.postDelayed(timeout, ATT_OPERATION_TIMEOUT_MS)
+    }
+
+    private fun completeCameraRequest() {
+        cameraResponseTimeout?.let(handler::removeCallbacks)
+        cameraResponseTimeout = null
+        cameraRequests.complete()
+    }
+
+    private fun abortCameraRequests() {
+        cameraResponseTimeout?.let(handler::removeCallbacks)
+        cameraResponseTimeout = null
+        cameraRequests.clear()
     }
 
     fun sendTrigger(operation: Int, holdMs: Int = 0) {
@@ -245,6 +368,7 @@ class GattConnection(
         statusCharacteristic = service?.getCharacteristic(FurbleProtocol.STATUS_UUID)
         settingsCharacteristic = service?.getCharacteristic(FurbleProtocol.SETTINGS_UUID)
         triggerCharacteristic = service?.getCharacteristic(FurbleProtocol.TRIGGER_UUID)
+        cameraCharacteristic = service?.getCharacteristic(FurbleProtocol.CAMERAS_UUID)
         authCharacteristic = service?.getCharacteristic(FurbleProtocol.AUTH_UUID)
         capabilityCharacteristic = service?.getCharacteristic(FurbleProtocol.CAPABILITY_UUID)
         if (service == null || locationCharacteristic == null || statusCharacteristic == null ||
@@ -253,6 +377,7 @@ class GattConnection(
             fail("The furble companion service is missing a required characteristic")
             return
         }
+        listener.onCameraAvailability(cameraCharacteristic != null)
         listener.onAuthAvailability(authCharacteristic != null)
         if (!gatt.requestMtu(256)) {
             fail("The phone could not request the required BLE MTU")
@@ -300,7 +425,7 @@ class GattConnection(
                     return@enqueueDescriptorWrite
                 }
                 if (auth == null) {
-                    finishReady(capability)
+                    configureCameraNotifications(capability)
                     return@enqueueDescriptorWrite
                 }
                 if (authDescriptor == null) {
@@ -316,9 +441,36 @@ class GattConnection(
                         fail("furble AUTH indication setup failed; retry the connection")
                         return@enqueueDescriptorWrite
                     }
-                    finishReady(capability)
+                    configureCameraNotifications(capability)
                 }
             }
+        }
+    }
+
+    private fun configureCameraNotifications(capability: BluetoothGattCharacteristic?) {
+        val currentGatt = gatt ?: return
+        val camera = cameraCharacteristic
+        if (camera == null) {
+            finishReady(capability)
+            return
+        }
+        val descriptor = camera.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_UUID)
+        if (descriptor == null) {
+            fail("furble camera notification descriptor is missing")
+            return
+        }
+        if (!currentGatt.setCharacteristicNotification(camera, true)) {
+            fail("Android could not enable furble camera notifications")
+            return
+        }
+        // The camera characteristic carries both indications (responses) and
+        // notifications (live state). NimBLE accepts both CCCD bits together.
+        enqueueDescriptorWrite(descriptor, byteArrayOf(0x03, 0x00)) {
+            if (!it) {
+                fail("furble camera notification setup failed; retry the connection")
+                return@enqueueDescriptorWrite
+            }
+            finishReady(capability)
         }
     }
 
@@ -390,6 +542,23 @@ class GattConnection(
             listener.onError("Bluetooth permission was revoked")
             false
         }
+        if (started) {
+            if (current is Operation.WriteCharacteristic &&
+                current.characteristic.uuid == FurbleProtocol.CAMERAS_UUID &&
+                current.waitForCallback
+            ) {
+                cameraRequests.inFlight?.let { request ->
+                    if (request.operation == FurbleProtocol.CameraOperation.LIST) {
+                        listener.onCameraListStarted()
+                    }
+                    armCameraResponseTimeout(request)
+                }
+            }
+            if (current is Operation.ReadCharacteristic ||
+                current is Operation.WriteDescriptor ||
+                current is Operation.WriteCharacteristic && current.waitForCallback
+            ) armOperationTimeout(current)
+        }
         if (!started) {
             finishCurrent(false, "Android rejected the BLE operation")
         } else if (current is Operation.WriteCharacteristic && !current.waitForCallback) {
@@ -400,14 +569,25 @@ class GattConnection(
 
     private fun finishCurrent(success: Boolean, failureMessage: String?) {
         val operation = currentOperation ?: return
+        operationTimeout?.let(handler::removeCallbacks)
+        operationTimeout = null
         currentOperation = null
         if (operation is Operation.WriteCharacteristic &&
             operation.characteristic.uuid == FurbleProtocol.AUTH_UUID && !success
         ) {
             clearAuthSecrets()
         }
+        val failedCameraWrite = operation is Operation.WriteCharacteristic &&
+            operation.characteristic.uuid == FurbleProtocol.CAMERAS_UUID && !success
+        if (failedCameraWrite) {
+            abortCameraRequests()
+        }
         if (!success && failureMessage != null) listener.onError(failureMessage)
         if (operation is Operation.WriteDescriptor) operation.completion(success)
+        if (failedCameraWrite) {
+            closeInternal(notify = true)
+            return
+        }
         pump()
     }
 
@@ -418,6 +598,9 @@ class GattConnection(
 
     private fun closeInternal(notify: Boolean) {
         isReady = false
+        operationTimeout?.let(handler::removeCallbacks)
+        operationTimeout = null
+        abortCameraRequests()
         operations.clear()
         currentOperation = null
         service = null
@@ -425,6 +608,7 @@ class GattConnection(
         statusCharacteristic = null
         settingsCharacteristic = null
         triggerCharacteristic = null
+        cameraCharacteristic = null
         authCharacteristic = null
         capabilityCharacteristic = null
         clearAuthSecrets()
@@ -444,6 +628,21 @@ class GattConnection(
             FurbleProtocol.STATUS_UUID -> FurbleProtocol.decodeStatus(value)?.let(listener::onStatus)
             FurbleProtocol.CAPABILITY_UUID -> listener.onCapabilities(FurbleProtocol.parseCapability(value))
             FurbleProtocol.SETTINGS_UUID -> FurbleProtocol.parseSettingsResponse(value)?.let(listener::onSettings)
+            FurbleProtocol.CAMERAS_UUID -> {
+                val record = FurbleProtocol.parseCameraRecord(value)
+                if (record == null) {
+                    abortCameraRequests()
+                    listener.onError("furble sent an invalid camera record")
+                    closeInternal(notify = true)
+                } else {
+                    val request = cameraRequests.inFlight
+                    if (request != null && cameraResponseCompletes(request.operation, request.cameraId, record)) {
+                        completeCameraRequest()
+                    }
+                    listener.onCamera(record)
+                    if (request != null && cameraRequests.inFlight == null) pumpCameraRequest()
+                }
+            }
             FurbleProtocol.AUTH_UUID -> dispatchAuth(value)
         }
     }
@@ -565,9 +764,9 @@ class GattConnection(
             val value = characteristic.value?.copyOf() ?: byteArrayOf()
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
-                if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value)
                 val operation = currentOperation
-                if (operation is Operation.ReadCharacteristic) {
+                if (operation is Operation.ReadCharacteristic && operation.characteristic === characteristic) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value)
                     if (status != BluetoothGatt.GATT_SUCCESS && operation.optional) {
                         listener.onCapabilities(null)
                     }
@@ -588,9 +787,9 @@ class GattConnection(
         ) {
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
-                if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value.copyOf())
                 val operation = currentOperation
-                if (operation is Operation.ReadCharacteristic) {
+                if (operation is Operation.ReadCharacteristic && operation.characteristic === characteristic) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) dispatchCharacteristic(characteristic, value.copyOf())
                     if (status != BluetoothGatt.GATT_SUCCESS && operation.optional) {
                         listener.onCapabilities(null)
                     }
@@ -633,7 +832,7 @@ class GattConnection(
                 if (gatt !== this@GattConnection.gatt) return@post
                 val operation = currentOperation
                 if (operation is Operation.WriteCharacteristic &&
-                    operation.waitForCallback && operation.characteristic.uuid == characteristic.uuid
+                    operation.waitForCallback && operation.characteristic === characteristic
                 ) {
                     if (operation.characteristic.uuid == FurbleProtocol.AUTH_UUID &&
                         status != BluetoothGatt.GATT_SUCCESS
@@ -656,7 +855,7 @@ class GattConnection(
             handler.post {
                 if (gatt !== this@GattConnection.gatt) return@post
                 val operation = currentOperation
-                if (operation is Operation.WriteDescriptor && operation.descriptor.uuid == descriptor.uuid) {
+                if (operation is Operation.WriteDescriptor && operation.descriptor === descriptor) {
                     finishCurrent(
                         status == BluetoothGatt.GATT_SUCCESS,
                         "furble notification setup failed with status $status",
@@ -667,6 +866,8 @@ class GattConnection(
     }
 
     private companion object {
+        const val CAMERA_RESPONSE_TIMEOUT_MS = 5000L
+        const val ATT_OPERATION_TIMEOUT_MS = 5000L
         val CLIENT_CHARACTERISTIC_CONFIGURATION_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
