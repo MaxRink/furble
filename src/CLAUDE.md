@@ -117,6 +117,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   row and the timed-wake switch row must keep `UI::floatingIndicatorReserve()`
   clear on the right, and
   `ui.indicator_clearance` is the check.
+  Spinner menu rows must also set `LV_OBJ_FLAG_SCROLL_ON_FOCUS` so a revealed
+  timed-wake threshold remains visible to encoder navigation.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.
