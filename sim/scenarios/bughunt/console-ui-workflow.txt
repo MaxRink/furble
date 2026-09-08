@@ -60,7 +60,7 @@ assert-eventually-virtual 1000 camera.shutter_presses 1
 assert-eventually-virtual 1000 camera.shutter_releases 1
 action console interval -1
 wait 200
-assert ui.console.state delay
+assert ui.console.state shutter
 action console interval 0
 wait 200
 assert ui.interval_state idle
