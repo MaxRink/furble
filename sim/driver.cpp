@@ -132,6 +132,8 @@ bool simulatedPowerOff = false;
 std::vector<std::string> savedArguments;
 bool resumedBoot = false;
 std::atomic<bool> restartPending {false};
+// Written by driverTick and read only after main() joins the simulator thread.
+size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
@@ -2104,8 +2106,8 @@ void driverTick(void) {
       // stopped and joined every simulator task and closed the panel. Execing
       // from here would tear the process image out from under running tasks,
       // which is a crash, not a reboot.
-      const std::string next = std::to_string(stepIndex + 1);
-      setenv(RESTART_STEP_ENV, next.c_str(), 1);
+      const size_t next = stepIndex + 1;
+      restartStepIndex = next;
       std::cout << "restart: rebooting simulator, resuming at step " << next << '\n';
       std::cout.flush();
       // Advance past this step so a tick racing the shutdown cannot run it
@@ -2339,6 +2341,19 @@ bool restartRequested(void) {
 void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
+  const size_t next = restartStepIndex;
+  if (next == 0) {
+    std::cerr << "restart requested without a continuation step\n";
+    std::_Exit(1);
+  }
+  // This runs on the main thread after the simulator thread has joined and the
+  // SDL panel has closed. Keep the process-wide environment mutation out of
+  // the driver thread, where SDL can read it concurrently during its loop.
+  const std::string nextValue = std::to_string(next);
+  if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
+    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+    std::_Exit(1);
+  }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);
   for (auto &argument : savedArguments) {
@@ -2348,7 +2363,11 @@ void restartProcess(void) {
   // Carry the fixture clock across the re-exec. A receiver's clock does not
   // rewind because the ESP32 rebooted, and letting it reset made the positive
   // ephemeris leg pass on a one second margin.
-  setenv("FURBLE_SIM_FIX_SECOND", std::to_string(furble_sim_uart_fix_second()).c_str(), 1);
+  const std::string fixSecond = std::to_string(furble_sim_uart_fix_second());
+  if (setenv("FURBLE_SIM_FIX_SECOND", fixSecond.c_str(), 1) != 0) {
+    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+    std::_Exit(1);
+  }
   execvp(arguments[0], arguments.data());
   std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
   std::_Exit(1);

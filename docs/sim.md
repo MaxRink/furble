@@ -765,15 +765,17 @@ whatever the production stack does after a fault is what the scenario observes.
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
   simulator; a scripted run overrides it with a per-run path
   `.pio/furble-sim-preferences-<scenario>-<pid>.bin` and removes it again on an
-  orderly exit. One flash image per simulated device: keying it on the scenario
-  alone let two simulators running the same script from one working directory
-  erase each other's flash at boot (issue #284).
-- `FURBLE_SIM_RESTART_STEP` is set by the `restart` step for the process it
-  re-executes, and nothing else should set it. The resumed boot consumes it,
-  unsets it, and keeps the `FURBLE_SIM_PREFS` store it inherited rather than
-  wiping a fresh one, so the reboot reads the flash the previous boot wrote. It
-  lives exactly one boot; a value outside the script's step range fails the run
-  with status 2.
+  orderly exit. The path is prepared on the main thread before SDL setup and
+  simulator threads start, so the process-wide environment is not mutated while
+  SDL is reading it. One flash image per simulated device: keying it on the
+  scenario alone let two simulators running the same script from one working
+  directory erase each other's flash at boot (issue #284).
+- `FURBLE_SIM_RESTART_STEP` is recorded by the `restart` step and set by the
+  main thread only after the simulator has joined every task and closed SDL,
+  immediately before re-exec. The resumed boot consumes it, unsets it, and
+  keeps the `FURBLE_SIM_PREFS` store it inherited rather than wiping a fresh
+  one, so the reboot reads the flash the previous boot wrote. It lives exactly
+  one boot; a value outside the script's step range fails the run with status 2.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the
