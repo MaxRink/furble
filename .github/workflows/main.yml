@@ -13,6 +13,12 @@ on:
       - 'README.md'
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      core_ota_debug:
+        description: 'Also build the legacy dual-OTA Core debug profile (strict)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -223,6 +229,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.environments.outputs.matrix }}
+    env:
+      CORE_OTA_DEBUG: ${{ inputs.core_ota_debug || false }}
+      MANDATORY_CORE_DEBUG: m5stack-core-usb-debug
+      OPTIONAL_CORE_DEBUG: m5stack-core-debug
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -249,11 +259,21 @@ jobs:
           environments = set(
               re.findall(r"(?m)^\s*\[env:([^\]]+)\]\s*$", config)
           )
-          debug = [
-              f"{name}-debug"
-              for name in release
-              if f"{name}-debug" in environments
-          ]
+          debug = []
+          for name in release:
+              candidate = (
+                  os.environ["MANDATORY_CORE_DEBUG"]
+                  if name == "m5stack-core"
+                  else f"{name}-debug"
+              )
+              if candidate not in environments:
+                  raise SystemExit(f"Mandatory debug environment is missing: {candidate}")
+              debug.append(candidate)
+          if os.environ["CORE_OTA_DEBUG"].lower() == "true":
+              optional = os.environ["OPTIONAL_CORE_DEBUG"]
+              if optional not in environments:
+                  raise SystemExit(f"Optional debug environment is missing: {optional}")
+              debug.append(optional)
           platforms = release + debug
           matrix = {"platform": platforms}
 
@@ -377,12 +397,16 @@ jobs:
           flash_used = int(matches["Flash"][1])
           ram_used = int(matches["RAM"][1])
           ram_total = int(matches["RAM"][2])
-          release_environment = os.environ["FIRMWARE_ENV"].removesuffix("-debug")
-          flash_slot = {
-              "m5stack-core2": 0x600000,
-              "m5stick-s3": 0x300000,
-              "waveshare-s3-eth": 6 * 1024 * 1024,
-          }.get(release_environment, 1700 * 1024)
+          firmware_environment = os.environ["FIRMWARE_ENV"]
+          if firmware_environment == "m5stack-core-usb-debug":
+              flash_slot = 0x3E0000
+          else:
+              release_environment = firmware_environment.removesuffix("-debug")
+              flash_slot = {
+                  "m5stack-core2": 0x600000,
+                  "m5stick-s3": 0x300000,
+                  "waveshare-s3-eth": 6 * 1024 * 1024,
+              }.get(release_environment, 1700 * 1024)
           record = {
               "schema": 1,
               "env": os.environ["FIRMWARE_ENV"],

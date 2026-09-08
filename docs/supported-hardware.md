@@ -7,17 +7,26 @@ it matches the shipped behaviour. For a friendly overview see the top level
 
 ## Controllers and build environments
 
-furble builds five release firmware images. M5Unified detects the exact board at
+furble builds six release firmware images. M5Unified detects the exact board at
 runtime, so one image covers a board family. Every environment also has a
 matching `-debug` variant that adds verbose logging and the USB serial console.
 
-| Build env | Chip | Boards it runs on | Touch | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| `m5stick-c` | ESP32 | M5StickC | No | End of life. |
-| `m5stick-c-plus` | ESP32 | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
-| `m5stick-s3` | ESP32-S3 | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
-| `m5stack-core` | ESP32 | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
-| `m5stack-core2` | ESP32 | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
+| Build env | Chip | Flash | Boards it runs on | Touch | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `m5stick-c` | ESP32 | 4 MB | M5StickC | No | End of life. |
+| `m5stick-c-plus` | ESP32 | 4 MB | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
+| `m5stick-s3` | ESP32-S3 | 8 MB | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
+| `m5stack-core` | ESP32 | 4 MB | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
+| `m5stack-core2` | ESP32 | 16 MB | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
+| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
+
+MQTT availability is deferred to PR66; this c53 baseline does not enable
+`FURBLE_MQTT` in `platformio.ini`.
+For an oversized Core debug image, `m5stack-core-usb-debug` is a separate
+USB-UART-only fallback with one factory app partition. It is not a supported
+release environment, is the mandatory Core debug profile in normal CI, does not
+provide wireless updates or rollback, and is not included in the web installer.
+The legacy dual-OTA Core debug profile is an explicit workflow-dispatch opt-in.
 
 Build a board with its environment name:
 

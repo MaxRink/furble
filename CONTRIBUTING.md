@@ -46,7 +46,12 @@ whether restoration succeeded.
 There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has
 a matching `-debug` environment that adds verbose logging and the USB serial
-console. CI and releases build the six release environments only.
+console. CI builds the six release environments and their mandatory debug
+profiles. Releases keep their existing release/debug matrix.
+
+Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
+`m5stack-core-debug` profile is available only through **Run workflow** with
+the `core_ota_debug` boolean enabled. If selected, its failure is strict.
 
 Every build needs the `FURBLE_VERSION` and `FURBLE_TEST` variables:
 
@@ -54,6 +59,24 @@ Every build needs the `FURBLE_VERSION` and `FURBLE_TEST` variables:
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug -t upload
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e waveshare-s3-eth
+```
+
+If the 4 MB Core debug image exceeds its dual-OTA slot, the developer-only
+`m5stack-core-usb-debug` environment provides one large factory app partition:
+
+```sh
+FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stack-core-usb-debug -t upload
+```
+
+This is a USB-UART recovery profile, not a release or OTA-compatible image.
+Keep the existing NVS partition by avoiding a full-chip erase. Returning to a
+normal OTA image requires USB reflashing its dual-OTA partition table and
+`ota_data_initial.bin`.
+
+Validate its partition and upload contract without a build:
+
+```sh
+python3 tools/check_single_factory_profile.py
 ```
 
 All board OTA application partitions begin at `0x20000`. The repository sets

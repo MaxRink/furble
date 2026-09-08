@@ -104,3 +104,4 @@ the reservations only after checking every open PR head.
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
+- FurbleWiFi.h exposes station provisioning and NTP status for the app layer.

@@ -54,6 +54,14 @@ empty and stale addresses are ignored, duplicate addresses do not refire the
 network-up callback, and init/start failures recover cleanly. The main host CI
 job runs this test with the rest of the CTest suite.
 
+## WiFi and NTP console boundary
+
+`console_commands_test` drives the production `wifi` and `ntp` command handlers
+through the host console task. Its boundary double records provisioning,
+connectivity, NTP, and status calls, so the suite checks command parsing and
+routing for SSID/PSK, enable, connect, disconnect, forget, server, enable, and
+sync. It does not model ESP WiFi events, radio association, DHCP, or SNTP.
+
 This does not prove SPI pin wiring, W5500 PHY behavior, DHCP on a physical LAN,
 TLS, or MQTT broker behavior. Those remain the hardware boundary in
 `plans/42-waveshare-eth-node.md` and the MQTT host coverage in plan 117.

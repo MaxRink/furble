@@ -1,6 +1,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include <esp_event.h>
+#include <esp_netif.h>
 #include <algorithm>
 
 #if defined(FURBLE_NO_DISPLAY)
@@ -29,6 +31,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 #include "protocol/CameraListProtocol.h"
 
 #if defined(FURBLE_NO_DISPLAY)
@@ -252,6 +255,11 @@ void UI::serviceRequests(void) {
       case Request::FEEDBACK_TEST:
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
+
+      case Request::PERF:
+      case Request::AUDIT:
+        printf("error: not supported in headless build\n");
+        break;
     }
   }
 }
@@ -269,6 +277,9 @@ static void vUITask(void *param) {
   // geotag fixes still push to the camera.
   constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
   int64_t nextGPSService = esp_timer_get_time();
+#if defined(FURBLE_CONSOLE)
+  uint32_t count = 0;
+#endif
   while (true) {
     Platform::getInstance().update();
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
@@ -317,6 +328,9 @@ void app_main() {
   Furble::SD::init();
   Furble::BootScreen::step("Storage");
 
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+
   // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
@@ -353,6 +367,7 @@ void app_main() {
   // state, then vUITask() ticks GPS::update() to push geotag fixes.
   Furble::GPS::init();
 #endif
+  Furble::WiFi::init();
 
 #if defined(FURBLE_NO_DISPLAY)
   Furble::UI::init();

@@ -23,6 +23,7 @@ struct ApplyReport {
   ApplyError error = ApplyError::NONE;
   uint8_t failedSettingId = 0;
   size_t settingsApplied = 0;
+  size_t fieldsApplied = 0;
   size_t deferredFields = 0;
   std::string message;
 };

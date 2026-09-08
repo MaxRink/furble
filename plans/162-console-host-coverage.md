@@ -34,11 +34,13 @@ set exactly, and each command's accepted subcommand set from both sides, so an
 unknown subcommand is rejected and every documented one is not. On top of that
 it drives the state reporting commands, a settings roundtrip through the real
 store, the whole GPS command tree including the NMEA checksum the console
-computes, the power and performance counters, the bluetooth debug tree, the
-flash preparation state machine, log level control, a real provisioning blob,
-the error paths with their return codes, the line editor typed at the real
-console task, and the debug dumps against a live virtual camera connected
-through the real Control state machine.
+computes, the WiFi and NTP command boundaries including declined connect and
+sync operations that must not print a queued confirmation, the power and
+performance counters, the bluetooth debug tree, the flash preparation state
+machine, log level control, a real provisioning blob, the error paths with
+their return codes, the line editor typed at the real console task, and the
+debug dumps against a live virtual camera connected through the real Control
+state machine.
 
 The mock NimBLE device gained the four accessors the `debug ble` dump reports
 from: `isInitialized`, `getAddress`, `getPower` and `getClientByPeerAddress`.

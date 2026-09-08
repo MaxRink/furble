@@ -8,6 +8,50 @@ explicitly deferred and documents why.
 
 All line anchors below were read at commit `2b79ce8` on `master`.
 
+## 4 MB image size follow-up
+
+Size-optimized debug compilation reduced Core debug to 1,781,453 bytes, still
+40,653 bytes above its unchanged 1,740,800-byte OTA slot. Enterprise WiFi is
+explicitly outside this plan and has no credential setup path, so its unused
+SDK support is now compiled out consistently on all seven boards. WPA2/WPA3
+Personal, SoftAP, TLS, logging, assertions, and dual OTA are unchanged. This follows
+[Espressif's size guidance](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/api-guides/performance/size.html).
+That change alone saved only 564 bytes: Core debug remained 40,089 bytes over
+its slot at 1,780,889 bytes. SoftAP is also explicitly excluded below and the
+driver only starts station mode, so unused SoftAP and its AP-only SAE support
+are now compiled out too. WPA3 Personal station authentication and TLS remain
+enabled. Resulting image size remains a build gate, not an assumed saving.
+
+The resulting station-only Core debug image is 1,732,597 bytes, 8,203 bytes
+below the 1,740,800-byte OTA slot, with 54,296 bytes RAM. Dual OTA, WPA2/WPA3
+Personal station authentication, logging, assertions and TLS remain enabled.
+
+This measurement is from the WiFi-only station configuration at `330714c4`.
+The authentication and hardware-motion integration must pass a new size gate;
+the 8,203-byte margin is not evidence that the combined image fits.
+
+The combined Core debug build reached 1,743,717 bytes, 2,917 bytes over the
+same slot, with 54,472 bytes RAM. The pinned ESP GCC 14.2 compiler accepted
+`-Oz`, and the compiled Console object's DWARF producer recorded it after
+`-Os`. The actual experiment nevertheless produced exactly 1,743,717 bytes.
+The three debug environments therefore retain `-Os`; the ineffective change
+was reverted. This is not a measured power improvement or a passing capacity
+gate. Release optimization, logging, assertions, security and OTA are unchanged.
+
+The current integration preserves checked companion-password storage, generic
+and dedicated WiFi provisioning, SD network-string validation, and remembered
+access-point invalidation. Host coverage retains the real WiFi lifecycle test
+alongside the password, settings, console and companion tests. Validation of
+this combined revision is pending.
+
+The current-master integration at `262cb65e` was measured on 2026-09-07:
+Core debug uses 1,752,453 bytes of the unchanged 1,740,800-byte OTA slot,
+exceeding it by 11,653 bytes, with 54,544 bytes RAM. Compilation and linking
+completed, but the enforced size check failed. This supersedes the earlier
+2,917-byte combined-image deficit. No OTA, TLS, logging, or assertion features
+were removed. App-scoped LTO is a separate opt-in experiment, not a measured
+saving or an approved release configuration.
+
 ## Goal
 
 Let furble act as a network attached remote so a camera can be triggered from
@@ -442,6 +486,59 @@ What remains for PR-B, PR-C, PR-D to rebase onto this base:
 - The intervalometer refactor out of the UI task is still required before the
   headless build can run intervalometer sequences; PR-C depends on it.
 
+### PR33b, stage 33b
+
+Implemented in `feat/33b-provisioning`:
+
+- Added `WIFI`, `WIFI_SSID`, `WIFI_PSK`, `NTP` and `NTP_SERVER` settings.
+  WiFi and NTP default to off. Credentials default to empty. The NTP server
+  defaults to `pool.ntp.org`.
+- Added station provisioning over the console. The driver uses modem sleep,
+  stores the last BSSID and channel, retries with jittered exponential
+  backoff, and refuses fallback scans while a camera is connected.
+- Added `wifi` and `ntp` console command groups. Passphrases are never printed
+  by settings or status output. WiFi status includes radio state, link data,
+  battery current and the runtime estimate when the board reports current.
+- Added SNTP startup on the got-IP event and teardown on station disconnect.
+  NTP uses immediate UTC synchronization. GPS geodata uses the synchronized
+  system time when an NTP time is available.
+- The host console suite now drives the real `wifi` and `ntp` command handlers,
+  asserting SSID/PSK, enable, connect, disconnect, forget, server, NTP enable,
+  sync, and status routing through a boundary double. This checks command
+  parsing and dispatch only; it does not claim ESP WiFi event-loop behavior.
+
+Deviations:
+
+- The WiFi settings take wire ids 51 to 55 (`WIFI`, `WIFI_SSID`, `WIFI_PSK`,
+  `NTP`, `NTP_SERVER`). Master reached wire id 44 in the gap, so 51 to 55 do
+  not collide. The WiFi state keys for BSSID and channel are private NVS
+  values, not settings.
+
+Rebase onto the PR-A base (resolved):
+
+- The known release-link failure is fixed. The five release sdkconfig files
+  and `sdkconfig.esp32-s3-headless` now all select the LWIP TCP/IP stack
+  (`CONFIG_ESP_NETIF_TCPIP_LWIP=y`, WiFi and LWIP driver symbols enabled)
+  instead of the loopback netif, so the WiFi netstack symbols link on every
+  env. `src/CMakeLists.txt` adds `esp_wifi`, `esp_netif`, `esp_event` and
+  `lwip` to `PRIV_REQUIRES`.
+- The headless env is the primary automation surface, so it gets the same
+  WiFi/LWIP symbols as the release envs. It is not left on a loopback netif.
+- The earlier headless `syscfg/syscfg.h` failure is gone: the PR-A base ships
+  a full `sdkconfig.esp32-s3-headless` seeded from the StickS3 config with the
+  BT controller and NimBLE enabled, so the headless build compiles from clean.
+- `esp_netif_init()` and `esp_event_loop_create_default()` are called exactly
+  once at boot, guarded so WiFi bring-up does not double-init them.
+- The `m5stick-s3-debug` env keeps the shared `partitions_two_ota_8m.csv`
+  table. The WiFi station and LWIP netstack therefore use the same two-OTA
+  layout as the release envs, with the current app offset preserved.
+- The three 4 MB debug envs use `debug_build_flags = -Os -g2 -ggdb2` so the
+  console, verbose logs, symbols and assertions remain available within each
+  1700K OTA slot. Size optimization trades some source-level stepping fidelity;
+  release envs and their dual-OTA layout are unchanged.
+- Hardware verification is still pending. On-device WiFi association, IP
+  acquisition and NTP sync must be checked on a real S3 with an AP and
+  credentials before this merges.
 ---
 
 # PR33b: WiFi station provisioning over the console, and NTP

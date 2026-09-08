@@ -120,6 +120,15 @@ target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werro
 
 # Exercise the simulator's real file-backed Preferences adapter. Each CTest
 # case is a fresh process so load status and the process-local store are reset.
+add_executable(real_wifi_lifecycle_test
+               wifi/real_wifi_test.cpp
+               ${FURBLE_ROOT}/src/FurbleWiFi.cpp)
+target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/wifi/stubs
+                           ${FURBLE_ROOT}/include)
+target_compile_options(real_wifi_lifecycle_test PRIVATE -Wall -Wextra -Werror
+                                                         -Wno-unused-parameter)
+
 add_executable(actualPreferencesSim
                preferences_sim_test.cpp
                ${FURBLE_ROOT}/sim/PreferencesSim.cpp)
@@ -1624,6 +1633,11 @@ target_compile_options(console_commands_test PRIVATE
                        -Wno-non-c-typedef-for-linkage)
 target_link_libraries(console_commands_test PRIVATE Threads::Threads)
 
+target_sources(settings_nvs_roundtrip_test PRIVATE ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp)
+target_sources(provision_apply_test PRIVATE ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp)
+target_sources(companion_gatt_test PRIVATE ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp)
+target_sources(console_commands_test PRIVATE ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp)
+
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
   add_test(NAME golden-capture-replay
@@ -1633,6 +1647,7 @@ if(BUILD_TESTING)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
+  add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
   foreach(preferences_case missing empty empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})

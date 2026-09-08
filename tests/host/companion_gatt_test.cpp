@@ -590,6 +590,20 @@ void testCompanionGattFlow(void) {
           "settings response acknowledges the Brightness TLV");
   }
 
+  const std::string priorSsid = Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID);
+  std::vector<uint8_t> oversizedSsid = {2, 52, 33};
+  oversizedSsid.insert(oversizedSsid.end(), 33, 0x78);
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, oversizedSsid), "companion routes an oversized SSID write");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == priorSsid,
+        "companion rejects an oversized SSID without persisting it");
+
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {2, 52, 3, 0x61, 0, 0x62}),
+        "companion routes an embedded-NUL SSID write");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == priorSsid,
+        "companion rejects an embedded-NUL SSID without persisting it");
+
   central.clearEvents();
   const std::string rotatedPassword = "rotated companion";
   std::vector<uint8_t> rotatePassword {2, Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID,
