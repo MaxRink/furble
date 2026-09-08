@@ -126,6 +126,10 @@ a regression.
 
 ## Build entry points
 
+The CMake simulator force-includes ESP and FreeRTOS shims only for C++
+translation units. Generated C icon sources must compile without C++-only
+shim declarations.
+
 The simulator Preferences adapter is a checked file-backed NVS substitute:
 missing storage is an unset store, while empty, truncated, malformed, or
 unreadable storage is an error. Mutations commit through a temporary file and

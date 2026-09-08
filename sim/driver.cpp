@@ -1482,7 +1482,11 @@ void preparePreferences(void) {
   const std::filesystem::path path =
       std::filesystem::path(".pio")
       / ("furble-sim-preferences-" + scenarioName + "-" + std::to_string(getpid()) + ".bin");
-  setenv("FURBLE_SIM_PREFS", path.string().c_str(), 1);
+  const std::string pathValue = path.string();
+  if (setenv("FURBLE_SIM_PREFS", pathValue.c_str(), 1) != 0) {
+    std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
+    std::exit(1);
+  }
   std::remove(path.c_str());
 }
 
@@ -1876,7 +1880,11 @@ void configure(int argc, char **argv) {
       // Consume it. A leftover export in the caller's environment would make
       // every later scenario resume mid-script against a preserved store, so
       // the variable lives exactly one boot and a `restart` step sets it again.
-      unsetenv(RESTART_STEP_ENV);
+      if (unsetenv(RESTART_STEP_ENV) != 0) {
+        std::cerr << "simulator failed to clear " << RESTART_STEP_ENV << ": "
+                  << std::strerror(errno) << '\n';
+        std::exit(2);
+      }
     }
   }
 }
