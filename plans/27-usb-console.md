@@ -502,3 +502,16 @@ an observation, not a floor adjustment: run 34208310414 measured `FurbleUI.cpp`
 at 79.00% against the 79.53% floor, so no floor was reduced. Real-handler
 scenario coverage for the new workflow paths and firmware, headless, and
 `FURBLE_CONSOLE` validation remain follow-up gates.
+## September 8 expanded workflow evidence
+
+The real SDL UI workflow passes selection persistence across restart, invalid
+selection nonmutation, and interval/bulb status, start, stop, and repeated-stop
+checks. Shutter command counters include the real interval Stop button's safety
+release. Repeated Stop leaves those counters unchanged. The original invalid
+delete, successful delete, and catalog reload checks still pass.
+
+Evidence: `/home/a92615428/b/c265-expanded3-test.log`, using the simulator built
+from `249650a5` plus the reviewed scenario updates. The build log is
+`/home/a92615428/b/c265-guards-build.log`. Deselect/clear coverage, the firmware
+completion-semaphore path, and physical camera behavior are not established by
+this scenario. The coverage floor remains unchanged and needs CI measurement.
