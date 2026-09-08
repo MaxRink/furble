@@ -1540,7 +1540,10 @@ void preparePreferences(void) {
   // which remain isolated per scenario and pid.
   const char *fixedPath = std::getenv("FURBLE_SIM_DEEP_SLEEP_PREFS");
   if (fixedPath != nullptr && fixedPath[0] != '\0') {
-    setenv("FURBLE_SIM_PREFS", fixedPath, 1);
+    if (setenv("FURBLE_SIM_PREFS", fixedPath, 1) != 0) {
+      std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
+      std::exit(1);
+    }
     const char *preserve = std::getenv("FURBLE_SIM_PRESERVE_PREFS");
     if (preserve == nullptr || preserve[0] == '\0' || preserve[0] == '0') {
       std::remove(fixedPath);
