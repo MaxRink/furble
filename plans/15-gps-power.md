@@ -154,6 +154,11 @@ Rebase notes:
   another duty command. These are separate parser/command observations, not a
   coherent delivered-geotag snapshot; `tracking` and `standby` are also
   timing-sensitive snapshots around a burst.
+- A duty-cycle request is tied to TinyGPS++'s per-byte `location.isUpdated()`
+  event under `m_GPSMutex`, with valid coordinates and non-invalid fix quality;
+  it does not infer freshness from `location.age()`. `gps-duty-no-fix.txt` keeps
+  a quality-0 burst from arming standby, while the existing ephemeris-stale
+  scenario retains the bad-RMC checksum coverage.
 - The GPS task now uses these states: `ACQUIRING` holds the lock while the first
   burst is found, `MEASURING` learns an unknown interval for five seconds,
   `BURST` holds the lock while NMEA data is received, `WAITING` releases the

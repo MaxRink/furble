@@ -302,7 +302,6 @@ void GPS::resetAcquisition(uint32_t now) {
   m_PeriodCount = 0;
   m_ConsecutiveBadBursts = 0;
   m_CleanBursts = 0;
-  m_LastLocationAge = std::numeric_limits<uint32_t>::max();
   m_BurstSequence = 0;
   m_FixSequence = 0;
   m_PushedSequence = 0;
@@ -2299,11 +2298,13 @@ void GPS::update(void) {
   if (fix != Fix::NONE) {
     Control::getInstance().updateGPS(dgps, timesync);
 
-    const uint32_t fixSequence = m_FixSequence.load();
-    if ((fixSequence != 0) && (fixSequence != m_PushedSequence.load())) {
-      m_PushedSequence = fixSequence;
-      if (dutyCycleEnabled()) {
-        m_CycleRequest = true;
+    if ((source == SOURCE_UART) && (fix == Fix::LIVE)) {
+      const uint32_t fixSequence = status.fix_sequence;
+      if ((fixSequence != 0) && (fixSequence != m_PushedSequence.load())) {
+        m_PushedSequence = fixSequence;
+        if (dutyCycleEnabled()) {
+          m_CycleRequest = true;
+        }
       }
     }
 
@@ -2537,13 +2538,26 @@ void GPS::processNmea(uint8_t *data, size_t length) {
     if (m_GPS.date.isUpdated()) {
       (void)m_GPS.date.value();
     }
-    // Consume the one-shot parser signal per byte. This keeps a commit tied to
-    // the RMC that caused it instead of letting a later batch inherit it.
+    if (m_GPS.location.isUpdated()) {
+      (void)m_GPS.location.FixQuality();
+    }
+    // Consume one-shot parser signals per byte. A valid location update marks
+    // this burst once; parser age is not a fresh-fix boundary.
     for (size_t i = 0; i < length; ++i) {
       m_GPS.encode(reinterpret_cast<char *>(data + i), 1);
       noteEphemerisDate(data + i, 1, m_GPS.date.isUpdated());
       if (m_GPS.date.isUpdated()) {
         (void)m_GPS.date.value();
+      }
+      if (m_GPS.location.isUpdated()) {
+        const auto quality = m_GPS.location.FixQuality();
+        if (m_GPS.location.isValid() && (quality != TinyGPSLocation::Quality::Invalid)
+            && (m_FixSequence.load() != m_BurstSequence.load())) {
+          m_FixSequence = m_BurstSequence.load();
+#if defined(FURBLE_SIM)
+          m_SimFreshFixesParsed.fetch_add(1);
+#endif
+        }
       }
     }
   }
@@ -2661,15 +2675,6 @@ void GPS::serviceSerial(void) {
     // sentence capture. Burst and fix sequence tracking stay here so they run
     // once per read pass.
     processSerial(buffer.data(), bytes);
-
-    const status_t status = getStatusSnapshot();
-    if (status.fix && (status.location_age < m_LastLocationAge)) {
-      m_FixSequence = m_BurstSequence.load();
-#if defined(FURBLE_SIM)
-      m_SimFreshFixesParsed.fetch_add(1);
-#endif
-    }
-    m_LastLocationAge = status.location_age;
 
     m_LastSentence = Platform::getInstance().tick();
   }
@@ -2863,6 +2868,7 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
   status.chars_processed = gps.charsProcessed();
   status.sentences_passed = gps.passedChecksum();
   status.sentences_failed = gps.failedChecksum();
+  status.fix_sequence = m_FixSequence.load();
   return status;
 }
 

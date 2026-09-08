@@ -54,6 +54,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Under `FURBLE_SIM`, the fresh-fix parser counter is observability only; it lets
   GPS scenarios distinguish parser progression from a cached source without
   claiming a coherent delivered-geotag snapshot or timing-sensitive cycle state.
+  Duty-cycle freshness is established at the per-byte TinyGPS++ location update
+  boundary under `m_GPSMutex`, not by comparing `location.age()` values.
   The service mutex covers each task pass and settings reset. Before waiting
   for it, settings transitions must set the enable gate false and send the
   private front-of-queue wake event so an idle UART receive releases the mutex.

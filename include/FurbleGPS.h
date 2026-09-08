@@ -133,6 +133,9 @@ class GPS {
     uint32_t chars_processed;
     uint32_t sentences_passed;
     uint32_t sentences_failed;
+    // Sequence of the latest valid TinyGPS location update, captured under
+    // m_GPSMutex so the UI can pair it with the rest of this snapshot.
+    uint32_t fix_sequence;
   } status_t;
 
   static GPS &getInstance();
@@ -621,7 +624,6 @@ class GPS {
   size_t m_PeriodCount = 0;
   uint8_t m_ConsecutiveBadBursts = 0;
   uint8_t m_CleanBursts = 0;
-  uint32_t m_LastLocationAge = std::numeric_limits<uint32_t>::max();
   std::atomic<uint32_t> m_BurstSequence = 0;
   std::atomic<uint32_t> m_FixSequence = 0;
   std::atomic<uint32_t> m_PushedSequence = 0;

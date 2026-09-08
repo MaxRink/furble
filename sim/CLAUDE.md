@@ -360,6 +360,10 @@ including empty strings and failed-save rollback.
   the current simulated camera-list row count, allowing scan-result
   de-duplication scenarios to assert that a repeated fake advertisement does not
   add a second row.
+- Duty-cycle freshness is accepted only when TinyGPS++ reports a per-byte updated,
+  valid location with non-invalid quality. `e2e/gps-duty-no-fix.txt` covers a
+  quality-0 burst; `e2e/gps-ephemeris-stale.txt` retains the separate bad-RMC
+  checksum and ephemeris boundary.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
@@ -725,7 +729,9 @@ including empty strings and failed-save rollback.
   field and consumes `isUpdated()` per encoded byte at the CR/LF completion; the
   empty sentence adds no date evidence. `gps_uart_chunk 1` plus
   `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
-  noise.
+  noise. For duty freshness, an empty or checksum-invalid RMC likewise does not
+  create a fresh location by itself; only a per-byte location update with valid
+  coordinates and non-invalid quality can arm the cycle.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking
