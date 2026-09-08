@@ -52,6 +52,7 @@
 #include "FurbleControl.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "TestSyncController.h"
 #include "WrapSafeTime.h"
 
 const char *LOG_TAG = "furble-zombie-cancel";
@@ -274,15 +275,21 @@ int main(void) {
   check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 3000),
         "control returns to idle after the third phase");
 
-  // Phase 4. A connect cycle with no cameras must fail with a reason rather than
+  // Phase 4. A connect cycle with no cameras must remain idle rather than
   // publishing a session that contains nothing. Reachable independently of the
   // withdrawn refusal: both entry points call connectAll() unconditionally, so a
   // failed xTaskCreate in addActive() lands here too.
   check(control.getTargetCount() == 0, "no targets before the empty connect");
+  Furble::TestSync::reset();
+  Furble::TestSync::armBarrier("connectall_returned", 5000);
   control.connectAll(false);
-  check(waitFor([&]() { return control.getState() == Control::STATE_CONNECT_FAILED; }, 3000),
-        "a connect with no cameras fails instead of going active");
+  check(Furble::TestSync::awaitArrival("connectall_returned", 1000),
+        "empty connect runs the control pass");
+  Furble::TestSync::release("connectall_returned");
+  check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 1000),
+        "an empty connect remains idle");
   check(control.getState() != Control::STATE_ACTIVE, "an empty session is never active");
+  check(!Furble::TestSync::anyTimedOut(), "empty connect sync point did not time out");
 
   control.disconnect();
   check(waitFor([&]() { return control.getState() == Control::STATE_IDLE; }, 4000),
