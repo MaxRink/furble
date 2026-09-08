@@ -544,7 +544,7 @@ The complete `ui.*` query set is:
 | `ui.connected` | `yes` or `no`. |
 | `ui.page` | A page name, or `other`. |
 | `ui.back` | `none`, `hidden`, `disabled`, or `visible`. |
-| `ui.modal` | `open` or `closed`. |
+| `ui.modal` | `open` or `closed` for either a camera-pairing or companion-pairing dialog. |
 | `ui.boot_splash` | `off`, `shown`, or `partial`. |
 | `ui.modal_focus` | `closed`, `yes`, or `no`. |
 | `ui.modal_count` | Numeric live modal count. |

@@ -4363,11 +4363,13 @@ std::string UI::simQueryState(const char *key) {
     return "visible";
   }
 
-  // Companion pairing modal presence, for the input-after-approve regression
-  // (task #32).
+  // Pairing modal presence for both camera and companion prompts. Keep this
+  // generic query independent of which pairing path owns the visible dialog.
   if (query == "modal") {
-    const bool open =
+    const bool cameraOpen = m_PairingDialog != nullptr && lv_obj_is_valid(m_PairingDialog);
+    const bool companionOpen =
         m_CompanionPairingDialog != nullptr && lv_obj_is_valid(m_CompanionPairingDialog);
+    const bool open = cameraOpen || companionOpen;
     return open ? "open" : "closed";
   }
 
