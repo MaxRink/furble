@@ -12,7 +12,7 @@ attempt=1
 while [ "$attempt" -le 5 ]; do
   output=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-restart.XXXXXX")
   if FURBLE_FUZZ_SEEDS=2 FURBLE_FUZZ_STEPS=600 FURBLE_FUZZ_REPEAT_SEED= \
-      "$ROOT/sim/scripts/run-fuzz.sh" >"$output" 2>&1; then
+      sh "$ROOT/sim/scripts/run-fuzz.sh" >"$output" 2>&1; then
     cat "$output"
     if grep -q '^FUZZ RESUME seed=2 ' "$output"; then
       rm -f "$output"

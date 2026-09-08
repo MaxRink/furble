@@ -65,7 +65,7 @@ run_failure_case() {
       FURBLE_FUZZ_REPEAT_SEED= \
       FURBLE_FAKE_MODE="$mode" \
       FURBLE_FAKE_COUNT="$COUNT" \
-      "$RUNNER" >"$output" 2>&1; then
+      sh "$RUNNER" >"$output" 2>&1; then
     echo "$mode: expected failure" >&2
     exit 1
   fi
@@ -88,7 +88,7 @@ run_success_case() {
       FURBLE_FUZZ_REPEAT_SEED= \
       FURBLE_FAKE_MODE="$mode" \
       FURBLE_FAKE_COUNT="$COUNT" \
-      "$RUNNER" >"$output" 2>&1; then
+      sh "$RUNNER" >"$output" 2>&1; then
     cat "$output" >&2
     echo "$mode: expected success" >&2
     exit 1
@@ -109,7 +109,7 @@ if FURBLE_SIM_BIN="$FAKE" \
     FURBLE_FUZZ_REPEAT_SEED=2 \
     FURBLE_FAKE_MODE=replay_missing \
     FURBLE_FAKE_COUNT="$COUNT" \
-    "$RUNNER" >"$output" 2>&1; then
+    sh "$RUNNER" >"$output" 2>&1; then
   echo "replay-missing: expected failure" >&2
   exit 1
 fi
@@ -125,7 +125,7 @@ if FURBLE_SIM_BIN="$FAKE" \
     FURBLE_FUZZ_REPEAT_SEED=2 \
     FURBLE_FAKE_MODE=replay_diff \
     FURBLE_FAKE_COUNT="$COUNT" \
-    "$RUNNER" >"$output" 2>&1; then
+    sh "$RUNNER" >"$output" 2>&1; then
   echo "replay-diff: expected failure" >&2
   exit 1
 fi
