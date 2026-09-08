@@ -250,6 +250,9 @@ settings list | get | set           read and write non-secret settings
 companion password set | clear | status manage the companion password without revealing it
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
+pair <scan-index>                  pair a live scan result
+delete <index> | all               remove saved cameras
+multiconnect list|select|deselect|clear manage saved selection
 connect [index]                     no index uses the multi-connect selection
 disconnect
 shutter press | release | hold <ms>
@@ -265,6 +268,10 @@ reboot
 
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
+
+UI workflow requests are queued. If a bounded wait reports a pending unknown
+outcome, the operation may still execute later; do not blindly retry a
+timed-out destructive command.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown and current as unavailable. It does not infer USB or

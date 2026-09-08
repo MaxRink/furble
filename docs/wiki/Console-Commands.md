@@ -34,6 +34,9 @@ About page and exposed through companion BLE Device Information.
 | `ui` | `ui audit`, dump the current page layout. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
+| `pair` | `pair <scan-index>` pairs a live scan result through the UI handler. |
+| `delete` | `delete <index>` or `delete all` removes saved cameras and verifies persistence. |
+| `multiconnect` | `list`, `select <index>`, `deselect <index>`, or `clear`. |
 | `disconnect` | Disconnect all cameras. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `focus` | `press` or `release`. |
@@ -64,6 +67,10 @@ The companion password is write-only. Use `companion password set <pw>` or
 `unset`, or `unavailable`. The generic `settings get` and `settings set` paths
 reject `companion_pw`. A successful set or clear reloads the live companion
 session and revokes any authenticated connection.
+
+Workflow requests are queued to the UI task. A timeout means the outcome is
+unknown and the operation may still execute later. Do not blindly retry a
+timed-out destructive request.
 
 See the [Settings Reference](Settings-Reference) for every setting, its default,
 and when it applies.

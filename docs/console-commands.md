@@ -47,6 +47,9 @@ About page and exposed through companion BLE Device Information.
 | `ui` | `ui audit`, dump the current page layout. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
+| `pair` | `pair <scan-index>` pairs a live scan result through the UI handler. |
+| `delete` | `delete <index>` or `delete all` removes saved cameras and verifies persistence. |
+| `multiconnect` | `list`, `select <index>`, `deselect <index>`, or `clear`. |
 | `disconnect` | Disconnect all cameras. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `focus` | `press` or `release`. |
@@ -67,8 +70,8 @@ already holds. The device shows an "Already saved" box that has to be
 dismissed, and no connect is started. The refusal lives in
 `UI::beginPairing()`, the single entry point for "the user asked to pair this
 scan result", so the Scan page row gets it without the check being written
-twice. There is no console pairing verb on this build: PR #265 adds
-`pair <scan-index>` and routes it through the same `UI::beginPairing()`, which
+twice. The console `pair <scan-index>` command routes through the same
+`UI::beginPairing()`, which
 is why it inherits the refusal with no duplicated logic.
 
 The check is identity, not the saved index key. The index is keyed on the BLE
@@ -79,6 +82,10 @@ the vendor type plus the address, and for Fujifilm Secure only, falls back to
 the advertised name. Every other vendor keeps a stable address, so a second
 body of the same model is still pairable. To pair a saved camera again, delete
 it first with the Delete page.
+
+Workflow requests are queued to the UI task. A bounded wait can report a
+pending, unknown outcome if the UI does not complete in time; the operation may
+still execute later. Do not blindly retry a timed-out delete or pairing request.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
