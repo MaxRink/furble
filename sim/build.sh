@@ -276,6 +276,7 @@ for source in \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleProvision.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \
+  "$ROOT/src/FurbleNetworkSettings.cpp" \
   "$ROOT/src/FurbleSpinValue.cpp" \
   "$ROOT/src/FurbleTimeKeeper.cpp" \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \

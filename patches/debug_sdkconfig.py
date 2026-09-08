@@ -88,7 +88,11 @@ if not os.path.isabs(source_path):
   source_path = os.path.join(project_dir, source_path)
 source_path = os.path.abspath(source_path)
 
-fragment_path = os.path.join(project_dir, "sdkconfig.debug")
+fragment_path = env.subst(board_config.get("build.esp-idf.sdkconfig_fragment", ""))
+if not fragment_path:
+  fragment_path = os.path.join(project_dir, "sdkconfig.debug")
+elif not os.path.isabs(fragment_path):
+  fragment_path = os.path.join(project_dir, fragment_path)
 overlay_path = os.path.join(env.subst("$BUILD_DIR"), "sdkconfig.debug")
 os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
 merge_config(source_path, fragment_path, overlay_path)

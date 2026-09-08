@@ -40,6 +40,12 @@ Development builds using `FURBLE_VERSION=dev` identify the checkout as
 non-ignored untracked changes. Ignored-only changes stay clean. Explicit release
 versions remain unchanged. See `CLAUDE.md` for build details.
 
+The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
+single factory app partition. Normal CI builds it as the mandatory Core debug
+profile. Keep it out of release and web-installer matrices; the legacy
+`m5stack-core-debug` OTA profile is an explicit workflow-dispatch opt-in, and
+returning to dual OTA requires a USB partition-table reflash.
+
 The StickS3 flash helper is fail-closed. Use `--preflight-only` to validate the
 PMIC handshake without uploading. After a successful prepare, it must issue
 `flash cancel` and confirm watchdog restoration before returning zero. The

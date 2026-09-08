@@ -5,6 +5,7 @@
 // production wire metadata and type names visible to FurbleCompanionService,
 // while the values live in typed in-memory maps instead of NVS.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -74,6 +75,11 @@ class Settings {
     GPX_PERIOD,
     BOOT_SPLASH,
     BATTERY_SAVER,
+    WIFI,
+    WIFI_SSID,
+    WIFI_PSK,
+    NTP,
+    NTP_SERVER,
   } type_t;
 
   typedef struct {
@@ -86,6 +92,10 @@ class Settings {
 
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
+  static constexpr size_t WIFI_SSID_MAX_LENGTH = 32;
+  static constexpr size_t WIFI_PSK_MAX_LENGTH = 63;
+  static constexpr size_t NTP_SERVER_MAX_LENGTH = 63;
+  static bool validNetworkString(type_t type, const std::string &value);
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
@@ -193,6 +203,26 @@ struct Furble::Settings::storage_type<Furble::Settings::IMU_WAKE> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::IMU_TRIG> {
   using type = bool;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::WIFI> {
+  using type = bool;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::WIFI_SSID> {
+  using type = std::string;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::WIFI_PSK> {
+  using type = std::string;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::NTP> {
+  using type = bool;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::NTP_SERVER> {
+  using type = std::string;
 };
 
 template <>
