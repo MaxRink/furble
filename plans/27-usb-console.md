@@ -478,18 +478,10 @@ The host harness uses the shared production completion type but a UI double;
 it does not certify the real UI queue or headless runtime. Exact-head host,
 simulator, and firmware validation remain pending.
 
-The isolated c265 host validation subsequently completed 113/113 checks. This
-is console-command and shared-state evidence only: the console target links a
-UI double, so it does not certify the real UI queue or headless runtime. The
-simulator target remains the production UI path with `FURBLE_SIM`,
-`FURBLE_M5STICKS3`, `FURBLE_RIG`, SDL panel definitions, and the repository
-M5GFX, M5Unified, LVGL, NimBLE, peer, and TinyGPSPlus include roots from
-`sim/CMakeLists.txt`; run its actual SDL scenarios separately. Hardware UI,
-headless, and camera persistence gates remain pending.
-
-The real SDL scenario `sim/scenarios/bughunt/console-ui-workflow.txt` was then
-run successfully. It routes `action console back`, `delete 999`, `delete 0`,
-and `cameras 1` through the production UI queue. The `ui.console.<field>`
-query is simulator-only observability of `consolePrint`; it verified
-`no_saved_camera`, `ok`, `count: 1`, and `saved: 0`. This does not exercise the
-`FURBLE_CONSOLE` completion semaphore or claim hardware behavior.
+The reset c265 host validation completed 113/113 checks, recorded in
+`/home/a92615428/b/c265h-test.log` with build output in
+`/home/a92615428/b/c265h-build.log`. This is console-command and shared-state
+evidence only: the console target links a UI double, so it does not certify
+the real UI queue or headless runtime. The current SDL validation is still
+running and has no result recorded here. Hardware UI, headless, persistence,
+and `FURBLE_CONSOLE` completion-semaphore gates remain pending.
