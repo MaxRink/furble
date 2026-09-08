@@ -1391,10 +1391,10 @@ std::string queryValue(const std::string &key) {
       }
       return last;
     }
-    if (sub == "standby_commands") {
+    if (sub == "standby_5s_commands") {
       size_t count = 0;
       for (const auto &write : writes) {
-        if (write.find("$PCAS12,5") != std::string::npos) {
+        if (write == "$PCAS12,5*1B\r\n") {
           ++count;
         }
       }
