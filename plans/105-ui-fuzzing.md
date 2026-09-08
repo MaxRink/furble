@@ -107,6 +107,9 @@ settled after a normal completion; after a restart it equals settled plus
 - `sim/scripts/run-fuzz.sh`: runs a fixed seed set and fails on any finding.
   Supports `FURBLE_FUZZ_XFAIL_SEEDS` for tracked-but-unfixed bugs, so a real
   finding can be pinned as expected-fail and CI stays green until its fix lands.
+  Its determinism replay uses seed 31337; the restart-probing seed 2 has
+  host-timing-dependent reboot reachability and is gated separately by
+  `run-fuzz-restart.sh`.
 
 ## How to reproduce
 

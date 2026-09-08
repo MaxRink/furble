@@ -140,6 +140,7 @@ std::atomic<bool> restartPending {false};
 // Written by driverTick and read only after main() joins the simulator thread.
 size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
+const char *RESTART_BOOT_ENV = "FURBLE_SIM_RESTARTED";
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
 // presents the Connected screen (the same three-way check the ui.connected
@@ -1848,6 +1849,14 @@ void configure(int argc, char **argv) {
   // Keep the exact invocation so a `restart` step can re-execute it.
   savedArguments.assign(argv, argv + argc);
 
+  if (const char *restarted = std::getenv(RESTART_BOOT_ENV); restarted != nullptr) {
+    if (std::strcmp(restarted, "1") != 0 || unsetenv(RESTART_BOOT_ENV) != 0) {
+      std::cerr << "Invalid " << RESTART_BOOT_ENV << '\n';
+      std::exit(2);
+    }
+    resumedBoot = true;
+  }
+
   std::string script;
   bool rig = false;
   uint16_t rigPort = 6737;
@@ -2001,7 +2010,7 @@ void configure(int argc, char **argv) {
   if (fuzz) {
     scenarioName = "fuzz";
     fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
-    resumedBoot = fuzzResumedBoot();
+    resumedBoot = resumedBoot || fuzzResumedBoot();
     return;
   }
 
@@ -2036,6 +2045,10 @@ void configure(int argc, char **argv) {
       }
     }
   }
+}
+
+bool resumedDeviceBoot(void) {
+  return resumedBoot;
 }
 
 void setBackTarget(Furble::UI *ui) {
@@ -2527,6 +2540,10 @@ void restartProcess(void) {
   // This runs on the main thread after the simulator thread has joined and the
   // SDL panel has closed. Keep the process-wide environment mutation out of
   // the driver thread, where SDL can read it concurrently during its loop.
+  if (setenv(RESTART_BOOT_ENV, "1", 1) != 0) {
+    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+    std::_Exit(1);
+  }
   if (scripted) {
     const std::string nextValue = std::to_string(next);
     if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {

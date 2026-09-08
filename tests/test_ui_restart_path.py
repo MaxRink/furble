@@ -16,6 +16,13 @@ class UiRestartPathTest(unittest.TestCase):
         self.assertIn("Platform::getInstance().restart()", sensors)
         self.assertNotIn("esp_restart()", sensors)
 
+    def test_environment_overrides_are_fresh_boot_only(self):
+        main = (ROOT / "sim" / "main.cpp").read_text()
+        driver = (ROOT / "sim" / "driver.cpp").read_text()
+        self.assertEqual(main.count("!Sim::resumedDeviceBoot()"), 2)
+        self.assertIn('setenv(RESTART_BOOT_ENV, "1", 1)', driver)
+        self.assertIn("unsetenv(RESTART_BOOT_ENV)", driver)
+
 
 if __name__ == "__main__":
     unittest.main()

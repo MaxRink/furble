@@ -162,7 +162,7 @@ number of successful resumed boots. A missing, malformed, oversized, linked,
 or wrong-owner checkpoint fails the run rather than starting a new random walk.
 
 After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
-(default: the first guarded seed, empty to skip) and requires the two runs to
+(default: seed 31337, empty to skip) and requires the two runs to
 produce identical `FUZZ EVENTS`, `FUZZ COVERAGE` and `FUZZ SUMMARY` lines, with
 `observed_delta` and `no_observed_delta` masked. The same seed must drive the
 same event stream and reach the same pages.
@@ -248,6 +248,10 @@ text after a comment are ignored. Each line starts with one verb.
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
+
+`FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` seed only a fresh simulated
+device boot. A production UI restart keeps the setting written by its Restart
+button instead of applying the launch environment again.
 | `assert-eventually-virtual` | `assert-eventually-virtual TIMEOUT_MS KEY VALUE` polls once per normal UI tick while virtual time, platform updates, and background tasks continue. TIMEOUT_MS must be 1 through 60000 virtual milliseconds; a timeout reports the last value and exits 1. |
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |
 | `exit` | Ends the simulator with status 0. |

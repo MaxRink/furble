@@ -98,7 +98,7 @@ int runSimulator() {
   // Let capture scripts pick a theme without navigating the roller. The theme
   // is applied once at UI construction, so seed it before the UI exists.
   if (const char *theme = std::getenv("FURBLE_SIM_THEME");
-      !Sim::fuzzResumedBoot() && theme != nullptr && theme[0] != '\0') {
+      !Sim::resumedDeviceBoot() && theme != nullptr && theme[0] != '\0') {
     Settings::save<Settings::THEME>(std::string(theme));
   }
 
@@ -108,7 +108,7 @@ int runSimulator() {
   // the UI exists. Accepts a name (small/normal/large, case insensitive) or the
   // numeric setting value (0/1/2).
   if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE");
-      !Sim::fuzzResumedBoot() && size != nullptr && size[0] != '\0') {
+      !Sim::resumedDeviceBoot() && size != nullptr && size[0] != '\0') {
     std::string value(size);
     for (char &c : value) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));

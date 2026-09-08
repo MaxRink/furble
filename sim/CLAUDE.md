@@ -237,6 +237,8 @@ including empty strings and failed-save rollback.
   restart through the preferences file, and a reapplied `saved_camera` seed is
   idempotent because `CameraList::add_index()` overwrites by name (see
   plans/156-restart-restore-seam.md for the seam limits).
+  `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
+  a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected

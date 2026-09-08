@@ -20,6 +20,8 @@ struct battery_reading_t {
 };
 
 void configure(int argc, char **argv);
+/** True after this process was re-executed for a simulated device reboot. */
+bool resumedDeviceBoot(void);
 void startProfiler(void);
 void preparePreferences(void);
 /** Drop the per-run preferences store once the device is finished with it. */
