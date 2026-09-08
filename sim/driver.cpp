@@ -1391,6 +1391,15 @@ std::string queryValue(const std::string &key) {
       }
       return last;
     }
+    if (sub == "standby_commands") {
+      size_t count = 0;
+      for (const auto &write : writes) {
+        if (write.find("$PCAS12,5") != std::string::npos) {
+          ++count;
+        }
+      }
+      return std::to_string(count);
+    }
     // Binary traffic the write count cannot see: replayed assistance frames and
     // MON-HW polls, plus the rate the driver has the port set to.
     if (sub == "baud") {

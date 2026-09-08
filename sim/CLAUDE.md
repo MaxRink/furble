@@ -354,11 +354,12 @@ including empty strings and failed-save rollback.
   `gps.fresh_fixes_parsed`, and `gps.config.<index>.state|attempts`.
   `gps.fresh_fixes_parsed` is simulator-only observability of parser
   progression, so scenarios can distinguish a wake fix from a cached UART
-  source. It is not a coherent delivered-geotag claim. UART write count and
-  the last command are available as
-  `uart.count` and `uart.last`. `camera.count` reports the current
-  simulated camera-list row count, allowing scan-result de-duplication scenarios
-  to assert that a repeated fake advertisement does not add a second row.
+  source. It is not a coherent delivered-geotag claim. Total UART write count,
+  actual `$PCAS12,5` command count, and the last command are available as
+  `uart.count`, `uart.standby_commands`, and `uart.last`. `camera.count` reports
+  the current simulated camera-list row count, allowing scan-result
+  de-duplication scenarios to assert that a repeated fake advertisement does not
+  add a second row.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms

@@ -148,11 +148,12 @@ Rebase notes:
   been pushed to the application.
 - The simulator exposes a parser-accepted fresh UART fix count so
   `gps-standby-wake.txt` can distinguish parser progression from the cached UART
-  source. The scenario waits for the second parser fix and second `$PCAS12`,
-  then pauses the receiver to verify that one fix followed by silence does not
-  create another duty command. These are separate parser/command observations,
-  not a coherent delivered-geotag snapshot; `tracking` and `standby` are also
-  timing-sensitive snapshots around a burst.
+  source. The scenario waits for the second parser fix and second `$PCAS12`
+  command (counted separately from binary UART writes), then pauses the receiver
+  to verify that one fix followed by silence does not create another duty
+  command. These are separate parser/command observations, not a coherent
+  delivered-geotag snapshot; `tracking` and `standby` are also timing-sensitive
+  snapshots around a burst.
 - The GPS task now uses these states: `ACQUIRING` holds the lock while the first
   burst is found, `MEASURING` learns an unknown interval for five seconds,
   `BURST` holds the lock while NMEA data is received, `WAITING` releases the
