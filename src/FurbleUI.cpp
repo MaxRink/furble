@@ -4277,8 +4277,8 @@ std::string UI::simQueryState(const char *key) {
       }
       lv_area_t objectArea;
       lv_obj_get_coords(object, &objectArea);
-      return objectArea.x1 >= clip.x1 && objectArea.y1 >= clip.y1
-             && objectArea.x2 <= clip.x2 && objectArea.y2 <= clip.y2;
+      return objectArea.x1 >= clip.x1 && objectArea.y1 >= clip.y1 && objectArea.x2 <= clip.x2
+             && objectArea.y2 <= clip.y2;
     };
     return fullyVisibleInPage(focused) && fullyVisibleInPage(label) ? "yes" : "no";
   }
@@ -7995,8 +7995,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   // layouts. Keep its name and value inside the reserved column; without this,
   // the wrapped value leaves the long row label under the indicator.
   if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-    lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve,
-                               LV_PART_MAIN);
+    lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve, LV_PART_MAIN);
     lv_obj_set_width(m_Intervalometer.m_SleepThreshold.m_Label, LV_PCT(100));
     lv_label_set_long_mode(m_Intervalometer.m_SleepThreshold.m_Label, LV_LABEL_LONG_WRAP);
   }
@@ -10523,8 +10522,7 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
 void UI::simButtonRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
-  data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED
-                                       : LV_INDEV_STATE_RELEASED;
+  data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 #endif
 }  // namespace Furble
