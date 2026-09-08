@@ -236,7 +236,14 @@ int main(int argc, char **argv) {
   while (!panelReady.load(std::memory_order_acquire)) {
     std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
-  while (!Furble::Sim::exitRequested() && lgfx::Panel_sdl::loop() == 0) {
+  int panelLoopResult = 0;
+  while (!Furble::Sim::exitRequested()
+         && (panelLoopResult = lgfx::Panel_sdl::loop()) == 0) {
+  }
+
+  if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {
+    std::fprintf(stderr, "SIM SDL loop returned %d exit_requested=%d\n", panelLoopResult,
+                 Furble::Sim::exitRequested() ? 1 : 0);
   }
 
   if (!Furble::Sim::exitRequested()) {

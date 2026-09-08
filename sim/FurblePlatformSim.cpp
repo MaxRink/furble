@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstdio>
 
 #include <fstream>
 
@@ -120,6 +121,9 @@ void Platform::update(void) {
 void Platform::restart(void) {
   // The host simulator has no reset vector; ending the process is the closest
   // equivalent for scripted runs.
+  if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {
+    std::fprintf(stderr, "SIM Platform::restart requestExit(0)\n");
+  }
   Sim::requestExit(0);
 }
 
