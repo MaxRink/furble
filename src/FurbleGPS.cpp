@@ -619,13 +619,18 @@ void GPS::serviceCycle(void) {
     m_Degraded.reset();
     acquirePowerLock();
 
-    if ((m_PowerPolicy == POWER_STANDBY) && (m_DutySeconds > 0)) {
+    // Let the wake burst finish before honoring the fresh-fix request.  A
+    // fix can arrive while serviceCycle() is still in the burst; sleeping
+    // immediately would turn the recovery burst straight back into standby.
+    if (!m_DutyWake && (m_PowerPolicy == POWER_STANDBY) &&
+        (m_DutySeconds > 0)) {
       sendCommand("PCAS12," + std::to_string(m_DutySeconds));
       enterStandby(now);
       return;
     }
 
-    if ((m_PowerPolicy == POWER_RAIL_CYCLE) && (m_DutySeconds > 0)) {
+    if (!m_DutyWake && (m_PowerPolicy == POWER_RAIL_CYCLE) &&
+        (m_DutySeconds > 0)) {
       enterRailOff(now);
       return;
     }
