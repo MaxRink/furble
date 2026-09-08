@@ -408,3 +408,20 @@ configuration, build, and test evidence in `~/b/c63h-{config,build,test}.log`.
 This is host callback/peer evidence. The current SDL rerun is not represented
 as passing here; historical layout observations must not be used as current
 SDL or hardware evidence.
+## September 8 terminal-cancellation validation
+
+The full host suite passed 116/116 tests in 189.80 seconds after the reviewed
+Control drain and Camera cancellation changes. Logs are
+`/home/a92615428/b/c63-terminal-host-build.log` and
+`/home/a92615428/b/c63-terminal-host-test.log`.
+
+All seven pairing scenarios passed on the real 135x240 S3 SDL build. The
+expanded cancellation scenario also rejects during an in-flight registration
+wait, advances 12 seconds, and requires IDLE with zero targets and zombies,
+no connection error or modal, and the real mock-stack reject count. A fresh
+explicit connect after active-link cancellation succeeds. Evidence is in
+`/home/a92615428/b/c63-terminal-inflight.log` and the
+`/home/a92615428/b/c63-terminal-camera-pairing-*.log` files.
+
+Other panel builds, the firmware build matrix, and physical numeric-comparison
+behavior remain pending. These results do not certify Ricoh hardware.

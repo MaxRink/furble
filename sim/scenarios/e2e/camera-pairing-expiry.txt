@@ -1,7 +1,7 @@
 # An expired pairing prompt must reject (plan 66 / #63). The response window is
 # aligned to the SMP timeout, so once it passes the stack will not honour a
-# Confirm anyway. The prompt therefore closes itself, injects a reject and lets
-# the connect fail visibly, rather than leaving a live-looking code on screen.
+# Confirm anyway. The prompt closes itself and rejects without automatically
+# restarting authorization or leaving a live-looking code on screen.
 seed ble_peers fuji
 seed ble_saved true
 wait 300
@@ -28,7 +28,11 @@ assert ble.pairing_answers 1
 assert ble.pairing_answer reject
 
 # An expiry ends the session the same way a Cancel does.
-assert-eventually-virtual 12000 control.connected 0
+wait 12000
+assert control.state idle
+assert control.connected 0
+assert control.targets 0
+assert control.zombies 0
 assert-eventually-virtual 5000 ui.connect_box hidden
 assert ui.connected no
 assert ui.connect_error none

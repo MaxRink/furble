@@ -862,8 +862,7 @@ void UI::showCameraPairing(Camera *camera) {
   lv_msgbox_add_title(m_PairingDialog, "Pair camera");
 
   lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
-  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *name = lv_label_create(content);
@@ -3799,8 +3798,8 @@ std::string UI::simQueryState(const char *key) {
       bool overflow = box.x1 < 0 || box.y1 < 0 || box.x2 >= m_Width || box.y2 >= m_Height;
       lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
       if (content != nullptr) {
-        overflow = overflow || lv_obj_get_scroll_bottom(content) > 0
-                   || lv_obj_get_scroll_top(content) > 0;
+        overflow =
+            overflow || lv_obj_get_scroll_bottom(content) > 0 || lv_obj_get_scroll_top(content) > 0;
       }
       return overflow ? "yes" : "no";
     }
@@ -3812,8 +3811,7 @@ std::string UI::simQueryState(const char *key) {
           continue;
         }
         const char *text = lv_label_get_text(child);
-        if (text != nullptr && std::strlen(text) == 6
-            && std::strspn(text, "0123456789") == 6) {
+        if (text != nullptr && std::strlen(text) == 6 && std::strspn(text, "0123456789") == 6) {
           return text;
         }
       }

@@ -200,9 +200,12 @@ Control::state_t Control::connectAll(void) {
   std::vector<std::shared_ptr<Camera>> all;
 
   const bool connSaver = Settings::connSaverEffective();
+  bool cancelledSession = false;
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    cancelledSession = retireCancelledTargetsLocked();
 
     // Re-arm the cancel tokens the user's connect cycle asked for. See
     // connectAll(bool): doing it here means no attempt can be in flight, because
@@ -233,7 +236,10 @@ Control::state_t Control::connectAll(void) {
   if (all.empty()) {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_ConnectInProgress = false;
-    if (!m_Targets.empty()) {
+    if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
+      return STATE_DISCONNECTING;
+    }
+    if (cancelledSession || retireCancelledTargetsLocked()) {
       // Every remaining target declined pairing. This is a deliberate terminal
       // outcome for this session, not a failed connect that should open an
       // error box or consume another retry.
@@ -313,6 +319,9 @@ Control::state_t Control::connectAll(void) {
       return STATE_DISCONNECTING;
     }
 
+    if (retireCancelledTargetsLocked()) {
+      return STATE_IDLE;
+    }
     if (allConnected()) {
       m_ConnectFailCount = 0;
       m_ReconnectAttempt = 0;
@@ -371,6 +380,13 @@ void Control::task(void) {
     // state, so quarantined objects never linger and are never freed while their
     // task can still touch them.
     reapZombieTargets();
+
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      if (retireCancelledTargetsLocked() && m_State != STATE_DISCONNECTING) {
+        setState(STATE_IDLE);
+      }
+    }
 
     cmd_t cmd;
     BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
@@ -846,6 +862,32 @@ bool Control::teardownDraining(void) {
   return !m_ZombieTargets.empty();
 }
 
+bool Control::retireCancelledTargetsLocked(void) {
+  bool removed = false;
+  for (auto it = m_Targets.begin(); it != m_Targets.end();) {
+    if (!(*it)->getCamera()->pairingCancelled()) {
+      ++it;
+      continue;
+    }
+    // The target task owns radio teardown. Moving it keeps that task and any
+    // in-flight camera snapshot alive until the existing drain can reap it.
+    (*it)->sendCommand(CMD_DISCONNECT);
+    m_ZombieTargets.push_back(std::move(*it));
+    it = m_Targets.erase(it);
+    removed = true;
+  }
+  if (removed) {
+    m_ZombieDeadline = xTaskGetTickCount() + pdMS_TO_TICKS(DISCONNECT_DRAIN_RECLAIM_MS);
+  }
+  if (removed && m_Targets.empty()) {
+    m_ReconnectAttempt = 0;
+    m_ConnectFailCount = 0;
+    resetAdaptiveState();
+    return true;
+  }
+  return false;
+}
+
 void Control::reapZombieTargets(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -918,13 +960,6 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   // have distinct addresses and are all added.
   for (const auto &target : m_Targets) {
     if (target->getCamera()->getAddress() == camera->getAddress()) {
-      if (target->getCamera()->pairingCancelled()) {
-        // A fresh explicit connect re-arms a target that was terminally
-        // declined in the previous cycle; keep its existing target task.
-        target->getCamera()->clearPairingCancelled();
-        target->getCamera()->resetConnectionState();
-        return;
-      }
       const bool connected = target->getCamera()->isConnected();
       ESP_LOGW(LOG_TAG, "Camera '%s' already %s, ignoring duplicate connect.",
                camera->getName().c_str(), connected ? "active" : "connecting");

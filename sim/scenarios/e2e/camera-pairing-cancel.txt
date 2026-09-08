@@ -29,12 +29,43 @@ assert ui.pairing_pending no
 assert ble.pairing_answers 1
 assert ble.pairing_answer reject
 
-# The link the rejection tore down must end on the connect-failed path, not on
-# a half-dismissed screen: no connected target, the progress box gone and the
-# connected page not presented.
-assert-eventually-virtual 12000 control.connected 0
+# Advance time even if already idle: no retry or second prompt may appear.
+wait 12000
+assert control.state idle
+assert control.connected 0
+assert control.targets 0
+assert control.zombies 0
 assert-eventually-virtual 5000 ui.connect_box hidden
 assert ui.connected no
 assert ui.connect_error none
 assert ui.modal_count 0
+# Explicit user intent starts a fresh session after cancellation has drained.
+action ble-connect-ok
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 5000 ui.connected yes
+assert ui.modal_count 0
+
+# Reject during an in-flight registration wait as well, not just after ACTIVE.
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert-eventually-virtual 5000 control.zombies 0
+action ble-withhold-registration
+action connect
+assert-eventually-virtual 8000 control.state connecting
+wait 400
+action camera-pair-request confirm 123456
+wait 400
+assert ui.modal open
+action camera-pair-reject
+wait 12000
+assert control.state idle
+assert control.targets 0
+assert control.zombies 0
+assert control.connect_in_progress no
+assert ui.connect_error none
+assert ui.modal_count 0
+assert ble.pairing_answers 2
+assert ble.pairing_answer reject
 exit

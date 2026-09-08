@@ -352,6 +352,9 @@ class Control {
    */
   void reapZombieTargets(void);
 
+  // Caller holds m_Mutex. Reuse the drain set for deliberately declined peers.
+  bool retireCancelledTargetsLocked(void);
+
   /**
    * Is a prior teardown still draining?
    *

@@ -289,6 +289,10 @@ bool Camera::answerPairing(bool accept) {
 }
 
 void Camera::cancelPairing(void) {
+  const std::lock_guard<std::recursive_mutex> lock(m_PairingMutex);
+  if (m_PairingType == PairingType::NONE) {
+    return;
+  }
   m_PairingCancelled = true;
   answerPairing(false);
 }
