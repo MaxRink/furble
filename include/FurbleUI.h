@@ -116,7 +116,6 @@ class UI {
    * every build.
    */
   enum class Request {
-#if defined(FURBLE_CONSOLE)
     CONNECT,         /**< arg: saved camera index, negative for the multi-connect selection */
     CONNECT_SAVED,   /**< arg: stable saved camera id, including 0xff for the selection */
     DISCONNECT,      /**< arg: unused */
@@ -135,7 +134,6 @@ class UI {
     SD_RELOAD,    /**< arg: unused */
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE, /**< arg: Settings::display_mode_t */
-#endif
 #endif
     CAMERA_PAIRING, /**< camera: camera requesting a pairing prompt */
   };
