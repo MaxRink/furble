@@ -89,6 +89,7 @@ run_success_case() {
       FURBLE_FAKE_MODE="$mode" \
       FURBLE_FAKE_COUNT="$COUNT" \
       "$RUNNER" >"$output" 2>&1; then
+    cat "$output" >&2
     echo "$mode: expected success" >&2
     exit 1
   fi
