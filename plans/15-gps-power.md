@@ -146,6 +146,12 @@ Rebase notes:
 - Reused the existing `GPS::sendCommand()` PCAS framing and checksum path for
   `$PCAS12,<GPS_DUTY>`. The command is queued only after a fresh valid fix has
   been pushed to the application.
+- The simulator exposes the count of fresh UART fixes pushed to the application
+  so `gps-standby-wake.txt` can distinguish a wake fix from the cached UART
+  source. The scenario waits for the second pushed fix and second `$PCAS12`,
+  then pauses the receiver to verify that one fix followed by silence does not
+  create another duty command. The final cycle state is asserted as standby;
+  `tracking` is a transient burst state, not a stable post-wake contract.
 - The GPS task now uses these states: `ACQUIRING` holds the lock while the first
   burst is found, `MEASURING` learns an unknown interval for five seconds,
   `BURST` holds the lock while NMEA data is received, `WAITING` releases the

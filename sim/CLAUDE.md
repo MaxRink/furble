@@ -350,9 +350,12 @@ including empty strings and failed-save rollback.
   implementation of the same `M5.Imu` read boundary used by production code.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
-- GPS query keys include `gps.source`, `gps.satellites`, `gps.state`, and
-  `gps.config.<index>.state|attempts`. UART write count and the last command are
-  available as `uart.count` and `uart.last`. `camera.count` reports the current
+- GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
+  `gps.fresh_fixes_pushed`, and `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_pushed` is simulator-only observability of the production
+  accepted-and-pushed fix path, so it distinguishes a wake fix from a cached
+  UART source. UART write count and the last command are available as
+  `uart.count` and `uart.last`. `camera.count` reports the current
   simulated camera-list row count, allowing scan-result de-duplication scenarios
   to assert that a repeated fake advertisement does not add a second row.
   `scan.end_callbacks` reports scan completion callback delivery, allowing

@@ -1267,6 +1267,11 @@ std::string queryValue(const std::string &key) {
     if (sub == "satellites") {
       return std::to_string(gps.getSatellites());
     }
+#if defined(FURBLE_SIM)
+    if (sub == "fresh_fixes_pushed") {
+      return std::to_string(gps.simFreshFixesPushed());
+    }
+#endif
     if (sub == "sats_in_view") {
       return std::to_string(gps.getSatelliteReport().in_view);
     }

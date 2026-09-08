@@ -179,6 +179,10 @@ class GPS {
   status_t getStatusSnapshot(void) const;
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
+#if defined(FURBLE_SIM)
+  /** Number of fresh UART fixes pushed to the application in this session. */
+  uint32_t simFreshFixesPushed(void) const { return m_SimFreshFixesPushed.load(); }
+#endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;
   /** Get the remaining duration of a bounded held fix. */
@@ -621,6 +625,9 @@ class GPS {
   std::atomic<uint32_t> m_BurstSequence = 0;
   std::atomic<uint32_t> m_FixSequence = 0;
   std::atomic<uint32_t> m_PushedSequence = 0;
+#if defined(FURBLE_SIM)
+  std::atomic<uint32_t> m_SimFreshFixesPushed = 0;
+#endif
   std::atomic<bool> m_CycleRequest = false;
 
   // serialises the cycle state between the GPS task and enable() or disable(),
