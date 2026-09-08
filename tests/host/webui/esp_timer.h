@@ -21,5 +21,8 @@ extern "C" bool esp_timer_is_active(esp_timer_handle_t);
 namespace host_webui_timer {
 void reset();
 void advance(uint64_t microseconds);
+void elapseAndQueue(uint64_t microseconds);
+void dispatchQueued();
+void setStartAdvance(uint64_t microseconds);
 }  // namespace host_webui_timer
 #endif

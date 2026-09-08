@@ -21,6 +21,8 @@ namespace {
 host_webui_server_t *g_Server = nullptr;
 std::vector<std::unique_ptr<host_webui_timer_t>> g_Timers;
 uint64_t g_Now = 0;
+uint64_t g_StartAdvance = 0;
+std::vector<std::pair<esp_timer_cb_t, void *>> g_QueuedCallbacks;
 std::function<void()> g_StopHook;
 }
 
@@ -116,6 +118,8 @@ extern "C" esp_err_t esp_timer_create(const esp_timer_create_args_t *args,
 extern "C" esp_err_t esp_timer_start_once(esp_timer_handle_t timer, uint64_t timeout) {
   timer->deadline = g_Now + timeout;
   timer->active = true;
+  g_Now += g_StartAdvance;
+  g_StartAdvance = 0;
   return ESP_OK;
 }
 extern "C" esp_err_t esp_timer_stop(esp_timer_handle_t timer) {
@@ -126,17 +130,29 @@ extern "C" bool esp_timer_is_active(esp_timer_handle_t timer) { return timer->ac
 namespace host_webui_timer {
 void reset() {
   g_Now = 0;
+  g_StartAdvance = 0;
+  g_QueuedCallbacks.clear();
   for (auto &timer : g_Timers) timer->active = false;
 }
-void advance(uint64_t microseconds) {
+void elapseAndQueue(uint64_t microseconds) {
   g_Now += microseconds;
   for (auto &timer : g_Timers) {
     if (timer->active && (timer->deadline <= g_Now)) {
       timer->active = false;
-      timer->callback(timer->arg);
+      g_QueuedCallbacks.emplace_back(timer->callback, timer->arg);
     }
   }
 }
+void dispatchQueued() {
+  const auto callbacks = std::move(g_QueuedCallbacks);
+  g_QueuedCallbacks.clear();
+  for (const auto &[callback, arg] : callbacks) callback(arg);
+}
+void advance(uint64_t microseconds) {
+  elapseAndQueue(microseconds);
+  dispatchQueued();
+}
+void setStartAdvance(uint64_t microseconds) { g_StartAdvance = microseconds; }
 }  // namespace host_webui_timer
 
 extern "C" BaseType_t xTaskCreate(void (*)(void *), const char *, uint32_t, void *, UBaseType_t,

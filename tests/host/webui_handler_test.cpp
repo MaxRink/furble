@@ -49,6 +49,12 @@ int main() {
         "unauthenticated shutter mutation was accepted");
   check(control.commands.empty(), "unauthenticated request reached Control");
 
+  auto wrongAuth = validHeaders;
+  wrongAuth["Authorization"] = "Basic ZnVyYmxlOndyb25n";
+  check(shutter(R"({"action":"press"})", wrongAuth).responseStatus == "401 Unauthorized",
+        "wrong-password shutter mutation was accepted");
+  check(control.commands.empty(), "wrong-password request reached Control");
+
   auto wrongOrigin = validHeaders;
   wrongOrigin["Origin"] = "https://evil.example";
   check(shutter(R"({"action":"press"})", wrongOrigin).responseStatus == "403 Forbidden",
@@ -64,15 +70,16 @@ int main() {
         "timed hold was rejected");
   check(control.commands.size() == 1 && control.commands.back() == Control::CMD_SHUTTER_PRESS,
         "timed hold did not enqueue press");
+  host_webui_timer::elapseAndQueue(1000 * 1000);
   check(shutter(R"({"action":"release"})").responseStatus == "200 OK",
         "manual release was rejected");
   check(shutter(R"({"action":"press"})").responseStatus == "200 OK",
         "plain press after manual release was rejected");
   const size_t beforeStaleExpiry = control.commands.size();
-  host_webui_timer::advance(1000 * 1000);
+  host_webui_timer::dispatchQueued();
   webui.hostServiceTimerEvents();
   check(control.commands.size() == beforeStaleExpiry,
-        "cancelled hold timer released the newer plain press");
+        "already-dispatched hold callback released the newer plain press");
 
   control.deliveries.push_back({false, false});
   check(shutter(R"({"action":"release"})").responseStatus == "200 OK",
@@ -88,12 +95,13 @@ int main() {
   check(control.commands.back() == Control::CMD_SHUTTER_RELEASE,
         "pending release was not retried by the owner task");
 
+  host_webui_timer::setStartAdvance(500);
   check(shutter(R"({"action":"hold","ms":1})").responseStatus == "200 OK",
         "1 ms hold was rejected");
-  host_webui_timer::advance(1000);
+  host_webui_timer::advance(500);
   webui.hostServiceTimerEvents();
   check(control.commands.back() == Control::CMD_SHUTTER_RELEASE,
-        "1 ms hold expiry did not enqueue release");
+        "1 ms hold expiry was lost when timer arming consumed time");
 
   size_t shutdownCommands = control.commands.size();
   std::string shutdownStatus;
