@@ -6,9 +6,11 @@
 // waking it from the peer teardown first lets Camera::connect() reclaim the
 // client while the event thread still touches it.
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <thread>
 
@@ -28,12 +30,16 @@ void check(bool condition, const char *message) {
 
 class BlockingDisconnectCallbacks final: public NimBLEClientCallbacks {
  public:
+  BlockingDisconnectCallbacks(std::atomic<uint32_t> &order,
+                              std::atomic<uint32_t> &finished)
+      : m_Order(order), m_Finished(finished) {}
   void onDisconnect(NimBLEClient *, int) override {
     std::unique_lock<std::mutex> lock(m_Mutex);
     m_Started = true;
     m_Signal.notify_all();
     m_Signal.wait(lock, [this]() { return m_Release; });
     m_Completed = true;
+    m_Finished.store(m_Order.fetch_add(1) + 1);
     m_Signal.notify_all();
   }
 
@@ -59,15 +65,9 @@ class BlockingDisconnectCallbacks final: public NimBLEClientCallbacks {
   bool m_Started = false;
   bool m_Release = false;
   bool m_Completed = false;
+  std::atomic<uint32_t> &m_Order;
+  std::atomic<uint32_t> &m_Finished;
 };
-
-bool waitReturned(std::mutex &mutex,
-                  std::condition_variable &signal,
-                  bool &returned,
-                  std::chrono::milliseconds timeout) {
-  std::unique_lock<std::mutex> lock(mutex);
-  return signal.wait_for(lock, timeout, [&returned]() { return returned; });
-}
 
 void testCleanupPrecedesSecureWake() {
   std::cout << "test: stalled disconnect cleanup completes before secure wake\n";
@@ -81,7 +81,10 @@ void testCleanupPrecedesSecureWake() {
     return;
   }
 
-  BlockingDisconnectCallbacks callbacks;
+  std::atomic<uint32_t> order {0};
+  std::atomic<uint32_t> callbackFinished {0};
+  std::atomic<uint32_t> secureFinished {0};
+  BlockingDisconnectCallbacks callbacks(order, callbackFinished);
   client->setClientCallbacks(&callbacks, false);
   const auto address = peer.advertisement().getAddress();
   const bool connected = client->connect(address);
@@ -92,19 +95,14 @@ void testCleanupPrecedesSecureWake() {
     return;
   }
 
-  peer.setSecureConnectionStallMs(1000);
-  std::mutex secureMutex;
-  std::condition_variable secureSignal;
-  bool secureReturned = false;
+  peer.setSecureConnectionStallMs(std::numeric_limits<uint32_t>::max());
   bool secureResult = true;
   std::thread secure([&]() {
     secureResult = client->secureConnection();
-    const std::lock_guard<std::mutex> lock(secureMutex);
-    secureReturned = true;
-    secureSignal.notify_all();
+    secureFinished.store(order.fetch_add(1) + 1);
   });
 
-  const auto entryDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  const auto entryDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   while ((peer.secureStallEntries() == 0)
          && (std::chrono::steady_clock::now() < entryDeadline)) {
     std::this_thread::yield();
@@ -114,24 +112,18 @@ void testCleanupPrecedesSecureWake() {
   client->mockStallTerminate();
   std::thread completion([&]() { client->mockCompleteStalledTerminate(0x08); });
 
-  const bool callbackStarted = callbacks.waitStarted(std::chrono::seconds(1));
+  const bool callbackStarted = callbacks.waitStarted(std::chrono::seconds(5));
   check(callbackStarted, "the disconnect callback starts before completion can finish");
-  if (callbackStarted) {
-    // This is a watchdog only. The callback barrier makes the ordering assertion
-    // deterministic: on the broken mock the earlier peer wake lets this wait
-    // complete while onDisconnect is deliberately held open.
-    const bool returnedBeforeCallback =
-        waitReturned(secureMutex, secureSignal, secureReturned, std::chrono::milliseconds(200));
-    check(!returnedBeforeCallback,
-          "the blocked secure call cannot return while onDisconnect is still running");
-  }
 
   callbacks.release();
   completion.join();
   secure.join();
   check(callbacks.completed(), "the disconnect callback completes");
   check(!secureResult, "the terminated secure handshake reports failure");
-  check(secureReturned, "the secure call returns after disconnect cleanup");
+  check(callbackFinished.load() != 0, "the disconnect callback records completion");
+  check(secureFinished.load() != 0, "the secure call records return");
+  check(callbackFinished.load() < secureFinished.load(),
+        "disconnect callback completion precedes secure call return");
   check(!peer.connected(), "the peer cleanup completed before the secure call returned");
   check(NimBLEDevice::deleteClient(client), "the disconnected client is reclaimed once");
   check(NimBLEDevice::liveClientCount() == 0, "no client remains after the regression");

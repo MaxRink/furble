@@ -48,7 +48,9 @@ than adding ownership or lifetime guarantees that real NimBLE does not provide.
 
 `tests/host/mock_disconnect_order_test.cpp` uses a condition-variable callback
 barrier, not a sleeps-only race. It holds `onDisconnect` open and proves the
-blocked secure call cannot return until callback completion and peer cleanup.
+blocked secure call cannot return until callback completion and peer cleanup. Its
+stall uses the maximum duration as a controlled non-expiring wait, and atomic
+sequence numbers assert callback completion before secure return.
 The executable is wired as `mock_disconnect_order_test` and the CTest name is
 `mock-disconnect-order`. Build and run it with the host CTest configuration
 after root serial validation. This candidate has not been built or tested in
