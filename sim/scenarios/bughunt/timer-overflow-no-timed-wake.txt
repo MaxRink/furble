@@ -8,6 +8,7 @@ action nav timer
 wait 100
 assert ui.page timer
 print ui.text_size
+print ui.nav_layout
 print ui.scroll_top
 print ui.scroll_bottom
 assert ui.overflow no
