@@ -434,6 +434,8 @@ jobs:
           echo "=== 135x240 (M5StickS3) ==="
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build/furble-sim" \
             sh sim/scripts/run-fuzz.sh
+          FURBLE_SIM_BIN="${{ github.workspace }}/sim/build/furble-sim" \
+            sh sim/scripts/run-fuzz-restart.sh
           echo "=== build-stickc ==="
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-stickc/furble-sim" \
             sh sim/scripts/run-fuzz.sh

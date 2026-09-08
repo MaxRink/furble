@@ -34,7 +34,19 @@ if [ "$FURBLE_FAKE_MODE" = invalid ]; then
   echo "FUZZ SUMMARY seed=$seed steps=$steps attempted=1 observed_delta=1 no_observed_delta=0 settled=1"
   exit 0
 fi
-echo "FUZZ SUMMARY seed=$seed steps=$steps attempted=$steps observed_delta=0 no_observed_delta=$steps settled=$steps"
+if [ "$FURBLE_FAKE_MODE" = one_restart ]; then
+  echo "FUZZ SUMMARY seed=$seed steps=$steps attempted=2 observed_delta=1 no_observed_delta=0 settled=1 interrupted_by_restart=1 resumed_boots=1"
+  exit 0
+fi
+if [ "$FURBLE_FAKE_MODE" = mismatch ]; then
+  echo "FUZZ SUMMARY seed=$seed steps=$steps attempted=$steps observed_delta=0 no_observed_delta=$steps settled=$steps interrupted_by_restart=1 resumed_boots=0"
+  exit 0
+fi
+if [ "$FURBLE_FAKE_MODE" = inflated_boots ]; then
+  echo "FUZZ SUMMARY seed=$seed steps=$steps attempted=$steps observed_delta=0 no_observed_delta=$steps settled=$steps interrupted_by_restart=0 resumed_boots=1"
+  exit 0
+fi
+echo "FUZZ SUMMARY seed=$seed steps=$steps attempted=$steps observed_delta=0 no_observed_delta=$steps settled=$steps interrupted_by_restart=0 resumed_boots=0"
 if [ "$FURBLE_FAKE_MODE" = replay_diff ] && [ "$seed" = 2 ] && [ "$count" -eq 3 ]; then
   echo "FUZZ EVENT replay-only"
 fi
@@ -65,6 +77,29 @@ run_failure_case() {
 
 run_failure_case missing 1
 run_failure_case invalid 1
+
+run_success_case() {
+  mode=$1
+  output="$TMPDIR_RUN/$mode.out"
+  : >"$COUNT"
+  if ! FURBLE_SIM_BIN="$FAKE" \
+      FURBLE_FUZZ_SEEDS=1 \
+      FURBLE_FUZZ_STEPS=2 \
+      FURBLE_FUZZ_REPEAT_SEED= \
+      FURBLE_FAKE_MODE="$mode" \
+      FURBLE_FAKE_COUNT="$COUNT" \
+      "$RUNNER" >"$output" 2>&1; then
+    echo "$mode: expected success" >&2
+    exit 1
+  fi
+  grep -q 'PASS fuzz seed 1' "$output"
+}
+
+run_success_case normal
+run_success_case one_restart
+
+run_failure_case mismatch ""
+run_failure_case inflated_boots ""
 
 : >"$COUNT"
 output="$TMPDIR_RUN/replay-missing.out"

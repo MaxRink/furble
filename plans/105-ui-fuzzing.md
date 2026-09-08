@@ -8,8 +8,10 @@ Implementation state: the fuzzer now has an extracted, dependency-free phase
 and random machine with explicit Apply, Settle, Check, Escape, and Finish
 phases. Invariant and timer-stop reads occur only after the requested number of
 completed LVGL cycles, while the continuous liveness check runs before every
-fuzzer tick. The native CI guard runs on all three modeled panel classes. No
-sanitizer CI or malformed-input validation is part of this slice.
+fuzzer tick. Firmware restart events take the orderly simulator reboot path and
+resume the random walk from a private harness-only checkpoint. Firmware RAM is
+fresh and NVS persists. The native CI guard runs on all three modeled panel
+classes. Sanitizer CI remains outside this slice.
 
 ## Goal
 
@@ -83,9 +85,11 @@ After each event's settle phase the fuzzer checks, through `UI::simQueryState`:
 Findings print as `FUZZ FINDING [class] step=N page=P event=E detail=...` with
 the recent event trail for minimisation, and the run exits non-zero if any hard
 invariant failed. The run ends with a `FUZZ SUMMARY` line containing attempted,
-observed-delta, no-observed-delta, settled, timer-stop, and liveness counters,
-followed by event-class and per-page coverage counts. The two delta counters
-sum to attempted, and attempted equals settled after a normal completion.
+observed-delta, no-observed-delta, settled, interrupted-restart, resumed-boot,
+timer-stop, and liveness counters, followed by event-class and per-page
+coverage counts. The two delta counters sum to settled. Attempted equals
+settled after a normal completion; after a restart it equals settled plus
+`interrupted_by_restart`.
 
 ### Files
 

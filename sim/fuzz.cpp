@@ -1,13 +1,21 @@
 #include <array>
+#include <charconv>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "FurbleUI.h"
 #include "driver.h"
@@ -112,14 +120,6 @@ constexpr std::array<int, static_cast<size_t>(Event::COUNT)> kWeights = {
     4,   // COMPANION_ANSWER
 };
 
-struct Finding {
-  std::string bug_class;
-  std::string page;
-  std::string event;
-  std::string detail;
-  uint32_t step;
-};
-
 // These are the state surfaces the fuzzer can observe without reaching into
 // LVGL or Control internals. Comparing them after the settle phase makes the
 // no-effect count honest: it means no visible state changed, not that a
@@ -147,7 +147,11 @@ ObservableState stateBeforeApply;
 uint32_t escapeActions = 0;
 std::mt19937_64 rng;
 std::deque<std::string> recentEvents;
-std::vector<Finding> findings;
+uint64_t findingCount = 0;
+uint64_t previousLiveness = 0;
+uint32_t resumedBoots = 0;
+constexpr const char *CHECKPOINT_FD_ENV = "FURBLE_SIM_FUZZ_CHECKPOINT_FD";
+constexpr size_t MAX_CHECKPOINT_BYTES = 16 * 1024 * 1024;
 std::map<std::string, uint32_t> classCounts;
 std::map<std::string, uint32_t> eventCounts;
 std::map<std::string, uint32_t> pageCounts;
@@ -229,17 +233,12 @@ void recordFinding(UI *ui,
                    const std::string &bug_class,
                    const std::string &event,
                    const std::string &detail) {
-  Finding finding;
-  finding.bug_class = bug_class;
-  finding.page = ui->simQueryState("page");
-  finding.event = event;
-  finding.detail = detail;
-  finding.step = machine->stepCount();
-  findings.push_back(finding);
+  ++findingCount;
   classCounts[bug_class]++;
 
   std::cout << "FUZZ FINDING [" << bug_class << "] step=" << machine->stepCount()
-            << " page=" << finding.page << " event=" << event << " detail=" << detail << '\n';
+            << " page=" << ui->simQueryState("page") << " event=" << event
+            << " detail=" << detail << '\n';
   std::cout << "  recent:";
   for (const std::string &entry : recentEvents) {
     std::cout << ' ' << entry;
@@ -375,13 +374,16 @@ void applyEvent(UI *ui, Event event) {
 
 void finish(void) {
   active = false;
-  std::cout << "FUZZ SUMMARY seed=" << seed << " steps=" << machine->stepCount()
+  std::cout << "FUZZ SUMMARY seed=" << seed << " steps=" << maxSteps
             << " attempted=" << machine->attempted()
             << " observed_delta=" << machine->observedDelta()
             << " no_observed_delta=" << machine->noObservedDelta()
             << " settled=" << machine->settled()
+            << " interrupted_by_restart=" << machine->interruptedByRestart()
+            << " resumed_boots=" << resumedBoots
             << " timer_stop_checks=" << machine->timerStopChecks()
-            << " liveness=" << livenessViolationCount() << " findings=" << findings.size() << '\n';
+            << " liveness=" << previousLiveness + livenessViolationCount()
+            << " findings=" << findingCount << '\n';
   for (const auto &entry : classCounts) {
     std::cout << "  class " << entry.first << " count " << entry.second << '\n';
   }
@@ -396,7 +398,126 @@ void finish(void) {
   }
   std::cout << '\n';
   std::cout.flush();
-  requestExit(findings.empty() ? 0 : 1);
+  requestExit(findingCount == 0 ? 0 : 1);
+}
+
+// The checkpoint is harness state, not simulated flash or firmware RAM.
+// Explicit fields and a version make malformed or incompatible state fail
+// closed instead of silently restarting the random walk from a different seed.
+std::array<uint32_t *, 14> checkpointFields(FuzzMachine::State &s) {
+  return {&s.phase, &s.settleNext, &s.maxSteps, &s.escapeCadence, &s.stepCount,
+          &s.settleRemaining, &s.attempted, &s.observedDelta, &s.noObservedDelta,
+          &s.settled, &s.timerStopChecks, &s.finishing, &s.interruptedByRestart,
+          &s.applyStarted};
+}
+
+template <typename T>
+bool readNumber(std::istream &input, T &value) {
+  std::string token;
+  if (!(input >> token)) {
+    return false;
+  }
+  const auto result = std::from_chars(token.data(), token.data() + token.size(), value);
+  return result.ec == std::errc {} && result.ptr == token.data() + token.size();
+}
+
+void writeCounts(std::ostream &output, const std::map<std::string, uint32_t> &counts) {
+  output << counts.size() << '\n';
+  for (const auto &[name, count] : counts) {
+    output << std::quoted(name) << ' ' << count << '\n';
+  }
+}
+
+bool readCounts(std::istream &input, std::map<std::string, uint32_t> &counts) {
+  uint32_t size = 0;
+  if (!readNumber(input, size) || size > 256) {
+    return false;
+  }
+  for (uint32_t i = 0; i < size; ++i) {
+    std::string name;
+    uint32_t count = 0;
+    if (!(input >> std::quoted(name)) || name.empty() || name.size() > 128
+        || !readNumber(input, count) || count == 0 || count > maxSteps
+        || !counts.emplace(name, count).second) {
+      return false;
+    }
+  }
+  return true;
+}
+
+uint64_t countTotal(const std::map<std::string, uint32_t> &counts) {
+  uint64_t total = 0;
+  for (const auto &[name, count] : counts) {
+    total += count;
+  }
+  return total;
+}
+
+bool restoreCheckpoint(const std::string &payload) {
+  std::istringstream input(payload);
+  std::string version;
+  uint64_t savedSeed = 0;
+  uint32_t savedBudget = 0;
+  FuzzMachine::State state;
+  if (!(input >> version) || version != "FURBLE_FUZZ_RESTART_1"
+      || !readNumber(input, savedSeed) || savedSeed != seed
+      || !readNumber(input, savedBudget) || savedBudget != maxSteps
+      || !readNumber(input, resumedBoots) || resumedBoots == 0
+      || !readNumber(input, previousLiveness) || !readNumber(input, findingCount)) {
+    return false;
+  }
+  for (auto *field : checkpointFields(state)) {
+    if (!readNumber(input, *field)) {
+      return false;
+    }
+  }
+  if (state.maxSteps != maxSteps || resumedBoots > state.attempted
+      || state.interruptedByRestart != resumedBoots || !machine->restore(state)
+      || !(input >> rng) || !readCounts(input, classCounts)
+      || !readCounts(input, eventCounts) || !readCounts(input, pageCounts)
+      || countTotal(classCounts) != findingCount
+      || countTotal(eventCounts) != machine->attempted()
+      || countTotal(pageCounts) > machine->settled()) {
+    return false;
+  }
+  uint32_t recentCount = 0;
+  if (!readNumber(input, recentCount) || recentCount > 20) {
+    return false;
+  }
+  for (uint32_t i = 0; i < recentCount; ++i) {
+    std::string event;
+    if (!(input >> std::quoted(event)) || event.empty() || event.size() > 128) {
+      return false;
+    }
+    recentEvents.push_back(event);
+  }
+  input >> std::ws;
+  return input.eof();
+}
+
+bool readCheckpointDescriptor(const char *value) {
+  int fd = -1;
+  const std::string token(value);
+  const auto parsed = std::from_chars(token.data(), token.data() + token.size(), fd);
+  struct stat info {};
+  if (parsed.ec != std::errc {} || parsed.ptr != token.data() + token.size() || fd < 3
+      || fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_nlink != 0
+      || info.st_uid != getuid() || info.st_size <= 0
+      || static_cast<uint64_t>(info.st_size) > MAX_CHECKPOINT_BYTES) {
+    return false;
+  }
+  std::string payload(static_cast<size_t>(info.st_size), '\0');
+  size_t offset = 0;
+  while (offset < payload.size()) {
+    const ssize_t count = read(fd, payload.data() + offset, payload.size() - offset);
+    if (count <= 0) {
+      close(fd);
+      return false;
+    }
+    offset += static_cast<size_t>(count);
+  }
+  const bool closed = close(fd) == 0;
+  return closed && restoreCheckpoint(payload);
 }
 
 }  // namespace
@@ -414,11 +535,71 @@ void fuzzConfigure(uint64_t s, uint32_t steps, bool v) {
   escapeActions = 0;
   rng.seed(s);
   recentEvents.clear();
-  findings.clear();
+  findingCount = 0;
+  previousLiveness = 0;
+  resumedBoots = 0;
   classCounts.clear();
   eventCounts.clear();
   pageCounts.clear();
-  std::cout << "FUZZ START seed=" << seed << " steps=" << maxSteps << '\n';
+  if (const char *checkpoint = std::getenv(CHECKPOINT_FD_ENV); checkpoint != nullptr) {
+    if (!readCheckpointDescriptor(checkpoint) || unsetenv(CHECKPOINT_FD_ENV) != 0) {
+      std::cerr << "fuzz restart: invalid or unreadable continuation\n";
+      std::exit(1);
+    }
+    std::cout << "FUZZ RESUME seed=" << seed << " boot=" << resumedBoots
+              << " attempted=" << machine->attempted()
+              << " interrupted_by_restart=" << machine->interruptedByRestart() << '\n';
+  } else {
+    std::cout << "FUZZ START seed=" << seed << " steps=" << maxSteps << '\n';
+  }
+}
+
+bool fuzzResumedBoot(void) {
+  return resumedBoots != 0;
+}
+
+bool fuzzSaveRestart(void) {
+  if (!active || machine == nullptr || !machine->interruptForRestart()
+      || resumedBoots >= machine->attempted()) {
+    return false;
+  }
+  std::ostringstream output;
+  output << "FURBLE_FUZZ_RESTART_1 " << seed << ' ' << maxSteps << ' '
+         << resumedBoots + 1 << ' ' << previousLiveness + livenessViolationCount()
+         << ' ' << findingCount << '\n';
+  auto state = machine->checkpoint();
+  for (const auto *field : checkpointFields(state)) {
+    output << *field << ' ';
+  }
+  output << '\n' << rng << '\n';
+  writeCounts(output, classCounts);
+  writeCounts(output, eventCounts);
+  writeCounts(output, pageCounts);
+  output << recentEvents.size() << '\n';
+  for (const auto &event : recentEvents) {
+    output << std::quoted(event) << '\n';
+  }
+  const std::string payload = output.str();
+  if (!output || payload.size() > MAX_CHECKPOINT_BYTES) {
+    return false;
+  }
+  // tmpfile is private and already unlinked. Inherit only its descriptor, so
+  // neither successful re-exec nor a failed boot leaves checkpoint caches.
+  FILE *checkpoint = std::tmpfile();
+  if (checkpoint == nullptr) {
+    return false;
+  }
+  const int fd = fileno(checkpoint);
+  const int flags = fcntl(fd, F_GETFD);
+  if (std::fwrite(payload.data(), 1, payload.size(), checkpoint) != payload.size()
+      || std::fflush(checkpoint) != 0 || std::fseek(checkpoint, 0, SEEK_SET) != 0
+      || flags < 0 || fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) != 0
+      || setenv(CHECKPOINT_FD_ENV, std::to_string(fd).c_str(), 1) != 0) {
+    std::fclose(checkpoint);
+    return false;
+  }
+  // The descriptor must remain open until the immediately following execvp.
+  return true;
 }
 
 bool fuzzActive(void) {

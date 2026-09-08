@@ -2422,6 +2422,17 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/ui-restart-persist.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/watchdog-before.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

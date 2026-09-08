@@ -148,6 +148,18 @@ their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`,
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
+`sim/scripts/run-fuzz-restart.sh` repeats the measured 135x240 seed 2 walk up
+to five times and requires one run to resume after a production UI restart.
+
+A fuzzer event that activates a firmware restart follows the real simulator
+reboot path. The process first joins the simulator tasks, keeps the NVS file,
+then re-executes the same binary with a private unlinked checkpoint containing
+only the fuzzer RNG, phase counters, finding counts, coverage, and the last 20
+event names. Firmware RAM and UI objects are not checkpointed, and the event
+that requested the restart is not replayed. The final summary reports
+`attempted = settled + interrupted_by_restart`; `resumed_boots` records the
+number of successful resumed boots. A missing, malformed, oversized, linked,
+or wrong-owner checkpoint fails the run rather than starting a new random walk.
 
 After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
 (default: the first guarded seed, empty to skip) and requires the two runs to

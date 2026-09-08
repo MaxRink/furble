@@ -156,7 +156,7 @@ void testCheckpointValidation() {
   requireStateEqual(saved, machine.checkpoint(), "invalid restore leaves state unchanged");
 
   invalid = saved;
-  invalid.attempted = 1;
+  invalid.attempted = 2;
   invalid.interruptedByRestart = 1;
   require(!machine.restore(invalid), "restore rejects inconsistent attempt counters");
 }
@@ -172,6 +172,11 @@ void testInterruptedRestart() {
           "interruption does not record settled observations");
   require(beforeApply.phase() == Furble::Sim::FuzzPhase::APPLY,
           "non-final interruption resumes fresh Apply");
+  const auto interrupted = beforeApply.checkpoint();
+  Furble::Sim::FuzzMachine resumed(99);
+  require(resumed.restore(interrupted), "canonical interrupted checkpoint restores");
+  requireStateEqual(interrupted, resumed.checkpoint(),
+                    "interrupted checkpoint round-trips exactly");
   require(!beforeApply.interruptForRestart(), "the same interruption cannot be consumed twice");
 
   Furble::Sim::FuzzMachine duringSettle(1);

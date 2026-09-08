@@ -107,15 +107,15 @@ validate_summary() {
   observed=$(printf '%s\n' "$summary" | sed -n 's/.* observed_delta=\([^ ]*\).*/\1/p')
   no_observed=$(printf '%s\n' "$summary" | sed -n 's/.* no_observed_delta=\([^ ]*\).*/\1/p')
   settled=$(printf '%s\n' "$summary" | sed -n 's/.* settled=\([^ ]*\).*/\1/p')
+  interrupted=$(printf '%s\n' "$summary" \
+    | sed -n 's/.* interrupted_by_restart=\([^ ]*\).*/\1/p')
+  resumed=$(printf '%s\n' "$summary" \
+    | sed -n 's/.* resumed_boots=\([^ ]*\).*/\1/p')
   if [ "$summary_seed" != "$requested_seed" ] || [ "$summary_steps" != "$requested_steps" ]; then
     echo "fuzz summary request mismatch for seed $requested_seed: $summary" >&2
     return 1
   fi
-  if [ "$attempted" != "$requested_steps" ] || [ "$settled" != "$requested_steps" ]; then
-    echo "fuzz summary count mismatch for seed $requested_seed: $summary" >&2
-    return 1
-  fi
-  for counter in "$attempted" "$observed" "$no_observed" "$settled"; do
+  for counter in "$attempted" "$observed" "$no_observed" "$settled" "$interrupted" "$resumed"; do
     case "$counter" in
       ''|*[!0-9]*)
         echo "fuzz summary counters are not unsigned integers for seed" \
@@ -124,9 +124,15 @@ validate_summary() {
         ;;
     esac
   done
-  delta_sum=$((observed + no_observed))
-  if [ "$delta_sum" -ne "$attempted" ]; then
-    echo "fuzz summary delta mismatch for seed $requested_seed: $summary" >&2
+  if [ "$attempted" -ne "$requested_steps" ]; then
+    echo "fuzz summary count mismatch for seed $requested_seed: $summary" >&2
+    return 1
+  fi
+  if [ "$settled" -gt "$attempted" ] || [ "$interrupted" -gt "$attempted" ] \
+      || [ "$resumed" -gt "$attempted" ] || [ "$interrupted" -ne "$resumed" ] \
+      || [ "$settled" -ne $((attempted - interrupted)) ] \
+      || [ $((observed + no_observed)) -ne "$settled" ]; then
+    echo "fuzz summary restart/count mismatch for seed $requested_seed: $summary" >&2
     return 1
   fi
   return 0

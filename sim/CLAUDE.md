@@ -521,6 +521,12 @@ including empty strings and failed-save rollback.
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
   board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+- A firmware restart reached by the fuzzer performs the same orderly task join
+  and process re-exec as a scripted restart. Only harness RNG, counters,
+  finding counts, coverage, and the last 20 event names cross the exec in a
+  private unlinked descriptor. Firmware RAM and UI state are fresh, NVS
+  persists, and the restart event is counted as interrupted rather than
+  replayed. Checkpoint creation and restore fail closed.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail. It
   is currently used for seed 3 on the 320x240 board only, which reports a layout

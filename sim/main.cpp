@@ -22,6 +22,7 @@
 #include "ble_sim.h"
 #include "capture.h"
 #include "driver.h"
+#include "fuzz.h"
 #include "watchdog.h"
 
 extern "C" void furble_sim_check_step_detect_suppressed(void);
@@ -49,7 +50,9 @@ int runSimulator() {
   Sim::watchdogPhase("settings");
   Settings::init();
   Sim::watchdogPhase("scenario settings");
-  Sim::applyScenarioSettings();
+  if (!Sim::fuzzResumedBoot()) {
+    Sim::applyScenarioSettings();
+  }
   Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
 #if defined(FURBLE_M5STICKS3)
   Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
@@ -73,7 +76,9 @@ int runSimulator() {
 
   // The companion service mirrors the rig request so the rig transport can
   // attach. Scenarios drive every other setting through their seed lines.
-  Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
+  if (!Sim::fuzzResumedBoot()) {
+    Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
+  }
 
   if (Sim::scenarioSettingIsTrue("autoconnect")) {
     CameraList::addFauxNY();
@@ -92,7 +97,8 @@ int runSimulator() {
 
   // Let capture scripts pick a theme without navigating the roller. The theme
   // is applied once at UI construction, so seed it before the UI exists.
-  if (const char *theme = std::getenv("FURBLE_SIM_THEME"); theme != nullptr && theme[0] != '\0') {
+  if (const char *theme = std::getenv("FURBLE_SIM_THEME");
+      !Sim::fuzzResumedBoot() && theme != nullptr && theme[0] != '\0') {
     Settings::save<Settings::THEME>(std::string(theme));
   }
 
@@ -101,7 +107,8 @@ int runSimulator() {
   // once at UI construction from the TEXT_SIZE setting, so seed it here before
   // the UI exists. Accepts a name (small/normal/large, case insensitive) or the
   // numeric setting value (0/1/2).
-  if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE"); size != nullptr && size[0] != '\0') {
+  if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE");
+      !Sim::fuzzResumedBoot() && size != nullptr && size[0] != '\0') {
     std::string value(size);
     for (char &c : value) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
