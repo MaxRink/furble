@@ -120,7 +120,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The timed-wake threshold label uses the same width-constrained wrapping
   pattern as other rows when its value wraps below the name.
   Spinner menu rows must also set `LV_OBJ_FLAG_SCROLL_ON_FOCUS` so a revealed
-  timed-wake threshold remains visible to encoder navigation.
+  timed-wake threshold remains visible to encoder navigation. StickC spinner
+  rows use compact 1 px vertical padding; Core rows reduce only their theme
+  top padding by one pixel so all font sizes retain the theme spacing below.
+  The Core Large-text timer overflow regression is covered by the exact timer,
+  page-matrix, and non-touch layout scenarios; screenshot coverage remains a
+  separate visual check. The dedicated Core Large timer capture is
+  `docs/img/core/timer-large.png`; it does not prove physical button layout.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

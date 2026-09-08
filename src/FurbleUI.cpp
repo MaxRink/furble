@@ -7763,6 +7763,10 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // Shutter and Wait rows fit without scrolling the timer page.
   lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+#elif defined(FURBLE_M5COREX)
+  // Core needs only one pixel less theme top padding for its Large-text rows.
+  const int32_t padTop = lv_obj_get_style_pad_top(spinner.m_Button, LV_PART_MAIN);
+  lv_obj_set_style_pad_top(spinner.m_Button, padTop > 0 ? padTop - 1 : 0, LV_STATE_DEFAULT);
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);

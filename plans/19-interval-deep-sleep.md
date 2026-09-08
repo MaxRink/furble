@@ -363,13 +363,27 @@ built successfully and `sim/scripts/run-deep-sleep.sh` passed with its fresh
 binary, including stable-camera-ID resume and the one-shot completion check.
 This is host simulator evidence, not physical timed-wake verification.
 
-The PR59 rerun later failed in the certified `m5stick-c` fixture
-`timer-overflow-no-timed-wake.txt` at `ui.overflow expected 'no' got 'yes'` after
-`ui.page timer`; the same StickC case passed locally under matching flags. The
-fixture now prints the existing text-size and scroll-bound queries immediately
-before its unchanged assertion, and the alternate-board workflow echoes the
-exact board and scenario path, to distinguish a reproducible layout defect from
-host/layout timing variance.
+The PR59 rerun initially reported an ambiguous timer overflow, but the fresh
+diagnostic run identified the failing board: `m5stack-core` in the certified
+`timer-overflow-no-timed-wake.txt` fixture. Large text produced
+`ui.scroll_bottom=3` after `ui.page timer`; the matching StickC run passed with
+the existing clamp and compact row padding. CI and local LVGL generation are
+byte-identical (`LV_DPI_DEF=130`, default Montserrat 16), so this is a Core
+large-text spacing defect. The candidate fix reduces each Core spinner row's
+existing theme top padding by one pixel, clamped at zero, and leaves bottom
+padding unchanged. The fixture keeps its unchanged overflow assertion, and the
+workflow echoes the exact board and scenario path.
+Root validation of the candidate passed the exact Core timer fixture with
+`ui.scroll_bottom=0`, plus the Core page-matrix and Core non-touch layout
+scenarios. Logs: `/home/a92615428/b/c59-core-fixed-timer-overflow-no-timed-wake.log`,
+`/home/a92615428/b/c59-core-fixed-page-matrix.log`, and
+`/home/a92615428/b/c59-core-fixed-core-notouch-layout.log`. Screenshot coverage
+for the Core touch geometry also passed with all four interval fields readable
+in `docs/img/core/timer-large.png` (the `rig0` capture uses the normal `sim`
+header). This is visual Core coverage only, not physical Core button-layout
+proof. The generated walkthrough capture also retains a pre-existing
+StickS3 `settings-timer` Shutter-value clipping issue, which is outside this
+Core fix.
 
 ## References
 
