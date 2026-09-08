@@ -492,3 +492,13 @@ delete `999` left the catalog unchanged, delete `0` reported `ok` and count 1,
 and reload reported saved count 0. This proves the simulator's file-backed
 catalog path only, not power-loss/reboot durability, headless behavior,
 hardware UI, or `FURBLE_CONSOLE` completion-semaphore behavior.
+
+The release display build also needs the interval and bulb state-name helpers
+used by the shared UI request service, so those helpers are compiled for every
+display build. `FurbleUI.h` now includes `FreeRTOS.h` before the dependent task
+and semaphore headers, fixing the debug-only type cascade. Clang-format 21 was
+applied to the changed UI header and simulator action parser. Coverage remains
+an observation, not a floor adjustment: run 34208310414 measured `FurbleUI.cpp`
+at 79.00% against the 79.53% floor, so no floor was reduced. Real-handler
+scenario coverage for the new workflow paths and firmware, headless, and
+`FURBLE_CONSOLE` validation remain follow-up gates.

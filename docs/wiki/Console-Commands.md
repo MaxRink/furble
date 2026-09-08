@@ -31,13 +31,16 @@ About page and exposed through companion BLE Device Information.
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
 | `companion` | `password set <pw>`, `clear`, or `status`. |
-| `ui` | `ui audit`, dump the current page layout. |
+| `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
 | `pair` | `pair <scan-index>` pairs a live scan result through the UI handler. |
 | `delete` | `delete <index>` or `delete all` removes saved cameras and verifies persistence. |
 | `multiconnect` | `list`, `select <index>`, `deselect <index>`, or `clear`. |
 | `disconnect` | Disconnect all cameras. |
+| `interval` | `start`, `stop`, or `status` for the Timer page on display builds. |
+| `bulb` | `start`, `stop`, or `status` for the Bulb page on display builds. |
+| `display` | `status`, `mode gui|console`, or `brightness <value>` on display builds. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `focus` | `press` or `release`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
@@ -71,6 +74,13 @@ session and revokes any authenticated connection.
 Workflow requests are queued to the UI task. A timeout means the outcome is
 unknown and the operation may still execute later. Do not blindly retry a
 timed-out destructive request.
+
+UI workflow commands include `pair <scan-index>`, `delete <index> | all`, and
+`multiconnect list | select <index> | deselect <index> | clear`. Pairing routes
+through the same UI handler as the display scan page. `ui page | back` changes
+the current page; `interval`, `bulb`, and `display` control their display pages
+on display builds. A bounded wait prints `pending` when the result is unknown,
+so do not blindly retry a timed-out destructive request.
 
 See the [Settings Reference](Settings-Reference) for every setting, its default,
 and when it applies.

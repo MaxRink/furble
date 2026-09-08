@@ -44,7 +44,7 @@ About page and exposed through companion BLE Device Information.
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
 | `companion` | `password set <pw>`, `clear`, or `status`. |
-| `ui` | `ui audit`, dump the current page layout. |
+| `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
 | `pair` | `pair <scan-index>` pairs a live scan result through the UI handler. |
@@ -86,6 +86,21 @@ it first with the Delete page.
 Workflow requests are queued to the UI task. A bounded wait can report a
 pending, unknown outcome if the UI does not complete in time; the operation may
 still execute later. Do not blindly retry a timed-out delete or pairing request.
+
+### UI workflow commands
+
+- `cameras list | status` lists saved cameras or reports active targets.
+- `connect [index]` connects one saved camera, or the selected multi-connect set.
+- `disconnect` disconnects all cameras.
+- `pair <scan-index>` pairs a live scan result through `UI::beginPairing()`.
+- `delete <index> | all` removes saved cameras and checks persistence.
+- `multiconnect list | select <index> | deselect <index> | clear` edits the
+  saved-camera selection used by `connect` without an index.
+- `ui audit | page | back` audits or navigates the display UI.
+- `interval start | stop | status` controls the Timer page on display builds.
+- `bulb start | stop | status` controls the Bulb page on display builds.
+- `display status | mode gui | console | brightness <value>` controls display
+  state on display builds.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB

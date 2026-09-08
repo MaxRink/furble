@@ -4,8 +4,9 @@
 #include <mutex>
 
 #if defined(FURBLE_CONSOLE)
-#include <freertos/task.h>
+#include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 #include "FurbleRequestState.h"
 #endif
 
@@ -895,13 +896,11 @@ class UI {
 
   enum class DisplayState { ACTIVE, DIM, OFF };
 
-#if defined(FURBLE_SIM) || defined(FURBLE_CONSOLE)
   /** Intervalometer run state as a stable, script parseable word. */
   static const char *intervalStateName(Intervalometer::state_t state);
 
   /** Bulb exposure state as a stable, script parseable word. */
   static const char *bulbStateName(Bulb::state_t state);
-#endif
 
   lv_obj_t *m_IntervalStart = nullptr;
   lv_obj_t *m_IntervalStop = nullptr;

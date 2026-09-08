@@ -248,13 +248,16 @@ imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write non-secret settings
 companion password set | clear | status manage the companion password without revealing it
-ui audit                            dump the current page layout
+ui audit | page | back             inspect or navigate the current page
 cameras list | status               saved cameras, or the active targets
 pair <scan-index>                  pair a live scan result
 delete <index> | all               remove saved cameras
 multiconnect list|select|deselect|clear manage saved selection
 connect [index]                     no index uses the multi-connect selection
 disconnect
+interval start | stop | status       Timer page workflow
+bulb start | stop | status           Bulb page workflow
+display status | mode | brightness   display workflow
 shutter press | release | hold <ms>
 focus press | release
 ir fire [protocol]                  fire the IR emitter

@@ -337,9 +337,9 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
       return true;
     case scenario_action_kind_t::CONSOLE:
       if (!action.mode.empty() || action.index != 0
-          || !known(action.name, {"cameras", "connect", "scan", "pair", "delete",
-                                  "multi-select", "multi-deselect", "multi-clear", "interval",
-                                  "bulb", "display", "page", "back"})) {
+          || !known(action.name, {"cameras", "connect", "scan", "pair", "delete", "multi-select",
+                                  "multi-deselect", "multi-clear", "interval", "bulb", "display",
+                                  "page", "back"})) {
         return fail(error, "noncanonical console action");
       }
       return true;
@@ -450,9 +450,8 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     if ((args.size() < 2) || (args.size() > 3)) {
       return fail(error, "console requires command and optional integer");
     }
-    const bool needsInteger = oneOf(args[1], {"connect", "scan", "pair", "delete",
-                                              "multi-select", "multi-deselect", "interval",
-                                              "bulb"});
+    const bool needsInteger = oneOf(args[1], {"connect", "scan", "pair", "delete", "multi-select",
+                                              "multi-deselect", "interval", "bulb"});
     const bool optionalInteger = oneOf(args[1], {"cameras", "display"});
     if (needsInteger && args.size() != 3) {
       return fail(error, "console command requires an integer");

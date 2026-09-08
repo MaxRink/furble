@@ -255,7 +255,6 @@ constexpr int32_t RECONNECT_NAME_MIN_WIDTH = 135;
 
 }  // namespace
 
-#if defined(FURBLE_SIM) || defined(FURBLE_CONSOLE)
 const char *UI::intervalStateName(Intervalometer::state_t state) {
   switch (state) {
     case Intervalometer::STATE_IDLE:
@@ -283,7 +282,6 @@ const char *UI::bulbStateName(Bulb::state_t state) {
   }
   return "unknown";
 }
-#endif
 
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options);
 
