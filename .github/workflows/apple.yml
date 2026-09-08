@@ -68,7 +68,7 @@ jobs:
         if: success()
         working-directory: companion/apple
         run: |
-          app="$RUNNER_TEMP/FurbleCompanion-macOS-DerivedData/Build/Products/Debug/FurbleCompanion.app"
+          app="$RUNNER_TEMP/FurbleCompanion-macOS-DerivedData/Build/Products/Debug/FurbleCompanion-macOS.app"
           zip="$RUNNER_TEMP/FurbleCompanion-macOS-Debug-unsigned.zip"
           test -d "$app"
           ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
