@@ -165,6 +165,9 @@ Rebase notes:
   The retained baseline binary failed the second-fresh-fix assertion, while the
   fixed-run logs are recorded as `~/b/c265-fixed-*.log` and the negative proof as
   `~/b/c265-gps-wire-negative.log`.
+- Those six results cover the pre-merge GPS fix at `7945d925`. The candidate
+  was later merged with exact master `ad9bc513423b62150ef74dcd6781cebfa4eb1198`
+  as `363a198b`; that post-merge head has not yet been rebuilt or rerun.
 - The GPS task now uses these states: `ACQUIRING` holds the lock while the first
   burst is found, `MEASURING` learns an unknown interval for five seconds,
   `BURST` holds the lock while NMEA data is received, `WAITING` releases the
