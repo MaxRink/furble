@@ -16,6 +16,7 @@
 #include "FurbleIR.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 namespace ConsoleHost {
 
@@ -147,6 +148,25 @@ struct TimeState {
 };
 
 TimeState &time(void);
+
+struct WiFiState {
+  Furble::WiFi::status_t status = {};
+  bool connectResult = true;
+  bool setEnabledResult = true;
+  bool setNtpEnabledResult = true;
+  bool reloadNtpResult = true;
+  bool syncNtpResult = true;
+  size_t connectCalls = 0;
+  size_t disconnectCalls = 0;
+  size_t setEnabledCalls = 0;
+  size_t forgetCalls = 0;
+  size_t clearRememberedAccessPointCalls = 0;
+  size_t setNtpEnabledCalls = 0;
+  size_t reloadNtpCalls = 0;
+  size_t syncNtpCalls = 0;
+};
+
+WiFiState &wifi(void);
 
 /** Redirect stdout into a captured file. Call once, before Console::init(). */
 void startCapture(const std::string &path);

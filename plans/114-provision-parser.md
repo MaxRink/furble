@@ -1,7 +1,7 @@
 # 114 - One-shot provisioning parser and console apply
 
 Status: implementation slice for the firmware side of provisioning. This PR
-does not implement WiFi association, browser WebSerial, or the staged browser
+does not implement browser WebSerial or the staged browser
 transport described by the broader flasher design.
 
 ## Scope
@@ -19,9 +19,10 @@ wire id as the first value byte. Unknown optional records are ignored, unknown
 required records fail, and a malformed or duplicate record rejects the whole
 blob without changing the output bundle.
 
-The parser accepts WiFi, MQTT, and companion-password fields for forward
-compatibility. Those fields are validated but remain deferred until their
-respective backends land. No secret is printed by the console.
+The parser accepts WiFi, MQTT, and companion-password fields. WiFi credentials
+are validated and persisted by this slice; MQTT and companion-password fields
+remain deferred until their respective backends land. No secret is printed by
+the console.
 
 ## Apply behavior
 
@@ -44,9 +45,9 @@ not add `provision begin`, chunked `provision tlv`, `provision commit`,
 slice for the browser flasher and must be designed around the same validated
 bundle path rather than creating a second settings writer.
 
-WiFi credential persistence and MQTT application remain blocked on the WiFi
-and MQTT implementation. Companion-password persistence remains blocked on the
-companion secret-store work. Browser WebSerial and real-device provisioning
+MQTT application remains blocked on the MQTT implementation.
+Companion-password persistence remains blocked on the companion secret-store
+work. Browser WebSerial and real-device provisioning
 remain hardware or browser acceptance work.
 
 ## Verification
@@ -61,5 +62,5 @@ remain hardware or browser acceptance work.
   before merge.
 
 No hardware gate is required for this parser-only slice. The real browser
-transport, WiFi association, MQTT broker, and companion secret flow remain
-explicit residual tests.
+transport, WiFi association, NTP sync, MQTT broker, and
+companion secret flow remain explicit residual tests.

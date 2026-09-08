@@ -86,6 +86,11 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
 #if defined(FURBLE_M5STICKS3)
     {WATCHDOG,           {WATCHDOG, 23, "Watchdog", "watchdog", FURBLE_STR}                   },
 #endif
+    {WIFI,               {WIFI, 51, "WiFi", "wifi", FURBLE_STR}                               },
+    {WIFI_SSID,          {WIFI_SSID, 52, "WiFi SSID", "wifi_ssid", FURBLE_STR}                },
+    {WIFI_PSK,           {WIFI_PSK, 53, "WiFi Passphrase", "wifi_psk", FURBLE_STR}            },
+    {NTP,                {NTP, 54, "NTP", "ntp", FURBLE_STR}                                  },
+    {NTP_SERVER,         {NTP_SERVER, 55, "NTP Server", "ntp_server", FURBLE_STR}             },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -149,6 +154,9 @@ bool Settings::appliesImmediately(type_t type) {
     case GPX_PERIOD:
     case IMU_WAKE:
     case IMU_TRIG:
+    case WIFI:
+    case NTP:
+    case NTP_SERVER:
 #if !defined(FURBLE_NO_DISPLAY)
     case DISPLAY_MODE:
 #endif
@@ -183,6 +191,8 @@ bool Settings::appliesImmediately(type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
+    case WIFI_SSID:
+    case WIFI_PSK:
       return false;
   }
   return false;
@@ -254,6 +264,11 @@ bool Settings::isDangerous(type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case WATCHDOG:
 #endif
+    case WIFI:
+    case WIFI_SSID:
+    case WIFI_PSK:
+    case NTP:
+    case NTP_SERVER:
       return false;
   }
   return false;
@@ -656,6 +671,17 @@ void Settings::init(void) {
           save<uint8_t>(setting.type, static_cast<uint8_t>(GUI));
           break;
 #endif
+        case WIFI:
+        case NTP:
+          save<bool>(setting.type, false);
+          break;
+        case WIFI_SSID:
+        case WIFI_PSK:
+          save<std::string>(setting.type, "");
+          break;
+        case NTP_SERVER:
+          save<std::string>(setting.type, "pool.ntp.org");
+          break;
         case TOUCH_CALIBRATION:
         {
           calibration_t calibration = {

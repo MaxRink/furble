@@ -24,6 +24,9 @@
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
+#if defined(ESP_PLATFORM)
+#include "FurbleWiFi.h"
+#endif
 
 namespace Furble {
 namespace {
@@ -234,6 +237,9 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       value = Settings::load<std::string>(setting.type);
       return true;
 
@@ -265,6 +271,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       value = Settings::load<bool>(setting.type) ? "true" : "false";
       return true;
 
@@ -487,6 +495,24 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::COMPANION_PASSWORD:
       return false;
 
+    case Settings::WIFI_SSID:
+      if (!Settings::validNetworkString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+#if defined(ESP_PLATFORM)
+      WiFi::clearRememberedAccessPoint();
+#endif
+      return true;
+
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
+      if (!Settings::validNetworkString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
@@ -512,6 +538,8 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
     {
       bool enabled = false;
       if (!parseBool(text, enabled)) {

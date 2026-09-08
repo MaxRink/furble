@@ -138,6 +138,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [130-ota-mqtt-contract.md](130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
 | [131-ota-replay-store.md](131-ota-replay-store.md) | Durable two-slot anti-rollback replay journal |
 | [132-ota-partition-sink.md](132-ota-partition-sink.md) | Ordered, digest-verified inactive-partition sink |
+| [177-mqtt-4mb-size-followup.md](177-mqtt-4mb-size-followup.md) | MQTT size follow-up and developer-only single-factory USB fallback |
 | [124-sim-incremental-deps.md](124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
 | [127-dev-version-identity.md](127-dev-version-identity.md) | Append an unambiguous short Git revision to development firmware versions while preserving release tags |
 | [142-bt-journal-memory.md](142-bt-journal-memory.md) | Compact, capability-aware Bluetooth journal storage and loss accounting |

@@ -110,10 +110,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleSD`: SD card service for the two Core boards. A dedicated writer task
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic
-  state accessors. Never mount, unmount or touch files under `/sd` from
+  state accessors.   Never mount, unmount or touch files under `/sd` from
   another task.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
+- `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
+  Never fall back to a WiFi scan while a camera is active.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
   circular scroll on a row wider than the panel animates forever and

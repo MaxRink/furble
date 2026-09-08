@@ -1,6 +1,7 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+#include <string>
 #include <unordered_map>
 
 #include "Preferences.h"
@@ -76,6 +77,11 @@ class Settings {
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
+    WIFI,
+    WIFI_SSID,
+    WIFI_PSK,
+    NTP,
+    NTP_SERVER,
   } type_t;
 
 #if !defined(FURBLE_NO_DISPLAY)
@@ -166,6 +172,10 @@ class Settings {
     HW_MOTION_HARDWARE = 2,
   } hw_motion_t;
 
+  static constexpr size_t WIFI_SSID_MAX_LENGTH = 32;
+  static constexpr size_t WIFI_PSK_MAX_LENGTH = 63;
+  static constexpr size_t NTP_SERVER_MAX_LENGTH = 63;
+
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
@@ -193,6 +203,9 @@ class Settings {
   static const setting_t &get(type_t);
   static const setting_t *getByWireId(uint8_t wire_id);
   static const std::unordered_map<type_t, setting_t> &all(void);
+
+  /** Validate an ingress network string before it reaches NVS. */
+  static bool validNetworkString(type_t type, const std::string &value);
 
   /** Return true when a saved value takes effect without a reboot. */
   static bool appliesImmediately(type_t type);
@@ -250,13 +263,13 @@ class Settings {
   template <type_t S>
   struct storage_type;
 
-  /** Load a setting, with type deduced from the setting. */
+  /** Load a setting, with the type deduced from the setting. */
   template <type_t S>
   static typename storage_type<S>::type load() {
     return load<typename storage_type<S>::type>(S);
   }
 
-  /** Save a setting, with type deduced from the setting. */
+  /** Save a setting, with the type deduced from the setting. */
   template <type_t S>
   static void save(const typename storage_type<S>::type &value) {
     save<typename storage_type<S>::type>(S, value);
@@ -509,6 +522,26 @@ struct Settings::storage_type<Settings::WATCHDOG> {
   using type = bool;
 };
 #endif
+template <>
+struct Settings::storage_type<Settings::WIFI> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::WIFI_SSID> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::WIFI_PSK> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::NTP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::NTP_SERVER> {
+  using type = std::string;
+};
 
 }  // namespace Furble
 

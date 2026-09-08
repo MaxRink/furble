@@ -10,7 +10,25 @@ CLAUDE.md whose directory it touches.
 - ESP-IDF 5.x via PlatformIO (`framework = espidf`). This is NOT Arduino.
 - Six board envs: m5stick-c, m5stick-c-plus, m5stick-s3, m5stack-core,
   m5stack-core2, and waveshare-s3-eth. Each has a `-debug` variant for
-  development. CI and releases build only the six release envs.
+  development. CI builds the six release envs and mandatory debug profiles;
+  releases build the six release envs and their matching debug profiles.
+- The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
+  to keep dual-OTA slots while retaining symbols, logs and assertions; stepping is less exact.
+- `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
+  factory app partition. Normal CI uses it as the mandatory Core debug profile.
+  It is not part of the six-board release or web installer matrices and has no
+  wireless update or rollback path. The legacy `m5stack-core-debug` OTA profile
+  is an explicit workflow-dispatch opt-in.
+- Unsupported Enterprise WiFi and SoftAP are compiled out on all boards.
+  WPA2/WPA3 Personal station mode and application TLS remain enabled.
+- Before auth integration, Core debug output was 1,732,597 bytes with 54,296 bytes RAM,
+  leaving 8,203 bytes in the 1,740,800-byte OTA slot. The `-Os` profile alone
+  was 1,781,453 bytes and Enterprise-only removal was 1,780,889 bytes, both
+  over the slot; OTA and TLS remain enabled.
+- Auth integration with `-Os` reached 1,743,717 bytes, 2,917 over the slot.
+  The `-Oz` experiment produced the identical size despite confirmed object-file
+  flags, so it was reverted. The combined image still does not fit; release
+  optimization, security features and the OTA layout are unchanged.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
   share the release sdkconfig via `board_build.esp-idf.sdkconfig_path`.
   Regenerating builds may append derived symbols to sdkconfig files. Commit

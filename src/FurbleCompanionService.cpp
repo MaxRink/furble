@@ -17,6 +17,7 @@
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 #include "protocol/CameraListProtocol.h"
 
 namespace Furble {
@@ -653,6 +654,8 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
     case Settings::GPS_EXTRAP:
       return SETTING_BOOL;
     case Settings::BRIGHTNESS:
@@ -688,6 +691,9 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
     case Settings::COMPANION_PASSWORD:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       return SETTING_STRING;
     case Settings::INTERVAL:
       return SETTING_BLOB;
@@ -727,6 +733,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::WATCHDOG:
 #endif
     case Settings::GPS_EXTRAP:
+    case Settings::WIFI:
+    case Settings::NTP:
     {
       const bool v = Settings::load<bool>(type);
       value.assign(reinterpret_cast<const uint8_t *>(&v),
@@ -772,6 +780,9 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       std::memcpy(value.data(), &v, sizeof(v));
       return true;
     }
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
     case Settings::THEME:
     case Settings::BUTTON_MODE:
     {
@@ -849,6 +860,12 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
         return false;
       }
       const std::string v(reinterpret_cast<const char *>(value), length);
+      if ((type == Settings::WIFI_SSID) || (type == Settings::WIFI_PSK)
+          || (type == Settings::NTP_SERVER)) {
+        if (!Settings::validNetworkString(type, v)) {
+          return false;
+        }
+      }
       if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
         return false;
@@ -1026,6 +1043,18 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       }
       break;
     case Settings::COMPANION_PASSWORD:
+      break;
+    case Settings::WIFI_SSID:
+      WiFi::clearRememberedAccessPoint();
+      break;
+    case Settings::WIFI:
+      WiFi::setEnabled(Settings::load<bool>(Settings::WIFI));
+      break;
+    case Settings::NTP:
+      WiFi::setNtpEnabled(Settings::load<bool>(Settings::NTP));
+      break;
+    case Settings::NTP_SERVER:
+      WiFi::reloadNtp();
       break;
     case Settings::IMU:
     case Settings::IMU_WAKE:

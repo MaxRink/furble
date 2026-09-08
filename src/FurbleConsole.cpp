@@ -2,6 +2,7 @@
 
 #if defined(FURBLE_CONSOLE)
 
+#include <time.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -53,6 +54,7 @@
 #include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 namespace Furble {
 
@@ -235,8 +237,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
-    case Settings::IMU_WAKE:
     case Settings::HW_MOTION:
+    case Settings::IMU_WAKE:
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
@@ -250,6 +252,9 @@ const char *settingType(Settings::type_t type) {
     case Settings::THEME:
     case Settings::BUTTON_MODE:
     case Settings::COMPANION_PASSWORD:
+    case Settings::WIFI_SSID:
+    case Settings::NTP_SERVER:
+    case Settings::WIFI_PSK:
       return "string";
     case Settings::TX_ADAPTIVE:
     case Settings::GPS:
@@ -276,6 +281,8 @@ const char *settingType(Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       return "bool";
     case Settings::INTERVAL:
     case Settings::TOUCH_CALIBRATION:
@@ -365,9 +372,9 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
+    case Settings::HW_MOTION:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
-    case Settings::HW_MOTION:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
     case Settings::GPX_PERIOD:
@@ -392,7 +399,12 @@ void printValue(const char *prefix, Settings::type_t type) {
       break;
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::NTP_SERVER:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
+      break;
+    case Settings::WIFI_PSK:
+      printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
       break;
     case Settings::COMPANION_PASSWORD:
     {
@@ -425,6 +437,8 @@ void printValue(const char *prefix, Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
     default:
@@ -540,7 +554,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
-      if ((end == text) || (value > Settings::HW_MOTION_HARDWARE)) {
+      if ((end == text) || (*end != '\0') || (value > Settings::HW_MOTION_HARDWARE)) {
         return fail("expected 0-2 (auto, software, hardware)");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -600,6 +614,31 @@ int setValue(const Settings::setting_t &setting, const char *text) {
                                       : Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
       break;
 
+    case Settings::WIFI_SSID:
+      if (!Settings::validNetworkString(setting.type, std::string(text))) {
+        return fail("SSID must be 32 characters or fewer");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      WiFi::clearRememberedAccessPoint();
+      break;
+
+    case Settings::WIFI_PSK:
+      if (!Settings::validNetworkString(setting.type, std::string(text))) {
+        return fail("passphrase must be 63 characters or fewer");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      break;
+
+    case Settings::NTP_SERVER:
+      if (!Settings::validNetworkString(setting.type, std::string(text))) {
+        return fail("NTP server must be 1 to 63 characters");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      if (!WiFi::reloadNtp()) {
+        return fail("NTP server could not be applied");
+      }
+      break;
+
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
@@ -635,6 +674,38 @@ int setValue(const Settings::setting_t &setting, const char *text) {
         return fail("expected on or off");
       }
       Settings::save<bool>(setting.type, value);
+    } break;
+
+    case Settings::WIFI:
+    {
+      bool value = false;
+      if (!parseBool(text, value)) {
+        return fail("expected on or off");
+      }
+      if (value && Settings::load<Settings::WIFI_SSID>().empty()) {
+        return fail("set wifi_ssid before enabling WiFi");
+      }
+      Settings::save<bool>(setting.type, value);
+      if (!WiFi::setEnabled(value)) {
+        return fail("WiFi needs an enabled setting and a non-empty SSID");
+      }
+#if !defined(FURBLE_NO_DISPLAY)
+      if (value) {
+        printf("warning: WiFi reduces battery runtime\n");
+      }
+#endif
+    } break;
+
+    case Settings::NTP:
+    {
+      bool value = false;
+      if (!parseBool(text, value)) {
+        return fail("expected on or off");
+      }
+      Settings::save<bool>(setting.type, value);
+      if (!WiFi::setNtpEnabled(value)) {
+        return fail("NTP could not be started");
+      }
     } break;
 
     default:
@@ -698,6 +769,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 /** Print every setting as 'key: value', shared by 'settings list' and 'debug settings'. */
 void printAllSettings(void) {
   for (const auto &entry : Settings::getAll()) {
+    if (entry.second.type == Settings::COMPANION_PASSWORD) {
+      continue;
+    }
     std::string prefix = std::string(entry.second.key) + ": ";
     printValue(prefix.c_str(), entry.second.type);
   }
@@ -727,6 +801,7 @@ int cmdSettings(int argc, char **argv) {
   if (setting == nullptr) {
     return fail("no such setting");
   }
+
   if (setting->type == Settings::COMPANION_PASSWORD) {
     return fail("use companion password set, clear or status");
   }
@@ -789,9 +864,7 @@ int cmdCompanion(int argc, char **argv) {
 }
 
 void printProvisionDeferred(const char *name) {
-  // These fields are intentionally accepted by the shared parser before the
-  // WiFi/MQTT backend lands. Never print their values: this includes PSKs and
-  // passwords.
+  // MQTT fields remain deferred. Never print their values.
   printf("provision: %s parsed (not applied; backend pending #53)\n", name);
 }
 
@@ -825,13 +898,22 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::COMPANION:
       CompanionGatt::getInstance().reloadSetting();
       break;
-    case Settings::COMPANION_PASSWORD:
-      CompanionGatt::getInstance().reloadPassword();
-      break;
     case Settings::IMU:
     case Settings::IMU_WAKE:
     case Settings::IMU_TRIG:
       UI::notifyGestureSettingsChanged();
+      break;
+    case Settings::COMPANION_PASSWORD:
+      CompanionGatt::getInstance().reloadPassword();
+      break;
+    case Settings::WIFI_SSID:
+      WiFi::clearRememberedAccessPoint();
+      break;
+    case Settings::NTP:
+      WiFi::setNtpEnabled(Settings::load<bool>(Settings::NTP));
+      break;
+    case Settings::NTP_SERVER:
+      WiFi::reloadNtp();
       break;
     default:
       break;
@@ -877,10 +959,14 @@ int cmdProvision(int argc, char **argv) {
   printf("provision: decoded %u bytes as %s\n", static_cast<unsigned>(bytes.size()),
          (encoding == ProvisionTLV::TextEncoding::HEX) ? "hex" : "base64");
   if (bundle.wifiSsid.has_value()) {
-    printProvisionDeferred("wifi_ssid");
+    printf("provision: wifi_ssid applied\n");
   }
   if (bundle.wifiPsk.has_value()) {
-    printProvisionDeferred("wifi_psk");
+    printf("provision: wifi_psk applied\n");
+  }
+  if (bundle.companionPassword.has_value()) {
+    CompanionGatt::getInstance().reloadPassword();
+    printf("provision: companion_password applied\n");
   }
   if (bundle.mqttUri.has_value()) {
     printProvisionDeferred("mqtt_uri");
@@ -899,15 +985,11 @@ int cmdProvision(int argc, char **argv) {
     printf("provision: setting %u (%s) applied\n", static_cast<unsigned>(field.wireId),
            (setting != nullptr) ? setting->key : "unknown");
   }
-  if (bundle.companionPassword.has_value()) {
-    printf("provision: setting %u (companion_pw) applied\n",
-           static_cast<unsigned>(ProvisionTLV::COMPANION_PASSWORD_WIRE_ID));
-  }
-  if ((report.settingsApplied == 0) && (report.deferredFields == 0)) {
+  if ((report.fieldsApplied == 0) && (report.deferredFields == 0)) {
     printf("provision: no fields\n");
   } else {
-    printf("provision: %u setting(s) applied, %u field(s) deferred\n",
-           static_cast<unsigned>(report.settingsApplied),
+    printf("provision: %u field(s) applied, %u field(s) deferred\n",
+           static_cast<unsigned>(report.fieldsApplied),
            static_cast<unsigned>(report.deferredFields));
   }
   return 0;
@@ -1456,6 +1538,7 @@ int cmdPower(int argc, char **argv) {
   return fail("expected stats, log or off");
 }
 
+#if !defined(FURBLE_NO_DISPLAY)
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
 
 int cmdPerfTasks(void) {
@@ -1573,6 +1656,186 @@ int cmdPerf(int argc, char **argv) {
 
   return fail("expected tasks, heap or lvgl");
 }
+#else
+int cmdPerfTasks(void) {
+  return fail("not supported in headless build");
+}
+
+int cmdPerfHeap(void) {
+  return fail("not supported in headless build");
+}
+
+int cmdPerf(int argc, char **argv) {
+  (void)argc;
+  (void)argv;
+  return fail("not supported in headless build");
+}
+#endif
+
+const char *wifiStateStr(WiFi::state_t state) {
+  switch (state) {
+    case WiFi::STATE_DISABLED:
+      return "disabled";
+    case WiFi::STATE_IDLE:
+      return "idle";
+    case WiFi::STATE_CONNECTING:
+      return "connecting";
+    case WiFi::STATE_CONNECTED:
+      return "connected";
+  }
+  return "unknown";
+}
+
+void printBssid(const WiFi::status_t &status) {
+  if (!status.bssid_set) {
+    printf("bssid: none\n");
+    return;
+  }
+
+  printf("bssid: %02x:%02x:%02x:%02x:%02x:%02x\n", static_cast<unsigned>(status.bssid[0]),
+         static_cast<unsigned>(status.bssid[1]), static_cast<unsigned>(status.bssid[2]),
+         static_cast<unsigned>(status.bssid[3]), static_cast<unsigned>(status.bssid[4]),
+         static_cast<unsigned>(status.bssid[5]));
+}
+
+void printTimestamp(const char *prefix, time_t timestamp) {
+  if (timestamp == 0) {
+    printf("%snever\n", prefix);
+    return;
+  }
+
+  tm utc = {};
+  if (gmtime_r(&timestamp, &utc) == nullptr) {
+    printf("%sunknown\n", prefix);
+    return;
+  }
+
+  printf("%s%04d-%02d-%02dT%02d:%02d:%02dZ\n", prefix, utc.tm_year + 1900, utc.tm_mon + 1,
+         utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec);
+}
+
+void printWifiStatus(void) {
+  const auto status = WiFi::getStatus();
+  printf("enabled: %s\n", boolStr(status.enabled));
+  printf("state: %s\n", wifiStateStr(status.state));
+  printf("ssid: %s\n", status.ssid.empty() ? "unset" : status.ssid.c_str());
+  printf("psk: %s\n", Settings::load<Settings::WIFI_PSK>().empty() ? "unset" : "set");
+  printBssid(status);
+  printf("channel: %u\n", static_cast<unsigned>(status.channel));
+  if (status.connected) {
+    printf("rssi: %d\n", status.rssi);
+  } else {
+    printf("rssi: unavailable\n");
+  }
+  printf("ip: %s\n", status.ip.empty() ? "none" : status.ip.c_str());
+
+  auto &platform = Platform::getInstance();
+  const auto &caps = platform.getBatteryCaps();
+  const auto battery = platform.readBattery();
+  if (caps.current) {
+    printf("current: %ld mA\n", static_cast<long>(battery.current));
+  } else {
+    printf("current: unavailable\n");
+  }
+
+  if (battery.charging) {
+    printf("estimated_runtime: charging\n");
+  } else if (caps.current && caps.level && (platform.getBatteryCapacity() > 0)
+             && (battery.current < -1)) {
+    const float remaining = platform.getBatteryCapacity() * (battery.level / 100.0f);
+    const uint32_t minutes = static_cast<uint32_t>((remaining / -battery.current) * 60.0f);
+    printf("estimated_runtime: ~%luh%02lum\n", static_cast<unsigned long>(minutes / 60),
+           static_cast<unsigned long>(minutes % 60));
+  } else {
+    printf("estimated_runtime: unknown\n");
+  }
+}
+
+int cmdWiFi(int argc, char **argv) {
+  if (argc < 2 || !strcasecmp(argv[1], "status")) {
+    printWifiStatus();
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "set")) {
+    if (argc < 4) {
+      return fail("usage: wifi set ssid <ssid> | wifi set psk <psk>");
+    }
+    if (!strcasecmp(argv[2], "ssid")) {
+      return setValue(Settings::get(Settings::WIFI_SSID), argv[3]);
+    }
+    if (!strcasecmp(argv[2], "psk")) {
+      return setValue(Settings::get(Settings::WIFI_PSK), argv[3]);
+    }
+    return fail("expected ssid or psk");
+  }
+
+  if (!strcasecmp(argv[1], "enable") || !strcasecmp(argv[1], "disable")) {
+    const char *value = !strcasecmp(argv[1], "enable") ? "on" : "off";
+    return setValue(Settings::get(Settings::WIFI), value);
+  }
+
+  if (!strcasecmp(argv[1], "connect")) {
+    if (!WiFi::connect()) {
+      return fail("WiFi is disabled or the SSID is empty");
+    }
+    printf("queued: wifi connect\n");
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "disconnect")) {
+    WiFi::disconnect();
+    printf("wifi: disconnected\n");
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "forget")) {
+    WiFi::forget();
+    printf("wifi: credentials forgotten\n");
+    return 0;
+  }
+
+  return fail("expected status, set, enable, disable, connect, disconnect or forget");
+}
+
+void printNtpStatus(void) {
+  const auto status = WiFi::getStatus();
+  printf("enabled: %s\n", boolStr(status.ntp_enabled));
+  printf("server: %s\n", Settings::load<Settings::NTP_SERVER>().c_str());
+  printf("running: %s\n", boolStr(status.ntp_running));
+  printf("synced: %s\n", boolStr(status.ntp_synced));
+  printTimestamp("last_sync: ", status.ntp_last_sync);
+  printf("offset_us: %lld\n", static_cast<long long>(status.ntp_offset_us));
+}
+
+int cmdNtp(int argc, char **argv) {
+  if (argc < 2 || !strcasecmp(argv[1], "status")) {
+    printNtpStatus();
+    return 0;
+  }
+
+  if (!strcasecmp(argv[1], "set")) {
+    if ((argc < 4) || strcasecmp(argv[2], "server")) {
+      return fail("usage: ntp set server <host>");
+    }
+    return setValue(Settings::get(Settings::NTP_SERVER), argv[3]);
+  }
+
+  if (!strcasecmp(argv[1], "enable") || !strcasecmp(argv[1], "disable")) {
+    const char *value = !strcasecmp(argv[1], "enable") ? "on" : "off";
+    return setValue(Settings::get(Settings::NTP), value);
+  }
+
+  if (!strcasecmp(argv[1], "sync")) {
+    if (!WiFi::syncNtp()) {
+      return fail("NTP needs WiFi, an IP address and an enabled setting");
+    }
+    printf("queued: ntp sync\n");
+    return 0;
+  }
+
+  return fail("expected status, set, enable, disable or sync");
+}
 
 /*
  * Status, cameras and camera control.
@@ -1608,14 +1871,6 @@ const char *resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
-/**
- * Report the motion source, and calibrate the software backend's threshold.
- *
- * `motion status` is the hardware gate's readout: which backend armed, whether
- * it holds a wake source, and how many transitions it has seen. `motion scale`
- * corrects a board whose accelerometer noise floor disagrees with the shipped
- * threshold. The hardware engines threshold in the chip and ignore the scale.
- */
 int cmdMotion(int argc, char **argv) {
   auto &motion = IMU::MotionSource::getInstance();
 
@@ -2691,11 +2946,15 @@ const esp_console_cmd_t COMMANDS[] = {
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
+    command("wifi",
+            "wifi status | set | enable | disable | connect | disconnect | forget",
+            cmdWiFi),
+    command("ntp", "ntp status | set server | enable | disable | sync", cmdNtp),
     command("settings", "settings list | get <name> | set <name> <value>", cmdSettings),
-    command("companion", "companion password set <pw> | clear | status", cmdCompanion),
     command("provision", "provision <hex|base64 TLV blob>", cmdProvision),
     command("ui", "ui audit | page | back", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
+    command("companion", "companion password set | clear | status", cmdCompanion),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("pair", "pair <scan index>, onboard a camera from 'scan list'", cmdPair),
     command("delete",

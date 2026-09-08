@@ -190,8 +190,9 @@ Every board has an optional `<board>-debug` environment, for example
 `m5stick-s3-debug`. These are built with `build_type = debug` and with
 `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
 sources are compiled in. They share the release `sdkconfig` of the board they
-extend, so nothing but the compiler flags changes. CI and releases build the
-five release environments only, never the debug ones.
+extend, except for the Core USB fallback's single-factory partition fragment.
+Normal CI builds the six release environments and their mandatory debug
+profiles. Releases retain their existing release/debug matrix.
 
 Build, flash and watch the log:
 - `platformio run -e m5stick-s3-debug -t upload`
@@ -218,6 +219,15 @@ reboots.
 The other boards are plain ESP32 and reach the host through a USB to UART
 bridge. They have no JTAG peripheral, so their debug environments give verbose
 logging and unoptimised code only. There are no breakpoints on a StickC.
+
+The 4 MB M5Stack Core also has a developer-only `m5stack-core-usb-debug`
+environment. It uses one large factory app partition when the normal Core debug
+image no longer fits its dual-OTA slot. Flash it over the Core USB-UART bridge;
+it has no wireless update or rollback path and is not published by the release
+or web installer. Normal CI uses it for the Core debug lane. The legacy
+dual-OTA Core debug profile remains available only as an explicit
+workflow-dispatch opt-in. The partition keeps NVS at its existing address, so
+do not erase the chip when preserving settings and camera bonds matters.
 
 ### Serial console (developers)
 
@@ -246,6 +256,13 @@ perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
 imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
+wifi status                         WiFi state, access point and IP information
+wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
+wifi enable|disable                 enable or disable station reconnects
+wifi connect|disconnect|forget      control the saved station credentials
+ntp status                          NTP state, server, sync time and offset
+ntp set server <host>               save the NTP server
+ntp enable|disable|sync             control or request an NTP synchronization
 settings list | get | set           read and write non-secret settings
 companion password set | clear | status manage the companion password without revealing it
 ui audit | page | back             inspect or navigate the current page

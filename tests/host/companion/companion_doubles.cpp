@@ -21,6 +21,7 @@
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 #include "esp_timer.h"
 
 // LOG_TAG is defined by lib/furble/Scan.cpp, which this target links.
@@ -49,6 +50,11 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::GPS_PLATFORM,       {Settings::GPS_PLATFORM, 69, "GPS Platform", "gps_plat", "furble"}     },
     {Settings::CONN_SAVER,
      {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                          },
+    {Settings::WIFI,               {Settings::WIFI, 51, "WiFi", "wifi", "furble"}                         },
+    {Settings::WIFI_SSID,          {Settings::WIFI_SSID, 52, "WiFi SSID", "wifi_ssid", "furble"}          },
+    {Settings::WIFI_PSK,           {Settings::WIFI_PSK, 53, "WiFi Passphrase", "wifi_psk", "furble"}      },
+    {Settings::NTP,                {Settings::NTP, 54, "NTP", "ntp", "furble"}                            },
+    {Settings::NTP_SERVER,         {Settings::NTP_SERVER, 55, "NTP Server", "ntp_server", "furble"}       },
 };
 
 struct BatteryState {
@@ -93,6 +99,20 @@ bool Settings::appliesImmediately(type_t type) {
 
 bool Settings::isDangerous(type_t type) {
   return type == TX_POWER || type == TX_ADAPTIVE || type == SLEEP_CONN || type == COMPANION;
+}
+
+bool WiFi::setEnabled(bool) {
+  return true;
+}
+
+void WiFi::clearRememberedAccessPoint(void) {}
+
+bool WiFi::setNtpEnabled(bool) {
+  return true;
+}
+
+bool WiFi::reloadNtp(void) {
+  return true;
 }
 
 // Platform and power --------------------------------------------------------

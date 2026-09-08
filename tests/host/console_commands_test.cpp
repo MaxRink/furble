@@ -131,10 +131,11 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",   "version",      "status",     "imu",       "motion",   "power",   "perf",    "gps",
-    "time",   "settings",     "companion",  "provision", "ui",       "cameras", "connect", "pair",
-    "delete", "multiconnect", "disconnect", "shutter",   "interval", "bulb",    "display", "ir",
-    "focus",  "scan",         "bt",         "feedback",  "log",      "debug",   "flash",   "reboot",
+    "help",    "version", "status",   "imu",          "motion",     "power",   "perf",
+    "gps",     "time",    "settings", "companion",    "provision",  "ui",      "cameras",
+    "connect", "pair",    "delete",   "multiconnect", "disconnect", "shutter", "interval",
+    "bulb",    "display", "ir",       "focus",        "scan",       "bt",      "feedback",
+    "log",     "debug",   "flash",    "reboot",       "wifi",       "ntp",
 };
 
 }  // namespace
@@ -154,33 +155,40 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",        "expected stats, log or off",                                       "",         {"stats", "log", "off"}               },
-    {"perf",         "expected tasks, heap or lvgl",                                     "",         {"tasks", "heap", "lvgl"}             },
+    {"power",        "expected stats, log or off",                                       "",                     {"stats", "log", "off"}               },
+    {"perf",         "expected tasks, heap or lvgl",                                     "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                         },
-    {"time",         "usage: time status | flush",                                       "",         {"status", "flush"}                   },
-    {"settings",     "expected list, get or set",                                        " theme",   {"list", "get", "set"}                },
-    {"ui",           "expected audit, page or back",                                     "",         {"audit", "page", "back"}             },
-    {"cameras",      "expected list or status",                                          "",         {"list", "status"}                    },
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                     },
+    {"time",         "usage: time status | flush",                                       "",                     {"status", "flush"}                   },
+    {"settings",     "expected list, get or set",                                        " theme",               {"list", "get", "set"}                },
+    {"companion",    "usage: companion password set <pw> | clear | status",              " status",              {"password"}                          },
+    {"ui",           "expected audit, page or back",                                     "",                     {"audit", "page", "back"}             },
+    {"cameras",      "expected list or status",                                          "",                     {"list", "status"}                    },
     {"multiconnect",
      "expected list, select, deselect or clear",                                         " 0",
-     {"list", "select", "deselect", "clear"}                                                                                               },
-    {"interval",     "expected start, stop or status",                                   "",         {"start", "stop", "status"}           },
-    {"bulb",         "expected start, stop or status",                                   "",         {"start", "stop", "status"}           },
-    {"display",      "expected status, mode or brightness",                              " gui",     {"status", "mode", "brightness"}      },
-    {"motion",       "usage: motion status | scale [0.25-4.0]",                          "",         {"status", "scale"}                   },
-    {"imu",          "usage: imu status",                                                "",         {"status"}                            },
-    {"shutter",      "expected press, release or hold",                                  "",         {"press", "release", "hold"}          },
-    {"ir",           "usage: ir fire [protocol]",                                        "",         {"fire"}                              },
-    {"focus",        "expected press or release",                                        "",         {"press", "release"}                  },
-    {"scan",         "expected start, stop or list",                                     "",         {"start", "stop", "list"}             },
-    {"bt",           "expected scan, explore, pair or journal",                          "",         {"scan", "explore", "pair", "journal"}},
-    {"feedback",     "usage: feedback test",                                             " shutter", {"test"}                              },
-    {"flash",        "usage: flash prepare | cancel",                                    "",         {"prepare", "cancel"}                 },
+     {"list", "select", "deselect", "clear"}                                                                                                           },
+    {"interval",     "expected start, stop or status",                                   "",                     {"start", "stop", "status"}           },
+    {"bulb",         "expected start, stop or status",                                   "",                     {"start", "stop", "status"}           },
+    {"display",      "expected status, mode or brightness",                              " gui",                 {"status", "mode", "brightness"}      },
+    {"motion",       "usage: motion status | scale [0.25-4.0]",                          "",                     {"status", "scale"}                   },
+    {"imu",          "usage: imu status",                                                "",                     {"status"}                            },
+    {"shutter",      "expected press, release or hold",                                  "",                     {"press", "release", "hold"}          },
+    {"ir",           "usage: ir fire [protocol]",                                        "",                     {"fire"}                              },
+    {"focus",        "expected press or release",                                        "",                     {"press", "release"}                  },
+    {"scan",         "expected start, stop or list",                                     "",                     {"start", "stop", "list"}             },
+    {"bt",           "expected scan, explore, pair or journal",                          "",                     {"scan", "explore", "pair", "journal"}},
+    {"feedback",     "usage: feedback test",                                             " shutter",             {"test"}                              },
+    {"flash",        "usage: flash prepare | cancel",                                    "",                     {"prepare", "cancel"}                 },
+    {"wifi",
+     "expected status, set, enable, disable, connect, disconnect or forget",             " ssid test",
+     {"status", "set", "enable", "disable", "connect", "disconnect", "forget"}                                                                         },
+    {"ntp",
+     "expected status, set, enable, disable or sync",                                    " server pool.example",
+     {"status", "set", "enable", "disable", "sync"}                                                                                                    },
     {"debug",
      "expected control, camera, ble, heap, tasks, power, gps, settings or all",          "",
-     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                      },
+     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                                  },
 };
 
 size_t expectedSubcommandCount(void) {
@@ -354,7 +362,7 @@ void testSettings(void) {
   checkContains(list.out, "theme: ", "settings list prints the theme string");
   checkContains(list.out, "gpx_period: ", "settings list prints the GPX period");
   checkContains(list.out, "display_mode: ", "settings list prints the display mode");
-  checkContains(list.out, "companion_pw: unset", "settings list reports password state only");
+  check(!contains(list.out, "companion_pw"), "settings list hides the companion password setting");
 
   const Result get = runDirect("settings get brightness");
   check(get.rc == 0, "settings get returns success");
@@ -1507,8 +1515,8 @@ void testProvision(void) {
   std::cerr << "test: provision decodes and applies a real TLV blob\n";
   ConsoleHost::resetDoubles();
 
-  // brightness is wire id 1, a u8. wifi_ssid is parsed but deliberately not
-  // applied until the WiFi backend lands, so it must be reported as deferred.
+  // brightness is wire id 1, a u8. WiFi credentials are optional fields
+  // applied by the provisioning backend, while companion and MQTT remain deferred.
   Furble::ProvisionTLV::ProvisionBundle bundle;
   Furble::ProvisionTLV::SettingValue brightness;
   brightness.wireId = 1;
@@ -1541,23 +1549,27 @@ void testProvision(void) {
   checkContains(applied.out,
                 "provision: decoded " + std::to_string(encoded.size()) + " bytes as hex",
                 "the blob is reported as hex with its length");
-  // companion_password is no longer in this list: it now has a setting to land
-  // in, so the provisioner applies it instead of deferring it.
-  for (const char *field :
-       {"wifi_ssid", "wifi_psk", "mqtt_uri", "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
+  // WiFi and companion credentials apply locally; MQTT remains deferred.
+  for (const char *field : {"mqtt_uri", "mqtt_username", "mqtt_password", "mqtt_base_topic"}) {
     checkContains(applied.out, std::string("provision: ") + field + " parsed (not applied",
                   std::string(field) + " is named as deferred");
   }
+  checkContains(applied.out, "provision: wifi_ssid applied", "the WiFi SSID field is applied");
+  checkContains(applied.out, "provision: wifi_psk applied", "the WiFi PSK field is applied");
   // A deferred field carries a secret, so its value must never be printed.
   check(!contains(applied.out, "furble\n"), "no deferred field value is printed");
   checkContains(applied.out, "provision: setting 1 (brightness) applied",
                 "an applied setting names its key");
-  checkContains(applied.out, "2 setting(s) applied, 6 field(s) deferred",
+  checkContains(applied.out, "4 field(s) applied, 4 field(s) deferred",
                 "the summary counts applied and deferred fields");
   check(!contains(applied.out, "companion_password parsed (not applied"),
         "the companion password is no longer deferred");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 99,
         "the provisioned value reached the real Settings store");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "furble",
+        "the provisioned SSID reached the real Settings store");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "furble",
+        "the provisioned PSK reached the real Settings store");
 
   // The gesture settings apply immediately, so a provision write must start the
   // 50 Hz timer rather than waiting for the next boot. reloadProvisionSetting()
@@ -1626,7 +1638,58 @@ void testProvision(void) {
   runDirect("settings set brightness 128");
 }
 
-// Test 12. Error handling at the dispatcher: an unknown command, an empty line,
+// Test 12. WiFi and NTP commands route to the real handlers and their
+// hardware-facing boundary, represented by the host double.
+void testWiFiAndNtpCommands(void) {
+  std::cerr << "test: WiFi and NTP commands reach their subsystem boundary\n";
+  ConsoleHost::resetDoubles();
+  auto &wifi = ConsoleHost::wifi();
+  wifi.status.ssid = "furble-net";
+  wifi.status.connected = true;
+  wifi.status.state = Furble::WiFi::STATE_CONNECTED;
+  wifi.status.ip = "192.0.2.10";
+  wifi.status.rssi = -42;
+  wifi.status.ntp_enabled = true;
+  wifi.status.ntp_running = true;
+  wifi.status.ntp_synced = true;
+
+  check(runDirect("wifi set ssid furble-net").rc == 0, "wifi SSID setting succeeds");
+  check(wifi.clearRememberedAccessPointCalls == 1,
+        "wifi SSID setting clears the remembered access point");
+  check(runDirect("wifi set psk secret").rc == 0, "wifi PSK setting succeeds");
+  check(runDirect("wifi enable").rc == 0 && wifi.setEnabledCalls == 1,
+        "wifi enable reaches setEnabled");
+  check(runDirect("wifi connect").rc == 0 && wifi.connectCalls == 1,
+        "wifi connect reaches the subsystem");
+  wifi.connectResult = false;
+  const Result failedConnect = runDirect("wifi connect");
+  check(failedConnect.rc != 0, "wifi connect reports a subsystem failure");
+  check(!contains(failedConnect.out, "queued: wifi connect"),
+        "failed wifi connect is not reported as queued");
+  wifi.connectResult = true;
+  check(runDirect("wifi disconnect").rc == 0 && wifi.disconnectCalls == 1,
+        "wifi disconnect reaches the subsystem");
+  check(runDirect("wifi forget").rc == 0 && wifi.forgetCalls == 1,
+        "wifi forget reaches the subsystem");
+
+  check(runDirect("ntp set server pool.example").rc == 0 && wifi.reloadNtpCalls == 1,
+        "ntp server setting reloads NTP");
+  check(runDirect("ntp enable").rc == 0 && wifi.setNtpEnabledCalls == 1,
+        "ntp enable reaches setNtpEnabled");
+  check(runDirect("ntp sync").rc == 0 && wifi.syncNtpCalls == 1, "ntp sync reaches the subsystem");
+  wifi.syncNtpResult = false;
+  const Result failedSync = runDirect("ntp sync");
+  check(failedSync.rc != 0, "ntp sync reports a subsystem failure");
+  check(!contains(failedSync.out, "queued: ntp sync"), "failed ntp sync is not reported as queued");
+  wifi.syncNtpResult = true;
+  const Result status = runDirect("wifi status");
+  checkContains(status.out, "ssid: furble-net", "wifi status reports the SSID");
+  checkContains(status.out, "state: connected", "wifi status reports the state");
+  checkContains(runDirect("ntp status").out, "server: pool.example",
+                "ntp status reports the configured server");
+}
+
+// Test 13. Error handling at the dispatcher: an unknown command, an empty line,
 // and a handler that reports failure.
 void testErrorPaths(void) {
   std::cerr << "test: unknown commands and bad arguments fail loudly\n";
@@ -2046,6 +2109,7 @@ int main(void) {
   testFlashStateMachine();
   testLogLevels();
   testProvision();
+  testWiFiAndNtpCommands();
   testErrorPaths();
   testConsoleTaskTransport();
   testWorkflowCommands();
