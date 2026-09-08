@@ -77,8 +77,8 @@ timed-out destructive request.
 
 UI workflow commands include `pair <scan-index>`, `delete <index> | all`, and
 `multiconnect list | select <index> | deselect <index> | clear`. Pairing routes
-through the same UI handler as the display scan page. `ui page | back` changes
-the current page; `interval`, `bulb`, and `display` control their display pages
+through the same UI handler as the display scan page. `ui page` reports the
+current page; `ui back` navigates back. `interval`, `bulb`, and `display` control their display pages
 on display builds. A bounded wait prints `pending` when the result is unknown,
 so do not blindly retry a timed-out destructive request.
 
