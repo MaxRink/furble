@@ -230,8 +230,12 @@ points call `connectAll()` unconditionally, so a failed `xTaskCreate` inside
 Only one of the two halves is covered, and that is deliberate. The regression
 reaches `STATE_CONNECT_FAILED` through the early return in `connectAll()`,
 before `allConnected()` is ever consulted, so reverting the `allConnected()`
-guard alone leaves the suite green. The guard protects the `STATE_ACTIVE`
-liveness branch, and reaching it with no targets needs `m_Targets` emptied while
+guard alone leaves the suite green. The host regression now arms the
+`connectall_returned` test barrier around this empty pass and checks that the
+control pass arrives, remains idle, and does not time out. This records the
+interleaving without claiming coverage of the other branch. The guard protects
+the `STATE_ACTIVE` liveness branch, and reaching it with no targets needs
+`m_Targets` emptied while
 the machine is already active. Only `disconnect()` empties it and it publishes
 `STATE_DISCONNECTING` first, leaving a window a few instructions wide. Worse,
 the window is not observable from outside: on the guarded side the branch
