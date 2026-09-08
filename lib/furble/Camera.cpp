@@ -289,7 +289,16 @@ bool Camera::answerPairing(bool accept) {
 }
 
 void Camera::cancelPairing(void) {
+  m_PairingCancelled = true;
   answerPairing(false);
+}
+
+bool Camera::pairingCancelled(void) const {
+  return m_PairingCancelled.load();
+}
+
+void Camera::clearPairingCancelled(void) {
+  m_PairingCancelled = false;
 }
 
 #if defined(FURBLE_HOST_TEST) || defined(FURBLE_SIM)
@@ -407,7 +416,7 @@ void Camera::publishPairingRequest(PairingType type, uint32_t code, NimBLEConnIn
 #if defined(FURBLE_CONSOLE)
   printf("pair.dropped: prompt queue full\n");
 #endif
-  answerPairing(false);
+  cancelPairing();
 }
 
 void Camera::clearPairingRequest(void) {

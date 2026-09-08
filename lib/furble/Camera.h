@@ -369,6 +369,12 @@ class Camera: public NimBLEClientCallbacks {
   /** Reject the pending pairing prompt and disconnect the camera. */
   void cancelPairing(void);
 
+  /** Whether a pairing decline has terminally disabled reconnect for this session. */
+  bool pairingCancelled(void) const;
+
+  /** Re-arm reconnect after an explicit user connect request. */
+  void clearPairingCancelled(void);
+
 #if defined(FURBLE_HOST_TEST) || defined(FURBLE_SIM)
   /**
    * Raise a pairing request the way the NimBLE security callback does.
@@ -626,6 +632,7 @@ class Camera: public NimBLEClientCallbacks {
   // connectAll() abort check and the attempt entering connect() must survive
   // into the attempt, or the wait becomes uncancellable again.
   std::atomic<bool> m_ConnectCancelled = false;
+  std::atomic<bool> m_PairingCancelled = false;
 
   // Set when a vendor connect proved the camera dropped its side of the bond.
   // Read by Control after a failed attempt to end the reconnect cycle with a

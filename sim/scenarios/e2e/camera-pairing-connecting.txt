@@ -49,6 +49,14 @@ assert-eventually-virtual 60000 control.state idle
 assert ui.connect_box hidden
 assert ui.connected no
 assert ui.pairing_pending no
+assert-eventually-virtual 5000 ui.connect_error connect_failed
+assert ui.modal_count 1
+# The failed attempt deliberately leaves its error dialog visible. Dismiss it
+# as a user would before starting the fresh explicit connect below.
+action select
+wait 300
+assert ui.connect_error none
+assert ui.modal_count 0
 
 # With the camera answering again a fresh connect completes, so the prompt
 # raised mid-connect left nothing wedged behind it.

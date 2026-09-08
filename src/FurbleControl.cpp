@@ -219,6 +219,9 @@ Control::state_t Control::connectAll(void) {
     // unlocked connect even if disconnect() clears its target meanwhile.
     for (const auto &target : m_Targets) {
       auto camera = target->getCamera();
+      if (camera->pairingCancelled()) {
+        continue;
+      }
       all.push_back(camera);
       if (!camera->isConnected()) {
         cameras.push_back(camera);
@@ -503,12 +506,16 @@ bool Control::allConnected(void) {
   }
 
   for (const auto &target : m_Targets) {
+    if (target->getCamera()->pairingCancelled()) {
+      continue;
+    }
     if (!target->getCamera()->isConnected()) {
       return false;
     }
   }
 
-  return true;
+  return std::any_of(m_Targets.begin(), m_Targets.end(),
+                     [](const auto &target) { return !target->getCamera()->pairingCancelled(); });
 }
 
 std::vector<Control::Target *> Control::getTargets(void) {
@@ -912,6 +919,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   // straight to active with no BLE work done. The dedup check above guarantees
   // the camera is not an active target here, so clearing the flag cannot race a
   // live session.
+  camera->clearPairingCancelled();
   camera->resetConnectionState();
 
   auto target = std::make_unique<Control::Target>(camera);
