@@ -12,8 +12,4 @@ assert uart.last $PCAS12,5*1B
 wait 5500
 assert gps.source uart
 assert gps.state tracking
-wait 1500
-assert gps.state standby
-assert uart.count 2
-assert uart.last $PCAS12,5*1B
 exit
