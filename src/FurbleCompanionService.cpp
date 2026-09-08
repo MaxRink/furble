@@ -660,8 +660,6 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::WIFI:
     case Settings::NTP:
     case Settings::GPS_EXTRAP:
-    case Settings::WIFI:
-    case Settings::NTP:
       return SETTING_BOOL;
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
@@ -812,9 +810,6 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::NTP_SERVER:
     case Settings::THEME:
     case Settings::BUTTON_MODE:
-    case Settings::WIFI_SSID:
-    case Settings::WIFI_PSK:
-    case Settings::NTP_SERVER:
     {
       const std::string v = Settings::load<std::string>(type);
       value.assign(v.begin(), v.end());

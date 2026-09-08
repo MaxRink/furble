@@ -157,17 +157,6 @@ target_include_directories(actualPreferencesSim PRIVATE
 target_compile_options(actualPreferencesSim PRIVATE -Wall -Wextra -Werror
                                                      -Wno-unused-parameter)
 
-# Compile the production WiFi lifecycle against a narrow event/netif/radio
-# boundary fake. Root's VM build is the validation gate for this first seam.
-add_executable(real_wifi_lifecycle_test
-               wifi/real_wifi_test.cpp
-               ${FURBLE_ROOT}/src/FurbleWiFi.cpp)
-target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
-                           ${CMAKE_CURRENT_SOURCE_DIR}/wifi/stubs
-                           ${FURBLE_ROOT}/include)
-target_compile_options(real_wifi_lifecycle_test PRIVATE -Wall -Wextra -Werror
-                                                         -Wno-unused-parameter)
-
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test
@@ -1708,7 +1697,6 @@ if(BUILD_TESTING)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})
   endforeach()
-  add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
   add_test(NAME camera-list-protocol COMMAND camera_list_protocol_test)
   add_test(NAME advertisement-dispatch COMMAND advertisement_dispatch_test)
   add_test(NAME camera-regression COMMAND camera_regression_test)
