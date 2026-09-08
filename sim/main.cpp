@@ -45,9 +45,7 @@ int runSimulator() {
   // time, so the phase is the only progress the stall watchdog can see across
   // it. Record each step: a slow but progressing boot on a loaded host keeps
   // resetting the watchdog, and a wedged one names the step it stopped at.
-  Sim::watchdogPhase("preferences");
   Sim::startProfiler();
-  Sim::preparePreferences();
   Sim::watchdogPhase("settings");
   Settings::init();
   Sim::watchdogPhase("scenario settings");
@@ -214,6 +212,11 @@ int runSimulator() {
 int main(int argc, char **argv) {
   Furble::Sim::configure(argc, argv);
   Furble::Sim::watchdogRegisterThread("main");
+  Furble::Sim::watchdogPhase("preferences");
+  // Set the per-run preferences path before SDL setup and the simulator
+  // thread start. SDL and the watchdog read process environment state while
+  // they initialize and run, so this write must happen before either starts.
+  Furble::Sim::preparePreferences();
   Furble::Sim::watchdogStart();
   if (lgfx::Panel_sdl::setup() != 0) {
     return 1;

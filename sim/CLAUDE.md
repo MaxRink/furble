@@ -129,6 +129,10 @@ a regression.
 
 ## Build entry points
 
+The CMake simulator force-includes ESP and FreeRTOS shims only for C++
+translation units. Generated C icon sources must compile without C++-only
+shim declarations.
+
 The simulator Preferences adapter is a checked file-backed NVS substitute:
 missing storage is an unset store, while empty, truncated, malformed, or
 unreadable storage is an error. Mutations commit through a temporary file and
@@ -153,6 +157,12 @@ including empty strings and failed-save rollback.
   rebuilds, and proves GPS dependents rebuild while an unrelated source stays
   cached. It requires the same dependency overrides as
   `sim/build.sh`.
+- `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
+  interposer that resolves libc functions before simulator threads start and
+  rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
+  then runs the fresh and restart scenarios against the current binary and
+  expects the pre-fix binary to trip each exact target. This checks ordering
+  only; it is not crash-causality evidence.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
