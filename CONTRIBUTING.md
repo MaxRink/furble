@@ -123,6 +123,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   macOS tests pass, it uploads `furble-companion-macos-debug-unsigned`, which
   contains the unsigned Debug app, a SHA-256 checksum, and source/Xcode
   provenance. This is a testing artifact, not a signed release or installer.
+- Release tags beginning with `companion-test-` are reserved for companion
+  testing and are excluded from the firmware release workflow. Other release
+  tags retain the existing firmware build and publication path.
 
 ## Style
 

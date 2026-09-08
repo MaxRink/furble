@@ -30,6 +30,9 @@ CLAUDE.md whose directory it touches.
 - The Apple workflow packages the unsigned macOS Debug app only after its tests
   pass. The uploaded artifact includes a checksum and source/Xcode provenance;
   it is for companion testing, not signing or release distribution.
+- Release tags beginning with `companion-test-` are reserved for companion
+  testing and skip the firmware release workflow; other release tags are
+  unchanged.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
   capabilities, and expected exit status.

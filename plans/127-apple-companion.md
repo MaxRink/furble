@@ -37,6 +37,9 @@ XcodeGen release documented in the companion README.
   after successful tests, uploads an unsigned Debug app with a SHA-256
   checksum and source/Xcode provenance. It is a testing artifact, not a
   signed release.
+- Release tags beginning with `companion-test-` are reserved for companion
+  testing and skip the firmware release workflow. Normal firmware release tags
+  retain the existing build and publication path.
 
 ## Follow-up gates
 
@@ -53,6 +56,8 @@ XcodeGen release documented in the companion README.
 - The uploaded macOS app is an unsigned CI test artifact. Its source SHA and
   pinned Xcode version are recorded beside the archive; this does not claim
   signing, notarization, installation, or release support.
+- A companion testing release must use the reserved `companion-test-` prefix;
+  it must not be treated as a firmware release or installer input.
 - The platform targets declare the shared Keychain access-group entitlement.
   The shared client deliberately does not enable background location unless
   the user opts in.
