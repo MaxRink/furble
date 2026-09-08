@@ -482,6 +482,13 @@ The reset c265 host validation completed 113/113 checks, recorded in
 `/home/a92615428/b/c265h-test.log` with build output in
 `/home/a92615428/b/c265h-build.log`. This is console-command and shared-state
 evidence only: the console target links a UI double, so it does not certify
-the real UI queue or headless runtime. The current SDL validation is still
-running and has no result recorded here. Hardware UI, headless, persistence,
+the real UI queue or headless runtime. Hardware UI, headless, persistence,
 and `FURBLE_CONSOLE` completion-semaphore gates remain pending.
+
+The final SDL build passed, recorded in
+`/home/a92615428/b/c265-ui-final-build.log`. The production-UI CRUD scenario
+also passed, recorded in `/home/a92615428/b/c265-ui-final-test.log`: invalid
+delete `999` left the catalog unchanged, delete `0` reported `ok` and count 1,
+and reload reported saved count 0. This proves the simulator's file-backed
+catalog path only, not power-loss/reboot durability, headless behavior,
+hardware UI, or `FURBLE_CONSOLE` completion-semaphore behavior.
