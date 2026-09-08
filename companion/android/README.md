@@ -33,6 +33,14 @@ present. Password protection therefore requires the PR166 firmware service
 implementation, while this app remains backward-compatible with older
 services.
 
+When the optional Cameras characteristic
+(`b57f4f63-087b-4740-b71d-8262cf26ebbc`) is present and capability feature bit 1
+is advertised, the app subscribes to its indications and notifications and
+shows a Cameras tab after authentication. Camera rows use the stable
+`camera_id`, display live connection state, and support selection, per-camera
+connect, refresh, and all-camera disconnect. The tab stays hidden when either
+the characteristic or capability is absent.
+
 The location encoder keeps the named fields in the document's order. The
 declared `companion_fix_t` size is 42 bytes, but those packed fields add up to
 41 bytes. To preserve the declared size without moving `age_ms`, the app
@@ -79,8 +87,8 @@ disabled, and the password is never logged or sent as a setting value.
 
 Pairing uses `CompanionDeviceManager` filters for the companion service UUID
 and the `furble-` device-name prefix. A bonded association is required before
-GATT connection. Status notifications and settings indications wake the app
-through `BluetoothGatt` callbacks. Presence changes arrive through
+GATT connection. Status and camera notifications plus settings and camera
+indications wake the app through `BluetoothGatt` callbacks. Presence changes arrive through
 `CompanionDeviceService` and are the reconnect trigger.
 
 Phone GPS is disabled by default. When enabled, it runs only while an
