@@ -532,7 +532,7 @@ bool Control::allConnected(void) {
   // add a target reaches this, including a failed xTaskCreate.
   if (m_Targets.empty()) {
     // Deliberately uncovered defence in depth, and recorded as such in plan 170.
-    // connectAll() returns STATE_CONNECT_FAILED on an empty cycle before this is
+    // connectAll() returns STATE_IDLE on a normal empty cycle before this is
     // ever consulted, so the only caller that can reach it with no targets is
     // the STATE_ACTIVE liveness branch below, which needs m_Targets emptied
     // while the machine is already active. Only disconnect() empties it and it

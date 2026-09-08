@@ -221,15 +221,16 @@ The current design has neither problem because it refuses nothing.
 
 ### An empty session is never active
 
-`allConnected()` returns false with no targets, and a connect cycle with no
-cameras logs and returns `STATE_CONNECT_FAILED` instead of going active. This is
-defence in depth rather than a consequence of the withdrawn refusal: both entry
-points call `connectAll()` unconditionally, so a failed `xTaskCreate` inside
-`addActive()` reaches the same vacuous truth.
+`allConnected()` returns false with no targets. The merged master path now
+returns `STATE_IDLE` for a normal empty selection, or `STATE_DISCONNECTING` when
+an abort owns it, before the vacuous check. This is defence in depth rather than
+a consequence of the withdrawn refusal: both entry points call `connectAll()`
+unconditionally, so a failed `xTaskCreate` inside `addActive()` reaches the same
+vacuous truth.
 
 Only one of the two halves is covered, and that is deliberate. The regression
-reaches `STATE_CONNECT_FAILED` through the early return in `connectAll()`,
-before `allConnected()` is ever consulted, so reverting the `allConnected()`
+reaches the normal empty-selection return in `connectAll()`, before
+`allConnected()` is ever consulted, so reverting the `allConnected()`
 guard alone leaves the suite green. The host regression now arms the
 `connectall_returned` test barrier around this empty pass and checks that the
 control pass arrives, remains idle, and does not time out. This records the
@@ -313,6 +314,25 @@ around a factor of two from the behaviour they separate, so a loaded host does
 not flip them.
 
 No mutation is left in the tree.
+
+### Integration checkpoint
+
+The pre-merge c63 head `31fa6ca5` predates the master empty-selection policy.
+Root's serialized host session `~/b/c63-current-host-test.log` therefore had
+one old-head failure in `control-zombie-cancel`, at the empty-connect phase
+where the merged test expects the session to remain idle. This was an
+old-head integration mismatch, not current-head validation. Master `ad9bc513`
+supplies the early `STATE_IDLE` return; this merged checkout has not been
+rerun and retains no new test-pass claim.
+
+### Integration checkpoint
+
+The pre-merge c63 head `31fa6ca5` predates the master empty-selection policy.
+Root's serialized host session `~/b/c63-current-host-test.log` therefore had
+one old-head failure in `control-zombie-cancel`, at the empty-connect phase
+where the merged test expects the session to remain idle. This was an
+old-head integration mismatch, not current-head validation. Master `ad9bc513`
+supplies the early `STATE_IDLE` return; this merged checkout has not been
 
 ## Not covered, and why
 
@@ -490,12 +510,10 @@ on the rebase:
    exactly the one `abortBlockingConnect()` wakes.
 4. Adjacent-line only: `getConnectFailReason()` and `getTargetCount()` sit where
    `setConnectCamera()` and the locked getter now go.
-5. After 245, give the empty-cycle `STATE_CONNECT_FAILED` a reason string. An
-   empty cycle is the natural first user of `m_ConnectFailReason`. This is the
-   named follow-up to the bench wedge above: once `abortBlockingConnect()` ends
-   the stall, refusing a fresh connect while a drain is still pending becomes
-   worth doing, and it needs a reason the UI can show. Without one it would
-   repeat the phantom active session this plan withdrew.
+5. Superseded by the merged master empty-selection guard. A normal empty cycle
+   now returns `STATE_IDLE` before `m_ConnectFailReason` is needed; an aborting
+   cycle returns `STATE_DISCONNECTING`. Do not reintroduce an empty-cycle error
+   solely to preserve the pre-merge `STATE_CONNECT_FAILED` path.
 
 ### PR 274, rebased over
 
