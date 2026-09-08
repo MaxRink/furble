@@ -348,6 +348,8 @@ class NimBLEClient {
   // then frees a client that was marked for deferred deletion. Used to drive the
   // late-callback window a reclaim must not leave pointing at a freed owner.
   void mockStallTerminate();
+  // Number of terminate calls accepted while this client was connected.
+  size_t mockDisconnectCount() const;
   bool mockRequestDelete();
   void mockCompleteStalledTerminate(int reason);
 
@@ -388,6 +390,7 @@ class NimBLEClient {
   uint32_t m_ConnectTimeout = 0;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
+  size_t m_DisconnectCount = 0;
   bool m_DeferredDelete = false;
   // Self-delete flags recorded from setSelfDelete(). The fuzzer deferred-delete
   // model uses m_DeleteOnDisconnect to free a client after onDisconnect,

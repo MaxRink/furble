@@ -562,6 +562,7 @@ void NimBLEClient::disconnect() {
   if (!m_Connected) {
     return;
   }
+  m_DisconnectCount++;
 
   // Repro: a terminate issued against a link the supervision timeout
   // already killed. ble_gap_terminate returns ENOTCONN-ish and the queued
@@ -590,9 +591,6 @@ void NimBLEClient::disconnect() {
     // Gone peer: ble_gap_terminate is issued but never completes, so the link
     // stays locally connected and no onDisconnect fires until the supervision
     // timeout resolves it later via mockCompleteStalledTerminate().
-    if (m_Peer != nullptr) {
-      m_Peer->disconnect(*this, 0);
-    }
     return;
   }
 
@@ -625,6 +623,10 @@ void NimBLEClient::disconnect() {
   if (g_DeferredDelete && m_DeleteOnDisconnect) {
     eraseClient(this);
   }
+}
+
+size_t NimBLEClient::mockDisconnectCount() const {
+  return m_DisconnectCount;
 }
 
 bool NimBLEClient::mockCompleteAsyncDisconnect(void) {

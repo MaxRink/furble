@@ -308,6 +308,14 @@ bool DJIOsmo::finishProtocolConnection(void) {
       ESP_LOGW(LOG_TAG, "DJI Osmo camera rejected the protocol connection");
       return false;
     }
+    // Plan 148 cancel contract. This handshake wait is 30 s, the whole of
+    // Control::DISCONNECT_WAIT_MAX_MS, and Camera::connect() holds m_Mutex for
+    // all of it. Only the poll is added; the handshake, its timeout and its
+    // poll interval are unchanged.
+    if (connectCancelled()) {
+      ESP_LOGW(LOG_TAG, "DJI Osmo protocol handshake cancelled");
+      return false;
+    }
     if (requestReceived)
       break;
     vTaskDelay(pdMS_TO_TICKS(PROTOCOL_HANDSHAKE_POLL_MS));

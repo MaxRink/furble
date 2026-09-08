@@ -115,6 +115,16 @@ bool CanonEOSSmart::_connect(void) {
     if (m_PairResult != 0x00) {
       break;
     }
+    // Plan 148 cancel contract. This wait is 60 s, twice
+    // Control::DISCONNECT_WAIT_MAX_MS, and Camera::connect() holds m_Mutex for
+    // all of it, so without this poll a user disconnect during pairing could
+    // not abort the attempt: the teardown burned its whole cap and the target
+    // drained with the connect still running. Only the poll is added here; the
+    // wait itself and every protocol step around it are unchanged.
+    if (connectCancelled()) {
+      ESP_LOGW(LOG_TAG, "Pairing confirmation wait cancelled");
+      return false;
+    }
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 
