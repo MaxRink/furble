@@ -258,6 +258,7 @@ jobs:
               exit 1
             fi
             for scenario in $scenarios; do
+              echo "=== $board: $scenario ==="
               "$binary" --script "$scenario"
             done
           done

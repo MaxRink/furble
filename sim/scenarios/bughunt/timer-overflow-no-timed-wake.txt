@@ -7,6 +7,9 @@ action page settings
 action nav timer
 wait 100
 assert ui.page timer
+print ui.text_size
+print ui.scroll_top
+print ui.scroll_bottom
 assert ui.overflow no
 assert ui.focus ok
 assert ui.focus_on_page yes

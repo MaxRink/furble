@@ -363,6 +363,14 @@ built successfully and `sim/scripts/run-deep-sleep.sh` passed with its fresh
 binary, including stable-camera-ID resume and the one-shot completion check.
 This is host simulator evidence, not physical timed-wake verification.
 
+The PR59 rerun later failed in the certified `m5stick-c` fixture
+`timer-overflow-no-timed-wake.txt` at `ui.overflow expected 'no' got 'yes'` after
+`ui.page timer`; the same StickC case passed locally under matching flags. The
+fixture now prints the existing text-size and scroll-bound queries immediately
+before its unchanged assertion, and the alternate-board workflow echoes the
+exact board and scenario path, to distinguish a reproducible layout defect from
+host/layout timing variance.
+
 ## References
 
 All links checked.
