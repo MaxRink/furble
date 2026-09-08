@@ -1,13 +1,111 @@
 # Route a console-shaped request through the production UI queue.
 seed fauxny true
 seed saved_camera true
+seed interval_count 3
+seed interval_delay 2
+seed interval_shutter 100
+seed interval_wait 0
+seed bulb_duration 2
 wait 300
 action nav settings
 wait 200
 assert ui.page settings
+action toggle multiconnect
+wait 200
+assert setting.multiconnect 1
 action console back
 wait 200
 assert ui.page main
+action console cameras 1
+wait 200
+assert ui.console.saved 1
+assert ui.console.camera0.selected false
+action console multi-select 0
+wait 200
+assert ui.console.result ok
+action console cameras 1
+wait 200
+assert ui.console.camera0.selected true
+
+# An invalid selection must not clear the valid persisted selection.
+action console multi-select 999
+wait 200
+assert ui.console.result no_saved_camera
+action console cameras 1
+wait 200
+assert ui.console.camera0.selected true
+
+# The selection is stored in NVS and survives the simulator restart.
+restart
+wait 400
+assert ui.page main
+assert setting.multiconnect 1
+action console cameras 1
+wait 200
+assert ui.console.saved 1
+assert ui.console.camera0.selected true
+
+# Run the production intervalometer controls while a FauxNY camera is active.
+action connect
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+action console interval -1
+wait 200
+assert ui.console.state idle
+action console interval 1
+wait 500
+assert ui.page timer_run
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+action console interval -1
+wait 200
+assert ui.console.state delay
+action console interval 0
+wait 200
+assert ui.interval_state idle
+assert ui.page timer
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+action console interval 0
+wait 200
+assert ui.console.result not_running
+assert ui.interval_state idle
+assert camera.shutter_presses 1
+assert camera.shutter_releases 1
+
+# Bulb status and stop are also idempotent, and release the real shutter lock.
+action page bulb
+wait 200
+assert ui.page bulb
+action console bulb -1
+wait 200
+assert ui.console.state idle
+action console bulb 1
+wait 200
+assert ui.bulb_state running
+assert ui.shutter_held yes
+assert-eventually-virtual 1000 camera.shutter_presses 2
+action console bulb -1
+wait 200
+assert ui.console.state running
+action console bulb 0
+wait 200
+assert ui.bulb_state idle
+assert ui.shutter_held no
+assert camera.shutter_presses 2
+assert camera.shutter_releases 2
+action console bulb 0
+wait 200
+assert ui.console.result not_running
+assert ui.bulb_state idle
+assert camera.shutter_presses 2
+assert camera.shutter_releases 2
+
+# Keep the original delete checks on an idle connection.
+action disconnect
+wait 300
+assert control.state idle
 action console delete 999
 wait 200
 assert ui.console.result no_saved_camera
