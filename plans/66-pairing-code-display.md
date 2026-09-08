@@ -8,7 +8,7 @@ During camera pairing, the camera can show a Bluetooth code that the furble user
 
 The `Camera` base class owns the NimBLE client security callbacks. It records passkey-display and numeric-comparison requests with the camera, connection handle, code, and a response deadline aligned to the 30 second SMP timeout. The callback publishes a request to the existing UI request queue and returns immediately, so the NimBLE host task is not blocked. The UI task owns one LVGL pairing modal shared with the existing companion prompt.
 
-The camera modal shows the camera name and a large six-digit code. Numeric comparison has Confirm and Cancel. Passkey display has Cancel only. Timeout and cancellation reject the request and disconnect the client. A build with no handler registered, which is every `FURBLE_NO_DISPLAY` image, answers the request where it is raised with NimBLE's own default instead. When `FURBLE_CONSOLE` is enabled the code is printed, `pair no` cancels either prompt and `pair yes` confirms a numeric comparison; `pair yes` is refused on a passkey-display prompt, which has nothing to confirm.
+The camera modal shows the camera name and a large six-digit code. Numeric comparison has Confirm and Cancel. Passkey display has Cancel only. Timeout and cancellation reject the request and disconnect the client. A declined or expired target is terminal for the current Control session: it is not automatically retried or re-prompted, while other active targets remain eligible; an explicit fresh connect re-arms it. A build with no handler registered, which is every `FURBLE_NO_DISPLAY` image, answers the request where it is raised with NimBLE's own default instead. When `FURBLE_CONSOLE` is enabled the code is printed, `pair no` cancels either prompt and `pair yes` confirms a numeric comparison; `pair yes` is refused on a passkey-display prompt, which has nothing to confirm.
 
 ## Verification
 
@@ -273,7 +273,7 @@ numeric comparison and cannot pair at all without a visible comparison.
 The modal render, the layout, and the answer that reaches the stack no longer need hardware. After the #261 rebase the simulator compiles the production `Camera`, `Control` and `MockNimBLE`, so a scenario with a connected virtual peer drives the real `showCameraPairing`, the real pairing timer, and the real `answerPairing` down to `NimBLEDevice::injectConfirmPasskey`.
 
 - Seam: `Camera::hostSetPairingRequest()` (`FURBLE_HOST_TEST || FURBLE_SIM`) substitutes only the controller event. It publishes through the same `publishPairingRequest()` the real `onConfirmPasskey` calls, using the live client's `NimBLEConnInfo`, so Confirm and Cancel inject for real. `tests/host/camera_pairing_peer_test.cpp` covers the callback entry the seam skips. The scenario action `camera-pair-request [confirm|display] <code>` and the query keys below are inside `#if defined(FURBLE_SIM)`, so the release binary is unchanged.
-- Query keys (`UI::simQueryState`, `#if defined(FURBLE_SIM)`): `pairing_code` reads the six-digit code from the live LVGL label, `pairing_kind` reports `confirm` or `display`, `pairing_overflow` reports whether the modal box or its content extends past the panel, `pairing_pending` reports whether any camera Control owns still holds a request, and `pairing_timer` reports whether the 250 ms poll is armed. `ble.pairing_answers` and `ble.pairing_answer` (`sim/driver.cpp`) read the injection tally straight off MockNimBLE, which is the wire-level truth the modal closing says nothing about.
+- Query keys (`UI::simQueryState`, `#if defined(FURBLE_SIM)`): `pairing_code` reads the six-digit code from the live LVGL label, `pairing_kind` reports `confirm` or `display`, `pairing_overflow` reports whether the modal box or its content extends past the panel, `pairing_pending` reports whether any camera Control owns still holds a request, and `pairing_timer` reports whether the 250 ms poll is armed. `ble.pairing_answers` and `ble.pairing_answer` (`sim/driver.cpp`) read the injection tally straight off MockNimBLE, which is the wire-level truth the modal closing says nothing about; the generic `ui.modal` query covers both camera and companion dialogs.
 - Typed action: `camera-pair-request` is a first-class `scenario_action_kind_t::PAIRING_REQUEST` in the canonical parser, so the prompt kind and the six-digit code are validated at the scenario boundary and revalidated before dispatch, like every other action. `camera-pair-accept`, `camera-pair-reject` and `camera-pair-expire` are canonical simple actions. Every one of them reports `m_SimActionResult`, so a scenario can assert `applied` or `expect no-effect`.
 Every scenario below seeds `ble_peers fuji` (or `fuji-pair`) plus `ble_saved`, so the camera behind the prompt is a production `Camera` on a real MockNimBLE link.
 
@@ -369,6 +369,13 @@ The pairing timer remains armed when another camera has a pending request, so
 closing one modal cannot orphan the next. The simulator action and query seams
 are included for the short camera scenarios; no build or runtime validation was
 run in this integration lane.
+
+After integration, explicit Cancel and expiry mark only the declined camera
+terminal for the current session: Control does not retry it or open a generic
+connect-error modal, and other targets are not cleared. A later explicit connect
+clears that marker. The seven camera-pairing scenarios also read the real
+MockNimBLE numeric-comparison counter and last answer; this is simulator
+evidence, not hardware proof.
 
 ## Fuzz seed 3 on the 320x240 Core
 

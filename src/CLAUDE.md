@@ -130,8 +130,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   the signed value is negated for LVGL's int32 scroll delta.
   Camera pairing actions use the production modal and answer path, and their
   queries read the rendered code, modal kind, overflow, pending state, and
-  timer state. A second pending camera keeps the timer armed until its prompt
-  is shown.
+  timer state. The generic `ui.modal` query covers camera and companion
+  dialogs, while `ble.pairing_answers` and `ble.pairing_answer` read the real
+  MockNimBLE injection tally. A second pending camera keeps the timer armed
+  until its prompt is shown; a declined or expired camera is not retried until
+  an explicit fresh connect.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:

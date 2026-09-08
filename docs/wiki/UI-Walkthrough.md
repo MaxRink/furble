@@ -104,6 +104,10 @@ displays, then select **Confirm** only when they match. **Cancel** rejects the
 request and drops the link. On the 80x160 M5StickC the two actions read **Yes**
 and **No**, because the wider labels do not fit that panel.
 
+A cancelled or expired camera is not automatically retried or prompted again
+in the current session. Other active cameras remain eligible, and an explicit
+fresh connect re-arms the declined camera.
+
 A passkey-display request is the other direction: the code is furble's own
 pairing passkey, which you type on the camera, and the modal offers Cancel only.
 That passkey is fixed for the build, so a display request carries no
