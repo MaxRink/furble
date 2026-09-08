@@ -1913,6 +1913,15 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   lv_obj_t *obj = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW_WRAP);
 
+  // The timed-wake switch is the fifth row on the Stick timer page and sits
+  // beside the floating right indicator. Keep only this newly added row clear;
+  // reserving every settings row would needlessly shrink unrelated pages.
+  if (setting == Settings::IVL_SLEEP) {
+    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+      lv_obj_set_style_pad_right(obj, reserve, LV_PART_MAIN);
+    }
+  }
+
   if (symbol) {
     lv_obj_t *icon = lv_image_create(obj);
     lv_image_set_src(icon, symbol);
