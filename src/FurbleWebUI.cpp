@@ -195,21 +195,7 @@ void WebUI::taskEntry(void *param) {
 
 void WebUI::task(void) {
   while (true) {
-    const uint8_t timerEvents = m_TimerEvents.exchange(0);
-    if ((timerEvents & TIMER_HOLD) != 0) {
-      const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
-      const int64_t deadline = m_HoldDeadlineUs.load();
-      const bool timerActive = (m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer);
-      // Manual release or a newer command invalidates the old deadline. A
-      // replacement timed hold has a future deadline and is not released early.
-      if (WebUIProtocol::holdExpired(deadline, esp_timer_get_time(), timerActive)) {
-        m_HoldDeadlineUs.store(0);
-        queueRelease(Control::CMD_SHUTTER_RELEASE, HELD_SHUTTER);
-      }
-    }
-    if ((timerEvents & TIMER_RELEASE_RETRY) != 0) {
-      retryReleases();
-    }
+    serviceTimerEvents();
     bool reload = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -230,6 +216,40 @@ void WebUI::task(void) {
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_PERIOD_MS));
   }
 }
+
+void WebUI::serviceTimerEvents(void) {
+  const uint8_t timerEvents = m_TimerEvents.exchange(0);
+  if ((timerEvents & TIMER_HOLD) != 0) {
+    const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
+    const int64_t deadline = m_HoldDeadlineUs.load();
+    const bool timerActive = (m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer);
+    // Manual release or a newer command invalidates the old deadline. A
+    // replacement timed hold has a future deadline and is not released early.
+    if (WebUIProtocol::holdExpired(deadline, esp_timer_get_time(), timerActive)) {
+      m_HoldDeadlineUs.store(0);
+      queueRelease(Control::CMD_SHUTTER_RELEASE, HELD_SHUTTER);
+    }
+  }
+  if ((timerEvents & TIMER_RELEASE_RETRY) != 0) {
+    retryReleases();
+  }
+}
+
+#if defined(FURBLE_WEBUI_HOST_TEST)
+bool WebUI::hostStartServer(const std::string &certificate, const std::string &privateKey) {
+  m_Certificate = certificate;
+  m_PrivateKey = privateKey;
+  return startServer();
+}
+
+void WebUI::hostStopServer(void) {
+  stopServer();
+}
+
+void WebUI::hostServiceTimerEvents(void) {
+  serviceTimerEvents();
+}
+#endif
 
 bool WebUI::networkReady(void) const {
   const WiFi::status_t status = WiFi::getStatus();

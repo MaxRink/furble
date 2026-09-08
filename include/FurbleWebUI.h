@@ -12,7 +12,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "FurbleControl.h"
+#include <FurbleControl.h>
 
 namespace Furble {
 
@@ -30,6 +30,11 @@ class WebUI {
   /** Re-read the opt-in setting and wake the supervisor. */
   void reloadSetting(void);
   bool isRunning(void) const { return m_Running.load(); }
+#if defined(FURBLE_WEBUI_HOST_TEST)
+  bool hostStartServer(const std::string &certificate, const std::string &privateKey);
+  void hostStopServer(void);
+  void hostServiceTimerEvents(void);
+#endif
 
  private:
   WebUI() = default;
@@ -45,6 +50,7 @@ class WebUI {
 
   static void taskEntry(void *param);
   void task(void);
+  void serviceTimerEvents(void);
   bool networkReady(void) const;
   bool credentialsReady(void);
   bool startServer(void);
