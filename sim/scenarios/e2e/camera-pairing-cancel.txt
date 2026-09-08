@@ -35,4 +35,6 @@ assert ble.pairing_answer reject
 assert-eventually-virtual 12000 control.connected 0
 assert-eventually-virtual 5000 ui.connect_box hidden
 assert ui.connected no
+assert ui.connect_error none
+assert ui.modal_count 0
 exit

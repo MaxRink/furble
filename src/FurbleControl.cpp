@@ -231,9 +231,17 @@ Control::state_t Control::connectAll(void) {
   }
 
   if (all.empty()) {
-    ESP_LOGW(LOG_TAG, "Connect requested with no cameras in the session.");
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_ConnectInProgress = false;
+    if (!m_Targets.empty()) {
+      // Every remaining target declined pairing. This is a deliberate terminal
+      // outcome for this session, not a failed connect that should open an
+      // error box or consume another retry.
+      m_ReconnectAttempt = 0;
+      m_ConnectFailCount = 0;
+      return STATE_IDLE;
+    }
+    ESP_LOGW(LOG_TAG, "Connect requested with no cameras in the session.");
     return STATE_CONNECT_FAILED;
   }
 
@@ -264,6 +272,12 @@ Control::state_t Control::connectAll(void) {
     // getConnectingCamera() were handed a stale pointer.
     setConnectCamera(nullptr);
     if (!connected) {
+      if (camera->pairingCancelled()) {
+        // A user decline/expiry is terminal for this target, not a transport
+        // failure. Do not count it toward retry/backoff or manufacture an
+        // unrelated connect-error dialog.
+        continue;
+      }
       m_ConnectFailCount++;
       if (camera->needsRepair()) {
         // "<camera>: <instruction>" exactly, and kept short on purpose. This
@@ -904,6 +918,13 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   // have distinct addresses and are all added.
   for (const auto &target : m_Targets) {
     if (target->getCamera()->getAddress() == camera->getAddress()) {
+      if (target->getCamera()->pairingCancelled()) {
+        // A fresh explicit connect re-arms a target that was terminally
+        // declined in the previous cycle; keep its existing target task.
+        target->getCamera()->clearPairingCancelled();
+        target->getCamera()->resetConnectionState();
+        return;
+      }
       const bool connected = target->getCamera()->isConnected();
       ESP_LOGW(LOG_TAG, "Camera '%s' already %s, ignoring duplicate connect.",
                camera->getName().c_str(), connected ? "active" : "connecting");
