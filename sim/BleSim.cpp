@@ -257,6 +257,14 @@ size_t bleLiveClientCount(void) {
   return NimBLEDevice::liveClientCount();
 }
 
+size_t blePairingAnswerCount(void) {
+  return NimBLEDevice::mockPasskeyConfirmCount();
+}
+
+bool bleLastPairingAnswerAccepted(void) {
+  return NimBLEDevice::mockLastPasskeyAccept();
+}
+
 void bleSetSecureStallMs(uint32_t ms) {
   // Run the stall on the virtual clock. The host suite keeps the wall clock,
   // where a real second is the point; here a real second would be dead time and

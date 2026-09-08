@@ -1442,6 +1442,15 @@ std::string queryValue(const std::string &key) {
   if (key == "ble.live_clients") {
     return std::to_string(bleLiveClientCount());
   }
+  if (key == "ble.pairing_answers") {
+    return std::to_string(blePairingAnswerCount());
+  }
+  if (key == "ble.pairing_answer") {
+    if (blePairingAnswerCount() == 0) {
+      return "none";
+    }
+    return bleLastPairingAnswerAccepted() ? "accept" : "reject";
+  }
   if (key == "clock.ms") {
     return std::to_string(clockMillis());
   }
