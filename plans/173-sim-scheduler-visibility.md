@@ -287,3 +287,10 @@ after the simulator thread has joined and the SDL panel has closed. The resumed
 boot still consumes and unsets that variable, and the existing
 `restart-persist.txt` and `restart-post-failure.txt` fixtures remain the focused
 behavioral checks for persistence and failure precedence.
+
+The Linux ordering check in `sim/scripts/run-env-order.sh` compiles an
+`LD_PRELOAD` interposer that rejects environment mutation after SDL reports
+initialization. It runs a fresh smoke boot and `restart-persist.txt` against
+the current binary, then expects the pre-fix binary to fail with the guard's
+status. This is a deterministic ordering regression, not evidence that the
+environment race caused an unrelated crash.

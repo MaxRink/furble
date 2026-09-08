@@ -154,6 +154,11 @@ including empty strings and failed-save rollback.
   rebuilds, and proves GPS dependents rebuild while an unrelated source stays
   cached. It requires the same dependency overrides as
   `sim/build.sh`.
+- `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
+  interposer that rejects `setenv` and `unsetenv` after SDL initialization,
+  then runs the fresh and restart scenarios against the current binary and
+  expects the pre-fix binary to trip the guard. This checks ordering only; it
+  is not crash-causality evidence.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
